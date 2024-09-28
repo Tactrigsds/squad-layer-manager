@@ -13,6 +13,11 @@ type User = {
 const users: Record<string, User> = { id_bilbo: { id: 'id_bilbo', name: 'Bilbo Baggins', bio: 'Hobbit' } }
 export const t = initTRPC.create()
 export const appRouter = t.router({
+	getColumnUniqueColumnValues: t.procedure.input(z.enum(M.COLUMN_TYPE_MAPPING.string)).query(async ({ input }) => {
+		const conn = await DB.openConnection()
+		const rows = await conn.all(`SELECT DISTINCT ${input} FROM layers`)
+		return rows.map((row: any) => row[input] as string)
+	}),
 	getLayersPaginated: t.procedure
 		.input(
 			z.object({
@@ -59,7 +64,7 @@ export const appRouter = t.router({
 	gotRows: t.procedure.query(async () => {
 		const c = await DB.openConnection()
 		const layers = await c.all('SELECT * FROM layers limit 10')
-		return layers as M.ProcessedLayer[]
+		return layers as M.Layer[]
 	}),
 	getUserById: t.procedure.input(z.string()).query((opts) => {
 		return users[opts.input] // input type is string
