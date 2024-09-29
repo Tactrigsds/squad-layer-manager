@@ -6,8 +6,18 @@ import * as fs from 'fs'
 
 function processLayer(rawLayer: M.RawLayer): M.Layer {
 	const [_, gamemode, version] = rawLayer.Layer.split('_')
+	const Id = M.getLayerId({
+		Level: rawLayer.Level,
+		Gamemode: gamemode,
+		LayerVersion: version,
+		Faction_1: rawLayer.Faction_1,
+		SubFac_1: rawLayer.SubFac_1,
+		Faction_2: rawLayer.Faction_2,
+		SubFac_2: rawLayer.SubFac_2,
+	})
 
 	return {
+		Id,
 		...rawLayer,
 		Gamemode: gamemode,
 		LayerVersion: version,
@@ -50,10 +60,10 @@ const processedLayers: M.Layer[] = records
 const db = await DB.openConnection()
 
 // we have this defined in models but we don't want to introduce an ordering dependency over there if we don't have to
-const colKeys = [...M.COLUMN_TYPE_MAPPINGS.numeric, ...M.COLUMN_TYPE_MAPPINGS.string]
+const colKeys = [...M.COLUMN_TYPE_MAPPINGS.string, ...M.COLUMN_TYPE_MAPPINGS.numeric]
 const colDefs = [
-	...M.COLUMN_TYPE_MAPPINGS.numeric.map((col) => `${wrapColName(col)} REAL`),
 	...M.COLUMN_TYPE_MAPPINGS.string.map((col) => `${wrapColName(col)} TEXT`),
+	...M.COLUMN_TYPE_MAPPINGS.numeric.map((col) => `${wrapColName(col)} REAL`),
 ]
 
 await db.run(`DROP TABLE IF EXISTS layers`)
@@ -64,9 +74,11 @@ const t0 = performance.now()
 await db.run('BEGIN TRANSACTION')
 try {
 	const stmt = await db.prepare(`INSERT INTO layers VALUES (${colKeys.map(() => '?').join(', ')})`)
+	const ops: Promise<unknown>[] = []
 	for (const layer of processedLayers) {
-		await stmt.run(...colKeys.map((col) => layer[col]))
+		ops.push(stmt.run(...colKeys.map((col) => layer[col])))
 	}
+	await Promise.all(ops)
 	await stmt.finalize()
 } catch (e) {
 	db.run('ROLLBACK')

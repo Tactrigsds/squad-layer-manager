@@ -26,7 +26,8 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 
 function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetState<M.EditableFilterNode | undefined>; depth: number }) {
 	const { node, setNode } = props
-	const isValid = M.isLocallyValidFilterNode(node)
+	const isValid = M.isLocallyValidFilterNode(node, props.depth)
+	console.log('node at depth ', props.depth, node, 'valid: ', isValid)
 	const [showInvalid, setShowInvalid] = useState(false)
 	const invalid = !isValid && showInvalid
 	const wrapperRef = useRef<HTMLDivElement>(null)
@@ -84,6 +85,7 @@ function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetStat
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
 				{props.depth > 0 && <span>{node.type}</span>}
 				{children!}
+				{props.depth === 0 && childrenLen === 0 && <span>Click below to add some filters</span>}
 				<span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -133,7 +135,7 @@ function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetStat
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2')}>
 				<Comparison comp={node.comp} setComp={setComp} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus />
+					<Minus color="hsl(var(--destructive))" />
 				</Button>
 			</div>
 		)
@@ -179,15 +181,15 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 			)}
 			{(comp.code === 'gt' || comp.code === 'lt') && (
 				<NumericSingleValueConfig
-					class="w-[200px]"
+					className="w-[200px]"
 					value={comp.value as number | undefined}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
 				/>
 			)}
 			{comp.code === 'inrange' && (
 				<NumericRangeConfig
-					min={comp.min as number | undefined}
-					max={comp.max as number | undefined}
+					min={comp.min}
+					max={comp.max}
 					setMin={(min) => setComp((c) => ({ ...c, min }))}
 					setMax={(max) => setComp((c) => ({ ...c, max }))}
 				/>
@@ -197,26 +199,25 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 }
 
 function StringEqConfig(props: { value: string | undefined; column: M.StringColumn; setValue: (value: string | undefined) => void }) {
-	const { column, value, setValue } = props
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(column)
-	return <ComboBox title="" value={value} options={valuesRes.data ?? []} onSelect={setValue} />
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(props.column)
+	return <ComboBox title={props.column} value={props.value} options={valuesRes.data ?? []} onSelect={props.setValue} />
 }
 
 function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
-	const { column, values, setValues } = props
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(column)
-	return <ComboBoxMulti values={values} options={valuesRes.data ?? []} onSelect={setValues} />
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(props.column)
+	return <ComboBoxMulti values={props.values} options={valuesRes.data ?? []} onSelect={props.setValues} />
 }
 
-function NumericSingleValueConfig(props: { class?: string; value?: number; setValue: (value?: number) => void }) {
+function NumericSingleValueConfig(props: { className?: string; value?: number; setValue: (value?: number) => void }) {
 	const [value, setValue] = useState(props.value?.toString() ?? '')
 	return (
 		<Input
-			className={props.class}
+			className={props.className}
 			value={value}
 			onChange={(e) => {
 				setValue(e.target.value)
 				const value = e.target.value.trim()
+				// TODO debounce
 				return props.setValue(value === '' ? undefined : parseFloat(value))
 			}}
 		/>

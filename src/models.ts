@@ -1,5 +1,7 @@
 import * as z from 'zod'
 
+import { reverseMapping } from './lib/object'
+
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
@@ -31,8 +33,8 @@ export const RawLayerSchema = z.object({
 
 export type RawLayer = z.infer<typeof RawLayerSchema>
 
-// Define the schema for processed data
 export const ProcessedLayerSchema = RawLayerSchema.extend({
+	Id: z.string(),
 	Gamemode: z.string(),
 	LayerVersion: z.string(),
 	Logistics_Diff: z.number(),
@@ -41,6 +43,75 @@ export const ProcessedLayerSchema = RawLayerSchema.extend({
 	Armor_Diff: z.number(),
 	ZERO_Score_Diff: z.number(),
 })
+
+const MAP_ABBREVIATION = {
+	AlBasrah: 'AB',
+	Anvil: 'AN',
+	Belaya: 'BL',
+	BlackCoast: 'BC',
+	Chora: 'CH',
+	Fallujah: 'FL',
+	FoolsRoad: 'FR',
+	GooseBay: 'GB',
+	Gorodok: 'GD',
+	Harju: 'HJ',
+	Kamdesh: 'KD',
+	Kohat: 'KH',
+	Kokan: 'KK',
+	Lashkar: 'LK',
+	Logar: 'LG',
+	Manicouagan: 'MN',
+	Mestia: 'MS',
+	Mutaha: 'MT',
+	Narva: 'NV',
+	PacificProvingGrounds: 'PPG',
+	Sanxian: 'SX',
+	Skorpo: 'SK',
+	Sumari: 'SM',
+	Tallil: 'TL',
+	Yehorivka: 'YH',
+} as Record<string, string>
+
+const UNIT_ABBREVIATION = {
+	AirAssault: 'AA',
+	Armored: 'AR',
+	CombinedArms: 'CA',
+	LightInfantry: 'LI',
+	Mechanized: 'MZ',
+	Motorized: 'MT',
+	Support: 'SP',
+} as Record<string, string>
+
+export function getLayerId(layer: {
+	Level: string
+	Gamemode: string
+	LayerVersion: string
+	Faction_1: string
+	SubFac_1: string
+	Faction_2: string
+	SubFac_2: string
+}) {
+	const mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}-${layer.LayerVersion.toUpperCase()}`
+	const faction1 = `${[layer.Faction_1]}-${UNIT_ABBREVIATION[layer.SubFac_1]}`
+	const faction2 = `${layer.Faction_2}-${UNIT_ABBREVIATION[layer.SubFac_2]}`
+	return `${mapLayer}:${faction1}:${faction2}`
+}
+export function getAdminSetNextLayerCommand(layer: {
+	Layer: string
+	Faction_1: string
+	SubFac_1: string
+	Faction_2: string
+	SubFac_2: string
+}) {
+	return `AdminSetNextLayer ${layer.Layer} ${layer.Faction_1}+${layer.SubFac_1} ${layer.Faction_2}+${layer.SubFac_2}`
+}
+
+export function getSetNextVoteCommand(ids: string[]) {
+	return `!genpool ${ids.join(', ')}`
+}
+
+export const MAP_ABBREVIATION_REVERSE = reverseMapping(MAP_ABBREVIATION)
+export const UNIT_ABBREVIATION_REVERSE = reverseMapping(UNIT_ABBREVIATION)
 
 type ComparisonType = {
 	coltype: 'string' | 'numeric'
@@ -60,6 +131,7 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
 ] as const satisfies ComparisonType[]
 
+// we're keeping this definition separate to reduce type inference a bit
 export const COLUMN_TYPE_MAPPINGS = {
 	numeric: [
 		'Anti-Infantry_1',
@@ -80,10 +152,10 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'Armor_Diff',
 		'ZERO_Score_Diff',
 	] as const,
-	string: ['Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
+	string: ['Id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
 } satisfies { [key in ColumnType]: LayerKey[] }
 
-export const COLUMN_KEYS: LayerKey[] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
+export const COLUMN_KEYS: [LayerKey, ...LayerKey[]] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
 if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
 export const COLUMN_KEY_TO_TYPE = {
@@ -194,8 +266,8 @@ export function isValidFilterNode(node: EditableFilterNode): node is FilterNode 
 }
 
 // excludes children
-export function isLocallyValidFilterNode(node: EditableFilterNode) {
-	if (node.type === 'and' || node.type === 'or') return node.children.length > 0
+export function isLocallyValidFilterNode(node: EditableFilterNode, depth: number) {
+	if (node.type === 'and' || node.type === 'or') return depth === 0 || node.children.length > 0
 	if (node.type === 'comp') return isValidComparison(node.comp)
 	throw new Error('Invalid node type')
 }

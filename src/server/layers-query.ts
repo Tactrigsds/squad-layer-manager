@@ -1,13 +1,13 @@
 import { wrapColName } from '@/lib/sql'
 import * as M from '@/models.ts'
-import { Database, Statement } from 'sqlite'
+import { Database } from 'sqlite'
 import * as sqlite3 from 'sqlite3'
 import { z } from 'zod'
 
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0),
 	pageSize: z.number().int().min(1).max(100),
-	sortBy: z.string().optional(),
+	sortBy: z.enum(M.COLUMN_KEYS).optional(),
 	sortDesc: z.boolean().optional(),
 	filter: M.FilterNodeSchema.optional(),
 })
@@ -22,10 +22,6 @@ export async function runLayersQuery(
 	let countParams: (string | number)[] = []
 
 	let orderClause = ''
-	if (sortBy) {
-		orderClause = `ORDER BY ? ${sortDesc ? 'DESC' : 'ASC'}`
-		params.push(sortBy)
-	}
 	let whereClause = ''
 	if (filter) {
 		const [whereFilter, whereParams] = getWhereFilterConditions(filter)
@@ -33,13 +29,16 @@ export async function runLayersQuery(
 		params = [...params, ...whereParams]
 		countParams = [...countParams, ...whereParams]
 	}
+	if (sortBy) {
+		orderClause = `ORDER BY ? ${sortDesc ? 'DESC' : 'ASC'}`
+		params.push(sortBy)
+	}
 	const offset = pageIndex * pageSize
 	params = [...params, pageSize, offset]
 
 	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} LIMIT ? OFFSET ?`
 	const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
 
-	console.log(layersQuery, 'params: ', params)
 	const [layers, countResult] = await Promise.all([
 		db.all<M.Layer[]>(layersQuery, params),
 		db.get<{ count: number }>(countQuery, countParams),
