@@ -3,7 +3,6 @@ import * as M from '@/models'
 import * as DB from '@/server/db'
 import { parse } from 'csv-parse/sync'
 import * as fs from 'fs'
-import * as z from 'zod'
 
 function processLayer(rawLayer: M.RawLayer): M.Layer {
 	const [_, gamemode, version] = rawLayer.Layer.split('_')
@@ -61,12 +60,22 @@ await db.run(`DROP TABLE IF EXISTS layers`)
 const createTableStmt = `CREATE TABLE layers (${colDefs.join(', ')})`
 await db.run(createTableStmt)
 
-const stmt = await db.prepare(`INSERT INTO layers VALUES (${colKeys.map(() => '?').join(', ')})`)
-
-for (const layer of processedLayers) {
-	await stmt.run(...colKeys.map((col) => layer[col]))
+const t0 = performance.now()
+await db.run('BEGIN TRANSACTION')
+try {
+	const stmt = await db.prepare(`INSERT INTO layers VALUES (${colKeys.map(() => '?').join(', ')})`)
+	for (const layer of processedLayers) {
+		await stmt.run(...colKeys.map((col) => layer[col]))
+	}
+	await stmt.finalize()
+} catch (e) {
+	db.run('ROLLBACK')
+	throw e
 }
 
-await stmt.finalize()
+await db.run('COMMIT')
+const t1 = performance.now()
 
+const elapsedSeconds = (t1 - t0) / 1000
+console.log(`Inserting ${processedLayers.length} rows took ${elapsedSeconds} s`)
 db.close()
