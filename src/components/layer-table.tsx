@@ -15,7 +15,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const columnHelper = createColumnHelper<M.Layer>()
 
@@ -71,11 +71,14 @@ const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [
 export default function LayerTable({ filter }: { filter: M.FilterNode | null }) {
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
-	console.log('columnVisibility', columnVisibility)
 	const [{ pageIndex, pageSize }, setPagination] = useState<PaginationState>({
 		pageIndex: 0,
 		pageSize: 10,
 	})
+
+	useEffect(() => {
+		console.log(filter)
+	}, [filter])
 
 	const { data } = trpc.getLayers.useQuery({
 		pageIndex,

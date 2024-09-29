@@ -3,70 +3,140 @@ import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import { produce } from 'immer'
-import { Check, ChevronsUpDown } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ChevronsUpDown, Minus, Plus } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 export function FilterCard({ filter, setFilter }: { filter: M.EditableFilterNode; setFilter: SetState<M.EditableFilterNode> }) {
-	return <FilterNodeDisplay node={filter} setNode={setFilter} />
+	return <FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
 }
 
-const nodeWrapper = 'p-2 border-l-2 border-gray-300 space-x-2 w-full flex nowrap'
+const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
+function getNodeWrapperClasses(depth: number, invalid: boolean) {
+	const base = 'p-2 border-l-2 w-full'
+	const depthColor = depth === 0 ? 'border-secondary' : depthColors[depth % depthColors.length]
+	const validColor = invalid ? 'bg-red-400/10' : ''
+	return cn(base, depthColor, validColor)
+}
 
-function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetState<M.EditableFilterNode> }) {
+function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetState<M.EditableFilterNode | undefined>; depth: number }) {
 	const { node, setNode } = props
+	const isValid = M.isLocallyValidFilterNode(node)
+	const [showInvalid, setShowInvalid] = useState(false)
+	const invalid = !isValid && showInvalid
+	const wrapperRef = useRef<HTMLDivElement>(null)
+
+	useEffect(() => {
+		const elt = wrapperRef.current!
+		if (isValid || !elt) return
+		if (wrapperRef.current !== document.activeElement || elt.contains(document.activeElement)) {
+			setShowInvalid(true)
+			return
+		}
+		function onFocusLeave() {
+			if (isValid) return
+			setShowInvalid(true)
+		}
+		elt.addEventListener('focusout', onFocusLeave)
+		return () => {
+			elt.removeEventListener('focusout', onFocusLeave)
+		}
+	}, [isValid])
 
 	if (node.type === 'and' || node.type === 'or') {
+		const childrenLen = node.children.length
 		const children = node.children?.map((child, i) => {
-			const setChild: SetState<M.EditableFilterNode> = (cb) => {
-				setNode((s) => {
-					if (s.type !== 'and' && s.type !== 'or') return s
-					if (!s.children[i]) return s
-					return produce(s, (draft) => {
-						draft.children[i] = cb(s.children[i])
+			const setChild: SetState<M.EditableFilterNode | undefined> = (cb) => {
+				setNode(
+					produce((draft) => {
+						if (!draft) return
+						if (draft.type !== 'and' && draft.type !== 'or') return
+						if (draft.children.length !== childrenLen) return
+						const newValue = cb(draft.children[i])
+						if (newValue) draft.children[i] = newValue
+						else draft.children.splice(i, 1)
 					})
-				})
+				)
 			}
 
-			return <FilterNodeDisplay key={i} node={child} setNode={setChild} />
+			return <FilterNodeDisplay depth={props.depth + 1} key={i} node={child} setNode={setChild} />
 		})
 		const addNewChild = (type: M.EditableFilterNode['type']) => {
-			setNode((s) =>
-				produce(s, (draft) => {
+			setNode(
+				produce((draft) => {
+					if (!draft) return
 					if (draft.type !== 'and' && draft.type !== 'or') return
 					if (type === 'comp') draft.children.push({ type, comp: {} })
 					if (type === 'and' || type === 'or') draft.children.push({ type, children: [] })
 				})
 			)
 		}
+		const deleteNode = () => {
+			setNode(() => undefined)
+		}
 
 		return (
-			<div className={cn(nodeWrapper, 'flex-col space-x-0 space-y-2')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
+				{props.depth > 0 && <span>{node.type}</span>}
 				{children!}
 				<span>
-					<Button className="min-h-0" onClick={() => addNewChild('comp')}>
-						Add
-					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button className="min-h-0" size="icon" variant="outline">
+								<Plus />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent>
+							<DropdownMenuItem onClick={() => addNewChild('comp')}>comparison</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={() => addNewChild('and')}>and</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => addNewChild('or')}>or</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</span>
+				{props.depth > 0 && (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button size="icon" variant="outline" className="absolute top-0 right-0 translate-y-[-50%] z-10 rounded-md">
+								...
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem className="bg-destructive" onClick={() => deleteNode()}>
+								delete "{node.type}"
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
 			</div>
 		)
 	}
+
 	const setComp: SetState<M.EditableComparison> = (cb) => {
-		setNode((s) => {
-			const out = produce(s, (draft) => {
+		setNode(
+			produce((draft) => {
+				if (!draft) return
 				if (draft.type !== 'comp') return
 				draft.comp = cb(draft.comp)
 			})
-			return out
-		})
+		)
 	}
 
 	if (node.type === 'comp' && node.comp) {
-		return <Comparison comp={node.comp} setComp={setComp} />
+		return (
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2')}>
+				<Comparison comp={node.comp} setComp={setComp} />
+				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
+					<Minus />
+				</Button>
+			</div>
+		)
 	}
 
 	throw new Error('Invalid node type ' + node.type)
@@ -77,10 +147,10 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 	const columnBox = (
 		<ComboBox title="Column" value={comp.column} options={M.COLUMN_KEYS} onSelect={(column) => setComp(() => ({ column }))} />
 	)
-	if (!comp.column) return <div className={nodeWrapper}>{columnBox}</div>
-	console.log('value comp', comp.value)
+
+	if (!comp.column) return columnBox
 	return (
-		<div className={nodeWrapper}>
+		<>
 			{columnBox}
 			<ComboBox
 				className="w-[100px]"
@@ -122,7 +192,7 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 					setMax={(max) => setComp((c) => ({ ...c, max }))}
 				/>
 			)}
-		</div>
+		</>
 	)
 }
 

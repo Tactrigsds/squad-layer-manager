@@ -81,9 +81,10 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'ZERO_Score_Diff',
 	] as const,
 	string: ['Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
-} satisfies { [key in ColumnType]: (keyof Layer)[] }
+} satisfies { [key in ColumnType]: LayerKey[] }
 
-export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
+export const COLUMN_KEYS: LayerKey[] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
+if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
 export const COLUMN_KEY_TO_TYPE = {
 	...Object.fromEntries(COLUMN_TYPE_MAPPINGS.numeric.map((key) => [key, 'numeric'] as const)),
@@ -189,7 +190,14 @@ export function isValidFilterNode(node: EditableFilterNode): node is FilterNode 
 	if (node.type === 'comp') {
 		return isValidComparison(node.comp)
 	}
-	return node.children.every((child) => isValidFilterNode(child))
+	return node.children.length > 0 && node.children.every((child) => isValidFilterNode(child))
+}
+
+// excludes children
+export function isLocallyValidFilterNode(node: EditableFilterNode) {
+	if (node.type === 'and' || node.type === 'or') return node.children.length > 0
+	if (node.type === 'comp') return isValidComparison(node.comp)
+	throw new Error('Invalid node type')
 }
 
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
