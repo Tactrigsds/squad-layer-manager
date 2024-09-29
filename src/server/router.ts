@@ -1,9 +1,9 @@
 import * as M from '@/models.ts'
-import { ProcessedLayer } from '@/scripts/preprocess.ts'
 import { initTRPC } from '@trpc/server'
 import { z } from 'zod'
 
 import * as DB from './db.ts'
+import { LayersQuerySchema, runLayersQuery } from './layers-query.ts'
 
 type User = {
 	id: string
@@ -13,54 +13,17 @@ type User = {
 const users: Record<string, User> = { id_bilbo: { id: 'id_bilbo', name: 'Bilbo Baggins', bio: 'Hobbit' } }
 export const t = initTRPC.create()
 export const appRouter = t.router({
-	getColumnUniqueColumnValues: t.procedure.input(z.enum(M.COLUMN_TYPE_MAPPING.string)).query(async ({ input }) => {
+	getColumnUniqueColumnValues: t.procedure.input(z.enum(M.COLUMN_TYPE_MAPPINGS.string)).query(async ({ input }) => {
 		const conn = await DB.openConnection()
-		const rows = await conn.all(`SELECT DISTINCT ${input} FROM layers`)
-		return rows.map((row: any) => row[input] as string)
+		// this direct templating is ok because we're using an enum to ensure the input is safe
+		const rows = (await conn.all(`SELECT DISTINCT ${input} FROM layers`)) as M.Layer[]
+		return rows.map((row) => row[input] as string)
 	}),
-	getLayersPaginated: t.procedure
-		.input(
-			z.object({
-				pageIndex: z.number().int().min(0),
-				pageSize: z.number().int().min(1).max(100),
-				sortBy: z.string().optional(),
-				sortDesc: z.boolean().optional(),
-			})
-		)
-		.query(async ({ input }) => {
-			const { pageIndex, pageSize, sortBy, sortDesc } = input
-
-			const db = await DB.openConnection()
-
-			const offset = pageIndex * pageSize
-
-			let orderClause = ''
-			if (sortBy) {
-				orderClause = `ORDER BY ${sortBy} ${sortDesc ? 'DESC' : 'ASC'}`
-			}
-
-			const layersQuery = `
-        SELECT *
-        FROM layers
-        ${orderClause}
-        LIMIT ? OFFSET ?
-      `
-
-			const countQuery = 'SELECT COUNT(*) as count FROM layers'
-
-			const [layers, countResult] = await Promise.all([
-				db.all<ProcessedLayer>(layersQuery, [pageSize, offset]),
-				db.get<{ count: number }>(countQuery),
-			])
-
-			const totalCount = countResult?.count || 0
-
-			return {
-				layers,
-				totalCount,
-				pageCount: Math.ceil(totalCount / pageSize),
-			}
-		}),
+	getLayers: t.procedure.input(LayersQuerySchema).query(async ({ input }) => {
+		const db = await DB.openConnection()
+		const res = await runLayersQuery(input, db)
+		return res
+	}),
 	gotRows: t.procedure.query(async () => {
 		const c = await DB.openConnection()
 		const layers = await c.all('SELECT * FROM layers limit 10')

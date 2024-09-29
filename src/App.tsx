@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { httpBatchLink } from '@trpc/client'
 import * as jotai from 'jotai'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import LayerTable from './components/LayerTable'
 import { FilterCard } from './components/filter-card'
+import LayerTable from './components/layer-table'
 import { ThemeProvider } from './components/theme-provider'
 import { trpc } from './lib/trpc'
+import * as M from './models'
 
 function App() {
 	const [queryClient] = useState(() => new QueryClient())
@@ -36,11 +37,46 @@ function App() {
 	)
 }
 
+const defaultFilter: M.EditableFilterNode = {
+	type: 'and',
+	children: [
+		{
+			type: 'comp',
+			comp: {
+				column: 'Level',
+				code: 'eq',
+				value: 'AlBasrah',
+			},
+		},
+		// {
+		// 	type: 'comp',
+		// 	comp: {
+		// 		code: 'in',
+		// 		column: 'Gamemode',
+		// 		values: ['RAAS', 'AAS'],
+		// 	},
+		// },
+	],
+}
+
 function Ui() {
-	return <FilterCard />
+	const [editableFilter, setEditableFilter] = useState(defaultFilter)
+	const [lastValidFilter, setLastValidFilter] = useState<M.FilterNode | null>(defaultFilter)
+	const setAndValidateFilter = (cb: (f: M.EditableFilterNode) => M.EditableFilterNode) => {
+		setEditableFilter((filter) => {
+			const newFilter = cb(filter)
+			const validFilter = M.isValidFilterNode(newFilter)
+			if (validFilter) {
+				setLastValidFilter(newFilter)
+			}
+			return newFilter
+		})
+	}
+
 	return (
 		<div className="container mx-auto py-10">
-			<LayerTable />
+			<FilterCard filter={editableFilter} setFilter={setAndValidateFilter} />
+			<LayerTable filter={lastValidFilter} />
 		</div>
 	)
 }

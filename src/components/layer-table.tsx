@@ -3,7 +3,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { trpc } from '@/lib/trpc'
-import { ProcessedLayer } from '@/scripts/preprocess'
+import * as M from '@/models'
 import {
 	ColumnDef,
 	PaginationState,
@@ -15,99 +15,78 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
-export type Layer = ProcessedLayer
-const columnHelper = createColumnHelper<Layer>()
+const columnHelper = createColumnHelper<M.Layer>()
 
 const formatNumber = (value: number | null | undefined) => {
-	if (value == null) return 'N/A'
+	if (value == null) return '<missing>'
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
 	if (numeric > 0) return `+${formatted}`
 	return formatted
 }
 
-const columns: ColumnDef<Layer, any>[] = [
-	columnHelper.accessor('Level', {
-		header: 'Level',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Layer', {
-		header: 'Layer',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Size', {
-		header: 'Size',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Gamemode', {
-		header: 'Gamemode',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('LayerVersion', {
-		header: 'Version',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Faction_1', {
-		header: 'Faction 1',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('SubFac_1', {
-		header: 'Sub-Faction 1',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Faction_2', {
-		header: 'Faction 2',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('SubFac_2', {
-		header: 'Sub-Faction 2',
-		cell: (info) => info.getValue() || 'N/A',
-	}),
-	columnHelper.accessor('Logistics_Diff', {
-		header: 'Logistics Diff',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
-	columnHelper.accessor('Transportation_Diff', {
-		header: 'Transportation Diff',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
-	columnHelper.accessor('Anti-Infantry_Diff', {
-		header: 'Anti-Infantry Diff',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
-	columnHelper.accessor('Armor_Diff', {
-		header: 'Armor Diff',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
-	columnHelper.accessor('ZERO_Score_Diff', {
-		header: 'ZERO Score Diff',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
-	columnHelper.accessor('Balance_Differential', {
-		header: 'Balance Differential',
-		cell: (info) => formatNumber(info.getValue()),
-	}),
+function getColumn(key: M.LayerKey) {
+	return columnHelper.accessor(key, {
+		header: key,
+		cell: (info) => (M.COLUMN_KEY_TO_TYPE[key] === 'numeric' ? formatNumber(info.getValue() as number) : info.getValue() || '<missing>'),
+	})
+}
+
+const columns: ColumnDef<M.Layer, any>[] = [
+	getColumn('Level'),
+	getColumn('Layer'),
+	getColumn('Size'),
+	getColumn('Gamemode'),
+	getColumn('LayerVersion'),
+	getColumn('Faction_1'),
+	getColumn('SubFac_1'),
+	getColumn('Faction_2'),
+	getColumn('SubFac_2'),
+	getColumn('Logistics_Diff'),
+	getColumn('Transportation_Diff'),
+	getColumn('Anti-Infantry_Diff'),
+	getColumn('Armor_Diff'),
+	getColumn('ZERO_Score_Diff'),
+	getColumn('Balance_Differential'),
+	getColumn('Asymmetry Score'),
 ]
 
-export default function LayerTable() {
+const DEFAULT_VISIBLE_COLUMNS = [
+	'Layer',
+	'Faction_1',
+	'SubFac_1',
+	'Faction_2',
+	'SubFac_2',
+	'Anti-Infantry_1',
+	'Anti-Infantry_Diff',
+	'Armor_Diff',
+	'Balance_Differential',
+	'Asymmetry Score',
+] as M.LayerKey[]
+
+const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
+
+export default function LayerTable({ filter }: { filter: M.FilterNode | null }) {
 	const [sorting, setSorting] = useState<SortingState>([])
-	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
+	console.log('columnVisibility', columnVisibility)
 	const [{ pageIndex, pageSize }, setPagination] = useState<PaginationState>({
 		pageIndex: 0,
 		pageSize: 10,
 	})
 
-	const { data, isLoading, isFetching } = trpc.getLayersPaginated.useQuery({
+	const { data } = trpc.getLayers.useQuery({
 		pageIndex,
 		pageSize,
 		sortBy: sorting.length > 0 ? sorting[0].id : undefined,
 		sortDesc: sorting.length > 0 ? sorting[0].desc : undefined,
+		filter: filter ?? undefined,
 	})
 
 	const table = useReactTable({
-		data: data?.layers ?? ([] as Layer[]),
+		data: data?.layers ?? ([] as M.Layer[]),
 		columns,
 		pageCount: data?.pageCount ?? -1,
 		state: {
