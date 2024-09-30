@@ -38,7 +38,7 @@ const formatNumber = (value: number | null | undefined) => {
 	return formatted
 }
 
-function getColumn(key: M.LayerKey) {
+function getColumn(key: M.LayerColumnKey) {
 	return columnHelper.accessor(key, {
 		header: ({ column }) => {
 			return (
@@ -98,13 +98,14 @@ const DEFAULT_VISIBLE_COLUMNS = [
 	'Armor_Diff',
 	'Balance_Differential',
 	'Asymmetry Score',
-] as M.LayerKey[]
+] as M.LayerColumnKey[]
 
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 
 export default function LayerTable(props: { filter: M.FilterNode | null; pageIndex: number; setPageIndex: (value: number) => void }) {
 	let { filter } = props
 	const [sorting, setSorting] = useState<SortingState>([])
+	const [randomize, setRandomize] = useState<boolean>()
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
 	const [showSelectedLayers, setShowSelectedLayers] = useState(false)
 	const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
@@ -198,7 +199,7 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	}
 
 	function onCopyLayerCommand(row: Row<M.Layer>) {
-		let chosenRows = getChosenRows(row)
+		const chosenRows = getChosenRows(row)
 		let text = ''
 		for (const row of chosenRows) {
 			if (text !== '') text += '\n'
@@ -269,27 +270,39 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 						</>
 					)}
 				</span>
-				{/*--------- rows per page ---------*/}
-				<div className="flex items-center space-x-2">
-					<p className="text-sm font-medium">Rows per page</p>
-					<Select
-						value={`${table.getState().pagination.pageSize}`}
-						onValueChange={(value) => {
-							table.setPageSize(Number(value))
-						}}
-					>
-						<SelectTrigger className="h-8 w-[70px]">
-							<SelectValue placeholder={table.getState().pagination.pageSize} />
-						</SelectTrigger>
-						<SelectContent side="top">
-							{[10, 20, 30, 40, 50].map((pageSize) => (
-								<SelectItem key={pageSize} value={`${pageSize}`}>
-									{pageSize}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+				<span className="flex items-center space-x-2 h-10">
+					<div className="flex items-center space-x-1">
+						<Switch
+							checked={showSelectedLayers}
+							disabled={selectedLayerIds.length === 0}
+							onCheckedChange={() => selectedLayerIds.length > 0 && setShowSelectedLayers((show) => !show)}
+							id="toggle-show-selected"
+						/>
+						<Label htmlFor="toggle-show-selected">Show Selected</Label>
+					</div>
+
+					{/*--------- rows per page ---------*/}
+					<div className="flex items-center space-x-2">
+						<p className="text-sm font-medium">Rows per page</p>
+						<Select
+							value={`${table.getState().pagination.pageSize}`}
+							onValueChange={(value) => {
+								table.setPageSize(Number(value))
+							}}
+						>
+							<SelectTrigger className="h-8 w-[70px]">
+								<SelectValue placeholder={table.getState().pagination.pageSize} />
+							</SelectTrigger>
+							<SelectContent side="top">
+								{[10, 20, 30, 40, 50].map((pageSize) => (
+									<SelectItem key={pageSize} value={`${pageSize}`}>
+										{pageSize}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+				</span>
 			</div>
 			<div className="rounded-md border">
 				{/*--------- table ---------*/}

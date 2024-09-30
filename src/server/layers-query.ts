@@ -7,15 +7,15 @@ import { z } from 'zod'
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0),
 	pageSize: z.number().int().min(1).max(100),
-	sortBy: z.enum(M.COLUMN_KEYS).optional(),
-	sortDesc: z.boolean().optional(),
+	sortBy: z.enum([...M.COLUMN_KEYS, 'RANDOMIZE']).optional(),
+	sortDirection: z.enum(['ASC', 'DESC']).optional(),
 	filter: M.FilterNodeSchema.optional(),
 })
 
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
 export async function runLayersQuery(
-	{ pageIndex, pageSize, sortBy, sortDesc, filter }: LayersQuery,
+	{ pageIndex, pageSize, sortBy, sortDirection, filter }: LayersQuery,
 	db: Database<sqlite3.Database, sqlite3.Statement>
 ) {
 	let params: (string | number)[] = []
@@ -30,22 +30,34 @@ export async function runLayersQuery(
 		countParams = [...countParams, ...whereParams]
 	}
 	if (sortBy) {
-		orderClause = `ORDER BY ? ${sortDesc ? 'DESC' : 'ASC'}`
-		params.push(sortBy)
+		orderClause = `ORDER BY ? ${sortDirection}`
+		params.push(sortBy === 'RANDOMIZE' ? 'RANDOM()' : wrapColName(sortBy))
 	}
-	const offset = pageIndex * pageSize
-	params = [...params, pageSize, offset]
+	const limitClause = 'LIMIT ?'
+	params.push(pageSize)
 
-	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} LIMIT ? OFFSET ?`
-	const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
+	let offsetClause: string
+	if (sortBy === 'RANDOMIZE') {
+		offsetClause = ''
+	} else {
+		offsetClause = 'OFFSET ?'
+		params.push(pageIndex * pageSize)
+	}
 
-	const [layers, countResult] = await Promise.all([
-		db.all<M.Layer[]>(layersQuery, params),
-		db.get<{ count: number }>(countQuery, countParams),
-	])
-	console.log('countResult: ', countResult)
+	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
+	let totalCount: number | undefined
+	let layers: M.Layer[]
+	if (sortBy !== 'RANDOMIZE') {
+		const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
 
-	const totalCount = countResult?.count || 0
+		let countResult: { count: number } | undefined
+		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(layersQuery, params), db.get<{ count: number }>(countQuery, countParams)])
+		totalCount = countResult?.count ?? 0
+	} else {
+		layers = await db.all<M.Layer[]>(layersQuery, params)
+		totalCount = layers.length
+	}
+
 	return {
 		layers,
 		totalCount,

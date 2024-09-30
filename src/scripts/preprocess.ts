@@ -60,23 +60,51 @@ const processedLayers: M.Layer[] = records
 const db = await DB.openConnection()
 
 // we have this defined in models but we don't want to introduce an ordering dependency over there if we don't have to
-const colKeys = [...M.COLUMN_TYPE_MAPPINGS.string, ...M.COLUMN_TYPE_MAPPINGS.numeric]
-const colDefs = [
-	...M.COLUMN_TYPE_MAPPINGS.string.map((col) => `${wrapColName(col)} TEXT`),
-	...M.COLUMN_TYPE_MAPPINGS.numeric.map((col) => `${wrapColName(col)} REAL`),
-]
+const colKeys = ['Ordinal']
+const colDefs: string[] = ['Ordinal INTEGER']
+
+for (const key of M.COLUMN_KEYS) {
+	if (key === 'Id') {
+		colKeys.push('Id')
+		colDefs.push('Id TEXT')
+		continue
+	}
+	const columnType = M.COLUMN_KEY_TO_TYPE[key]
+	switch (columnType) {
+		case 'numeric':
+			colKeys.push(key)
+			colDefs.push(`${wrapColName(key)} REAL`)
+			break
+		case 'string':
+			colKeys.push(key)
+			colDefs.push(`${wrapColName(key)} TEXT`)
+			break
+	}
+}
 
 await db.run(`DROP TABLE IF EXISTS layers`)
 const createTableStmt = `CREATE TABLE layers (${colDefs.join(', ')})`
+console.log('createTable', createTableStmt)
 await db.run(createTableStmt)
 
 const t0 = performance.now()
 await db.run('BEGIN TRANSACTION')
 try {
-	const stmt = await db.prepare(`INSERT INTO layers VALUES (${colKeys.map(() => '?').join(', ')})`)
+	const query = `INSERT INTO layers VALUES (${colDefs.map(() => '?').join(', ')})`
+	console.log('query', query)
+	const stmt = await db.prepare(query)
 	const ops: Promise<unknown>[] = []
+	let ordinal = 1
 	for (const layer of processedLayers) {
-		ops.push(stmt.run(...colKeys.map((col) => layer[col])))
+		ops.push(
+			stmt.run(
+				...colKeys.map((col) => {
+					if (col === 'Ordinal') return ordinal
+					return layer[col as M.LayerColumnKey]
+				})
+			)
+		)
+		ordinal++
 	}
 	await Promise.all(ops)
 	await stmt.finalize()

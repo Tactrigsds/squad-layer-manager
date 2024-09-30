@@ -153,24 +153,24 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'ZERO_Score_Diff',
 	] as const,
 	string: ['Id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
-} satisfies { [key in ColumnType]: LayerKey[] }
+} satisfies { [key in ColumnType]: LayerColumnKey[] }
 
-export const COLUMN_KEYS: [LayerKey, ...LayerKey[]] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
+export const COLUMN_KEYS: [LayerColumnKey, ...LayerColumnKey[]] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
 if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
 export const COLUMN_KEY_TO_TYPE = {
 	...Object.fromEntries(COLUMN_TYPE_MAPPINGS.numeric.map((key) => [key, 'numeric'] as const)),
 	...Object.fromEntries(COLUMN_TYPE_MAPPINGS.string.map((key) => [key, 'string'] as const)),
-} as Record<LayerKey, ColumnType>
+} as Record<LayerColumnKey, ColumnType>
 
 console.assert(Object.keys(COLUMN_TYPE_MAPPINGS).length === 2)
-export function getComparisonTypesForColumn(column: LayerKey) {
+export function getComparisonTypesForColumn(column: LayerColumnKey) {
 	const colType = (COLUMN_TYPE_MAPPINGS.numeric as string[]).includes(column) ? 'numeric' : 'string'
 	return COMPARISON_TYPES.filter((type) => type.coltype === colType)
 }
 
 export type EditableComparison = {
-	column?: LayerKey
+	column?: LayerColumnKey
 	code?: (typeof COMPARISON_TYPES)[number]['code']
 	value?: number | string
 	values?: string[]
@@ -233,7 +233,7 @@ export const ComparisonSchema = z
 	)
 
 export type Layer = z.infer<typeof ProcessedLayerSchema>
-export type LayerKey = keyof Layer
+export type LayerColumnKey = keyof Layer
 export type Comparison = z.infer<typeof ComparisonSchema>
 
 // TODO add 'not'
