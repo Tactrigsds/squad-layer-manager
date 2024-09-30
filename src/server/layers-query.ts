@@ -1,21 +1,33 @@
 import { wrapColName } from '@/lib/sql'
 import * as M from '@/models.ts'
+import seedrandom from 'seedrandom'
 import { Database } from 'sqlite'
 import * as sqlite3 from 'sqlite3'
 import { z } from 'zod'
 
 export const LayersQuerySchema = z.object({
-	pageIndex: z.number().int().min(0),
-	pageSize: z.number().int().min(1).max(100),
-	sortBy: z.enum([...M.COLUMN_KEYS, 'RANDOMIZE']).optional(),
-	sortDirection: z.enum(['ASC', 'DESC']).optional(),
+	pageIndex: z.number().int().min(0).default(0),
+	pageSize: z.number().int().min(1).max(200),
+	sort: z
+		.discriminatedUnion('type', [
+			z.object({
+				type: z.literal('column'),
+				sortBy: z.enum(M.COLUMN_KEYS),
+				sortDirection: z.enum(['ASC', 'DESC']),
+			}),
+			z.object({
+				type: z.literal('random'),
+				seed: z.string().length(16).describe('base64 encoded string of some bytes to use to set the random sorting seed'),
+			}),
+		])
+		.optional(),
 	filter: M.FilterNodeSchema.optional(),
 })
 
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
 export async function runLayersQuery(
-	{ pageIndex, pageSize, sortBy, sortDirection, filter }: LayersQuery,
+	{ pageIndex, pageSize, sort, filter }: LayersQuery,
 	db: Database<sqlite3.Database, sqlite3.Statement>
 ) {
 	let params: (string | number)[] = []
@@ -29,15 +41,15 @@ export async function runLayersQuery(
 		params = [...params, ...whereParams]
 		countParams = [...countParams, ...whereParams]
 	}
-	if (sortBy) {
-		orderClause = `ORDER BY ? ${sortDirection}`
-		params.push(sortBy === 'RANDOMIZE' ? 'RANDOM()' : wrapColName(sortBy))
+	if (sort && sort.type === 'column') {
+		orderClause = `ORDER BY ? ${sort.sortDirection}`
+		params.push(wrapColName(sort.sortBy))
 	}
 	const limitClause = 'LIMIT ?'
 	params.push(pageSize)
 
 	let offsetClause: string
-	if (sortBy === 'RANDOMIZE') {
+	if (sort && sort.type === 'random') {
 		offsetClause = ''
 	} else {
 		offsetClause = 'OFFSET ?'
@@ -47,13 +59,15 @@ export async function runLayersQuery(
 	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
 	let totalCount: number | undefined
 	let layers: M.Layer[]
-	if (sortBy !== 'RANDOMIZE') {
+	if (sort?.type !== 'random') {
 		const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
-
 		let countResult: { count: number } | undefined
 		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(layersQuery, params), db.get<{ count: number }>(countQuery, countParams)])
 		totalCount = countResult?.count ?? 0
 	} else {
+		// base64 decode
+		const random = seedrandom(sort.seed, 'base64') as number
+
 		layers = await db.all<M.Layer[]>(layersQuery, params)
 		totalCount = layers.length
 	}

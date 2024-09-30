@@ -1,8 +1,11 @@
 import { createContext } from '@/context'
+import { Crypto } from '@peculiar/webcrypto'
 import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import fastify from 'fastify'
 
 import { type AppRouter, appRouter } from './router'
+
+globalThis.crypto = new Crypto()
 
 const server = fastify({
 	maxParamLength: 5000,

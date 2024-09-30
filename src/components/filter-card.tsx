@@ -27,7 +27,6 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetState<M.EditableFilterNode | undefined>; depth: number }) {
 	const { node, setNode } = props
 	const isValid = M.isLocallyValidFilterNode(node, props.depth)
-	console.log('node at depth ', props.depth, node, 'valid: ', isValid)
 	const [showInvalid, setShowInvalid] = useState(false)
 	const invalid = !isValid && showInvalid
 	const wrapperRef = useRef<HTMLDivElement>(null)

@@ -91,7 +91,6 @@ const t0 = performance.now()
 await db.run('BEGIN TRANSACTION')
 try {
 	const query = `INSERT INTO layers VALUES (${colDefs.map(() => '?').join(', ')})`
-	console.log('query', query)
 	const stmt = await db.prepare(query)
 	const ops: Promise<unknown>[] = []
 	let ordinal = 1
