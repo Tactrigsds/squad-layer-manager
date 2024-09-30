@@ -35,6 +35,7 @@ export type RawLayer = z.infer<typeof RawLayerSchema>
 
 export const ProcessedLayerSchema = RawLayerSchema.extend({
 	Id: z.string(),
+	RandomOrdinal: z.number().int(),
 	Gamemode: z.string(),
 	LayerVersion: z.string(),
 	Logistics_Diff: z.number(),
@@ -114,26 +115,26 @@ export const MAP_ABBREVIATION_REVERSE = reverseMapping(MAP_ABBREVIATION)
 export const UNIT_ABBREVIATION_REVERSE = reverseMapping(UNIT_ABBREVIATION)
 
 type ComparisonType = {
-	coltype: 'string' | 'numeric'
+	coltype: 'string' | 'float' | 'integer'
 	code: string
 	displayName: string
 }
-export const COLUMN_TYPES = ['numeric', 'string'] as const
+export const COLUMN_TYPES = ['float', 'string', 'integer'] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
 export type StringColumn = (typeof COLUMN_TYPE_MAPPINGS)['string'][number]
-export type NumericColumn = (typeof COLUMN_TYPE_MAPPINGS)['numeric'][number]
+export type FloatColumn = (typeof COLUMN_TYPE_MAPPINGS)['float'][number]
 export const COMPARISON_TYPES = [
-	{ coltype: 'numeric', code: 'lt', displayName: 'Less Than' },
-	{ coltype: 'numeric', code: 'gt', displayName: 'Greater Than' },
-	{ coltype: 'numeric', code: 'inrange', displayName: 'In Range' },
+	{ coltype: 'float', code: 'lt', displayName: 'Less Than' },
+	{ coltype: 'float', code: 'gt', displayName: 'Greater Than' },
+	{ coltype: 'float', code: 'inrange', displayName: 'In Range' },
 	{ coltype: 'string', code: 'in', displayName: 'In' },
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
 ] as const satisfies ComparisonType[]
 
 // we're keeping this definition separate to reduce type inference a bit
 export const COLUMN_TYPE_MAPPINGS = {
-	numeric: [
+	float: [
 		'Anti-Infantry_1',
 		'Armor_1',
 		'ZERO_Score_1',
@@ -153,19 +154,27 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'ZERO_Score_Diff',
 	] as const,
 	string: ['Id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
+	integer: ['Ordinal'] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
-export const COLUMN_KEYS: [LayerColumnKey, ...LayerColumnKey[]] = [...COLUMN_TYPE_MAPPINGS.numeric, ...COLUMN_TYPE_MAPPINGS.string]
+export const COLUMN_KEYS: [LayerColumnKey, ...LayerColumnKey[]] = [
+	...COLUMN_TYPE_MAPPINGS.string,
+	...COLUMN_TYPE_MAPPINGS.float,
+	...COLUMN_TYPE_MAPPINGS.integer,
+]
 if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
-export const COLUMN_KEY_TO_TYPE = {
-	...Object.fromEntries(COLUMN_TYPE_MAPPINGS.numeric.map((key) => [key, 'numeric'] as const)),
-	...Object.fromEntries(COLUMN_TYPE_MAPPINGS.string.map((key) => [key, 'string'] as const)),
-} as Record<LayerColumnKey, ColumnType>
+//@ts-expect-error initialize
+export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey, ColumnType> = {}
+for (const [key, values] of Object.entries(COLUMN_TYPE_MAPPINGS)) {
+	for (const value of values) {
+		//@ts-expect-error initialize
+		COLUMN_KEY_TO_TYPE[value] = key
+	}
+}
 
-console.assert(Object.keys(COLUMN_TYPE_MAPPINGS).length === 2)
 export function getComparisonTypesForColumn(column: LayerColumnKey) {
-	const colType = (COLUMN_TYPE_MAPPINGS.numeric as string[]).includes(column) ? 'numeric' : 'string'
+	const colType = COLUMN_KEY_TO_TYPE[column]
 	return COMPARISON_TYPES.filter((type) => type.coltype === colType)
 }
 
@@ -181,14 +190,14 @@ export type EditableComparison = {
 export const LessThanComparison = z.object({
 	code: z.literal('lt'),
 	value: z.number(),
-	column: z.enum(COLUMN_TYPE_MAPPINGS.numeric),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.float),
 })
 export type LessThanComparison = z.infer<typeof LessThanComparison>
 
 export const GreaterThanComparison = z.object({
 	code: z.literal('gt'),
 	value: z.number(),
-	column: z.enum(COLUMN_TYPE_MAPPINGS.numeric),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.float),
 })
 export type GreaterThanComparison = z.infer<typeof GreaterThanComparison>
 
@@ -196,7 +205,7 @@ export const InRangeComparison = z.object({
 	code: z.literal('inrange'),
 	min: z.number(),
 	max: z.number(),
-	column: z.enum(COLUMN_TYPE_MAPPINGS.numeric),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.float),
 })
 export type InRangeComparison = z.infer<typeof InRangeComparison>
 
@@ -225,8 +234,8 @@ export const ComparisonSchema = z
 	.refine(
 		(comp) => {
 			const coltype = COMPARISON_TYPES.find((type) => type.code === comp.code)!.coltype
-			return coltype === 'numeric'
-				? (COLUMN_TYPE_MAPPINGS.numeric as string[]).includes(comp.column)
+			return coltype === 'float'
+				? (COLUMN_TYPE_MAPPINGS.float as string[]).includes(comp.column)
 				: (COLUMN_TYPE_MAPPINGS.string as string[]).includes(comp.column)
 		},
 		{ message: 'Invalid column type for comparison type' }

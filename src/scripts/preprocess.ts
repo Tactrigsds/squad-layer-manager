@@ -18,6 +18,7 @@ function processLayer(rawLayer: M.RawLayer): M.Layer {
 
 	return {
 		Id,
+		RandomOrdinal: Math.floor(Math.random() * records.length),
 		...rawLayer,
 		Gamemode: gamemode,
 		LayerVersion: version,
@@ -36,7 +37,9 @@ if (records.length === 0) {
 	throw new Error('No records found in CSV file')
 }
 
-const originalNumericFields = M.COLUMN_TYPE_MAPPINGS.numeric.filter((field) => field in M.RawLayerSchema.shape)
+const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter(
+	(field) => field in M.RawLayerSchema.shape
+)
 
 const processedLayers: M.Layer[] = records
 	.map((record, index) => {
@@ -46,7 +49,8 @@ const processedLayers: M.Layer[] = records
 			if (!record[field]) {
 				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
-			updatedRecord[field] = parseFloat(record[field])
+			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') updatedRecord[field] = parseInt(record[field])
+			else updatedRecord[field] = parseFloat(record[field])
 			if (isNaN(updatedRecord[field] as number)) {
 				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
@@ -59,26 +63,24 @@ const processedLayers: M.Layer[] = records
 
 const db = await DB.openConnection()
 
-// we have this defined in models but we don't want to introduce an ordering dependency over there if we don't have to
-const colKeys = ['Ordinal']
-const colDefs: string[] = ['Ordinal INTEGER']
+const colKeys = M.COLUMN_KEYS
+const colDefs: string[] = []
 
 for (const key of M.COLUMN_KEYS) {
 	if (key === 'Id') {
-		colKeys.push('Id')
-		colDefs.push('Id TEXT')
+		colDefs.push('Id TEXT NOT NULL PRIMARY KEY')
 		continue
 	}
 	const columnType = M.COLUMN_KEY_TO_TYPE[key]
 	switch (columnType) {
-		case 'numeric':
-			colKeys.push(key)
+		case 'float':
 			colDefs.push(`${wrapColName(key)} REAL`)
 			break
 		case 'string':
-			colKeys.push(key)
 			colDefs.push(`${wrapColName(key)} TEXT`)
 			break
+		case 'integer':
+			colDefs.push(`${wrapColName(key)} INTEGER`)
 	}
 }
 
@@ -91,19 +93,17 @@ const t0 = performance.now()
 await db.run('BEGIN TRANSACTION')
 try {
 	const query = `INSERT INTO layers VALUES (${colDefs.map(() => '?').join(', ')})`
+	console.log(query)
 	const stmt = await db.prepare(query)
 	const ops: Promise<unknown>[] = []
-	let ordinal = 1
 	for (const layer of processedLayers) {
 		ops.push(
 			stmt.run(
 				...colKeys.map((col) => {
-					if (col === 'Ordinal') return ordinal
 					return layer[col as M.LayerColumnKey]
 				})
 			)
 		)
-		ordinal++
 	}
 	await Promise.all(ops)
 	await stmt.finalize()

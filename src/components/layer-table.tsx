@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { trpc } from '@/lib/trpc'
 import * as M from '@/models'
+import { LayersQuery } from '@/server/layers-query'
 import {
 	ColumnDef,
 	OnChangeFn,
@@ -20,7 +21,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import { ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown, Dice1, Dice2, Dice2Icon, Dice4, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
 import { Checkbox } from './ui/checkbox'
@@ -48,7 +49,7 @@ function getColumn(key: M.LayerColumnKey) {
 				</Button>
 			)
 		},
-		cell: (info) => (M.COLUMN_KEY_TO_TYPE[key] === 'numeric' ? formatNumber(info.getValue() as number) : info.getValue() || '<missing>'),
+		cell: (info) => (M.COLUMN_KEY_TO_TYPE[key] === 'float' ? formatNumber(info.getValue() as number) : info.getValue() || '<missing>'),
 	})
 }
 
@@ -106,6 +107,23 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	let { filter } = props
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [randomize, setRandomize] = useState<boolean>()
+	const [seed, setSeed] = useState<string>()
+	function generateSeed() {
+		const values = crypto.getRandomValues(new Uint8Array(16))
+		// convert to base64
+		const base64 = btoa(String.fromCharCode(...values))
+		setSeed(base64)
+	}
+
+	function toggleRandomize() {
+		setRandomize((prev) => {
+			if (!prev) {
+				generateSeed()
+			}
+			return !prev
+		})
+	}
+
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
 	const [showSelectedLayers, setShowSelectedLayers] = useState(false)
 	const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
@@ -143,15 +161,21 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	if (showSelectedLayers) {
 		filter = { type: 'comp', comp: { code: 'in', column: 'Id', values: selectedLayerIds } }
 	}
+	let sort: LayersQuery['sort'] = undefined
+	if (randomize) {
+		sort = { type: 'random', seed: seed! }
+	} else if (sorting.length > 0) {
+		const { id, desc } = sorting[0]
+		sort = { type: 'column', sortBy: id as M.LayerColumnKey, sortDirection: desc ? 'DESC' : 'ASC' }
+	}
 
 	const { data: dataRaw } = trpc.getLayers.useQuery({
 		pageIndex: props.pageIndex,
 		pageSize,
-		//@ts-expect-error id will be a column
-		sortBy: sorting.length > 0 ? sorting[0].id : undefined,
-		sortDesc: sorting.length > 0 ? sorting[0].desc : undefined,
+		sort,
 		filter: filter ?? undefined,
 	})
+
 	// for some reason I can't use usePreviousData via trpc
 	const lastDataRef = useRef(dataRaw)
 	useLayoutEffect(() => {
@@ -280,6 +304,13 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 						/>
 						<Label htmlFor="toggle-show-selected">Show Selected</Label>
 					</div>
+					<div className="flex items-center space-x-1">
+						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
+						<Label htmlFor="toggle-randomize">Randomize</Label>
+					</div>
+					<Button variant="outline" size="icon" className={randomize ? '' : 'invisible'}>
+						<Dices />
+					</Button>
 
 					{/*--------- rows per page ---------*/}
 					<div className="flex items-center space-x-2">
