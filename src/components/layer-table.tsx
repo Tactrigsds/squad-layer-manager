@@ -21,7 +21,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import { ArrowUpDown, Dice1, Dice2, Dice2Icon, Dice4, Dices } from 'lucide-react'
+import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
 import { Checkbox } from './ui/checkbox'
@@ -102,6 +102,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
 ] as M.LayerColumnKey[]
 
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
+const DEFAULT_SORT: LayersQuery['sort'] = { type: 'column', sortBy: 'Asymmetry Score', sortDirection: 'ASC' }
 
 export default function LayerTable(props: { filter: M.FilterNode | null; pageIndex: number; setPageIndex: (value: number) => void }) {
 	let { filter } = props
@@ -161,7 +162,7 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	if (showSelectedLayers) {
 		filter = { type: 'comp', comp: { code: 'in', column: 'Id', values: selectedLayerIds } }
 	}
-	let sort: LayersQuery['sort'] = undefined
+	let sort: LayersQuery['sort'] = DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
 	} else if (sorting.length > 0) {
@@ -295,22 +296,13 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 					)}
 				</span>
 				<span className="flex items-center space-x-2 h-10">
-					<div className="flex items-center space-x-1">
-						<Switch
-							checked={showSelectedLayers}
-							disabled={selectedLayerIds.length === 0}
-							onCheckedChange={() => selectedLayerIds.length > 0 && setShowSelectedLayers((show) => !show)}
-							id="toggle-show-selected"
-						/>
-						<Label htmlFor="toggle-show-selected">Show Selected</Label>
-					</div>
+					<Button onClick={generateSeed} variant="outline" size="icon" className={randomize ? '' : 'invisible'}>
+						<Dices />
+					</Button>
 					<div className="flex items-center space-x-1">
 						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
 						<Label htmlFor="toggle-randomize">Randomize</Label>
 					</div>
-					<Button variant="outline" size="icon" className={randomize ? '' : 'invisible'}>
-						<Dices />
-					</Button>
 
 					{/*--------- rows per page ---------*/}
 					<div className="flex items-center space-x-2">
@@ -375,13 +367,13 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 			{/*--------- pagination controls ---------*/}
 			<div className="flex items-center justify-between space-x-2 py-4">
 				<div className="flex-1 text-sm text-muted-foreground">
-					Showing {firstRowInPage} to {lastRowInPage} of {data?.totalCount} rows
+					Showing {firstRowInPage} to {lastRowInPage} of {data?.totalCount} matching rows
 				</div>
 				<div className="space-x-2">
-					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
 						Previous
 					</Button>
-					<Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+					<Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage() || randomize}>
 						Next
 					</Button>
 				</div>

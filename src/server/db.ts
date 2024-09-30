@@ -1,17 +1,32 @@
 import * as sqlite from 'sqlite'
-import sqlite3 from 'sqlite3'
+import _sqlite3 from 'sqlite3'
+
+import logger from './logger'
+
+let sqlite3 = _sqlite3
+if (process.env['NODE_ENV'] === 'development') {
+	sqlite3 = sqlite3.verbose()
+}
 
 export async function openConnection() {
-	const conn = await sqlite.open({
+	const db = await sqlite.open({
 		filename: './db.sqlite',
 		driver: sqlite3.Database,
 	})
+	if (process.env['NODE_ENV'] === 'development') {
+		db.getDatabaseInstance().on('trace', (sql) => {
+			logger.debug('query: %s', sql)
+		})
+		db.getDatabaseInstance().on('profile', (sql: string, time: number) => {
+			logger.debug('query: %s took %d ms', sql, time)
+		})
+	}
 
 	// Enable WAL mode
-	await conn.run('PRAGMA journal_mode = WAL;')
+	await db.run('PRAGMA journal_mode = WAL;')
 
 	// Optionally, you can set other related PRAGMA statements
-	await conn.run('PRAGMA synchronous = NORMAL;')
+	await db.run('PRAGMA synchronous = NORMAL;')
 
-	return conn
+	return db
 }

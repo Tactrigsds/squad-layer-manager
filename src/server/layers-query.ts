@@ -1,5 +1,6 @@
 import { wrapColName } from '@/lib/sql'
 import * as M from '@/models.ts'
+import seedrandom from 'seedrandom'
 import { Database } from 'sqlite'
 import * as sqlite3 from 'sqlite3'
 import { z } from 'zod'
@@ -7,19 +8,17 @@ import { z } from 'zod'
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),
 	pageSize: z.number().int().min(1).max(200),
-	sort: z
-		.discriminatedUnion('type', [
-			z.object({
-				type: z.literal('column'),
-				sortBy: z.enum(M.COLUMN_KEYS),
-				sortDirection: z.enum(['ASC', 'DESC']),
-			}),
-			z.object({
-				type: z.literal('random'),
-				seed: z.string().max(32).describe('entropy seed for random sort'),
-			}),
-		])
-		.optional(),
+	sort: z.discriminatedUnion('type', [
+		z.object({
+			type: z.literal('column'),
+			sortBy: z.enum(M.COLUMN_KEYS),
+			sortDirection: z.enum(['ASC', 'DESC']),
+		}),
+		z.object({
+			type: z.literal('random'),
+			seed: z.string().max(32).describe('entropy seed for random sort'),
+		}),
+	]),
 	filter: M.FilterNodeSchema.optional(),
 })
 
@@ -44,33 +43,39 @@ export async function runLayersQuery(
 		orderClause = `ORDER BY ${wrapColName(sort.sortBy)} ${sort.sortDirection}`
 	}
 	const limitClause = 'LIMIT @pageSize'
-	params.pageSize = pageSize
+	params['@pageSize'] = pageSize
 	let offsetClause: string
 	if (sort && sort.type === 'random') {
 		offsetClause = ''
 	} else {
 		offsetClause = 'OFFSET @offset'
-		params.offset = pageIndex * pageSize
+		params['@offset'] = pageIndex * pageSize
 	}
-	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
 	let totalCount: number | undefined
 	let layers: M.Layer[]
 	const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
-	if (sort?.type !== 'random') {
+	if (sort.type === 'column') {
+		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
 		let countResult: { count: number } | undefined
-		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(layersQuery, params), db.get<{ count: number }>(countQuery, countParams)])
+		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(query, params), db.get<{ count: number }>(countQuery, countParams)])
 		totalCount = countResult?.count ?? 0
-	} else {
+	} else if (sort.type === 'random') {
+		const { count: countNoFilters } = (await db.get<{ count: number }>('SELECT COUNT(*) as count from layers'))!
 		const { count } = (await db.get<{ count: number }>(countQuery, countParams))!
-		const tolerance = 50
-		const rangeStart = Math.floor(Math.random() * (count - pageSize - tolerance))
-		const rangeEnd = rangeStart + pageSize + tolerance
+		const tolerance = 1.5
+		const random = seedrandom(sort.seed).quick()
+		const rangeSize = Math.ceil(pageSize * (countNoFilters / count)) * tolerance
+		const rangeStart = Math.floor(random * (count - rangeSize))
+		const rangeEnd = rangeStart + rangeSize
 		const randomCullWhereClause = `(RandomOrdinal >= @rangeStart AND RandomOrdinal < @rangeEnd)`
-		params.rangeStart = rangeStart
-		params.rangeEnd = rangeEnd
+		params['@rangeStart'] = rangeStart
+		params['@rangeEnd'] = rangeEnd
 		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} AND ${randomCullWhereClause} ${limitClause} ${offsetClause}`
+		console.log(query)
 		layers = await db.all<M.Layer[]>(query, params)
 		totalCount = count
+	} else {
+		throw new Error('Invalid sort type')
 	}
 	return {
 		layers,
@@ -81,74 +86,16 @@ export async function runLayersQuery(
 
 function positionalParamsToNamed(query: string, params: (string | number)[]) {
 	const namedParams = {} as Record<string, string | number>
-	for (let i = 0; i < params.length; i++) {
-		namedParams[`@${i}`] = params[i]
-	}
 	const questionmarkIndexes = [...query.matchAll(/\?/g)].map((m) => m.index)
-	for (const idx of questionmarkIndexes) {
-		query = query.slice(0, idx) + `@${idx}` + query.slice(idx + 1)
+	if (params.length !== questionmarkIndexes.length) throw new Error('params length does not match query')
+	for (let i = 0; i < params.length; i++) {
+		const paramKey = `@${i}`
+		namedParams[paramKey] = params[i]
+		const markIndex = questionmarkIndexes[i]
+		query = query.slice(0, markIndex) + paramKey + query.slice(markIndex + 1)
 	}
 	return [query, namedParams] as const
 }
-
-// export async function runLayersQuery(
-// 	{ pageIndex, pageSize, sort, filter }: LayersQuery,
-// 	db: Database<sqlite3.Database, sqlite3.Statement>
-// ) {
-// 	let params: (string | number)[] = []
-// 	let countParams: (string | number)[] = []
-
-// 	let orderClause = ''
-// 	let whereClause = ''
-// 	if (filter) {
-// 		const [whereFilter, whereParams] = getWhereFilterConditions(filter)
-// 		whereClause = `WHERE ${whereFilter}`
-// 		params = [...params, ...whereParams]
-// 		countParams = [...countParams, ...whereParams]
-// 	}
-// 	if (sort && sort.type === 'column') {
-// 		orderClause = `ORDER BY ? ${sort.sortDirection}`
-// 		params.push(wrapColName(sort.sortBy))
-// 	}
-// 	const limitClause = 'LIMIT ?'
-// 	params.push(pageSize)
-
-// 	let offsetClause: string
-// 	if (sort && sort.type === 'random') {
-// 		offsetClause = ''
-// 	} else {
-// 		offsetClause = 'OFFSET ?'
-// 		params.push(pageIndex * pageSize)
-// 	}
-
-// 	const layersQuery = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ${orderClause} ${limitClause} ${offsetClause}`
-// 	let totalCount: number | undefined
-// 	let layers: M.Layer[]
-// 	const countQuery = `SELECT COUNT(*) as count FROM layers ${whereClause}`
-// 	if (sort?.type !== 'random') {
-// 		let countResult: { count: number } | undefined
-// 		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(layersQuery, params), db.get<{ count: number }>(countQuery, countParams)])
-// 		totalCount = countResult?.count ?? 0
-// 	} else {
-//   	// RandomOrdinal is effectively a regular ordinal but randomized so we can use it to get a random sample of the results of any query of arbitrary size
-// 		const { count } = (await db.get<{ count: number }>(countQuery, countParams))!
-
-// 		// we're only estimating how many entries we get back so we need a reasonable tolerance so we don't end up with too few results
-// 		const tolerance = 50
-// 		const rangeStart = Math.floor(Math.random() * (count - pageSize - tolerance))
-// 		const rangeEnd = rangeStart + pageSize  + tolerance
-// 		const randomCullWhereClause = `(RandomOrdinal >= ? AND RandomOrdinal < ?)`
-// 		params.push(rangeStart, rangeEnd)
-
-// 		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} AND ${randomCullWhereClause} ${limitClause} ${offsetClause}`
-// 		const layers = await db.all<M.Layer[]>(query, params)
-
-// 	return {
-// 		layers,
-// 		totalCount,
-// 		pageCount: Math.ceil(totalCount / pageSize),
-// 	}
-// }
 
 function getWhereFilterConditions(filter: M.FilterNode): [string, string[]] {
 	if (filter.type === 'comp') {

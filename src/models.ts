@@ -154,13 +154,12 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'ZERO_Score_Diff',
 	] as const,
 	string: ['Id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
-	integer: ['Ordinal'] as const,
+	integer: ['RandomOrdinal'] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
-export const COLUMN_KEYS: [LayerColumnKey, ...LayerColumnKey[]] = [
-	...COLUMN_TYPE_MAPPINGS.string,
-	...COLUMN_TYPE_MAPPINGS.float,
-	...COLUMN_TYPE_MAPPINGS.integer,
+export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPINGS.float, ...COLUMN_TYPE_MAPPINGS.integer] as [
+	LayerColumnKey,
+	...LayerColumnKey[],
 ]
 if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
