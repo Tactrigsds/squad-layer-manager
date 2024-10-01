@@ -14,20 +14,32 @@ const users: Record<string, User> = { id_bilbo: { id: 'id_bilbo', name: 'Bilbo B
 export const t = initTRPC.create()
 export const appRouter = t.router({
 	getColumnUniqueColumnValues: t.procedure.input(z.enum(M.COLUMN_TYPE_MAPPINGS.string)).query(async ({ input }) => {
-		const conn = await DB.openConnection()
-		// this direct templating is ok because we're using an enum to ensure the input is safe
-		const rows = (await conn.all(`SELECT DISTINCT ${input} FROM layers`)) as M.Layer[]
-		return rows.map((row) => row[input] as string)
+		const db = await DB.openConnection()
+		try {
+			// this direct templating is ok because we're using an enum to ensure the input is safe
+			const rows = (await db.all(`SELECT DISTINCT ${input} FROM layers`)) as M.Layer[]
+			return rows.map((row) => row[input] as string)
+		} finally {
+			db.close()
+		}
 	}),
 	getLayers: t.procedure.input(LayersQuerySchema).query(async ({ input }) => {
 		const db = await DB.openConnection()
-		const res = await runLayersQuery(input, db)
-		return res
+		try {
+			const res = await runLayersQuery(input, db)
+			return res
+		} finally {
+			db.close()
+		}
 	}),
 	gotRows: t.procedure.query(async () => {
-		const c = await DB.openConnection()
-		const layers = await c.all('SELECT * FROM layers limit 10')
-		return layers as M.Layer[]
+		const db = await DB.openConnection()
+		try {
+			const layers = await db.all('SELECT * FROM layers limit 10')
+			return layers as M.Layer[]
+		} finally {
+			db.close()
+		}
 	}),
 	getUserById: t.procedure.input(z.string()).query((opts) => {
 		return users[opts.input] // input type is string

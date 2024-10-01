@@ -35,6 +35,7 @@ export type RawLayer = z.infer<typeof RawLayerSchema>
 
 export const ProcessedLayerSchema = RawLayerSchema.extend({
 	Id: z.string(),
+	// see layers-query.ts -> -------- random sort -------- for explanation
 	RandomOrdinal: z.number().int(),
 	Gamemode: z.string(),
 	LayerVersion: z.string(),

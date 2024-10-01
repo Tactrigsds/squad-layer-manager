@@ -5,6 +5,8 @@ import { Database } from 'sqlite'
 import * as sqlite3 from 'sqlite3'
 import { z } from 'zod'
 
+import * as DB from './db.ts'
+
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),
 	pageSize: z.number().int().min(1).max(200),
@@ -60,19 +62,30 @@ export async function runLayersQuery(
 		;[layers, countResult] = await Promise.all([db.all<M.Layer[]>(query, params), db.get<{ count: number }>(countQuery, countParams)])
 		totalCount = countResult?.count ?? 0
 	} else if (sort.type === 'random') {
+		/** -------- random sort --------
+		 * sqlite doesn't have a built-in method of seeding a random sort. Instead, we assign a random integer to each row(not necessarily unique), and then just return a random range with our required size. there will be correlations in similar random numbers, so we need to update the random ordinals every once and a while. right now we're just going to do it everyt ime.
+		 */
 		const { count: countNoFilters } = (await db.get<{ count: number }>('SELECT COUNT(*) as count from layers'))!
 		const { count } = (await db.get<{ count: number }>(countQuery, countParams))!
-		const tolerance = 1.5
+		const toleranceCoefficient = 2
 		const random = seedrandom(sort.seed).quick()
-		const rangeSize = Math.ceil(pageSize * (countNoFilters / count)) * tolerance
+		const rangeSize = Math.ceil(pageSize * (countNoFilters / count)) * toleranceCoefficient
 		const rangeStart = Math.floor(random * (count - rangeSize))
 		const rangeEnd = rangeStart + rangeSize
 		const randomCullWhereClause = `(RandomOrdinal >= @rangeStart AND RandomOrdinal < @rangeEnd)`
 		params['@rangeStart'] = rangeStart
 		params['@rangeEnd'] = rangeEnd
-		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} AND ${randomCullWhereClause} ${limitClause} ${offsetClause}`
-		console.log(query)
+		whereClause = (whereClause ? whereClause + ' AND' : 'WHERE ') + randomCullWhereClause
+		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ORDER BY RandomOrdinal ${limitClause}` // reseed random ordinals
 		layers = await db.all<M.Layer[]>(query, params)
+		// separate connection and no await because we don't want to block on this operation
+		;(async () => {
+			const db = await DB.openConnection()
+			const randomlySelectedLayers = await db.all<{ Id: string }[]>(`SELECT Id from layers ${whereClause}`)
+			for (const layer of randomlySelectedLayers) {
+				await db.run('UPDATE layers SET RandomOrdinal = ? WHERE Id = ?', [Math.floor(Math.random() * countNoFilters), layer.Id])
+			}
+		})()
 		totalCount = count
 	} else {
 		throw new Error('Invalid sort type')
@@ -88,11 +101,14 @@ function positionalParamsToNamed(query: string, params: (string | number)[]) {
 	const namedParams = {} as Record<string, string | number>
 	const questionmarkIndexes = [...query.matchAll(/\?/g)].map((m) => m.index)
 	if (params.length !== questionmarkIndexes.length) throw new Error('params length does not match query')
+	let offset = 0
 	for (let i = 0; i < params.length; i++) {
 		const paramKey = `@${i}`
 		namedParams[paramKey] = params[i]
-		const markIndex = questionmarkIndexes[i]
+		const markIndex = questionmarkIndexes[i] + offset
 		query = query.slice(0, markIndex) + paramKey + query.slice(markIndex + 1)
+		// account for length change due to adding paramKey
+		offset++
 	}
 	return [query, namedParams] as const
 }

@@ -15,10 +15,10 @@ export async function openConnection() {
 	})
 	if (process.env['NODE_ENV'] === 'development') {
 		db.getDatabaseInstance().on('trace', (sql) => {
-			logger.debug('query: %s', sql)
+			console.log('query: ', sql)
 		})
 		db.getDatabaseInstance().on('profile', (sql: string, time: number) => {
-			logger.debug('query: %s took %d ms', sql, time)
+			console.log('query: ', sql, 'took', time, 'ms')
 		})
 	}
 
@@ -27,6 +27,5 @@ export async function openConnection() {
 
 	// Optionally, you can set other related PRAGMA statements
 	await db.run('PRAGMA synchronous = NORMAL;')
-
 	return db
 }

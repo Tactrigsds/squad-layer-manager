@@ -67,9 +67,12 @@ function Ui() {
 	const setAndValidateFilter = (cb: (f: M.EditableFilterNode) => M.EditableFilterNode) => {
 		setEditableFilter((filter) => {
 			const newFilter = cb(filter)
-			const validFilter = M.isValidFilterNode(newFilter)
-			if (validFilter) {
+			if (newFilter.type === 'and' && newFilter.children.length === 0) {
+				setLastValidFilter(null)
+			} else if (M.isValidFilterNode(newFilter)) {
 				setLastValidFilter(newFilter)
+			} else {
+				console.warn('invalid filter', newFilter)
 			}
 			return newFilter
 		})
