@@ -38,47 +38,7 @@ function App() {
 	)
 }
 
-const defaultFilter: M.EditableFilterNode = {
-	type: 'and',
-	children: [
-		{
-			type: 'comp',
-			comp: {
-				column: 'Level',
-				code: 'eq',
-				value: 'AlBasrah',
-			},
-		},
-		// {
-		// 	type: 'comp',
-		// 	comp: {
-		// 		code: 'in',
-		// 		column: 'Gamemode',
-		// 		values: ['RAAS', 'AAS'],
-		// 	},
-		// },
-	],
-}
-
 function Ui() {
-	const [editableFilter, setEditableFilter] = useState(defaultFilter)
-	const [lastValidFilter, setLastValidFilter] = useState<M.FilterNode | null>(defaultFilter as M.FilterNode)
-	const [pageIndex, setPageIndex] = useState(0)
-	const setAndValidateFilter = (cb: (f: M.EditableFilterNode) => M.EditableFilterNode) => {
-		setEditableFilter((filter) => {
-			const newFilter = cb(filter)
-			if (newFilter.type === 'and' && newFilter.children.length === 0) {
-				setLastValidFilter(null)
-			} else if (M.isValidFilterNode(newFilter)) {
-				setLastValidFilter(newFilter)
-			} else {
-				console.warn('invalid filter', newFilter)
-			}
-			return newFilter
-		})
-		setPageIndex(0)
-	}
-
 	return (
 		<div className="container mx-auto py-10">
 			<FilterCard filter={editableFilter} setFilter={setAndValidateFilter} />

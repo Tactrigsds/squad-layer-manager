@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast'
 import { trpc } from '@/lib/trpc'
 import * as M from '@/models'
 import { LayersQuery } from '@/server/layers-query'
+import * as S from '@/stores'
 import {
 	ColumnDef,
 	OnChangeFn,
@@ -21,6 +22,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
+import { useAtomValue } from 'jotai'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
@@ -104,9 +106,17 @@ const DEFAULT_VISIBLE_COLUMNS = [
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 const DEFAULT_SORT: LayersQuery['sort'] = { type: 'column', sortBy: 'Asymmetry Score', sortDirection: 'ASC' }
 
-export default function LayerTable(props: { filter: M.FilterNode | null; pageIndex: number; setPageIndex: (value: number) => void }) {
-	let { filter } = props
-	const [sorting, setSorting] = useState<SortingState>([])
+export default function LayerTable() {
+	const filter = useAtomValue(S.editableFilterAtom)
+	const [sortingState, _setSortingState] = useState<SortingState>([])
+	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
+		_setSortingState((sortingState) => {
+			if (typeof sortingUpdate === 'function') return sortingUpdate(sortingState)
+			else return sortingState
+		})
+		setRandomize(false)
+		props.setPageIndex(0)
+	}
 	const [randomize, setRandomize] = useState<boolean>()
 	const [seed, setSeed] = useState<string>()
 	function generateSeed() {
@@ -126,7 +136,11 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	}
 
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
-	const [showSelectedLayers, setShowSelectedLayers] = useState(false)
+	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
+	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
+		_setShowSelectedLayers(value)
+		props.setPageIndex(0)
+	}
 	const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
 
 	const rowSelection: RowSelectionState = Object.fromEntries(selectedLayerIds.map((id) => [id, true]))
@@ -165,8 +179,8 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 	let sort: LayersQuery['sort'] = DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
-	} else if (sorting.length > 0) {
-		const { id, desc } = sorting[0]
+	} else if (sortingState.length > 0) {
+		const { id, desc } = sortingState[0]
 		sort = { type: 'column', sortBy: id as M.LayerColumnKey, sortDirection: desc ? 'DESC' : 'ASC' }
 	}
 
@@ -191,7 +205,7 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 		columns,
 		pageCount: data?.pageCount ?? -1,
 		state: {
-			sorting,
+			sorting: sortingState,
 			columnVisibility,
 			rowSelection,
 			pagination: {
@@ -208,7 +222,8 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 		getSortedRowModel: getSortedRowModel(),
 		manualPagination: true,
 	})
-	const firstRowInPage = props.pageIndex * pageSize + 1
+	const currentPage = Math.min(props.pageIndex, data?.pageCount ?? 0)
+	const firstRowInPage = currentPage * (data?.layers.length ?? 0) + 1
 	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, data?.totalCount ?? 0)
 	const { toast } = useToast()
 
@@ -367,9 +382,13 @@ export default function LayerTable(props: { filter: M.FilterNode | null; pageInd
 			{/*--------- pagination controls ---------*/}
 			<div className="flex items-center justify-between space-x-2 py-4">
 				<div className="flex-1 text-sm text-muted-foreground">
-					Showing {firstRowInPage} to {lastRowInPage} of {data?.totalCount} matching rows
+					{showSelectedLayers
+						? `Showing ${firstRowInPage} to ${lastRowInPage} of ${data?.totalCount} selected rows`
+						: randomize
+							? `Showing ${data?.layers?.length} of ${data?.totalCount} randomized rows`
+							: `Showing ${firstRowInPage} to ${lastRowInPage} of ${data?.totalCount} matching rows`}
 				</div>
-				<div className="space-x-2">
+				<div className={'space-x-2 ' + (randomize ? 'invisible' : '')}>
 					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
 						Previous
 					</Button>

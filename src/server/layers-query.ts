@@ -32,7 +32,6 @@ export async function runLayersQuery(
 ) {
 	let params: Record<string, string | number> = {}
 	let countParams: Record<string, string | number> = {}
-	let orderClause = ''
 	let whereClause = ''
 	if (filter) {
 		const [whereQuery, whereParams] = getWhereFilterConditions(filter)
@@ -41,6 +40,7 @@ export async function runLayersQuery(
 		params = { ...params, ...whereParamsNamed }
 		countParams = { ...countParams, ...whereParamsNamed }
 	}
+	let orderClause = ''
 	if (sort && sort.type === 'column') {
 		orderClause = `ORDER BY ${wrapColName(sort.sortBy)} ${sort.sortDirection}`
 	}
@@ -81,9 +81,15 @@ export async function runLayersQuery(
 		// separate connection and no await because we don't want to block on this operation
 		;(async () => {
 			const db = await DB.openConnection()
-			const randomlySelectedLayers = await db.all<{ Id: string }[]>(`SELECT Id from layers ${whereClause}`)
-			for (const layer of randomlySelectedLayers) {
-				await db.run('UPDATE layers SET RandomOrdinal = ? WHERE Id = ?', [Math.floor(Math.random() * countNoFilters), layer.Id])
+			try {
+				const randomlySelectedLayers = await db.all<{ Id: string }[]>(`SELECT Id from layers ${whereClause}`)
+				const ops: Promise<unknown>[] = []
+				for (const layer of randomlySelectedLayers) {
+					ops.push(db.run('UPDATE layers SET RandomOrdinal = ? WHERE Id = ?', [Math.floor(Math.random() * countNoFilters), layer.Id]))
+				}
+				await Promise.all(ops)
+			} finally {
+				db.close()
 			}
 		})()
 		totalCount = count
@@ -108,7 +114,7 @@ function positionalParamsToNamed(query: string, params: (string | number)[]) {
 		const markIndex = questionmarkIndexes[i] + offset
 		query = query.slice(0, markIndex) + paramKey + query.slice(markIndex + 1)
 		// account for length change due to adding paramKey
-		offset++
+		offset += paramKey.length - 1
 	}
 	return [query, namedParams] as const
 }

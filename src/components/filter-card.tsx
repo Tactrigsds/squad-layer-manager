@@ -2,7 +2,9 @@ import { SetState } from '@/lib/react'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
+import * as S from '@/stores'
 import { produce } from 'immer'
+import { useAtom } from 'jotai'
 import { Check, ChevronsUpDown, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -12,7 +14,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
-export function FilterCard({ filter, setFilter }: { filter: M.EditableFilterNode; setFilter: SetState<M.EditableFilterNode> }) {
+export function FilterCard() {
+	const [filter, setFilter] = useAtom(S.editableFilterAtom)
 	return <FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
 }
 
@@ -95,8 +98,8 @@ function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetStat
 						<DropdownMenuContent>
 							<DropdownMenuItem onClick={() => addNewChild('comp')}>comparison</DropdownMenuItem>
 							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => addNewChild('and')}>and</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => addNewChild('or')}>or</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => addNewChild('and')}>and block</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => addNewChild('or')}>or block</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</span>
