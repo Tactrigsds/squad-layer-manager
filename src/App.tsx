@@ -41,8 +41,8 @@ function App() {
 function Ui() {
 	return (
 		<div className="container mx-auto py-10">
-			<FilterCard filter={editableFilter} setFilter={setAndValidateFilter} />
-			<LayerTable filter={lastValidFilter} pageIndex={pageIndex} setPageIndex={setPageIndex} />
+			<FilterCard />
+			<LayerTable />
 			<Toaster />
 		</div>
 	)

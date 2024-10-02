@@ -8,16 +8,18 @@ const defaultFilter: M.EditableFilterNode = {
 }
 
 export const pageIndexAtom = atom(0)
-export const lastValidFilterAtom = atom(defaultFilter as M.FilterNode | null)
-export const editableFilterAtom = atom(defaultFilter, (get, set, update: (f: M.EditableFilterNode) => M.EditableFilterNode) => {
-	const newFilter = update(get(editableFilterAtom))
-	if (newFilter.type === 'and' && newFilter.children.length === 0) {
-		set(lastValidFilterAtom, null)
-	} else if (M.isValidFilterNode(newFilter)) {
-		set(lastValidFilterAtom, newFilter)
-	} else {
-		console.warn('Invalid filter:', newFilter)
+export const lastValidFilterAtom = atom(null as M.FilterNode | null)
+const _editableFilterAtom = atom(defaultFilter as M.EditableFilterNode)
+export const editableFilterAtom = atom(
+	(get) => get(_editableFilterAtom),
+	(get, set, update: (f: M.EditableFilterNode) => M.EditableFilterNode) => {
+		const newFilter = update(get(_editableFilterAtom))
+		if (newFilter.type === 'and' && newFilter.children.length === 0) {
+			set(lastValidFilterAtom, null)
+		} else if (M.isValidFilterNode(newFilter)) {
+			set(lastValidFilterAtom, newFilter)
+		}
+		set(pageIndexAtom, 0)
+		set(_editableFilterAtom, newFilter)
 	}
-	set(pageIndexAtom, 0)
-	return newFilter
-})
+)

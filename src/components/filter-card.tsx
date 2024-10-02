@@ -149,7 +149,12 @@ function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetStat
 function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison> }) {
 	const { comp, setComp } = props
 	const columnBox = (
-		<ComboBox title="Column" value={comp.column} options={M.COLUMN_KEYS} onSelect={(column) => setComp(() => ({ column }))} />
+		<ComboBox
+			title="Column"
+			value={comp.column}
+			options={M.COLUMN_KEYS.filter((k) => k !== 'Id')}
+			onSelect={(column) => setComp(() => ({ column }))}
+		/>
 	)
 
 	if (!comp.column) return columnBox

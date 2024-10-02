@@ -22,7 +22,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import { useAtomValue } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
@@ -107,15 +107,16 @@ const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [
 const DEFAULT_SORT: LayersQuery['sort'] = { type: 'column', sortBy: 'Asymmetry Score', sortDirection: 'ASC' }
 
 export default function LayerTable() {
-	const filter = useAtomValue(S.editableFilterAtom)
+	let filter = useAtomValue(S.lastValidFilterAtom)
 	const [sortingState, _setSortingState] = useState<SortingState>([])
+	const [pageIndex, setPageIndex] = useAtom(S.pageIndexAtom)
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
 			if (typeof sortingUpdate === 'function') return sortingUpdate(sortingState)
 			else return sortingState
 		})
 		setRandomize(false)
-		props.setPageIndex(0)
+		setPageIndex(0)
 	}
 	const [randomize, setRandomize] = useState<boolean>()
 	const [seed, setSeed] = useState<string>()
@@ -139,7 +140,7 @@ export default function LayerTable() {
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
 		_setShowSelectedLayers(value)
-		props.setPageIndex(0)
+		setPageIndex(0)
 	}
 	const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
 
@@ -162,15 +163,14 @@ export default function LayerTable() {
 
 	const [pageSize, setPageSize] = useState(10)
 	const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
+		let newState: PaginationState
 		if (typeof updater === 'function') {
-			const { pageIndex, pageSize: newPageSize } = updater({ pageIndex: props.pageIndex, pageSize })
-			props.setPageIndex(pageIndex)
-			setPageSize(newPageSize)
+			newState = updater({ pageIndex: pageIndex, pageSize })
 		} else {
-			const { pageIndex, pageSize } = updater
-			props.setPageIndex(pageIndex)
-			setPageSize(pageSize)
+			newState = updater
 		}
+		setPageIndex(newState.pageIndex)
+		setPageSize(newState.pageSize)
 	}
 
 	if (showSelectedLayers) {
@@ -185,7 +185,7 @@ export default function LayerTable() {
 	}
 
 	const { data: dataRaw } = trpc.getLayers.useQuery({
-		pageIndex: props.pageIndex,
+		pageIndex,
 		pageSize,
 		sort,
 		filter: filter ?? undefined,
@@ -209,7 +209,7 @@ export default function LayerTable() {
 			columnVisibility,
 			rowSelection,
 			pagination: {
-				pageIndex: props.pageIndex,
+				pageIndex: pageIndex,
 				pageSize,
 			},
 		},
@@ -222,13 +222,13 @@ export default function LayerTable() {
 		getSortedRowModel: getSortedRowModel(),
 		manualPagination: true,
 	})
-	const currentPage = Math.min(props.pageIndex, data?.pageCount ?? 0)
+	const currentPage = Math.min(pageIndex, data?.pageCount ?? 0)
 	const firstRowInPage = currentPage * (data?.layers.length ?? 0) + 1
 	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, data?.totalCount ?? 0)
 	const { toast } = useToast()
 
 	function getChosenRows(row: Row<M.Layer>) {
-		if (Object.values(rowSelection).every((isSelected) => !isSelected)) {
+		if (!selectedLayerIds.includes(row.original.Id)) {
 			return [row.original]
 		} else {
 			return table
@@ -257,8 +257,8 @@ export default function LayerTable() {
 	}
 
 	return (
-		<div>
-			<div className="flex justify-between items-center mb-4">
+		<div className="pt-2">
+			<div className="flex justify-between items-center mb-2">
 				<span className="flex items-center space-x-2 h-10">
 					{/*--------- toggle columns ---------*/}
 					<DropdownMenu>
@@ -318,6 +318,7 @@ export default function LayerTable() {
 						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
 						<Label htmlFor="toggle-randomize">Randomize</Label>
 					</div>
+					<Separator orientation="vertical" />
 
 					{/*--------- rows per page ---------*/}
 					<div className="flex items-center space-x-2">
@@ -368,10 +369,10 @@ export default function LayerTable() {
 								</ContextMenuTrigger>
 								<ContextMenuContent>
 									<ContextMenuItem onClick={() => onCopyLayerCommand(row)}>
-										Copy set next layer command {selectedLayerIds.length > 0 && 'for selected'}
+										Copy set next layer command {selectedLayerIds.includes(row.original.Id) && 'for selected'}
 									</ContextMenuItem>
 									<ContextMenuItem onClick={() => onCopyVoteCommand(row)}>
-										Copy generate vote command {selectedLayerIds.length > 0 && 'for selected'}
+										Copy generate vote command {selectedLayerIds.includes(row.original.Id) && 'for selected'}
 									</ContextMenuItem>
 								</ContextMenuContent>
 							</ContextMenu>
@@ -380,7 +381,7 @@ export default function LayerTable() {
 				</Table>
 			</div>
 			{/*--------- pagination controls ---------*/}
-			<div className="flex items-center justify-between space-x-2 py-4">
+			<div className="flex items-center justify-between space-x-2 py-2">
 				<div className="flex-1 text-sm text-muted-foreground">
 					{showSelectedLayers
 						? `Showing ${firstRowInPage} to ${lastRowInPage} of ${data?.totalCount} selected rows`

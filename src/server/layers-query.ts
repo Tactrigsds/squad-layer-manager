@@ -75,16 +75,15 @@ export async function runLayersQuery(
 		const randomCullWhereClause = `(RandomOrdinal >= @rangeStart AND RandomOrdinal < @rangeEnd)`
 		params['@rangeStart'] = rangeStart
 		params['@rangeEnd'] = rangeEnd
-		whereClause = (whereClause ? whereClause + ' AND' : 'WHERE ') + randomCullWhereClause
-		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClause} ORDER BY RandomOrdinal ${limitClause}` // reseed random ordinals
+		const whereClauseWithRandom = (whereClause ? whereClause + ' AND' : 'WHERE ') + randomCullWhereClause
+		const query = `SELECT ${M.COLUMN_KEYS.map(wrapColName).join(', ')} FROM layers ${whereClauseWithRandom} ORDER BY RandomOrdinal ${limitClause}` // reseed random ordinals
 		layers = await db.all<M.Layer[]>(query, params)
 		// separate connection and no await because we don't want to block on this operation
 		;(async () => {
 			const db = await DB.openConnection()
 			try {
-				const randomlySelectedLayers = await db.all<{ Id: string }[]>(`SELECT Id from layers ${whereClause}`)
 				const ops: Promise<unknown>[] = []
-				for (const layer of randomlySelectedLayers) {
+				for (const layer of layers) {
 					ops.push(db.run('UPDATE layers SET RandomOrdinal = ? WHERE Id = ?', [Math.floor(Math.random() * countNoFilters), layer.Id]))
 				}
 				await Promise.all(ops)
