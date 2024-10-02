@@ -1,14 +1,13 @@
 import { Toaster } from '@/components/ui/toaster'
+import { trpc } from '@/lib/trpc'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { httpBatchLink } from '@trpc/client'
 import * as jotai from 'jotai'
 import { useState } from 'react'
 
-import { FilterCard } from './components/filter-card'
-import LayerTable from './components/layer-table'
-import { ThemeProvider } from './components/theme-provider'
-import { trpc } from './lib/trpc'
-import * as M from './models'
+import { FilterCard } from './filter-card'
+import LayerTable from './layer-table'
+import { ThemeProvider } from './theme-provider'
 
 function App() {
 	const [queryClient] = useState(() => new QueryClient())
