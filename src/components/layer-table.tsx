@@ -71,7 +71,7 @@ const columns: ColumnDef<M.Layer, any>[] = [
 		enableSorting: false,
 		enableHiding: false,
 	},
-	getColumn('Id'),
+	getColumn('id'),
 	getColumn('Level'),
 	getColumn('Layer'),
 	getColumn('Size'),
@@ -174,7 +174,7 @@ export default function LayerTable() {
 	}
 
 	if (showSelectedLayers) {
-		filter = { type: 'comp', comp: { code: 'in', column: 'Id', values: selectedLayerIds } }
+		filter = { type: 'comp', comp: { code: 'in', column: 'id', values: selectedLayerIds } }
 	}
 	let sort: LayersQuery['sort'] = DEFAULT_SORT
 	if (randomize) {
@@ -213,7 +213,7 @@ export default function LayerTable() {
 				pageSize,
 			},
 		},
-		getRowId: (row) => row.Id,
+		getRowId: (row) => row.id,
 		onSortingChange: setSorting,
 		onColumnVisibilityChange: setColumnVisibility,
 		onRowSelectionChange: onSetRowSelection,
@@ -228,7 +228,7 @@ export default function LayerTable() {
 	const { toast } = useToast()
 
 	function getChosenRows(row: Row<M.Layer>) {
-		if (!selectedLayerIds.includes(row.original.Id)) {
+		if (!selectedLayerIds.includes(row.original.id)) {
 			return [row.original]
 		} else {
 			return table
@@ -251,7 +251,7 @@ export default function LayerTable() {
 
 	function onCopyVoteCommand(row: Row<M.Layer>) {
 		const chosenRows = getChosenRows(row)
-		const commandText = M.getSetNextVoteCommand(chosenRows.map((row) => row.Id))
+		const commandText = M.getSetNextVoteCommand(chosenRows.map((row) => row.id))
 		navigator.clipboard.writeText(commandText)
 		toast({ description: 'Command copied to clipboard' })
 	}
@@ -369,10 +369,10 @@ export default function LayerTable() {
 								</ContextMenuTrigger>
 								<ContextMenuContent>
 									<ContextMenuItem onClick={() => onCopyLayerCommand(row)}>
-										Copy set next layer command {selectedLayerIds.includes(row.original.Id) && 'for selected'}
+										Copy set next layer command {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 									<ContextMenuItem onClick={() => onCopyVoteCommand(row)}>
-										Copy generate vote command {selectedLayerIds.includes(row.original.Id) && 'for selected'}
+										Copy generate vote command {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 								</ContextMenuContent>
 							</ContextMenu>

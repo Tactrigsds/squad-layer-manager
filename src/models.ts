@@ -1,50 +1,12 @@
 import * as z from 'zod'
 
 import { reverseMapping } from './lib/object'
+import type * as Schema from './server/schema'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
-// Define enums for SubFac
-export const SubFacEnum = z.enum(['CombinedArms', 'Armored', 'LightInfantry', 'Mechanized', 'Motorized', 'Support', 'AirAssault'])
-
-// Define the schema for raw data
-export const RawLayerSchema = z.object({
-	Level: z.string(),
-	Layer: z.string(),
-	Size: z.string(),
-	Faction_1: z.string(),
-	SubFac_1: SubFacEnum,
-	Logistics_1: z.number(),
-	Transportation_1: z.number(),
-	'Anti-Infantry_1': z.number(),
-	Armor_1: z.number(),
-	ZERO_Score_1: z.number(),
-	Faction_2: z.string(),
-	SubFac_2: SubFacEnum,
-	Logistics_2: z.number(),
-	Transportation_2: z.number(),
-	'Anti-Infantry_2': z.number(),
-	Armor_2: z.number(),
-	ZERO_Score_2: z.number(),
-	Balance_Differential: z.number(),
-	'Asymmetry Score': z.number(),
-})
-
-export type RawLayer = z.infer<typeof RawLayerSchema>
-
-export const ProcessedLayerSchema = RawLayerSchema.extend({
-	Id: z.string(),
-	// see layers-query.ts -> -------- random sort -------- for explanation
-	RandomOrdinal: z.number().int(),
-	Gamemode: z.string(),
-	LayerVersion: z.string(),
-	Logistics_Diff: z.number(),
-	Transportation_Diff: z.number(),
-	'Anti-Infantry_Diff': z.number(),
-	Armor_Diff: z.number(),
-	ZERO_Score_Diff: z.number(),
-})
+export type Layer = Schema.Layer
 
 const MAP_ABBREVIATION = {
 	AlBasrah: 'AB',
@@ -154,15 +116,14 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'Armor_Diff',
 		'ZERO_Score_Diff',
 	] as const,
-	string: ['Id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
-	integer: ['RandomOrdinal'] as const,
+	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
+	integer: ['randomOrdinal'] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
 export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPINGS.float, ...COLUMN_TYPE_MAPPINGS.integer] as [
 	LayerColumnKey,
 	...LayerColumnKey[],
 ]
-if (COLUMN_KEYS.length !== Object.keys(ProcessedLayerSchema.shape).length) throw new Error('Irregular column key count')
 
 //@ts-expect-error initialize
 export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey, ColumnType> = {}
@@ -241,7 +202,6 @@ export const ComparisonSchema = z
 		{ message: 'Invalid column type for comparison type' }
 	)
 
-export type Layer = z.infer<typeof ProcessedLayerSchema>
 export type LayerColumnKey = keyof Layer
 export type Comparison = z.infer<typeof ComparisonSchema>
 
@@ -293,3 +253,12 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = BaseFilterNodeSchema.exte
 	.refine((node) => !['and', 'or'].includes(node.type) || (node.children && node.children.length > 0), {
 		message: 'children must be defined for type "and" or "or"',
 	})
+
+export const LayerVoteSchema = z.object({
+	defaultChoiceLayerId: z.string(),
+	choiceLayerIds: z.record(z.string(), z.number()),
+	voteDeadline: z.date().optional(),
+	votes: z.record(z.string(), z.array(z.bigint())).optional(),
+})
+
+export const LayerQueueSchema = z.array(z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() }))

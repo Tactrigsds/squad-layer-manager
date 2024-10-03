@@ -152,7 +152,7 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 		<ComboBox
 			title="Column"
 			value={comp.column}
-			options={M.COLUMN_KEYS.filter((k) => k !== 'Id')}
+			options={M.COLUMN_KEYS.filter((k) => k !== 'id')}
 			onSelect={(column) => setComp(() => ({ column }))}
 		/>
 	)

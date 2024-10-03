@@ -1,12 +1,43 @@
-import { wrapColName } from '@/lib/sql'
+import * as C from '@/lib/constants'
 import * as M from '@/models'
-import * as DB from '@/server/db'
+import { db, setupDatabase } from '@/server/db'
+import * as Schema from '@/server/schema'
 import { parse } from 'csv-parse/sync'
+import dotenv from 'dotenv'
+import { sql } from 'drizzle-orm'
 import * as fs from 'fs'
+import { z } from 'zod'
 
-function processLayer(rawLayer: M.RawLayer): M.Layer {
+dotenv.config()
+setupDatabase()
+
+// Define the schema for raw data
+
+export const RawLayerSchema = z.object({
+	Level: z.string(),
+	Layer: z.string(),
+	Size: z.string(),
+	Faction_1: z.string(),
+	SubFac_1: z.string(),
+	Logistics_1: z.number(),
+	Transportation_1: z.number(),
+	'Anti-Infantry_1': z.number(),
+	Armor_1: z.number(),
+	ZERO_Score_1: z.number(),
+	Faction_2: z.string(),
+	SubFac_2: z.string(),
+	Logistics_2: z.number(),
+	Transportation_2: z.number(),
+	'Anti-Infantry_2': z.number(),
+	Armor_2: z.number(),
+	ZERO_Score_2: z.number(),
+	Balance_Differential: z.number(),
+	'Asymmetry Score': z.number(),
+})
+
+function processLayer(rawLayer: z.infer<typeof RawLayerSchema>, numRecords: number): M.Layer {
 	const [_, gamemode, version] = rawLayer.Layer.split('_')
-	const Id = M.getLayerId({
+	const id = M.getLayerId({
 		Level: rawLayer.Level,
 		Gamemode: gamemode,
 		LayerVersion: version,
@@ -17,11 +48,29 @@ function processLayer(rawLayer: M.RawLayer): M.Layer {
 	})
 
 	return {
-		Id,
-		RandomOrdinal: Math.floor(Math.random() * records.length),
-		...rawLayer,
+		id,
+		randomOrdinal: Math.floor(Math.random() * numRecords),
+		Level: rawLayer.Level,
+		Layer: rawLayer.Layer,
+		Size: rawLayer.Size,
 		Gamemode: gamemode,
 		LayerVersion: version,
+		Faction_1: rawLayer.Faction_1,
+		SubFac_1: rawLayer.SubFac_1 as C.Subfaction,
+		Logistics_1: rawLayer.Logistics_1,
+		Transportation_1: rawLayer.Transportation_1,
+		'Anti-Infantry_1': rawLayer['Anti-Infantry_1'],
+		Armor_1: rawLayer.Armor_1,
+		ZERO_Score_1: rawLayer.ZERO_Score_1,
+		Faction_2: rawLayer.Faction_2,
+		SubFac_2: rawLayer.SubFac_2 as C.Subfaction,
+		Logistics_2: rawLayer.Logistics_2,
+		Transportation_2: rawLayer.Transportation_2,
+		'Anti-Infantry_2': rawLayer['Anti-Infantry_2'],
+		Armor_2: rawLayer.Armor_2,
+		ZERO_Score_2: rawLayer.ZERO_Score_2,
+		Balance_Differential: rawLayer.Balance_Differential,
+		'Asymmetry Score': rawLayer['Asymmetry Score'],
 		Logistics_Diff: rawLayer.Logistics_1 - rawLayer.Logistics_2,
 		Transportation_Diff: rawLayer.Transportation_1 - rawLayer.Transportation_2,
 		'Anti-Infantry_Diff': rawLayer['Anti-Infantry_1'] - rawLayer['Anti-Infantry_2'],
@@ -30,22 +79,21 @@ function processLayer(rawLayer: M.RawLayer): M.Layer {
 	}
 }
 
-const csvData = fs.readFileSync('layers.csv', 'utf8')
-const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
+async function main() {
+	const t0 = performance.now()
+	const csvData = fs.readFileSync('layers.csv', 'utf8')
+	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
+	const t1 = performance.now()
+	const elapsedSecondsParse = (t1 - t0) / 1000
 
-if (records.length === 0) {
-	throw new Error('No records found in CSV file')
-}
+	if (records.length === 0) {
+		throw new Error('No records found in CSV file')
+	}
 
-const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter(
-	(field) => field in M.RawLayerSchema.shape
-)
-
-const processedLayers: M.Layer[] = records
-	.map((record, index) => {
-		const updatedRecord = record as Record<string, string | number>
+	const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter((field) => field in records[0])
+	const processedLayers = records.map((record, index) => {
+		const updatedRecord = { ...record } as { [key: string]: number | string }
 		originalNumericFields.forEach((field) => {
-			// WARNING mutates original record as well
 			if (!record[field]) {
 				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
@@ -56,65 +104,34 @@ const processedLayers: M.Layer[] = records
 			}
 		})
 
-		const validatedRawLayer = M.RawLayerSchema.parse(record)
-		return processLayer(validatedRawLayer)
+		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
+		return processLayer(validatedRawLayer, records.length)
 	})
-	.map((layer) => M.ProcessedLayerSchema.strict().parse(layer))
+	console.log(`Parsing CSV took ${elapsedSecondsParse} s`)
 
-const db = await DB.openConnection()
+	const t2 = performance.now()
 
-const colKeys = M.COLUMN_KEYS
-const colDefs: string[] = []
+	// truncate the table
+	console.log('Truncating layers table')
+	await db.execute(sql`
+	TRUNCATE TABLE ${Schema.layers}
 
-for (const key of M.COLUMN_KEYS) {
-	if (key === 'Id') {
-		colDefs.push('Id TEXT NOT NULL PRIMARY KEY')
-		continue
+	`)
+	console.log('layers table truncated')
+	console.log('inserting layers')
+	// Insert the processed layers
+	const chunkSize = 2500
+	for (let i = 0; i < processedLayers.length; i += chunkSize) {
+		const chunk = processedLayers.slice(i, i + chunkSize)
+		await db.insert(Schema.layers).values(chunk)
+		console.log(`Inserted ${i + chunk.length} rows`)
 	}
-	const columnType = M.COLUMN_KEY_TO_TYPE[key]
-	switch (columnType) {
-		case 'float':
-			colDefs.push(`${wrapColName(key)} REAL`)
-			break
-		case 'string':
-			colDefs.push(`${wrapColName(key)} TEXT`)
-			break
-		case 'integer':
-			colDefs.push(`${wrapColName(key)} INTEGER`)
-	}
+
+	const t3 = performance.now()
+	const elapsedSecondsInsert = (t3 - t2) / 1000
+	console.log(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
 
-await db.run(`DROP TABLE IF EXISTS layers`)
-const createTableStmt = `CREATE TABLE layers (${colDefs.join(', ')})`
-console.log('createTable', createTableStmt)
-await db.run(createTableStmt)
+await main()
 
-const t0 = performance.now()
-await db.run('BEGIN TRANSACTION')
-try {
-	const query = `INSERT INTO layers VALUES (${colDefs.map(() => '?').join(', ')})`
-	console.log(query)
-	const stmt = await db.prepare(query)
-	const ops: Promise<unknown>[] = []
-	for (const layer of processedLayers) {
-		ops.push(
-			stmt.run(
-				...colKeys.map((col) => {
-					return layer[col as M.LayerColumnKey]
-				})
-			)
-		)
-	}
-	await Promise.all(ops)
-	await stmt.finalize()
-} catch (e) {
-	db.run('ROLLBACK')
-	throw e
-}
-
-await db.run('COMMIT')
-const t1 = performance.now()
-
-const elapsedSeconds = (t1 - t0) / 1000
-console.log(`Inserting ${processedLayers.length} rows took ${elapsedSeconds} s`)
-db.close()
+process.exit(0)
