@@ -28,10 +28,24 @@ export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 	Yehorivka: 'Yeho',
 }
 
-export function shortLevel(level: M.Layer['Level']) {
+export function toShortLevel(level: M.Layer['Level']) {
 	return LEVEL_SHORT_NAMES[level]
 }
 
-export function toShortLayerName(layer: M.Layer) {
-	return `${LEVEL_SHORT_NAMES[layer.Level]} ${layer.Gamemode} ${layer.LayerVersion} - ${layer.Faction_1} ${layer.SubFac_1} vs ${layer.Faction_2} ${layer.SubFac_2}`
+const SUBFACTION_SHORT_NAMES = {
+	CombinedArms: 'Combined',
+	Armored: 'Armored',
+	LightInfantry: 'Light',
+	Mechanized: 'Mech',
+	Motorized: 'Motor',
+	Support: 'Sup',
+	AirAssault: 'Air',
+} satisfies Record<M.Subfaction, string>
+
+export function toShortSubfaction(unitType: M.Subfaction) {
+	return SUBFACTION_SHORT_NAMES[unitType]
+}
+
+export function toShortLayerName(layer: M.MiniLayer) {
+	return `${LEVEL_SHORT_NAMES[layer.Level]} ${layer.Gamemode} ${layer.LayerVersion} - ${layer.Faction_1} ${SUBFACTION_SHORT_NAMES[layer.SubFac_1]} vs ${layer.Faction_2} ${SUBFACTION_SHORT_NAMES[layer.SubFac_2]}`
 }

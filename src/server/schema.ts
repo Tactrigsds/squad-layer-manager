@@ -13,6 +13,7 @@ import {
 	timestamp,
 	varchar,
 } from 'drizzle-orm/mysql-core'
+import { z } from 'zod'
 
 export const layers = mysqlTable(
 	'layers',
@@ -85,6 +86,17 @@ export const layerPool = mysqlTable('layerPool', {
 	name: varchar('name', { length: 255 }).notNull(),
 	filter: json('filter'),
 })
+
+export const LayerVoteSchema = z.object({
+	defaultChoiceLayerId: z.string(),
+	choiceLayerIds: z.record(z.string(), z.number()),
+	voteDeadline: z.date().optional(),
+	votes: z.record(z.string(), z.array(z.bigint())).optional(),
+})
+export type LayerVoteSchema = z.infer<typeof LayerVoteSchema>
+
+export const LayerQueueSchema = z.array(z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() }))
+export type LayerQueue = z.infer<typeof LayerQueueSchema>
 
 export const server = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),

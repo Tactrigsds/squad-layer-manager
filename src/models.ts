@@ -1,5 +1,6 @@
 import * as z from 'zod'
 
+import * as C from './lib/constants'
 import { reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 
@@ -7,6 +8,7 @@ export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
 export type Layer = Schema.Layer
+export type Subfaction = C.Subfaction
 
 const MAP_ABBREVIATION = {
 	AlBasrah: 'AB',
@@ -257,8 +259,43 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = BaseFilterNodeSchema.exte
 export const LayerVoteSchema = z.object({
 	defaultChoiceLayerId: z.string(),
 	choiceLayerIds: z.record(z.string(), z.number()),
-	voteDeadline: z.date().optional(),
+	voteDeadline: z.string().optional(),
 	votes: z.record(z.string(), z.array(z.bigint())).optional(),
 })
 
-export const LayerQueueSchema = z.array(z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() }))
+export const LayerQueueItemSchema = z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() })
+export const LayerQueueSchema = z.array(LayerQueueItemSchema)
+
+export type LayerQueue = z.infer<typeof LayerQueueSchema>
+export type LayerQueueItem = LayerQueue[number]
+// doing this because Omit<> sucks to work with
+export type MiniLayer = {
+	id: Layer['id']
+	Level: Layer['Level']
+	Layer: Layer['Layer']
+	Gamemode: Layer['Gamemode']
+	LayerVersion: Layer['LayerVersion']
+	Faction_1: Layer['Faction_1']
+	SubFac_1: Layer['SubFac_1']
+	Faction_2: Layer['Faction_2']
+	SubFac_2: Layer['SubFac_2']
+}
+
+export type LayerVote = unknown
+
+export type MiniUser = {
+	steamId: bigint
+	username: string
+}
+
+export const LayerQueueUpdateSchema = z.object({
+	seqId: z.number(),
+	queue: LayerQueueSchema,
+	nowPlaying: z.union([z.string(), z.null()]),
+})
+
+export type LayerQueueUpdate = z.infer<typeof LayerQueueUpdateSchema>
+
+export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
+	layers: MiniLayer[]
+}
