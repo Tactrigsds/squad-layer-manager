@@ -1,3 +1,4 @@
+import { ENV } from '@/src/env.ts'
 import { defineConfig } from 'drizzle-kit'
 
 export default defineConfig({
@@ -5,11 +6,11 @@ export default defineConfig({
 	out: './drizzle',
 	dialect: 'mysql',
 	dbCredentials: {
-		host: process.env.DB_HOST!,
-		port: parseInt(process.env.DB_PORT!),
-		user: process.env.DB_USER!,
-		password: process.env.DB_PASSWORD!,
-		database: process.env.DB_DATABASE!,
+		host: ENV.DB_HOST!,
+		port: ENV.DB_PORT,
+		user: ENV.DB_USER!,
+		password: ENV.DB_PASSWORD!,
+		database: ENV.DB_DATABASE!,
 	},
 	strict: false,
 })

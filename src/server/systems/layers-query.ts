@@ -1,7 +1,7 @@
 import * as M from '@/models.ts'
 import { db } from '@/server/db'
 import * as Schema from '@/server/schema'
-import { sql } from 'drizzle-orm'
+import { SQL, sql } from 'drizzle-orm'
 import { and, asc, between, desc, eq, gt, gte, inArray, lt, or } from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'
 import { z } from 'zod'
@@ -104,7 +104,7 @@ export async function runLayersQuery({ pageIndex, pageSize, sort, filter }: Laye
 	}
 }
 
-function getWhereFilterConditions(filter: M.FilterNode) {
+function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined {
 	if (filter.type === 'comp') {
 		const comp = filter.comp!
 		const column = Schema.layers[comp.column]

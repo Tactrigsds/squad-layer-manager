@@ -3,12 +3,10 @@ import * as M from '@/models'
 import { db, setupDatabase } from '@/server/db'
 import * as Schema from '@/server/schema'
 import { parse } from 'csv-parse/sync'
-import dotenv from 'dotenv'
 import { sql } from 'drizzle-orm'
 import * as fs from 'fs'
 import { z } from 'zod'
 
-dotenv.config()
 setupDatabase()
 
 // Define the schema for raw data
