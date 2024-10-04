@@ -80,6 +80,17 @@ export const layers = mysqlTable(
 	}
 )
 export type Layer = typeof layers.$inferSelect
+export const MINI_LAYER_SELECT = {
+	id: layers.id,
+	Level: layers.Level,
+	Layer: layers.Layer,
+	Gamemode: layers.Gamemode,
+	LayerVersion: layers.LayerVersion,
+	Faction_1: layers.Faction_1,
+	SubFac_1: layers.SubFac_1,
+	Faction_2: layers.Faction_2,
+	SubFac_2: layers.SubFac_2,
+}
 
 export const layerPool = mysqlTable('layerPool', {
 	id: serial('id').primaryKey(),

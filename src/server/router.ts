@@ -4,10 +4,10 @@ import { eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from './db.ts'
-import * as LQ from './layer-queue.ts'
-import { LayersQuerySchema, runLayersQuery } from './layers-query.ts'
-import * as Rcon from './rcon.ts'
 import * as Schema from './schema.ts'
+import { LayersQuerySchema, runLayersQuery } from './systems/layers-query.ts'
+import * as Rcon from './systems/rcon.ts'
+import * as SS from './systems/server-state.ts'
 
 type User = {
 	id: string
@@ -28,9 +28,9 @@ export const appRouter = t.router({
 		const res = await runLayersQuery(input)
 		return res
 	}),
-	watchLayerQueueUpdates: t.procedure.subscription(LQ.watchUpdates),
+	watchLayerQueueUpdates: t.procedure.subscription(SS.watchUpdates),
 	updateQueue: t.procedure.input(M.LayerQueueUpdateSchema).mutation(async ({ input }) => {
-		return LQ.update(input)
+		return SS.update(input)
 	}),
 	getUserById: t.procedure.input(z.string()).query((opts) => {
 		return users[opts.input] // input type is string
@@ -49,9 +49,7 @@ export const appRouter = t.router({
 			return user
 		}),
 
-	getServerInfo: t.procedure.query(async () => {
-		return Rcon.getServerInfo()
-	}),
+	pollServerInfo: t.procedure.subscription(SS.pollServerInfo),
 })
 // export type definition of API
 export type AppRouter = typeof appRouter

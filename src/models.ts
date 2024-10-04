@@ -48,7 +48,7 @@ const UNIT_ABBREVIATION = {
 	Support: 'SP',
 } as Record<string, string>
 
-export function getLayerId(layer: {
+export type LayerIdArgs = {
 	Level: string
 	Gamemode: string
 	LayerVersion: string
@@ -56,7 +56,14 @@ export function getLayerId(layer: {
 	SubFac_1: string
 	Faction_2: string
 	SubFac_2: string
-}) {
+}
+
+export function parseLayerString(layer: string) {
+	const [level, gamemode, version] = layer.split('_')
+	return { level, gamemode, version }
+}
+
+export function getLayerId(layer: LayerIdArgs) {
 	const mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}-${layer.LayerVersion.toUpperCase()}`
 	const faction1 = `${[layer.Faction_1]}-${UNIT_ABBREVIATION[layer.SubFac_1]}`
 	const faction2 = `${layer.Faction_2}-${UNIT_ABBREVIATION[layer.SubFac_2]}`
@@ -298,4 +305,14 @@ export type LayerQueueUpdate = z.infer<typeof LayerQueueUpdateSchema>
 
 export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
 	layers: MiniLayer[]
+}
+
+export type ServerStatus = {
+	name: string
+	currentPlayers: number
+	maxPlayers: number
+	currentPlayersInQueue: number
+	currentVIPsInQueue: number
+	currentLayer: MiniLayer
+	nextLayer: MiniLayer
 }

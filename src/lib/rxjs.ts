@@ -1,38 +1,36 @@
-import { Observable } from 'rxjs'
+import { Observable, asapScheduler, observeOn } from 'rxjs'
 
-function defer<T>() {
+type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }
+
+function defer<T>(): Deferred<T> {
 	const properties = {},
 		promise = new Promise<T>((resolve, reject) => {
 			Object.assign(properties, { resolve, reject })
 		})
-	return Object.assign(promise, properties)
+	return Object.assign(promise, properties) as Deferred<T>
 }
 
 export async function* toAsyncGenerator<T>(observable: Observable<T>) {
-	let nextData = defer<T>() as Promise<T> | null
-	const sub = observable.subscribe({
+	let nextData = defer<T>() as Deferred<T | null> | null
+	const sub = observable.pipe(observeOn(asapScheduler)).subscribe({
 		next(data) {
 			const n = nextData
 			nextData = defer()
-			//@ts-expect-error added stuff
 			n?.resolve(data)
 		},
 		error(err) {
-			//@ts-expect-error added stuff
 			nextData?.reject(err)
 		},
 		complete() {
-			const n = nextData
+			nextData?.resolve(null)
 			nextData = null
-			//@ts-expect-error added stuff
-			n.resolve()
 		},
 	})
 	try {
-		for (;;) {
+		while (true) {
 			const value = await nextData
 			if (!nextData) break
-			yield value
+			if (value) yield value
 		}
 	} finally {
 		sub.unsubscribe()

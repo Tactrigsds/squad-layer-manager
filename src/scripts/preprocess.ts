@@ -36,7 +36,7 @@ export const RawLayerSchema = z.object({
 })
 
 function processLayer(rawLayer: z.infer<typeof RawLayerSchema>, numRecords: number): M.Layer {
-	const [_, gamemode, version] = rawLayer.Layer.split('_')
+	const { gamemode, version } = M.parseLayerString(rawLayer.Layer)
 	const id = M.getLayerId({
 		Level: rawLayer.Level,
 		Gamemode: gamemode,

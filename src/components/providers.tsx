@@ -1,5 +1,6 @@
 import { Toaster } from '@/components/ui/toaster'
 import { trpc } from '@/lib/trpc'
+import { DndContext } from '@dnd-kit/core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createWSClient, wsLink } from '@trpc/client'
 import * as jotai from 'jotai'

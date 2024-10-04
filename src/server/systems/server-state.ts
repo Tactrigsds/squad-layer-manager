@@ -1,14 +1,12 @@
 import { toAsyncGenerator } from '@/lib/rxjs.ts'
 import * as M from '@/models.ts'
+import { db } from '@/server/db.ts'
+import * as S from '@/server/schema.ts'
+import * as Rcon from '@/server/systems/rcon'
 import { tracked } from '@trpc/server'
-import { Mutex } from 'async-mutex'
 import { eq, inArray } from 'drizzle-orm'
-import { Subject, share, switchMap } from 'rxjs'
+import { Subject, interval, share, shareReplay, startWith, switchMap, tap } from 'rxjs'
 
-import { db } from './db.ts'
-import * as S from './schema.ts'
-
-let seqId = 0
 const startingQueue: M.LayerQueue = [
 	{ layerId: 'AB-RAAS-V1:USMC-MT:RGF-SP' },
 	{ layerId: 'KD-RAAS-V1:INS-SP:RGF-MT' },
@@ -20,18 +18,18 @@ const startingQueue: M.LayerQueue = [
 	{ layerId: 'BL-AAS-V1:IMF-MZ:RGF-LI' },
 	{ layerId: 'AN-RAAS-V1:ADF-CA:WPMC-LI' },
 	{ layerId: 'BC-RAAS-V1:USA-MZ:PLANMC-AR' },
-	{ layerId: 'KD-AAS-V1:PLA-SP:CAF-AA' },
-	{ layerId: 'KK-Skirmish-V1:INS-CA:WPMC-CA' },
-	{ layerId: 'TL-AAS-V1:MEA-SP:PLA-LI' },
-	{ layerId: 'TL-RAAS-V1:USA-MZ:INS-CA' },
-	{ layerId: 'LK-TC-V2:RGF-AR:ADF-MZ' },
-	{ layerId: 'MN-RAAS-V1:USA-AR:RGF-AR' },
-	{ layerId: 'TL-TC-V1:RGF-LI:MEA-AR' },
-	{ layerId: 'LK-TC-V1:RGF-CA:TLF-AA' },
-	{ layerId: 'NV-TC-V1:CAF-MZ:RGF-AR' },
-	{ layerId: 'KD-RAAS-V1:USMC-MT:VDV-CA' },
+	// { layerId: 'KD-AAS-V1:PLA-SP:CAF-AA' },
+	// { layerId: 'KK-Skirmish-V1:INS-CA:WPMC-CA' },
+	// { layerId: 'TL-AAS-V1:MEA-SP:PLA-LI' },
+	// { layerId: 'TL-RAAS-V1:USA-MZ:INS-CA' },
+	// { layerId: 'LK-TC-V2:RGF-AR:ADF-MZ' },
+	// { layerId: 'MN-RAAS-V1:USA-AR:RGF-AR' },
+	// { layerId: 'TL-TC-V1:RGF-LI:MEA-AR' },
+	// { layerId: 'LK-TC-V1:RGF-CA:TLF-AA' },
+	// { layerId: 'NV-TC-V1:CAF-MZ:RGF-AR' },
+	// { layerId: 'KD-RAAS-V1:USMC-MT:VDV-CA' },
 ]
-let queue: M.LayerQueue = [...startingQueue]
+let layerQueue: M.LayerQueue = [...startingQueue]
 let seqId: number = 0
 export const queueUpdateSubject = new Subject<M.LayerQueueUpdate>()
 
@@ -43,18 +41,28 @@ const queueUpdateDenorm$ = queueUpdateSubject.pipe(
 
 export async function* watchNowPlaying() {
 	for await (const update of toAsyncGenerator(queueUpdateDenorm$)) {
-		if (!update) continue
+		if (!update) return
 		yield tracked(update.seqId.toString(), update)
 	}
 }
 
 export async function* watchUpdates() {
-	const updateDenorm = await getQueueUpdateDenorm({ seqId: 0, queue: queue, nowPlaying })
+	const updateDenorm = await getQueueUpdateDenorm({ seqId: 0, queue: layerQueue, nowPlaying })
 	yield tracked(updateDenorm.seqId.toString(), updateDenorm)
 
 	for await (const update of toAsyncGenerator(queueUpdateDenorm$)) {
 		if (!update) continue
 		yield tracked(update.seqId.toString(), updateDenorm)
+	}
+}
+
+let serverInfo: M.ServerStatus | null = null
+const pollServerInfo$ = interval(30000).pipe(startWith(0), switchMap(Rcon.fetchServerStatus), shareReplay(1))
+
+export async function* pollServerInfo() {
+	for await (const info of toAsyncGenerator(pollServerInfo$)) {
+		if (!info) continue
+		yield info
 	}
 }
 
@@ -71,10 +79,10 @@ async function getQueueUpdateDenorm(update: M.LayerQueueUpdate): Promise<M.Layer
 }
 
 export function update(update: M.LayerQueueUpdate) {
-	if (update.seqId + 1 !== queue.length) {
+	if (update.seqId + 1 !== layerQueue.length) {
 		return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 	}
-	queue = update.queue
+	layerQueue = update.queue
 	seqId = update.seqId + 1
 	queueUpdateSubject.next({ ...update, seqId })
 	return { code: 'ok' as const }
