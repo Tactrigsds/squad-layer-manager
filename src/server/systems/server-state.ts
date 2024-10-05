@@ -7,6 +7,10 @@ import { tracked } from '@trpc/server'
 import { inArray } from 'drizzle-orm'
 import { Subject, interval, share, shareReplay, startWith, switchMap, tap } from 'rxjs'
 
+const runId = Math.floor(Math.random() * 1000000)
+function getTrackingId(seqId: number) {
+	return `${runId}-${seqId}`
+}
 const startingQueue: M.LayerQueue = [
 	{ layerId: 'AB-RAAS-V1:USMC-MT:RGF-SP', generated: true },
 	{ layerId: 'KD-RAAS-V1:INS-SP:RGF-MT', generated: true },
@@ -41,18 +45,18 @@ const queueUpdateDenorm$ = queueUpdateSubject.pipe(
 
 export async function* watchNowPlaying() {
 	for await (const update of toAsyncGenerator(queueUpdateDenorm$)) {
-		if (!update) return
-		yield tracked(update.seqId.toString(), update)
+		yield tracked(getTrackingId(update.seqId), update)
 	}
 }
 
 export async function* watchUpdates() {
-	const updateDenorm = await getQueueUpdateDenorm({ seqId: 0, queue: layerQueue, nowPlaying })
-	yield tracked(updateDenorm.seqId.toString(), updateDenorm)
+	{
+		const updateDenorm = await getQueueUpdateDenorm({ seqId: seqId, queue: layerQueue, nowPlaying })
+		yield tracked(getTrackingId(updateDenorm.seqId), updateDenorm)
+	}
 
 	for await (const update of toAsyncGenerator(queueUpdateDenorm$)) {
-		if (!update) continue
-		yield tracked(update.seqId.toString(), updateDenorm)
+		yield tracked(getTrackingId(update.seqId), update)
 	}
 }
 
@@ -60,7 +64,6 @@ const pollServerInfo$ = interval(30000).pipe(startWith(0), switchMap(Rcon.fetchS
 
 export async function* pollServerInfo() {
 	for await (const info of toAsyncGenerator(pollServerInfo$)) {
-		if (!info) continue
 		yield info
 	}
 }
@@ -70,7 +73,11 @@ async function getQueueUpdateDenorm(update: M.LayerQueueUpdate): Promise<M.Layer
 	if (update.nowPlaying) {
 		layerIds.push(update.nowPlaying)
 	}
-	const layers = await db.select().from(S.layers).where(inArray(S.layers.id, layerIds))
+	const layerIdsWithSwapped = [...layerIds]
+	for (const id of layerIds) {
+		layerIdsWithSwapped.push(M.swapFactionsInId(id))
+	}
+	const layers = await db.select().from(S.layers).where(inArray(S.layers.id, layerIdsWithSwapped))
 	return {
 		...update,
 		layers,
@@ -78,12 +85,12 @@ async function getQueueUpdateDenorm(update: M.LayerQueueUpdate): Promise<M.Layer
 }
 
 export function update(update: M.LayerQueueUpdate) {
-	if (update.seqId + 1 !== layerQueue.length) {
+	if (update.seqId !== seqId) {
 		return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 	}
 	nowPlaying = update.nowPlaying
 	layerQueue = update.queue
-	seqId = update.seqId + 1
+	seqId++
 	queueUpdateSubject.next({ ...update, seqId })
 	return { code: 'ok' as const }
 }

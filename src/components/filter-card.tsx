@@ -1,3 +1,4 @@
+import { useDebounced } from '@/hooks/use-debounce'
 import * as DH from '@/lib/displayHelpers'
 import { SetState } from '@/lib/react'
 import { trpc } from '@/lib/trpc'
@@ -149,6 +150,7 @@ export function FilterNodeDisplay(props: {
 
 	throw new Error('Invalid node type ' + node.type)
 }
+const LIMIT_AUTOCOMPLETE_COLS: M.LayerColumnKey = ['id']
 
 export function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison>; columnEditable?: boolean }) {
 	const { comp, setComp } = props
@@ -173,21 +175,38 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 			{columnBox}
 			<ComboBox
 				allowEmpty={true}
-				className="w-[100px]"
 				title=""
 				value={comp.code}
 				options={columnOptions}
 				onSelect={(code) => setComp((c) => ({ column: c.column, code: code ?? undefined }))}
 			/>
-			{comp.code === 'eq' && (
+			{comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfig
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
 				/>
 			)}
-			{comp.code === 'in' && (
+			{comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
+				<StringEqConfigLimitedAutocomplete
+					column={comp.column as M.StringColumn}
+					value={comp.value as string | undefined}
+					setValue={(value) => setComp((c) => ({ ...c, value }))}
+				/>
+			)}
+			{comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringInConfig
+					column={comp.column as M.StringColumn}
+					values={(comp.values ?? []) as string[]}
+					setValues={(getValues) => {
+						setComp((c) => {
+							return { ...c, values: getValues(c.values ?? []) }
+						})
+					}}
+				/>
+			)}
+			{comp.code === 'in' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
+				<StringInConfigLimitAutoComplete
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
 					setValues={(getValues) => {
@@ -218,19 +237,86 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 
 function StringEqConfig<T extends string | null>(props: {
 	value: T | undefined
-	limitAutoComplete?: boolean
 	column: M.StringColumn
 	setValue: (value: T | undefined) => void
 }) {
-	const limitAutoComplete = props.limitAutoComplete ?? false
 	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ column: props.column })
 	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
 	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
 }
 
+function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
+	value: T | undefined
+	limitAutoComplete?: boolean
+	column: M.StringColumn
+	setValue: (value: T | undefined) => void
+}) {
+	const limitAutoComplete = props.limitAutoComplete ?? false
+	const [debouncedInput, _setDebouncedInput] = useState('')
+	const [inputValue, setInputValue] = useState(props.value ?? '')
+	function setDebouncedInput(value: string) {
+		value = value.trim()
+		_setDebouncedInput(value)
+		if (value && options && options !== LOADING && options.includes(value)) {
+			props.setValue(value as T)
+		}
+	}
+	useDebounced({ value: inputValue, onChange: setDebouncedInput, delay: 500 })
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
+		{
+			column: props.column,
+			filter: limitAutoComplete && debouncedInput ? debouncedInput.trim() : undefined,
+		},
+		{
+			enabled: !limitAutoComplete || debouncedInput.trim() !== '',
+		}
+	)
+	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	return (
+		<ComboBox
+			allowEmpty={true}
+			title={props.column}
+			value={props.value}
+			inputValue={inputValue}
+			setInputValue={setInputValue}
+			options={options}
+			onSelect={(v) => props.setValue(v)}
+		/>
+	)
+}
+
 function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(props.column)
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ column: props.column })
 	return <ComboBoxMulti values={props.values} options={valuesRes.data ?? []} onSelect={props.setValues} />
+}
+
+function StringInConfigLimitAutoComplete(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
+	const [debouncedInput, _setDebouncedInput] = useState('')
+	const [inputValue, setInputValue] = useState('')
+	function setDebouncedInput(value: string) {
+		value = value.trim()
+		_setDebouncedInput(value)
+	}
+	useDebounced({ value: inputValue, onChange: setDebouncedInput, delay: 500 })
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
+		{
+			column: props.column,
+			filter: debouncedInput ? debouncedInput.trim() : undefined,
+		},
+		{
+			enabled: debouncedInput.trim() !== '',
+		}
+	)
+	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	return (
+		<ComboBoxMulti
+			values={props.values}
+			options={options}
+			onSelect={props.setValues}
+			inputValue={inputValue}
+			setInputValue={setInputValue}
+		/>
+	)
 }
 
 function NumericSingleValueConfig(props: { className?: string; value?: number; setValue: (value?: number) => void }) {
@@ -265,7 +351,7 @@ type ComboBoxOption<T extends string | null> = {
 	label?: string
 }
 const LOADING = Symbol('loading')
-function ComboBox<AllowEmpty extends boolean, T extends string | null, V extends T | (AllowEmpty extends true ? T | undefined : T)>(props: {
+function ComboBox<AllowEmpty extends boolean, T extends string | null, V = AllowEmpty extends true ? T | undefined : T>(props: {
 	allowEmpty: AllowEmpty
 	className?: string
 	title: string
@@ -283,24 +369,47 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V extends
 	} else {
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
+	//@ts-expect-error typescript is dumb
+	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
+	let selectedOptionDisplay: string
+	if (selectedOption?.value === null) {
+		selectedOptionDisplay = DH.MISSING_DISPLAY
+	} else if (selectedOption) {
+		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
+	} else {
+		selectedOptionDisplay = `Select ${props.title}...`
+	}
 	const [open, setOpen] = useState(false)
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-[200px] justify-between', props.className)}>
-					{props.value !== null ? props.value : `Select ${props.title}...`}
+				<Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-[min] justify-between', props.className)}>
+					<span>{selectedOptionDisplay}</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[200px] p-0">
+			<PopoverContent className="w-min p-0">
 				<Command>
-					<CommandInput placeholder={`Search ${props.title}...`} />
+					<CommandInput placeholder={`Search...`} />
 					<CommandList>
 						<CommandEmpty>No framework found.</CommandEmpty>
 						<CommandGroup>
 							{options === LOADING && (
 								<CommandItem>
 									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+								</CommandItem>
+							)}
+							{options !== LOADING && props.allowEmpty && (
+								<CommandItem
+									value={DH.MISSING_DISPLAY}
+									onSelect={() => {
+										if (!props.allowEmpty) return
+										props.onSelect(undefined)
+										setOpen(false)
+									}}
+								>
+									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
+									{DH.MISSING_DISPLAY}
 								</CommandItem>
 							)}
 							{options !== LOADING &&
@@ -317,7 +426,6 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V extends
 										{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
 									</CommandItem>
 								))}
-							<CommandItem>{DH.NULL_DISPLAY}</CommandItem>
 						</CommandGroup>
 					</CommandList>
 				</Command>

@@ -12,27 +12,25 @@ const router = createBrowserRouter([
 	{
 		path: '/filters/edit',
 		element: (
-			<Providers>
-				<AppContainer>
-					<FilterEditor />
-				</AppContainer>
-			</Providers>
+			<AppContainer>
+				<FilterEditor />
+			</AppContainer>
 		),
 	},
 	{
 		path: '/',
 		element: (
-			<Providers>
-				<AppContainer>
-					<LayerQueue />
-				</AppContainer>
-			</Providers>
+			<AppContainer>
+				<LayerQueue />
+			</AppContainer>
 		),
 	},
 ])
 
 createRoot(document.getElementById('root')!).render(
 	<StrictMode>
-		<RouterProvider router={router} />
+		<Providers>
+			<RouterProvider router={router} />
+		</Providers>
 	</StrictMode>
 )

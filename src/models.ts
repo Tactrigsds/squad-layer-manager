@@ -78,6 +78,12 @@ export function getLayerId(layer: LayerIdArgs) {
 
 	return `${mapLayer}:${faction1}:${faction2}`
 }
+
+export function swapFactionsInId(id: string) {
+	const [map, faction1, faction2] = id.split(':')
+	return `${map}:${faction2}:${faction1}`
+}
+
 export function getAdminSetNextLayerCommand(layer: {
 	Layer: string
 	Faction_1: string
@@ -192,14 +198,14 @@ export type NumericComparison = LessThanComparison | GreaterThanComparison | InR
 
 export const InComparison = z.object({
 	code: z.literal('in'),
-	values: z.array(z.string()),
+	values: z.array(z.string().nullable()),
 	column: z.enum(COLUMN_TYPE_MAPPINGS.string),
 })
 export type InComparison = z.infer<typeof InComparison>
 
 export const EqualComparison = z.object({
 	code: z.literal('eq'),
-	value: z.string(),
+	value: z.string().nullable(),
 	column: z.enum(COLUMN_TYPE_MAPPINGS.string),
 })
 export type EqualComparison = z.infer<typeof EqualComparison>

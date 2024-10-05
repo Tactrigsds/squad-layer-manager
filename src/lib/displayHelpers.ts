@@ -48,7 +48,8 @@ export function toShortSubfaction(unitType: M.Subfaction | null) {
 	return SUBFACTION_SHORT_NAMES[unitType]
 }
 
-export const NULL_DISPLAY = ' - '
+export const NULL_DISPLAY = ' <empty> '
+export const MISSING_DISPLAY = ' - '
 
 export function toShortLayerName(layer: M.MiniLayer) {
 	const subfaction1 = toShortSubfaction(layer.SubFac_1)
@@ -56,6 +57,7 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
 	let txt = `${LEVEL_SHORT_NAMES[layer.Level]} `
 	txt += `${layer.Gamemode}${layerVersion}`
+	txt += ' '
 	txt += `- ${layer.Faction_1} ${subfaction1}`.trim()
 	txt += ' vs '
 	txt += `${layer.Faction_2} ${subFaction2}`.trim()

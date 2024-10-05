@@ -1,23 +1,18 @@
-import { Dispatch, useEffect, useRef, useState } from 'react'
+import { Dispatch, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BehaviorSubject, Subject, Subscription } from 'rxjs'
 import { debounceTime } from 'rxjs/operators'
 
-export function useDebounced<T>({
-	setValue,
-	defaultValue,
-	waitTime,
-	onChange,
-}: {
-	setValue: (v: T) => void
-	defaultValue: T
-	waitTime: number
-	onChange: (value: T) => void
-}) {
-	const subRef = useRef(new BehaviorSubject<T>(defaultValue))
+export function useDebounced<T>({ value, delay, onChange }: { value: T; delay: number; onChange: (value: T) => void }) {
+	const subRef = useRef(new BehaviorSubject<T>(value))
 	useEffect(() => {
 		const subscription = new Subscription()
-		subscription.add(subRef.current.subscribe(setValue))
-		const debounced$ = subRef.current.pipe(debounceTime(waitTime))
+		const debounced$ = subRef.current.pipe(debounceTime(delay))
 		subscription.add(debounced$.subscribe(onChange))
-	}, [setValue, onChange, waitTime])
+		return () => subscription.unsubscribe()
+	}, [onChange, delay])
+
+	useEffect(() => {
+		if (subRef.current.value !== value) return
+		subRef.current.next(value)
+	}, [value])
 }
