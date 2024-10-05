@@ -1,9 +1,9 @@
 import { trpc } from '@/lib/trpc'
-import * as M from '@/models'
+import type * as Rcon from '@/server/systems/rcon'
 import { useState } from 'react'
 
 export function useServerInfo() {
-	const [serverInfo, setServerInfo] = useState<M.ServerStatus | null>(null)
+	const [serverInfo, setServerInfo] = useState<Rcon.ServerStatus | null>(null)
 	trpc.pollServerInfo.useSubscription(undefined, {
 		onData: (data) => {
 			setServerInfo(data)

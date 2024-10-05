@@ -1,6 +1,6 @@
 import * as M from '@/models.ts'
-import { TRPCError, initTRPC } from '@trpc/server'
-import { eq, inArray } from 'drizzle-orm'
+import { initTRPC } from '@trpc/server'
+import { like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from './db.ts'
@@ -17,13 +17,22 @@ type User = {
 const users: Record<string, User> = { id_bilbo: { id: 'id_bilbo', name: 'Bilbo Baggins', bio: 'Hobbit' } }
 export const t = initTRPC.create()
 export const appRouter = t.router({
-	getColumnUniqueColumnValues: t.procedure.input(z.enum(M.COLUMN_TYPE_MAPPINGS.string)).query(async ({ input }) => {
-		const rows = await db
-			.select({ [input]: Schema.layers[input] })
-			.from(Schema.layers)
-			.groupBy(Schema.layers[input])
-		return rows.map((row) => row[input] as string)
-	}),
+	getColumnUniqueColumnValues: t.procedure
+		.input(
+			z.object({ column: z.enum(M.COLUMN_TYPE_MAPPINGS.string), limit: z.number().positive().default(100), filter: z.string().optional() })
+		)
+		.query(async ({ input }) => {
+			const { column, limit, filter } = input
+			const rows = await db
+				.select({ [column]: Schema.layers[column] })
+				.from(Schema.layers)
+				// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
+				.where(filter ? like(Schema.layers[column], `%${filter}%`) : sql`1=1`)
+				.groupBy(Schema.layers[column])
+				.limit(limit)
+
+			return rows.map((row) => row[column])
+		}),
 	getLayers: t.procedure.input(LayersQuerySchema).query(async ({ input }) => {
 		const res = await runLayersQuery(input)
 		return res

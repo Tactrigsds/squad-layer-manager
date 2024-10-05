@@ -1,4 +1,4 @@
-import * as M from './models'
+import * as M from '@/models'
 
 export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 	AlBasrah: 'Basrah',
@@ -26,6 +26,7 @@ export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 	Sumari: 'Sumari',
 	Tallil: 'Tallil',
 	Yehorivka: 'Yeho',
+	JensensRange: 'Jensens',
 }
 
 export function toShortLevel(level: M.Layer['Level']) {
@@ -42,10 +43,21 @@ const SUBFACTION_SHORT_NAMES = {
 	AirAssault: 'Air',
 } satisfies Record<M.Subfaction, string>
 
-export function toShortSubfaction(unitType: M.Subfaction) {
+export function toShortSubfaction(unitType: M.Subfaction | null) {
+	if (unitType === null) return ''
 	return SUBFACTION_SHORT_NAMES[unitType]
 }
 
+export const NULL_DISPLAY = ' - '
+
 export function toShortLayerName(layer: M.MiniLayer) {
-	return `${LEVEL_SHORT_NAMES[layer.Level]} ${layer.Gamemode} ${layer.LayerVersion} - ${layer.Faction_1} ${SUBFACTION_SHORT_NAMES[layer.SubFac_1]} vs ${layer.Faction_2} ${SUBFACTION_SHORT_NAMES[layer.SubFac_2]}`
+	const subfaction1 = toShortSubfaction(layer.SubFac_1)
+	const subFaction2 = toShortSubfaction(layer.SubFac_2)
+	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
+	let txt = `${LEVEL_SHORT_NAMES[layer.Level]} `
+	txt += `${layer.Gamemode}${layerVersion}`
+	txt += `- ${layer.Faction_1} ${subfaction1}`.trim()
+	txt += ' vs '
+	txt += `${layer.Faction_2} ${subFaction2}`.trim()
+	return txt
 }

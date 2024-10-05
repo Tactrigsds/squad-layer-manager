@@ -36,9 +36,18 @@ const ServerInfoSchema = z.object({
 	infoUpdatedAt: z.string().datetime(),
 })
 
-export type ServerInfoRaw = z.infer<typeof ServerInfoSchema>
+export type ServerStatusRaw = z.infer<typeof ServerInfoSchema>
+export type ServerStatus = {
+	name: string
+	maxPlayers: number
+	reserveSlots: number
+	currentPlayers: number
+	currentPlayersInQueue: number
+	currentLayer: M.MiniLayer
+	nextLayer: M.MiniLayer
+}
 
-export async function fetchServerStatus(): Promise<M.ServerStatus> {
+export async function fetchServerStatus(): Promise<ServerStatus> {
 	const res = await fetch('https://tt-roles.tacticaltriggernometry.com/api/serverinfo')
 	if (!res.ok) {
 		throw new Error('Failed to fetch player list')
@@ -46,16 +55,21 @@ export async function fetchServerStatus(): Promise<M.ServerStatus> {
 	const rawInfo = ServerInfoSchema.parse(await res.json())
 	const currentLayer = parseLayer(rawInfo.currentMap, rawInfo.currentFactions)
 	const nextLayer = parseLayer(rawInfo.nextMap, rawInfo.nextFactions)
-	return {
-		...rawInfo,
+	const status = {
+		name: rawInfo.name,
+		maxPlayers: rawInfo.maxPlayers,
+		reserveSlots: rawInfo.reserveSlots,
+		currentPlayers: rawInfo.currentPlayers,
+		currentPlayersInQueue: rawInfo.currentPlayersInQueue,
 		currentLayer,
 		nextLayer,
 	}
+	return status
 }
 
 type ParsedFaction = {
 	faction: string
-	subFaction: string
+	subFaction: string | null
 }
 function parseLayer(layer: string, factions: string): M.MiniLayer {
 	const { level, gamemode, version } = M.parseLayerString(layer)
@@ -69,12 +83,12 @@ function parseLayer(layer: string, factions: string): M.MiniLayer {
 		Faction_2: faction2.faction,
 		SubFac_2: faction2.subFaction as M.MiniLayer['SubFac_2'],
 	}
-	const miniLayer: M.MiniLayer = {
+	const miniLayer = {
 		...layerIdArgs,
 		id: M.getLayerId(layerIdArgs),
 		Layer: layer,
 	} as M.MiniLayer
-	return miniLayer
+	return M.MiniLayerSchema.parse(miniLayer)
 }
 
 function parseLayerFactions(factionsRaw: string) {
@@ -83,7 +97,7 @@ function parseLayerFactions(factionsRaw: string) {
 		const [faction, subFaction] = factionRaw.split('+')
 		parsedFactions.push({
 			faction: faction.trim(),
-			subFaction: subFaction.trim(),
+			subFaction: subFaction?.trim() ?? null,
 		})
 	}
 	return parsedFactions as [ParsedFaction, ParsedFaction]

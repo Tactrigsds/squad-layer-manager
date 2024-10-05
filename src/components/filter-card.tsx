@@ -1,3 +1,4 @@
+import * as DH from '@/lib/displayHelpers'
 import { SetState } from '@/lib/react'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
@@ -5,7 +6,7 @@ import * as M from '@/models'
 import * as S from '@/stores'
 import { produce } from 'immer'
 import { useAtom } from 'jotai'
-import { Check, ChevronsUpDown, Minus, Plus } from 'lucide-react'
+import { Check, ChevronsUpDown, LoaderCircle, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from './ui/button'
@@ -27,13 +28,16 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 	return cn(base, depthColor, validColor)
 }
 
-function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetState<M.EditableFilterNode | undefined>; depth: number }) {
+export function FilterNodeDisplay(props: {
+	node: M.EditableFilterNode
+	setNode: SetState<M.EditableFilterNode | undefined>
+	depth: number
+}) {
 	const { node, setNode } = props
 	const isValid = M.isLocallyValidFilterNode(node, props.depth)
 	const [showInvalid, setShowInvalid] = useState(false)
 	const invalid = !isValid && showInvalid
 	const wrapperRef = useRef<HTMLDivElement>(null)
-
 	useEffect(() => {
 		const elt = wrapperRef.current!
 		if (isValid || !elt) return
@@ -146,27 +150,34 @@ function FilterNodeDisplay(props: { node: M.EditableFilterNode; setNode: SetStat
 	throw new Error('Invalid node type ' + node.type)
 }
 
-function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison> }) {
+export function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison>; columnEditable?: boolean }) {
 	const { comp, setComp } = props
-	const columnBox = (
+	let { columnEditable } = props
+	columnEditable ??= true
+
+	const columnBox = columnEditable ? (
 		<ComboBox
 			title="Column"
+			allowEmpty={true}
 			value={comp.column}
-			options={M.COLUMN_KEYS.filter((k) => k !== 'id')}
-			onSelect={(column) => setComp(() => ({ column }))}
+			options={M.COLUMN_KEYS}
+			onSelect={(column) => setComp(() => ({ column: column ?? undefined }))}
 		/>
+	) : (
+		<span className="px-3 py-2 border rounded-md">{comp.column}</span>
 	)
-
 	if (!comp.column) return columnBox
+	const columnOptions = M.getComparisonTypesForColumn(comp.column).map((c) => ({ value: c.code }))
 	return (
 		<>
 			{columnBox}
 			<ComboBox
+				allowEmpty={true}
 				className="w-[100px]"
 				title=""
 				value={comp.code}
-				options={M.getComparisonTypesForColumn(comp.column).map((c) => c.code)}
-				onSelect={(code) => setComp((c) => ({ column: c.column, code }))}
+				options={columnOptions}
+				onSelect={(code) => setComp((c) => ({ column: c.column, code: code ?? undefined }))}
 			/>
 			{comp.code === 'eq' && (
 				<StringEqConfig
@@ -205,9 +216,16 @@ function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.Edi
 	)
 }
 
-function StringEqConfig(props: { value: string | undefined; column: M.StringColumn; setValue: (value: string | undefined) => void }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(props.column)
-	return <ComboBox title={props.column} value={props.value} options={valuesRes.data ?? []} onSelect={props.setValue} />
+function StringEqConfig<T extends string | null>(props: {
+	value: T | undefined
+	limitAutoComplete?: boolean
+	column: M.StringColumn
+	setValue: (value: T | undefined) => void
+}) {
+	const limitAutoComplete = props.limitAutoComplete ?? false
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ column: props.column })
+	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
 }
 
 function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
@@ -241,13 +259,36 @@ function NumericRangeConfig(props: { min?: number; max?: number; setMin: (min?: 
 	)
 }
 
-function ComboBox<T extends string>(props: { className?: string; title: string; value?: T; options: T[]; onSelect: (value: T) => void }) {
+// can't use an actual symbol because cmdk doesn't support them afaik
+type ComboBoxOption<T extends string | null> = {
+	value: T
+	label?: string
+}
+const LOADING = Symbol('loading')
+function ComboBox<AllowEmpty extends boolean, T extends string | null, V extends T | (AllowEmpty extends true ? T | undefined : T)>(props: {
+	allowEmpty: AllowEmpty
+	className?: string
+	title: string
+	// value of input box
+	inputValue?: V
+	setInputValue?: (value: V) => void
+	value: V
+	options: (ComboBoxOption<T> | T)[] | typeof LOADING
+	onSelect: (value: V) => void
+}) {
+	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
+	let options: ComboBoxOption<T>[] | typeof LOADING
+	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
+		options = (props.options as T[]).map((v) => ({ value: v }))
+	} else {
+		options = props.options as ComboBoxOption<T>[] | typeof LOADING
+	}
 	const [open, setOpen] = useState(false)
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-[200px] justify-between', props.className)}>
-					{props.value ? props.value : `Select ${props.title}...`}
+					{props.value !== null ? props.value : `Select ${props.title}...`}
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
@@ -257,12 +298,26 @@ function ComboBox<T extends string>(props: { className?: string; title: string; 
 					<CommandList>
 						<CommandEmpty>No framework found.</CommandEmpty>
 						<CommandGroup>
-							{props.options.map((option) => (
-								<CommandItem key={option} value={option} onSelect={props.onSelect as (value: string) => void}>
-									<Check className={cn('mr-2 h-4 w-4', props.value === option ? 'opacity-100' : 'opacity-0')} />
-									{option}
+							{options === LOADING && (
+								<CommandItem>
+									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 								</CommandItem>
-							))}
+							)}
+							{options !== LOADING &&
+								options.map((option) => (
+									<CommandItem
+										key={option.value}
+										value={option.value === null ? NULL.current : option.value}
+										onSelect={() => {
+											props.onSelect(option.value as V)
+											setOpen(false)
+										}}
+									>
+										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
+										{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+									</CommandItem>
+								))}
+							<CommandItem>{DH.NULL_DISPLAY}</CommandItem>
 						</CommandGroup>
 					</CommandList>
 				</Command>
@@ -271,7 +326,8 @@ function ComboBox<T extends string>(props: { className?: string; title: string; 
 	)
 }
 
-function ComboBoxMulti<T extends string>(props: { values: T[]; options: T[]; onSelect: SetState<T[]> }) {
+function ComboBoxMulti<T extends string | null>(props: { values: T[]; options: T[]; onSelect: SetState<T[]> }) {
+	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	const { values, onSelect, options } = props
 	const [open, setOpen] = useState(false)
 	let valuesDisplay = values.length > 0 ? values.join(',') : 'Select...'
@@ -295,7 +351,7 @@ function ComboBoxMulti<T extends string>(props: { values: T[]; options: T[]; onS
 							{options.map((option) => (
 								<CommandItem
 									key={option}
-									value={option}
+									value={option === null ? NULL.current : option}
 									onSelect={(selected) => {
 										onSelect((values) => {
 											const selectedValue = selected as T
@@ -308,7 +364,7 @@ function ComboBoxMulti<T extends string>(props: { values: T[]; options: T[]; onS
 									}}
 								>
 									<Check className={cn('mr-2 h-4 w-4', values.includes(option) ? 'opacity-100' : 'opacity-0')} />
-									{option}
+									{option === null ? DH.NULL_DISPLAY : option}
 								</CommandItem>
 							))}
 						</CommandGroup>

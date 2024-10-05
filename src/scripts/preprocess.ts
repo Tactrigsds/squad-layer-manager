@@ -125,6 +125,61 @@ async function main() {
 		console.log(`Inserted ${i + chunk.length} rows`)
 	}
 
+	// add jensens range layers
+	const extraJensensLayers: M.Layer[] = [
+		'JensensRange_ADF-PLA',
+		'JensensRange_BAF-IMF',
+		'JensensRange_CAF-INS',
+		'JensensRange_PLANMC-VDV',
+		'JensensRange_USA-RGF',
+		'JensensRange_USA-TLF',
+		'JensensRange_USMC-MEA',
+	].map((layer) => {
+		const [level, factions] = layer.split('_')
+		const [faction1, faction2] = factions.split('-')
+		return {
+			id: M.getLayerId({
+				Level: level,
+				Gamemode: 'Training',
+				LayerVersion: null,
+				Faction_1: faction1,
+				SubFac_1: null,
+				Faction_2: faction2,
+				SubFac_2: null,
+			}),
+			randomOrdinal: Math.floor(Math.random() * processedLayers.length),
+			Level: level,
+			Layer: layer,
+			Size: 'Small',
+			Gamemode: 'Training',
+			LayerVersion: null,
+			Faction_1: faction1,
+			SubFac_1: null,
+			Faction_2: faction2,
+			SubFac_2: null,
+			Logistics_1: 0,
+			Transportation_1: 0,
+			'Anti-Infantry_1': 0,
+			Armor_1: 0,
+			ZERO_Score_1: 0,
+			Logistics_2: 0,
+			Transportation_2: 0,
+			'Anti-Infantry_2': 0,
+			Armor_2: 0,
+			ZERO_Score_2: 0,
+			Balance_Differential: 0,
+			'Asymmetry Score': 0,
+			Logistics_Diff: 0,
+			Transportation_Diff: 0,
+			'Anti-Infantry_Diff': 0,
+			Armor_Diff: 0,
+			ZERO_Score_Diff: 0,
+		}
+	})
+
+	await db.insert(Schema.layers).values(extraJensensLayers)
+	console.log(`Inserted ${extraJensensLayers.length} extra Jensen's Range layers`)
+
 	const t3 = performance.now()
 	const elapsedSecondsInsert = (t3 - t2) / 1000
 	console.log(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)

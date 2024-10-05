@@ -4,6 +4,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
+import * as DH from '@/lib/displayHelpers'
 import { trpc } from '@/lib/trpc'
 import * as M from '@/models'
 import { LayersQuery } from '@/server/layers-query'
@@ -33,8 +34,7 @@ import { Switch } from './ui/switch'
 
 const columnHelper = createColumnHelper<M.Layer>()
 
-const formatNumber = (value: number | null | undefined) => {
-	if (value == null) return '<missing>'
+const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
 	if (numeric > 0) return `+${formatted}`
@@ -51,7 +51,11 @@ function getColumn(key: M.LayerColumnKey) {
 				</Button>
 			)
 		},
-		cell: (info) => (M.COLUMN_KEY_TO_TYPE[key] === 'float' ? formatNumber(info.getValue() as number) : info.getValue() || '<missing>'),
+		cell: (info) => {
+			const value = info.getValue()
+			if (value == null) return DH.NULL_DISPLAY
+			return M.COLUMN_KEY_TO_TYPE[key] === 'float' ? formatFloat(value as number) : value
+		},
 	})
 }
 

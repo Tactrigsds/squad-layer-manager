@@ -1,6 +1,5 @@
-import * as DH from '@/displayHelpers'
 import { useServerInfo } from '@/hooks/use-server-info'
-import { trpc } from '@/lib/trpc'
+import * as DH from '@/lib/displayHelpers'
 import { GridIcon } from '@radix-ui/react-icons'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
@@ -15,13 +14,13 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{serverInfo && (
 						<>
 							<div>
-								{serverInfo.currentPlayers} / {serverInfo.maxPlayers}
+								{serverInfo.currentPlayers} / {serverInfo.maxPlayers} players online
 							</div>
 							<div className="grid grid-cols-[auto_auto]">
 								<span className="mr-2">Now playing:</span>
 								<span>{DH.toShortLayerName(serverInfo.currentLayer)}</span>
 								<span className="mr-2">Next:</span>
-								<span> {DH.toShortLayerName(serverInfo.nextLayer)}</span>
+								<span>{DH.toShortLayerName(serverInfo.nextLayer)}</span>
 							</div>
 						</>
 					)}

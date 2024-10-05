@@ -36,6 +36,7 @@ const MAP_ABBREVIATION = {
 	Sumari: 'SM',
 	Tallil: 'TL',
 	Yehorivka: 'YH',
+	JensensRange: 'JR',
 } as Record<string, string>
 
 const UNIT_ABBREVIATION = {
@@ -51,22 +52,30 @@ const UNIT_ABBREVIATION = {
 export type LayerIdArgs = {
 	Level: string
 	Gamemode: string
-	LayerVersion: string
+	LayerVersion: string | null
 	Faction_1: string
-	SubFac_1: string
+	SubFac_1: string | null
 	Faction_2: string
-	SubFac_2: string
+	SubFac_2: string | null
 }
 
 export function parseLayerString(layer: string) {
-	const [level, gamemode, version] = layer.split('_')
-	return { level, gamemode, version }
+	// eslint-disable-next-line prefer-const
+	let [level, gamemode, version] = layer.split('_')
+	if (level === 'JensensRange') gamemode = 'Training'
+	return { level, gamemode, version: version?.toUpperCase() ?? null }
 }
 
 export function getLayerId(layer: LayerIdArgs) {
-	const mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}-${layer.LayerVersion.toUpperCase()}`
-	const faction1 = `${[layer.Faction_1]}-${UNIT_ABBREVIATION[layer.SubFac_1]}`
-	const faction2 = `${layer.Faction_2}-${UNIT_ABBREVIATION[layer.SubFac_2]}`
+	let mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}`
+	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion}`
+
+	let faction1 = layer.Faction_1
+	if (layer.SubFac_1) faction1 += `-${UNIT_ABBREVIATION[layer.SubFac_1]}`
+
+	let faction2 = layer.Faction_2
+	if (layer.SubFac_2) faction2 += `-${UNIT_ABBREVIATION[layer.SubFac_2]}`
+
 	return `${mapLayer}:${faction1}:${faction2}`
 }
 export function getAdminSetNextLayerCommand(layer: {
@@ -276,17 +285,23 @@ export const LayerQueueSchema = z.array(LayerQueueItemSchema)
 export type LayerQueue = z.infer<typeof LayerQueueSchema>
 export type LayerQueueItem = LayerQueue[number]
 // doing this because Omit<> sucks to work with
-export type MiniLayer = {
-	id: Layer['id']
-	Level: Layer['Level']
-	Layer: Layer['Layer']
-	Gamemode: Layer['Gamemode']
-	LayerVersion: Layer['LayerVersion']
-	Faction_1: Layer['Faction_1']
-	SubFac_1: Layer['SubFac_1']
-	Faction_2: Layer['Faction_2']
-	SubFac_2: Layer['SubFac_2']
-}
+
+export const MiniLayerSchema = z.object({
+	id: z.string(),
+	Level: z.string(),
+	Layer: z.string(),
+	Gamemode: z.string(),
+	LayerVersion: z
+		.string()
+		.nullable()
+		.transform((v) => (v === null ? v : v.toUpperCase())),
+	Faction_1: z.string(),
+	SubFac_1: z.enum(C.SUBFACTIONS).nullable(),
+	Faction_2: z.string(),
+	SubFac_2: z.enum(C.SUBFACTIONS).nullable(),
+})
+
+export type MiniLayer = z.infer<typeof MiniLayerSchema>
 
 export type LayerVote = unknown
 
@@ -305,14 +320,4 @@ export type LayerQueueUpdate = z.infer<typeof LayerQueueUpdateSchema>
 
 export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
 	layers: MiniLayer[]
-}
-
-export type ServerStatus = {
-	name: string
-	currentPlayers: number
-	maxPlayers: number
-	currentPlayersInQueue: number
-	currentVIPsInQueue: number
-	currentLayer: MiniLayer
-	nextLayer: MiniLayer
 }

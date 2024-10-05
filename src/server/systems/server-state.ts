@@ -4,17 +4,17 @@ import { db } from '@/server/db.ts'
 import * as S from '@/server/schema.ts'
 import * as Rcon from '@/server/systems/rcon'
 import { tracked } from '@trpc/server'
-import { eq, inArray } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { Subject, interval, share, shareReplay, startWith, switchMap, tap } from 'rxjs'
 
 const startingQueue: M.LayerQueue = [
 	{ layerId: 'AB-RAAS-V1:USMC-MT:RGF-SP', generated: true },
 	{ layerId: 'KD-RAAS-V1:INS-SP:RGF-MT', generated: true },
-	// { layerId: 'KH-TC-V1:MEA-SP:WPMC-AA', generated: true },
-	// { layerId: 'KH-TC-V1:VDV-SP:ADF-AA', generated: true },
-	// { layerId: 'AB-AAS-V1:USMC-CA:RGF-CA', generated: true },
-	// { layerId: 'AB-RAAS-V1:USA-LI:PLANMC-MT', generated: true },
-	// { layerId: 'BC-RAAS-V1:PLANMC-AR:USMC-AR', generated: true },
+	{ layerId: 'KH-TC-V1:MEA-SP:WPMC-AA', generated: true },
+	{ layerId: 'KH-TC-V1:VDV-SP:ADF-AA', generated: true },
+	{ layerId: 'AB-AAS-V1:USMC-CA:RGF-CA', generated: true },
+	{ layerId: 'AB-RAAS-V1:USA-LI:PLANMC-MT', generated: true },
+	{ layerId: 'BC-RAAS-V1:PLANMC-AR:USMC-AR', generated: true },
 	// { layerId: 'BL-AAS-V1:IMF-MZ:RGF-LI', generated: true },
 	// { layerId: 'AN-RAAS-V1:ADF-CA:WPMC-LI', generated: true },
 	// { layerId: 'BC-RAAS-V1:USA-MZ:PLANMC-AR', generated: true },
