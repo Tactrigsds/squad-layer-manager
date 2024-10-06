@@ -2,7 +2,7 @@ import * as M from '@/models.ts'
 import { db } from '@/server/db'
 import * as Schema from '@/server/schema'
 import { SQL, sql } from 'drizzle-orm'
-import { and, asc, between, desc, eq, gt, gte, inArray, lt, or } from 'drizzle-orm/expressions'
+import { and, asc, between, desc, eq, gt, gte, inArray, like, lt, or } from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'
 import { z } from 'zod'
 
@@ -104,7 +104,7 @@ export async function runLayersQuery({ pageIndex, pageSize, sort, filter }: Laye
 	}
 }
 
-function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined {
+export function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined {
 	if (filter.type === 'comp') {
 		const comp = filter.comp!
 		const column = Schema.layers[comp.column]
@@ -114,6 +114,8 @@ function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined {
 				return eq(column, comp.value)
 			case 'in':
 				return inArray(column, comp.values)
+			case 'like':
+				return like(column, comp.value)
 			case 'gt':
 				return gt(column, comp.value)
 			case 'lt':

@@ -1,4 +1,3 @@
-import { createContext } from '@/context'
 import ws from '@fastify/websocket'
 import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import dotenv from 'dotenv'
@@ -7,14 +6,17 @@ import fastifySocketIo from 'fastify-socket.io'
 import { Server } from 'socket.io'
 
 import { setupDatabase } from './db'
-import { type AppRouter, appRouter } from './router'
+import baseLogger from './logger.ts'
+import * as TrpcRouter from './router'
 
 dotenv.config()
 setupDatabase()
 
 const server = fastify({
 	maxParamLength: 5000,
+	loggerInstance: baseLogger,
 })
+
 server.register(ws)
 server.register(fastifySocketIo)
 
@@ -27,13 +29,14 @@ server.register(fastifyTRPCPlugin, {
 		pongWaitMs: 5000,
 	},
 	trpcOptions: {
-		router: appRouter,
-		createContext,
+		router: TrpcRouter.appRouter,
+		createContext: TrpcRouter.createContext,
 		onError({ path, error }) {
 			// report to error monitoring
-			console.error(`Error in tRPC handler on path '${path}':`, error)
+			console.log('error')
+			server.log.error(error, `Error in tRPC handler on path '${path}':`)
 		},
-	} satisfies FastifyTRPCPluginOptions<AppRouter>['trpcOptions'],
+	} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 })
 
 server.ready((err) => {
@@ -53,7 +56,7 @@ server.ready((err) => {
 	try {
 		const port = 3000
 		await server.listen({ port })
-		console.log('listening on port ', port)
+		server.log.info('listening on port ', port)
 	} catch (err) {
 		server.log.error(err)
 		process.exit(1)

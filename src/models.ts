@@ -117,6 +117,7 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'inrange', displayName: 'In Range' },
 	{ coltype: 'string', code: 'in', displayName: 'In' },
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
+	{ coltype: 'string', code: 'like', displayName: 'Like' },
 ] as const satisfies ComparisonType[]
 
 // we're keeping this definition separate to reduce type inference a bit
@@ -141,7 +142,7 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'ZERO_Score_Diff',
 	] as const,
 	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
-	integer: ['randomOrdinal'] as const,
+	integer: [] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
 export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPINGS.float, ...COLUMN_TYPE_MAPPINGS.integer] as [
@@ -166,7 +167,7 @@ export function getComparisonTypesForColumn(column: LayerColumnKey) {
 export type EditableComparison = {
 	column?: LayerColumnKey
 	code?: (typeof COMPARISON_TYPES)[number]['code']
-	value?: number | string
+	value?: number | string | null
 	values?: string[]
 	min?: number
 	max?: number
@@ -210,18 +211,24 @@ export const EqualComparison = z.object({
 })
 export type EqualComparison = z.infer<typeof EqualComparison>
 
-export type StringComparison = InComparison | EqualComparison
+export const LikeComparison = z.object({
+	code: z.literal('like'),
+	value: z.string(),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.string),
+})
+
+export type LikeComparison = z.infer<typeof LikeComparison>
+
+export type StringComparison = InComparison | EqualComparison | LikeComparison
 
 // Combine into the final ComparisonSchema
 export const ComparisonSchema = z
-	.discriminatedUnion('code', [LessThanComparison, GreaterThanComparison, InRangeComparison, InComparison, EqualComparison])
+	.discriminatedUnion('code', [LessThanComparison, GreaterThanComparison, InRangeComparison, InComparison, EqualComparison, LikeComparison])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), { message: 'Invalid comparison type' })
 	.refine(
 		(comp) => {
 			const coltype = COMPARISON_TYPES.find((type) => type.code === comp.code)!.coltype
-			return coltype === 'float'
-				? (COLUMN_TYPE_MAPPINGS.float as string[]).includes(comp.column)
-				: (COLUMN_TYPE_MAPPINGS.string as string[]).includes(comp.column)
+			return COLUMN_KEY_TO_TYPE[comp.column] === coltype
 		},
 		{ message: 'Invalid column type for comparison type' }
 	)

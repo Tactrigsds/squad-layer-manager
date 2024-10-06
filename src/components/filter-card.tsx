@@ -150,7 +150,7 @@ export function FilterNodeDisplay(props: {
 
 	throw new Error('Invalid node type ' + node.type)
 }
-const LIMIT_AUTOCOMPLETE_COLS: M.LayerColumnKey = ['id']
+const LIMIT_AUTOCOMPLETE_COLS: M.LayerColumnKey[] = ['id']
 
 export function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison>; columnEditable?: boolean }) {
 	const { comp, setComp } = props
@@ -183,14 +183,14 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 			{comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfig
 					column={comp.column as M.StringColumn}
-					value={comp.value as string | undefined}
+					value={comp.value as string | undefined | null}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
 				/>
 			)}
 			{comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfigLimitedAutocomplete
 					column={comp.column as M.StringColumn}
-					value={comp.value as string | undefined}
+					value={comp.value as string | undefined | null}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
 				/>
 			)}
@@ -240,74 +240,103 @@ function StringEqConfig<T extends string | null>(props: {
 	column: M.StringColumn
 	setValue: (value: T | undefined) => void
 }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ column: props.column })
-	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ columns: [props.column] })
+	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
 }
 
 function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
 	value: T | undefined
-	limitAutoComplete?: boolean
 	column: M.StringColumn
 	setValue: (value: T | undefined) => void
 }) {
-	const limitAutoComplete = props.limitAutoComplete ?? false
-	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, setInputValue] = useState(props.value ?? '')
-	function setDebouncedInput(value: string) {
-		value = value.trim()
-		_setDebouncedInput(value)
-		if (value && options && options !== LOADING && options.includes(value)) {
-			props.setValue(value as T)
-		}
-	}
-	useDebounced({ value: inputValue, onChange: setDebouncedInput, delay: 500 })
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
-		{
-			column: props.column,
-			filter: limitAutoComplete && debouncedInput ? debouncedInput.trim() : undefined,
-		},
-		{
-			enabled: !limitAutoComplete || debouncedInput.trim() !== '',
-		}
-	)
-	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	const autocomplete = useLimitedColumnAutocomplete(props.column, props.value)
 	return (
 		<ComboBox
-			allowEmpty={true}
+			allowEmpty={false}
 			title={props.column}
 			value={props.value}
-			inputValue={inputValue}
-			setInputValue={setInputValue}
-			options={options}
+			inputValue={autocomplete.inputValue}
+			setInputValue={autocomplete.setInputValue}
+			options={autocomplete.options}
 			onSelect={(v) => props.setValue(v)}
 		/>
 	)
 }
 
-function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ column: props.column })
-	return <ComboBoxMulti values={props.values} options={valuesRes.data ?? []} onSelect={props.setValues} />
+function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined) {
+	const [debouncedInput, _setDebouncedInput] = useState('')
+	const [inputValue, _setInputValue] = useState<string>(value ?? '')
+	function setDebouncedInput(value: string) {
+		const v = value.trim() as T
+		_setDebouncedInput(v)
+	}
+	const debouncer = useDebounced({ defaultValue: inputValue, onChange: setDebouncedInput, delay: 500 })
+	function setInputValue(value: string) {
+		_setInputValue(value)
+		debouncer.setValue(value)
+	}
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
+		{
+			columns: [column],
+			filter: debouncedInput !== '' ? buildLikeFilter(column, debouncedInput) : undefined,
+		},
+		{
+			enabled: debouncedInput !== '',
+		}
+	)
+	let options: T[] | typeof LOADING = LOADING
+	console.log('debouncedInput', debouncedInput)
+	console.log('input', inputValue)
+	if (debouncedInput === '') options = []
+	else if (debouncedInput && valuesRes.isSuccess) options = valuesRes.data!.map((v) => v[column])
+
+	return {
+		inputValue,
+		setInputValue,
+		options,
+	}
+}
+
+function buildLikeFilter(column: M.StringColumn, input: string): M.FilterNode {
+	return {
+		type: 'comp',
+		comp: {
+			code: 'like',
+			column: column,
+			value: `%${input}%`,
+		},
+	}
+}
+
+function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]>; filter?: M.FilterNode }) {
+	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ columns: [props.column], filter: props.filter, limit: 25 })
+	return <ComboBoxMulti values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
 }
 
 function StringInConfigLimitAutoComplete(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, setInputValue] = useState('')
+	const [inputValue, _setInputValue] = useState('')
 	function setDebouncedInput(value: string) {
 		value = value.trim()
 		_setDebouncedInput(value)
 	}
-	useDebounced({ value: inputValue, onChange: setDebouncedInput, delay: 500 })
+	const debounce = useDebounced({ defaultValue: inputValue, onChange: setDebouncedInput, delay: 500 })
+	function setInputValue(value: string) {
+		_setInputValue(value)
+		debounce.setValue(value)
+	}
+	const filter = debouncedInput.trim() ? buildLikeFilter(props.column, debouncedInput) : undefined
 	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
 		{
-			column: props.column,
-			filter: debouncedInput ? debouncedInput.trim() : undefined,
+			columns: [props.column],
+			filter,
 		},
 		{
 			enabled: debouncedInput.trim() !== '',
 		}
 	)
-	const options = valuesRes.isLoading ? LOADING : valuesRes.data!
+	const options = valuesRes.isLoading ? [] : valuesRes.data!.map((r) => r[props.column] as string)!
 	return (
 		<ComboBoxMulti
 			values={props.values}
@@ -351,13 +380,14 @@ type ComboBoxOption<T extends string | null> = {
 	label?: string
 }
 const LOADING = Symbol('loading')
+// TODO messy type definitions causing weirdness
 function ComboBox<AllowEmpty extends boolean, T extends string | null, V = AllowEmpty extends true ? T | undefined : T>(props: {
 	allowEmpty: AllowEmpty
 	className?: string
 	title: string
 	// value of input box
-	inputValue?: V
-	setInputValue?: (value: V) => void
+	inputValue?: string
+	setInputValue?: (value: string) => void
 	value: V
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: (value: V) => void
@@ -369,6 +399,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	} else {
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
+
 	//@ts-expect-error typescript is dumb
 	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
 	let selectedOptionDisplay: string
@@ -380,6 +411,11 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 		selectedOptionDisplay = `Select ${props.title}...`
 	}
 	const [open, setOpen] = useState(false)
+
+	function onSelect(value: V) {
+		props.onSelect(value)
+		setOpen(false)
+	}
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -388,11 +424,11 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-min p-0">
-				<Command>
-					<CommandInput placeholder={`Search...`} />
+			<PopoverContent className="w-[200px] p-0">
+				<Command shouldFilter={false}>
+					<CommandInput placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
-						<CommandEmpty>No framework found.</CommandEmpty>
+						<CommandEmpty>No {props.title} found.</CommandEmpty>
 						<CommandGroup>
 							{options === LOADING && (
 								<CommandItem>
@@ -404,8 +440,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 									value={DH.MISSING_DISPLAY}
 									onSelect={() => {
 										if (!props.allowEmpty) return
-										props.onSelect(undefined)
-										setOpen(false)
+										onSelect(undefined)
 									}}
 								>
 									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
@@ -418,8 +453,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 										key={option.value}
 										value={option.value === null ? NULL.current : option.value}
 										onSelect={() => {
-											props.onSelect(option.value as V)
-											setOpen(false)
+											onSelect(option.value as V)
 										}}
 									>
 										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
@@ -434,7 +468,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	)
 }
 
-function ComboBoxMulti<T extends string | null>(props: { values: T[]; options: T[]; onSelect: SetState<T[]> }) {
+function ComboBoxMulti<T extends string | null>(props: { values: T[]; inputValue: string; options: T[]; onSelect: SetState<T[]> }) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	const { values, onSelect, options } = props
 	const [open, setOpen] = useState(false)

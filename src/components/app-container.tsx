@@ -2,10 +2,7 @@ import { useServerInfo } from '@/hooks/use-server-info'
 import * as DH from '@/lib/displayHelpers'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import { GridIcon } from '@radix-ui/react-icons'
 import { Link } from 'react-router-dom'
-
-import { Separator } from './ui/separator'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()

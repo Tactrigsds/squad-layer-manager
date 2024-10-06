@@ -9,6 +9,9 @@
 		"lint": "eslint .",
 		"preview": "vite preview",
 		"server": "tsx --tsconfig tsconfig.node.json src/server/server.ts",
+		"server:dev": "NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/server.ts",
+		"__comment__": "use chrome node devtools with below script",
+		"server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/server.ts",
 		"preprocess": "tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts"
 	},
 	"dependencies": {
@@ -58,6 +61,7 @@
 		"lucide-react": "^0.446.0",
 		"mysql2": "^3.11.3",
 		"pino": "^9.4.0",
+		"pino-abstract-transport": "^2.0.0",
 		"pino-pretty": "^11.2.2",
 		"prettier-plugin-tailwindcss": "^0.6.8",
 		"react": "^18.3.1",
