@@ -269,7 +269,7 @@ function QueueItem(props: {
 						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
 							<GripVertical />
 						</Button>
-						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode}
+						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
 					</div>
 					<div className="flex items-center min-h-0 space-x-1">
 						<span>
