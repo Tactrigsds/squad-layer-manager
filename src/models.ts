@@ -242,7 +242,20 @@ export const BaseFilterNodeSchema = z.object({
 	comp: ComparisonSchema.optional(),
 })
 
-export type FilterNode = z.infer<typeof BaseFilterNodeSchema> & { children?: FilterNode[] }
+export type FilterNode =
+	| {
+			type: 'and'
+			children: FilterNode[]
+	  }
+	| {
+			type: 'or'
+			children: FilterNode[]
+	  }
+	| {
+			type: 'comp'
+			comp: Comparison
+	  }
+
 export type EditableFilterNode =
 	| {
 			type: 'and'
@@ -262,12 +275,12 @@ export function isValidFilterNode(node: EditableFilterNode): node is FilterNode 
 	if (node.type === 'comp') {
 		return isValidComparison(node.comp)
 	}
-	return node.children.length > 0 && node.children.every((child) => isValidFilterNode(child))
+	return node.children.every((child) => isValidFilterNode(child))
 }
 
 // excludes children
 export function isLocallyValidFilterNode(node: EditableFilterNode, depth: number) {
-	if (node.type === 'and' || node.type === 'or') return depth === 0 || node.children.length > 0
+	if (node.type === 'and' || node.type === 'or') return true
 	if (node.type === 'comp') return isValidComparison(node.comp)
 	throw new Error('Invalid node type')
 }
@@ -281,7 +294,7 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = BaseFilterNodeSchema.exte
 })
 	.refine((node) => node.type !== 'comp' || node.comp !== undefined, { message: 'comp must be defined for type "comp"' })
 	.refine((node) => node.type !== 'comp' || node.children === undefined, { message: 'children must not be defined for type "comp"' })
-	.refine((node) => !['and', 'or'].includes(node.type) || (node.children && node.children.length > 0), {
+	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
 		message: 'children must be defined for type "and" or "or"',
 	})
 

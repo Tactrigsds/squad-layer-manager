@@ -1,8 +1,10 @@
 import * as M from '@/models.ts'
-import { db } from '@/server/db'
+import { Context } from '@/server/context'
+import * as DB from '@/server/db.ts'
 import * as Schema from '@/server/schema'
 import { SQL, sql } from 'drizzle-orm'
 import { and, asc, between, desc, eq, gt, gte, inArray, like, lt, or } from 'drizzle-orm/expressions'
+import { SelectedFields } from 'drizzle-orm/mysql-core'
 import seedrandom from 'seedrandom'
 import { z } from 'zod'
 
@@ -17,90 +19,51 @@ export const LayersQuerySchema = z.object({
 		}),
 		z.object({
 			type: z.literal('random'),
-			seed: z.string().max(32).describe('entropy seed for random sort'),
+			seed: z.number().int().positive(),
 		}),
 	]),
+	groupBy: z.array(z.enum(M.COLUMN_KEYS))?.optional(),
 	filter: M.FilterNodeSchema.optional(),
 })
 
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
-export async function runLayersQuery({ pageIndex, pageSize, sort, filter }: LayersQuery) {
+export async function runLayersQuery(args: { input: LayersQuery; ctx: Context }) {
+	const { ctx, input: input } = args
 	let whereClause: any
 	let whereCondition = sql`1=1`
+	const db = DB.get(ctx)
 
-	if (filter) {
-		whereCondition = getWhereFilterConditions(filter)
+	if (input.filter) {
+		whereCondition = getWhereFilterConditions(input.filter) ?? whereCondition
 	}
 
-	let layers: M.Layer[]
-	let totalCount: number
-	if (sort.type === 'column') {
-		const [layersResult, countResult] = await Promise.all([
-			db
-				.select()
-				.from(Schema.layers)
-				.where(whereCondition)
-				.orderBy(sort.sortDirection === 'ASC' ? asc(Schema.layers[sort.sortBy]) : desc(Schema.layers[sort.sortBy]))
-				.offset(pageIndex * pageSize)
-				.limit(pageSize),
-			db
-				.select({ count: sql<number>`count(*)` })
-				.from(Schema.layers)
-				.where(whereCondition),
-		])
+	let query = db.select().from(Schema.layers).where(whereCondition)
 
-		layers = layersResult
-		;[{ count: totalCount }] = countResult
-	} else if (sort.type === 'random') {
-		/** -------- random sort --------
-		 * mysql doesn't have a built-in method of seeding a random sort. Instead, we assign a random integer to each row(not necessarily unique), and then just return a random range with our required size. there will be correlations in similar random numbers, so we need to update the random ordinals every once and a while. right now we're just going to do it everyt ime.
-		 */
-		// Count total layers
-		const [{ count: countNoFilters }] = await db.select({ count: sql<number>`count(*)` }).from(Schema.layers)
+	if (input.sort.type === 'column') {
+		query = query.orderBy(
+			input.sort.sortDirection === 'ASC' ? asc(Schema.layers[input.sort.sortBy]) : desc(Schema.layers[input.sort.sortBy])
+		)
+	} else if (input.sort.type === 'random') {
+		query = query.orderBy(sql`RAND(${input.sort.seed})`)
+	}
 
-		// Count layers with filters
-		const [countWithFilters] = await db
+	if (input.groupBy) {
+		query = query.groupBy(...input.groupBy.map((col) => Schema.layers[col]))
+	}
+	const [layers, [countResult]] = await Promise.all([
+		query.offset(input.pageIndex * input.pageSize).limit(input.pageSize),
+		db
 			.select({ count: sql<number>`count(*)` })
 			.from(Schema.layers)
-			.where(whereClause || sql`1=1`)
-
-		const count = countWithFilters.count
-
-		const toleranceCoefficient = 2
-		const random = seedrandom(sort.seed).quick()
-		const rangeSize = Math.ceil(pageSize * (countNoFilters / count)) * toleranceCoefficient
-		const rangeStart = Math.floor(random * (count - rangeSize))
-		const rangeEnd = rangeStart + rangeSize
-
-		// Fetch layers
-		const fetchedLayers = await db
-			.select()
-			.from(Schema.layers)
-			.where(and(whereClause || sql`1=1`, gte(Schema.layers.randomOrdinal, rangeStart), lt(Schema.layers.randomOrdinal, rangeEnd)))
-			.orderBy(Schema.layers.randomOrdinal)
-			.limit(pageSize)
-
-		// Update random ordinals
-		const updatePromises = fetchedLayers.map((layer) =>
-			db
-				.update(Schema.layers)
-				.set({ randomOrdinal: Math.floor(Math.random() * countNoFilters) })
-				.where(eq(Schema.layers.id, layer.id))
-		)
-		layers = fetchedLayers
-		totalCount = countWithFilters.count
-
-		Promise.all(updatePromises).catch(console.error)
-	} else {
-		//@ts-expect-error should be unreachable
-		throw new Error(`Unknown sort type: ${sort.type}`)
-	}
+			.where(whereCondition),
+	])
+	const totalCount = countResult.count
 
 	return {
 		layers,
 		totalCount,
-		pageCount: sort.type === 'random' ? 1 : Math.ceil(totalCount / pageSize),
+		pageCount: input.sort.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
 	}
 }
 

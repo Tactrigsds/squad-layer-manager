@@ -1,22 +1,27 @@
 import ws from '@fastify/websocket'
 import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
-import dotenv from 'dotenv'
 import fastify from 'fastify'
 import fastifySocketIo from 'fastify-socket.io'
 import { Server } from 'socket.io'
 
+import { createContext } from './context.ts'
 import { setupDatabase } from './db'
-import baseLogger from './logger.ts'
+import { setupEnv } from './env.ts'
+import { baseLogger, setupLogger } from './logger.ts'
 import * as TrpcRouter from './router'
+import { setupLayerQueue } from './systems/layer-queue.ts'
 
-dotenv.config()
+// --------  system initialization --------
+setupEnv()
+await setupLogger()
 setupDatabase()
+setupLayerQueue()
 
+// --------  server configuration --------
 const server = fastify({
 	maxParamLength: 5000,
 	loggerInstance: baseLogger,
 })
-
 server.register(ws)
 server.register(fastifySocketIo)
 
@@ -30,10 +35,8 @@ server.register(fastifyTRPCPlugin, {
 	},
 	trpcOptions: {
 		router: TrpcRouter.appRouter,
-		createContext: TrpcRouter.createContext,
+		createContext: createContext,
 		onError({ path, error }) {
-			// report to error monitoring
-			console.log('error')
 			server.log.error(error, `Error in tRPC handler on path '${path}':`)
 		},
 	} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
@@ -52,16 +55,16 @@ server.ready((err) => {
 		})
 	})
 })
-;(async () => {
-	try {
-		const port = 3000
-		await server.listen({ port })
-		server.log.info('listening on port ', port)
-	} catch (err) {
-		server.log.error(err)
-		process.exit(1)
-	}
-})()
+
+// --------  start server  --------
+try {
+	const port = 3000
+	await server.listen({ port })
+	server.log.info('listening on port ', port)
+} catch (err) {
+	server.log.error(err)
+	process.exit(1)
+}
 
 declare module 'fastify' {
 	interface FastifyInstance {

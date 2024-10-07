@@ -1,4 +1,5 @@
-import { Observable, asapScheduler, observeOn } from 'rxjs'
+import { Logger } from 'pino'
+import { Observable, OperatorFunction, asapScheduler, observeOn } from 'rxjs'
 
 type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }
 
@@ -35,4 +36,28 @@ export async function* toAsyncGenerator<T>(observable: Observable<T>) {
 	} finally {
 		sub.unsubscribe()
 	}
+}
+
+/**
+ * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
+ * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
+ */
+export function traceTag<T>(tag: string, ctx: { log: Logger }): OperatorFunction<T, T> {
+	// surely this prevents all potential RCEs right???
+	if (!/^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(tag)) {
+		const error = new Error(`traceTag: tag "${tag}" is not a valid function name`)
+		ctx.log.error(error)
+		return (o: Observable<T>) => o
+	}
+
+	return (o: Observable<T>) =>
+		new Function(
+			'observable',
+			'observableConstructor',
+			`return new observableConstructor((s) => observable.subscribe({
+				next: function __${tag}__next(t) {s.next(t)},
+				error: function __${tag}__error(e) {s.error(e)},
+				complete: function __${tag}__complete() {s.complete()}
+			}))`
+		)(o, Observable)
 }

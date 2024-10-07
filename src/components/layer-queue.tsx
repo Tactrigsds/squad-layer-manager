@@ -1,8 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useServerInfo } from '@/hooks/use-server-info'
 import * as Helpers from '@/lib/displayHelpers'
+import * as FB from '@/lib/filterBuilders.ts'
 import { sleep } from '@/lib/promise'
 import { trpc } from '@/lib/trpc'
 import * as Typography from '@/lib/typography.ts'
@@ -11,7 +11,7 @@ import * as M from '@/models'
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
-import { EllipsisVertical, GripVertical, PlugIcon, PlusIcon } from 'lucide-react'
+import { EllipsisVertical, GripVertical, PlusIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import React from 'react'
 
@@ -336,44 +336,53 @@ function QueueItemSeparator(props: { afterIndex: number; isLast: boolean }) {
 	)
 }
 
-const DEFAULT_ADD_LAYER_FILTERS: Extract<M.EditableFilterNode, { type: 'and' }> = {
+const DEFAULT_ADD_LAYER_FILTERS = {
 	type: 'and',
 	children: [
 		{ type: 'comp', comp: { code: 'eq', column: 'Level' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'Gamemode' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'LayerVersion' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'Faction_1' } },
+		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_1' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'Faction_2' } },
+		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_2' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'id' } },
 	],
-}
+} satisfies Extract<M.EditableFilterNode, { type: 'and' }>
+
 function AddLayerPopover(props: {
 	children: React.ReactNode
 	addLayers: (ids: M.MiniLayer[]) => void
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 }) {
-	const [filter, setFilter] = useState<Extract<M.EditableFilterNode, { type: 'and' }>>(DEFAULT_ADD_LAYER_FILTERS)
+	const [filter, setFilter] = useState(DEFAULT_ADD_LAYER_FILTERS)
 
-	const validFilter = { ...filter }
-	validFilter.children = filter.children.filter((node) => {
-		return M.isValidFilterNode(node)
-	})
-
-	const shouldQuery = validFilter.children.length > 0
-
+	const filterStates = filter.children.map((f) => f.type === 'comp' && M.isValidComparison(f.comp))
+	const validFilter = filterStates.includes(true)
+		? FB.and(...(filter.children.filter((f) => f.type === 'comp' && M.isValidComparison(f.comp)) as M.FilterNode[]))
+		: undefined
+	const shouldQuery = filterStates.includes(true)
+	const seedRef = useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
+	//
 	const res = trpc.getLayers.useQuery(
 		{
-			pageSize: 15,
-			filter: validFilter as M.FilterNode,
+			filter: validFilter,
+			groupBy: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
+			pageSize: 25,
 			sort: {
-				type: 'column',
-				sortBy: 'Level',
-				sortDirection: 'ASC',
+				type: 'random',
+				seed: seedRef.current,
 			},
 		},
 		{
 			enabled: shouldQuery,
+			// TODO I would like to do state upstates which hook into query results before rerender, to do state updates like resetting filters if their current value is not part of the filter.
+			// behavior: {
+			// 	onFetch: (context, query) => {
+			// 		console.log('onFetch', { context, query })
+			// 	},
+			// },
 		}
 	)
 	const lastDataRef = useRef(res.data)
@@ -381,10 +390,11 @@ function AddLayerPopover(props: {
 		if (res.data) {
 			lastDataRef.current = res.data
 		}
-	}, [res.data])
+	}, [res.data, res.isError])
+
 	const data = res.data ?? lastDataRef.current
 
-	const layersToDisplay = shouldQuery ? (data?.layers ?? []) : []
+	const layersToDisplay = data?.layers
 
 	const [height, setHeight] = useState<number | null>(null)
 	const contentRef = useRef<HTMLDivElement>(null)
@@ -426,6 +436,45 @@ function AddLayerPopover(props: {
 		})()
 	}, [props.open])
 
+	function swapFactions() {
+		setFilter(
+			produce((draft) => {
+				let faction1Index!: number
+				let faction2Index!: number
+				let subFac1Index!: number
+				let subFac2Index!: number
+
+				for (let i = 0; i < draft.children.length; i++) {
+					const node = draft.children[i]
+					if (node.comp.column === 'Faction_1') {
+						faction1Index = i
+					}
+					if (node.comp.column === 'Faction_2') {
+						faction2Index = i
+					}
+					if (node.comp.column === 'SubFac_1') {
+						subFac1Index = i
+					}
+					if (node.comp.column === 'SubFac_2') {
+						subFac2Index = i
+					}
+				}
+
+				const faction1 = { ...draft.children[faction1Index].comp }
+				const subFac1 = { ...draft.children[subFac1Index].comp }
+
+				draft.children[faction1Index].comp = { ...draft.children[faction2Index].comp, column: 'Faction_1' }
+				draft.children[subFac1Index].comp = { ...draft.children[subFac2Index].comp, column: 'SubFac_1' }
+				draft.children[faction2Index].comp = { ...faction1, column: 'Faction_2' }
+				draft.children[subFac2Index].comp = { ...subFac1, column: 'SubFac_2' }
+			})
+		)
+	}
+	console.log(
+		'filter',
+		filter.children.map((f) => f.comp.value)
+	)
+
 	return (
 		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
@@ -444,7 +493,7 @@ function AddLayerPopover(props: {
 				</div>
 				<div ref={contentRef} style={height ? { height } : {}} className="flex items-center space-x-2 min-h-0">
 					{/* ------ filter config ------ */}
-					<div className="space-y-2 grid grid-cols-[auto_min-content_auto] gap-2">
+					<div className="grid grid-cols-[auto_min-content_auto] gap-2">
 						{filter.children.map((_node, index) => {
 							const setComp = (updateCallback: (prevComp: M.EditableComparison) => M.EditableComparison) => {
 								setFilter(
@@ -454,20 +503,38 @@ function AddLayerPopover(props: {
 									})
 								)
 							}
-
+							const appliedFilters: M.FilterNode[] | undefined = []
+							for (let i = 0; i < index; i++) {
+								if (!filterStates[i]) continue
+								appliedFilters.push(filter.children[i] as M.FilterNode)
+							}
+							const autocompleteFilter = appliedFilters.length === 0 ? undefined : FB.and(...appliedFilters)
 							const node = _node as Extract<M.EditableFilterNode, { type: 'comp' }>
-							return <Comparison columnEditable={false} key={index} comp={node.comp} setComp={setComp} />
+							return (
+								<React.Fragment key={index}>
+									{node.comp.column === 'Faction_2' && (
+										<>
+											<span />
+											<Button onClick={swapFactions} variant="outline">
+												Swap Factions
+											</Button>
+											<span />
+										</>
+									)}
+									{(node.comp.column === 'id' || node.comp.column === 'Faction_1') && (
+										<>
+											<Separator className="col-span-3" />
+										</>
+									)}
+									<Comparison columnEditable={false} comp={node.comp} setComp={setComp} valueAutocompleteFilter={autocompleteFilter} />
+								</React.Fragment>
+							)
 						})}
 					</div>
 					{/* ------ filter results ------ */}
 					<div className="min-w-[300px] h-full">
-						{res.isFetching && (
-							<div className="flex justify-center items-center h-full">
-								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-							</div>
-						)}
-						{!res.isFetching && (
-							<ScrollArea className="h-full min-h-0 ">
+						{layersToDisplay && (
+							<ScrollArea className={`h-full min-h-0`}>
 								<div className="h-full min-h-0 text-xs">
 									{!res.isFetchedAfterMount && layersToDisplay.length === 0 && (
 										<div className="p-2 text-sm text-gray-500">Set filter to see results</div>

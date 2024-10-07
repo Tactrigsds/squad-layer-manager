@@ -10,7 +10,7 @@ import { useAtom } from 'jotai'
 import { Check, ChevronsUpDown, LoaderCircle, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button } from './ui/button'
+import { Button, buttonVariants } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
@@ -152,7 +152,12 @@ export function FilterNodeDisplay(props: {
 }
 const LIMIT_AUTOCOMPLETE_COLS: M.LayerColumnKey[] = ['id']
 
-export function Comparison(props: { comp: M.EditableComparison; setComp: SetState<M.EditableComparison>; columnEditable?: boolean }) {
+export function Comparison(props: {
+	comp: M.EditableComparison
+	setComp: SetState<M.EditableComparison>
+	columnEditable?: boolean
+	valueAutocompleteFilter?: M.FilterNode
+}) {
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
@@ -166,7 +171,7 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 			onSelect={(column) => setComp(() => ({ column: column ?? undefined }))}
 		/>
 	) : (
-		<span className="px-3 py-2 border rounded-md">{comp.column}</span>
+		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
 	)
 	if (!comp.column) return columnBox
 	const columnOptions = M.getComparisonTypesForColumn(comp.column).map((c) => ({ value: c.code }))
@@ -185,6 +190,7 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
+					autocompleteFilter={props.valueAutocompleteFilter}
 				/>
 			)}
 			{comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
@@ -192,12 +198,14 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => setComp((c) => ({ ...c, value }))}
+					autocompleteFilter={props.valueAutocompleteFilter}
 				/>
 			)}
 			{comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringInConfig
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
+					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
@@ -209,6 +217,7 @@ export function Comparison(props: { comp: M.EditableComparison; setComp: SetStat
 				<StringInConfigLimitAutoComplete
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
+					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
@@ -239,8 +248,9 @@ function StringEqConfig<T extends string | null>(props: {
 	value: T | undefined
 	column: M.StringColumn
 	setValue: (value: T | undefined) => void
+	autocompleteFilter?: M.FilterNode
 }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ columns: [props.column] })
+	const valuesRes = trpc.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
 }
@@ -249,8 +259,9 @@ function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
 	value: T | undefined
 	column: M.StringColumn
 	setValue: (value: T | undefined) => void
+	autocompleteFilter?: M.FilterNode
 }) {
-	const autocomplete = useLimitedColumnAutocomplete(props.column, props.value)
+	const autocomplete = useLimitedColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
 	return (
 		<ComboBox
 			allowEmpty={false}
@@ -264,9 +275,9 @@ function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
 	)
 }
 
-function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined) {
+function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, _setInputValue] = useState<string>(value ?? '')
+	const [inputValue, _setInputValue] = useState<string>(value?.split(',')[0] ?? '')
 	function setDebouncedInput(value: string) {
 		const v = value.trim() as T
 		_setDebouncedInput(v)
@@ -276,18 +287,26 @@ function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringC
 		_setInputValue(value)
 		debouncer.setValue(value)
 	}
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
+
+	if (filter && debouncedInput !== '') {
+		filter = {
+			type: 'and',
+			children: [filter, buildLikeFilter(column, debouncedInput)],
+		}
+	} else if (debouncedInput !== '') {
+		filter = buildLikeFilter(column, debouncedInput)
+	}
+
+	const valuesRes = trpc.getUniqueValues.useQuery(
 		{
 			columns: [column],
-			filter: debouncedInput !== '' ? buildLikeFilter(column, debouncedInput) : undefined,
+			filter,
 		},
 		{
 			enabled: debouncedInput !== '',
 		}
 	)
 	let options: T[] | typeof LOADING = LOADING
-	console.log('debouncedInput', debouncedInput)
-	console.log('input', inputValue)
 	if (debouncedInput === '') options = []
 	else if (debouncedInput && valuesRes.isSuccess) options = valuesRes.data!.map((v) => v[column])
 
@@ -309,41 +328,30 @@ function buildLikeFilter(column: M.StringColumn, input: string): M.FilterNode {
 	}
 }
 
-function StringInConfig(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]>; filter?: M.FilterNode }) {
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery({ columns: [props.column], filter: props.filter, limit: 25 })
+function StringInConfig(props: {
+	values: string[]
+	column: M.StringColumn
+	setValues: SetState<string[]>
+	autocompleteFilter?: M.FilterNode
+}) {
+	const valuesRes = trpc.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
 	return <ComboBoxMulti values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
 }
 
-function StringInConfigLimitAutoComplete(props: { values: string[]; column: M.StringColumn; setValues: SetState<string[]> }) {
-	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, _setInputValue] = useState('')
-	function setDebouncedInput(value: string) {
-		value = value.trim()
-		_setDebouncedInput(value)
-	}
-	const debounce = useDebounced({ defaultValue: inputValue, onChange: setDebouncedInput, delay: 500 })
-	function setInputValue(value: string) {
-		_setInputValue(value)
-		debounce.setValue(value)
-	}
-	const filter = debouncedInput.trim() ? buildLikeFilter(props.column, debouncedInput) : undefined
-	const valuesRes = trpc.getColumnUniqueColumnValues.useQuery(
-		{
-			columns: [props.column],
-			filter,
-		},
-		{
-			enabled: debouncedInput.trim() !== '',
-		}
-	)
-	const options = valuesRes.isLoading ? [] : valuesRes.data!.map((r) => r[props.column] as string)!
+function StringInConfigLimitAutoComplete(props: {
+	values: string[]
+	column: M.StringColumn
+	setValues: SetState<string[]>
+	autocompleteFilter?: M.FilterNode
+}) {
+	const autocomplete = useLimitedColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
 	return (
 		<ComboBoxMulti
 			values={props.values}
-			options={options}
+			options={autocomplete.options}
 			onSelect={props.setValues}
-			inputValue={inputValue}
-			setInputValue={setInputValue}
+			inputValue={autocomplete.inputValue}
+			setInputValue={autocomplete.setInputValue}
 		/>
 	)
 }

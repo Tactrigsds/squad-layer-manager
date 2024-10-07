@@ -4,36 +4,25 @@ import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
-import * as BaseContext from './context.ts'
-import { db } from './db.ts'
+import { Context } from './context.ts'
+import * as DB from './db.ts'
+import { baseLogger } from './logger.ts'
 import * as Schema from './schema.ts'
+import * as SS from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
-import * as SS from './systems/server-state.ts'
-
-type User = {
-	id: string
-	name: string
-	bio?: string
-}
-const users: Record<string, User> = { id_bilbo: { id: 'id_bilbo', name: 'Bilbo Baggins', bio: 'Hobbit' } }
-
-export function createContext(options: CreateFastifyContextOptions) {
-	return {
-		...BaseContext.createContext(options),
-	}
-}
-type Context = ReturnType<typeof createContext>
 
 export const t = initTRPC.context<Context>().create()
 
-const loggerMiddleware = t.middleware(async ({ path, type, next, input }) => {
+const loggerMiddleware = t.middleware(async ({ path, type, next, input, meta }) => {
 	const start = Date.now()
 	const result = await next()
 	const durationMs = Date.now() - start
-	//@ts-expect-error idk man
-	const ctx = result.ctx as Context
-	ctx.log = ctx.log.child({ type, input })
-	ctx.log.info({ path, type, durationMs, input }, 'TRPC %s: %s ', type, path)
+	if (result.ok) {
+		//@ts-expect-error idk man
+		const ctx = result.ctx as Context
+		ctx.log = ctx.log.child({ type, input })
+		ctx.log.debug({ path, type, durationMs, input }, 'TRPC %s: %s ', type, path)
+	}
 	return result
 })
 
@@ -43,14 +32,15 @@ function procedureWithInput<InputSchema extends z.ZodType<any, any, any>>(input:
 }
 
 export const appRouter = t.router({
-	getColumnUniqueColumnValues: procedureWithInput(
+	// could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
+	getUniqueValues: procedureWithInput(
 		z.object({
 			columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
 			limit: z.number().positive().max(500).default(100),
 			filter: M.FilterNodeSchema.optional(),
 		})
-	).query(async ({ input }) => {
-		console.log({ input })
+	).query(async ({ input, ctx }) => {
+		const db = DB.get(ctx)
 		type Columns = (typeof input.columns)[number]
 		const selectObj = input.columns.reduce(
 			(acc, column) => {
@@ -67,13 +57,9 @@ export const appRouter = t.router({
 			.where(input.filter ? LayersQuery.getWhereFilterConditions(input.filter) : sql`1=1`)
 			.groupBy(...input.columns.map((column) => Schema.layers[column]))
 			.limit(input.limit)
-
 		return rows
 	}),
-	getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(async ({ input }) => {
-		const res = await LayersQuery.runLayersQuery(input)
-		return res
-	}),
+	getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
 	watchLayerQueueUpdates: procedure.subscription(SS.watchUpdates),
 	updateQueue: procedureWithInput(M.LayerQueueUpdateSchema).mutation(async ({ input }) => {
 		return SS.update(input)

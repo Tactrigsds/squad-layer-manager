@@ -22,7 +22,13 @@ export default async function (opts: { ignore?: string }) {
 				const msg = obj.msg
 				obj = { ...obj }
 
-				obj.humanTime = new Date(obj.time).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+				obj.humanTime = new Date(obj.time).toLocaleTimeString([], {
+					hour12: false,
+					hour: '2-digit',
+					minute: '2-digit',
+					second: '2-digit',
+					fractionalSecondDigits: 3,
+				})
 				//@ts-expect-error fuck you
 				obj.levelStr = levels[level] ?? 'unknown'
 
@@ -32,25 +38,26 @@ export default async function (opts: { ignore?: string }) {
 				}
 
 				// Log using the appropriate console method
+				const args = [levels[level as keyof typeof levels] || 'UNKNOWN', `[${obj.humanTime}] ${msg}`, obj]
 				switch (level) {
 					case 10: // trace
 					case 20: // debug
-						console.debug(levels[level], `[${obj.humanTime}] ${msg}`, obj)
+						console.debug(...args)
 						break
 					case 30: // info
-						console.info(levels[level], `[${obj.humanTime}] ${msg}`, obj)
+						console.info(...args)
 						break
 					case 40: // warn
-						console.warn(levels[level], `[${obj.humanTime}] ${msg}`, obj)
+						console.warn(...args)
 						break
 					case 50: // error
-						console.error(levels[level], `[${obj.humanTime}] ${msg}`, obj)
+					case 60: {
+						// fatal
+						console.error(...args)
 						break
-					case 60: // fatal
-						console.error(levels[level], `[${obj.humanTime}] ${msg}`, obj)
-						break
+					}
 					default:
-						console.log(`UNKNOWN: ${level}`, `[${obj.humanTime}] ${msg}`, obj)
+						console.log(`UNKNOWN: ${level}`, ...args.slice(1))
 				}
 			}
 		},

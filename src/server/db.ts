@@ -1,9 +1,10 @@
-import { MySql2Database, drizzle } from 'drizzle-orm/mysql2'
+import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
+import { Logger } from 'pino'
 
 import { ENV } from './env'
 
-export let db!: MySql2Database
+let pool: mysql.Pool
 export function setupDatabase() {
 	const env = {
 		host: ENV.DB_HOST,
@@ -12,6 +13,17 @@ export function setupDatabase() {
 		password: ENV.DB_PASSWORD,
 		database: ENV.DB_DATABASE,
 	}
-	const pool = mysql.createPool(env)
-	db = drizzle(pool)
+	pool = mysql.createPool(env)
 }
+
+export function get(ctx: { log: Logger }) {
+	return drizzle(pool, {
+		logger: {
+			logQuery(query: string, params: unknown[]) {
+				ctx.log.debug({ query, params }, 'DB: %s', query)
+			},
+		},
+	})
+}
+
+export type Db = ReturnType<typeof get>

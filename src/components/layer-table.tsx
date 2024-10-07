@@ -123,12 +123,10 @@ export default function LayerTable() {
 		setPageIndex(0)
 	}
 	const [randomize, setRandomize] = useState<boolean>()
-	const [seed, setSeed] = useState<string>()
+	const [seed, setSeed] = useState<number>()
 	function generateSeed() {
-		const values = crypto.getRandomValues(new Uint8Array(16))
-		// convert to base64
-		const base64 = btoa(String.fromCharCode(...values))
-		setSeed(base64)
+		const seed = Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
+		setSeed(seed)
 	}
 
 	function toggleRandomize() {
