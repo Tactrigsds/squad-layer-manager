@@ -13,8 +13,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					<Link to="/" className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
 					</Link>
-					<Link to="/filters/edit" className={`${Typography.Lead} ${location.pathname === '/filters/edit' ? 'underline' : ''}`}>
-						Edit filters
+					<Link to="/layers" className={`${Typography.Lead} ${location.pathname === '/layers' ? 'underline' : ''}`}>
+						Layer Explorer
 					</Link>
 				</div>
 				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
