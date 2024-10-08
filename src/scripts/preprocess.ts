@@ -1,13 +1,19 @@
 import * as C from '@/lib/constants'
 import * as M from '@/models'
-import { db, setupDatabase } from '@/server/db'
+import * as DB from '@/server/db'
+import { setupEnv } from '@/server/env'
+import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
 import { parse } from 'csv-parse/sync'
 import { sql } from 'drizzle-orm'
 import * as fs from 'fs'
 import { z } from 'zod'
 
-setupDatabase()
+setupEnv()
+setupLogger()
+DB.setupDatabase()
+const log = baseLogger
+const db = DB.get({ log })
 
 // Define the schema for raw data
 
@@ -33,7 +39,7 @@ export const RawLayerSchema = z.object({
 	'Asymmetry Score': z.number(),
 })
 
-function processLayer(rawLayer: z.infer<typeof RawLayerSchema>, numRecords: number): M.Layer {
+function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 	const { gamemode, version } = M.parseLayerString(rawLayer.Layer)
 	const id = M.getLayerId({
 		Level: rawLayer.Level,
@@ -47,7 +53,6 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>, numRecords: numb
 
 	return {
 		id,
-		randomOrdinal: Math.floor(Math.random() * numRecords),
 		Level: rawLayer.Level,
 		Layer: rawLayer.Layer,
 		Size: rawLayer.Size,
@@ -79,7 +84,9 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>, numRecords: numb
 
 async function main() {
 	const t0 = performance.now()
+	baseLogger.info('Reading layers.csv..')
 	const csvData = fs.readFileSync('layers.csv', 'utf8')
+	// TODO can optimize by pulling out rows incrementally
 	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
 	const t1 = performance.now()
 	const elapsedSecondsParse = (t1 - t0) / 1000
@@ -103,26 +110,26 @@ async function main() {
 		})
 
 		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
-		return processLayer(validatedRawLayer, records.length)
+		return processLayer(validatedRawLayer)
 	})
-	console.log(`Parsing CSV took ${elapsedSecondsParse} s`)
+	log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
 
 	const t2 = performance.now()
 
 	// truncate the table
-	console.log('Truncating layers table')
+	log.info('Truncating layers table')
 	await db.execute(sql`
 	TRUNCATE TABLE ${Schema.layers}
 
 	`)
-	console.log('layers table truncated')
-	console.log('inserting layers')
+	log.info('layers table truncated')
+	log.info('inserting layers')
 	// Insert the processed layers
 	const chunkSize = 2500
 	for (let i = 0; i < processedLayers.length; i += chunkSize) {
 		const chunk = processedLayers.slice(i, i + chunkSize)
 		await db.insert(Schema.layers).values(chunk)
-		console.log(`Inserted ${i + chunk.length} rows`)
+		log.info(`Inserted ${i + chunk.length} rows`)
 	}
 
 	// add jensens range layers
@@ -147,7 +154,6 @@ async function main() {
 				Faction_2: faction2,
 				SubFac_2: null,
 			}),
-			randomOrdinal: Math.floor(Math.random() * processedLayers.length),
 			Level: level,
 			Layer: layer,
 			Size: 'Small',
@@ -178,11 +184,11 @@ async function main() {
 	})
 
 	await db.insert(Schema.layers).values(extraJensensLayers)
-	console.log(`Inserted ${extraJensensLayers.length} extra Jensen's Range layers`)
+	log.info(`Inserted ${extraJensensLayers.length} extra Jensen's Range layers`)
 
 	const t3 = performance.now()
 	const elapsedSecondsInsert = (t3 - t2) / 1000
-	console.log(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
+	log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
 
 await main()

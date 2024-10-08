@@ -7,29 +7,33 @@ import { ENV, Env } from './env'
 // const devtoolsTransportPath = path.join(projectRoot, 'src/lib', 'pino-nodejs-devtools-console-transport')
 
 const ignore = 'pid,hostname,req.remotePort,req.remoteAddress,req.host'
-const envToLogger = {
-	development: {
-		level: 'debug',
-		transport: {
-			target: 'pino-pretty',
-			options: {
-				translateTime: 'HH:MM:ss Z',
-				ignore,
-			},
-		},
-	},
-} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
 
-export let baseConfig!: (typeof envToLogger)[Env['NODE_ENV']]
 export let baseLogger!: Logger
 
 export async function setupLogger() {
-	baseConfig = envToLogger[ENV.NODE_ENV]
+	const envToLogger = {
+		development: {
+			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
+			transport: {
+				target: 'pino-pretty',
+				options: {
+					translateTime: 'HH:MM:ss Z',
+					ignore,
+				},
+			},
+		},
+	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
+	const baseConfig = envToLogger[ENV.NODE_ENV]
+	console.log(envToLogger)
 	if (ENV.USING_DEVTOOLS) {
-		baseLogger = pino({ level: 'debug' }, await devtoolsTransport({ ignore }))
+		//@ts-expect-error don't need it
+		delete baseConfig.transport
+		console.log('Using devtools')
+		baseLogger = pino(baseConfig, await devtoolsTransport({ ignore }))
 	} else {
 		baseLogger = pino(baseConfig)
 	}
+	baseLogger.info(envToLogger, 'Logger set up')
 }
 
 export type Logger = typeof baseLogger

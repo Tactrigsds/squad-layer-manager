@@ -15,13 +15,10 @@ import {
 } from 'drizzle-orm/mysql-core'
 import { z } from 'zod'
 
-import * as Sessions from './systems/sessions'
-
 export const layers = mysqlTable(
 	'layers',
 	{
 		id: varchar('id', { length: 64 }).primaryKey().notNull(),
-		randomOrdinal: int('randomOrdinal').notNull(),
 		Level: varchar('Level', { length: 255 }).notNull(),
 		Layer: varchar('Layer', { length: 255 }).notNull(),
 		Size: varchar('Size', { length: 255 }).notNull(),
@@ -60,7 +57,6 @@ export const layers = mysqlTable(
 			subfac1Index: index('subfac1Index').on(layers.SubFac_1),
 			faction2Index: index('faction2Index').on(layers.Faction_2),
 			subfac2Index: index('subfac2Index').on(layers.SubFac_2),
-			randomOrdinalIndex: index('randomOrdinalIndex').on(layers.randomOrdinal),
 			logistics1Index: index('logistics1Index').on(layers.Logistics_1),
 			transportation1Index: index('transportation1Index').on(layers.Transportation_1),
 			antiInfantry1Index: index('antiInfantry1Index').on(layers['Anti-Infantry_1']),

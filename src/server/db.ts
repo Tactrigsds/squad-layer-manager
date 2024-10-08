@@ -20,7 +20,7 @@ export function get(ctx: { log: Logger }) {
 	return drizzle(pool, {
 		logger: {
 			logQuery(query: string, params: unknown[]) {
-				ctx.log.debug({ query, params }, 'DB: %s', query)
+				ctx.log.debug('DB: %s', query)
 			},
 		},
 	})
