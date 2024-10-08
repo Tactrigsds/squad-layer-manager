@@ -32,7 +32,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: Context })
 	const { ctx, input: input } = args
 	let whereClause: any
 	let whereCondition = sql`1=1`
-	const db = DB.get(ctx)
+	const db = ctx.db
 
 	if (input.filter) {
 		whereCondition = getWhereFilterConditions(input.filter) ?? whereCondition

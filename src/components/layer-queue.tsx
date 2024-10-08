@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as Helpers from '@/lib/displayHelpers'
 import * as FB from '@/lib/filterBuilders.ts'
 import { sleep } from '@/lib/promise'
-import { trpc } from '@/lib/trpc'
+import { trpc } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
@@ -470,10 +470,6 @@ function AddLayerPopover(props: {
 			})
 		)
 	}
-	console.log(
-		'filter',
-		filter.children.map((f) => f.comp.value)
-	)
 
 	return (
 		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>

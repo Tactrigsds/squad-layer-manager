@@ -27,5 +27,9 @@ export async function setupLogger() {
 	baseConfig = envToLogger[ENV.NODE_ENV]
 	if (ENV.USING_DEVTOOLS) {
 		baseLogger = pino({ level: 'debug' }, await devtoolsTransport({ ignore }))
+	} else {
+		baseLogger = pino(baseConfig)
 	}
 }
+
+export type Logger = typeof baseLogger

@@ -1,11 +1,15 @@
 import { useServerInfo } from '@/hooks/use-server-info'
 import * as DH from '@/lib/displayHelpers'
+import { trpc } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 
+import { buttonVariants } from './ui/button'
+
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
+	const userRes = trpc.getLoggedInUser.useQuery()
 	return (
 		<div className="">
 			<nav className="flex items-center justify-between h-16 px-4 border-b">
@@ -18,6 +22,14 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
+					{userRes.data && (
+						<div className="flex flex-row items-center space-x-4">
+							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
+							<a href="/logout" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+								Log Out
+							</a>
+						</div>
+					)}
 					{serverInfo && (
 						<>
 							<div className="flex flex-col">

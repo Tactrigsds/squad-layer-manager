@@ -1,4 +1,4 @@
-import { trpc } from '@/lib/trpc'
+import { trpc } from '@/lib/trpc.client.ts'
 import type * as Rcon from '@/server/systems/rcon'
 import { useState } from 'react'
 

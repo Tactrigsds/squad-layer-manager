@@ -15,6 +15,8 @@ import {
 } from 'drizzle-orm/mysql-core'
 import { z } from 'zod'
 
+import * as Sessions from './systems/sessions'
+
 export const layers = mysqlTable(
 	'layers',
 	{
@@ -117,18 +119,24 @@ export const server = mysqlTable('servers', {
 	numPlayers: int('numPlayers'),
 })
 
-export const users = mysqlTable(
-	'users',
+export const users = mysqlTable('users', {
+	discordId: bigint('discordId', { mode: 'bigint' }).notNull().primaryKey(),
+	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
+	username: varchar('username', { length: 32 }).notNull(),
+	avatar: varchar('avatar', { length: 255 }).notNull(),
+})
+
+export const sessions = mysqlTable(
+	'sessions',
 	{
-		discordId: bigint('discordId', { mode: 'bigint' }).primaryKey(),
-		lastOnlineServerId: varchar('lastOnlineServerId', { length: 24 }),
-		lastOnline: timestamp('lastOnline'),
-		online: boolean('online'),
+		id: varchar('session', { length: 255 }).primaryKey(),
+		userId: bigint('userId', { mode: 'bigint' })
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		expiresAt: timestamp('expiresAt').notNull(),
 	},
 	(table) => ({
-		lastOnlineServerIdIndex: index('lastOnlineServerIdIndex').on(table.lastOnlineServerId),
-		lastOnlineIndex: index('lastOnlineIndex').on(table.lastOnline),
-		onlineIndex: index('onlineIndex').on(table.online),
+		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
 	})
 )
 

@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/displayHelpers'
-import { trpc } from '@/lib/trpc'
+import { trpc } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
 import { LayersQuery } from '@/server/layers-query'
 import * as S from '@/stores'

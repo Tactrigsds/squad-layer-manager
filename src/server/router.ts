@@ -1,7 +1,8 @@
+import { transformer } from '@/lib/trpc.ts'
 import * as M from '@/models.ts'
 import { initTRPC } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { Context } from './context.ts'
@@ -11,7 +12,7 @@ import * as Schema from './schema.ts'
 import * as SS from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 
-export const t = initTRPC.context<Context>().create()
+export const t = initTRPC.context<Context>().create({ transformer })
 
 const loggerMiddleware = t.middleware(async ({ path, type, next, input, meta }) => {
 	const start = Date.now()
@@ -32,6 +33,14 @@ function procedureWithInput<InputSchema extends z.ZodType<any, any, any>>(input:
 }
 
 export const appRouter = t.router({
+	getLoggedInUser: procedure.query(async ({ ctx }) => {
+		const [row] = await ctx.db
+			.select()
+			.from(Schema.sessions)
+			.where(eq(Schema.sessions.id, ctx.sessionId))
+			.leftJoin(Schema.users, eq(Schema.sessions.userId, Schema.users.discordId))
+		return row.users
+	}),
 	// could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
 	getUniqueValues: procedureWithInput(
 		z.object({
@@ -40,7 +49,6 @@ export const appRouter = t.router({
 			filter: M.FilterNodeSchema.optional(),
 		})
 	).query(async ({ input, ctx }) => {
-		const db = DB.get(ctx)
 		type Columns = (typeof input.columns)[number]
 		const selectObj = input.columns.reduce(
 			(acc, column) => {
@@ -50,7 +58,7 @@ export const appRouter = t.router({
 			{} as { [key in Columns]: (typeof Schema.layers)[key] }
 		)
 
-		const rows = await db
+		const rows = await ctx.db
 			.select(selectObj)
 			.from(Schema.layers)
 			// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
@@ -64,21 +72,6 @@ export const appRouter = t.router({
 	updateQueue: procedureWithInput(M.LayerQueueUpdateSchema).mutation(async ({ input }) => {
 		return SS.update(input)
 	}),
-	getUserById: procedureWithInput(z.string()).query((opts) => {
-		return users[opts.input] // input type is string
-	}),
-	createUser: procedureWithInput(
-		z.object({
-			name: z.string().min(3),
-			bio: z.string().max(142).optional(),
-		})
-	).mutation((opts) => {
-		const id = Date.now().toString()
-		const user: User = { id, ...opts.input }
-		users[user.id] = user
-		return user
-	}),
-
 	pollServerInfo: procedure.subscription(SS.pollServerInfo),
 })
 // export type definition of API

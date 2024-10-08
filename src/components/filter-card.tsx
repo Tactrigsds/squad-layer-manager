@@ -1,7 +1,7 @@
 import { useDebounced } from '@/hooks/use-debounce'
 import * as DH from '@/lib/displayHelpers'
 import { SetState } from '@/lib/react'
-import { trpc } from '@/lib/trpc'
+import { trpc } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import * as S from '@/stores'
