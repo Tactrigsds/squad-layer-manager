@@ -1,6 +1,7 @@
 import * as AR from '@/appRoutes.ts'
 import { createId } from '@/lib/id.ts'
 import fastifyCookie from '@fastify/cookie'
+import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
@@ -33,7 +34,23 @@ Sessions.setupSessions()
 // --------  server configuration --------
 const server = fastify({
 	maxParamLength: 5000,
-	loggerInstance: baseLogger,
+	logger: false,
+})
+
+server.addHook('onRequest', async (request, reply) => {
+	const log = baseLogger.child({ reqId: request.id })
+	log.info(
+		{ method: request.method, url: request.url, params: request.params, query: request.query },
+		'Incoming %s %s',
+		request.method,
+		request.url
+	)
+	request.log = log
+})
+
+server.addHook('onResponse', async (request, reply) => {
+	const log = request.log
+	log.info('completed %s %s : %d', request.method, request.url, reply.statusCode)
 })
 
 server.register(fastifyStatic, {
@@ -43,6 +60,7 @@ server.register(fastifyStatic, {
 		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 	},
 })
+server.register(fastifyFormBody)
 
 server.register(fastifyCookie)
 server.register(oauthPlugin, {
@@ -55,7 +73,7 @@ server.register(oauthPlugin, {
 		auth: oauthPlugin.DISCORD_CONFIGURATION,
 	},
 	startRedirectPath: AR.exists('/login'),
-	callbackUri: `${ENV.ORIGIN}/${AR.exists('/login/callback')}`,
+	callbackUri: `${ENV.ORIGIN}${AR.exists('/login/callback')}`,
 	scope: ['identify'],
 })
 
@@ -79,14 +97,14 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 			.insert(Schema.sessions)
 			.values({ id: sessionId, userId: discordUser.id, expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE) })
 	})
-	reply.cookie('sessionId', sessionId, { path: '/', maxAge: Sessions.SESSION_MAX_AGE, httpOnly: true }).redirect('/')
+	reply.cookie('sessionId', sessionId, { path: '/', maxAge: Sessions.SESSION_MAX_AGE, httpOnly: true }).redirect(AR.exists('/'))
 })
 
-async function logout(reply: any, ctx: { db: DB.Db; sessionId: string }) {
-	await ctx.db.delete(Schema.sessions).where(eq(Schema.sessions.id, ctx.sessionId))
-	reply.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect('/')
-	reply.redirect(AR.exists('/login'))
-}
+server.post(AR.exists('/logout'), async function (req, res) {
+	//@ts-expect-error lazy
+	const ctx = await createContext({ req, res })
+	return await Sessions.logout(ctx)
+})
 
 server.register(ws)
 server.register(fastifySocketIo)
@@ -111,15 +129,11 @@ server.register(fastifyTRPCPlugin, {
 async function getHtmlResponse(req: any, reply: any) {
 	reply = reply.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'require-corp')
 	const sessionId = req.cookies.sessionId
-	function logout() {
-		reply.cookie('sessionId', '')
-		return reply.redirect(AR.exists('/logout'))
-	}
-	if (typeof sessionId !== 'string') return logout()
-
 	const db = DB.get({ log: req.log })
+	if (typeof sessionId !== 'string') return Sessions.logout({ res: reply, sessionId, db })
+
 	const valid = await Sessions.validateSession(sessionId, { db, log: req.log as Logger })
-	if (!valid) return logout()
+	if (!valid) return Sessions.logout({ res: reply, sessionId, db })
 
 	// --------  dev server proxy setup --------
 	// when running in dev mode, we're proxying all public routes through to fastify so we an do auth and stuff. non-proxied routes will just return the dev index.html, so we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
@@ -139,7 +153,7 @@ for (const route of AR.routes) {
 try {
 	const port = 3000
 	await server.listen({ port })
-	server.log.info('listening on port ', port)
+	server.log.info('listening on port %d', port)
 } catch (err) {
 	server.log.error(err)
 	process.exit(1)

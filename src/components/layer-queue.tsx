@@ -414,6 +414,7 @@ function AddLayerPopover(props: {
 		props.onOpenChange(false)
 		setLayersToAdd([])
 		setFilter(DEFAULT_ADD_LAYER_FILTERS)
+		lastDataRef.current = undefined
 	}
 
 	function addAndClose() {
@@ -474,7 +475,7 @@ function AddLayerPopover(props: {
 	return (
 		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent side="right" className="w-max">
+			<PopoverContent side="bottom" className="w-max">
 				<div className="flex items-center justify-between">
 					<h3 className={Typography.H3}>Add Layers to Queue</h3>
 					<div className="flex items-center space-x-1">

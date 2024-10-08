@@ -1,3 +1,4 @@
+import * as AR from '@/appRoutes.ts'
 import { useServerInfo } from '@/hooks/use-server-info'
 import * as DH from '@/lib/displayHelpers'
 import { trpc } from '@/lib/trpc.client.ts'
@@ -5,7 +6,7 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 
-import { buttonVariants } from './ui/button'
+import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
@@ -25,9 +26,11 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{userRes.data && (
 						<div className="flex flex-row items-center space-x-4">
 							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
-							<a href="/logout" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
-								Log Out
-							</a>
+							<form action={AR.exists('/logout')} method="POST">
+								<Button type="submit" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+									Log Out
+								</Button>
+							</form>
 						</div>
 					)}
 					{serverInfo && (

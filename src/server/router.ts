@@ -11,6 +11,7 @@ import { baseLogger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as SS from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
+import * as Sessions from './systems/sessions.ts'
 
 export const t = initTRPC.context<Context>().create({ transformer })
 

@@ -12,14 +12,19 @@ export default defineConfig({
 		// 'Cross-Origin-Opener-Policy': 'same-origin',
 		// 'Cross-Origin-Embedder-Policy': 'require-corp',
 		// },
-		proxy: Object.fromEntries(
-			AppRoutes.routes.map((r) => {
-				const target = r.websocket ? 'ws://localhost:3000' : 'http://localhost:3000'
-				return [`^${r.client}$}`, { target, changeOrigin: true, ws: r.websocket }]
-			})
-		),
+		proxy: newFunction(),
 	},
 	build: {
 		sourcemap: true,
 	},
 })
+
+function newFunction() {
+	const stuff = Object.fromEntries(
+		AppRoutes.routes.map((r) => {
+			const target = r.websocket ? 'ws://localhost:3000' : 'http://localhost:3000'
+			return [`^${r.client}(\\?.+)?$`, { target, changeOrigin: true, ws: r.websocket }]
+		})
+	)
+	return stuff
+}

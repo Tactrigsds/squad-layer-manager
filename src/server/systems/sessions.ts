@@ -1,4 +1,4 @@
-import { createId } from '@/lib/id'
+import * as AR from '@/appRoutes'
 import { sleep } from '@/lib/promise'
 import * as DB from '@/server/db.ts'
 import { Logger, baseLogger as log } from '@/server/logger'
@@ -10,7 +10,7 @@ export async function setupSessions() {
 	const db = DB.get({ log })
 	// --------  cleanup old sessions  --------
 	do {
-		await sleep(1000 * 60)
+		await sleep(1000 * 60 * 60)
 		await db.transaction(async (db) => {
 			const sessions = await db.select().from(Schema.sessions)
 			for (const session of sessions) {
@@ -30,4 +30,10 @@ export async function validateSession(sessionId: string, ctx: { db: DB.Db; log: 
 		return false
 	}
 	return true
+}
+
+export async function logout(ctx: { db: DB.Db; sessionId: string; res: any }) {
+	await ctx.db.delete(Schema.sessions).where(eq(Schema.sessions.id, ctx.sessionId))
+	const reply = ctx.res
+	return reply.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect(AR.exists('/login'))
 }
