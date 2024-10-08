@@ -90,10 +90,10 @@ export const MINI_LAYER_SELECT = {
 	SubFac_2: layers.SubFac_2,
 }
 
-export const layerPool = mysqlTable('layerPool', {
+export const filter = mysqlTable('filters', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 255 }).notNull(),
-	filter: json('filter'),
+	filter: json('filter').notNull(),
 })
 
 export const LayerVoteSchema = z.object({
