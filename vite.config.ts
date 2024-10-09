@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react-swc'
 import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
-import * as AppRoutes from './src/appRoutes'
+import * as AR from './src/app-routes.ts'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -21,7 +21,7 @@ export default defineConfig({
 
 function newFunction() {
 	const stuff = Object.fromEntries(
-		AppRoutes.routes.map((r) => {
+		Object.values(AR.routes).map((r) => {
 			const target = r.websocket ? 'ws://localhost:3000' : 'http://localhost:3000'
 			return [`^${r.client}(\\?.+)?$`, { target, changeOrigin: true, ws: r.websocket }]
 		})

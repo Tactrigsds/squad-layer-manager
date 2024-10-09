@@ -1,7 +1,7 @@
 import { useDebounced } from '@/hooks/use-debounce'
 import * as DH from '@/lib/displayHelpers'
 import { SetState } from '@/lib/react'
-import { trpc } from '@/lib/trpc.client.ts'
+import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import * as S from '@/stores'
@@ -18,7 +18,16 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 export function FilterCard() {
 	const [filter, setFilter] = useAtom(S.editableFilterAtom)
-	return <FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
+	const [filtersData, setFiltersData] = useAtom(S.filtersAtom)
+
+	return (
+		<div className="flex flex-row space-x-2">
+			<FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
+			<div className="flex flex-col space-y-2">
+				<Button>Save</Button>
+			</div>
+		</div>
+	)
 }
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
@@ -250,7 +259,7 @@ function StringEqConfig<T extends string | null>(props: {
 	setValue: (value: T | undefined) => void
 	autocompleteFilter?: M.FilterNode
 }) {
-	const valuesRes = trpc.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
+	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
 }
@@ -297,7 +306,7 @@ function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringC
 		filter = buildLikeFilter(column, debouncedInput)
 	}
 
-	const valuesRes = trpc.getUniqueValues.useQuery(
+	const valuesRes = trpcReact.getUniqueValues.useQuery(
 		{
 			columns: [column],
 			filter,
@@ -334,7 +343,7 @@ function StringInConfig(props: {
 	setValues: SetState<string[]>
 	autocompleteFilter?: M.FilterNode
 }) {
-	const valuesRes = trpc.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
+	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
 	return <ComboBoxMulti values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
 }
 

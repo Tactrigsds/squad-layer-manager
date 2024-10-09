@@ -1,5 +1,5 @@
 import devtoolsTransport from '@/lib/pino-nodejs-devtools-console-transport.ts'
-import pino, { Logger, LoggerOptions } from 'pino'
+import pino, { LoggerOptions, Logger as PinoLogger } from 'pino'
 
 import { ENV, Env } from './env'
 
@@ -8,6 +8,7 @@ import { ENV, Env } from './env'
 
 const ignore = 'pid,hostname,req.remotePort,req.remoteAddress,req.host'
 
+export type Logger = PinoLogger
 export let baseLogger!: Logger
 
 export async function setupLogger() {
@@ -24,16 +25,11 @@ export async function setupLogger() {
 		},
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
 	const baseConfig = envToLogger[ENV.NODE_ENV]
-	console.log(envToLogger)
 	if (ENV.USING_DEVTOOLS) {
 		//@ts-expect-error don't need it
 		delete baseConfig.transport
-		console.log('Using devtools')
 		baseLogger = pino(baseConfig, await devtoolsTransport({ ignore }))
 	} else {
 		baseLogger = pino(baseConfig)
 	}
-	baseLogger.info(envToLogger, 'Logger set up')
 }
-
-export type Logger = typeof baseLogger

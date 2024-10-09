@@ -4,7 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as Helpers from '@/lib/displayHelpers'
 import * as FB from '@/lib/filterBuilders.ts'
 import { sleep } from '@/lib/promise'
-import { trpc } from '@/lib/trpc.client.ts'
+import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
@@ -43,7 +43,7 @@ export default function LayerQueue() {
 		if (!layer) throw new Error(`Layer ${layerId} not found`)
 		return layer
 	}
-	trpc.watchLayerQueueUpdates.useSubscription(undefined, {
+	trpcReact.watchLayerQueueUpdates.useSubscription(undefined, {
 		onData: ({ data }) => {
 			setLayerQueue(data.queue)
 			setNowPlaying(data.nowPlaying)
@@ -55,7 +55,7 @@ export default function LayerQueue() {
 			}
 		},
 	})
-	const updateQueueMutation = trpc.updateQueue.useMutation()
+	const updateQueueMutation = trpcReact.updateQueue.useMutation()
 	function save() {
 		if (!editing || !layerQueue) return
 		updateQueueMutation.mutate({
@@ -365,7 +365,7 @@ function AddLayerPopover(props: {
 	const shouldQuery = filterStates.includes(true)
 	const seedRef = useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
 	//
-	const res = trpc.getLayers.useQuery(
+	const res = trpcReact.getLayers.useQuery(
 		{
 			filter: validFilter,
 			groupBy: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],

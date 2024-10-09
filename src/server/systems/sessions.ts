@@ -1,4 +1,4 @@
-import * as AR from '@/appRoutes'
+import * as AR from '@/app-routes'
 import { sleep } from '@/lib/promise'
 import * as DB from '@/server/db.ts'
 import { Logger, baseLogger as log } from '@/server/logger'

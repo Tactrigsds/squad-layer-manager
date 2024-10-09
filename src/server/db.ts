@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
-import { Logger } from 'pino'
 
 import { ENV } from './env'
+import { Logger } from './logger'
 
 let pool: mysql.Pool
 export function setupDatabase() {
@@ -20,7 +20,8 @@ export function get(ctx: { log: Logger }) {
 	return drizzle(pool, {
 		logger: {
 			logQuery(query: string, params: unknown[]) {
-				ctx.log.debug('DB: %s', query)
+				if (ctx.log.level === 'trace') ctx.log.trace('DB: %s: %o', params)
+				else ctx.log.debug('DB: %s, %o', query, params)
 			},
 		},
 	})

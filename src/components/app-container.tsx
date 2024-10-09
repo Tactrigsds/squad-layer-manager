@@ -1,25 +1,29 @@
-import * as AR from '@/appRoutes.ts'
+import * as AR from '@/app-routes.ts'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useServerInfo } from '@/hooks/use-server-info'
 import * as DH from '@/lib/displayHelpers'
-import { trpc } from '@/lib/trpc.client.ts'
+import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as S from '@/stores'
+import { useAtom } from 'jotai'
+import { SidebarIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
-	const userRes = trpc.getLoggedInUser.useQuery()
+	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
 		<div className="">
 			<nav className="flex items-center justify-between h-16 px-4 border-b">
 				<div className="flex items-start space-x-6">
-					<Link to="/" className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
+					<Link to={AR.link('/')} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
 					</Link>
-					<Link to="/layers" className={`${Typography.Lead} ${location.pathname === '/layers' ? 'underline' : ''}`}>
-						Layer Explorer
+					<Link to={AR.link('/filters')} className={`${Typography.Lead} ${location.pathname === '/filters' ? 'underline' : ''}`}>
+						Filters
 					</Link>
 				</div>
 				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
@@ -54,7 +58,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					)}
 				</div>
 			</nav>
-			<div className="w-full h-full p-4">{props.children}</div>
+			<div className="flex w-full h-full">
+				<div className="w-full h-full p-4">{props.children}</div>
+			</div>
 		</div>
 	)
 }

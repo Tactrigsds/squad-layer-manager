@@ -1,4 +1,4 @@
-import * as AR from '@/appRoutes.ts'
+import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -22,7 +22,7 @@ import * as Discord from './systems/discord.ts'
 import { setupLayerQueue } from './systems/layer-queue.ts'
 import * as Sessions from './systems/sessions.ts'
 
-const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '../../dist')
+const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
 
 // --------  system initialization --------
 setupEnv()
@@ -31,14 +31,17 @@ DB.setupDatabase()
 setupLayerQueue()
 Sessions.setupSessions()
 
+baseLogger.info('Systems initialized, starting http server...')
+
 // --------  server configuration --------
 const server = fastify({
 	maxParamLength: 5000,
 	logger: false,
 })
+server.log = baseLogger
 
 server.addHook('onRequest', async (request, reply) => {
-	const log = baseLogger.child({ reqId: request.id })
+	const log = server.log.child({ reqId: request.id })
 	log.info(
 		{ method: request.method, url: request.url, params: request.params, query: request.query },
 		'Incoming %s %s',
@@ -60,6 +63,7 @@ server.register(fastifyStatic, {
 		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 	},
 })
+
 server.register(fastifyFormBody)
 
 server.register(fastifyCookie)
@@ -83,7 +87,7 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 	const token = tokenResult.token as { access_token: string; token_type: string }
 	const discordUser = await Discord.getUser(token)
 	if (!discordUser) return reply.status(401).send('Failed to get user info from Discord')
-	const db = DB.get({ log: req.log })
+	const db = DB.get({ log: req.log as Logger })
 
 	const sessionId = createId(64)
 	await db.transaction(async (db) => {
@@ -97,7 +101,7 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 			.insert(Schema.sessions)
 			.values({ id: sessionId, userId: discordUser.id, expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE) })
 	})
-	reply.cookie('sessionId', sessionId, { path: '/', maxAge: Sessions.SESSION_MAX_AGE, httpOnly: true }).redirect(AR.exists('/'))
+	reply.cookie('sessionId', sessionId, { path: '/', maxAge: Sessions.SESSION_MAX_AGE, httpOnly: true }).redirect('/')
 })
 
 server.post(AR.exists('/logout'), async function (req, res) {
@@ -144,7 +148,7 @@ async function getHtmlResponse(req: any, reply: any) {
 	return reply.sendFile('index.html')
 }
 
-for (const route of AR.routes) {
+for (const route of Object.values(AR.routes)) {
 	if (route.handle !== 'page') continue
 	server.get(route.server, getHtmlResponse)
 }
@@ -153,7 +157,6 @@ for (const route of AR.routes) {
 try {
 	const port = 3000
 	await server.listen({ port })
-	server.log.info('listening on port %d', port)
 } catch (err) {
 	server.log.error(err)
 	process.exit(1)

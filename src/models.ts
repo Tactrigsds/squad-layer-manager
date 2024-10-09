@@ -86,12 +86,17 @@ export function swapFactionsInId(id: string) {
 
 export function getAdminSetNextLayerCommand(layer: {
 	Layer: string
-	Faction_1: string
-	SubFac_1: string
-	Faction_2: string
-	SubFac_2: string
+	Faction_1: string | null
+	SubFac_1: string | null
+	Faction_2: string | null
+	SubFac_2: string | null
 }) {
-	return `AdminSetNextLayer ${layer.Layer} ${layer.Faction_1}+${layer.SubFac_1} ${layer.Faction_2}+${layer.SubFac_2}`
+	function getFactionModifier(faction: string | null, subFac: string | null) {
+		if (!faction) return ''
+		return `${subFac ? `+${subFac}` : ''}`
+	}
+
+	return `AdminSetNextLayer ${layer.Layer} ${getFactionModifier(layer.Faction_1, layer.SubFac_1)} ${getFactionModifier(layer.Faction_2, layer.SubFac_2)}`
 }
 
 export function getSetNextVoteCommand(ids: string[]) {
@@ -289,14 +294,14 @@ export function isValidComparison(comp: EditableComparison): comp is Comparison 
 	return !!comp.code && !!comp.column && (comp.code === 'in' ? comp.values : comp.value) !== undefined
 }
 
-export const FilterNodeSchema: z.ZodType<FilterNode> = BaseFilterNodeSchema.extend({
+export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	children: z.lazy(() => FilterNodeSchema.array().optional()),
 })
 	.refine((node) => node.type !== 'comp' || node.comp !== undefined, { message: 'comp must be defined for type "comp"' })
 	.refine((node) => node.type !== 'comp' || node.children === undefined, { message: 'children must not be defined for type "comp"' })
 	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
 		message: 'children must be defined for type "and" or "or"',
-	})
+	}) as z.ZodType<FilterNode>
 
 export const LayerVoteSchema = z.object({
 	defaultChoiceLayerId: z.string(),
@@ -347,3 +352,13 @@ export type LayerQueueUpdate = z.infer<typeof LayerQueueUpdateSchema>
 export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
 	layers: MiniLayer[]
 }
+
+export const FilterEntitySchema = z.object({
+	id: z
+		.string()
+		.regex(/^[a-z0-9-_]+$/)
+		.max(64),
+	name: z.string().max(128),
+	description: z.string().max(512),
+	filter: FilterNodeSchema,
+})

@@ -1,5 +1,6 @@
 import { atom } from 'jotai'
 
+import { trpcJotai } from './lib/trpc.client'
 import * as M from './models'
 
 const defaultFilter: M.EditableFilterNode = {
@@ -23,3 +24,5 @@ export const editableFilterAtom = atom(
 		set(_editableFilterAtom, newFilter)
 	}
 )
+
+export const filtersAtom = trpcJotai.getFilters.atomWithQuery(() => ({}))

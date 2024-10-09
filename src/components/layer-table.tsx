@@ -5,9 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/displayHelpers'
-import { trpc } from '@/lib/trpc.client.ts'
+import { trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
-import { LayersQuery } from '@/server/layers-query'
+import { LayersQuery } from '@/server/systems/layers-query.ts'
 import * as S from '@/stores'
 import {
 	ColumnDef,
@@ -23,7 +23,6 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from '@tanstack/react-table'
-import { useAtom, useAtomValue } from 'jotai'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
@@ -110,10 +109,10 @@ const DEFAULT_VISIBLE_COLUMNS = [
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 const DEFAULT_SORT: LayersQuery['sort'] = { type: 'column', sortBy: 'Asymmetry Score', sortDirection: 'ASC' }
 
-export default function LayerTable() {
-	let filter = useAtomValue(S.lastValidFilterAtom)
+export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: number; setPageIndex: (num: number) => void }) {
+	const { pageIndex, setPageIndex } = props
+	let filter = props.filter
 	const [sortingState, _setSortingState] = useState<SortingState>([])
-	const [pageIndex, setPageIndex] = useAtom(S.pageIndexAtom)
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
 			if (typeof sortingUpdate === 'function') return sortingUpdate(sortingState)
@@ -167,7 +166,7 @@ export default function LayerTable() {
 	const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
 		let newState: PaginationState
 		if (typeof updater === 'function') {
-			newState = updater({ pageIndex: pageIndex, pageSize })
+			newState = updater({ pageIndex, pageSize })
 		} else {
 			newState = updater
 		}
@@ -186,7 +185,7 @@ export default function LayerTable() {
 		sort = { type: 'column', sortBy: id as M.LayerColumnKey, sortDirection: desc ? 'DESC' : 'ASC' }
 	}
 
-	const { data: dataRaw } = trpc.getLayers.useQuery({
+	const { data: dataRaw } = trpcReact.getLayers.useQuery({
 		pageIndex,
 		pageSize,
 		sort,

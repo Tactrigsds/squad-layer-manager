@@ -90,9 +90,10 @@ export const MINI_LAYER_SELECT = {
 	SubFac_2: layers.SubFac_2,
 }
 
-export const filter = mysqlTable('filters', {
-	id: serial('id').primaryKey(),
-	name: varchar('name', { length: 255 }).notNull(),
+export const filters = mysqlTable('filters', {
+	id: varchar('id', { length: 64 }).primaryKey().notNull(),
+	name: varchar('name', { length: 128 }).notNull(),
+	description: varchar('description', { length: 512 }),
 	filter: json('filter').notNull(),
 })
 

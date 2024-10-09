@@ -74,6 +74,13 @@ export const appRouter = t.router({
 		return SS.update(input)
 	}),
 	pollServerInfo: procedure.subscription(SS.pollServerInfo),
+	getFilters: procedure.query(async ({ ctx }) => {
+		return ctx.db.select().from(Schema.filters)
+	}),
+	createFilter: procedureWithInput(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
+		const [row] = await ctx.db.insert(Schema.filters).values(input).returning()
+		return row
+	}),
 })
 // export type definition of API
 export type AppRouter = typeof appRouter
