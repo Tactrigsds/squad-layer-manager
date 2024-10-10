@@ -4,7 +4,7 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 
-import { Button, buttonVariants } from './ui/button'
+import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
 	const filtersData = trpcReact.getFilters.useQuery()
@@ -17,9 +17,14 @@ export default function FiltersIndex() {
 					</Link>
 				</div>
 				{filtersData.data?.map((filter) => (
-					<div key={filter.id} className="flex w-full">
-						<Link className={cn('flex-grow', buttonVariants({ variant: 'outline' }))} to={AR.link('/filters/:id/edit', filter.id)}>
-							{filter.name}
+					<div key={filter.id} className="w-full">
+						<Link
+							className={cn('flex-grow flex justify-between items-center w-full space-x-4', buttonVariants({ variant: 'outline' }))}
+							to={AR.link('/filters/:id/edit', filter.id)}
+						>
+							<span>{filter.name}</span>
+							<span>{' - '}</span>
+							<span className={Typography.Muted}>{filter.description}</span>
 						</Link>
 					</div>
 				))}
