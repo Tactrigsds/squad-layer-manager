@@ -52,7 +52,12 @@ export function setupLayerQueue() {
 		switchMap((update) => getQueueUpdateDenorm(update, { ...ctx, db })),
 		share()
 	)
-	pollServerInfo$ = interval(30000).pipe(traceTag('pollServerInfo$', ctx), startWith(0), switchMap(Rcon.fetchServerStatus), shareReplay(1))
+	pollServerInfo$ = interval(30000_0000).pipe(
+		traceTag('pollServerInfo$', ctx),
+		startWith(0),
+		switchMap(Rcon.fetchServerStatus),
+		shareReplay(1)
+	)
 }
 
 export async function* watchNowPlaying() {

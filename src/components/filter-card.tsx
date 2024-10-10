@@ -171,9 +171,7 @@ export function Comparison(props: {
 	useEffect(() => {
 		console.log('defaultEditing: ', props.defaultEditing, 'btn:', columnBoxRef.current)
 		if (props.defaultEditing && !columnBoxRef.current!.isOpen) {
-			sleep(500).then(() => {
-				columnBoxRef.current?.open()
-			})
+			columnBoxRef.current?.open()
 		}
 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,7 +219,7 @@ export function Comparison(props: {
 				options={columnOptions}
 				ref={codeBoxRef}
 				onSelect={(code) => {
-					if (code !== undefined) setEditingControl('value')
+					if (code !== undefined) valueBoxRef.current?.open()
 					return setComp((c) => ({ column: c.column, code: code ?? undefined }))
 				}}
 			/>
@@ -230,7 +228,6 @@ export function Comparison(props: {
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => {
-						setEditingControl(null)
 						return setComp((c) => ({ ...c, value }))
 					}}
 					autocompleteFilter={props.valueAutocompleteFilter}
@@ -241,7 +238,6 @@ export function Comparison(props: {
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => {
-						setEditingControl(null)
 						return setComp((c) => ({ ...c, value }))
 					}}
 					autocompleteFilter={props.valueAutocompleteFilter}
@@ -253,7 +249,6 @@ export function Comparison(props: {
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
-						setEditingControl(null)
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
 						})
@@ -266,7 +261,6 @@ export function Comparison(props: {
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
-						setEditingControl(null)
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
 						})
@@ -278,7 +272,6 @@ export function Comparison(props: {
 					className="w-[200px]"
 					value={comp.value as number | undefined}
 					setValue={(value) => {
-						setEditingControl(null)
 						return setComp((c) => ({ ...c, value }))
 					}}
 				/>
@@ -288,11 +281,9 @@ export function Comparison(props: {
 					min={comp.min}
 					max={comp.max}
 					setMin={(min) => {
-						setEditingControl(null)
 						return setComp((c) => ({ ...c, min }))
 					}}
 					setMax={(max) => {
-						setEditingControl(null)
 						setComp((c) => ({ ...c, max }))
 					}}
 				/>
@@ -488,6 +479,7 @@ const ComboBox = React.forwardRef(function ComboBox<
 	useImperativeHandle(ref, () => ({
 		open: () => {
 			console.log('opening', btnRef.current)
+			btnRef.current?.focus()
 			return btnRef.current?.click()
 		},
 		get isOpen() {
@@ -514,7 +506,16 @@ const ComboBox = React.forwardRef(function ComboBox<
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[200px] p-0">
+			<PopoverContent
+				className="w-[200px] p-0"
+				onInteractOutside={(e) => {
+					console.log('onInteractOutside')
+				}}
+				onCloseAutoFocus={(e) => {
+					console.log('onclose')
+					e.preventDefault()
+				}}
+			>
 				<Command shouldFilter={!!props.setInputValue}>
 					<CommandInput placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
