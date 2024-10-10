@@ -25,7 +25,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { FilterNodeDisplay } from './filter-card'
 import LayerTable from './layer-table'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 

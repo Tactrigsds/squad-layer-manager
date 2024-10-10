@@ -9,28 +9,15 @@ import * as S from '@/stores'
 import { produce } from 'immer'
 import { useAtom } from 'jotai'
 import { Check, ChevronsUpDown, LoaderCircle, Minus, Plus } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import React from 'react'
+import { Observable } from 'rxjs'
 
 import { Button, buttonVariants } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-
-export function FilterCard() {
-	const [filter, setFilter] = useAtom(S.editableFilterAtom)
-	const [filtersData, setFiltersData] = useAtom(S.filtersAtom)
-
-	return (
-		<div className="flex flex-row space-x-2">
-			<FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
-			<div className="flex flex-col space-y-2">
-				<Button>Save</Button>
-			</div>
-		</div>
-	)
-}
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -41,6 +28,7 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 }
 
 export function FilterNodeDisplay(props: {
+	defaultEditing?: boolean
 	node: M.EditableFilterNode
 	setNode: SetState<M.EditableFilterNode | undefined>
 	depth: number
@@ -66,6 +54,7 @@ export function FilterNodeDisplay(props: {
 			elt.removeEventListener('focusout', onFocusLeave)
 		}
 	}, [isValid])
+	const [editedChildIndex, setEditedChildIndex] = useState<number | undefined>()
 
 	if (node.type === 'and' || node.type === 'or') {
 		const childrenLen = node.children.length
@@ -73,9 +62,9 @@ export function FilterNodeDisplay(props: {
 			const setChild: SetState<M.EditableFilterNode | undefined> = (cb) => {
 				setNode(
 					produce((draft) => {
-						if (!draft) return
-						if (draft.type !== 'and' && draft.type !== 'or') return
-						if (draft.children.length !== childrenLen) return
+						if (!draft || (draft.type !== 'and' && draft.type !== 'or') || draft.children.length !== childrenLen) {
+							return
+						}
 						const newValue = cb(draft.children[i])
 						if (newValue) draft.children[i] = newValue
 						else draft.children.splice(i, 1)
@@ -83,13 +72,16 @@ export function FilterNodeDisplay(props: {
 				)
 			}
 
-			return <FilterNodeDisplay depth={props.depth + 1} key={i} node={child} setNode={setChild} />
+			return <FilterNodeDisplay defaultEditing={editedChildIndex === i} depth={props.depth + 1} key={i} node={child} setNode={setChild} />
 		})
 		const addNewChild = (type: M.EditableFilterNode['type']) => {
 			setNode(
 				produce((draft) => {
-					if (!draft) return
-					if (draft.type !== 'and' && draft.type !== 'or') return
+					if (!draft || (draft.type !== 'and' && draft.type !== 'or')) {
+						setEditedChildIndex(undefined)
+						return
+					}
+					setEditedChildIndex(draft.children.length)
 					if (type === 'comp') draft.children.push({ type, comp: {} })
 					if (type === 'and' || type === 'or') draft.children.push({ type, children: [] })
 				})
@@ -151,7 +143,7 @@ export function FilterNodeDisplay(props: {
 	if (node.type === 'comp' && node.comp) {
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2')}>
-				<Comparison comp={node.comp} setComp={setComp} />
+				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
 					<Minus color="hsl(var(--destructive))" />
 				</Button>
@@ -168,19 +160,51 @@ export function Comparison(props: {
 	setComp: SetState<M.EditableComparison>
 	columnEditable?: boolean
 	valueAutocompleteFilter?: M.FilterNode
+	defaultEditing?: boolean
 }) {
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
+	const columnBoxRef = useRef<ComboBoxHandle>()
+	const codeBoxRef = useRef<ComboBoxHandle>()
+	const valueBoxRef = useRef<ComboBoxHandle>()
+	useEffect(() => {
+		console.log('defaultEditing: ', props.defaultEditing, 'btn:', columnBoxRef.current)
+		if (props.defaultEditing && !columnBoxRef.current!.isOpen) {
+			sleep(500).then(() => {
+				columnBoxRef.current?.open()
+			})
+		}
+
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	const columnBox = columnEditable ? (
 		<ComboBox
 			title="Column"
 			allowEmpty={true}
 			value={comp.column}
-			defaultOpen={true}
 			options={M.COLUMN_KEYS}
-			onSelect={(column) => setComp(() => ({ column: column ?? undefined }))}
+			ref={columnBoxRef}
+			onSelect={(column) => {
+				if (column && M.COLUMN_KEY_TO_TYPE[column] in ['string']) {
+					setComp((c) => {
+						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
+						return { column: c.column, code }
+					})
+					valueBoxRef.current?.open()
+					return
+				}
+				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'float') {
+					setComp((c) => {
+						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.float ? c.code : undefined
+						return { column: c.column, code }
+					})
+					valueBoxRef.current?.click()
+					return
+				}
+				return setComp(() => ({ column: column ?? undefined }))
+			}}
 		/>
 	) : (
 		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
@@ -195,13 +219,20 @@ export function Comparison(props: {
 				title=""
 				value={comp.code}
 				options={columnOptions}
-				onSelect={(code) => setComp((c) => ({ column: c.column, code: code ?? undefined }))}
+				ref={codeBoxRef}
+				onSelect={(code) => {
+					if (code !== undefined) setEditingControl('value')
+					return setComp((c) => ({ column: c.column, code: code ?? undefined }))
+				}}
 			/>
 			{comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfig
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
-					setValue={(value) => setComp((c) => ({ ...c, value }))}
+					setValue={(value) => {
+						setEditingControl(null)
+						return setComp((c) => ({ ...c, value }))
+					}}
 					autocompleteFilter={props.valueAutocompleteFilter}
 				/>
 			)}
@@ -209,7 +240,10 @@ export function Comparison(props: {
 				<StringEqConfigLimitedAutocomplete
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
-					setValue={(value) => setComp((c) => ({ ...c, value }))}
+					setValue={(value) => {
+						setEditingControl(null)
+						return setComp((c) => ({ ...c, value }))
+					}}
 					autocompleteFilter={props.valueAutocompleteFilter}
 				/>
 			)}
@@ -219,6 +253,7 @@ export function Comparison(props: {
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
+						setEditingControl(null)
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
 						})
@@ -231,6 +266,7 @@ export function Comparison(props: {
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
 					setValues={(getValues) => {
+						setEditingControl(null)
 						setComp((c) => {
 							return { ...c, values: getValues(c.values ?? []) }
 						})
@@ -241,31 +277,45 @@ export function Comparison(props: {
 				<NumericSingleValueConfig
 					className="w-[200px]"
 					value={comp.value as number | undefined}
-					setValue={(value) => setComp((c) => ({ ...c, value }))}
+					setValue={(value) => {
+						setEditingControl(null)
+						return setComp((c) => ({ ...c, value }))
+					}}
 				/>
 			)}
 			{comp.code === 'inrange' && (
 				<NumericRangeConfig
 					min={comp.min}
 					max={comp.max}
-					setMin={(min) => setComp((c) => ({ ...c, min }))}
-					setMax={(max) => setComp((c) => ({ ...c, max }))}
+					setMin={(min) => {
+						setEditingControl(null)
+						return setComp((c) => ({ ...c, min }))
+					}}
+					setMax={(max) => {
+						setEditingControl(null)
+						setComp((c) => ({ ...c, max }))
+					}}
 				/>
 			)}
 		</>
 	)
 }
 
-function StringEqConfig<T extends string | null>(props: {
-	value: T | undefined
-	column: M.StringColumn
-	setValue: (value: T | undefined) => void
-	autocompleteFilter?: M.FilterNode
-}) {
+const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string | null>(
+	props: {
+		value: T | undefined
+		column: M.StringColumn
+		setValue: (value: T | undefined) => void
+		autocompleteFilter?: M.FilterNode
+	},
+	ref: React.Ref<HTMLButtonElement>
+) {
 	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
-	return <ComboBox allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
-}
+	return (
+		<ComboBox ref={ref} allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
+	)
+})
 
 function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
 	value: T | undefined
@@ -400,21 +450,29 @@ type ComboBoxOption<T extends string | null> = {
 	label?: string
 }
 const LOADING = Symbol('loading')
+type ComboBoxHandle = {
+	open: () => void
+	isOpen: boolean
+}
 // TODO messy type definitions causing weirdness
-function ComboBox<AllowEmpty extends boolean, T extends string | null, V = AllowEmpty extends true ? T | undefined : T>(props: {
-	allowEmpty: AllowEmpty
-	className?: string
-	title: string
-	// value of input box
-	inputValue?: string
-	setInputValue?: (value: string) => void
-	value: V
-	options: (ComboBoxOption<T> | T)[] | typeof LOADING
-	onSelect: (value: V) => void
-	open?: boolean
-	onOpenChange?: (value: boolean) => void
-	defaultOpen?: boolean
-}) {
+const ComboBox = React.forwardRef(function ComboBox<
+	AllowEmpty extends boolean,
+	T extends string | null,
+	V = AllowEmpty extends true ? T | undefined : T,
+>(
+	props: {
+		allowEmpty: AllowEmpty
+		className?: string
+		title: string
+		// value of input box
+		inputValue?: string
+		setInputValue?: (value: string) => void
+		value: V
+		options: (ComboBoxOption<T> | T)[] | typeof LOADING
+		onSelect: (value: V) => void
+	},
+	ref: React.Ref<ComboBoxHandle>
+) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
 	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
@@ -422,6 +480,20 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	} else {
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
+	const btnRef = useRef<HTMLButtonElement>()
+
+	const [open, setIsOpen] = useState(false)
+	const openRef = useRef(open)
+	openRef.current = open
+	useImperativeHandle(ref, () => ({
+		open: () => {
+			console.log('opening', btnRef.current)
+			return btnRef.current?.click()
+		},
+		get isOpen() {
+			return openRef.current
+		},
+	}))
 
 	//@ts-expect-error typescript is dumb
 	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
@@ -433,19 +505,11 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	} else {
 		selectedOptionDisplay = `Select ${props.title}...`
 	}
-	const [_open, _setOpen] = useState(false)
-	const open = props.open ?? _open
-	const setOpen = props.onOpenChange ?? _setOpen
-	console.log('title: ', props.title, 'open:', props.open)
 
-	function onSelect(value: V) {
-		props.onSelect(value)
-		setOpen(false)
-	}
 	return (
-		<Popover open={open} defaultOpen={props.defaultOpen} onOpenChange={setOpen}>
+		<Popover open={open} onOpenChange={setIsOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-[min] justify-between', props.className)}>
+				<Button ref={btnRef} variant="outline" role="combobox" className={cn('w-[min] justify-between', props.className)}>
 					<span>{selectedOptionDisplay}</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
@@ -466,7 +530,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 									value={DH.MISSING_DISPLAY}
 									onSelect={() => {
 										if (!props.allowEmpty) return
-										onSelect(undefined)
+										props.onSelect(undefined)
 									}}
 								>
 									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
@@ -479,7 +543,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 										key={option.value}
 										value={option.value === null ? NULL.current : option.value}
 										onSelect={() => {
-											onSelect(option.value as V)
+											props.onSelect(option.value as V)
 										}}
 									>
 										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
@@ -492,7 +556,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 			</PopoverContent>
 		</Popover>
 	)
-}
+})
 
 function ComboBoxMulti<T extends string | null>(props: { values: T[]; inputValue: string; options: T[]; onSelect: SetState<T[]> }) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
