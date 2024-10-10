@@ -1,17 +1,14 @@
+import { returnInsertErrors, returnUpdateErrors } from '@/lib/drizzle.ts'
 import { transformer } from '@/lib/trpc.ts'
 import * as M from '@/models.ts'
 import { initTRPC } from '@trpc/server'
-import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { Context } from './context.ts'
-import * as DB from './db.ts'
-import { baseLogger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as SS from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
-import * as Sessions from './systems/sessions.ts'
 
 export const t = initTRPC.context<Context>().create({ transformer })
 
@@ -75,11 +72,26 @@ export const appRouter = t.router({
 	}),
 	pollServerInfo: procedure.subscription(SS.pollServerInfo),
 	getFilters: procedure.query(async ({ ctx }) => {
-		return ctx.db.select().from(Schema.filters)
+		return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
 	}),
 	createFilter: procedureWithInput(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
-		const [row] = await ctx.db.insert(Schema.filters).values(input).returning()
-		return row
+		const res = await returnInsertErrors(ctx.db.insert(Schema.filters).values(input))
+		return res.code
+	}),
+	updateFilter: procedureWithInput(z.tuple([M.FilterEntitySchema.shape.id, M.FilterUpdateSchema.partial()])).mutation(
+		async ({ input, ctx }) => {
+			const [id, update] = input
+			const res = await returnUpdateErrors(ctx.db.update(Schema.filters).set(update).where(eq(Schema.filters.id, id)))
+			ctx.log.info(res, 'Updated filter %d', id)
+			return res.code
+		}
+	),
+	deleteFilter: procedureWithInput(M.FilterEntitySchema.shape.id).mutation(async ({ input, ctx }) => {
+		const [res] = await ctx.db.delete(Schema.filters).where(eq(Schema.filters.id, input))
+		if (res.affectedRows === 0) {
+			return { code: 'err:filter-not-found' }
+		}
+		return { code: 'ok' }
 	}),
 })
 // export type definition of API

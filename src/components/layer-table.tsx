@@ -373,7 +373,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 										Copy set next layer command {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 									<ContextMenuItem onClick={() => onCopyVoteCommand(row)}>
-										Copy generate vote command {selectedLayerIds.includes(row.original.id) && 'for selected'}
+										Copy vote command {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 								</ContextMenuContent>
 							</ContextMenu>

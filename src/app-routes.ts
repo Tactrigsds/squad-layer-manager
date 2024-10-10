@@ -14,7 +14,7 @@ export const routes = {
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
-	...defRoute('/filters/:id/edit', ['id']),
+	...defRoute('/filters/:id/edit', ['id'], { link: (id) => `/filters/${id}/edit` }),
 
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),

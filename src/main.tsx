@@ -4,9 +4,9 @@ import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 
 import { exists } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
+import FilterEdit from './components/filter-edit.tsx'
 import FilterIndex from './components/filter-index.tsx'
 import FilterNew from './components/filter-new.tsx'
-import LayerExplorer from './components/layer-explorer.tsx'
 import LayerQueue from './components/layer-queue.tsx'
 import Providers from './components/providers.tsx'
 import './index.css'
@@ -24,7 +24,7 @@ const router = createBrowserRouter([
 		path: exists('/filters/:id/edit'),
 		element: (
 			<AppContainer>
-				<LayerExplorer />
+				<FilterEdit />
 			</AppContainer>
 		),
 	},

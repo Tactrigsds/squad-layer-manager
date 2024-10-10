@@ -22,13 +22,15 @@ export default async function (opts: { ignore?: string }) {
 				const msg = obj.msg
 				obj = { ...obj }
 
-				obj.humanTime = new Date(obj.time).toLocaleTimeString([], {
+				const humanTime = new Date(obj.time).toLocaleTimeString([], {
 					hour12: false,
 					hour: '2-digit',
 					minute: '2-digit',
 					second: '2-digit',
+					//@ts-expect-error wwhy
 					fractionalSecondDigits: 3,
 				})
+
 				//@ts-expect-error fuck you
 				obj.levelStr = levels[level] ?? 'unknown'
 
@@ -36,9 +38,10 @@ export default async function (opts: { ignore?: string }) {
 				for (const field of ignoreFields) {
 					delete obj[field.trim()]
 				}
+				delete obj.msg
 
 				// Log using the appropriate console method
-				const args = [levels[level as keyof typeof levels] || 'UNKNOWN', `[${obj.humanTime}] ${msg}`, obj]
+				const args = [levels[level as keyof typeof levels] || 'UNKNOWN', `[${humanTime}] ${msg}`, obj]
 				switch (level) {
 					case 10: // trace
 					case 20: // debug

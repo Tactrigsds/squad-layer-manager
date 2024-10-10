@@ -1,15 +1,22 @@
+import * as AR from '@/app-routes.ts'
 import { Input } from '@/components/ui/input'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
+import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
+import * as VE from '@/lib/validation-errors.ts'
 import * as M from '@/models.ts'
 import { useForm } from '@tanstack/react-form'
+import { zodValidator } from '@tanstack/zod-form-adapter'
+import { Terminal } from 'lucide-react'
 import { FormEvent, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { FilterNodeDisplay } from './filter-card'
 import LayerTable from './layer-table'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
-import { Dialog, DialogContent, DialogTrigger } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
@@ -40,8 +47,8 @@ export default function FilterNew() {
 			<div className="flex space-x-2">
 				<FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
 				<div className="flex flex-col space-y-2">
-					<CreateFilterPopover>
-						<Button>Create</Button>
+					<CreateFilterPopover filter={validFilter ?? undefined}>
+						<Button disabled={!validFilter}>Create</Button>
 					</CreateFilterPopover>
 				</div>
 			</div>
@@ -51,19 +58,33 @@ export default function FilterNew() {
 }
 
 function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.FilterNode }) {
+	const createFilterMutation = trpcReact.createFilter.useMutation()
+	const navigate = useNavigate()
 	const form = useForm({
 		defaultValues: {
 			id: '',
 			name: '',
 			description: '',
 		},
+		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {
-			console.log(value)
+			console.log('submitted', value)
+			const code = await createFilterMutation.mutateAsync({
+				filter: props.filter!,
+				id: value.id,
+				name: value.name,
+				description: value.description ?? null,
+			})
+			if (code !== 'success') {
+				alert('Failed to create filter: ' + code)
+				return
+			}
+			navigate(AR.link('/filters/:id/edit', value.id))
 		},
 	})
 
 	function onSubmit(e: FormEvent) {
-		if (props.filter) throw new Error('filter must be defined')
+		if (!props.filter) throw new Error('filter must be defined')
 		e.preventDefault()
 		e.stopPropagation()
 		form.handleSubmit()
@@ -90,11 +111,16 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 		<Dialog onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="items-center flex flex-col">
-				<h3 className={Typography.H3 + ' mx-auto'}>Submit New Filter</h3>
+				<DialogHeader>
+					<DialogTitle>Submit New Filter</DialogTitle>
+				</DialogHeader>
 				<form onSubmit={onSubmit} className="flex flex-col space-y-4">
 					<div className="flex items-center space-x-2">
 						<form.Field
 							name="name"
+							validators={{
+								onChange: M.FilterEntitySchema.shape.name,
+							}}
 							children={(field) => {
 								return (
 									<div className={fieldClasses}>
@@ -113,6 +139,9 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 						/>
 						<form.Field
 							name="id"
+							validators={{
+								onChange: M.FilterEntitySchema.shape.id,
+							}}
 							children={(field) => {
 								return (
 									<div className={fieldClasses}>
@@ -131,6 +160,9 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 					</div>
 					<form.Field
 						name="description"
+						validators={{
+							onChange: M.FilterEntitySchema.shape.description,
+						}}
 						children={(field) => {
 							return (
 								<div className={fieldClasses}>
@@ -146,6 +178,21 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 							)
 						}}
 					/>
+					<div>
+						{form.state.errors.length > 0 && (
+							<Alert variant="destructive">
+								{/* <Terminal className="h-4 w-4" /> */}
+								<AlertTitle>Errors</AlertTitle>
+								<AlertDescription>
+									<ul>
+										{Object.entries(form.state.errors).map(([field, error]) => (
+											<li key={field}>{`${field}: ${error}`}</li>
+										))}
+									</ul>
+								</AlertDescription>
+							</Alert>
+						)}
+					</div>
 					<div className="flex items-center justify-end">
 						<Button type="submit">Submit</Button>
 					</div>

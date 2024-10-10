@@ -1,3 +1,4 @@
+import * as VE from '@/lib/validation-errors.ts'
 import * as z from 'zod'
 
 import * as C from './lib/constants'
@@ -353,12 +354,19 @@ export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
 	layers: MiniLayer[]
 }
 
-export const FilterEntitySchema = z.object({
-	id: z
-		.string()
-		.regex(/^[a-z0-9-_]+$/)
-		.max(64),
-	name: z.string().max(128),
-	description: z.string().max(512),
+export const FilterUpdateSchema = z.object({
+	name: z.string().trim().min(3).max(128),
+	description: z.string().trim().min(3).max(512).nullable(),
 	filter: FilterNodeSchema,
 })
+export const FilterEntitySchema = FilterUpdateSchema.extend({
+	id: z
+		.string()
+		.trim()
+		.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
+		.min(3)
+		.max(64),
+})
+
+export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
+export type FilterEntity = z.infer<typeof FilterEntitySchema>

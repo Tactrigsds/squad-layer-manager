@@ -1,5 +1,6 @@
 import { useDebounced } from '@/hooks/use-debounce'
 import * as DH from '@/lib/displayHelpers'
+import { sleep } from '@/lib/promise'
 import { SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils'
@@ -9,6 +10,7 @@ import { produce } from 'immer'
 import { useAtom } from 'jotai'
 import { Check, ChevronsUpDown, LoaderCircle, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import React from 'react'
 
 import { Button, buttonVariants } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
@@ -176,6 +178,7 @@ export function Comparison(props: {
 			title="Column"
 			allowEmpty={true}
 			value={comp.column}
+			defaultOpen={true}
 			options={M.COLUMN_KEYS}
 			onSelect={(column) => setComp(() => ({ column: column ?? undefined }))}
 		/>
@@ -408,6 +411,9 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	value: V
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: (value: V) => void
+	open?: boolean
+	onOpenChange?: (value: boolean) => void
+	defaultOpen?: boolean
 }) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
@@ -427,14 +433,17 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 	} else {
 		selectedOptionDisplay = `Select ${props.title}...`
 	}
-	const [open, setOpen] = useState(false)
+	const [_open, _setOpen] = useState(false)
+	const open = props.open ?? _open
+	const setOpen = props.onOpenChange ?? _setOpen
+	console.log('title: ', props.title, 'open:', props.open)
 
 	function onSelect(value: V) {
 		props.onSelect(value)
 		setOpen(false)
 	}
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover open={open} defaultOpen={props.defaultOpen} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button variant="outline" role="combobox" aria-expanded={open} className={cn('w-[min] justify-between', props.className)}>
 					<span>{selectedOptionDisplay}</span>
@@ -442,7 +451,7 @@ function ComboBox<AllowEmpty extends boolean, T extends string | null, V = Allow
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-[200px] p-0">
-				<Command shouldFilter={false}>
+				<Command shouldFilter={!!props.setInputValue}>
 					<CommandInput placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
 						<CommandEmpty>No {props.title} found.</CommandEmpty>

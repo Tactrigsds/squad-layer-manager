@@ -260,10 +260,7 @@ function QueueItem(props: {
 					ref={setNodeRef}
 					style={style}
 					{...attributes}
-					className={
-						`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${props.edited ? 'bg-slate-400' : 'bg-background'}  bg-opacity-30 rounded-md` +
-						(isDragging ? ' border' : '')
-					}
+					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${props.edited ? 'bg-slate-400' : 'bg-background'}  bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
 				>
 					<div className="flex items-center">
 						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
