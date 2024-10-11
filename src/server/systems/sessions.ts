@@ -1,5 +1,5 @@
 import * as AR from '@/app-routes'
-import { sleep } from '@/lib/promise'
+import { sleep } from '@/lib/async'
 import * as DB from '@/server/db.ts'
 import { Logger, baseLogger as log } from '@/server/logger'
 import * as Schema from '@/server/schema.ts'

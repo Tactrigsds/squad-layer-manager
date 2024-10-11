@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import { Context } from './context.ts'
 import * as Schema from './schema.ts'
-import * as SS from './systems/layer-queue.ts'
+import * as LQ from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 
 export const t = initTRPC.context<Context>().create({ transformer })
@@ -66,11 +66,11 @@ export const appRouter = t.router({
 		return rows
 	}),
 	getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
-	watchLayerQueueUpdates: procedure.subscription(SS.watchUpdates),
-	updateQueue: procedureWithInput(M.LayerQueueUpdateSchema).mutation(async ({ input }) => {
-		return SS.update(input)
+	watchServerUpdates: procedure.subscription(LQ.watchUpdates),
+	updateQueue: procedureWithInput(M.ServerStateSchema).mutation(async ({ input }) => {
+		return LQ.update(input)
 	}),
-	pollServerInfo: procedure.subscription(SS.pollServerInfo),
+	pollServerInfo: procedure.subscription(LQ.pollServerInfo),
 	getFilters: procedure.query(async ({ ctx }) => {
 		return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
 	}),

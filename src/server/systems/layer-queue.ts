@@ -6,7 +6,7 @@ import { baseLogger } from '@/server/logger.ts'
 import * as S from '@/server/schema.ts'
 import * as Rcon from '@/server/systems/rcon'
 import { tracked } from '@trpc/server'
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { Logger } from 'pino'
 import { Observable, Subject, interval, share, shareReplay, startWith, switchMap } from 'rxjs'
 
@@ -36,18 +36,21 @@ const startingQueue: M.LayerQueue = [
 	// { layerId: 'NV-TC-V1:CAF-MZ:RGF-AR' },
 	// { layerId: 'KD-RAAS-V1:USMC-MT:VDV-CA' },
 ]
-let layerQueue: M.LayerQueue = [...startingQueue]
-let seqId: number = 0
+const serverState: M.ServerState = {
+	seqId: 0,
+	queue: [...startingQueue],
+	nowPlaying: 'BL-AAS-V1:IMF-MZ:RGF-LI',
+	poolFilterId: null,
+}
 
-export const queueUpdateSubject = new Subject<M.LayerQueueUpdate>()
-export let nowPlaying: string | null = 'BL-AAS-V1:IMF-MZ:RGF-LI'
-let queueUpdateDenorm$!: Observable<M.LayerQueueUpdate_Denorm>
+export const serverStateSubject = new Subject<M.ServerState>()
+let queueUpdateDenorm$!: Observable<M.ServerState_Denorm>
 let pollServerInfo$!: Observable<Rcon.ServerStatus>
 export function setupLayerQueue() {
 	const log = baseLogger.child({ ctx: 'layer-queue' })
 	const ctx = { log }
 	const db = DB.get(ctx)
-	queueUpdateDenorm$ = queueUpdateSubject.pipe(
+	queueUpdateDenorm$ = serverStateSubject.pipe(
 		traceTag('layerQueueUpdateDenorm$', ctx),
 		switchMap((update) => getQueueUpdateDenorm(update, { ...ctx, db })),
 		share()
@@ -69,7 +72,7 @@ export async function* watchNowPlaying() {
 export async function* watchUpdates({ ctx }: { ctx: Context }) {
 	{
 		const db = DB.get(ctx)
-		const updateDenorm = await getQueueUpdateDenorm({ seqId: seqId, queue: layerQueue, nowPlaying }, { ...ctx, db })
+		const updateDenorm = await getQueueUpdateDenorm(serverState, { ...ctx, db })
 		yield tracked(getTrackingId(updateDenorm.seqId), updateDenorm)
 	}
 
@@ -84,7 +87,7 @@ export async function* pollServerInfo() {
 	}
 }
 
-async function getQueueUpdateDenorm(update: M.LayerQueueUpdate, ctx: { log: Logger; db: DB.Db }): Promise<M.LayerQueueUpdate_Denorm> {
+async function getQueueUpdateDenorm(update: M.ServerState, ctx: { log: Logger; db: DB.Db }): Promise<M.ServerState_Denorm> {
 	const layerIds = update.queue.map((layer) => layer.layerId).filter((id) => !!id) as string[]
 	if (update.nowPlaying) {
 		layerIds.push(update.nowPlaying)
@@ -93,20 +96,31 @@ async function getQueueUpdateDenorm(update: M.LayerQueueUpdate, ctx: { log: Logg
 	for (const id of layerIds) {
 		layerIdsWithSwapped.push(M.swapFactionsInId(id))
 	}
-	const layers = await ctx.db.select().from(S.layers).where(inArray(S.layers.id, layerIdsWithSwapped))
+	const layersPromise = (async () => await ctx.db.select().from(S.layers).where(inArray(S.layers.id, layerIdsWithSwapped)))()
+	let poolFilterPromise: Promise<undefined | M.FilterEntity> = Promise.resolve(undefined)
+
+	if (update.poolFilterId) {
+		poolFilterPromise = (async () => {
+			const [filter] = await ctx.db.select().from(S.filters).where(eq(S.filters.id, update.poolFilterId))
+			if (!filter) throw new Error('filter ' + update.poolFilterId + " doesn't exist")
+			return filter as M.FilterEntity
+		})()
+	}
+
 	return {
 		...update,
-		layers,
+		layers: await layersPromise,
+		poolFilter: await poolFilterPromise,
 	}
 }
 
-export function update(update: M.LayerQueueUpdate) {
-	if (update.seqId !== seqId) {
+export function update(update: M.ServerState) {
+	if (update.seqId !== serverState.seqId) {
 		return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 	}
-	nowPlaying = update.nowPlaying
-	layerQueue = update.queue
-	seqId++
-	queueUpdateSubject.next({ ...update, seqId })
+	serverState.nowPlaying = update.nowPlaying
+	serverState.queue = update.queue
+	serverState.seqId++
+	serverStateSubject.next(serverState)
 	return { code: 'ok' as const }
 }

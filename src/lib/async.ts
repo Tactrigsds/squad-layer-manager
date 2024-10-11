@@ -1,30 +1,21 @@
 import { Logger } from 'pino'
-import {
-	Observable,
-	OperatorFunction,
-	asapScheduler,
-	endWith,
-	filter,
-	firstValueFrom,
-	interval,
-	map,
-	mapTo,
-	observeOn,
-	takeWhile,
-} from 'rxjs'
+import { Observable, OperatorFunction, asapScheduler, observeOn } from 'rxjs'
+
+export function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 /**
- * Check roughly every loop of the event loop for some condition to be met
+ * Check roughly every iteration of the event loop for some condition to be met
  */
-export function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
-	return firstValueFrom(
-		interval(0).pipe(
-			takeWhile((i) => i < maxRetries),
-			map(() => cb()),
-			filter((v) => !!v),
-			endWith(undefined)
-		)
-	)
+export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
+	let i = 0
+	while (i < maxRetries) {
+		const v = cb()
+		if (v !== undefined) return v as T
+		i++
+		await sleep(0)
+	}
 }
 
 type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }

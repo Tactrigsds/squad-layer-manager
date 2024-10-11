@@ -108,12 +108,13 @@ export type LayerVoteSchema = z.infer<typeof LayerVoteSchema>
 export const LayerQueueSchema = z.array(z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() }))
 export type LayerQueue = z.infer<typeof LayerQueueSchema>
 
-export const server = mysqlTable('servers', {
+export const servers = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),
 	displayName: varchar('displayName', { length: 256 }),
 	layerQueue: json('layerQueue'),
 	online: boolean('online'),
 	numPlayers: int('numPlayers'),
+	poolFilterId: varchar('poolFilterId', { length: 64 }).references(() => filters.id),
 })
 
 export const users = mysqlTable('users', {

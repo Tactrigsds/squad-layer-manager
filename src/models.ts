@@ -315,7 +315,7 @@ export const LayerQueueItemSchema = z.object({ layerId: z.string().optional(), v
 export const LayerQueueSchema = z.array(LayerQueueItemSchema)
 
 export type LayerQueue = z.infer<typeof LayerQueueSchema>
-export type LayerQueueItem = LayerQueue[number]
+export type LayerQueueItem = z.infer<typeof LayerQueueItemSchema>
 // doing this because Omit<> sucks to work with
 
 export const MiniLayerSchema = z.object({
@@ -342,18 +342,6 @@ export type MiniUser = {
 	username: string
 }
 
-export const LayerQueueUpdateSchema = z.object({
-	seqId: z.number(),
-	queue: LayerQueueSchema,
-	nowPlaying: z.union([z.string(), z.null()]),
-})
-
-export type LayerQueueUpdate = z.infer<typeof LayerQueueUpdateSchema>
-
-export type LayerQueueUpdate_Denorm = LayerQueueUpdate & {
-	layers: MiniLayer[]
-}
-
 export const FilterUpdateSchema = z.object({
 	name: z.string().trim().min(3).max(128),
 	description: z.string().trim().min(3).max(512).nullable(),
@@ -370,3 +358,17 @@ export const FilterEntitySchema = FilterUpdateSchema.extend({
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+
+export const ServerStateSchema = z.object({
+	seqId: z.number(),
+	queue: LayerQueueSchema,
+	nowPlaying: z.union([z.string(), z.null()]),
+	poolFilterId: FilterEntitySchema.shape.id.nullable(),
+})
+
+export type ServerState = z.infer<typeof ServerStateSchema>
+
+export type ServerState_Denorm = ServerState & {
+	layers: MiniLayer[]
+	poolFilter?: FilterEntity
+}

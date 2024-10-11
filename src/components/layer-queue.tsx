@@ -2,20 +2,23 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { sleepUntil } from '@/lib/async'
+import { sleep } from '@/lib/async'
 import * as Helpers from '@/lib/display-helpers'
 import * as FB from '@/lib/filterBuilders.ts'
-import { sleep } from '@/lib/promise'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+import deepEquals from 'fast-deep-equal'
 import { produce } from 'immer'
 import { EllipsisVertical, GripVertical, PlusIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import React from 'react'
 
+import ComboBox from './combo-box'
+import * as CB from './combo-box'
 import { Comparison } from './filter-card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -25,18 +28,29 @@ const LayerQueueContext = createContext<{ getLayer: (layerId: string) => M.MiniL
 
 export default function LayerQueue() {
 	const [layerQueue, setLayerQueue] = useState(null as null | M.LayerQueue)
-	const [nowPlaying, setNowPlaying] = useState(null as M.LayerQueueUpdate['nowPlaying'])
+	const [nowPlaying, setNowPlaying] = useState(null as M.ServerState['nowPlaying'])
+	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
 	// TODO could use linked list model for editing so we can effectively diff it
-	const [editedQueueIndexes, setEditedQueueIndexes] = useState([] as number[])
+	const [queueItemOriginalIndexes, setQueueItemOriginalIndexes] = useState([] as (number | null)[])
 	const [deletedItemCount, setDeletedItemCount] = useState(0)
-	function addEditedQueueIndex(index: number) {
-		setEditedQueueIndexes((prev) => (!prev.includes(index) ? [...prev, index] : prev))
-	}
 	// const serverInfo = useServerInfo()
 
-	const lastUpdateRef = useRef(null as null | M.LayerQueueUpdate)
+	const lastUpdateRef = useRef(null as null | M.ServerState)
 	const seqIdRef = useRef(-1)
-	const editing = editedQueueIndexes.length > 0
+	const poolFilterEdited = !!lastUpdateRef.current && lastUpdateRef.current.poolFilterId !== poolFilterId
+	function updatePoolFilter(filterId: M.ServerState['poolFilterId']) {
+		setPoolFilterId(filterId)
+	}
+
+	const editedIndexes = new Array(queueItemOriginalIndexes.length).fill(false)
+	if (layerQueue && lastUpdateRef.current) {
+		if (queueItemOriginalIndexes.length !== layerQueue.length)
+			throw new Error('queueItemOriginalIndexes length does not match layerQueue length')
+		for (let i = 0; i < queueItemOriginalIndexes.length; i++) {
+			const origIdx = queueItemOriginalIndexes[i]
+			if (origIdx === null || !deepEquals(lastUpdateRef.current.queue[origIdx], layerQueue[i])) editedIndexes[i] = true
+		}
+	}
 
 	const layersRef = useRef(new Map<string, M.MiniLayer>())
 	function getLayer(layerId: string) {
@@ -44,11 +58,12 @@ export default function LayerQueue() {
 		if (!layer) throw new Error(`Layer ${layerId} not found`)
 		return layer
 	}
-	trpcReact.watchLayerQueueUpdates.useSubscription(undefined, {
+	trpcReact.watchServerUpdates.useSubscription(undefined, {
 		onData: ({ data }) => {
 			setLayerQueue(data.queue)
 			setNowPlaying(data.nowPlaying)
 			setEditedQueueIndexes([])
+			setPoolFilterId(data.poolFilterId)
 			lastUpdateRef.current = data
 			seqIdRef.current = data.seqId
 			for (const layer of data.layers) {
@@ -58,11 +73,12 @@ export default function LayerQueue() {
 	})
 	const updateQueueMutation = trpcReact.updateQueue.useMutation()
 	function save() {
-		if (!editing || !layerQueue) return
+		if (!editing || !layerQueue || !lastUpdateRef.current) return
 		updateQueueMutation.mutate({
 			nowPlaying,
 			queue: layerQueue,
 			seqId: seqIdRef.current,
+			poolFilterId: lastUpdateRef.current.poolFilterId,
 		})
 	}
 	function reset() {
@@ -114,100 +130,123 @@ export default function LayerQueue() {
 	return (
 		<div className="grid place-items-center">
 			<LayerQueueContext.Provider value={{ getLayer }}>
-				<DndContext onDragEnd={handleDragEnd}>
-					<Card className="flex flex-col w-max">
-						<div className="p-6 w-full flex justify-between">
-							<h3 className={Typography.H3}>Layer Queue</h3>
-							<AddLayerPopover addLayers={addLayers} open={addLayersPopoverOpen} onOpenChange={setAddLayersPopoverOpen}>
-								<Button className="space-x-1 flex items-center w-min" variant="default">
-									<PlusIcon />
-									<span>Add Layers</span>
-								</Button>
-							</AddLayerPopover>
-						</div>
-						<CardContent className="flex space-x-4">
-							<div>
-								{/* ------- top card ------- */}
-								<Card>
-									{!editing && nowPlaying && (
-										<>
-											<CardHeader>
-												<CardTitle>Now Playing</CardTitle>
-											</CardHeader>
-											<CardContent>{Helpers.toShortLayerName(getLayer(nowPlaying))}</CardContent>
-										</>
-									)}
-									{!editing && !nowPlaying && <p className={Typography.P}>No active layer found</p>}
-									{editing && (
-										<div className="flex flex-col space-y-2">
-											<Card>
-												<CardHeader>
-													<CardTitle>Changes pending</CardTitle>
-													<CardDescription>
-														{editedQueueIndexes.length} items edited, {deletedItemCount} items deleted
-													</CardDescription>
-												</CardHeader>
-												<CardContent>
-													<Button onClick={save}>Save</Button>
-													<Button onClick={reset} variant="secondary">
-														Cancel
-													</Button>
-												</CardContent>
-											</Card>
-										</div>
-									)}
-								</Card>
-
-								<h4 className={Typography.H4}>Up Next</h4>
-								<ScrollArea>
-									<ul className="flex flex-col space-y-1 w-max">
-										{/* -------- queue items -------- */}
-										{layerQueue?.map((item, index) => {
-											function dispatch(action: QueueItemAction) {
-												if (action.code === 'delete') {
-													setLayerQueue((existing) => {
-														if (!existing) throw new Error('layerQueue is null')
-														const newQueue = existing.filter((_, i) => i !== index)
-														return newQueue
-													})
-													setEditedQueueIndexes((prev) => {
-														const newIndexes = prev.filter((idx) => idx !== index)
-														return newIndexes.map((idx) => (idx > index ? idx - 1 : idx))
-													})
-													setDeletedItemCount((prev) => prev + 1)
-												} else if (action.code === 'swap-factions') {
-													setLayerQueue((existing) => {
-														return existing!.map((currentItem) => {
-															if (currentItem.layerId && currentItem.layerId === item!.layerId) {
-																return { ...currentItem, layerId: M.swapFactionsInId(currentItem.layerId) }
-															}
-															return currentItem
-														})
-													})
-													addEditedQueueIndex(index)
-												} else if (action.code === 'add-after') {
-													addLayers(action.layers, index + 1)
-												}
-											}
-											return (
-												<QueueItem
-													key={item.layerId + '-' + index}
-													edited={editedQueueIndexes.some((idx) => idx === index)}
-													item={item}
-													index={index}
-													isLast={index + 1 === layerQueue.length}
-													dispatch={dispatch}
-												/>
-											)
-										})}
-									</ul>
-								</ScrollArea>
+				<span className="flex space-x-4">
+					<DndContext onDragEnd={handleDragEnd}>
+						<Card className="flex flex-col w-max">
+							<div className="p-6 w-full flex justify-between">
+								<h3 className={Typography.H3}>Layer Queue</h3>
+								<AddLayerPopover addLayers={addLayers} open={addLayersPopoverOpen} onOpenChange={setAddLayersPopoverOpen}>
+									<Button className="space-x-1 flex items-center w-min" variant="default">
+										<PlusIcon />
+										<span>Add Layers</span>
+									</Button>
+								</AddLayerPopover>
 							</div>
-						</CardContent>
-					</Card>
-				</DndContext>
+							<CardContent className="flex space-x-4">
+								<div>
+									{/* ------- top card ------- */}
+									<Card>
+										{!editing && nowPlaying && (
+											<>
+												<CardHeader>
+													<CardTitle>Now Playing</CardTitle>
+												</CardHeader>
+												<CardContent>{Helpers.toShortLayerName(getLayer(nowPlaying))}</CardContent>
+											</>
+										)}
+										{!editing && !nowPlaying && <p className={Typography.P}>No active layer found</p>}
+										{editing && (
+											<div className="flex flex-col space-y-2">
+												<Card>
+													<CardHeader>
+														<CardTitle>Changes pending</CardTitle>
+														<CardDescription>
+															{editedQueueIndexes.length} items edited, {deletedItemCount} items deleted
+														</CardDescription>
+													</CardHeader>
+													<CardContent>
+														<Button onClick={save}>Save</Button>
+														<Button onClick={reset} variant="secondary">
+															Cancel
+														</Button>
+													</CardContent>
+												</Card>
+											</div>
+										)}
+									</Card>
+
+									<h4 className={Typography.H4}>Up Next</h4>
+									<ScrollArea>
+										<ul className="flex flex-col space-y-1 w-max">
+											{/* -------- queue items -------- */}
+											{layerQueue?.map((item, index) => {
+												function dispatch(action: QueueItemAction) {
+													if (action.code === 'delete') {
+														setLayerQueue((existing) => {
+															if (!existing) throw new Error('layerQueue is null')
+															const newQueue = existing.filter((_, i) => i !== index)
+															return newQueue
+														})
+														setEditedQueueIndexes((prev) => {
+															const newIndexes = prev.filter((idx) => idx !== index)
+															return newIndexes.map((idx) => (idx > index ? idx - 1 : idx))
+														})
+														setDeletedItemCount((prev) => prev + 1)
+													} else if (action.code === 'swap-factions') {
+														setLayerQueue((existing) => {
+															return existing!.map((currentItem) => {
+																if (currentItem.layerId && currentItem.layerId === item!.layerId) {
+																	return { ...currentItem, layerId: M.swapFactionsInId(currentItem.layerId) }
+																}
+																return currentItem
+															})
+														})
+														addEditedQueueIndex(index)
+													} else if (action.code === 'add-after') {
+														addLayers(action.layers, index + 1)
+													}
+												}
+												return (
+													<QueueItem
+														key={item.layerId + '-' + index}
+														edited={editedQueueIndexes.some((idx) => idx === index)}
+														item={item}
+														index={index}
+														isLast={index + 1 === layerQueue.length}
+														dispatch={dispatch}
+													/>
+												)
+											})}
+										</ul>
+									</ScrollArea>
+								</div>
+							</CardContent>
+						</Card>
+					</DndContext>
+					<PoolConfigurationPanel poolFilterId={poolFilterId} poolFilterEdited={poolFilterEdited} updateFilter={updatePoolFilter} />
+				</span>
 			</LayerQueueContext.Provider>
 		</div>
+	)
+}
+
+function PoolConfigurationPanel(props: {
+	poolFilterId: M.ServerState['poolFilterId']
+	poolFilterEdited: boolean
+	updateFilter: (filter: M.ServerState['poolFilterId']) => void
+}) {
+	const filtersRes = trpcReact.getFilters.useQuery()
+	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: `${f.name} - ${f.description}` }))
+	const selected = props.poolFilterId
+	return (
+		<Card className="">
+			<CardHeader>
+				<CardTitle>Pool Configuration</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<ComboBox title="Pool Filter" options={filterOptions ?? CB.LOADING} value={selected} onSelect={props.updateFilter} />
+			</CardContent>
+		</Card>
 	)
 }
 
@@ -561,3 +600,56 @@ function AddLayerPopover(props: {
 		</Popover>
 	)
 }
+
+function structuralDiff<T>(
+	orig: T[],
+	curr: T[],
+	origIdxMap: (number | null)[],
+	eq: (a: T, b: T) => boolean
+): { added: number[]; edited: number[]; removed: number[] } {
+	if (curr.length !== origIdxMap.length) throw new Error('current array and map must be of equal length')
+	const seenIndexes = new Set<number>()
+	for (const idx of origIdxMap) {
+		if (idx !== null) {
+			if (seenIndexes.has(idx)) {
+				throw new Error('Duplicate index found in origIdxMap')
+			}
+			seenIndexes.add(idx)
+		}
+	}
+
+	const removed: number[] = []
+	for (let i = 0; i < orig.length; i++) {
+		if (!seenIndexes.has(i)) {
+			removed.push(i)
+		}
+	}
+
+	const edited: number[] = []
+	const added: number[] = []
+	let expectedOrigIndex = 0
+	for (let i = 0; i < curr.length; i++) {
+		const origIdx = origIdxMap[i]
+		if (origIdx === null) {
+			added.push(i)
+			continue
+		}
+		if (expectedOrigIndex !== origIdx && !eq(orig[origIdx], curr[i])) {
+			edited.push(i)
+			continue
+		} else if (!eq(orig[origIdx], curr[i])) {
+			edited.push(i)
+		}
+		expectedOrigIndex++
+	}
+
+	return { edited, added, removed }
+}
+
+// [2 , 3, 6 4]
+// [2 , 4, 6, 3]
+
+// ^
+// [2 , 3, 6 4]
+// [2 , 4, 6, 3]
+//

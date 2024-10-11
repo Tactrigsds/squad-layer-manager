@@ -1,7 +1,7 @@
 import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
+import { sleep } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
-import { sleep } from '@/lib/promise'
 import { SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils'
