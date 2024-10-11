@@ -1,4 +1,4 @@
-import { toAsyncGenerator, traceTag } from '@/lib/rxjs.ts'
+import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
 import * as M from '@/models.ts'
 import { Context } from '@/server/context'
 import * as DB from '@/server/db.ts'

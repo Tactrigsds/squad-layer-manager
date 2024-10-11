@@ -1,5 +1,31 @@
 import { Logger } from 'pino'
-import { Observable, OperatorFunction, asapScheduler, observeOn } from 'rxjs'
+import {
+	Observable,
+	OperatorFunction,
+	asapScheduler,
+	endWith,
+	filter,
+	firstValueFrom,
+	interval,
+	map,
+	mapTo,
+	observeOn,
+	takeWhile,
+} from 'rxjs'
+
+/**
+ * Check roughly every loop of the event loop for some condition to be met
+ */
+export function sleepUntil<T>(cb: () => T | undefined, maxRetries = 100) {
+	return firstValueFrom(
+		interval(0).pipe(
+			takeWhile((i) => i < maxRetries),
+			map(() => cb()),
+			filter((v) => !!v),
+			endWith(undefined)
+		)
+	)
+}
 
 type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }
 

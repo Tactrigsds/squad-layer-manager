@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import * as Helpers from '@/lib/displayHelpers'
+import * as Helpers from '@/lib/display-helpers'
 import * as FB from '@/lib/filterBuilders.ts'
 import { sleep } from '@/lib/promise'
 import { trpcReact } from '@/lib/trpc.client.ts'

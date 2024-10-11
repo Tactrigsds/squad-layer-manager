@@ -38,7 +38,6 @@ export default function FilterEdit() {
 	const { id } = useAppParams(AR.exists('/filters/:id/edit'))
 	const filtersReq = trpcReact.getFilters.useQuery()
 	const originalFilterEntity = filtersReq.data?.find((f) => f.id === id)
-	console.log('originalFilterEntity', originalFilterEntity)
 	const { toast } = useToast()
 
 	const [tsLastEdit, setTsLastEdit] = useState(null as null | number)

@@ -1,7 +1,7 @@
 import * as AR from '@/app-routes.ts'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useServerInfo } from '@/hooks/use-server-info'
-import * as DH from '@/lib/displayHelpers'
+import * as DH from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'

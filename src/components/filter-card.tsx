@@ -1,5 +1,6 @@
 import { useDebounced } from '@/hooks/use-debounce'
-import * as DH from '@/lib/displayHelpers'
+import { sleepUntil } from '@/lib/async'
+import * as DH from '@/lib/display-helpers'
 import { sleep } from '@/lib/promise'
 import { SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
@@ -13,6 +14,8 @@ import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import React from 'react'
 import { Observable } from 'rxjs'
 
+import ComboBox, { ComboBoxHandle, LOADING } from './combo-box'
+import ComboBoxMulti from './combo-box-multi'
 import { Button, buttonVariants } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -165,15 +168,15 @@ export function Comparison(props: {
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
-	const columnBoxRef = useRef<ComboBoxHandle>()
-	const codeBoxRef = useRef<ComboBoxHandle>()
-	const valueBoxRef = useRef<ComboBoxHandle>()
+	const columnBoxRef = useRef<ComboBoxHandle>(null)
+	const codeBoxRef = useRef<ComboBoxHandle>(null)
+	const valueBoxRef = useRef<ComboBoxHandle>(null)
+	const alreadyOpenedRef = useRef(false)
 	useEffect(() => {
-		console.log('defaultEditing: ', props.defaultEditing, 'btn:', columnBoxRef.current)
-		if (props.defaultEditing && !columnBoxRef.current!.isOpen) {
+		if (props.defaultEditing && !columnBoxRef.current!.isOpen && !alreadyOpenedRef.current) {
 			columnBoxRef.current?.open()
+			alreadyOpenedRef.current = true
 		}
-
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
@@ -185,12 +188,16 @@ export function Comparison(props: {
 			options={M.COLUMN_KEYS}
 			ref={columnBoxRef}
 			onSelect={(column) => {
-				if (column && M.COLUMN_KEY_TO_TYPE[column] in ['string']) {
+				console.log('column', column)
+				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'string') {
 					setComp((c) => {
-						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
-						return { column: c.column, code }
+						let code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
+						if (!code) code = 'eq'
+						console.log('code', code)
+						return { column: column, code }
 					})
-					valueBoxRef.current?.open()
+					// is this a race condition? maybe ¯\_(ツ)_/¯
+					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
 					return
 				}
 				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'float') {
@@ -198,7 +205,7 @@ export function Comparison(props: {
 						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.float ? c.code : undefined
 						return { column: c.column, code }
 					})
-					valueBoxRef.current?.click()
+					valueBoxRef.current?.open()
 					return
 				}
 				return setComp(() => ({ column: column ?? undefined }))
@@ -219,12 +226,14 @@ export function Comparison(props: {
 				options={columnOptions}
 				ref={codeBoxRef}
 				onSelect={(code) => {
-					if (code !== undefined) valueBoxRef.current?.open()
-					return setComp((c) => ({ column: c.column, code: code ?? undefined }))
+					// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯
+					if (code !== undefined) sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
+					return setComp((c) => ({ ...c, code: code ?? undefined }))
 				}}
 			/>
 			{comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfig
+					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => {
@@ -235,6 +244,7 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringEqConfigLimitedAutocomplete
+					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
 					setValue={(value) => {
@@ -245,6 +255,7 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringInConfig
+					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
@@ -257,6 +268,7 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'in' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
 				<StringInConfigLimitAutoComplete
+					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
@@ -269,6 +281,7 @@ export function Comparison(props: {
 			)}
 			{(comp.code === 'gt' || comp.code === 'lt') && (
 				<NumericSingleValueConfig
+					ref={valueBoxRef}
 					className="w-[200px]"
 					value={comp.value as number | undefined}
 					setValue={(value) => {
@@ -278,6 +291,7 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'inrange' && (
 				<NumericRangeConfig
+					ref={valueBoxRef}
 					min={comp.min}
 					max={comp.max}
 					setMin={(min) => {
@@ -299,7 +313,7 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		setValue: (value: T | undefined) => void
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.Ref<HTMLButtonElement>
+	ref: React.MutableRefObject<ComboBoxHandle>
 ) {
 	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
@@ -308,25 +322,29 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	)
 })
 
-function StringEqConfigLimitedAutocomplete<T extends string | null>(props: {
-	value: T | undefined
-	column: M.StringColumn
-	setValue: (value: T | undefined) => void
-	autocompleteFilter?: M.FilterNode
-}) {
+const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConfigLimitedAutocomplete<T extends string | null>(
+	props: {
+		value: T | undefined
+		column: M.StringColumn
+		setValue: (value: T | undefined) => void
+		autocompleteFilter?: M.FilterNode
+	},
+	ref: React.MutableRefObject<ComboBoxHandle>
+) {
 	const autocomplete = useLimitedColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
 	return (
 		<ComboBox
+			ref={ref}
 			allowEmpty={false}
 			title={props.column}
 			value={props.value}
 			inputValue={autocomplete.inputValue}
 			setInputValue={autocomplete.setInputValue}
 			options={autocomplete.options}
-			onSelect={(v) => props.setValue(v)}
+			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
-}
+})
 
 function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
@@ -381,25 +399,34 @@ function buildLikeFilter(column: M.StringColumn, input: string): M.FilterNode {
 	}
 }
 
-function StringInConfig(props: {
-	values: string[]
-	column: M.StringColumn
-	setValues: SetState<string[]>
-	autocompleteFilter?: M.FilterNode
-}) {
+const StringInConfig = React.forwardRef(function StringInConfig(
+	props: {
+		values: string[]
+		column: M.StringColumn
+		setValues: SetState<string[]>
+		autocompleteFilter?: M.FilterNode
+	},
+	ref: React.MutableRefObject<ComboBoxHandle>
+) {
 	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
-	return <ComboBoxMulti values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
-}
+	return (
+		<ComboBoxMulti ref={ref} values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
+	)
+})
 
-function StringInConfigLimitAutoComplete(props: {
-	values: string[]
-	column: M.StringColumn
-	setValues: SetState<string[]>
-	autocompleteFilter?: M.FilterNode
-}) {
+const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfigLimitAutoComplete(
+	props: {
+		values: string[]
+		column: M.StringColumn
+		setValues: SetState<string[]>
+		autocompleteFilter?: M.FilterNode
+	},
+	ref: React.MutableRefObject<ComboBoxHandle>
+) {
 	const autocomplete = useLimitedColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
 	return (
 		<ComboBoxMulti
+			ref={ref}
 			values={props.values}
 			options={autocomplete.options}
 			onSelect={props.setValues}
@@ -407,203 +434,37 @@ function StringInConfigLimitAutoComplete(props: {
 			setInputValue={autocomplete.setInputValue}
 		/>
 	)
-}
+})
 
-function NumericSingleValueConfig(props: { className?: string; value?: number; setValue: (value?: number) => void }) {
-	const [value, setValue] = useState(props.value?.toString() ?? '')
-	return (
-		<Input
-			className={props.className}
-			value={value}
-			onChange={(e) => {
-				setValue(e.target.value)
-				const value = e.target.value.trim()
-				// TODO debounce
-				return props.setValue(value === '' ? undefined : parseFloat(value))
-			}}
-		/>
-	)
-}
+const NumericSingleValueConfig = React.forwardRef(
+	(props: { className?: string; value?: number; setValue: (value?: number) => void }, ref: React.Ref<HTMLInputElement>) => {
+		const [value, setValue] = useState(props.value?.toString() ?? '')
+		return (
+			<Input
+				ref={ref}
+				className={props.className}
+				value={value}
+				onChange={(e) => {
+					setValue(e.target.value)
+					const value = e.target.value.trim()
+					// TODO debounce
+					return props.setValue(value === '' ? undefined : parseFloat(value))
+				}}
+			/>
+		)
+	}
+)
 
-function NumericRangeConfig(props: { min?: number; max?: number; setMin: (min?: number) => void; setMax: (max?: number) => void }) {
+const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
+	props: { min?: number; max?: number; setMin: (min?: number) => void; setMax: (max?: number) => void },
+	ref: React.MutableRefObject<HTMLInputElement>
+) {
 	return (
 		<div className="flex w-[200px] space-x-2 items-center">
-			<NumericSingleValueConfig value={props.min} setValue={props.setMin} />
+			<NumericSingleValueConfig ref={ref} value={props.min} setValue={props.setMin} />
 			<span>to</span>
 			<NumericSingleValueConfig value={props.max} setValue={props.setMax} />
 		</div>
 	)
-}
-
-// can't use an actual symbol because cmdk doesn't support them afaik
-type ComboBoxOption<T extends string | null> = {
-	value: T
-	label?: string
-}
-const LOADING = Symbol('loading')
-type ComboBoxHandle = {
-	open: () => void
-	isOpen: boolean
-}
-// TODO messy type definitions causing weirdness
-const ComboBox = React.forwardRef(function ComboBox<
-	AllowEmpty extends boolean,
-	T extends string | null,
-	V = AllowEmpty extends true ? T | undefined : T,
->(
-	props: {
-		allowEmpty: AllowEmpty
-		className?: string
-		title: string
-		// value of input box
-		inputValue?: string
-		setInputValue?: (value: string) => void
-		value: V
-		options: (ComboBoxOption<T> | T)[] | typeof LOADING
-		onSelect: (value: V) => void
-	},
-	ref: React.Ref<ComboBoxHandle>
-) {
-	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	let options: ComboBoxOption<T>[] | typeof LOADING
-	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
-		options = (props.options as T[]).map((v) => ({ value: v }))
-	} else {
-		options = props.options as ComboBoxOption<T>[] | typeof LOADING
-	}
-	const btnRef = useRef<HTMLButtonElement>()
-
-	const [open, setIsOpen] = useState(false)
-	const openRef = useRef(open)
-	openRef.current = open
-	useImperativeHandle(ref, () => ({
-		open: () => {
-			console.log('opening', btnRef.current)
-			btnRef.current?.focus()
-			return btnRef.current?.click()
-		},
-		get isOpen() {
-			return openRef.current
-		},
-	}))
-
-	//@ts-expect-error typescript is dumb
-	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
-	let selectedOptionDisplay: string
-	if (selectedOption?.value === null) {
-		selectedOptionDisplay = DH.MISSING_DISPLAY
-	} else if (selectedOption) {
-		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
-	} else {
-		selectedOptionDisplay = `Select ${props.title}...`
-	}
-
-	return (
-		<Popover open={open} onOpenChange={setIsOpen}>
-			<PopoverTrigger asChild>
-				<Button ref={btnRef} variant="outline" role="combobox" className={cn('w-[min] justify-between', props.className)}>
-					<span>{selectedOptionDisplay}</span>
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent
-				className="w-[200px] p-0"
-				onInteractOutside={(e) => {
-					console.log('onInteractOutside')
-				}}
-				onCloseAutoFocus={(e) => {
-					console.log('onclose')
-					e.preventDefault()
-				}}
-			>
-				<Command shouldFilter={!!props.setInputValue}>
-					<CommandInput placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
-					<CommandList>
-						<CommandEmpty>No {props.title} found.</CommandEmpty>
-						<CommandGroup>
-							{options === LOADING && (
-								<CommandItem>
-									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-								</CommandItem>
-							)}
-							{options !== LOADING && props.allowEmpty && (
-								<CommandItem
-									value={DH.MISSING_DISPLAY}
-									onSelect={() => {
-										if (!props.allowEmpty) return
-										props.onSelect(undefined)
-									}}
-								>
-									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
-									{DH.MISSING_DISPLAY}
-								</CommandItem>
-							)}
-							{options !== LOADING &&
-								options.map((option) => (
-									<CommandItem
-										key={option.value}
-										value={option.value === null ? NULL.current : option.value}
-										onSelect={() => {
-											props.onSelect(option.value as V)
-										}}
-									>
-										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-										{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-									</CommandItem>
-								))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
-	)
 })
-
-function ComboBoxMulti<T extends string | null>(props: { values: T[]; inputValue: string; options: T[]; onSelect: SetState<T[]> }) {
-	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values, onSelect, options } = props
-	const [open, setOpen] = useState(false)
-	let valuesDisplay = values.length > 0 ? values.join(',') : 'Select...'
-	if (valuesDisplay.length > 25) {
-		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
-	}
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button variant="outline" role="combobox" aria-expanded={open} className="max-w-[400px] justify-between font-mono">
-					{valuesDisplay}
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent className="w-[200px] p-0">
-				<Command>
-					<CommandInput placeholder="Search framework..." />
-					<CommandList>
-						<CommandEmpty>No framework found.</CommandEmpty>
-						<CommandGroup>
-							{options.map((option) => (
-								<CommandItem
-									key={option}
-									value={option === null ? NULL.current : option}
-									onSelect={(selected) => {
-										onSelect((values) => {
-											const selectedValue = selected as T
-											if (values.includes(selectedValue)) {
-												return values.filter((v) => v !== option)
-											} else {
-												return [...values, option]
-											}
-										})
-									}}
-								>
-									<Check className={cn('mr-2 h-4 w-4', values.includes(option) ? 'opacity-100' : 'opacity-0')} />
-									{option === null ? DH.NULL_DISPLAY : option}
-								</CommandItem>
-							))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
-	)
-}
+// can't use an actual symbol because cmdk doesn't support them afaik

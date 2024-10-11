@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import * as DH from '@/lib/displayHelpers'
+import * as DH from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
 import { LayersQuery } from '@/server/systems/layers-query.ts'
