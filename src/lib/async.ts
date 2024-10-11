@@ -16,7 +16,7 @@ import {
 /**
  * Check roughly every loop of the event loop for some condition to be met
  */
-export function sleepUntil<T>(cb: () => T | undefined, maxRetries = 100) {
+export function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
 	return firstValueFrom(
 		interval(0).pipe(
 			takeWhile((i) => i < maxRetries),

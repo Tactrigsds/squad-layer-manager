@@ -45,7 +45,6 @@ function ComboBox<T extends string | null, V = T | undefined>(props: ComboBoxPro
 	openRef.current = open
 	useImperativeHandle(ref, () => ({
 		open: () => {
-			console.log('opening', props.title)
 			setOpen(true)
 		},
 		get isOpen() {

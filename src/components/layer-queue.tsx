@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { sleepUntil } from '@/lib/async'
 import * as Helpers from '@/lib/display-helpers'
 import * as FB from '@/lib/filterBuilders.ts'
 import { sleep } from '@/lib/promise'
@@ -427,9 +428,9 @@ function AddLayerPopover(props: {
 	useEffect(() => {
 		if (!props.open) return
 		;(async () => {
-			await sleep(0)
-			if (contentRef.current) {
-				setHeight(contentRef.current.getBoundingClientRect().height + 25)
+			const content = await sleepUntil(() => contentRef.current)
+			if (content) {
+				setHeight(content.getBoundingClientRect().height + 25)
 			}
 		})()
 	}, [props.open])

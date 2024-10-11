@@ -188,12 +188,10 @@ export function Comparison(props: {
 			options={M.COLUMN_KEYS}
 			ref={columnBoxRef}
 			onSelect={(column) => {
-				console.log('column', column)
 				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'string') {
 					setComp((c) => {
 						let code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
 						if (!code) code = 'eq'
-						console.log('code', code)
 						return { column: column, code }
 					})
 					// is this a race condition? maybe ¯\_(ツ)_/¯
