@@ -1,10 +1,11 @@
 import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
+import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import { Context } from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as S from '@/server/schema.ts'
-import * as Rcon from '@/server/systems/rcon'
+import * as SquadServer from '@/server/systems/squad-server.ts'
 import { tracked } from '@trpc/server'
 import { eq, inArray } from 'drizzle-orm'
 import { Logger } from 'pino'
@@ -39,13 +40,13 @@ const startingQueue: M.LayerQueue = [
 const serverState: M.ServerState = {
 	seqId: 0,
 	queue: [...startingQueue],
-	nowPlaying: 'BL-AAS-V1:IMF-MZ:RGF-LI',
+	nowPlaying: null,
 	poolFilterId: null,
 }
 
 export const serverStateSubject = new Subject<M.ServerState>()
 let queueUpdateDenorm$!: Observable<M.ServerState_Denorm>
-let pollServerInfo$!: Observable<Rcon.ServerStatus>
+let pollServerInfo$!: Observable<SM.ServerStatus>
 export function setupLayerQueue() {
 	const log = baseLogger.child({ ctx: 'layer-queue' })
 	const ctx = { log }
@@ -55,10 +56,10 @@ export function setupLayerQueue() {
 		switchMap((update) => getQueueUpdateDenorm(update, { ...ctx, db })),
 		share()
 	)
-	pollServerInfo$ = interval(30000_0000).pipe(
+	pollServerInfo$ = interval(3000).pipe(
 		traceTag('pollServerInfo$', ctx),
 		startWith(0),
-		switchMap(Rcon.fetchServerStatus),
+		switchMap(SquadServer.getServerStatus),
 		shareReplay(1)
 	)
 }
@@ -101,8 +102,14 @@ async function getQueueUpdateDenorm(update: M.ServerState, ctx: { log: Logger; d
 
 	if (update.poolFilterId) {
 		poolFilterPromise = (async () => {
-			const [filter] = await ctx.db.select().from(S.filters).where(eq(S.filters.id, update.poolFilterId))
-			if (!filter) throw new Error('filter ' + update.poolFilterId + " doesn't exist")
+			let filter: M.FilterEntity | null
+			if (update.poolFilterId !== null) {
+				const [_filter] = await ctx.db.select().from(S.filters).where(eq(S.filters.id, update.poolFilterId))
+				filter = _filter as M.FilterEntity
+				if (!filter) throw new Error('filter ' + update.poolFilterId + " doesn't exist")
+			} else {
+				filter = null
+			}
 			return filter as M.FilterEntity
 		})()
 	}

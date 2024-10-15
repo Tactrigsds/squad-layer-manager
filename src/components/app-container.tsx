@@ -1,13 +1,9 @@
 import * as AR from '@/app-routes.ts'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useServerInfo } from '@/hooks/use-server-info'
 import * as DH from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as S from '@/stores'
-import { useAtom } from 'jotai'
-import { SidebarIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button, buttonVariants } from './ui/button'
@@ -27,16 +23,6 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
-					{userRes.data && (
-						<div className="flex flex-row items-center space-x-4">
-							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
-							<form action={AR.exists('/logout')} method="POST">
-								<Button type="submit" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
-									Log Out
-								</Button>
-							</form>
-						</div>
-					)}
 					{serverInfo && (
 						<>
 							<div className="flex flex-col">
@@ -55,6 +41,16 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 								<span className={cn(Typography.Small, 'font-bold')}>{DH.toShortLayerName(serverInfo.nextLayer)}</span>
 							</div>
 						</>
+					)}
+					{userRes.data && (
+						<div className="flex flex-row items-center space-x-4">
+							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
+							<form action={AR.exists('/logout')} method="POST">
+								<Button type="submit" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+									Log Out
+								</Button>
+							</form>
+						</div>
 					)}
 				</div>
 			</nav>

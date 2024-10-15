@@ -32,6 +32,7 @@ const EnvSchema = {
 	DISCORD_CLIENT_SECRET: z.string().min(1),
 
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
+	MOCK_SQUAD_SERVER: Flag.default('false'),
 }
 export function setupEnv() {
 	dotenv.config()
@@ -51,6 +52,7 @@ export function setupEnv() {
 		DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
 
 		LOG_LEVEL_OVERRIDE: process.env.LOG_LEVEL_OVERRIDE,
+		MOCK_SQUAD_SERVER: process.env.MOCK_SQUAD_SERVER,
 	}
 
 	const env = createEnv({

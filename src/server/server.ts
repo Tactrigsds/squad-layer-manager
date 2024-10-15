@@ -21,6 +21,7 @@ import * as Schema from './schema.ts'
 import * as Discord from './systems/discord.ts'
 import { setupLayerQueue } from './systems/layer-queue.ts'
 import * as Sessions from './systems/sessions.ts'
+import * as SquadServer from './systems/squad-server.ts'
 
 const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
 
@@ -30,6 +31,8 @@ await setupLogger()
 DB.setupDatabase()
 setupLayerQueue()
 Sessions.setupSessions()
+SquadServer.setupSquadServer()
+TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized, starting http server...')
 

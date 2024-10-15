@@ -85,13 +85,15 @@ export function swapFactionsInId(id: string) {
 	return `${map}:${faction2}:${faction1}`
 }
 
-export function getAdminSetNextLayerCommand(layer: {
+export type AdminSetNextLayerOptions = {
 	Layer: string
 	Faction_1: string | null
 	SubFac_1: string | null
 	Faction_2: string | null
 	SubFac_2: string | null
-}) {
+}
+
+export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 	function getFactionModifier(faction: string | null, subFac: string | null) {
 		if (!faction) return ''
 		return `${subFac ? `+${subFac}` : ''}`

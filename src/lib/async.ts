@@ -78,3 +78,9 @@ export function traceTag<T>(tag: string, ctx: { log: Logger }): OperatorFunction
 			}))`
 		)(o, Observable)
 }
+
+export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
+	const entries = Object.entries(obj)
+	const resolvedEntries = await Promise.all(entries.map(async ([key, value]) => [key, await value]))
+	return Object.fromEntries(resolvedEntries) as { [K in keyof T]: Awaited<T[K]> }
+}

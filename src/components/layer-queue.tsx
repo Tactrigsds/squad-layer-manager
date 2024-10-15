@@ -2,21 +2,21 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { sleepUntil } from '@/lib/async'
-import { sleep } from '@/lib/async'
 import * as Helpers from '@/lib/display-helpers'
-import * as FB from '@/lib/filterBuilders.ts'
+import * as FB from '@/lib/filter-builders.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import deepEquals from 'fast-deep-equal'
 import { produce } from 'immer'
+import * as diffpatch from 'jsondiffpatch'
 import { EllipsisVertical, GripVertical, PlusIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import React from 'react'
 
+import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box'
 import * as CB from './combo-box'
 import { Comparison } from './filter-card'
@@ -31,9 +31,6 @@ export default function LayerQueue() {
 	const [nowPlaying, setNowPlaying] = useState(null as M.ServerState['nowPlaying'])
 	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
 	// TODO could use linked list model for editing so we can effectively diff it
-	const [queueItemOriginalIndexes, setQueueItemOriginalIndexes] = useState([] as (number | null)[])
-	const [deletedItemCount, setDeletedItemCount] = useState(0)
-	// const serverInfo = useServerInfo()
 
 	const lastUpdateRef = useRef(null as null | M.ServerState)
 	const seqIdRef = useRef(-1)
@@ -41,16 +38,11 @@ export default function LayerQueue() {
 	function updatePoolFilter(filterId: M.ServerState['poolFilterId']) {
 		setPoolFilterId(filterId)
 	}
-
-	const editedIndexes = new Array(queueItemOriginalIndexes.length).fill(false)
-	if (layerQueue && lastUpdateRef.current) {
-		if (queueItemOriginalIndexes.length !== layerQueue.length)
-			throw new Error('queueItemOriginalIndexes length does not match layerQueue length')
-		for (let i = 0; i < queueItemOriginalIndexes.length; i++) {
-			const origIdx = queueItemOriginalIndexes[i]
-			if (origIdx === null || !deepEquals(lastUpdateRef.current.queue[origIdx], layerQueue[i])) editedIndexes[i] = true
-		}
-	}
+	const queueDiff: ArrayDelta | undefined =
+		lastUpdateRef.current && layerQueue ? differ.diff(lastUpdateRef.current.queue, layerQueue) : undefined
+	if (queueDiff) console.log(queueDiff)
+	// const editing = queueDiff && !queueDiff.some((change) => change.added || change.removed)
+	const editing = !!queueDiff
 
 	const layersRef = useRef(new Map<string, M.MiniLayer>())
 	function getLayer(layerId: string) {
@@ -62,7 +54,6 @@ export default function LayerQueue() {
 		onData: ({ data }) => {
 			setLayerQueue(data.queue)
 			setNowPlaying(data.nowPlaying)
-			setEditedQueueIndexes([])
 			setPoolFilterId(data.poolFilterId)
 			lastUpdateRef.current = data
 			seqIdRef.current = data.seqId
@@ -85,8 +76,6 @@ export default function LayerQueue() {
 		if (!editing || !layerQueue || !lastUpdateRef.current) return
 		setLayerQueue(lastUpdateRef.current.queue)
 		setNowPlaying(lastUpdateRef.current.nowPlaying)
-		setEditedQueueIndexes([])
-		setDeletedItemCount(0)
 	}
 
 	function handleDragEnd(event: DragEndEvent) {
@@ -101,7 +90,6 @@ export default function LayerQueue() {
 				const [removed] = draft.splice(sourceIndex, 1)
 				if (insertIndex > sourceIndex) insertIndex--
 				draft.splice(insertIndex, 0, removed)
-				addEditedQueueIndex(insertIndex)
 			})
 		)
 	}
@@ -111,14 +99,6 @@ export default function LayerQueue() {
 		for (const layer of addedLayers) {
 			layersRef.current.set(layer.id, layer)
 		}
-		setEditedQueueIndexes(
-			produce((draft) => {
-				for (let i = 0; i < addedLayers.length; i++) {
-					if (draft.includes(i + index)) continue
-					draft.push(i + index)
-				}
-			})
-		)
 		setLayerQueue((existing) => {
 			existing ??= []
 			const newItems = addedLayers.map((l) => ({ layerId: l.id, generated: false }))
@@ -126,11 +106,50 @@ export default function LayerQueue() {
 		})
 	}
 	const [addLayersPopoverOpen, setAddLayersPopoverOpen] = useState(false)
+	// we could be more sophisticated with the kind of diffing info we display
+	// https://github.com/benjamine/jsondiffpatch
+	let addedItemCount = 0
+	let editedItemCount = 0
+	let movedItemCount = 0
+	let deletedItemCount = 0
+
+	if (queueDiff) {
+		for (const [k, v] of Object.entries(queueDiff)) {
+			if (!k.startsWith('_') && v instanceof Array) {
+				addedItemCount++
+				continue
+			}
+			if (!k.startsWith('_') && typeof v === 'object') {
+				editedItemCount++
+				continue
+			}
+			if (k.startsWith('_') && v[0] === '') {
+				movedItemCount++
+				continue
+			}
+
+			if (k.startsWith('_') && typeof v[0] === 'object') {
+				deletedItemCount++
+				continue
+			}
+		}
+	}
 
 	return (
 		<div className="grid place-items-center">
 			<LayerQueueContext.Provider value={{ getLayer }}>
 				<span className="flex space-x-4">
+					{/*
+					<pre>
+						<code>{JSON.stringify(lastUpdateRef.current?.queue, null, 2)}</code>
+					</pre>
+					<pre>
+						<code>{JSON.stringify(queueDiff, null, 2)}</code>
+					</pre>
+					<pre>
+						<code>{JSON.stringify(layerQueue, null, 2)}</code>
+					</pre>
+					*/}
 					<DndContext onDragEnd={handleDragEnd}>
 						<Card className="flex flex-col w-max">
 							<div className="p-6 w-full flex justify-between">
@@ -161,7 +180,7 @@ export default function LayerQueue() {
 													<CardHeader>
 														<CardTitle>Changes pending</CardTitle>
 														<CardDescription>
-															{editedQueueIndexes.length} items edited, {deletedItemCount} items deleted
+															{addedItemCount} added, {movedItemCount} moved, {editedItemCount} edited, {deletedItemCount} deleted
 														</CardDescription>
 													</CardHeader>
 													<CardContent>
@@ -187,11 +206,6 @@ export default function LayerQueue() {
 															const newQueue = existing.filter((_, i) => i !== index)
 															return newQueue
 														})
-														setEditedQueueIndexes((prev) => {
-															const newIndexes = prev.filter((idx) => idx !== index)
-															return newIndexes.map((idx) => (idx > index ? idx - 1 : idx))
-														})
-														setDeletedItemCount((prev) => prev + 1)
 													} else if (action.code === 'swap-factions') {
 														setLayerQueue((existing) => {
 															return existing!.map((currentItem) => {
@@ -201,15 +215,26 @@ export default function LayerQueue() {
 																return currentItem
 															})
 														})
-														addEditedQueueIndex(index)
 													} else if (action.code === 'add-after') {
 														addLayers(action.layers, index + 1)
+													}
+												}
+												let edited = false
+												if (queueDiff) {
+													if (queueDiff[index.toString()]) edited = true
+													for (const [k, v] of Object.entries(queueDiff)) {
+														if (!v) continue
+														//@ts-expect-error idk
+														if (k.startsWith('_') && v[0] === '' && v[1] === index) {
+															edited = true
+															break
+														}
 													}
 												}
 												return (
 													<QueueItem
 														key={item.layerId + '-' + index}
-														edited={editedQueueIndexes.some((idx) => idx === index)}
+														edited={edited}
 														item={item}
 														index={index}
 														isLast={index + 1 === layerQueue.length}
@@ -236,7 +261,7 @@ function PoolConfigurationPanel(props: {
 	updateFilter: (filter: M.ServerState['poolFilterId']) => void
 }) {
 	const filtersRes = trpcReact.getFilters.useQuery()
-	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: `${f.name} - ${f.description}` }))
+	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: f.name }))
 	const selected = props.poolFilterId
 	return (
 		<Card className="">
@@ -373,283 +398,4 @@ function QueueItemSeparator(props: { afterIndex: number; isLast: boolean }) {
 	)
 }
 
-const DEFAULT_ADD_LAYER_FILTERS = {
-	type: 'and',
-	children: [
-		{ type: 'comp', comp: { code: 'eq', column: 'Level' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Gamemode' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'LayerVersion' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Faction_1' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_1' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Faction_2' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_2' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'id' } },
-	],
-} satisfies Extract<M.EditableFilterNode, { type: 'and' }>
-
-function AddLayerPopover(props: {
-	children: React.ReactNode
-	addLayers: (ids: M.MiniLayer[]) => void
-	open: boolean
-	onOpenChange: (isOpen: boolean) => void
-}) {
-	const [filter, setFilter] = useState(DEFAULT_ADD_LAYER_FILTERS)
-
-	const filterStates = filter.children.map((f) => f.type === 'comp' && M.isValidComparison(f.comp))
-	const validFilter = filterStates.includes(true)
-		? FB.and(...(filter.children.filter((f) => f.type === 'comp' && M.isValidComparison(f.comp)) as M.FilterNode[]))
-		: undefined
-	const shouldQuery = filterStates.includes(true)
-	const seedRef = useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	//
-	const res = trpcReact.getLayers.useQuery(
-		{
-			filter: validFilter,
-			groupBy: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
-			pageSize: 25,
-			sort: {
-				type: 'random',
-				seed: seedRef.current,
-			},
-		},
-		{
-			enabled: shouldQuery,
-			// TODO I would like to do state upstates which hook into query results before rerender, to do state updates like resetting filters if their current value is not part of the filter.
-			// behavior: {
-			// 	onFetch: (context, query) => {
-			// 		console.log('onFetch', { context, query })
-			// 	},
-			// },
-		}
-	)
-	const lastDataRef = useRef(res.data)
-	useLayoutEffect(() => {
-		if (res.data) {
-			lastDataRef.current = res.data
-		}
-	}, [res.data, res.isError])
-
-	const data = res.data ?? lastDataRef.current
-
-	const layersToDisplay = data?.layers
-
-	const [height, setHeight] = useState<number | null>(null)
-	const contentRef = useRef<HTMLDivElement>(null)
-
-	const [layersToAdd, setLayersToAdd] = useState<M.MiniLayer[]>([])
-	function toggleLayerAdded(layerToAdd: M.MiniLayer) {
-		setLayersToAdd((prevLayers) => {
-			if (prevLayers.some((l) => l.id === layerToAdd.id)) {
-				return prevLayers.filter((layer) => layer.id !== layerToAdd.id)
-			} else {
-				return [...prevLayers, layerToAdd]
-			}
-		})
-	}
-
-	function reset() {
-		props.onOpenChange(false)
-		setLayersToAdd([])
-		setFilter(DEFAULT_ADD_LAYER_FILTERS)
-		lastDataRef.current = undefined
-	}
-
-	function addAndClose() {
-		props.addLayers(layersToAdd)
-		reset()
-	}
-
-	function onOpenChange(open: boolean) {
-		if (open) props.onOpenChange(true)
-		else reset()
-	}
-
-	useEffect(() => {
-		if (!props.open) return
-		;(async () => {
-			const content = await sleepUntil(() => contentRef.current)
-			if (content) {
-				setHeight(content.getBoundingClientRect().height + 25)
-			}
-		})()
-	}, [props.open])
-
-	function swapFactions() {
-		setFilter(
-			produce((draft) => {
-				let faction1Index!: number
-				let faction2Index!: number
-				let subFac1Index!: number
-				let subFac2Index!: number
-
-				for (let i = 0; i < draft.children.length; i++) {
-					const node = draft.children[i]
-					if (node.comp.column === 'Faction_1') {
-						faction1Index = i
-					}
-					if (node.comp.column === 'Faction_2') {
-						faction2Index = i
-					}
-					if (node.comp.column === 'SubFac_1') {
-						subFac1Index = i
-					}
-					if (node.comp.column === 'SubFac_2') {
-						subFac2Index = i
-					}
-				}
-
-				const faction1 = { ...draft.children[faction1Index].comp }
-				const subFac1 = { ...draft.children[subFac1Index].comp }
-
-				draft.children[faction1Index].comp = { ...draft.children[faction2Index].comp, column: 'Faction_1' }
-				draft.children[subFac1Index].comp = { ...draft.children[subFac2Index].comp, column: 'SubFac_1' }
-				draft.children[faction2Index].comp = { ...faction1, column: 'Faction_2' }
-				draft.children[subFac2Index].comp = { ...subFac1, column: 'SubFac_2' }
-			})
-		)
-	}
-
-	return (
-		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>
-			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent side="bottom" className="w-max">
-				<div className="flex items-center justify-between">
-					<h3 className={Typography.H3}>Add Layers to Queue</h3>
-					<div className="flex items-center space-x-1">
-						<p className={Typography.P}>{layersToAdd.length} layers selected</p>
-						<Button disabled={layersToAdd.length === 0 || !props.open} variant="secondary" onClick={() => setLayersToAdd([])}>
-							Clear
-						</Button>
-						<Button disabled={layersToAdd.length === 0 || !props.open} onClick={addAndClose}>
-							Add Selected
-						</Button>
-					</div>
-				</div>
-				<div ref={contentRef} style={height ? { height } : {}} className="flex items-center space-x-2 min-h-0">
-					{/* ------ filter config ------ */}
-					<div className="grid grid-cols-[auto_min-content_auto] gap-2">
-						{filter.children.map((_node, index) => {
-							const setComp = (updateCallback: (prevComp: M.EditableComparison) => M.EditableComparison) => {
-								setFilter(
-									produce((draft) => {
-										const node = draft.children[index] as Extract<M.EditableFilterNode, { type: 'comp' }>
-										node.comp = updateCallback(node.comp)
-									})
-								)
-							}
-							const appliedFilters: M.FilterNode[] | undefined = []
-							for (let i = 0; i < index; i++) {
-								if (!filterStates[i]) continue
-								appliedFilters.push(filter.children[i] as M.FilterNode)
-							}
-							const autocompleteFilter = appliedFilters.length === 0 ? undefined : FB.and(...appliedFilters)
-							const node = _node as Extract<M.EditableFilterNode, { type: 'comp' }>
-							return (
-								<React.Fragment key={index}>
-									{node.comp.column === 'Faction_2' && (
-										<>
-											<span />
-											<Button onClick={swapFactions} variant="outline">
-												Swap Factions
-											</Button>
-											<span />
-										</>
-									)}
-									{(node.comp.column === 'id' || node.comp.column === 'Faction_1') && (
-										<>
-											<Separator className="col-span-3" />
-										</>
-									)}
-									<Comparison columnEditable={false} comp={node.comp} setComp={setComp} valueAutocompleteFilter={autocompleteFilter} />
-								</React.Fragment>
-							)
-						})}
-					</div>
-					{/* ------ filter results ------ */}
-					<div className="min-w-[300px] h-full">
-						{layersToDisplay && (
-							<ScrollArea className={`h-full min-h-0`}>
-								<div className="h-full min-h-0 text-xs">
-									{!res.isFetchedAfterMount && layersToDisplay.length === 0 && (
-										<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
-									)}
-									{res.isFetchedAfterMount && layersToDisplay.length === 0 && (
-										<div className="p-2 text-sm text-gray-500">No results found</div>
-									)}
-									{layersToDisplay.length > 0 &&
-										layersToDisplay.map((layer, index) => {
-											const layerAdded = layersToAdd.includes(layer)
-											return (
-												<React.Fragment key={layer.id}>
-													{index > 0 && <Separator />}
-													<button
-														className={cn('w-full py-2 text-left', Typography.Small, layerAdded && 'bg-accent')}
-														onClick={() => toggleLayerAdded(layer)}
-													>
-														{Helpers.toShortLayerName(layer)}
-													</button>
-												</React.Fragment>
-											)
-										})}
-								</div>
-							</ScrollArea>
-						)}
-					</div>
-				</div>
-			</PopoverContent>
-		</Popover>
-	)
-}
-
-function structuralDiff<T>(
-	orig: T[],
-	curr: T[],
-	origIdxMap: (number | null)[],
-	eq: (a: T, b: T) => boolean
-): { added: number[]; edited: number[]; removed: number[] } {
-	if (curr.length !== origIdxMap.length) throw new Error('current array and map must be of equal length')
-	const seenIndexes = new Set<number>()
-	for (const idx of origIdxMap) {
-		if (idx !== null) {
-			if (seenIndexes.has(idx)) {
-				throw new Error('Duplicate index found in origIdxMap')
-			}
-			seenIndexes.add(idx)
-		}
-	}
-
-	const removed: number[] = []
-	for (let i = 0; i < orig.length; i++) {
-		if (!seenIndexes.has(i)) {
-			removed.push(i)
-		}
-	}
-
-	const edited: number[] = []
-	const added: number[] = []
-	let expectedOrigIndex = 0
-	for (let i = 0; i < curr.length; i++) {
-		const origIdx = origIdxMap[i]
-		if (origIdx === null) {
-			added.push(i)
-			continue
-		}
-		if (expectedOrigIndex !== origIdx && !eq(orig[origIdx], curr[i])) {
-			edited.push(i)
-			continue
-		} else if (!eq(orig[origIdx], curr[i])) {
-			edited.push(i)
-		}
-		expectedOrigIndex++
-	}
-
-	return { edited, added, removed }
-}
-
-// [2 , 3, 6 4]
-// [2 , 4, 6, 3]
-
-// ^
-// [2 , 3, 6 4]
-// [2 , 4, 6, 3]
-//
+const differ = diffpatch.create({ arrays: { detectMove: true, includeValueOnMove: false } })
