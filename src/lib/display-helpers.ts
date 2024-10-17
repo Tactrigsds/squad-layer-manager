@@ -1,3 +1,4 @@
+import LayerComponents from '@/assets/layer-components.json'
 import * as M from '@/models'
 
 export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
@@ -30,22 +31,12 @@ export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 }
 
 export function toShortLevel(level: M.Layer['Level']) {
-	return LEVEL_SHORT_NAMES[level]
+	return LayerComponents.levelShortNames[level as keyof typeof LayerComponents.levelShortNames]
 }
-
-const SUBFACTION_SHORT_NAMES = {
-	CombinedArms: 'Combined',
-	Armored: 'Armored',
-	LightInfantry: 'Light',
-	Mechanized: 'Mech',
-	Motorized: 'Motor',
-	Support: 'Sup',
-	AirAssault: 'Air',
-} satisfies Record<M.Subfaction, string>
 
 export function toShortSubfaction(unitType: M.Subfaction | null) {
 	if (unitType === null) return ''
-	return SUBFACTION_SHORT_NAMES[unitType]
+	return LayerComponents.subfactionShortNames[unitType]
 }
 
 export const NULL_DISPLAY = ' <empty> '
@@ -62,4 +53,8 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	txt += ' vs '
 	txt += `${layer.Faction_2} ${subFaction2}`.trim()
 	return txt
+}
+export function toShortLayerNameFromId(id: string) {
+	const layer = M.getMiniLayerFromId(id)
+	return toShortLayerName(layer)
 }

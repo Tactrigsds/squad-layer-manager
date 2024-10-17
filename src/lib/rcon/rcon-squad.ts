@@ -239,5 +239,5 @@ export default class SquadRcon extends Rcon implements ISquadRcon {
 	async setNextLayer(layer: M.AdminSetNextLayerOptions) {
 		await this.execute(M.getAdminSetNextLayerCommand(layer))
 	}
-	async endMatch() {}
+	async endGame() {}
 }

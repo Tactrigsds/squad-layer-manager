@@ -59,24 +59,23 @@ export async function* toAsyncGenerator<T>(observable: Observable<T>) {
  * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
  * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
  */
-export function traceTag<T>(tag: string, ctx: { log: Logger }): OperatorFunction<T, T> {
+export function traceTag<T>(tag: string): OperatorFunction<T, T> {
 	// surely this prevents all potential RCEs right???
 	if (!/^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(tag)) {
-		const error = new Error(`traceTag: tag "${tag}" is not a valid function name`)
-		ctx.log.error(error)
+		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
 		return (o: Observable<T>) => o
 	}
-
-	return (o: Observable<T>) =>
-		new Function(
-			'observable',
-			'observableConstructor',
-			`return new observableConstructor((s) => observable.subscribe({
+	const fn = new Function(
+		'observable',
+		'observableConstructor',
+		`return new observableConstructor((s) => observable.subscribe({
 				next: function __${tag}__next(t) {s.next(t)},
 				error: function __${tag}__error(e) {s.error(e)},
 				complete: function __${tag}__complete() {s.complete()}
-			}))`
-		)(o, Observable)
+		}))`
+	)
+
+	return (o: Observable<T>) => fn(o, Observable)
 }
 
 export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {

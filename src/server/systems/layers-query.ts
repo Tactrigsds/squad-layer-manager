@@ -1,6 +1,8 @@
 import * as M from '@/models.ts'
 import { Context } from '@/server/context'
+import * as DB from '@/server/db.ts'
 import * as Schema from '@/server/schema'
+import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
 import { and, asc, between, desc, eq, gt, inArray, like, lt, or } from 'drizzle-orm/expressions'
 import { z } from 'zod'
@@ -27,25 +29,27 @@ export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
 export async function runLayersQuery(args: { input: LayersQuery; ctx: Context }) {
 	const { ctx, input: input } = args
-	let whereClause: any
 	let whereCondition = sql`1=1`
 	const db = ctx.db
 
 	if (input.filter) {
-		whereCondition = getWhereFilterConditions(input.filter) ?? whereCondition
+		whereCondition = (await getWhereFilterConditions(input.filter, ctx)) ?? whereCondition
 	}
 
 	let query = db.select().from(Schema.layers).where(whereCondition)
 
 	if (input.sort.type === 'column') {
+		//@ts-expect-error idk
 		query = query.orderBy(
 			input.sort.sortDirection === 'ASC' ? asc(Schema.layers[input.sort.sortBy]) : desc(Schema.layers[input.sort.sortBy])
 		)
 	} else if (input.sort.type === 'random') {
+		//@ts-expect-error idk
 		query = query.orderBy(sql`RAND(${input.sort.seed})`)
 	}
 
 	if (input.groupBy) {
+		//@ts-expect-error idk
 		query = query.groupBy(...input.groupBy.map((col) => Schema.layers[col]))
 	}
 	const [layers, [countResult]] = await Promise.all([
@@ -64,15 +68,17 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: Context })
 	}
 }
 
-export function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined {
-	if (filter.type === 'comp') {
-		const comp = filter.comp!
+export async function getWhereFilterConditions(node: M.FilterNode, ctx: { db: DB.Db }): Promise<SQL | undefined> {
+	if (node.type === 'comp') {
+		const comp = node.comp!
 		const column = Schema.layers[comp.column]
 
 		switch (comp.code) {
 			case 'eq':
+				//@ts-expect-error idk
 				return eq(column, comp.value)
 			case 'in':
+				//@ts-expect-error idk
 				return inArray(column, comp.values)
 			case 'like':
 				return like(column, comp.value)
@@ -84,14 +90,29 @@ export function getWhereFilterConditions(filter: M.FilterNode): SQL | undefined 
 				return between(column, comp.min, comp.max)
 		}
 	}
+	if (node.type === 'apply-filter') {
+		const entity = await getFilterEntity(node.filterId, ctx)
+		if (!entity) {
+			// TODO too lazy to return an error here right now
+			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Unknown filterId ' + entity })
+		}
+		const filter = M.FilterNodeSchema.parse(entity.filter)
+		return getWhereFilterConditions(filter, ctx)
+	}
 
-	const childConditions = filter.children!.map(getWhereFilterConditions)
+	const childConditions = await Promise.all(node.children!.map((node) => getWhereFilterConditions(node, ctx)))
 
-	if (filter.type === 'and') {
+	if (node.type === 'and') {
 		return and(...childConditions)
-	} else if (filter.type === 'or') {
+	} else if (node.type === 'or') {
 		return or(...childConditions)
 	}
 
-	throw new Error(`Unknown filter type: ${filter.type}`)
+	//@ts-expect-error I don't trust typescript
+	throw new Error(`Unknown filter type: ${node.type}`)
+}
+
+async function getFilterEntity(filterId: string, ctx: { db: DB.Db }) {
+	const [filter] = await ctx.db.select().from(Schema.filters).where(eq(Schema.filters.id, filterId))
+	return filter as Schema.Filter | undefined
 }

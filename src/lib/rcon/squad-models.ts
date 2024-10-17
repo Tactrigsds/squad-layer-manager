@@ -106,21 +106,29 @@ export const SquadCreatedSchema = z
 	})
 	.catchall(z.string())
 
+export const CHATS = z.enum(['admin', 'all', 'team', 'squad'])
 export const COMMANDS = ['vote', 'rtv', 'setpool'] as const
 
 export const SquadEventSchema = z.discriminatedUnion('type', [
 	z.object({
-		type: z.literal('command'),
-		command: z.enum(COMMANDS),
-		args: z.array(z.string()),
+		type: z.literal('chat-message'),
+		chat: CHATS,
+		playerId: z.string(),
+		message: z.string().trim(),
+		eventId: z.number(),
 	}),
 	z.object({
-		type: z.literal('current-layer-changed'),
-		newLayerId: z.string(),
+		type: z.literal('game-ended'),
+		currentLayerId: z.string(),
+		nextLayerId: z.string(),
+		messageId: z.string(),
+		eventId: z.number(),
 	}),
 	z.object({
-		type: z.literal('next-layer-changed'),
+		type: z.literal('set-next-layer'),
 		layerId: z.string(),
+		messageId: z.string(),
+		eventId: z.number(),
 	}),
 ])
 
@@ -135,7 +143,7 @@ export interface ISquadRcon {
 	connect(): Promise<void>
 	disconnect(): Promise<void>
 	getCurrentLayer(): Promise<M.MiniLayer>
-	getNextLayer(): Promise<M.MiniLayer>
+	getNextLayer(): Promise<M.MiniLayer | null>
 	getListPlayers(): Promise<Player[]>
 	getPlayerQueueLength(): Promise<number>
 	getSquads(): Promise<Squad[]>
@@ -146,5 +154,5 @@ export interface ISquadRcon {
 	switchTeam(anyID: string | number): Promise<void>
 	leaveSquad(playerId: number): Promise<void>
 	setNextLayer(options: M.AdminSetNextLayerOptions): Promise<void>
-	endMatch(): Promise<void>
+	endGame(): Promise<void>
 }

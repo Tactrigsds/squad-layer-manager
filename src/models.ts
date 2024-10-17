@@ -1,6 +1,7 @@
 import * as VE from '@/lib/validation-errors.ts'
 import * as z from 'zod'
 
+import LayerComponents from './assets/layer-components.json'
 import * as C from './lib/constants'
 import { reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
@@ -80,6 +81,50 @@ export function getLayerId(layer: LayerIdArgs) {
 	return `${mapLayer}:${faction1}:${faction2}`
 }
 
+export function getMiniLayerFromId(id: string): MiniLayer {
+	const [mapPart, faction1Part, faction2Part] = id.split(':')
+	const [mapAbbr, gamemode, versionPart] = mapPart.split('-')
+	const level = LEVEL_ABBREVIATION_REVERSE[mapAbbr]
+	if (!level) throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
+	const [faction1, subfac1] = parseFactionPart(faction1Part)
+	const [faction2, subfac2] = parseFactionPart(faction2Part)
+
+	const layerVersion = versionPart ? versionPart.toUpperCase() : null
+	let layer: string | undefined
+	if (level === 'JensensRange') {
+		layer = `${level}_${faction1}-${faction2}`
+	} else {
+		layer = LayerComponents.layers.find(
+			(l) => l.startsWith(`${level}_${gamemode}`) && (layerVersion ? l.endsWith(layerVersion.toLowerCase()) : true)
+		)
+	}
+	if (!layer) throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
+
+	return {
+		id,
+		Level: level,
+		Layer: layer,
+		Gamemode: gamemode,
+		LayerVersion: layerVersion,
+		Faction_1: faction1,
+		SubFac_1: subfac1,
+		Faction_2: faction2,
+		SubFac_2: subfac2,
+	}
+}
+
+function parseFactionPart(part: string): [string, C.Subfaction | null] {
+	const [faction, subfacAbbr] = part.split('-')
+	if (!LayerComponents.factions.includes(faction)) {
+		throw new Error(`Invalid faction: ${faction}`)
+	}
+	const subfac = subfacAbbr ? (SUBFAC_ABBREVIATIONS_REVERSE[subfacAbbr] as C.Subfaction) : null
+	if (subfacAbbr && !subfac) {
+		throw new Error(`Invalid subfaction abbreviation: ${subfacAbbr}`)
+	}
+	return [faction, subfac]
+}
+
 export function swapFactionsInId(id: string) {
 	const [map, faction1, faction2] = id.split(':')
 	return `${map}:${faction2}:${faction1}`
@@ -106,8 +151,8 @@ export function getSetNextVoteCommand(ids: string[]) {
 	return `!genpool ${ids.join(', ')}`
 }
 
-export const MAP_ABBREVIATION_REVERSE = reverseMapping(MAP_ABBREVIATION)
-export const UNIT_ABBREVIATION_REVERSE = reverseMapping(UNIT_ABBREVIATION)
+export const LEVEL_ABBREVIATION_REVERSE = reverseMapping(LayerComponents.levelAbbreviations)
+export const SUBFAC_ABBREVIATIONS_REVERSE = reverseMapping(LayerComponents.subfactionAbbreviations)
 
 type ComparisonType = {
 	coltype: 'string' | 'float' | 'integer'
@@ -263,6 +308,10 @@ export type FilterNode =
 			type: 'comp'
 			comp: Comparison
 	  }
+	| {
+			type: 'apply-filter'
+			filterId: string
+	  }
 
 export type EditableFilterNode =
 	| {
@@ -307,10 +356,8 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	}) as z.ZodType<FilterNode>
 
 export const LayerVoteSchema = z.object({
-	defaultChoiceLayerId: z.string(),
-	choiceLayerIds: z.record(z.string(), z.number()),
-	voteDeadline: z.string().optional(),
-	votes: z.record(z.string(), z.array(z.bigint())).optional(),
+	defaultChoice: z.string(),
+	choices: z.array(z.string()),
 })
 
 export const LayerQueueItemSchema = z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional(), generated: z.boolean() })
@@ -348,7 +395,8 @@ export const FilterUpdateSchema = z.object({
 	name: z.string().trim().min(3).max(128),
 	description: z.string().trim().min(3).max(512).nullable(),
 	filter: FilterNodeSchema,
-})
+}) satisfies z.ZodType<Partial<Schema.Filter>>
+
 export const FilterEntitySchema = FilterUpdateSchema.extend({
 	id: z
 		.string()
@@ -356,21 +404,49 @@ export const FilterEntitySchema = FilterUpdateSchema.extend({
 		.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
 		.min(3)
 		.max(64),
-})
+}) satisfies z.ZodType<Schema.Filter>
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
-
-export const ServerStateSchema = z.object({
+export const QueueUpdateSchema = z.object({
 	seqId: z.number(),
 	queue: LayerQueueSchema,
-	nowPlaying: z.union([z.string(), z.null()]),
-	poolFilterId: FilterEntitySchema.shape.id.nullable(),
 })
+export type LayerQueueUpdate = z.infer<typeof QueueUpdateSchema>
+
+export const VoteStateSchema = z.object({
+	choices: z.array(z.string()),
+	defaultChoice: z.string(),
+	votes: z.record(z.string(), z.string()),
+	deadline: z.number(),
+	endReason: z.enum(['timeout', 'aborted']).optional(),
+})
+
+export type VoteState = z.infer<typeof VoteStateSchema>
+
+export const ServerStateSchema = z.object({
+	id: z.string().min(1).max(256),
+	online: z.boolean(),
+	displayName: z.string().min(1).max(256),
+	layerQueueSeqId: z.number().int(),
+	layerQueue: LayerQueueSchema,
+	currentVote: VoteStateSchema.nullable(),
+	poolFilterId: z.string().min(1).max(64).nullable(),
+}) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
 
-export type ServerState_Denorm = ServerState & {
-	layers: MiniLayer[]
-	poolFilter?: FilterEntity
-}
+export type LayerSyncState =
+	| {
+			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated
+			status: 'loading'
+	  }
+	| {
+			// server offline
+			status: 'offline'
+	  }
+	| {
+			// expected layer is on the server
+			status: 'active'
+			layerId: string
+	  }

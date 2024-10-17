@@ -6,3 +6,11 @@ export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 	}
 	return reversed
 }
+
+export function deepClone<T>(obj: T) {
+	return JSON.parse(JSON.stringify(obj)) as T
+}
+
+export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry, arr: Entry[]) {
+	return arr.map((entry) => entry[key])
+}

@@ -269,6 +269,9 @@ importers:
       sqlite3:
         specifier: ^5.1.7
         version: 5.1.7
+      string-comparison:
+        specifier: ^1.3.0
+        version: 1.3.0
       superjson:
         specifier: ^2.2.1
         version: 2.2.1
@@ -4155,6 +4158,10 @@ packages:
 
   stream-slice@0.1.2:
     resolution: {integrity: sha512-QzQxpoacatkreL6jsxnVb7X5R/pGw9OUv2qWTYWnmLpg4NdN31snPy/f3TdQE1ZUXaThRvj1Zw4/OGg0ZkaLMA==}
+
+  string-comparison@1.3.0:
+    resolution: {integrity: sha512-46aD+slEwybxAMPRII83ATbgMgTiz5P8mVd7Z6VJsCzSHFjdt1hkAVLeFxPIyEb11tc6ihpJTlIqoO0MCF6NPw==}
+    engines: {node: ^16.0.0 || >=18.0.0}
 
   string-width@4.2.3:
     resolution: {integrity: sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==}
@@ -8192,6 +8199,8 @@ snapshots:
   stream-shift@1.0.3: {}
 
   stream-slice@0.1.2: {}
+
+  string-comparison@1.3.0: {}
 
   string-width@4.2.3:
     dependencies:

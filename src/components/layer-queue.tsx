@@ -1,81 +1,68 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { sleepUntil } from '@/lib/async'
+import { useNextLayerState } from '@/hooks/server-state.ts'
+import { useNowPlayingState } from '@/hooks/use-now-playing.tsx'
 import * as Helpers from '@/lib/display-helpers'
-import * as FB from '@/lib/filter-builders.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
-import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
 import * as diffpatch from 'jsondiffpatch'
-import { EllipsisVertical, GripVertical, PlusIcon } from 'lucide-react'
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
+import { createContext, useRef, useState } from 'react'
 import React from 'react'
 
 import AddLayerPopover from './add-layer-popover'
-import ComboBox from './combo-box'
-import * as CB from './combo-box'
-import { Comparison } from './filter-card'
+import ComboBox from './combo-box/combo-box.tsx'
+import * as CB from './combo-box/combo-box.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 
-const LayerQueueContext = createContext<{ getLayer: (layerId: string) => M.MiniLayer }>({ getLayer: () => null as unknown as M.MiniLayer })
+const LayerQueueContext = createContext<object>({})
 
 export default function LayerQueue() {
 	const [layerQueue, setLayerQueue] = useState(null as null | M.LayerQueue)
-	const [nowPlaying, setNowPlaying] = useState(null as M.ServerState['nowPlaying'])
+	const nowPlayingState = useNowPlayingState()
+	const nextLayerState = useNextLayerState()
 	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
 	// TODO could use linked list model for editing so we can effectively diff it
 
 	const lastUpdateRef = useRef(null as null | M.ServerState)
-	const seqIdRef = useRef(-1)
+	const layerQueueSeqIdRef = useRef(-1)
 	const poolFilterEdited = !!lastUpdateRef.current && lastUpdateRef.current.poolFilterId !== poolFilterId
 	function updatePoolFilter(filterId: M.ServerState['poolFilterId']) {
 		setPoolFilterId(filterId)
 	}
-	const queueDiff: ArrayDelta | undefined =
-		lastUpdateRef.current && layerQueue ? differ.diff(lastUpdateRef.current.queue, layerQueue) : undefined
+	const queueDiff: diffpatch.ArrayDelta | undefined =
+		lastUpdateRef.current && layerQueue ? (differ.diff(lastUpdateRef.current.layerQueue, layerQueue) as diffpatch.ArrayDelta) : undefined
 	if (queueDiff) console.log(queueDiff)
 	// const editing = queueDiff && !queueDiff.some((change) => change.added || change.removed)
 	const editing = !!queueDiff
 
 	const layersRef = useRef(new Map<string, M.MiniLayer>())
-	function getLayer(layerId: string) {
-		const layer = layersRef.current.get(layerId)!
-		if (!layer) throw new Error(`Layer ${layerId} not found`)
-		return layer
-	}
 	trpcReact.watchServerUpdates.useSubscription(undefined, {
-		onData: ({ data }) => {
-			setLayerQueue(data.queue)
-			setNowPlaying(data.nowPlaying)
+		onData: (data) => {
+			setLayerQueue(data.layerQueue)
 			setPoolFilterId(data.poolFilterId)
 			lastUpdateRef.current = data
-			seqIdRef.current = data.seqId
-			for (const layer of data.layers) {
-				layersRef.current.set(layer.id, layer)
-			}
+			layerQueueSeqIdRef.current = data.layerQueueSeqId
 		},
 	})
 	const updateQueueMutation = trpcReact.updateQueue.useMutation()
-	function save() {
+	function saveLayers() {
 		if (!editing || !layerQueue || !lastUpdateRef.current) return
 		updateQueueMutation.mutate({
-			nowPlaying,
 			queue: layerQueue,
-			seqId: seqIdRef.current,
-			poolFilterId: lastUpdateRef.current.poolFilterId,
+			seqId: layerQueueSeqIdRef.current,
 		})
 	}
+
 	function reset() {
 		if (!editing || !layerQueue || !lastUpdateRef.current) return
-		setLayerQueue(lastUpdateRef.current.queue)
-		setNowPlaying(lastUpdateRef.current.nowPlaying)
+		setLayerQueue(lastUpdateRef.current.layerQueue)
 	}
 
 	function handleDragEnd(event: DragEndEvent) {
@@ -137,7 +124,7 @@ export default function LayerQueue() {
 
 	return (
 		<div className="grid place-items-center">
-			<LayerQueueContext.Provider value={{ getLayer }}>
+			<LayerQueueContext.Provider value={{}}>
 				<span className="flex space-x-4">
 					{/*
 					<pre>
@@ -165,15 +152,19 @@ export default function LayerQueue() {
 								<div>
 									{/* ------- top card ------- */}
 									<Card>
-										{!editing && nowPlaying && (
+										{!editing && nowPlayingState && (
 											<>
 												<CardHeader>
 													<CardTitle>Now Playing</CardTitle>
 												</CardHeader>
-												<CardContent>{Helpers.toShortLayerName(getLayer(nowPlaying))}</CardContent>
+												<CardContent>
+													{nowPlayingState.status === 'active' && Helpers.toShortLayerName(M.getMiniLayerFromId(nowPlayingState.layerId))}
+													{nowPlayingState.status === 'loading' && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+													{nowPlayingState.status === 'offline' && 'Server Offline'}
+												</CardContent>
 											</>
 										)}
-										{!editing && !nowPlaying && <p className={Typography.P}>No active layer found</p>}
+										{!editing && !nowPlayingState && <p className={Typography.P}>No active layer found</p>}
 										{editing && (
 											<div className="flex flex-col space-y-2">
 												<Card>
@@ -184,7 +175,7 @@ export default function LayerQueue() {
 														</CardDescription>
 													</CardHeader>
 													<CardContent>
-														<Button onClick={save}>Save</Button>
+														<Button onClick={saveLayers}>Save</Button>
 														<Button onClick={reset} variant="secondary">
 															Cancel
 														</Button>
@@ -224,7 +215,6 @@ export default function LayerQueue() {
 													if (queueDiff[index.toString()]) edited = true
 													for (const [k, v] of Object.entries(queueDiff)) {
 														if (!v) continue
-														//@ts-expect-error idk
 														if (k.startsWith('_') && v[0] === '' && v[1] === index) {
 															edited = true
 															break
@@ -239,6 +229,7 @@ export default function LayerQueue() {
 														index={index}
 														isLast={index + 1 === layerQueue.length}
 														dispatch={dispatch}
+														loadingChanges={index === 0 && nextLayerState.status === 'loading'}
 													/>
 												)
 											})}
@@ -290,11 +281,11 @@ function QueueItem(props: {
 	isLast: boolean
 	edited: boolean
 	dispatch: React.Dispatch<QueueItemAction>
+	loadingChanges: boolean
 }) {
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: props.index,
 	})
-	const ctx = useContext(LayerQueueContext)
 	const [addAfterPopoverOpen, _setAddAfterPopoverOpen] = useState(false)
 	const [addBeforePopoverOpen, _setAddBeforePopoverOpen] = useState(false)
 	const [dropdownOpen, _setDropdownOpen] = useState(false)
@@ -317,7 +308,10 @@ function QueueItem(props: {
 
 	const style = { transform: CSS.Translate.toString(transform), scale: isDragging ? 5 : 1 }
 	if (props.item.layerId) {
-		const layer = ctx.getLayer(props.item.layerId)
+		const layer = M.getMiniLayerFromId(props.item.layerId)
+		let color = 'bg-background'
+		if (props.loadingChanges) color = 'bg-green-400'
+		else if (props.edited) color = 'bg-slate-400'
 		return (
 			<div>
 				{props.index === 0 && <QueueItemSeparator afterIndex={-1} isLast={false} />}
@@ -325,7 +319,7 @@ function QueueItem(props: {
 					ref={setNodeRef}
 					style={style}
 					{...attributes}
-					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${props.edited ? 'bg-slate-400' : 'bg-background'}  bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
+					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${color} bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
 				>
 					<div className="flex items-center">
 						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">

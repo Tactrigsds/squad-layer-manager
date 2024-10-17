@@ -145,10 +145,11 @@ export class MockSquadRcon implements RM.ISquadRcon {
 		this.log.info(`Switched team for player ${playerId}`)
 	}
 
-	async setNextLayer(command: M.MiniLayer): Promise<void> {
+	async setNextLayer(layer: M.MiniLayer): Promise<void> {
 		await this.simulateLatency()
-		this.serverState.nextMap = command
-		this.log.info(`Set next layer with command: %o `, command)
+		this.serverState.nextMap = layer
+		this.log.info(`Set next layer: %o `, layer)
+		this.event$.next({ type: 'set-next-layer', layerId: layer.id })
 	}
 
 	async connectPlayer(player: RM.Player): Promise<void> {
@@ -179,9 +180,10 @@ export class MockSquadRcon implements RM.ISquadRcon {
 		this.serverState.squads = this.serverState.squads.filter((squad) => squad.squadID !== squadID)
 		this.log.info(`Squad removed: ${squadID}`)
 	}
-	async endMatch() {
+	async endGame() {
 		this.serverState.currentMap = this.serverState.nextMap
 		this.serverState.nextMap = await this.getRandomLayer()
+		this.event$.next({ type: 'game-ended', currentLayerId: this.serverState.currentMap.id, nextLayerId: this.serverState.nextMap.id })
 	}
 
 	async getRandomLayer() {

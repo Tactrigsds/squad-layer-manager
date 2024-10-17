@@ -1,0 +1,8 @@
+{
+	"voteLengthSeconds": "180",
+	"commandPrefix": "!",
+	"commands": {
+		"startVote": ["rtv", "rockthevote"],
+		"showNext": ["pool", "shownext"]
+	}
+}

@@ -1,35 +1,35 @@
+import { Button } from '@/components/ui/button.tsx'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
+import { GenericForwardedRef } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import React, { useImperativeHandle, useRef, useState } from 'react'
 
-import { Button } from './ui/button.tsx'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
-
-export const LOADING = Symbol('loading')
+import { LOADING } from './constants.ts'
 
 export type ComboBoxHandle = {
 	open: () => void
 	isOpen: boolean
 }
-export type ComboBoxProps<T extends string | null, V = T | undefined> = {
+export type ComboBoxProps<T extends string | null = string | null> = {
 	allowEmpty?: boolean
 	className?: string
 	title: string
 	inputValue?: string
 	setInputValue?: (value: string) => void
-	value: V
+	value: T | undefined
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
-	onSelect: (value: V) => void
+	onSelect: (value: T | undefined) => void
 }
 
-interface ComboBoxOption<T> {
+export interface ComboBoxOption<T> {
 	value: T
 	label?: string
 }
 
-function ComboBox<T extends string | null, V = T | undefined>(props: ComboBoxProps<T, V>, ref: React.Ref<ComboBoxHandle>) {
+function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.Ref<ComboBoxHandle>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
 	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
@@ -51,12 +51,11 @@ function ComboBox<T extends string | null, V = T | undefined>(props: ComboBoxPro
 			return openRef.current
 		},
 	}))
-	function onSelect(value: V) {
+	function onSelect(value: T | undefined) {
 		setOpen(false)
 		props.onSelect(value)
 	}
 
-	//@ts-expect-error typescript is dumb
 	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
 	let selectedOptionDisplay: string
 	if (selectedOption?.value === null) {
@@ -119,4 +118,4 @@ function ComboBox<T extends string | null, V = T | undefined>(props: ComboBoxPro
 	)
 }
 
-export default React.forwardRef(ComboBox)
+export default React.forwardRef(ComboBox) as GenericForwardedRef<ComboBoxHandle, ComboBoxProps>

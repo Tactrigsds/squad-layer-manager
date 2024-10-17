@@ -12,6 +12,7 @@ import fastifySocketIo from 'fastify-socket.io'
 import path from 'node:path'
 import { Server } from 'socket.io'
 
+import * as Config from './config.ts'
 import { createContext } from './context.ts'
 import * as DB from './db'
 import { ENV, setupEnv } from './env.ts'
@@ -23,11 +24,10 @@ import { setupLayerQueue } from './systems/layer-queue.ts'
 import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server.ts'
 
-const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
-
 // --------  system initialization --------
 setupEnv()
 await setupLogger()
+await Config.setupConfig()
 DB.setupDatabase()
 setupLayerQueue()
 Sessions.setupSessions()
@@ -36,7 +36,7 @@ TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized, starting http server...')
 
-// --------  server configuration --------
+// --------  http server configuration --------
 const server = fastify({
 	maxParamLength: 5000,
 	logger: false,
@@ -60,7 +60,7 @@ server.addHook('onResponse', async (request, reply) => {
 })
 
 server.register(fastifyStatic, {
-	root: path.join(PROJECT_ROOT, 'dist'),
+	root: path.join(Config.PROJECT_ROOT, 'dist'),
 	setHeaders: (res) => {
 		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')

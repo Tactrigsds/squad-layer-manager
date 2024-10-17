@@ -96,6 +96,7 @@ export const filters = mysqlTable('filters', {
 	description: varchar('description', { length: 512 }),
 	filter: json('filter').notNull(),
 })
+export type Filter = typeof filters.$inferSelect
 
 export const LayerVoteSchema = z.object({
 	defaultChoiceLayerId: z.string(),
@@ -110,12 +111,16 @@ export type LayerQueue = z.infer<typeof LayerQueueSchema>
 
 export const servers = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),
-	displayName: varchar('displayName', { length: 256 }),
-	layerQueue: json('layerQueue'),
-	online: boolean('online'),
-	numPlayers: int('numPlayers'),
+	online: boolean('online').notNull().default(false),
+	displayName: varchar('displayName', { length: 256 }).notNull(),
+	// should be incremented whenver layer queue is modified. used to make sure modifiers are up-to-date with the current state of the queue before submitting modifications
+	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
+	layerQueue: json('layerQueue').notNull().default('[]'),
+	currentVote: json('currentVote'),
 	poolFilterId: varchar('poolFilterId', { length: 64 }).references(() => filters.id),
 })
+
+export type Server = typeof servers.$inferSelect
 
 export const users = mysqlTable('users', {
 	discordId: bigint('discordId', { mode: 'bigint' }).notNull().primaryKey(),

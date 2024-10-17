@@ -139,7 +139,7 @@ function CreateSquadForm() {
 		defaultValues: {
 			squadName: '',
 			teamID: 0,
-			creatorName: '',
+			creatorName: undefined as string | undefined,
 		},
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {

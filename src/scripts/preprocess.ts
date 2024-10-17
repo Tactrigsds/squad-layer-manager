@@ -1,19 +1,17 @@
+import { resolvePromises } from '@/lib/async'
 import * as C from '@/lib/constants'
+import { deref as derefEntries } from '@/lib/object'
 import * as M from '@/models'
+import { PROJECT_ROOT } from '@/server/config'
 import * as DB from '@/server/db'
 import { setupEnv } from '@/server/env'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { Logger, baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
 import { parse } from 'csv-parse/sync'
 import { sql } from 'drizzle-orm'
 import * as fs from 'fs'
+import path from 'path'
 import { z } from 'zod'
-
-setupEnv()
-setupLogger()
-DB.setupDatabase()
-const log = baseLogger
-const db = DB.get({ log })
 
 // Define the schema for raw data
 
@@ -38,6 +36,17 @@ export const RawLayerSchema = z.object({
 	Balance_Differential: z.number(),
 	'Asymmetry Score': z.number(),
 })
+
+async function main() {
+	setupEnv()
+	setupLogger()
+	DB.setupDatabase()
+	const log = baseLogger.child({ module: 'preprocess' })
+	const db = DB.get({ log })
+	const ctx = { log, db }
+	// await updateLayersTable(ctx)
+	await updateLayerComponents(ctx)
+}
 
 function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 	const { gamemode, version } = M.parseLayerString(rawLayer.Layer)
@@ -82,7 +91,7 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 	}
 }
 
-async function main() {
+async function updateLayersTable({ db, log }: Context) {
 	const t0 = performance.now()
 	baseLogger.info('Reading layers.csv..')
 	const csvData = fs.readFileSync('layers.csv', 'utf8')
@@ -190,6 +199,153 @@ async function main() {
 	const elapsedSecondsInsert = (t3 - t2) / 1000
 	log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
+
+type Context = {
+	log: Logger
+	db: DB.Db
+}
+
+async function updateLayerComponents({ db, log }: Context) {
+	const factionsPromise = db
+		.select({ faction: Schema.layers.Faction_1 })
+		.from(Schema.layers)
+		.groupBy(Schema.layers.Faction_1)
+		.then((result) => derefEntries('faction', result))
+
+	const subfactionsPromise = db
+		.select({ subfaction: Schema.layers.SubFac_1 })
+		.from(Schema.layers)
+		.groupBy(Schema.layers.SubFac_1)
+		.then((result) => derefEntries('subfaction', result))
+
+	const levelsPromise = db
+		.select({ level: Schema.layers.Level })
+		.from(Schema.layers)
+		.groupBy(Schema.layers.Level)
+		.then((result) => derefEntries('level', result))
+
+	const layersPromise = db
+		.select({ layer: Schema.layers.Layer })
+		.from(Schema.layers)
+		.groupBy(Schema.layers.Layer)
+		.then((result) => derefEntries('layer', result))
+
+	const layerVersionsPromise = db
+		.select({ version: Schema.layers.LayerVersion })
+		.from(Schema.layers)
+		.groupBy(Schema.layers.LayerVersion)
+		.then((result) => derefEntries('version', result))
+
+	for (const level of await levelsPromise) {
+		if (!(level in LEVEL_SHORT_NAMES)) throw new Error(`level ${level} doesn't have a short name`)
+		if (!(level in LEVEL_ABBREVIATIONS)) throw new Error(`level ${level} doesn't have an abbreviation`)
+	}
+	for (const subfaction of await subfactionsPromise) {
+		if (subfaction === null) continue
+		if (!(subfaction in SUBFACTION_ABBREVIATIONS)) throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
+		if (!(subfaction in SUBFACTION_SHORT_NAMES)) throw new Error(`subfaction ${subfaction} doesn't have a short name`)
+	}
+
+	const layerComponents = await resolvePromises({
+		factions: factionsPromise,
+		subfactions: subfactionsPromise,
+		subfactionAbbreviations: SUBFACTION_ABBREVIATIONS,
+		subfactionShortNames: SUBFACTION_SHORT_NAMES,
+		levels: levelsPromise,
+		levelAbbreviations: LEVEL_ABBREVIATIONS,
+		levelShortNames: LEVEL_SHORT_NAMES,
+		layers: layersPromise,
+		layerVersions: layerVersionsPromise,
+	})
+
+	fs.writeFileSync(path.join(PROJECT_ROOT, 'src', 'assets', 'layer-components.json'), JSON.stringify(layerComponents, null, 2))
+	log.info(
+		'Updated layer-components.json with %d factions, %d subfactions, %d levels, %d layers, and %d layer versions',
+		layerComponents.factions.length,
+		layerComponents.subfactions.length,
+		layerComponents.levels.length,
+		layerComponents.layers.length,
+		layerComponents.layerVersions.length
+	)
+}
+
+const LEVEL_ABBREVIATIONS = {
+	AlBasrah: 'AB',
+	Anvil: 'AN',
+	Belaya: 'BL',
+	BlackCoast: 'BC',
+	Chora: 'CH',
+	Fallujah: 'FL',
+	FoolsRoad: 'FR',
+	GooseBay: 'GB',
+	Gorodok: 'GD',
+	Harju: 'HJ',
+	Kamdesh: 'KD',
+	Kohat: 'KH',
+	Kokan: 'KK',
+	Lashkar: 'LK',
+	Logar: 'LG',
+	Manicouagan: 'MN',
+	Mestia: 'MS',
+	Mutaha: 'MT',
+	Narva: 'NV',
+	PacificProvingGrounds: 'PPG',
+	Sanxian: 'SX',
+	Skorpo: 'SK',
+	Sumari: 'SM',
+	Tallil: 'TL',
+	Yehorivka: 'YH',
+	JensensRange: 'JR',
+} as Record<string, string>
+
+const SUBFACTION_ABBREVIATIONS = {
+	AirAssault: 'AA',
+	Armored: 'AR',
+	CombinedArms: 'CA',
+	LightInfantry: 'LI',
+	Mechanized: 'MZ',
+	Motorized: 'MT',
+	Support: 'SP',
+} as Record<string, string>
+
+export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
+	AlBasrah: 'Basrah',
+	Anvil: 'Anvil',
+	Belaya: 'Belaya',
+	BlackCoast: 'Coast',
+	Chora: 'Chora',
+	Fallujah: 'Fallu',
+	FoolsRoad: 'Fools',
+	GooseBay: 'Goose',
+	Gorodok: 'Goro',
+	Harju: 'Harju',
+	Kamdesh: 'Kamdesh',
+	Kohat: 'Kohat',
+	Kokan: 'Kokan',
+	Lashkar: 'Lashkar',
+	Logar: 'Logar',
+	Manicouagan: 'Manic',
+	Mestia: 'Mestia',
+	Mutaha: 'Muta',
+	Narva: 'Narva',
+	PacificProvingGrounds: 'PPG',
+	Sanxian: 'Sanxian',
+	Skorpo: 'Skorpo',
+	Sumari: 'Sumari',
+	Tallil: 'Tallil',
+	Yehorivka: 'Yeho',
+	JensensRange: 'Jensens',
+}
+
+const SUBFACTION_SHORT_NAMES = {
+	CombinedArms: 'Combined',
+	Armored: 'Armored',
+	LightInfantry: 'Light',
+	Mechanized: 'Mech',
+	Motorized: 'Motor',
+	Support: 'Sup',
+	AirAssault: 'Air',
+} satisfies Record<M.Subfaction, string>
 
 await main()
 

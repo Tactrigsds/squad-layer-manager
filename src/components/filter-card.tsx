@@ -1,26 +1,20 @@
 import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
-import { sleep } from '@/lib/async'
-import * as DH from '@/lib/display-helpers'
 import { SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
-import * as S from '@/stores'
 import { produce } from 'immer'
-import { useAtom } from 'jotai'
-import { Check, ChevronsUpDown, LoaderCircle, Minus, Plus } from 'lucide-react'
-import { useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { Minus, Plus } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import React from 'react'
-import { Observable } from 'rxjs'
 
-import ComboBox, { ComboBoxHandle, LOADING } from './combo-box'
-import ComboBoxMulti from './combo-box-multi'
+import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
+import ComboBox, { ComboBoxHandle } from './combo-box/combo-box.tsx'
+import { LOADING } from './combo-box/constants.ts'
 import { Button, buttonVariants } from './ui/button'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -188,17 +182,16 @@ export function Comparison(props: {
 			options={M.COLUMN_KEYS}
 			ref={columnBoxRef}
 			onSelect={(column) => {
-				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'string') {
+				if (column && M.COLUMN_KEY_TO_TYPE[column as M.LayerColumnKey] === 'string') {
 					setComp((c) => {
 						let code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
 						if (!code) code = 'eq'
 						return { column: column, code }
 					})
-					// is this a race condition? maybe ¯\_(ツ)_/¯
 					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
 					return
 				}
-				if (column && M.COLUMN_KEY_TO_TYPE[column] === 'float') {
+				if (column && M.COLUMN_KEY_TO_TYPE[column as M.LayerColumnKey] === 'float') {
 					setComp((c) => {
 						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.float ? c.code : undefined
 						return { column: c.column, code }
@@ -206,7 +199,7 @@ export function Comparison(props: {
 					valueBoxRef.current?.open()
 					return
 				}
-				return setComp(() => ({ column: column ?? undefined }))
+				return setComp(() => ({ column: column }))
 			}}
 		/>
 	) : (
@@ -224,7 +217,7 @@ export function Comparison(props: {
 				options={columnOptions}
 				ref={codeBoxRef}
 				onSelect={(code) => {
-					// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯
+					// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
 					if (code !== undefined) sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
 					return setComp((c) => ({ ...c, code: code ?? undefined }))
 				}}
@@ -401,14 +394,20 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 	props: {
 		values: string[]
 		column: M.StringColumn
-		setValues: SetState<string[]>
+		setValues: React.Dispatch<React.SetStateAction<string[]>>
 		autocompleteFilter?: M.FilterNode
 	},
 	ref: React.MutableRefObject<ComboBoxHandle>
 ) {
 	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
 	return (
-		<ComboBoxMulti ref={ref} values={props.values} options={valuesRes.data?.map((r) => r[props.column]) ?? []} onSelect={props.setValues} />
+		<ComboBoxMulti
+			title={props.column}
+			ref={ref}
+			values={props.values}
+			options={valuesRes.data?.map((r) => r[props.column]) ?? []}
+			onSelect={props.setValues as React.Dispatch<React.SetStateAction<(string | null)[]>>}
+		/>
 	)
 })
 

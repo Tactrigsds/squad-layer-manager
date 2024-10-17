@@ -79,7 +79,7 @@ export function setupMockSquadRouter() {
 			} as ServerState
 		}),
 		endMatch: procedure.mutation(async () => {
-			await server.endMatch()
+			await server.endGame()
 		}),
 	})
 	mockSquadRouter = _mockSquadRouter

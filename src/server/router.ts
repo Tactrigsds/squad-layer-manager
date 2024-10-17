@@ -44,17 +44,19 @@ export function setupTrpcRouter() {
 				.select(selectObj)
 				.from(Schema.layers)
 				// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
-				.where(input.filter ? LayersQuery.getWhereFilterConditions(input.filter) : sql`1=1`)
+				.where(input.filter ? await LayersQuery.getWhereFilterConditions(input.filter, ctx) : sql`1=1`)
 				.groupBy(...input.columns.map((column) => Schema.layers[column]))
 				.limit(input.limit)
 			return rows
 		}),
 		getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
-		watchServerUpdates: procedure.subscription(LQ.watchUpdates),
-		updateQueue: procedureWithInput(M.ServerStateSchema).mutation(async ({ input }) => {
-			return LQ.update(input)
+		watchServerUpdates: procedure.subscription(LQ.watchServerStateUpdates),
+		updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(async ({ input, ctx }) => {
+			return LQ.processLayerQueueUpdate(input, ctx)
 		}),
 		pollServerInfo: procedure.subscription(LQ.pollServerInfo),
+		watchNowPlayingState: procedure.subscription(LQ.watchNowPlayingState),
+		watchNextLayerState: procedure.subscription(LQ.watchNextLayerState),
 		getFilters: procedure.query(async ({ ctx }) => {
 			return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
 		}),
