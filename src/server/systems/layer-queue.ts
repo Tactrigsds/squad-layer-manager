@@ -1,4 +1,4 @@
-import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
+import { AsyncGeneratorValue, toAsyncGenerator, traceTag } from '@/lib/async.ts'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { deepClone } from '@/lib/object'
 import { sleep } from '@/lib/promise'
@@ -38,33 +38,6 @@ import {
 } from 'rxjs'
 import StringComparison from 'string-comparison'
 
-const runId = Math.floor(Math.random() * 1000000)
-function getTrackingId(seqId: number) {
-	return `${runId}-${seqId}`
-}
-const startingQueue: M.LayerQueue = [
-	{ layerId: 'AB-RAAS-V1:USMC-MT:RGF-SP', generated: true },
-	{ layerId: 'KD-RAAS-V1:INS-SP:RGF-MT', generated: true },
-	{ layerId: 'KH-TC-V1:MEA-SP:WPMC-AA', generated: true },
-	{ layerId: 'KH-TC-V1:VDV-SP:ADF-AA', generated: true },
-	{ layerId: 'AB-AAS-V1:USMC-CA:RGF-CA', generated: true },
-	{ layerId: 'AB-RAAS-V1:USA-LI:PLANMC-MT', generated: true },
-	{ layerId: 'BC-RAAS-V1:PLANMC-AR:USMC-AR', generated: true },
-	// { layerId: 'BL-AAS-V1:IMF-MZ:RGF-LI', generated: true },
-	// { layerId: 'AN-RAAS-V1:ADF-CA:WPMC-LI', generated: true },
-	// { layerId: 'BC-RAAS-V1:USA-MZ:PLANMC-AR', generated: true },
-	// { layerId: 'KD-AAS-V1:PLA-SP:CAF-AA' },
-	// { layerId: 'KK-Skirmish-V1:INS-CA:WPMC-CA' },
-	// { layerId: 'TL-AAS-V1:MEA-SP:PLA-LI' },
-	// { layerId: 'TL-RAAS-V1:USA-MZ:INS-CA' },
-	// { layerId: 'LK-TC-V2:RGF-AR:ADF-MZ' },
-	// { layerId: 'MN-RAAS-V1:USA-AR:RGF-AR' },
-	// { layerId: 'TL-TC-V1:RGF-LI:MEA-AR' },
-	// { layerId: 'LK-TC-V1:RGF-CA:TLF-AA' },
-	// { layerId: 'NV-TC-V1:CAF-MZ:RGF-AR' },
-	// { layerId: 'KD-RAAS-V1:USMC-MT:VDV-CA' },
-]
-
 const pollingRates = {
 	normal: interval(3000),
 	fast: interval(1000),
@@ -94,7 +67,7 @@ export async function setupLayerQueue() {
 		server.displayName = CONFIG.serverDisplayName
 	}
 
-	if (server.currentVote) serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), { log }])
+	serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), { log }])
 
 	pollServerInfo$ = serverInfoPollingRate$.pipe(
 		traceTag('pollServerInfo$'),

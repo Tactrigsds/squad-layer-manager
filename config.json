@@ -1,8 +1,11 @@
 {
-	"voteLengthSeconds": "180",
+	"serverId": "test-server",
+	"serverDisplayName": "Test Server",
+	"voteLengthSeconds": 180,
+	"minValidVotes": 3,
 	"commandPrefix": "!",
 	"commands": {
-		"startVote": ["rtv", "rockthevote"],
-		"showNext": ["pool", "shownext"]
+		"startVote": { "strings": ["rtv", "rockthevote"] },
+		"showNext": { "strings": ["pool", "shownext"] }
 	}
 }

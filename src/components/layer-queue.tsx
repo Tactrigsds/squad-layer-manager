@@ -18,6 +18,7 @@ import React from 'react'
 import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box/combo-box.tsx'
 import * as CB from './combo-box/combo-box.tsx'
+import { LOADING } from './combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Separator } from './ui/separator'
 
@@ -251,7 +252,7 @@ function PoolConfigurationPanel(props: {
 	poolFilterEdited: boolean
 	updateFilter: (filter: M.ServerState['poolFilterId']) => void
 }) {
-	const filtersRes = trpcReact.getFilters.useQuery()
+	const filtersRes = trpcReact.filters.getFilters.useQuery()
 	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: f.name }))
 	const selected = props.poolFilterId
 	return (
@@ -260,7 +261,7 @@ function PoolConfigurationPanel(props: {
 				<CardTitle>Pool Configuration</CardTitle>
 			</CardHeader>
 			<CardContent>
-				<ComboBox title="Pool Filter" options={filterOptions ?? CB.LOADING} value={selected} onSelect={props.updateFilter} />
+				<ComboBox title="Pool Filter" options={filterOptions ?? LOADING} value={selected} onSelect={props.updateFilter} />
 			</CardContent>
 		</Card>
 	)

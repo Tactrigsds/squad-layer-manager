@@ -33,7 +33,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: Context })
 	const db = ctx.db
 
 	if (input.filter) {
-		whereCondition = (await getWhereFilterConditions(input.filter, ctx)) ?? whereCondition
+		whereCondition = (await getWhereFilterConditions(input.filter, [], ctx)) ?? whereCondition
 	}
 
 	let query = db.select().from(Schema.layers).where(whereCondition)
@@ -68,7 +68,13 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: Context })
 	}
 }
 
-export async function getWhereFilterConditions(node: M.FilterNode, ctx: { db: DB.Db }): Promise<SQL | undefined> {
+// reentrantFilterIds are IDs that cannot be present in this node,
+// as their presence would cause infinite recursion
+export async function getWhereFilterConditions(
+	node: M.FilterNode,
+	reentrantFilterIds: string[],
+	ctx: { db: DB.Db }
+): Promise<SQL | undefined> {
 	if (node.type === 'comp') {
 		const comp = node.comp!
 		const column = Schema.layers[comp.column]
@@ -91,16 +97,19 @@ export async function getWhereFilterConditions(node: M.FilterNode, ctx: { db: DB
 		}
 	}
 	if (node.type === 'apply-filter') {
+		if (reentrantFilterIds.includes(node.filterId)) {
+			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Filter mutually is recursive via filter: ' + node.filterId })
+		}
 		const entity = await getFilterEntity(node.filterId, ctx)
 		if (!entity) {
 			// TODO too lazy to return an error here right now
-			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Unknown filterId ' + entity })
+			throw new TRPCError({ code: 'BAD_REQUEST', message: `Filter ${node.filterId} Doesn't exist` })
 		}
 		const filter = M.FilterNodeSchema.parse(entity.filter)
-		return getWhereFilterConditions(filter, ctx)
+		return getWhereFilterConditions(filter, [...reentrantFilterIds, node.filterId], ctx)
 	}
 
-	const childConditions = await Promise.all(node.children!.map((node) => getWhereFilterConditions(node, ctx)))
+	const childConditions = await Promise.all(node.children!.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx)))
 
 	if (node.type === 'and') {
 		return and(...childConditions)

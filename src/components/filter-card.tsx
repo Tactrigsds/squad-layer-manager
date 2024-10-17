@@ -1,13 +1,16 @@
+import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
-import { SetState } from '@/lib/react'
+import { GenericForwardedRef, SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
-import { cn } from '@/lib/utils'
-import * as M from '@/models'
+import * as Typography from '@/lib/typography.ts'
+import { cn } from '@/lib/utils.ts'
+import * as M from '@/models.ts'
 import { produce } from 'immer'
-import { Minus, Plus } from 'lucide-react'
+import { ExternalLink, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
+import { Link } from 'react-router-dom'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle } from './combo-box/combo-box.tsx'
@@ -29,6 +32,7 @@ export function FilterNodeDisplay(props: {
 	node: M.EditableFilterNode
 	setNode: SetState<M.EditableFilterNode | undefined>
 	depth: number
+	filterId?: string
 }) {
 	const { node, setNode } = props
 	const isValid = M.isLocallyValidFilterNode(node, props.depth)
@@ -69,7 +73,16 @@ export function FilterNodeDisplay(props: {
 				)
 			}
 
-			return <FilterNodeDisplay defaultEditing={editedChildIndex === i} depth={props.depth + 1} key={i} node={child} setNode={setChild} />
+			return (
+				<FilterNodeDisplay
+					defaultEditing={editedChildIndex === i}
+					depth={props.depth + 1}
+					key={i}
+					node={child}
+					setNode={setChild}
+					filterId={props.filterId}
+				/>
+			)
 		})
 		const addNewChild = (type: M.EditableFilterNode['type']) => {
 			setNode(
@@ -80,6 +93,7 @@ export function FilterNodeDisplay(props: {
 					}
 					setEditedChildIndex(draft.children.length)
 					if (type === 'comp') draft.children.push({ type, comp: {} })
+					if (type === 'apply-filter') draft.children.push({ type })
 					if (type === 'and' || type === 'or') draft.children.push({ type, children: [] })
 				})
 			)
@@ -102,6 +116,7 @@ export function FilterNodeDisplay(props: {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent>
 							<DropdownMenuItem onClick={() => addNewChild('comp')}>comparison</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => addNewChild('apply-filter')}>apply existing filter</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem onClick={() => addNewChild('and')}>and block</DropdownMenuItem>
 							<DropdownMenuItem onClick={() => addNewChild('or')}>or block</DropdownMenuItem>
@@ -139,8 +154,35 @@ export function FilterNodeDisplay(props: {
 
 	if (node.type === 'comp' && node.comp) {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2 items-center')}>
 				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
+				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
+					<Minus color="hsl(var(--destructive))" />
+				</Button>
+			</div>
+		)
+	}
+	if (node.type === 'apply-filter') {
+		return (
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2 items-center')}>
+				<ApplyFilter
+					defaultEditing={props.defaultEditing}
+					filterId={node.filterId}
+					editedFilterId={props.filterId}
+					setFilterId={(filterId) => {
+						return setNode((n) => {
+							if (!n) return
+							return { ...n, filterId }
+						})
+					}}
+				/>
+				<Link
+					to={AR.link('/filters/:id/edit', [node.filterId ?? ''])}
+					target="_blank"
+					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
+				>
+					<ExternalLink color="hsl(var(--primary))" />
+				</Link>
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
 					<Minus color="hsl(var(--destructive))" />
 				</Button>
@@ -293,6 +335,44 @@ export function Comparison(props: {
 					}}
 				/>
 			)}
+		</>
+	)
+}
+
+type ApplyFilterProps = {
+	filterId: string | undefined
+	setFilterId: (filterId: string) => void
+	// the id of the filter entity currently being edited
+	editedFilterId?: string
+	defaultEditing?: boolean
+}
+
+function ApplyFilter(props: ApplyFilterProps) {
+	const getFiltersQuery = trpcReact.filters.getFilters.useQuery()
+	let filters = getFiltersQuery.data
+	if (props.editedFilterId) filters = filters?.filter((f) => f.id !== props.editedFilterId)
+	const options = filters ? filters.map((f) => ({ label: f.name, value: f.id })) : LOADING
+	const boxRef = useRef<ComboBoxHandle>()
+	React.useEffect(() => {
+		if (props.defaultEditing) {
+			boxRef.current?.open()
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
+	return (
+		<>
+			<span>Apply</span>
+			<ComboBox
+				ref={boxRef}
+				title="Filter"
+				options={options}
+				allowEmpty={true}
+				value={props.filterId}
+				onSelect={(v) => {
+					console.log('on select', v)
+					return props.setFilterId(v as string | undefined)
+				}}
+			/>
 		</>
 	)
 }

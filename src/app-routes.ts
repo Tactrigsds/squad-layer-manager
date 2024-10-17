@@ -6,7 +6,7 @@ export type RouteDefinition<Params extends string[] = string[]> = {
 	handle: 'page' | 'custom'
 	websocket: boolean
 	params: Params
-	link: (...args: Params) => string
+	link: (args: Params) => string
 }
 export const routes = {
 	...defRoute('/', []),
@@ -14,7 +14,7 @@ export const routes = {
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
-	...defRoute('/filters/:id/edit', ['id'], { link: (id) => `/filters/${id}/edit` }),
+	...defRoute('/filters/:id/edit', ['id'], { link: ([id]) => `/filters/${id}/edit` }),
 
 	...defRoute('/mock-server', []),
 
@@ -51,10 +51,10 @@ export function exists<P extends Platform>(route: Route<P>) {
 	return route
 }
 
-export function link<R extends Route<'server'>>(routePath: R, ...args: string[]) {
+export function link<R extends Route<'server'>>(routePath: R, args: (typeof routes)[R]['params']) {
 	const linkFn = routes[routePath].link
 	if (!linkFn) {
 		throw new Error(`Route ${routePath} is not defined in the routes array`)
 	}
-	return linkFn(...args)
+	return linkFn(args)
 }

@@ -291,8 +291,9 @@ export type Comparison = z.infer<typeof ComparisonSchema>
 
 // TODO add 'not'
 export const BaseFilterNodeSchema = z.object({
-	type: z.union([z.literal('and'), z.literal('or'), z.literal('comp')]),
+	type: z.union([z.literal('and'), z.literal('or'), z.literal('comp'), z.literal('apply-filter')]),
 	comp: ComparisonSchema.optional(),
+	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
 })
 
 export type FilterNode =
@@ -326,24 +327,31 @@ export type EditableFilterNode =
 			type: 'comp'
 			comp: EditableComparison
 	  }
+	| {
+			type: 'apply-filter'
+			filterId?: string
+	  }
 
 //@ts-expect-error it works
 export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
-	if (node.type === 'comp') {
-		return isValidComparison(node.comp)
-	}
-	return node.children.every((child) => isValidFilterNode(child))
+	if (!isLocallyValidFilterNode(node)) return false
+	if (node.type === 'and' || node.type === 'or') return node.children.every((child) => isValidFilterNode(child))
+	return true
 }
 
 // excludes children
-export function isLocallyValidFilterNode(node: EditableFilterNode, depth: number) {
+export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	if (node.type === 'and' || node.type === 'or') return true
 	if (node.type === 'comp') return isValidComparison(node.comp)
+	if (node.type === 'apply-filter') return isValidApplyFilterNode(node)
 	throw new Error('Invalid node type')
 }
 
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
 	return !!comp.code && !!comp.column && (comp.code === 'in' ? comp.values : comp.value) !== undefined
+}
+export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {
+	return !!node.filterId
 }
 
 export const FilterNodeSchema = BaseFilterNodeSchema.extend({
@@ -351,6 +359,9 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 })
 	.refine((node) => node.type !== 'comp' || node.comp !== undefined, { message: 'comp must be defined for type "comp"' })
 	.refine((node) => node.type !== 'comp' || node.children === undefined, { message: 'children must not be defined for type "comp"' })
+	.refine((node) => node.type !== 'apply-filter' || typeof node.filterId === 'string', {
+		message: 'filterId must be defined for type "apply-filter"',
+	})
 	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
 		message: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
@@ -397,14 +408,28 @@ export const FilterUpdateSchema = z.object({
 	filter: FilterNodeSchema,
 }) satisfies z.ZodType<Partial<Schema.Filter>>
 
-export const FilterEntitySchema = FilterUpdateSchema.extend({
-	id: z
-		.string()
-		.trim()
-		.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
-		.min(3)
-		.max(64),
-}) satisfies z.ZodType<Schema.Filter>
+function filterContainsId(id: string, node: FilterNode): boolean {
+	if (node.type === 'and' || node.type === 'or') return node.children.every((n) => filterContainsId(id, n))
+	if (node.type === 'comp') return false
+	return node.filterId === id
+}
+
+export const FilterEntityIdSchema = z
+	.string()
+	.trim()
+	.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
+	.min(3)
+	.max(64)
+
+export const FilterEntitySchema = z
+	.object({
+		id: FilterEntityIdSchema,
+		name: z.string().trim().min(3).max(128),
+		description: z.string().trim().min(3).max(512).nullable(),
+		filter: FilterNodeSchema,
+	})
+	// this refinement does not deal with mutual recustion
+	.refine((e) => !filterContainsId(e.id, e.filter), { message: 'filter cannot be recursive' }) satisfies z.ZodType<Schema.Filter>
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
@@ -450,3 +475,10 @@ export type LayerSyncState =
 			status: 'active'
 			layerId: string
 	  }
+
+// represents a user's edit or deletion of an entity
+export type UserEntityMutation<K> = {
+	username: string
+	value: K
+	type: 'add' | 'update' | 'delete'
+}

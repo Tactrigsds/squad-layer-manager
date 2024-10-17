@@ -25,3 +25,19 @@ export function useNextLayerState() {
 	trpcReact.watchNextLayerState.useSubscription(undefined, { onData: (d) => setNextLayerState(d) })
 	return nextLayerState
 }
+
+export type FilterMutationHandle = {
+	onUpdate?: (update: M.UserEntityMutation<M.FilterEntity>) => void
+}
+
+// export function useFilterState(id: string, handle?: FilterMutationHandle) {
+// 	trpcReact.filters.watchFilter.useSubscription(id, {
+// 		onData: (e) => {
+// 			if (e.code === 'initial-value') setFilterState(e.entity)
+// 			if (e.code === 'update') {
+// 				if (e.mutation.type !== 'delete') setFilterState(e.mutation.value)
+// 				handle?.onUpdate?.(e.mutation)
+// 			}
+// 		},
+// 	})
+// }

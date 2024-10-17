@@ -1,4 +1,4 @@
-import ComboBox from '@/components/combo-box'
+import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'

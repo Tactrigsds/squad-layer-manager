@@ -1,10 +1,10 @@
-import { returnInsertErrors, returnUpdateErrors } from '@/lib/drizzle.ts'
 import * as M from '@/models.ts'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { mockSquadRouter as mockSquadServerRouter, setupMockSquadRouter } from './mock-squad-router.ts'
 import * as Schema from './schema.ts'
+import { filtersRouter } from './systems/filters-entity.ts'
 import * as LQ from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 import { procedure, procedureWithInput, router } from './trpc.ts'
@@ -44,7 +44,7 @@ export function setupTrpcRouter() {
 				.select(selectObj)
 				.from(Schema.layers)
 				// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
-				.where(input.filter ? await LayersQuery.getWhereFilterConditions(input.filter, ctx) : sql`1=1`)
+				.where(input.filter ? await LayersQuery.getWhereFilterConditions(input.filter, [], ctx) : sql`1=1`)
 				.groupBy(...input.columns.map((column) => Schema.layers[column]))
 				.limit(input.limit)
 			return rows
@@ -57,29 +57,8 @@ export function setupTrpcRouter() {
 		pollServerInfo: procedure.subscription(LQ.pollServerInfo),
 		watchNowPlayingState: procedure.subscription(LQ.watchNowPlayingState),
 		watchNextLayerState: procedure.subscription(LQ.watchNextLayerState),
-		getFilters: procedure.query(async ({ ctx }) => {
-			return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
-		}),
-		createFilter: procedureWithInput(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
-			const res = await returnInsertErrors(ctx.db.insert(Schema.filters).values(input))
-			return res.code
-		}),
-		updateFilter: procedureWithInput(z.tuple([M.FilterEntitySchema.shape.id, M.FilterUpdateSchema.partial()])).mutation(
-			async ({ input, ctx }) => {
-				const [id, update] = input
-				const res = await returnUpdateErrors(ctx.db.update(Schema.filters).set(update).where(eq(Schema.filters.id, id)))
-				ctx.log.info(res, 'Updated filter %d', id)
-				return res.code
-			}
-		),
-		deleteFilter: procedureWithInput(M.FilterEntitySchema.shape.id).mutation(async ({ input, ctx }) => {
-			const [res] = await ctx.db.delete(Schema.filters).where(eq(Schema.filters.id, input))
-			if (res.affectedRows === 0) {
-				return { code: 'err:filter-not-found' }
-			}
-			return { code: 'ok' }
-		}),
 		mockSquadServer: mockSquadServerRouter,
+		filters: filtersRouter,
 	})
 	appRouter = _appRouter
 	return _appRouter

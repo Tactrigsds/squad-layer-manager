@@ -4,7 +4,7 @@ export type Error = {
 
 export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 	try {
-		return { code: 'success' as const, data: (await runningQuery)[0] }
+		return { code: 'ok' as const, data: (await runningQuery)[0] }
 	} catch (_err: unknown) {
 		const err = _err as { code: 'ER_DUP_ENTRY' }
 		if (err.code === 'ER_DUP_ENTRY') {
@@ -24,7 +24,7 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 export async function returnUpdateErrors<T = never>(runningQuery: Promise<T[]>) {
 	const rows = await runningQuery
 	if (rows.length === 0) {
-		return { code: 'not-found' as const, err: new Error() }
+		return { code: 'err:not-found' as const, err: new Error() }
 	}
-	return { code: 'success' as const, data: rows[0] }
+	return { code: 'ok' as const, data: rows[0] }
 }

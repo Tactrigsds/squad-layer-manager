@@ -18,12 +18,18 @@ import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
+import { type AppRouter } from '@/server/router'
+import { type WatchFilterOutput } from '@/server/systems/filters-entity'
+import * as Stores from '@/stores.ts'
 import { useForm } from '@tanstack/react-form'
 import { zodValidator } from '@tanstack/zod-form-adapter'
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type inferProcedureOutput } from '@trpc/server'
+import { inferObservableValue } from '@trpc/server/observable'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { FilterNodeDisplay } from './filter-card'
+import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
@@ -36,50 +42,60 @@ const defaultFilter: M.EditableFilterNode = {
 
 export default function FilterEdit() {
 	const { id } = useAppParams(AR.exists('/filters/:id/edit'))
-	const filtersReq = trpcReact.getFilters.useQuery()
-	const originalFilterEntity = filtersReq.data?.find((f) => f.id === id)
+	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const { toast } = useToast()
-
-	const [tsLastEdit, setTsLastEdit] = useState(null as null | number)
-	const [editedFilter, _setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
-	const [pageIndex, setPageIndex] = useState(0)
-	const filterModified = tsLastEdit && tsLastEdit > filtersReq.dataUpdatedAt
-	const filter: M.EditableFilterNode | undefined = filterModified
-		? editedFilter
-		: (originalFilterEntity?.filter as M.EditableFilterNode | undefined)
-	const validFilter = useMemo(() => {
-		return filter && M.isValidFilterNode(filter) ? filter : undefined
-	}, [filter])
-	const updateFilterMutation = trpcReact.updateFilter.useMutation()
-	const deleteFilterMutation = trpcReact.deleteFilter.useMutation()
-	const canSaveFilter = !!filterModified && !!validFilter && !updateFilterMutation.isPending
+	// the unedited filter entity from the server
+	const [filterEntity, setFilterEntity] = useState<M.FilterEntity | undefined>(undefined)
+	const [editedFilter, setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
+	const [localFilterModified, setLocalFilterModified] = useState(false)
+	const userRes = trpcReact.getLoggedInUser.useQuery()
 	const navigate = useNavigate()
+	const onWatchFilterData = useCallback(
+		(e: WatchFilterOutput) => {
+			if (e.code === 'initial-value') {
+				setFilterEntity(e.entity)
+				setEditedFilter(e.entity.filter as M.EditableFilterNode)
+				return
+			}
+			if (e.code === 'mutation') {
+				if (e.mutation.type === 'delete') {
+					toast({ title: `Filter ${e.mutation.value.name} was deleted by ${e.mutation.username}` })
+					navigate(AR.exists('/filters'))
+					return
+				}
+				if (e.mutation.type === 'update') {
+					if (!userRes.data?.username || userRes.data.username !== e.mutation.username)
+						toast({ title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}` })
+					else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
+						toast({ title: `Updated ${e.mutation.value.name}` })
+					}
 
-	if (!filter) {
-		return <div>Loading...</div>
-	}
-	if (!originalFilterEntity) {
-		return <div>Filter not found</div>
+					setFilterEntity(e.mutation.value)
+					setEditedFilter(e.mutation.value.filter as M.EditableFilterNode)
+					setLocalFilterModified(false)
+				}
+			}
+		},
+		[setFilterEntity, setEditedFilter, toast, userRes.data?.username, navigate]
+	)
+	trpcReact.filters.watchFilter.useSubscription(id, { onData: onWatchFilterData })
+	const [pageIndex, setPageIndex] = useState(0)
+	const validFilter = useMemo(() => {
+		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : undefined
+	}, [editedFilter])
+	const updateFilterMutation = trpcReact.filters.updateFilter.useMutation()
+	const deleteFilterMutation = trpcReact.filters.deleteFilter.useMutation()
+	const canSaveFilter = !!localFilterModified && !!validFilter && !updateFilterMutation.isPending
+
+	// if (!editedFilter || !filterEntity) {
+	if (true) {
+		return <FullPageSpinner />
 	}
 
-	function setEditedFilter(update: (prev: M.EditableFilterNode) => M.EditableFilterNode) {
-		if (!filter) {
-			console.warn('setEditedFilter called with no filter')
-			return
-		}
-		const newFilter = update(filter)
-		if (!editedFilter) {
-			_setEditedFilter(newFilter)
-			return
-		}
-		setPageIndex(0)
-		setTsLastEdit(Date.now())
-		_setEditedFilter(newFilter)
-	}
 	async function saveFilter() {
 		if (!canSaveFilter) return
-		const code = await updateFilterMutation.mutateAsync([originalFilterEntity!.id, { filter: validFilter }])
-		if (code !== 'success') {
+		const code = await updateFilterMutation.mutateAsync([filterEntity!.id, { filter: validFilter }])
+		if (code !== 'ok') {
 			toast({
 				title: 'Failed to save filter',
 			})
@@ -88,21 +104,21 @@ export default function FilterEdit() {
 		toast({
 			title: 'Filter saved',
 		})
-		filtersReq.refetch()
 	}
+
 	async function onDelete() {
-		if (!originalFilterEntity) {
+		if (!filterEntity) {
 			return
 		}
-		const res = await deleteFilterMutation.mutateAsync(originalFilterEntity.id)
+		const res = await deleteFilterMutation.mutateAsync(filterEntity.id)
 		if (res.code === 'ok') {
 			toast({
-				title: `Filter "${originalFilterEntity.name}" deleted`,
+				title: `Filter "${filterEntity.name}" deleted`,
 			})
-			navigate(AR.link('/filters'))
+			navigate(AR.link('/filters', []))
 		} else {
 			toast({
-				title: `Failed to delete filter "${originalFilterEntity.name}"`,
+				title: `Failed to delete filter "${filterEntity.name}"`,
 			})
 		}
 	}
@@ -110,15 +126,20 @@ export default function FilterEdit() {
 	return (
 		<div className="container mx-auto py-10">
 			<div className="w-full flex justify-center items-center">
-				<h3 className={Typography.H3 + ' m-auto'}>{originalFilterEntity.name}</h3>
+				<h3 className={Typography.H3 + ' m-auto'}>{filterEntity.name}</h3>
 			</div>
 			<div className="flex space-x-2">
-				<FilterNodeDisplay node={filter} setNode={setEditedFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
+				<FilterNodeDisplay
+					node={editedFilter}
+					setNode={setEditedFilter as SetState<M.EditableFilterNode | undefined>}
+					depth={0}
+					filterId={filterEntity.id}
+				/>
 				<div className="flex flex-col space-y-2">
 					<Button disabled={!canSaveFilter} onClick={saveFilter}>
 						Save
 					</Button>
-					<EditFilterDetailsDialog entity={originalFilterEntity} onEdited={() => filtersReq.refetch()}>
+					<EditFilterDetailsDialog entity={filterEntity}>
 						<Button variant="secondary">Edit Details</Button>
 					</EditFilterDetailsDialog>
 					<DeleteFilterDialog onDelete={onDelete}>
@@ -131,8 +152,8 @@ export default function FilterEdit() {
 	)
 }
 
-function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.FilterEntity; onEdited: () => void }) {
-	const updateFiltersMutation = trpcReact.updateFilter.useMutation()
+function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.FilterEntity }) {
+	const updateFiltersMutation = trpcReact.filters.updateFilter.useMutation()
 	const [isOpen, _setIsOpen] = useState(false)
 	function setIsOpen(isOpen: boolean) {
 		if (isOpen) {
@@ -152,17 +173,16 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {
 			const code = await updateFiltersMutation.mutateAsync([props.entity.id, value])
-			if (code === 'success') {
+			if (code === 'ok') {
 				toast.toast({
 					title: 'Filter updated',
 				})
-			} else if (code === 'not-found') {
+			} else if (code === 'err:not-found') {
 				toast.toast({
 					title: 'Filter not found',
 				})
 			}
 			setIsOpen(false)
-			props.onEdited()
 		},
 	})
 	// useEffect(() => {

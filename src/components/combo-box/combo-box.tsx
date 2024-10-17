@@ -90,7 +90,7 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.R
 									value={DH.MISSING_DISPLAY}
 									onSelect={() => {
 										if (!props.allowEmpty) return
-										onSelect(undefined as V)
+										onSelect(undefined)
 									}}
 								>
 									<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
@@ -103,7 +103,7 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.R
 										key={option.value}
 										value={option.value === null ? NULL.current : option.value}
 										onSelect={() => {
-											onSelect(option.value as V)
+											onSelect(option.value)
 										}}
 									>
 										<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />

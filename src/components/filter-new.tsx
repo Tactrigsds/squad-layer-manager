@@ -3,12 +3,9 @@ import { Input } from '@/components/ui/input'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
-import * as Typography from '@/lib/typography'
-import * as VE from '@/lib/validation-errors.ts'
 import * as M from '@/models.ts'
 import { useForm } from '@tanstack/react-form'
 import { zodValidator } from '@tanstack/zod-form-adapter'
-import { Terminal } from 'lucide-react'
 import { FormEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -58,7 +55,7 @@ export default function FilterNew() {
 }
 
 function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.FilterNode }) {
-	const createFilterMutation = trpcReact.createFilter.useMutation()
+	const createFilterMutation = trpcReact.filters.createFilter.useMutation()
 	const navigate = useNavigate()
 	const form = useForm({
 		defaultValues: {
@@ -75,11 +72,11 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 				name: value.name,
 				description: value.description ?? null,
 			})
-			if (code !== 'success') {
+			if (code !== 'ok') {
 				alert('Failed to create filter: ' + code)
 				return
 			}
-			navigate(AR.link('/filters/:id/edit', value.id))
+			navigate(AR.link('/filters/:id/edit', [value.id]))
 		},
 	})
 
@@ -119,7 +116,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 						<form.Field
 							name="name"
 							validators={{
-								onChange: M.FilterEntitySchema.shape.name,
+								onChange: M.FilterUpdateSchema.shape.name,
 							}}
 							children={(field) => {
 								return (
@@ -140,7 +137,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 						<form.Field
 							name="id"
 							validators={{
-								onChange: M.FilterEntitySchema.shape.id,
+								onChange: M.FilterEntityIdSchema,
 							}}
 							children={(field) => {
 								return (
@@ -161,7 +158,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 					<form.Field
 						name="description"
 						validators={{
-							onChange: M.FilterEntitySchema.shape.description,
+							onChange: M.FilterUpdateSchema.shape.description,
 						}}
 						children={(field) => {
 							return (

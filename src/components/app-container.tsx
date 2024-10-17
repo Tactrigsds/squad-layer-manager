@@ -12,13 +12,13 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
-		<div className="">
+		<div className="min-h-100vh">
 			<nav className="flex items-center justify-between h-16 px-4 border-b">
 				<div className="flex items-start space-x-6">
-					<Link to={AR.link('/')} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
+					<Link to={AR.link('/', [])} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
 					</Link>
-					<Link to={AR.link('/filters')} className={`${Typography.Lead} ${location.pathname === '/filters' ? 'underline' : ''}`}>
+					<Link to={AR.link('/filters', [])} className={`${Typography.Lead} ${location.pathname === '/filters' ? 'underline' : ''}`}>
 						Filters
 					</Link>
 				</div>
