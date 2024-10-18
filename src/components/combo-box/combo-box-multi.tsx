@@ -1,11 +1,12 @@
-import { Button } from '@/components/ui/button'
-import * as DisplayHelpers from '@/lib/display-helpers.ts'
-import { GenericForwardedRef, SetStateCallback } from '@/lib/react.ts'
-import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@radix-ui/react-popover'
 import { CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from 'cmdk'
 import { Check, ChevronsUpDown, Command, LoaderCircle } from 'lucide-react'
 import React, { useImperativeHandle, useRef, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import * as DisplayHelpers from '@/lib/display-helpers.ts'
+import { GenericForwardedRef, SetStateCallback } from '@/lib/react.ts'
+import { cn } from '@/lib/utils'
 
 import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
@@ -29,7 +30,6 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	openRef.current = open
 	useImperativeHandle(ref, () => ({
 		open: () => {
-			console.log('opening ComboBoxMulti')
 			setOpen(true)
 		},
 		get isOpen() {

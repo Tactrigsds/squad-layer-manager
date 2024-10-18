@@ -12,7 +12,6 @@ import * as SquadServer from '@/server/systems/squad-server'
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
-import { Logger } from 'pino'
 import {
 	BehaviorSubject,
 	Observable,

@@ -1,15 +1,16 @@
+import { useForm } from '@tanstack/react-form'
+import { zodValidator } from '@tanstack/zod-form-adapter'
+import { FormEvent, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import * as AR from '@/app-routes.ts'
 import { Input } from '@/components/ui/input'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
-import { useForm } from '@tanstack/react-form'
-import { zodValidator } from '@tanstack/zod-form-adapter'
-import { FormEvent, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
-import { FilterNodeDisplay } from './filter-card'
+import FilterCard from './filter-card'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
@@ -42,7 +43,7 @@ export default function FilterNew() {
 	return (
 		<div className="container mx-auto py-10">
 			<div className="flex space-x-2">
-				<FilterNodeDisplay node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} depth={0} />
+				<FilterCard node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} validNode={validFilter} />
 				<div className="flex flex-col space-y-2">
 					<CreateFilterPopover filter={validFilter ?? undefined}>
 						<Button disabled={!validFilter}>Create</Button>
@@ -65,7 +66,6 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 		},
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {
-			console.log('submitted', value)
 			const code = await createFilterMutation.mutateAsync({
 				filter: props.filter!,
 				id: value.id,

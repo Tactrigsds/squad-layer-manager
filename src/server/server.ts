@@ -94,7 +94,7 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 
 	const sessionId = createId(64)
 	await db.transaction(async (db) => {
-		const [user] = await db.select().from(Schema.users).where(eq(Schema.users.discordId, discordUser.id))
+		const [user] = await db.select().from(Schema.users).where(eq(Schema.users.discordId, discordUser.id)).for('update')
 		if (!user) {
 			await db.insert(Schema.users).values({ discordId: discordUser.id, username: discordUser.username, avatar: discordUser.avatar })
 		} else {

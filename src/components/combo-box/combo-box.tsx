@@ -1,11 +1,12 @@
+import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
+import React, { useImperativeHandle, useRef, useState } from 'react'
+
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { GenericForwardedRef } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
-import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
-import React, { useImperativeHandle, useRef, useState } from 'react'
 
 import { LOADING } from './constants.ts'
 
@@ -29,7 +30,7 @@ export interface ComboBoxOption<T> {
 	label?: string
 }
 
-function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.Ref<ComboBoxHandle>) {
+function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
 	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {

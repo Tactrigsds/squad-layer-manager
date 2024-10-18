@@ -1,3 +1,11 @@
+import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import { produce } from 'immer'
+import * as diffpatch from 'jsondiffpatch'
+import { EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
+import { createContext, useRef, useState } from 'react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -7,13 +15,6 @@ import * as Helpers from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import * as M from '@/models'
-import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
-import { CSS } from '@dnd-kit/utilities'
-import { produce } from 'immer'
-import * as diffpatch from 'jsondiffpatch'
-import { EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
-import { createContext, useRef, useState } from 'react'
-import React from 'react'
 
 import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -38,8 +39,6 @@ export default function LayerQueue() {
 	}
 	const queueDiff: diffpatch.ArrayDelta | undefined =
 		lastUpdateRef.current && layerQueue ? (differ.diff(lastUpdateRef.current.layerQueue, layerQueue) as diffpatch.ArrayDelta) : undefined
-	if (queueDiff) console.log(queueDiff)
-	// const editing = queueDiff && !queueDiff.some((change) => change.added || change.removed)
 	const editing = !!queueDiff
 
 	const layersRef = useRef(new Map<string, M.MiniLayer>())

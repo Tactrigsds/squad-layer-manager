@@ -1,3 +1,10 @@
+import { useForm } from '@tanstack/react-form'
+import { zodValidator } from '@tanstack/zod-form-adapter'
+import { type inferProcedureOutput } from '@trpc/server'
+import { inferObservableValue } from '@trpc/server/observable'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import * as AR from '@/app-routes.ts'
 import {
 	AlertDialog,
@@ -21,14 +28,8 @@ import * as M from '@/models.ts'
 import { type AppRouter } from '@/server/router'
 import { type WatchFilterOutput } from '@/server/systems/filters-entity'
 import * as Stores from '@/stores.ts'
-import { useForm } from '@tanstack/react-form'
-import { zodValidator } from '@tanstack/zod-form-adapter'
-import { type inferProcedureOutput } from '@trpc/server'
-import { inferObservableValue } from '@trpc/server/observable'
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
-import { FilterNodeDisplay } from './filter-card'
+import FilterCard from './filter-card'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
@@ -134,11 +135,14 @@ export default function FilterEdit() {
 				<h3 className={Typography.H3 + ' m-auto'}>{filterEntity.name}</h3>
 			</div>
 			<div className="flex space-x-2">
-				<FilterNodeDisplay
+				<FilterCard
 					node={editedFilter}
 					setNode={setEditedFilter as SetState<M.EditableFilterNode | undefined>}
-					depth={0}
+					validNode={validFilter}
 					filterId={filterEntity.id}
+					resetFilter={() => {
+						setEditedFilter(filterEntity.filter as M.EditableFilterNode)
+					}}
 				/>
 				<div className="flex flex-col space-y-2">
 					<Button disabled={!canSaveFilter} onClick={saveFilter}>
@@ -178,7 +182,6 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value, formApi }) => {
 			const res = await updateFiltersMutation.mutateAsync([props.entity.id, value])
-			console.log('res: ', res)
 			if (res.code === 'ok') {
 				toast.toast({
 					title: 'Filter updated',

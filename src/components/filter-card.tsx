@@ -1,3 +1,9 @@
+import { produce } from 'immer'
+import { Braces, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import React from 'react'
+import { Link } from 'react-router-dom'
+
 import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
@@ -6,18 +12,15 @@ import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
-import { produce } from 'immer'
-import { ExternalLink, Minus, Plus } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import React from 'react'
-import { Link } from 'react-router-dom'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
+import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
 import { Button, buttonVariants } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -27,15 +30,79 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 	return cn(base, depthColor, validColor)
 }
 
-export function FilterNodeDisplay(props: {
+export type FilterCardProps = {
 	defaultEditing?: boolean
 	node: M.EditableFilterNode
+	validNode?: M.FilterNode
 	setNode: SetState<M.EditableFilterNode | undefined>
-	depth: number
+	resetFilter?: () => void
 	filterId?: string
-}) {
+}
+
+const triggerClass =
+	'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow'
+export default function FilterCard(props: FilterCardProps) {
+	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
+	const editorRef = React.useRef<FilterTextEditorHandle>(null)
+	return (
+		<div defaultValue="builder" className="w-full space-y-2">
+			<div className="w-full flex justify-end space-x-2">
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							onClick={() => editorRef.current?.format()}
+							variant="ghost"
+							size="icon"
+							className={activeTab === 'text' ? '' : 'invisible'}
+						>
+							<Braces color="hsl(var(--muted-foreground))" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						<p>Reformat</p>
+					</TooltipContent>
+				</Tooltip>
+				{props.resetFilter && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button onClick={() => props.resetFilter?.()} variant="ghost" size="icon">
+								<Undo2 color="hsl(var(--muted-foreground))" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Reset Filter</p>
+						</TooltipContent>
+					</Tooltip>
+				)}
+				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+					<button
+						disabled={!props.validNode}
+						data-state={activeTab === 'text' && 'active'}
+						onClick={() => setActiveTab('text')}
+						className={triggerClass}
+					>
+						Text
+					</button>
+					<button data-state={activeTab === 'builder' && 'active'} onClick={() => setActiveTab('builder')} className={triggerClass}>
+						Builder
+					</button>
+				</div>
+			</div>
+			<div>
+				<div className={activeTab === 'builder' ? '' : 'hidden'}>
+					<FilterNodeDisplay depth={0} {...props} />
+				</div>
+				<div className={activeTab === 'text' ? '' : 'hidden'}>
+					<FilterTextEditor ref={editorRef} node={props.node} setNode={(node) => props.setNode(() => node as M.EditableFilterNode)} />
+				</div>
+			</div>
+		</div>
+	)
+}
+
+export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	const { node, setNode } = props
-	const isValid = M.isLocallyValidFilterNode(node, props.depth)
+	const isValid = M.isLocallyValidFilterNode(node)
 	const [showInvalid, setShowInvalid] = useState(false)
 	const invalid = !isValid && showInvalid
 	const wrapperRef = useRef<HTMLDivElement>(null)
@@ -369,7 +436,6 @@ function ApplyFilter(props: ApplyFilterProps) {
 				allowEmpty={true}
 				value={props.filterId}
 				onSelect={(v) => {
-					console.log('on select', v)
 					return props.setFilterId(v as string | undefined)
 				}}
 			/>

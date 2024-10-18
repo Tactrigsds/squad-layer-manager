@@ -1,11 +1,13 @@
-import { Toaster } from '@/components/ui/toaster'
-import { links, trpcReact } from '@/lib/trpc.client.ts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as jotai from 'jotai'
 import { ReactNode } from 'react'
 import { useState } from 'react'
 
+import { Toaster } from '@/components/ui/toaster'
+import { links, trpcReact } from '@/lib/trpc.client.ts'
+
 import { ThemeProvider } from './theme-provider'
+import { TooltipProvider } from './ui/tooltip'
 
 export default function Providers(props: { children: ReactNode }) {
 	const [queryClient] = useState(() => new QueryClient())
@@ -15,7 +17,7 @@ export default function Providers(props: { children: ReactNode }) {
 			<QueryClientProvider client={queryClient}>
 				<jotai.Provider>
 					<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-						{props.children}
+						<TooltipProvider>{props.children}</TooltipProvider>
 						<Toaster />
 					</ThemeProvider>
 				</jotai.Provider>
