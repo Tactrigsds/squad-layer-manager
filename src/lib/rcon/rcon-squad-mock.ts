@@ -54,35 +54,33 @@ export class MockSquadRcon implements RM.ISquadRcon {
 			playerQueue: [],
 			fogOfWar: '',
 		}
-		this.log.info('Connected to server')
+		this.log.info('Connected to mock squad server')
 	}
 
 	async disconnect(): Promise<void> {
 		await this.simulateLatency()
-		this.log.info('Disconnected from server')
+		this.log.trace('Disconnected from server')
 	}
 
 	async getCurrentLayer() {
 		await this.simulateLatency()
-		this.log.info('Fetched current map')
 		return this.serverState.currentMap
 	}
 
 	async getNextLayer() {
 		await this.simulateLatency()
-		this.log.info('Fetched next map')
+		this.log.trace('Fetched next map')
 		return this.serverState.nextMap
 	}
 
 	async getListPlayers(): Promise<RM.Player[]> {
 		await this.simulateLatency()
-		this.log.info('Fetched list of players')
+		this.log.trace('Fetched list of players')
 		return this.serverState.players
 	}
 
 	async getSquads(): Promise<RM.Squad[]> {
 		await this.simulateLatency()
-		this.log.info('Fetched list of squads')
 		return this.serverState.squads
 	}
 
