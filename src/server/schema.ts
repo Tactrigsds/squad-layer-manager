@@ -129,6 +129,8 @@ export const users = mysqlTable('users', {
 	avatar: varchar('avatar', { length: 255 }).notNull(),
 })
 
+export type User = typeof users.$inferSelect
+
 export const sessions = mysqlTable(
 	'sessions',
 	{

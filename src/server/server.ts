@@ -7,13 +7,13 @@ import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
 import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
-import fastify from 'fastify'
+import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import fastifySocketIo from 'fastify-socket.io'
 import path from 'node:path'
 import { Server } from 'socket.io'
 
 import * as Config from './config.ts'
-import { createContext } from './context.ts'
+import * as C from './context.ts'
 import * as DB from './db'
 import { ENV, setupEnv } from './env.ts'
 import { Logger, baseLogger, setupLogger } from './logger.ts'
@@ -109,7 +109,7 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 
 server.post(AR.exists('/logout'), async function (req, res) {
 	//@ts-expect-error lazy
-	const ctx = await createContext({ req, res })
+	const ctx = await createRequestContext({ req, res })
 	return await Sessions.logout(ctx)
 })
 
@@ -126,29 +126,30 @@ server.register(fastifyTRPCPlugin, {
 	},
 	trpcOptions: {
 		router: TrpcRouter.appRouter,
-		createContext: createContext,
+		createContext: C.createTrpcRequestContext,
 		onError({ path, error }) {
 			server.log.error(error, `Error in tRPC handler on path '${path}':`)
 		},
 	} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 })
 
-async function getHtmlResponse(req: any, reply: any) {
-	reply = reply.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'require-corp')
-	const sessionId = req.cookies.sessionId
-	const db = DB.get({ log: req.log })
-	if (typeof sessionId !== 'string') return Sessions.logout({ res: reply, sessionId, db })
-
-	const valid = await Sessions.validateSession(sessionId, { db, log: req.log as Logger })
-	if (!valid) return Sessions.logout({ res: reply, sessionId, db })
+async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
+	res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'require-corp')
+	const authRes = await C.createAuthorizedRequestContext(req, res)
+	switch (authRes.code) {
+		case 'unauthorized:no-cookie':
+		case 'unauthorized:no-session':
+		case 'unauthorized:invalid-session':
+			return Sessions.clearInvalidSession({ req, res })
+	}
 
 	// --------  dev server proxy setup --------
 	// when running in dev mode, we're proxying all public routes through to fastify so we an do auth and stuff. non-proxied routes will just return the dev index.html, so we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
 	if (ENV.NODE_ENV === 'development') {
-		const res = await fetch(`${ENV.ORIGIN}/idk`)
-		return reply.type('text/html').send(res.body)
+		const htmlRes = await fetch(`${ENV.ORIGIN}/idk`)
+		return res.type('text/html').send(htmlRes.body)
 	}
-	return reply.sendFile('index.html')
+	return res.sendFile('index.html')
 }
 
 for (const route of Object.values(AR.routes)) {

@@ -1,6 +1,5 @@
 import * as M from '@/models.ts'
-import { Context } from '@/server/context'
-import * as DB from '@/server/db.ts'
+import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
 import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
@@ -27,7 +26,7 @@ export const LayersQuerySchema = z.object({
 
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
-export async function runLayersQuery(args: { input: LayersQuery; ctx: Context }) {
+export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.Db }) {
 	const { ctx, input: input } = args
 	let whereCondition = sql`1=1`
 	const db = ctx.db
@@ -70,11 +69,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: Context })
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
-export async function getWhereFilterConditions(
-	node: M.FilterNode,
-	reentrantFilterIds: string[],
-	ctx: { db: DB.Db }
-): Promise<SQL | undefined> {
+export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilterIds: string[], ctx: C.Db): Promise<SQL | undefined> {
 	if (node.type === 'comp') {
 		const comp = node.comp!
 		const column = Schema.layers[comp.column]
@@ -121,7 +116,7 @@ export async function getWhereFilterConditions(
 	throw new Error(`Unknown filter type: ${node.type}`)
 }
 
-async function getFilterEntity(filterId: string, ctx: { db: DB.Db }) {
+async function getFilterEntity(filterId: string, ctx: C.Db) {
 	const [filter] = await ctx.db.select().from(Schema.filters).where(eq(Schema.filters.id, filterId))
 	return filter as Schema.Filter | undefined
 }

@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
 
-import { ENV } from './env'
-import { Logger } from './logger'
+import * as C from './context.ts'
+import { ENV } from './env.ts'
 
 let pool: mysql.Pool
 export function setupDatabase() {
@@ -16,7 +16,7 @@ export function setupDatabase() {
 	pool = mysql.createPool(env)
 }
 
-export function get(ctx: { log: Logger }) {
+export function get(ctx: C.Log) {
 	return drizzle(pool, {
 		logger: {
 			logQuery(query: string, params: unknown[]) {

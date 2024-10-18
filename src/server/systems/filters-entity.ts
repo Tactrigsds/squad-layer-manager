@@ -1,5 +1,5 @@
 import { toAsyncGenerator } from '@/lib/async'
-import { returnInsertErrors, returnUpdateErrors } from '@/lib/drizzle'
+import { returnInsertErrors } from '@/lib/drizzle'
 import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
 import { procedure, procedureWithInput, router } from '@/server/trpc'
@@ -75,6 +75,7 @@ export const filtersRouter = router({
 		}
 	}),
 })
+
 export type WatchFilterOutput =
 	| {
 			code: 'err:not-found'

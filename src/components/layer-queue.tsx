@@ -17,7 +17,6 @@ import React from 'react'
 
 import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box/combo-box.tsx'
-import * as CB from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Separator } from './ui/separator'

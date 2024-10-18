@@ -5,7 +5,7 @@ import { Logger, baseLogger as log } from '@/server/logger'
 import * as Schema from '@/server/schema.ts'
 import { eq } from 'drizzle-orm'
 
-import { Context } from '../context'
+import * as C from '../context'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 48
 export async function setupSessions() {
@@ -24,7 +24,7 @@ export async function setupSessions() {
 	} while (true)
 }
 
-export async function validateSession(sessionId: string, ctx: { db: DB.Db; log: Logger }) {
+export async function validateSession(sessionId: string, ctx: C.Log & C.Db) {
 	const [session] = await ctx.db.select().from(Schema.sessions).where(eq(Schema.sessions.id, sessionId))
 	if (!session) return false
 	if (new Date() > session.expiresAt) {
@@ -34,13 +34,17 @@ export async function validateSession(sessionId: string, ctx: { db: DB.Db; log: 
 	return true
 }
 
-export async function logout(ctx: { db: DB.Db; sessionId: string; res: any }) {
+export async function logout(ctx: C.AuthedRequest) {
 	await ctx.db.delete(Schema.sessions).where(eq(Schema.sessions.id, ctx.sessionId))
+	return clearInvalidSession(ctx)
+}
+
+export function clearInvalidSession(ctx: C.UnauthorizedRequest) {
 	const reply = ctx.res
 	return reply.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect(AR.exists('/login'))
 }
 
-export async function getUser(opts: { lock?: boolean }, ctx: Context) {
+export async function getUser(opts: { lock?: boolean }, ctx: C.AuthedRequest) {
 	opts.lock ??= false
 	const q = ctx.db
 		.select({ user: Schema.users })

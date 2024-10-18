@@ -1,24 +1,21 @@
-import { AsyncGeneratorValue, toAsyncGenerator, traceTag } from '@/lib/async.ts'
+import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { deepClone } from '@/lib/object'
-import { sleep } from '@/lib/promise'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import { CONFIG } from '@/server/config.ts'
-import { Context } from '@/server/context'
+import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as S from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
-import { TRPCError, tracked } from '@trpc/server'
-import { Mutex } from 'async-mutex'
-import { eq, inArray } from 'drizzle-orm'
+import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import { Logger } from 'pino'
 import {
 	BehaviorSubject,
 	Observable,
-	Subject,
 	Subscription,
 	combineLatest,
 	distinctUntilChanged,
@@ -29,12 +26,10 @@ import {
 	interval,
 	map,
 	of,
-	share,
 	shareReplay,
 	startWith,
 	switchMap,
 	timeout,
-	withLatestFrom,
 } from 'rxjs'
 import StringComparison from 'string-comparison'
 
@@ -45,7 +40,7 @@ const pollingRates = {
 const serverInfoPollingRate$ = new BehaviorSubject('normal' as keyof typeof pollingRates)
 let expectedCurrentLayer$!: BehaviorSubject<string | undefined>
 let expectedNextLayer$!: Observable<string | undefined>
-let serverState$!: BehaviorSubject<[M.ServerState, { log: Logger }]>
+let serverState$!: BehaviorSubject<[M.ServerState, C.Log]>
 let nowPlayingState$: Observable<M.LayerSyncState>
 let nextLayerState$: Observable<M.LayerSyncState>
 let pollServerInfo$!: Observable<SM.ServerStatus>
@@ -155,7 +150,7 @@ export async function setupLayerQueue() {
 	})
 }
 
-async function getServerState({ lock }: { lock: boolean }, ctx: { db: DB.Db }) {
+async function getServerState({ lock }: { lock: boolean }, ctx: C.Db) {
 	const query = ctx.db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
 	let serverRaw: S.Server | undefined
 	if (lock) [serverRaw] = await query.for('update')
@@ -163,7 +158,7 @@ async function getServerState({ lock }: { lock: boolean }, ctx: { db: DB.Db }) {
 	return M.ServerStateSchema.parse(serverRaw)
 }
 
-async function handleCommand(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: { log: Logger }) {
+async function handleCommand(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.Log) {
 	const words = evt.message.split(/\s+/)
 	const cmdText = words[0].slice(1)
 	const args = words.slice(1)
@@ -218,7 +213,7 @@ async function handleCommand(evt: SM.SquadEvent & { type: 'chat-message' }, ctx:
 	SquadServer.server.warn(evt.playerId, msg)
 }
 
-async function startVote(ctx: { log: Logger; db: DB.Db }) {
+async function startVote(ctx: C.Log & C.Db) {
 	const res = await DB.get(ctx).transaction(async (db) => {
 		const _ctx = { ...ctx, db }
 		const state = await getServerState({ lock: true }, _ctx)
@@ -276,7 +271,7 @@ function getVoteResults(state: M.VoteState) {
 	throw new Error('unhandled endReason')
 }
 
-async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: { log: Logger; db: DB.Db }) {
+async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.Log & C.Db) {
 	const choiceIdx = parseInt(evt.message)
 	await ctx.db.transaction(async (db) => {
 		const [{ currentVote: currentVoteRaw }] = await db
@@ -295,7 +290,7 @@ async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: { 
 	})
 }
 
-async function handleVoteEnded(endReason: 'timeout' | 'aborted', ctx: { db: DB.Db; log: Logger }) {
+async function handleVoteEnded(endReason: 'timeout' | 'aborted', ctx: C.Log & C.Db) {
 	const severState = await ctx.db.transaction(async (db) => {
 		const serverState = deepClone(await getServerState({ lock: true }, { ...ctx, db }))
 		const currentVote = serverState.currentVote
@@ -330,7 +325,7 @@ function canCountVote(choiceIdx: number, playerId: string, voteState: M.ServerSt
 	return true
 }
 
-export async function* watchServerStateUpdates({ ctx }: { ctx: Context }) {
+export async function* watchServerStateUpdates() {
 	for await (const [update] of toAsyncGenerator(serverState$)) {
 		yield update
 	}
@@ -353,7 +348,7 @@ export async function* watchNextLayerState() {
 	}
 }
 
-export async function rollToNextLayer(state: { seqId: number }, ctx: { db: DB.Db; log: Logger }) {
+export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.Db) {
 	const res = await ctx.db.transaction(async (db) => {
 		const serverState = deepClone(await getServerState({ lock: true }, { ...ctx, db }))
 		if (state.seqId !== serverState.layerQueueSeqId) {
@@ -410,7 +405,7 @@ async function setNextLayer(layerId: string) {
 	)
 }
 
-export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: { db: DB.Db; log: Logger }) {
+export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: C.Log & C.Db) {
 	const res = await ctx.db.transaction(async (db) => {
 		const _ctx = { ...ctx, db }
 		const serverState = deepClone(await getServerState({ lock: true }, _ctx))
@@ -421,12 +416,10 @@ export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: {
 		if (update.queue[0] && !deepEqual(update.queue[0], serverState.layerQueue[0])) {
 			if (serverState.currentVote) {
 				const res = await handleVoteEnded('aborted', _ctx)
-				if (res.code === 'err:no-vote-active') throw new TRPCError({ code: 'BAD_REQUEST', message: 'No active vote to end' })
+				if (res.code === 'err:no-vote-active') throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Tried to end inactive vote' })
 				serverState.layerQueueSeqId = res.serverState.layerQueueSeqId
 			}
 		}
-		const queue = update.queue
-		//
 
 		serverState.layerQueue = update.queue
 		serverState.layerQueueSeqId++

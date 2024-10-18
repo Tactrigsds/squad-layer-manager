@@ -2,9 +2,9 @@ import { transformer } from '@/lib/trpc.ts'
 import { initTRPC } from '@trpc/server'
 import { z } from 'zod'
 
-import { Context } from './context.ts'
+import { AuthedRequest } from './context.ts'
 
-const t = initTRPC.context<Context>().create({ transformer })
+const t = initTRPC.context<AuthedRequest>().create({ transformer })
 
 const loggerMiddleware = t.middleware(async ({ path, type, next, input, meta }) => {
 	const start = Date.now()
@@ -12,7 +12,7 @@ const loggerMiddleware = t.middleware(async ({ path, type, next, input, meta }) 
 	const durationMs = Date.now() - start
 	if (result.ok) {
 		//@ts-expect-error idk man
-		const ctx = result.ctx as Context
+		const ctx = result.ctx as AuthedRequest
 		ctx.log = ctx.log.child({ type, input })
 		ctx.log.debug({ path, type, durationMs, input }, 'TRPC %s: %s ', type, path)
 	}

@@ -1,22 +1,54 @@
 import { TRPCError } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import Cookie from 'cookie'
+import { FastifyReply, FastifyRequest } from 'fastify'
 
 import * as DB from './db.ts'
-import { baseLogger } from './logger.ts'
+import { Logger, baseLogger } from './logger.ts'
+import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
 
-export async function createContext(options: CreateFastifyContextOptions) {
-	const log = baseLogger.child({ reqId: options.req.id, path: options.req.url })
-	const cookie = options.req.headers.cookie
-	if (!cookie) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'No cookie' })
+export type Log = {
+	log: Logger
+}
+
+export type Db = {
+	db: DB.Db
+}
+
+export type UnauthorizedRequest = { req: FastifyRequest; res: FastifyReply }
+
+export type User = {
+	user: Schema.User
+}
+
+export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {
+	const log = baseLogger.child({ reqId: req.id, path: req.url })
+	const cookie = req.headers.cookie
+	if (!cookie) return { code: 'unauthorized:no-cookie' as const, message: 'No cookie provided' }
 	const sessionId = Cookie.parse(cookie).sessionId
-	if (!sessionId) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'No sessionId' })
+	if (!sessionId) return { code: 'unauthorized:no-session' as const, message: 'No session provided' }
 
 	const db = DB.get({ log })
 	const validSession = await Sessions.validateSession(sessionId, { log, db })
-	if (!validSession) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid sessionId' })
+	if (!validSession) return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
 
-	return { req: options.req, res: options.res, log, sessionId, db }
+	return { code: 'ok' as const, ctx: { req: req, res: res, log, sessionId, db } }
 }
-export type Context = Awaited<ReturnType<typeof createContext>>
+
+export async function createTrpcRequestContext(options: CreateFastifyContextOptions) {
+	const result = await createAuthorizedRequestContext(options.req, options.res)
+	if (result.code !== 'ok') {
+		switch (result.code) {
+			case 'unauthorized:no-cookie':
+			case 'unauthorized:no-session':
+			case 'unauthorized:invalid-session':
+				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
+			default:
+				throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Unknown error occurred' })
+		}
+	}
+	return result.ctx
+}
+
+export type AuthedRequest = Extract<Awaited<ReturnType<typeof createAuthorizedRequestContext>>, { code: 'ok' }>['ctx']
