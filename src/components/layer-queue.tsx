@@ -68,8 +68,8 @@ export default function LayerQueue() {
 
 	function handleDragEnd(event: DragEndEvent) {
 		if (!event.over) return
-		const sourceIndex = event.active.id as number
-		const targetIndex = event.over.id as number
+		const sourceIndex = getIndexFromQueueItemId(event.active.id as string)
+		const targetIndex = getIndexFromQueueItemId(event.over.id as string)
 		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
 		setLayerQueue(
 			produce((draft) => {
@@ -124,20 +124,9 @@ export default function LayerQueue() {
 	}
 
 	return (
-		<div className="grid place-items-center">
+		<div className="contianer mx-auto py-10 grid place-items-center">
 			<LayerQueueContext.Provider value={{}}>
 				<span className="flex space-x-4">
-					{/*
-					<pre>
-						<code>{JSON.stringify(lastUpdateRef.current?.queue, null, 2)}</code>
-					</pre>
-					<pre>
-						<code>{JSON.stringify(queueDiff, null, 2)}</code>
-					</pre>
-					<pre>
-						<code>{JSON.stringify(layerQueue, null, 2)}</code>
-					</pre>
-					*/}
 					<DndContext onDragEnd={handleDragEnd}>
 						<Card className="flex flex-col w-max">
 							<div className="p-6 w-full flex justify-between">
@@ -276,6 +265,14 @@ type QueueItemAction =
 			layers: M.MiniLayer[]
 	  }
 
+function getQueueItemId(index: number) {
+	return `idx-${index}`
+}
+
+function getIndexFromQueueItemId(id: string) {
+	return parseInt(id.slice(4))
+}
+
 function QueueItem(props: {
 	item: M.LayerQueueItem
 	index: number
@@ -285,7 +282,7 @@ function QueueItem(props: {
 	loadingChanges: boolean
 }) {
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-		id: props.index,
+		id: getQueueItemId(props.index),
 	})
 	const [addAfterPopoverOpen, _setAddAfterPopoverOpen] = useState(false)
 	const [addBeforePopoverOpen, _setAddBeforePopoverOpen] = useState(false)
@@ -307,7 +304,7 @@ function QueueItem(props: {
 		_setDropdownOpen(open)
 	}
 
-	const style = { transform: CSS.Translate.toString(transform), scale: isDragging ? 5 : 1 }
+	const style = { transform: CSS.Translate.toString(transform) }
 	if (props.item.layerId) {
 		const layer = M.getMiniLayerFromId(props.item.layerId)
 		let color = 'bg-background'
@@ -384,7 +381,7 @@ function QueueItem(props: {
 }
 
 function QueueItemSeparator(props: { afterIndex: number; isLast: boolean }) {
-	const { isOver, setNodeRef } = useDroppable({ id: props.afterIndex })
+	const { isOver, setNodeRef } = useDroppable({ id: getQueueItemId(props.afterIndex) })
 	return (
 		<Separator
 			ref={setNodeRef}

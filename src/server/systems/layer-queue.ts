@@ -43,7 +43,7 @@ const pollingRates = {
 	fast: interval(1000),
 }
 const serverInfoPollingRate$ = new BehaviorSubject('normal' as keyof typeof pollingRates)
-let expectedCurrentLayer$!: BehaviorSubject<string>
+let expectedCurrentLayer$!: BehaviorSubject<string | undefined>
 let expectedNextLayer$!: Observable<string | undefined>
 let serverState$!: BehaviorSubject<[M.ServerState, { log: Logger }]>
 let nowPlayingState$: Observable<M.LayerSyncState>
@@ -68,6 +68,7 @@ export async function setupLayerQueue() {
 	}
 
 	serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), { log }])
+	expectedCurrentLayer$ = new BehaviorSubject(undefined as string | undefined)
 
 	pollServerInfo$ = serverInfoPollingRate$.pipe(
 		traceTag('pollServerInfo$'),
@@ -96,14 +97,15 @@ export async function setupLayerQueue() {
 			if (expected !== current) return { status: 'loading' }
 			throw new Error('unhandled case')
 		}),
-		distinctUntilChanged((a, b) => deepEqual(a, b))
+		distinctUntilChanged((a, b) => deepEqual(a, b)),
+		startWith({ status: 'offline' as const }),
+		shareReplay(1)
 	)
 
 	expectedNextLayer$ = serverState$.pipe(
 		map(([s]) => s.layerQueue[0]?.layerId),
 		filter((id) => !!id)
 	)
-
 	nextLayerState$ = combineLatest([expectedNextLayer$, squadServerNextLayer$]).pipe(
 		// for now this is the exact same as nowPlayingState, unsure if we will need to change it in future
 		map(([expected, current]): M.LayerSyncState => {
@@ -112,7 +114,9 @@ export async function setupLayerQueue() {
 			if (expected !== current) return { status: 'loading' }
 			throw new Error('unhandled case')
 		}),
-		distinctUntilChanged((a, b) => deepEqual(a, b))
+		distinctUntilChanged((a, b) => deepEqual(a, b)),
+		startWith({ status: 'offline' as const }),
+		shareReplay(1)
 	)
 
 	SquadServer.squadEvent$.subscribe(async (event) => {

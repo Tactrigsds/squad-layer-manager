@@ -27,7 +27,7 @@ export function setupTrpcRouter() {
 		getUniqueValues: procedureWithInput(
 			z.object({
 				columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
-				limit: z.number().positive().max(500).default(100),
+				limit: z.number().positive().max(500).default(500),
 				filter: M.FilterNodeSchema.optional(),
 			})
 		).query(async ({ input, ctx }) => {

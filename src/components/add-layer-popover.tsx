@@ -17,9 +17,7 @@ import { Comparison } from './filter-card'
 const DEFAULT_ADD_LAYER_FILTERS = {
 	type: 'and',
 	children: [
-		{ type: 'comp', comp: { code: 'eq', column: 'Level' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Gamemode' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'LayerVersion' } },
+		{ type: 'comp', comp: { code: 'eq', column: 'Layer' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'Faction_1' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_1' } },
 		{ type: 'comp', comp: { code: 'eq', column: 'Faction_2' } },
@@ -209,7 +207,7 @@ export default function AddLayerPopover(props: {
 					{/* ------ filter results ------ */}
 					<div className="min-w-[300px] h-full">
 						{layersToDisplay && (
-							<ScrollArea className={`h-full min-h-0`}>
+							<ScrollArea className={`h-full min-h-0 max-h-[500px]`}>
 								<div className="h-full min-h-0 text-xs">
 									{!res.isFetchedAfterMount && layersToDisplay.length === 0 && (
 										<div className="p-2 text-sm text-gray-500">Set filter to see results</div>

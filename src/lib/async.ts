@@ -37,7 +37,7 @@ export async function* toAsyncGenerator<T>(observable: Observable<T>) {
 			n?.resolve(data)
 		},
 		error(err) {
-			nextData?.reject(err)
+			if (err) nextData?.reject(err)
 		},
 		complete() {
 			nextData?.resolve(null)
