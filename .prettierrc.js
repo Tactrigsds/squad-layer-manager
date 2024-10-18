@@ -6,8 +6,7 @@ const config = {
 	singleQuote: true,
 	printWidth: 140,
 	plugins: ['prettier-plugin-tailwindcss', '@trivago/prettier-plugin-sort-imports'],
-	// TODO fix import order parsing
-	importOrder: ['<THIRD_PARTY_MODULES>', '^~/(.*)$', '^[./]'],
+	importOrder: ['<THIRD_PARTY_MODULES>', '^@/(.*)$', '^[./]'],
 	importOrderSeparation: true,
 	importOrderSortSpecifiers: true,
 }
