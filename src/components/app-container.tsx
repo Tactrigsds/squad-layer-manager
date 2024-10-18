@@ -12,7 +12,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
-		<div className="min-h-100vh">
+		<div className="w-full h-full">
 			<nav className="flex items-center justify-between h-16 px-4 border-b">
 				<div className="flex items-start space-x-6">
 					<Link to={AR.link('/', [])} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
@@ -54,9 +54,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					)}
 				</div>
 			</nav>
-			<div className="flex w-full h-full">
-				<div className="w-full h-full p-4">{props.children}</div>
-			</div>
+			<div className="flex flex-grow p-4">{props.children}</div>
 		</div>
 	)
 }

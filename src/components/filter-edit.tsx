@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom'
 import { FilterNodeDisplay } from './filter-card'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
@@ -69,6 +70,7 @@ export default function FilterEdit() {
 					else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
 						toast({ title: `Updated ${e.mutation.value.name}` })
 					}
+					layerVote
 
 					setFilterEntity(e.mutation.value)
 					setEditedFilter(e.mutation.value.filter as M.EditableFilterNode)
@@ -87,18 +89,21 @@ export default function FilterEdit() {
 	const deleteFilterMutation = trpcReact.filters.deleteFilter.useMutation()
 	const canSaveFilter = !!localFilterModified && !!validFilter && !updateFilterMutation.isPending
 
-	// if (!editedFilter || !filterEntity) {
-	if (true) {
+	if (!editedFilter || !filterEntity) {
 		return <FullPageSpinner />
 	}
 
 	async function saveFilter() {
 		if (!canSaveFilter) return
-		const code = await updateFilterMutation.mutateAsync([filterEntity!.id, { filter: validFilter }])
-		if (code !== 'ok') {
+		const res = await updateFilterMutation.mutateAsync([filterEntity!.id, { filter: validFilter }])
+		if (res.code === 'err:not-found') {
 			toast({
-				title: 'Failed to save filter',
+				title: 'Unable to save: Filter Not Found',
 			})
+			return
+		}
+		if (res.code !== 'ok') {
+			toast({ title: 'Unable to save: Unknown Error Occured' })
 			return
 		}
 		toast({
@@ -171,16 +176,16 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 			description: props.entity.description,
 		},
 		validatorAdapter: zodValidator(),
-		onSubmit: async ({ value }) => {
-			const code = await updateFiltersMutation.mutateAsync([props.entity.id, value])
-			if (code === 'ok') {
+		onSubmit: async ({ value, formApi }) => {
+			const res = await updateFiltersMutation.mutateAsync([props.entity.id, value])
+			console.log('res: ', res)
+			if (res.code === 'ok') {
 				toast.toast({
 					title: 'Filter updated',
 				})
-			} else if (code === 'err:not-found') {
-				toast.toast({
-					title: 'Filter not found',
-				})
+			} else if (res.code === 'err:not-found') {
+				formApi.setErrorMap({ onSubmit: 'Not Found' })
+				return
 			}
 			setIsOpen(false)
 		},
@@ -241,7 +246,6 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 									<Textarea
 										id={field.name}
 										name={field.name}
-										value={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(e) => field.handleChange(e.target.value)}
 									/>
@@ -249,6 +253,12 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 							)
 						}}
 					/>
+					{form.state.errors.length > 0 && (
+						<Alert variant="destructive">
+							<AlertTitle>Errors:</AlertTitle>
+							<AlertDescription>{form.state.errors.join(', ')}</AlertDescription>
+						</Alert>
+					)}
 					<div className="flex items-center justify-end">
 						<Button type="submit">Save</Button>
 					</div>
