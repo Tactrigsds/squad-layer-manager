@@ -294,42 +294,52 @@ export type Comparison = z.infer<typeof ComparisonSchema>
 export const BaseFilterNodeSchema = z.object({
 	type: z.union([z.literal('and'), z.literal('or'), z.literal('comp'), z.literal('apply-filter')]),
 	comp: ComparisonSchema.optional(),
+	// negations
+	neg: z.boolean(),
 	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
 })
 
 export type FilterNode =
 	| {
 			type: 'and'
+			neg: boolean
 			children: FilterNode[]
 	  }
 	| {
 			type: 'or'
+			neg: boolean
 			children: FilterNode[]
 	  }
 	| {
 			type: 'comp'
+			neg: boolean
 			comp: Comparison
 	  }
 	| {
 			type: 'apply-filter'
+			neg: boolean
 			filterId: string
 	  }
 
 export type EditableFilterNode =
 	| {
 			type: 'and'
+			neg: boolean
 			children: EditableFilterNode[]
 	  }
 	| {
 			type: 'or'
+			neg: boolean
 			children: EditableFilterNode[]
 	  }
 	| {
 			type: 'comp'
+			neg: boolean
 			comp: EditableComparison
 	  }
 	| {
 			type: 'apply-filter'
+			neg: boolean
 			filterId?: string
 	  }
 

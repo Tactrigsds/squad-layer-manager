@@ -21,6 +21,7 @@ import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.t
 import { Button, buttonVariants } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
+import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
@@ -103,6 +104,19 @@ export default function FilterCard(props: FilterCardProps) {
 		</div>
 	)
 }
+function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPressedChange: (pressed: boolean) => void }) {
+	return (
+		<Toggle
+			aria-label="negate"
+			pressed={pressed}
+			onPressedChange={onPressedChange}
+			variant="outline"
+			className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+		>
+			!
+		</Toggle>
+	)
+}
 
 export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	const { node, setNode } = props
@@ -183,13 +197,22 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
-				<ComboBox
-					className="w-min"
-					title={'Block Type'}
-					value={node.type}
-					options={['and', 'or']}
-					onSelect={(v) => changeBlockNodeType(v as M.FilterNodeBlockTypes)}
-				/>
+				<div className="flex items-center space-x-1">
+					<NegationToggle
+						aria-label="negate"
+						pressed={node.neg}
+						onPressedChange={(neg) => setNode(produce(draft => draft.neg = neg))}
+					>
+						!
+					</Toggle>
+					<ComboBox
+						className="w-min"
+						title={'Block Type'}
+						value={node.type}
+						options={['and', 'or']}
+						onSelect={(v) => changeBlockNodeType(v as M.FilterNodeBlockTypes)}
+					/>
+				</div>
 				{children!}
 				{props.depth === 0 && childrenLen === 0 && <span>Click below to add some filters</span>}
 				<span>
