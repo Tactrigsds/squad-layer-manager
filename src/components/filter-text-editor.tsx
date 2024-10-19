@@ -12,6 +12,7 @@ import * as M from '@/models.ts'
 
 export type FilterTextEditorHandle = {
 	format: () => void
+	focus: () => void
 }
 
 type Editor = Ace.Ace.Editor
@@ -21,51 +22,64 @@ export type FilterTextEditorProps = {
 }
 export function FilterTextEditor(props: FilterTextEditorProps, ref: React.ForwardedRef<FilterTextEditorHandle>) {
 	const { setNode } = props
-	const editorEltRet = React.useRef<HTMLDivElement>(null)
+	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
+
+	// null if not currently valid node
+	const editorValueObjRef = React.useRef(props.node as any)
 	const editorRef = React.useRef<Editor>()
+	function trySetEditorValue(obj: any) {
+		console.log('trying to set value', obj, editorValueObjRef.current)
+		if (editorValueObjRef.current !== null && deepEqual(obj, editorValueObjRef.current)) return
+		console.log('setting value')
+		editorValueObjRef.current = obj
+		editorRef.current?.setValue(stringifyCompact(obj.children))
+	}
 	const errorViewRef = React.useRef<Editor>()
 	const onChange = React.useCallback(
 		(value: string) => {
-			let obj: any
+			let arr: any
 			try {
-				obj = JSON.parse(value)
+				arr = JSON.parse(value)
 			} catch (err) {
 				if (err instanceof SyntaxError) {
 					errorViewRef.current!.setValue(stringifyCompact({ error: err.message }))
 				}
 				return
 			}
-			const res = M.FilterNodeSchema.safeParse(obj)
+			editorValueObjRef.current = { type: 'and', children: arr }
+			const res = M.FilterNodeSchema.array().safeParse(arr)
 			if (!res.success) {
-				errorViewRef.current!.setValue(stringifyCompact({ error: res.error }))
+				errorViewRef.current!.setValue(stringifyCompact({ error: res.error.issues }))
 				return
 			}
 
 			errorViewRef.current!.setValue('')
-			const valueChanged = !deepEqual(res.data, props.node)
-			if (valueChanged) setNode(res.data)
+			const newNode = { type: 'and' as const, children: res.data }
+			const valueChanged = !deepEqual(newNode, props.node)
+			if (valueChanged) setNode(newNode)
 		},
 		[setNode, props.node]
 	)
 	const { setValue } = useDebounced({
-		defaultValue: stringifyCompact(props.node),
+		defaultValue: stringifyCompact((props.node as any).children),
 		onChange,
-		delay: 50,
+		delay: 100,
 	})
 
 	const toaster = useToast()
 
 	// -------- setup editor, handle events coming from editor, resizing --------
 	React.useEffect(() => {
-		const editor = Ace.edit(editorEltRet.current!, {
-			value: stringifyCompact(props.node),
+		const editor = Ace.edit(editorEltRef.current!, {
+			value: stringifyCompact((props.node as any).children),
 			mode: 'ace/mode/json',
 			theme: 'ace/theme/github_dark',
 			useWorker: false,
 			wrap: true,
 		})
 		const errorView = Ace.edit(errorViewEltRef.current!, {
+			focusTimeout: 0,
 			value: '',
 			mode: 'ace/mode/json',
 			theme: 'ace/theme/github_dark',
@@ -78,6 +92,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 			errorView.resize()
 		})
 		editor.on('input', () => {
+			console.log('input fired')
 			setValue(editor.getValue())
 		})
 		editorRef.current = editor
@@ -91,6 +106,9 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
+	React.useEffect(() => {
+		trySetEditorValue(props.node)
+	}, [props.node])
 	React.useImperativeHandle(ref, () => ({
 		format: () => {
 			const value = editorRef.current!.getValue()
@@ -99,18 +117,23 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 				obj = JSON.parse(value)
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					toaster.toast({ title: err.message })
+					toaster.toast({ title: 'Unable to format: invalid json', description: err.message })
 				}
 				return
 			}
 			editorRef.current!.setValue(stringifyCompact(obj))
+		},
+		focus: () => {
+			// for some reason the value is out of date when swapping tabs unless we include this line
+			editorRef.current!.setValue(editorRef.current!.getValue())
+			editorRef.current!.focus()
 		},
 	}))
 	return (
 		<div className="w-full h-[500px] rounded-md grid grid-cols-[auto_600px] grid-rows-[min-content_auto]">
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Filter</h3>
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Errors</h3>
-			<div ref={editorEltRet}></div>
+			<div ref={editorEltRef}></div>
 			<div ref={errorViewEltRef}></div>
 		</div>
 	)

@@ -2,6 +2,7 @@ import { produce } from 'immer'
 import { Braces, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
+import * as ReactDom from 'react-dom'
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
@@ -78,7 +79,10 @@ export default function FilterCard(props: FilterCardProps) {
 					<button
 						disabled={!props.validNode}
 						data-state={activeTab === 'text' && 'active'}
-						onClick={() => setActiveTab('text')}
+						onClick={() => {
+							setActiveTab('text')
+							editorRef.current!.focus()
+						}}
 						className={triggerClass}
 					>
 						Text
