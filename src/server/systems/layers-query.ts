@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
-import { and, asc, between, desc, eq, gt, inArray, like, lt, not, or } from 'drizzle-orm/expressions'
+import * as E from 'drizzle-orm/expressions'
 import { z } from 'zod'
 
 import * as M from '@/models.ts'
@@ -41,7 +41,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	if (input.sort.type === 'column') {
 		//@ts-expect-error idk
 		query = query.orderBy(
-			input.sort.sortDirection === 'ASC' ? asc(Schema.layers[input.sort.sortBy]) : desc(Schema.layers[input.sort.sortBy])
+			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
 		)
 	} else if (input.sort.type === 'random') {
 		//@ts-expect-error idk
@@ -79,23 +79,23 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 		switch (comp.code) {
 			case 'eq':
 				//@ts-expect-error idk
-				res = eq(column, comp.value)
+				res = E.eq(column, comp.value)
 				break
 			case 'in':
 				//@ts-expect-error idk
-				res = inArray(column, comp.values)
+				res = E.inArray(column, comp.values)
 				break
 			case 'like':
-				res = like(column, comp.value)
+				res = E.like(column, comp.value)
 				break
 			case 'gt':
-				res = gt(column, comp.value)
+				res = E.gt(column, comp.value)
 				break
 			case 'lt':
-				res = lt(column, comp.value)
+				res = E.lt(column, comp.value)
 				break
 			case 'inrange':
-				res = between(column, comp.min, comp.max)
+				res = E.between(column, comp.min, comp.max)
 				break
 		}
 	}
@@ -116,17 +116,17 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 	if (M.isBlockNode(node)) {
 		const childConditions = await Promise.all(node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx)))
 		if (node.type === 'and') {
-			res = and(...childConditions)
+			res = E.and(...childConditions)
 		} else if (node.type === 'or') {
-			res = or(...childConditions)
+			res = E.or(...childConditions)
 		}
 	}
 
-	if (res && node.neg) return not(res)
+	if (res && node.neg) return E.not(res)
 	return res
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
-	const [filter] = await ctx.db.select().from(Schema.filters).where(eq(Schema.filters.id, filterId))
+	const [filter] = await ctx.db.select().from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	return filter as Schema.Filter | undefined
 }
