@@ -1,5 +1,3 @@
-import * as AR from '@/app-routes.ts'
-import { createId } from '@/lib/id.ts'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
@@ -11,6 +9,9 @@ import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import fastifySocketIo from 'fastify-socket.io'
 import path from 'node:path'
 import { Server } from 'socket.io'
+
+import * as AR from '@/app-routes.ts'
+import { createId } from '@/lib/id.ts'
 
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -29,9 +30,9 @@ setupEnv()
 await setupLogger()
 await Config.setupConfig()
 DB.setupDatabase()
-setupLayerQueue()
 Sessions.setupSessions()
-SquadServer.setupSquadServer()
+await SquadServer.setupSquadServer()
+setupLayerQueue()
 TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized, starting http server...')

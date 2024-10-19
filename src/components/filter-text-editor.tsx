@@ -29,35 +29,36 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 	const editorValueObjRef = React.useRef(props.node as any)
 	const editorRef = React.useRef<Editor>()
 	function trySetEditorValue(obj: any) {
-		console.log('trying to set value', obj, editorValueObjRef.current)
 		if (editorValueObjRef.current !== null && deepEqual(obj, editorValueObjRef.current)) return
-		console.log('setting value')
 		editorValueObjRef.current = obj
-		editorRef.current?.setValue(stringifyCompact(obj.children))
+		editorRef.current?.setValue(stringifyCompact(obj))
 	}
 	const errorViewRef = React.useRef<Editor>()
 	const onChange = React.useCallback(
 		(value: string) => {
-			let arr: any
+			let obj: any
 			try {
-				arr = JSON.parse(value)
+				obj = JSON.parse(value)
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					errorViewRef.current!.setValue(stringifyCompact({ error: err.message }))
+					errorViewRef.current!.setValue(stringifyCompact(err.message))
 				}
 				return
 			}
-			editorValueObjRef.current = { type: 'and', children: arr }
-			const res = M.FilterNodeSchema.array().safeParse(arr)
+			editorValueObjRef.current = obj
+			const res = M.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
-				errorViewRef.current!.setValue(stringifyCompact({ error: res.error.issues }))
+				errorViewRef.current!.setValue(stringifyCompact(res.error.issues))
+				return
+			}
+			if (!M.isBlockNode(res.data)) {
+				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${M.FILTER_NODE_BLOCK_TYPES.join(', ')})`))
 				return
 			}
 
 			errorViewRef.current!.setValue('')
-			const newNode = { type: 'and' as const, children: res.data }
-			const valueChanged = !deepEqual(newNode, props.node)
-			if (valueChanged) setNode(newNode)
+			const valueChanged = !deepEqual(res.data, props.node)
+			if (valueChanged) setNode(res.data)
 		},
 		[setNode, props.node]
 	)
@@ -91,8 +92,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 			return editor.resize()
 			errorView.resize()
 		})
-		editor.on('input', () => {
-			console.log('input fired')
+		editor.on('change', () => {
 			setValue(editor.getValue())
 		})
 		editorRef.current = editor

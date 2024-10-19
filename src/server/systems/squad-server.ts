@@ -1,7 +1,8 @@
+import { Observable } from 'rxjs'
+
 import { resolvePromises } from '@/lib/async'
 import { MockSquadRcon } from '@/lib/rcon/rcon-squad-mock'
 import * as SM from '@/lib/rcon/squad-models'
-import { Observable } from 'rxjs'
 
 import { ENV } from '../env'
 import { baseLogger } from '../logger'
@@ -10,7 +11,7 @@ export let server!: SM.ISquadRcon
 export let mockServer: MockSquadRcon | undefined
 export let squadEvent$: Observable<SM.SquadEvent>
 
-export function setupSquadServer() {
+export async function setupSquadServer() {
 	if (ENV.MOCK_SQUAD_SERVER) {
 		const log = baseLogger
 		mockServer = new MockSquadRcon({}, { log })
@@ -19,7 +20,7 @@ export function setupSquadServer() {
 	} else {
 		throw new Error('implement actual squad server setup')
 	}
-	server.connect()
+	await server.connect()
 }
 
 export async function getServerStatus() {

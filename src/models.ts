@@ -333,6 +333,9 @@ export type EditableFilterNode =
 			filterId?: string
 	  }
 
+export const FILTER_NODE_BLOCK_TYPES = ['and', 'or'] as const
+export type FilterNodeBlockTypes = (typeof FILTER_NODE_BLOCK_TYPES)[number]
+
 //@ts-expect-error it works
 export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
 	if (!isLocallyValidFilterNode(node)) return false
@@ -366,6 +369,13 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
 		message: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
+
+export function isBlockNode(n: FilterNode): n is Extract<FilterNode, { type: 'and' | 'or' }> {
+	return n.type === 'and' || n.type === 'or'
+}
+export function isEditableBlockNode(n: EditableFilterNode): n is Extract<EditableFilterNode, { type: 'and' | 'or' }> {
+	return n.type === 'and' || n.type === 'or'
+}
 
 export const LayerVoteSchema = z.object({
 	defaultChoice: z.string(),
@@ -465,7 +475,10 @@ export type ServerState = z.infer<typeof ServerStateSchema>
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated
-			status: 'loading'
+			status: 'desynced'
+			// local in this case meaning our application server
+			expected: string
+			current: string
 	  }
 	| {
 			// server offline
@@ -473,8 +486,8 @@ export type LayerSyncState =
 	  }
 	| {
 			// expected layer is on the server
-			status: 'active'
-			layerId: string
+			status: 'synced'
+			value: string
 	  }
 
 // represents a user's edit or deletion of an entity

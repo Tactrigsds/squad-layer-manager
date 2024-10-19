@@ -146,8 +146,8 @@ export default function LayerQueue() {
 													<CardTitle>Now Playing</CardTitle>
 												</CardHeader>
 												<CardContent>
-													{nowPlayingState.status === 'active' && Helpers.toShortLayerName(M.getMiniLayerFromId(nowPlayingState.layerId))}
-													{nowPlayingState.status === 'loading' && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+													{nowPlayingState.status === 'synced' && Helpers.toShortLayerName(M.getMiniLayerFromId(nowPlayingState.value))}
+													{nowPlayingState.status === 'desynced' && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
 													{nowPlayingState.status === 'offline' && 'Server Offline'}
 												</CardContent>
 											</>
@@ -217,7 +217,7 @@ export default function LayerQueue() {
 														index={index}
 														isLast={index + 1 === layerQueue.length}
 														dispatch={dispatch}
-														loadingChanges={index === 0 && nextLayerState.status === 'loading'}
+														loadingChanges={index === 0 && nextLayerState.status === 'desynced'}
 													/>
 												)
 											})}

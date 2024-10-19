@@ -1,6 +1,5 @@
 import { createEnv } from '@t3-oss/env-core'
 import dotenv from 'dotenv'
-import deepEquals from 'fast-deep-equal'
 import { z } from 'zod'
 
 const Flag = z

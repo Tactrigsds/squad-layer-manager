@@ -1,14 +1,3 @@
-import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
-import * as DisplayHelpers from '@/lib/display-helpers.ts'
-import { deepClone } from '@/lib/object'
-import * as SM from '@/lib/rcon/squad-models'
-import * as M from '@/models.ts'
-import { CONFIG } from '@/server/config.ts'
-import * as C from '@/server/context'
-import * as DB from '@/server/db.ts'
-import { baseLogger } from '@/server/logger.ts'
-import * as S from '@/server/schema.ts'
-import * as SquadServer from '@/server/systems/squad-server'
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
@@ -32,6 +21,18 @@ import {
 } from 'rxjs'
 import StringComparison from 'string-comparison'
 
+import { toAsyncGenerator, traceTag } from '@/lib/async.ts'
+import * as DisplayHelpers from '@/lib/display-helpers.ts'
+import { deepClone } from '@/lib/object'
+import * as SM from '@/lib/rcon/squad-models'
+import * as M from '@/models.ts'
+import { CONFIG } from '@/server/config.ts'
+import * as C from '@/server/context'
+import * as DB from '@/server/db.ts'
+import { baseLogger } from '@/server/logger.ts'
+import * as S from '@/server/schema.ts'
+import * as SquadServer from '@/server/systems/squad-server'
+
 const pollingRates = {
 	normal: interval(3000),
 	fast: interval(1000),
@@ -49,17 +50,19 @@ export async function setupLayerQueue() {
 	const ctx = { log }
 	const db = DB.get(ctx)
 
-	let [server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
-
-	if (!server) {
-		await db.insert(S.servers).values({ id: CONFIG.serverId, displayName: CONFIG.serverDisplayName })
-		;[server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
-	}
-
-	if (server.displayName !== CONFIG.serverDisplayName) {
-		await db.update(S.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(S.servers.id, CONFIG.serverId))
-		server.displayName = CONFIG.serverDisplayName
-	}
+	// -------- bring server up to date with configuration --------
+	const server = await db.transaction(async (db) => {
+		let [server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId)).for('update')
+		if (!server) {
+			await db.insert(S.servers).values({ id: CONFIG.serverId, displayName: CONFIG.serverDisplayName })
+			;[server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
+		}
+		if (server.displayName !== CONFIG.serverDisplayName) {
+			await db.update(S.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(S.servers.id, CONFIG.serverId))
+			server.displayName = CONFIG.serverDisplayName
+		}
+		return server
+	})
 
 	serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), { log }])
 	expectedCurrentLayer$ = new BehaviorSubject(undefined as string | undefined)
@@ -77,22 +80,29 @@ export async function setupLayerQueue() {
 		// don't repoll while a previous poll is in progress
 		exhaustMap(SquadServer.getServerStatus),
 
+		distinctUntilChanged((a, b) => deepEqual(a, b)),
+
 		// subscribers immediately get last polled state if one is available
 		shareReplay(1)
 	)
 
-	const squadServerCurrentLayer$ = pollServerInfo$.pipe(map((info) => info.currentLayer.id))
-	const squadServerNextLayer$ = pollServerInfo$.pipe(map((info) => info.nextLayer?.id))
+	const squadServerCurrentLayer$ = pollServerInfo$.pipe(
+		map((info) => info.currentLayer.id),
+		endWith(null)
+	)
+	const squadServerNextLayer$ = pollServerInfo$.pipe(
+		map((info) => info.nextLayer?.id),
+		endWith(null)
+	)
 
 	nowPlayingState$ = combineLatest([expectedCurrentLayer$, squadServerCurrentLayer$]).pipe(
 		map(([expected, current]): M.LayerSyncState => {
-			if (!current) return { status: 'offline' }
-			if (!expected || expected === current) return { status: 'active', layerId: current }
-			if (expected !== current) return { status: 'loading' }
+			if (current === null) return { status: 'offline' }
+			if (expected === undefined || expected === current) return { status: 'synced', value: current }
+			if (expected !== current) return { status: 'desynced', current, expected }
 			throw new Error('unhandled case')
 		}),
 		distinctUntilChanged((a, b) => deepEqual(a, b)),
-		startWith({ status: 'offline' as const }),
 		shareReplay(1)
 	)
 
@@ -100,18 +110,27 @@ export async function setupLayerQueue() {
 		map(([s]) => s.layerQueue[0]?.layerId),
 		filter((id) => !!id)
 	)
+
 	nextLayerState$ = combineLatest([expectedNextLayer$, squadServerNextLayer$]).pipe(
 		// for now this is the exact same as nowPlayingState, unsure if we will need to change it in future
 		map(([expected, current]): M.LayerSyncState => {
+			log.info('expected: %s, current: %s', expected, current)
 			if (!current) return { status: 'offline' }
-			if (!expected || expected === current) return { status: 'active', layerId: current }
-			if (expected !== current) return { status: 'loading' }
+			if (expected === undefined || expected === current) return { status: 'synced', value: current }
+			if (expected !== current) return { status: 'desynced', expected, current }
 			throw new Error('unhandled case')
 		}),
 		distinctUntilChanged((a, b) => deepEqual(a, b)),
-		startWith({ status: 'offline' as const }),
 		shareReplay(1)
 	)
+
+	// -------- bring squad server state in line with ours --------
+	;(async () => {
+		const syncState = await firstValueFrom(nextLayerState$)
+		if (syncState.status === 'desynced') {
+			await SquadServer.server.setNextLayer(M.getMiniLayerFromId(syncState.expected))
+		}
+	})()
 
 	SquadServer.squadEvent$.subscribe(async (event) => {
 		const _log = log.child({ msgEventId: event.eventId })
@@ -396,12 +415,7 @@ export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.D
 async function setNextLayer(layerId: string) {
 	expectedCurrentLayer$.next(layerId)
 	await SquadServer.server.setNextLayer(M.getMiniLayerFromId(layerId))
-	await firstValueFrom(
-		nowPlayingState$.pipe(
-			filter((s) => s.status !== 'loading'),
-			endWith({ status: 'offline' as const })
-		)
-	)
+	await firstValueFrom(nowPlayingState$.pipe(filter((s) => s.status !== 'desynced')))
 }
 
 export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: C.Log & C.Db) {

@@ -172,10 +172,24 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		const deleteNode = () => {
 			setNode(() => undefined)
 		}
+		function changeBlockNodeType(type: M.FilterNodeBlockTypes) {
+			setNode(
+				produce((draft) => {
+					if (!draft || !M.isEditableBlockNode(draft)) return
+					draft.type = type
+				})
+			)
+		}
 
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
-				{props.depth > 0 && <span>{node.type}</span>}
+				<ComboBox
+					className="w-min"
+					title={'Block Type'}
+					value={node.type}
+					options={['and', 'or']}
+					onSelect={(v) => changeBlockNodeType(v as M.FilterNodeBlockTypes)}
+				/>
 				{children!}
 				{props.depth === 0 && childrenLen === 0 && <span>Click below to add some filters</span>}
 				<span>
