@@ -1,6 +1,6 @@
 import Ace from 'ace-builds'
 import 'ace-builds/src-noconflict/mode-json'
-import 'ace-builds/src-noconflict/theme-github_dark'
+import 'ace-builds/src-noconflict/theme-dracula'
 import deepEqual from 'fast-deep-equal'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
@@ -74,7 +74,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		const editor = Ace.edit(editorEltRef.current!, {
 			value: stringifyCompact((props.node as any).children),
 			mode: 'ace/mode/json',
-			theme: 'ace/theme/github_dark',
+			theme: 'ace/theme/dracula',
 			useWorker: false,
 			wrap: true,
 		})
@@ -82,7 +82,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 			focusTimeout: 0,
 			value: '',
 			mode: 'ace/mode/json',
-			theme: 'ace/theme/github_dark',
+			theme: 'ace/theme/dracula',
 			useWorker: false,
 			readOnly: true,
 			wrap: true,
