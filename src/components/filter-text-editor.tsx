@@ -51,8 +51,8 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 				errorViewRef.current!.setValue(stringifyCompact(res.error.issues))
 				return
 			}
-			if (!M.isBlockNode(res.data)) {
-				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${M.FILTER_NODE_BLOCK_TYPES.join(', ')})`))
+			if (!M.isBlockType(res.data.type)) {
+				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${M.BLOCK_TYPES.join(', ')})`))
 				return
 			}
 

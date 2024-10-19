@@ -4,7 +4,7 @@ export type SetStateCallback<T> = (prevState: T) => T
 export type SetState<T> = (cb: SetStateCallback<T>) => void
 
 export type GenericForwardedRef<RefType, Props extends object> = <P extends Props>(
-	props: P & { ref?: React.RefObject<RefType> }
+	props: P & { ref?: React.MutableRefObject<RefType> }
 ) => React.ReactElement
 
 export function useClosureRef<T extends object>(obj: T) {
@@ -25,4 +25,18 @@ export function useRefConstructor<T>(constructor: () => T) {
 		ref.current = constructor()
 	}
 	return ref as React.MutableRefObject<T>
+}
+
+export type Focusable = {
+	focus: () => void
+	isFocused: boolean
+}
+
+export function eltToFocusable(elt: HTMLElement): Focusable {
+	return {
+		focus: () => elt.focus(),
+		get isFocused() {
+			return document.activeElement === elt
+		},
+	}
 }

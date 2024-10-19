@@ -1,31 +1,29 @@
+import { produce } from 'immer'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { sleepUntil } from '@/lib/async'
 import * as Helpers from '@/lib/display-helpers'
+import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders'
 import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
-import { produce } from 'immer'
-import React from 'react'
 
 import { Comparison } from './filter-card'
 
-const DEFAULT_ADD_LAYER_FILTERS = {
-	type: 'and',
-	children: [
-		{ type: 'comp', comp: { code: 'eq', column: 'Layer' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Faction_1' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_1' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'Faction_2' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'SubFac_2' } },
-		{ type: 'comp', comp: { code: 'eq', column: 'id' } },
-	],
-} satisfies Extract<M.EditableFilterNode, { type: 'and' }>
-
+const DEFAULT_ADD_LAYER_FILTERS = EFB.and([
+	EFB.comp(EFB.eq('Layer')),
+	EFB.comp(EFB.eq('Faction_1')),
+	EFB.comp(EFB.eq('SubFac_1')),
+	EFB.comp(EFB.eq('Faction_2')),
+	EFB.comp(EFB.eq('SubFac_2')),
+	EFB.comp(EFB.eq('id')),
+]) satisfies Extract<M.EditableFilterNode, { type: 'and' }>
 export default function AddLayerPopover(props: {
 	children: React.ReactNode
 	addLayers: (ids: M.MiniLayer[]) => void
@@ -36,7 +34,7 @@ export default function AddLayerPopover(props: {
 
 	const filterStates = filter.children.map((f) => f.type === 'comp' && M.isValidComparison(f.comp))
 	const validFilter = filterStates.includes(true)
-		? FB.and(...(filter.children.filter((f) => f.type === 'comp' && M.isValidComparison(f.comp)) as M.FilterNode[]))
+		? FB.and(filter.children.filter((f) => f.type === 'comp' && M.isValidComparison(f.comp)) as M.FilterNode[])
 		: undefined
 	const shouldQuery = filterStates.includes(true)
 	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
@@ -123,6 +121,7 @@ export default function AddLayerPopover(props: {
 
 				for (let i = 0; i < draft.children.length; i++) {
 					const node = draft.children[i]
+					if (node.type !== 'comp') throw new Error('there should only be comparison types when adding layers')
 					if (node.comp.column === 'Faction_1') {
 						faction1Index = i
 					}

@@ -1,10 +1,11 @@
+import { TRPCError } from '@trpc/server'
+import { SQL, sql } from 'drizzle-orm'
+import { and, asc, between, desc, eq, gt, inArray, like, lt, not, or } from 'drizzle-orm/expressions'
+import { z } from 'zod'
+
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
-import { TRPCError } from '@trpc/server'
-import { SQL, sql } from 'drizzle-orm'
-import { and, asc, between, desc, eq, gt, inArray, like, lt, or } from 'drizzle-orm/expressions'
-import { z } from 'zod'
 
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),
@@ -70,6 +71,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
 export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilterIds: string[], ctx: C.Db): Promise<SQL | undefined> {
+	let res: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
 		const column = Schema.layers[comp.column]
@@ -77,22 +79,29 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 		switch (comp.code) {
 			case 'eq':
 				//@ts-expect-error idk
-				return eq(column, comp.value)
+				res = eq(column, comp.value)
+				break
 			case 'in':
 				//@ts-expect-error idk
-				return inArray(column, comp.values)
+				res = inArray(column, comp.values)
+				break
 			case 'like':
-				return like(column, comp.value)
+				res = like(column, comp.value)
+				break
 			case 'gt':
-				return gt(column, comp.value)
+				res = gt(column, comp.value)
+				break
 			case 'lt':
-				return lt(column, comp.value)
+				res = lt(column, comp.value)
+				break
 			case 'inrange':
-				return between(column, comp.min, comp.max)
+				res = between(column, comp.min, comp.max)
+				break
 		}
 	}
 	if (node.type === 'apply-filter') {
 		if (reentrantFilterIds.includes(node.filterId)) {
+			// TODO too lazy to return an error here right now
 			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Filter mutually is recursive via filter: ' + node.filterId })
 		}
 		const entity = await getFilterEntity(node.filterId, ctx)
@@ -101,19 +110,20 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 			throw new TRPCError({ code: 'BAD_REQUEST', message: `Filter ${node.filterId} Doesn't exist` })
 		}
 		const filter = M.FilterNodeSchema.parse(entity.filter)
-		return getWhereFilterConditions(filter, [...reentrantFilterIds, node.filterId], ctx)
+		res = await getWhereFilterConditions(filter, [...reentrantFilterIds, node.filterId], ctx)
 	}
 
-	const childConditions = await Promise.all(node.children!.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx)))
-
-	if (node.type === 'and') {
-		return and(...childConditions)
-	} else if (node.type === 'or') {
-		return or(...childConditions)
+	if (M.isBlockNode(node)) {
+		const childConditions = await Promise.all(node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx)))
+		if (node.type === 'and') {
+			res = and(...childConditions)
+		} else if (node.type === 'or') {
+			res = or(...childConditions)
+		}
 	}
 
-	//@ts-expect-error I don't trust typescript
-	throw new Error(`Unknown filter type: ${node.type}`)
+	if (res && node.neg) return not(res)
+	return res
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {

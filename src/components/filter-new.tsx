@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
 import { Input } from '@/components/ui/input'
+import * as EFB from '@/lib/editable-filter-builders.ts'
+import * as FB from '@/lib/filter-builders.ts'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
@@ -18,18 +20,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
-const defaultFilter: M.EditableFilterNode = {
-	type: 'and',
-	children: [],
-}
-
+const defaultFilter: M.EditableFilterNode = EFB.and()
 export default function FilterNew() {
 	const [filter, _setFilter] = useState(defaultFilter)
 	const [validFilter, setValidFilter] = useState(null as M.FilterNode | null)
 	const [pageIndex, setPageIndex] = useState(0)
 	const setFilter = (update: (prev: M.EditableFilterNode) => M.EditableFilterNode) => {
 		const newFilter = update(filter)
-		if (newFilter.type === 'and' && newFilter.children.length === 0) {
+		if (M.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
 			setValidFilter(null)
 		} else if (M.isValidFilterNode(newFilter)) {
 			setValidFilter(newFilter)

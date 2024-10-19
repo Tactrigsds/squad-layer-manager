@@ -5,15 +5,12 @@ import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
-import { GenericForwardedRef } from '@/lib/react.ts'
+import { Focusable, GenericForwardedRef } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
 
-export type ComboBoxHandle = {
-	open: () => void
-	isOpen: boolean
-}
+export type ComboBoxHandle = Focusable
 export type ComboBoxProps<T extends string | null = string | null> = {
 	allowEmpty?: boolean
 	className?: string
@@ -45,10 +42,10 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 	const openRef = useRef(open)
 	openRef.current = open
 	useImperativeHandle(ref, () => ({
-		open: () => {
+		focus: () => {
 			setOpen(true)
 		},
-		get isOpen() {
+		get isFocused() {
 			return openRef.current
 		},
 	}))
@@ -119,4 +116,4 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 	)
 }
 
-export default React.forwardRef(ComboBox) as GenericForwardedRef<ComboBoxHandle, ComboBoxProps>
+export default React.forwardRef(ComboBox)

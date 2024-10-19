@@ -1,8 +1,6 @@
 import { useForm } from '@tanstack/react-form'
 import { zodValidator } from '@tanstack/zod-form-adapter'
-import { type inferProcedureOutput } from '@trpc/server'
-import { inferObservableValue } from '@trpc/server/observable'
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
@@ -20,14 +18,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
+import * as EFB from '@/lib/editable-filter-builders.ts'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
-import { type AppRouter } from '@/server/router'
 import { type WatchFilterOutput } from '@/server/systems/filters-entity'
-import * as Stores from '@/stores.ts'
 
 import FilterCard from './filter-card'
 import FullPageSpinner from './full-page-spinner'
@@ -37,10 +34,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
-const defaultFilter: M.EditableFilterNode = {
-	type: 'and',
-	children: [],
-}
+const defaultFilter: M.EditableFilterNode = EFB.and()
 
 export default function FilterEdit() {
 	const { id } = useAppParams(AR.exists('/filters/:id/edit'))
@@ -71,7 +65,6 @@ export default function FilterEdit() {
 					else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
 						toast({ title: `Updated ${e.mutation.value.name}` })
 					}
-					layerVote
 
 					setFilterEntity(e.mutation.value)
 					setEditedFilter(e.mutation.value.filter as M.EditableFilterNode)

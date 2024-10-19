@@ -5,7 +5,6 @@ import React, { useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
-import { GenericForwardedRef, SetStateCallback } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
@@ -29,15 +28,15 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	const openRef = useRef(open)
 	openRef.current = open
 	useImperativeHandle(ref, () => ({
-		open: () => {
+		focus: () => {
 			setOpen(true)
 		},
-		get isOpen() {
+		get isFocused() {
 			return openRef.current
 		},
 	}))
 
-	function onSelect(updater: SetStateCallback<T[]>) {
+	function onSelect(updater: React.SetStateAction<T[]>) {
 		setOpen(false)
 		props.onSelect(updater)
 	}
@@ -100,4 +99,4 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	)
 }
 
-export default React.forwardRef(ComboBoxMulti) as GenericForwardedRef<ComboBoxHandle, ComboBoxMultiProps>
+export default React.forwardRef(ComboBoxMulti)

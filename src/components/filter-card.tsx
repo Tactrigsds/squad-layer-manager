@@ -1,20 +1,20 @@
 import { produce } from 'immer'
-import { Braces, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
+import { Braces, EqualNot, EqualNotIcon, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
-import * as ReactDom from 'react-dom'
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
-import { GenericForwardedRef, SetState } from '@/lib/react'
+import * as EFB from '@/lib/editable-filter-builders.ts'
+import * as FB from '@/lib/filter-builders.ts'
+import { Focusable, SetState, eltToFocusable } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
-import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 
-import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
+import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
@@ -78,7 +78,7 @@ export default function FilterCard(props: FilterCardProps) {
 				)}
 				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
-						disabled={!props.validNode}
+						disabled={!props.validNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
 							setActiveTab('text')
@@ -110,10 +110,10 @@ function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPres
 			aria-label="negate"
 			pressed={pressed}
 			onPressedChange={onPressedChange}
-			variant="outline"
-			className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+			variant="default"
+			className="hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground px-2 h-9"
 		>
-			!
+			<EqualNot className="w-4" />
 		</Toggle>
 	)
 }
@@ -142,6 +142,20 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	}, [isValid])
 	const [editedChildIndex, setEditedChildIndex] = useState<number | undefined>()
 
+	const negationToggle = (
+		<NegationToggle
+			pressed={node.neg}
+			onPressedChange={(neg) =>
+				setNode(
+					produce((draft) => {
+						if (draft) {
+							draft.neg = neg
+						}
+					})
+				)
+			}
+		/>
+	)
 	if (node.type === 'and' || node.type === 'or') {
 		const childrenLen = node.children.length
 		const children = node.children?.map((child, i) => {
@@ -172,21 +186,23 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		const addNewChild = (type: M.EditableFilterNode['type']) => {
 			setNode(
 				produce((draft) => {
-					if (!draft || (draft.type !== 'and' && draft.type !== 'or')) {
+					if (!draft || !M.isEditableBlockNode(draft)) {
 						setEditedChildIndex(undefined)
 						return
 					}
 					setEditedChildIndex(draft.children.length)
-					if (type === 'comp') draft.children.push({ type, comp: {} })
-					if (type === 'apply-filter') draft.children.push({ type })
-					if (type === 'and' || type === 'or') draft.children.push({ type, children: [] })
+					if (type === 'comp') draft.children.push(EFB.comp())
+					if (type === 'apply-filter') draft.children.push(EFB.applyFilter())
+					if (M.isBlockType(type)) {
+						draft.children.push(EFB.createBlock(type)())
+					}
 				})
 			)
 		}
 		const deleteNode = () => {
 			setNode(() => undefined)
 		}
-		function changeBlockNodeType(type: M.FilterNodeBlockTypes) {
+		function changeBlockNodeType(type: M.BlockType) {
 			setNode(
 				produce((draft) => {
 					if (!draft || !M.isEditableBlockNode(draft)) return
@@ -198,19 +214,13 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
 				<div className="flex items-center space-x-1">
-					<NegationToggle
-						aria-label="negate"
-						pressed={node.neg}
-						onPressedChange={(neg) => setNode(produce(draft => draft.neg = neg))}
-					>
-						!
-					</Toggle>
+					{negationToggle}
 					<ComboBox
 						className="w-min"
 						title={'Block Type'}
 						value={node.type}
 						options={['and', 'or']}
-						onSelect={(v) => changeBlockNodeType(v as M.FilterNodeBlockTypes)}
+						onSelect={(v) => changeBlockNodeType(v as M.BlockType)}
 					/>
 				</div>
 				{children!}
@@ -262,7 +272,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 	if (node.type === 'comp' && node.comp) {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2 items-center')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-1 items-center')}>
+				{negationToggle}
 				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
 					<Minus color="hsl(var(--destructive))" />
@@ -272,7 +283,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	}
 	if (node.type === 'apply-filter') {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-2 items-center')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-1 items-center')}>
+				{negationToggle}
 				<ApplyFilter
 					defaultEditing={props.defaultEditing}
 					filterId={node.filterId}
@@ -312,13 +324,13 @@ export function Comparison(props: {
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
-	const columnBoxRef = useRef<ComboBoxHandle>(null)
-	const codeBoxRef = useRef<ComboBoxHandle>(null)
-	const valueBoxRef = useRef<ComboBoxHandle>(null)
+	const columnBoxRef = useRef<Focusable>(null)
+	const codeBoxRef = useRef<Focusable>(null)
+	const valueBoxRef = useRef<Focusable>(null)
 	const alreadyOpenedRef = useRef(false)
 	useEffect(() => {
-		if (props.defaultEditing && !columnBoxRef.current!.isOpen && !alreadyOpenedRef.current) {
-			columnBoxRef.current?.open()
+		if (props.defaultEditing && !columnBoxRef.current!.isFocused && !alreadyOpenedRef.current) {
+			columnBoxRef.current?.focus()
 			alreadyOpenedRef.current = true
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,24 +344,22 @@ export function Comparison(props: {
 			options={M.COLUMN_KEYS}
 			ref={columnBoxRef}
 			onSelect={(column) => {
-				if (column && M.COLUMN_KEY_TO_TYPE[column as M.LayerColumnKey] === 'string') {
+				if (column && M.isColType(column, 'string')) {
 					setComp((c) => {
-						let code = c.code && column in M.COLUMN_TYPE_MAPPINGS.string ? c.code : undefined
-						if (!code) code = 'eq'
-						return { column: column, code }
+						const code = c.code ?? 'eq'
+						return { column, code }
 					})
-					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
+					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
-				if (column && M.COLUMN_KEY_TO_TYPE[column as M.LayerColumnKey] === 'float') {
+				if (column && M.isColType(column, 'float')) {
 					setComp((c) => {
-						const code = c.code && column in M.COLUMN_TYPE_MAPPINGS.float ? c.code : undefined
-						return { column: c.column, code }
+						return { column: c.column, code: c.code }
 					})
-					valueBoxRef.current?.open()
+					valueBoxRef.current?.focus()
 					return
 				}
-				return setComp(() => ({ column: column }))
+				return setComp(() => ({ column: column as M.LayerColumnKey }))
 			}}
 		/>
 	) : (
@@ -366,9 +376,10 @@ export function Comparison(props: {
 				value={comp.code}
 				options={columnOptions}
 				ref={codeBoxRef}
-				onSelect={(code) => {
+				onSelect={(_code) => {
+					const code = _code as typeof comp.code
 					// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
-					if (code !== undefined) sleepUntil(() => valueBoxRef.current).then((handle) => handle?.open())
+					if (code !== undefined) sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
 					return setComp((c) => ({ ...c, code: code ?? undefined }))
 				}}
 			/>
@@ -400,10 +411,13 @@ export function Comparison(props: {
 					column={comp.column as M.StringColumn}
 					values={(comp.values ?? []) as string[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
-					setValues={(getValues) => {
-						setComp((c) => {
-							return { ...c, values: getValues(c.values ?? []) }
-						})
+					setValues={(action) => {
+						setComp(
+							produce((c) => {
+								const values = typeof action === 'function' ? action(c.values ?? []) : action
+								c.values = values.length === 0 ? undefined : values
+							})
+						)
 					}}
 				/>
 			)}
@@ -411,11 +425,12 @@ export function Comparison(props: {
 				<StringInConfigLimitAutoComplete
 					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
-					values={(comp.values ?? []) as string[]}
+					values={(comp.values ?? []) as (string | null)[]}
 					autocompleteFilter={props.valueAutocompleteFilter}
-					setValues={(getValues) => {
+					setValues={(updater) => {
 						setComp((c) => {
-							return { ...c, values: getValues(c.values ?? []) }
+							const values = typeof updater === 'function' ? updater(c.values ?? []) : updater
+							return { ...c, values: values as (string | null)[] }
 						})
 					}}
 				/>
@@ -432,7 +447,6 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'inrange' && (
 				<NumericRangeConfig
-					ref={valueBoxRef}
 					min={comp.min}
 					max={comp.max}
 					setMin={(min) => {
@@ -463,7 +477,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	const boxRef = useRef<ComboBoxHandle>()
 	React.useEffect(() => {
 		if (props.defaultEditing) {
-			boxRef.current?.open()
+			boxRef.current?.focus()
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
@@ -471,13 +485,12 @@ function ApplyFilter(props: ApplyFilterProps) {
 		<>
 			<span>Apply</span>
 			<ComboBox
-				ref={boxRef}
 				title="Filter"
 				options={options}
 				allowEmpty={true}
 				value={props.filterId}
 				onSelect={(v) => {
-					return props.setFilterId(v as string | undefined)
+					return props.setFilterId(v as string)
 				}}
 			/>
 		</>
@@ -491,12 +504,19 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		setValue: (value: T | undefined) => void
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.MutableRefObject<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
 	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return (
-		<ComboBox ref={ref} allowEmpty={true} title={props.column} value={props.value} options={options} onSelect={(v) => props.setValue(v)} />
+		<ComboBox
+			ref={ref}
+			allowEmpty={true}
+			title={props.column}
+			value={props.value}
+			options={options}
+			onSelect={(v) => props.setValue(v as T | undefined)}
+		/>
 	)
 })
 
@@ -507,9 +527,9 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 		setValue: (value: T | undefined) => void
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.MutableRefObject<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const autocomplete = useLimitedColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
 	return (
 		<ComboBox
 			ref={ref}
@@ -524,11 +544,11 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 	)
 })
 
-function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
+function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
 	const [inputValue, _setInputValue] = useState<string>(value?.split(',')[0] ?? '')
 	function setDebouncedInput(value: string) {
-		const v = value.trim() as T
+		const v = value.trim()
 		_setDebouncedInput(v)
 	}
 	const debouncer = useDebounced({ defaultValue: inputValue, onChange: setDebouncedInput, delay: 500 })
@@ -538,10 +558,7 @@ function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringC
 	}
 
 	if (filter && debouncedInput !== '') {
-		filter = {
-			type: 'and',
-			children: [filter, buildLikeFilter(column, debouncedInput)],
-		}
+		filter = FB.and([filter, buildLikeFilter(column, debouncedInput)])
 	} else if (debouncedInput !== '') {
 		filter = buildLikeFilter(column, debouncedInput)
 	}
@@ -557,7 +574,7 @@ function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringC
 	)
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
-	else if (debouncedInput && valuesRes.isSuccess) options = valuesRes.data!.map((v) => v[column])
+	else if (debouncedInput && valuesRes.isSuccess) options = valuesRes.data!.map((v) => v[column]) as T[]
 
 	return {
 		inputValue,
@@ -567,53 +584,47 @@ function useLimitedColumnAutocomplete<T extends string | null>(column: M.StringC
 }
 
 function buildLikeFilter(column: M.StringColumn, input: string): M.FilterNode {
-	return {
-		type: 'comp',
-		comp: {
-			code: 'like',
-			column: column,
-			value: `%${input}%`,
-		},
-	}
+	return FB.comp(FB.like(column, `%${input}%`))
 }
 
 const StringInConfig = React.forwardRef(function StringInConfig(
 	props: {
-		values: string[]
+		values: (string | null)[]
 		column: M.StringColumn
-		setValues: React.Dispatch<React.SetStateAction<string[]>>
+		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.MutableRefObject<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter, limit: 25 })
+	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
 	return (
 		<ComboBoxMulti
 			title={props.column}
 			ref={ref}
 			values={props.values}
 			options={valuesRes.data?.map((r) => r[props.column]) ?? []}
-			onSelect={props.setValues as React.Dispatch<React.SetStateAction<(string | null)[]>>}
+			onSelect={props.setValues}
 		/>
 	)
 })
 
 const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfigLimitAutoComplete(
 	props: {
-		values: string[]
+		values: (string | null)[]
 		column: M.StringColumn
-		setValues: SetState<string[]>
+		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.MutableRefObject<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const autocomplete = useLimitedColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
 	return (
 		<ComboBoxMulti
+			title={props.column}
 			ref={ref}
 			values={props.values}
 			options={autocomplete.options}
-			onSelect={props.setValues}
+			onSelect={props.setValues as ComboBoxMultiProps['onSelect']}
 			inputValue={autocomplete.inputValue}
 			setInputValue={autocomplete.setInputValue}
 		/>
@@ -621,11 +632,13 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 })
 
 const NumericSingleValueConfig = React.forwardRef(
-	(props: { className?: string; value?: number; setValue: (value?: number) => void }, ref: React.Ref<HTMLInputElement>) => {
+	(props: { className?: string; value?: number; setValue: (value?: number) => void }, forwardedRef: React.ForwardedRef<Focusable>) => {
 		const [value, setValue] = useState(props.value?.toString() ?? '')
+		const inputRef = React.useRef<HTMLInputElement>(null)
+		React.useImperativeHandle(forwardedRef, () => eltToFocusable(inputRef.current!))
 		return (
 			<Input
-				ref={ref}
+				ref={inputRef}
 				className={props.className}
 				value={value}
 				onChange={(e) => {
@@ -640,8 +653,13 @@ const NumericSingleValueConfig = React.forwardRef(
 )
 
 const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
-	props: { min?: number; max?: number; setMin: (min?: number) => void; setMax: (max?: number) => void },
-	ref: React.MutableRefObject<HTMLInputElement>
+	props: {
+		min?: number
+		max?: number
+		setMin: (min?: number) => void
+		setMax: (max?: number) => void
+	},
+	ref: React.ForwardedRef<Focusable>
 ) {
 	return (
 		<div className="flex w-[200px] space-x-2 items-center">
@@ -651,4 +669,3 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 		</div>
 	)
 })
-// can't use an actual symbol because cmdk doesn't support them afaik

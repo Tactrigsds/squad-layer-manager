@@ -1,85 +1,75 @@
 import * as M from '@/models'
 
-export const and = (children: M.FilterNode[], neg = false) => {
+export const and = <T extends M.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
 	return {
 		type: 'and' as const,
 		children,
-		neg,
-	}
+		neg: options.neg ?? false,
+	} satisfies M.FilterNode
 }
 
-export const or = (children: M.FilterNode[], neg = false) => {
+export const or = <T extends M.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
 	if (children.length === 0) return null
 	return {
 		type: 'or' as const,
 		children,
-		neg,
-	}
+		neg: options.neg ?? false,
+	} satisfies M.FilterNode
 }
 
-export const comp = (comparison: M.Comparison, neg = false) => ({
-	type: 'comp' as const,
-	comp: comparison,
-	neg,
-})
+export const comp = <T extends M.Comparison>(comparison: T, options: { neg?: boolean } = {}) =>
+	({
+		type: 'comp' as const,
+		comp: comparison,
+		neg: options.neg ?? false,
+	}) satisfies M.FilterNode
 
-export const lt = (column: M.FloatColumn, value: number, neg = false) =>
-	comp(
-		{
-			code: 'lt' as const,
-			column,
-			value,
-		},
-		neg
-	)
+export const applyFilter = (filterId: string, options: { neg?: boolean } = {}) =>
+	({
+		type: 'apply-filter' as const,
+		neg: options.neg ?? false,
+		filterId,
+	}) satisfies M.FilterNode
 
-export const gt = (column: M.FloatColumn, value: number, neg = false) =>
-	comp(
-		{
-			code: 'gt' as const,
-			column,
-			value,
-		},
-		neg
-	)
+export const lt = <T extends M.FloatColumn>(column: T, value: number) =>
+	({
+		code: 'lt' as const,
+		column,
+		value,
+	}) satisfies M.Comparison
 
-export const inrange = (column: M.FloatColumn, min: number, max: number, neg = false) =>
-	comp(
-		{
-			code: 'inrange' as const,
-			column,
-			min,
-			max,
-		},
-		neg
-	)
+export const gt = <T extends M.FloatColumn>(column: T, value: number) =>
+	({
+		code: 'gt' as const,
+		column,
+		value,
+	}) satisfies M.Comparison
 
-export const inValues = (column: M.StringColumn, values: (string | null)[], neg = false) =>
-	comp(
-		{
-			code: 'in' as const,
-			column,
-			values,
-		},
-		neg
-	)
+export const inrange = <T extends M.FloatColumn>(column: T, min: number, max: number) =>
+	({
+		code: 'inrange' as const,
+		column,
+		min,
+		max,
+	}) satisfies M.Comparison
 
-export const eq = (column: M.StringColumn, value: string | null, neg = false) =>
-	comp(
-		{
-			code: 'eq' as const,
-			column,
-			value,
-		},
-		neg
-	)
+export const inValues = <T extends M.StringColumn>(column: T, values: M.Layer[T][]) =>
+	({
+		code: 'in' as const,
+		column,
+		values,
+	}) satisfies M.Comparison
 
-export const like = (column: M.StringColumn, value: string, neg = false) =>
-	comp(
-		{
-			code: 'like' as const,
-			column,
-			value,
-		},
-		neg
-	)
+export const eq = <T extends M.StringColumn>(column: T, value: M.Layer[T]) =>
+	({
+		code: 'eq' as const,
+		column,
+		value,
+	}) satisfies M.Comparison
+
+export const like = <T extends M.StringColumn>(column: T, value: M.Layer[T]) =>
+	({
+		code: 'like' as const,
+		column,
+		value,
+	}) satisfies M.Comparison

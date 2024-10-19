@@ -1,7 +1,5 @@
 import * as z from 'zod'
 
-import * as VE from '@/lib/validation-errors.ts'
-
 import LayerComponents from './assets/layer-components.json'
 import * as C from './lib/constants'
 import { reverseMapping } from './lib/object'
@@ -199,6 +197,10 @@ export const COLUMN_TYPE_MAPPINGS = {
 	integer: [] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
+export function isColType<T extends ColumnType>(col: string, type: T): col is (typeof COLUMN_TYPE_MAPPINGS)[T][number] {
+	return (COLUMN_TYPE_MAPPINGS[type] as string[]).includes(col)
+}
+
 export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPINGS.float, ...COLUMN_TYPE_MAPPINGS.integer] as [
 	LayerColumnKey,
 	...LayerColumnKey[],
@@ -222,7 +224,7 @@ export type EditableComparison = {
 	column?: LayerColumnKey
 	code?: (typeof COMPARISON_TYPES)[number]['code']
 	value?: number | string | null
-	values?: string[]
+	values?: (string | null)[]
 	min?: number
 	max?: number
 }
@@ -343,10 +345,19 @@ export type EditableFilterNode =
 			filterId?: string
 	  }
 
-export const FILTER_NODE_BLOCK_TYPES = ['and', 'or'] as const
-export type FilterNodeBlockTypes = (typeof FILTER_NODE_BLOCK_TYPES)[number]
+export const BLOCK_TYPES = ['and', 'or'] as const
+export function isBlockType(type: string): type is BlockType {
+	return BLOCK_TYPES.includes(type as BlockType)
+}
+export function isBlockNode<T extends FilterNode>(node: T): node is Extract<T, { type: BlockType }> {
+	return BLOCK_TYPES.includes(node.type as BlockType)
+}
 
-//@ts-expect-error it works
+export function isEditableBlockNode(node: EditableFilterNode): node is Extract<EditableFilterNode, { type: BlockType }> {
+	return BLOCK_TYPES.includes(node.type as BlockType)
+}
+export type BlockType = (typeof BLOCK_TYPES)[number]
+
 export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
 	if (!isLocallyValidFilterNode(node)) return false
 	if (node.type === 'and' || node.type === 'or') return node.children.every((child) => isValidFilterNode(child))
@@ -379,13 +390,6 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
 		message: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
-
-export function isBlockNode(n: FilterNode): n is Extract<FilterNode, { type: 'and' | 'or' }> {
-	return n.type === 'and' || n.type === 'or'
-}
-export function isEditableBlockNode(n: EditableFilterNode): n is Extract<EditableFilterNode, { type: 'and' | 'or' }> {
-	return n.type === 'and' || n.type === 'or'
-}
 
 export const LayerVoteSchema = z.object({
 	defaultChoice: z.string(),
