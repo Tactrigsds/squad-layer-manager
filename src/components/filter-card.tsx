@@ -1,5 +1,5 @@
 import { produce } from 'immer'
-import { Braces, EqualNot, EqualNotIcon, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
+import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
 import { Link } from 'react-router-dom'
@@ -224,7 +224,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 					/>
 				</div>
 				{children!}
-				{props.depth === 0 && childrenLen === 0 && <span>Click below to add some filters</span>}
 				<span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -349,14 +348,16 @@ export function Comparison(props: {
 						const code = c.code ?? 'eq'
 						return { column, code }
 					})
-					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
+					sleepUntil(() => valueBoxRef.current).then((handle) => {
+						return handle?.focus()
+					})
 					return
 				}
 				if (column && M.isColType(column, 'float')) {
 					setComp((c) => {
 						return { column: c.column, code: c.code }
 					})
-					valueBoxRef.current?.focus()
+					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
 				return setComp(() => ({ column: column as M.LayerColumnKey }))
@@ -399,9 +400,7 @@ export function Comparison(props: {
 					ref={valueBoxRef}
 					column={comp.column as M.StringColumn}
 					value={comp.value as string | undefined | null}
-					setValue={(value) => {
-						return setComp((c) => ({ ...c, value }))
-					}}
+					setValue={(value) => setComp((c) => ({ ...c, value }))}
 					autocompleteFilter={props.valueAutocompleteFilter}
 				/>
 			)}

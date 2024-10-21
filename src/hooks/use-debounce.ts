@@ -4,8 +4,8 @@ import { debounceTime } from 'rxjs/operators'
 
 import { useRefConstructor } from '@/lib/react'
 
-export function useDebounced<T>({ defaultValue, delay, onChange }: { defaultValue: T; delay: number; onChange: (value: T) => void }) {
-	const subRef = useRefConstructor(() => new BehaviorSubject<T>(defaultValue))
+export function useDebounced<T>({ defaultValue, delay, onChange }: { defaultValue: () => T; delay: number; onChange: (value: T) => void }) {
+	const subRef = useRefConstructor(() => new BehaviorSubject<T>(defaultValue()))
 
 	// trying to avoid stale closures without updating dep array. react was a mistake
 	const onChangeRef = useRef(onChange)

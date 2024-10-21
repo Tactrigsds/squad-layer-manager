@@ -1,4 +1,3 @@
-import { Logger } from 'pino'
 import { Observable, OperatorFunction, asapScheduler, observeOn } from 'rxjs'
 
 export function sleep(ms: number) {
@@ -16,6 +15,7 @@ export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
 		i++
 		await sleep(0)
 	}
+	console.trace('sleepUntil timed out')
 }
 
 type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }

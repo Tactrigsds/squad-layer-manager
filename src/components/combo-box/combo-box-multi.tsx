@@ -1,9 +1,9 @@
-import { Popover, PopoverContent, PopoverTrigger } from '@radix-ui/react-popover'
-import { CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from 'cmdk'
-import { Check, ChevronsUpDown, Command, LoaderCircle } from 'lucide-react'
+import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
 import React, { useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 
@@ -37,7 +37,6 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	}))
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
-		setOpen(false)
 		props.onSelect(updater)
 	}
 
@@ -48,7 +47,15 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
 
-	let valuesDisplay = values.length > 0 ? values.join(',') : 'Select...'
+	let valuesDisplay =
+		values.length > 0
+			? values
+					.map((value) => {
+						const option = options !== LOADING && options.find((opt) => opt.value === value)
+						return option ? (option.label ?? option.value) : value
+					})
+					.join(', ')
+			: 'Select...'
 	if (valuesDisplay.length > 25) {
 		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
 	}
@@ -60,11 +67,11 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[200px] p-0">
-				<Command>
-					<CommandInput placeholder="Search framework..." />
+			<PopoverContent className="max-[200px] p-0">
+				<Command shouldFilter={!props.setInputValue}>
+					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search framework..." />
 					<CommandList>
-						<CommandEmpty>No framework found.</CommandEmpty>
+						<CommandEmpty>No results found.</CommandEmpty>
 						<CommandGroup>
 							{options === LOADING && (
 								<CommandItem>
@@ -88,7 +95,7 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 										}}
 									>
 										<Check className={cn('mr-2 h-4 w-4', values.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
-										{option === null ? DisplayHelpers.NULL_DISPLAY : option.label}
+										{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
 									</CommandItem>
 								))}
 						</CommandGroup>

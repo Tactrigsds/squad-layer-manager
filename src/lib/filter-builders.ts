@@ -67,7 +67,7 @@ export const eq = <T extends M.StringColumn>(column: T, value: M.Layer[T]) =>
 		value,
 	}) satisfies M.Comparison
 
-export const like = <T extends M.StringColumn>(column: T, value: M.Layer[T]) =>
+export const like = <T extends M.StringColumn>(column: T, value: string) =>
 	({
 		code: 'like' as const,
 		column,

@@ -63,7 +63,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		[setNode, props.node]
 	)
 	const { setValue } = useDebounced({
-		defaultValue: stringifyCompact((props.node as any).children),
+		defaultValue: () => stringifyCompact(props.node),
 		onChange,
 		delay: 100,
 	})
@@ -73,7 +73,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 	// -------- setup editor, handle events coming from editor, resizing --------
 	React.useEffect(() => {
 		const editor = Ace.edit(editorEltRef.current!, {
-			value: stringifyCompact((props.node as any).children),
+			value: stringifyCompact(props.node),
 			mode: 'ace/mode/json',
 			theme: 'ace/theme/dracula',
 			useWorker: false,
