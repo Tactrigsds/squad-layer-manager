@@ -10,6 +10,7 @@ import {
 	KickMessageSchema,
 	Player,
 	PlayerSchema,
+	ServerInfo,
 	Squad,
 	SquadCreatedSchema,
 	SquadSchema,
@@ -240,4 +241,32 @@ export default class SquadRcon extends Rcon implements ISquadRcon {
 		await this.execute(M.getAdminSetNextLayerCommand(layer))
 	}
 	async endGame() {}
+	async leaveSquad(playerId: number) {
+		await this.execute(`AdminForceRemoveFromSquad ${playerId}`)
+	}
+
+	async getPlayerQueueLength(): Promise<number> {
+		const response = await this.execute('ListPlayers')
+		const match = response.match(/\[Players in Queue: (\d+)\]/)
+		return match ? parseInt(match[1], 10) : 0
+	}
+
+	async getCurrentLayer(): Promise<M.MiniLayer> {
+		return this.getCurrentMap()
+	}
+
+	async getNextLayer(): Promise<M.MiniLayer | null> {
+		const nextMap = await this.getNextMap()
+		if (nextMap.level && nextMap.layer && nextMap.factions) {
+			return nextMap as M.MiniLayer
+		}
+		return null
+	}
+
+	get info(): ServerInfo {
+		return {
+			maxPlayers: this.maxPlayers,
+			name: this.serverName,
+		}
+	}
 }

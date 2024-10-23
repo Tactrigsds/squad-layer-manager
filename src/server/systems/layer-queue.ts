@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server'
+import { Mutex } from 'async-mutex'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import {
@@ -96,11 +97,9 @@ export async function setupLayerQueue() {
 	)
 
 	nowPlayingState$ = combineLatest([expectedCurrentLayer$, squadServerCurrentLayer$]).pipe(
+		traceTag('nowPlayingState$'),
 		map(([expected, current]): M.LayerSyncState => {
-			if (current === null) return { status: 'offline' }
-			if (expected === undefined || expected === current) return { status: 'synced', value: current }
-			if (expected !== current) return { status: 'desynced', current, expected }
-			throw new Error('unhandled case')
+			return getLayerSyncState(expected, current, ctx)
 		}),
 		distinctUntilChanged((a, b) => deepEqual(a, b)),
 		shareReplay(1)
@@ -112,25 +111,28 @@ export async function setupLayerQueue() {
 	)
 
 	nextLayerState$ = combineLatest([expectedNextLayer$, squadServerNextLayer$]).pipe(
+		traceTag('nextLayerState$'),
 		// for now this is the exact same as nowPlayingState, unsure if we will need to change it in future
 		map(([expected, current]): M.LayerSyncState => {
-			log.info('expected: %s, current: %s', expected, current)
-			if (!current) return { status: 'offline' }
-			if (expected === undefined || expected === current) return { status: 'synced', value: current }
-			if (expected !== current) return { status: 'desynced', expected, current }
-			throw new Error('unhandled case')
+			return getLayerSyncState(expected, current, ctx)
 		}),
 		distinctUntilChanged((a, b) => deepEqual(a, b)),
 		shareReplay(1)
 	)
 
-	// -------- bring squad server state in line with ours --------
-	;(async () => {
-		const syncState = await firstValueFrom(nextLayerState$)
+	// -------- keep squad server state in line with ours --------
+	nowPlayingState$.subscribe(async function syncCurrentLayer(syncState) {
+		if (syncState.status === 'desynced') {
+			await SquadServer.server.setNextLayer(M.getMiniLayerFromId(syncState.expected))
+			await SquadServer.server.endGame()
+		}
+	})
+
+	nextLayerState$.subscribe(async function syncNextLayer(syncState) {
 		if (syncState.status === 'desynced') {
 			await SquadServer.server.setNextLayer(M.getMiniLayerFromId(syncState.expected))
 		}
-	})()
+	})
 
 	SquadServer.squadEvent$.subscribe(async (event) => {
 		const _log = log.child({ msgEventId: event.eventId })
@@ -443,7 +445,15 @@ export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: C
 			.where(eq(S.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, serverState }
 	})
-	if (res.code !== 'ok') return res
+	if (res.code === 'err:out-of-sync') return res
 	serverState$.next([res.serverState, ctx])
 	return { code: 'ok' as const }
+}
+
+function getLayerSyncState(expected: string | undefined, current: string | null, ctx: C.Log): M.LayerSyncState {
+	ctx.log.info('expected: %s, current: %s', expected, current)
+	if (!current) return { status: 'offline' }
+	if (expected === undefined || expected === current) return { status: 'synced', value: current }
+	if (expected !== current) return { status: 'desynced', expected: expected, current: current }
+	throw new Error('unhandled case')
 }

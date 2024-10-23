@@ -1,3 +1,10 @@
+import { parse } from 'csv-parse/sync'
+import { sql } from 'drizzle-orm'
+import deepEqual from 'fast-deep-equal'
+import * as fs from 'fs'
+import path from 'path'
+import { z } from 'zod'
+
 import { resolvePromises } from '@/lib/async'
 import * as C from '@/lib/constants'
 import { deref as derefEntries } from '@/lib/object'
@@ -7,11 +14,6 @@ import * as DB from '@/server/db'
 import { setupEnv } from '@/server/env'
 import { Logger, baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
-import { parse } from 'csv-parse/sync'
-import { sql } from 'drizzle-orm'
-import * as fs from 'fs'
-import path from 'path'
-import { z } from 'zod'
 
 // Define the schema for raw data
 
@@ -267,6 +269,11 @@ async function updateLayerComponents({ db, log }: Context) {
 		layerComponents.layers.length,
 		layerComponents.layerVersions.length
 	)
+	if (!deepEqual(C.SUBFACTIONS, layerComponents.subfactions)) {
+		throw new Error(
+			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS: ${C.SUBFACTIONS.join(', ')}, ${layerComponents.subfactions.join(', ')}`
+		)
+	}
 }
 
 const LEVEL_ABBREVIATIONS = {

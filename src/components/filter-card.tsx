@@ -550,7 +550,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 		const v = value.trim()
 		_setDebouncedInput(v)
 	}
-	const debouncer = useDebounced({ defaultValue: inputValue, onChange: setDebouncedInput, delay: 500 })
+	const debouncer = useDebounced({ defaultValue: () => inputValue, onChange: setDebouncedInput, delay: 500 })
 	function setInputValue(value: string) {
 		_setInputValue(value)
 		debouncer.setValue(value)
