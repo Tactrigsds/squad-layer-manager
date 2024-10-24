@@ -6,8 +6,6 @@ services:
       MYSQL_ROOT_PASSWORD: dev
     ports:
       - '3306:3306'
-      - '27165:17165'
-      - '21114:21114'
     volumes:
       - db_data:/var/lib/mysql
   squad_server:

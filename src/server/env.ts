@@ -19,8 +19,7 @@ const EnvSchema = {
 	DB_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
-		.pipe(z.number().int().positive())
-		.default('3306'),
+		.pipe(z.number().int().positive().default(21114)),
 	DB_USER: z.string().min(1),
 	DB_PASSWORD: z.string().min(1),
 	DB_DATABASE: z.string().min(1),
@@ -32,6 +31,13 @@ const EnvSchema = {
 
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 	MOCK_SQUAD_SERVER: Flag.default('false'),
+
+	RCON_HOST: z.string().min(1),
+	RCON_PORT: z
+		.string()
+		.transform((val) => parseInt(val, 10))
+		.pipe(z.number().int().positive().default(21114)),
+	RCON_PASSWORD: z.string().optional(),
 }
 export function setupEnv() {
 	dotenv.config()
@@ -52,17 +58,15 @@ export function setupEnv() {
 
 		LOG_LEVEL_OVERRIDE: process.env.LOG_LEVEL_OVERRIDE,
 		MOCK_SQUAD_SERVER: process.env.MOCK_SQUAD_SERVER,
+		RCON_HOST: process.env.RCON_HOST,
+		RCON_PORT: process.env.RCON_PORT,
 	}
+	console.log(runtimeEnv)
 
 	const env = createEnv({
 		server: EnvSchema,
 		runtimeEnv: runtimeEnv,
 	})
-
-	const missing = Object.keys(EnvSchema).filter((key) => !Object.keys(runtimeEnv).includes(key))
-	if (missing.length > 0) {
-		throw new Error('missing env vars in runtimeEnv: ' + missing.join(', '))
-	}
 
 	ENV = env
 	return env

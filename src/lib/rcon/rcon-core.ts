@@ -1,6 +1,7 @@
-import { Logger } from '@/server/logger.ts'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
+
+import { Logger } from '@/server/logger.ts'
 
 export default class Rcon extends EventEmitter {
 	private host: string
@@ -10,7 +11,7 @@ export default class Rcon extends EventEmitter {
 	private stream: Buffer
 	private type: { auth: number; command: number; response: number; server: number }
 	private soh: { size: number; id: number; type: number; body: string }
-	private connected: boolean
+	public connected: boolean
 	private autoReconnect: boolean
 	private autoReconnectDelay: number
 	private connectionRetry: NodeJS.Timeout | undefined
@@ -18,9 +19,11 @@ export default class Rcon extends EventEmitter {
 	private responseString: { id: number; body: string }
 
 	constructor(
-		options: { host: string; port: number; password: string; autoReconnectDelay?: number } = { host: '', port: 0, password: '' },
+		options: { host: string; port: number; password?: string; autoReconnectDelay?: number },
 		public log: Logger
 	) {
+		// = { host: '', port: 0, password: '' },
+		options.password ??= ''
 		super()
 		for (const option of ['host', 'port', 'password']) {
 			if (!(option in options)) throw new Error(`${option} must be specified.`)

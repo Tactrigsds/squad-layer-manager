@@ -265,7 +265,7 @@ export default class SquadRcon extends Rcon implements ISquadRcon {
 
 	get info(): ServerInfo {
 		return {
-			maxPlayers: this.maxPlayers,
+			maxPlayers: this.server,
 			name: this.serverName,
 		}
 	}
