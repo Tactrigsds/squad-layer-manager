@@ -6,11 +6,13 @@ import {
 	Subject,
 	Subscription,
 	asapScheduler,
+	asyncScheduler,
 	finalize,
 	observeOn,
 	of,
 	startWith,
 	switchMap,
+	tap,
 	timeout,
 } from 'rxjs'
 
@@ -115,15 +117,18 @@ interface Disposable {
 }
 
 // TODO add retries
-export class AsyncResource<Args extends any[], T> implements Disposable {
+/**
+ *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
+ */
+export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 	mutex = new Mutex()
 	opts: AsyncResourceOpts
-	fetchResolvedTime: number | null = null
+	lastResolveTime: number | null = null
 	fetchedValue: Promise<T> | null = null
 	private valueSubject = new Subject<T>()
 	constructor(
 		private name: string,
-		private cb: (...args: Args) => Promise<T>,
+		private cb: (ctx: Ctx) => Promise<T>,
 		opts?: AsyncResourceOpts
 	) {
 		//@ts-expect-error init
@@ -131,18 +136,17 @@ export class AsyncResource<Args extends any[], T> implements Disposable {
 		this.opts.maxLockTime ??= 2000
 		this.opts.defaultTTL ??= 1000
 	}
-	async fetchValue(...args: Args) {
-		this.fetchResolvedTime = null
-		const promise = this.cb(...args)
+	async fetchValue(ctx: Ctx) {
+		const promise = this.cb(ctx)
+		this.fetchedValue = null
 		this.fetchedValue = promise
 		const res = await promise
-		this.fetchResolvedTime = Date.now()
+		this.lastResolveTime = Date.now()
 		this.valueSubject.next(res)
 		return res
 	}
 	async get(
-		args: Args,
-		ctx: C.Log,
+		ctx: Ctx,
 		opts?: {
 			// locks other calls to get this resource that also invoke the lock
 			lock?: boolean
@@ -175,16 +179,16 @@ export class AsyncResource<Args extends any[], T> implements Disposable {
 		}
 		try {
 			startUnlockCount?.()
-			if (this.fetchResolvedTime === null && this.fetchedValue) {
+			if (this.lastResolveTime === null && this.fetchedValue) {
 				return { value: await this.fetchedValue, release }
 			}
-			if (this.fetchResolvedTime === null && this.fetchedValue === null) {
-				return { value: await this.fetchValue(...args), release }
+			if (this.lastResolveTime === null && this.fetchedValue === null) {
+				return { value: await this.fetchValue(ctx), release }
 			}
-			if (this.fetchResolvedTime && Date.now() - this.fetchResolvedTime < opts.ttl) {
+			if (this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
 				return { value: await this.fetchedValue!, release }
 			} else {
-				return { value: await this.fetchValue(...args), release }
+				return { value: await this.fetchValue(ctx), release }
 			}
 		} catch (err) {
 			release()
@@ -198,46 +202,53 @@ export class AsyncResource<Args extends any[], T> implements Disposable {
 	get disposed() {
 		return this.valueSubject.closed
 	}
-	invalidate(args: Args) {
-		if (!this.fetchResolvedTime) return
+	invalidate(ctx: Ctx) {
+		if (!this.lastResolveTime) return
 		this.fetchedValue = null
-		this.fetchResolvedTime = null
-		if (this.observeRefs > 0) this.fetchValue(...args)
+		this.lastResolveTime = null
+		if (this.observeRefs > 0) this.fetchValue(ctx)
 	}
 
 	observingTTL: number | null = null
 	observeRefs = 0
-	observeSub: Subscription | null = null
+	refetchSub: Subscription | null = null
 	// listen to all updates to this resourc
-	observe(args: Args, opts?: { ttl?: number }) {
+	observe(ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 		if (this.disposed) return EMPTY
-		this.observingTTL = Math.min(opts.ttl, this.observingTTL ?? Infinity)
-		this.observeRefs++
-		if (this.observeRefs === 1) {
-			// we could be more sophisticated about handling transitions between TTLs better but can't be bothered for now
-			let refetch$ = this.valueSubject.pipe(
+		const setupRefetch = () => {
+			this.observingTTL = Math.min(opts.ttl!, this.observingTTL ?? Infinity)
+			// we could be more sophisticated about handling transitions between observingTTLs better but can't be bothered for now
+			const refetch$ = this.valueSubject.pipe(
 				switchMap(() => {
 					if (!this.observingTTL) return EMPTY
 					return cancellableTimeout(this.observingTTL)
-				})
+				}),
+				startWith(undefined)
 			)
-			if (!this.fetchedValue) refetch$ = refetch$.pipe(startWith(undefined))
 
-			this.observeSub = refetch$.subscribe(() => {
+			this.refetchSub = refetch$.pipe(observeOn(asyncScheduler)).subscribe(() => {
 				if (this.observingTTL === null) return
-				this.fetchValue(...args)
+				this.get(ctx, opts)
 			})
 		}
+
 		return this.valueSubject.pipe(
-			finalize(() => {
-				this.observeRefs--
-				if (this.observeRefs === 0) {
-					this.observeSub?.unsubscribe()
-					this.observeSub = null
-					this.observingTTL = null
-				}
+			traceTag(`asyncResourceObserve__${this.name}`),
+			tap({
+				subscribe: () => {
+					this.observeRefs++
+					if (this.observeRefs === 1) setupRefetch()
+				},
+				finalize: () => {
+					this.observeRefs--
+					if (this.observeRefs === 0) {
+						this.refetchSub?.unsubscribe()
+						this.refetchSub = null
+						this.observingTTL = null
+					}
+				},
 			})
 		)
 	}

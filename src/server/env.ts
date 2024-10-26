@@ -39,7 +39,7 @@ const EnvSchema = {
 		.transform((val) => parseInt(val, 10))
 		.pipe(z.number().int().positive().default(21114))
 		.default('21114'),
-	RCON_PASSWORD: z.string().optional(),
+	RCON_PASSWORD: z.string(),
 }
 export function setupEnv() {
 	dotenv.config()

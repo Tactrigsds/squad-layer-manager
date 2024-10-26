@@ -200,7 +200,7 @@ export default function LayerQueue() {
 												}
 												let edited = false
 												if (queueDiff) {
-													if (queueDiff[index.toString()]) edited = true
+													if (queueDiff[index]) edited = true
 													for (const [k, v] of Object.entries(queueDiff)) {
 														if (!v) continue
 														if (k.startsWith('_') && v[0] === '' && v[1] === index) {

@@ -1,9 +1,10 @@
-import { trpcReact } from '@/lib/trpc.client.ts'
-import type * as Rcon from '@/server/systems/rcon'
 import { useState } from 'react'
 
+import type * as SM from '@/lib/rcon/squad-models'
+import { trpcReact } from '@/lib/trpc.client.ts'
+
 export function useServerInfo() {
-	const [serverInfo, setServerInfo] = useState<Rcon.ServerStatus | null>(null)
+	const [serverInfo, setServerInfo] = useState<SM.ServerStatus | null>(null)
 	trpcReact.pollServerInfo.useSubscription(undefined, {
 		onData: (data) => {
 			setServerInfo(data)

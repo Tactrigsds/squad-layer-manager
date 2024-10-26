@@ -116,7 +116,7 @@ export default class Rcon extends EventEmitter {
 	#sendAuth(ctx: C.Log): void {
 		ctx = this.addLogProps(ctx)
 		ctx.log.info(`Sending Token to: ${this.host}:${this.port}`)
-		ctx.log.debug(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
+		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
 		this.client?.write(this.#encode(this.type.auth, 2147483647, this.password).toString('binary'), 'binary')
 	}
 
@@ -127,7 +127,7 @@ export default class Rcon extends EventEmitter {
 
 	#write(ctx: C.Log, type: number, id: number, body?: string): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.debug(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
+		ctx.log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
 		this.client?.write(this.#encode(type, id, body).toString('binary'), 'binary')
 	}
 
@@ -144,12 +144,12 @@ export default class Rcon extends EventEmitter {
 
 	#onData(ctx: C.Log, data: Buffer): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.debug(`Got data: ${this.#bufToHexString(data)}`)
+		ctx.log.trace(`Got data: ${this.#bufToHexString(data)}`)
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode(ctx)
 			if (!packet) break
-			else ctx.log.debug(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+			else ctx.log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
 			if (packet.type === this.type.response) this.#onResponse(ctx, packet)
 			else if (packet.type === this.type.server) this.emit('server', packet)
 			else if (packet.type === this.type.command) this.emit('auth')
@@ -223,7 +223,7 @@ export default class Rcon extends EventEmitter {
 		this.removeAllListeners()
 		clearTimeout(this.connectionRetry)
 		if (this.autoReconnect) {
-			ctx.log.debug(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
+			ctx.log.trace(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
 			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 		}
 	}
@@ -234,6 +234,7 @@ export default class Rcon extends EventEmitter {
 
 	async warn(ctx: C.Log, steamID: string, message: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
+		ctx.log.info(`Warned ${steamID}: ${message}`)
 		this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
 	}
 

@@ -5,17 +5,17 @@ import * as M from '@/models'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
-	MaxPlayers: parsedNum('int', z.number().int().positive()),
+	MaxPlayers: z.number().int().nonnegative(),
 	PublicQueueLimit_I: parsedNum('int', z.number().int().nonnegative()),
 	PlayerReserveCount_I: parsedNum('int', z.number().int().nonnegative()),
 	PlayerCount_I: parsedNum('int', z.number().int().nonnegative()),
 	PublicQueue_I: parsedNum('int', z.number().int().nonnegative()),
 	ReservedQueue_I: parsedNum('int', z.number().int().nonnegative()),
 	MapName_s: z.string(),
-	NextLayer_s: z.string(),
+	NextLayer_s: z.string().optional(),
 	TeamOne_s: z.string().optional(),
 	TeamTwo_s: z.string().optional(),
-	MatchTimeout_d: parsedNum('float', z.number().positive()),
+	MatchTimeout_d: z.number().int().nonnegative(),
 	PLAYTIME_I: parsedNum('int', z.number().int().nonnegative()),
 	GameVersion_s: z.string(),
 })

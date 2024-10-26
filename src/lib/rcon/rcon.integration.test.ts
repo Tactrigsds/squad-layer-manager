@@ -1,18 +1,33 @@
-import { beforeAll, expect, test } from 'vitest'
+import { Mutex } from 'async-mutex'
+import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 
+import * as C from '@/server/context'
 import { ENV, setupEnv } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
 
 import Rcon from './rcon-core'
-import SquadRcon from './rcon-squad'
+import SquadRcon from './squad-rcon'
 
-let rcon!: SquadRcon
+let squadRcon!: SquadRcon
+let rcon!: Rcon
+let baseCtx: C.Log
 
 beforeAll(async () => {
 	setupEnv()
 	await setupLogger()
-	rcon = new SquadRcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD }, baseLogger)
-	await rcon.connect()
+	baseCtx = { log: baseLogger }
+	rcon = new Rcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD })
+	await rcon.connect(baseCtx)
+	squadRcon = new SquadRcon(rcon)
+})
+
+const mtx = new Mutex()
+let release: (() => void) | undefined
+beforeEach(async () => {
+	release = await mtx.acquire()
+})
+afterEach(() => {
+	release?.()
 })
 
 test('Rcon should be connected', () => {
@@ -20,11 +35,13 @@ test('Rcon should be connected', () => {
 })
 
 test('can get current layer', async () => {
-	const layer = await rcon.getCurrentLayer()
+	const ctx = C.includeLogProperties(baseCtx, { test: 'can get current layer' })
+	const layer = await squadRcon.getCurrentLayer(ctx)
 	expect(layer).toBeDefined()
 })
 
-test.only('can set next layer', async () => {
+test('can set next layer', async () => {
+	const ctx = C.includeLogProperties(baseCtx, { test: 'can set next layer' })
 	const nextLayerOptions = {
 		Layer: 'GooseBay_RAAS_v1',
 		Faction_1: 'USA',
@@ -32,8 +49,15 @@ test.only('can set next layer', async () => {
 		Faction_2: 'RGF',
 		SubFac_2: 'CombinedArms',
 	}
-	await rcon.setNextLayer(nextLayerOptions)
-	const nextLayer = await rcon.getNextLayer()
+	await squadRcon.setNextLayer(ctx, nextLayerOptions)
+	const nextLayer = await squadRcon.getNextLayer(ctx)
 	expect(nextLayer).toBeDefined()
 	expect(nextLayer?.Layer).toBe(nextLayerOptions.Layer)
+})
+
+test('can get server status', async () => {
+	const ctx = C.includeLogProperties(baseCtx, { test: 'can get server status' })
+	const status = await squadRcon.getServerStatus(ctx)
+	ctx.log.info('server status %o', status)
+	expect(status).toBeDefined()
 })
