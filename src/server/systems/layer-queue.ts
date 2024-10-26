@@ -123,14 +123,14 @@ export async function setupLayerQueue() {
 	// -------- keep squad server state in line with ours --------
 	nowPlayingState$.subscribe(async function syncCurrentLayer(syncState) {
 		if (syncState.status === 'desynced') {
-			await SquadServer.server.setNextLayer(M.getMiniLayerFromId(syncState.expected))
-			await SquadServer.server.endGame()
+			await SquadServer.rcon.setNextLayer(M.getMiniLayerFromId(syncState.expected))
+			await SquadServer.rcon.endGame()
 		}
 	})
 
 	nextLayerState$.subscribe(async function syncNextLayer(syncState) {
 		if (syncState.status === 'desynced') {
-			await SquadServer.server.setNextLayer(M.getMiniLayerFromId(syncState.expected))
+			await SquadServer.rcon.setNextLayer(M.getMiniLayerFromId(syncState.expected))
 		}
 	})
 
@@ -144,7 +144,7 @@ export async function setupLayerQueue() {
 			await db.transaction(async (db) => {
 				const ctx = { db, log: _log }
 				const serverState = await getServerState({ lock: true }, ctx)
-				const nowPlayingLayer = await SquadServer.server.getNextLayer()
+				const nowPlayingLayer = await SquadServer.rcon.getNextLayer()
 				if (nowPlayingLayer === null) throw new Error('game ended when no next layer set')
 				if (serverState.layerQueue[0] && serverState.layerQueue[0].layerId !== nowPlayingLayer.id) {
 					_log.warn("layerIds for next layer on squad server and our application don't match on game end")
@@ -187,50 +187,50 @@ async function handleCommand(evt: SM.SquadEvent & { type: 'chat-message' }, ctx:
 		.flat()
 	if (!allCommandStrings.includes(cmdText)) {
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(cmdText, allCommandStrings)
-		SquadServer.server.warn(evt.playerId, `Unknown command "${cmdText}". Did you mean ${sortedMatches[0]}?`)
+		SquadServer.rcon.warn(evt.playerId, `Unknown command "${cmdText}". Did you mean ${sortedMatches[0]}?`)
 		return
 	}
 
 	if (CONFIG.commands.showNext.strings.includes(cmdText)) {
 		const server = await getServerState({ lock: false }, { ...ctx, db: DB.get(ctx) })
-		const nextLayer = await SquadServer.server.getNextLayer()
+		const nextLayer = await SquadServer.rcon.getNextLayer()
 		if (!nextLayer) {
-			SquadServer.server.warn(evt.playerId, 'No next layer set')
+			SquadServer.rcon.warn(evt.playerId, 'No next layer set')
 			return
 		}
 		if (server.currentVote) {
 			const results = getVoteResults(server.currentVote)
 			if (!results) {
 				const layerNames = server.currentVote.choices.map((id) => DisplayHelpers.toShortLayerName(M.getMiniLayerFromId(id)))
-				SquadServer.server.warn(evt.playerId, `Next layer will be the winner of a vote: ${layerNames.join(', ')}`)
+				SquadServer.rcon.warn(evt.playerId, `Next layer will be the winner of a vote: ${layerNames.join(', ')}`)
 				return
 			}
 			const chosenLayerName = DisplayHelpers.toShortLayerName(M.getMiniLayerFromId(results.choice))
 			if (results.resultType === 'winner') {
-				SquadServer.server.warn(evt.playerId, `${chosenLayerName}, by won vote`)
+				SquadServer.rcon.warn(evt.playerId, `${chosenLayerName}, by won vote`)
 				return
 			}
 			if (results.resultType === 'aborted') {
-				SquadServer.server.warn(evt.playerId, `${results.choice}, by default decision`)
+				SquadServer.rcon.warn(evt.playerId, `${results.choice}, by default decision`)
 				return
 			}
 			throw new Error('unhandled result type')
 		}
-		SquadServer.server.warn(evt.playerId, `${DisplayHelpers.toShortLayerName(nextLayer)}`)
+		SquadServer.rcon.warn(evt.playerId, `${DisplayHelpers.toShortLayerName(nextLayer)}`)
 		return
 	}
 
 	if (CONFIG.commands.startVote.strings.includes(cmdText)) {
 		const res = await startVote({ ...ctx, db: DB.get(ctx) })
 		if (res.code === 'err:warn') {
-			SquadServer.server.warn(evt.playerId, res.msg)
+			SquadServer.rcon.warn(evt.playerId, res.msg)
 		}
 		return
 	}
 
 	const msg = `Error: Command type ${cmdText} is valid but unhandled`
 	ctx.log.error(msg)
-	SquadServer.server.warn(evt.playerId, msg)
+	SquadServer.rcon.warn(evt.playerId, msg)
 }
 
 async function startVote(ctx: C.Log & C.Db) {
@@ -261,7 +261,7 @@ async function startVote(ctx: C.Log & C.Db) {
 	const optionsText = currentVote.choices
 		.map((layerId, index) => `${index + 1}: ${DisplayHelpers.toShortLayerNameFromId(layerId)}`)
 		.join('\n')
-	await SquadServer.server.broadcast(
+	await SquadServer.rcon.broadcast(
 		`Voting for next layer has started! Options:\n${optionsText}\nYou have ${CONFIG.voteLengthSeconds} seconds to vote!`
 	)
 	if (voteEndTask) throw new Error('Tried setting vote while a vote was already active')
@@ -339,7 +339,7 @@ function canCountVote(choiceIdx: number, playerId: string, voteState: M.ServerSt
 	if (voteState === null) return false
 	if (voteState.endReason || voteState.deadline < Date.now()) return false
 	if (choiceIdx <= 0 || choiceIdx >= voteState.choices.length) {
-		SquadServer.server.warn(playerId, 'Invalid vote. Please enter a number between 1 and ' + (voteState.choices.length - 1))
+		SquadServer.rcon.warn(playerId, 'Invalid vote. Please enter a number between 1 and ' + (voteState.choices.length - 1))
 		return false
 	}
 	return true
@@ -407,16 +407,16 @@ export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.D
 	if (res.code !== 'ok') {
 		return res
 	}
-	const nextLayer = await SquadServer.server.getNextLayer()
+	const nextLayer = await SquadServer.rcon.getNextLayer()
 	if (!nextLayer || nextLayer.id !== res.nextLayerId) {
 		await setNextLayer(res.nextLayerId)
 	}
-	await SquadServer.server.endGame()
+	await SquadServer.rcon.endGame()
 }
 
 async function setNextLayer(layerId: string) {
 	expectedCurrentLayer$.next(layerId)
-	await SquadServer.server.setNextLayer(M.getMiniLayerFromId(layerId))
+	await SquadServer.rcon.setNextLayer(M.getMiniLayerFromId(layerId))
 	await firstValueFrom(nowPlayingState$.pipe(filter((s) => s.status !== 'desynced')))
 }
 

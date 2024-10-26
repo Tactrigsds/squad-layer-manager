@@ -1,7 +1,10 @@
 import { TRPCError } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
+import * as CacheManager from 'cache-manager'
 import Cookie from 'cookie'
 import { FastifyReply, FastifyRequest } from 'fastify'
+
+import RconCore from '@/lib/rcon/rcon-core.ts'
 
 import * as DB from './db.ts'
 import { Logger, baseLogger } from './logger.ts'
@@ -11,15 +14,26 @@ import * as Sessions from './systems/sessions.ts'
 export type Log = {
 	log: Logger
 }
+export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
+	return { ...ctx, log: ctx.log.child(fields) }
+}
 
 export type Db = {
 	db: DB.Db
+}
+
+export type Rcon = {
+	rcon: RconCore
 }
 
 export type UnauthorizedRequest = { req: FastifyRequest; res: FastifyReply }
 
 export type User = {
 	user: Schema.User
+}
+
+export type Cache = {
+	cache: ReturnType<typeof CacheManager.createCache>
 }
 
 export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {

@@ -19,7 +19,8 @@ const EnvSchema = {
 	DB_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
-		.pipe(z.number().int().positive().default(21114)),
+		.pipe(z.number().int().positive())
+		.default('3306'),
 	DB_USER: z.string().min(1),
 	DB_PASSWORD: z.string().min(1),
 	DB_DATABASE: z.string().min(1),
@@ -36,7 +37,8 @@ const EnvSchema = {
 	RCON_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
-		.pipe(z.number().int().positive().default(21114)),
+		.pipe(z.number().int().positive().default(21114))
+		.default('21114'),
 	RCON_PASSWORD: z.string().optional(),
 }
 export function setupEnv() {
@@ -60,8 +62,8 @@ export function setupEnv() {
 		MOCK_SQUAD_SERVER: process.env.MOCK_SQUAD_SERVER,
 		RCON_HOST: process.env.RCON_HOST,
 		RCON_PORT: process.env.RCON_PORT,
+		RCON_PASSWORD: process.env.RCON_PASSWORD,
 	}
-	console.log(runtimeEnv)
 
 	const env = createEnv({
 		server: EnvSchema,

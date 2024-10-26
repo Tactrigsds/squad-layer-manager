@@ -1,5 +1,5 @@
 services:
-  db:
+  b:
     image: mysql
     restart: always
     environment:
@@ -15,13 +15,8 @@ services:
     restart: always
     volumes:
       - squad_data:/home/steam/squad-dedicated/
+      - ./docker/Rcon.cfg:/home/steam/squad-dedicated/SquadGame/ServerConfig/Rcon.cfg
 
-    environment:
-      - PORT=7787
-      - beaconport=15000
-      - QUERYPORT=27165
-      - RCONPORT=21114
-      - FIXEDMAXPLAYERS=100
     ports:
       - 7787:7787/tcp
       - 7788:7788/tcp

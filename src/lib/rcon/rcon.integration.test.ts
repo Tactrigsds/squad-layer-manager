@@ -10,24 +10,23 @@ let rcon!: SquadRcon
 
 beforeAll(async () => {
 	setupEnv()
-	setupLogger()
+	await setupLogger()
 	rcon = new SquadRcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD }, baseLogger)
 	await rcon.connect()
 })
 
-test.only('Rcon should be connected', () => {
+test('Rcon should be connected', () => {
 	expect(rcon.connected).toBe(true)
 })
 
 test('can get current layer', async () => {
 	const layer = await rcon.getCurrentLayer()
-	console.log(layer)
 	expect(layer).toBeDefined()
 })
 
-test('can set next layer', async () => {
+test.only('can set next layer', async () => {
 	const nextLayerOptions = {
-		Layer: 'Gorodok_RAAS_V1',
+		Layer: 'GooseBay_RAAS_v1',
 		Faction_1: 'USA',
 		SubFac_1: 'CombinedArms',
 		Faction_2: 'RGF',
@@ -35,7 +34,6 @@ test('can set next layer', async () => {
 	}
 	await rcon.setNextLayer(nextLayerOptions)
 	const nextLayer = await rcon.getNextLayer()
-	console.log(nextLayer)
 	expect(nextLayer).toBeDefined()
 	expect(nextLayer?.Layer).toBe(nextLayerOptions.Layer)
 })

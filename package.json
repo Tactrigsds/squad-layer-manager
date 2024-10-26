@@ -4,7 +4,7 @@
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
-		"dev": "vite",
+		"client:dev": "vite",
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
 		"preview": "vite preview",
@@ -69,6 +69,7 @@
 		"ace-builds": "^1.36.2",
 		"aria-hidden": "^1.2.4",
 		"async-mutex": "^0.5.0",
+		"cache-manager": "^6.1.1",
 		"class-variance-authority": "^0.7.0",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.0.0",

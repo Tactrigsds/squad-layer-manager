@@ -1,15 +1,16 @@
+import { beforeAll, expect, test } from 'vitest'
+
 import * as M from '@/models'
 import * as DB from '@/server/db'
 import { setupEnv } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
-import { beforeAll, expect, test } from 'vitest'
 
 let db: DB.Db
 
 beforeAll(async () => {
 	setupEnv()
-	setupLogger()
+	await setupLogger()
 	DB.setupDatabase()
 	db = DB.get({ log: baseLogger })
 })

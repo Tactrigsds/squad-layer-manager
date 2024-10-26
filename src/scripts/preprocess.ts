@@ -41,7 +41,7 @@ export const RawLayerSchema = z.object({
 
 async function main() {
 	setupEnv()
-	setupLogger()
+	await setupLogger()
 	DB.setupDatabase()
 	const log = baseLogger.child({ module: 'preprocess' })
 	const db = DB.get({ log })

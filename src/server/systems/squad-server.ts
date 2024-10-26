@@ -1,35 +1,32 @@
 import { Observable } from 'rxjs'
 
-import { resolvePromises } from '@/lib/async'
-import { MockSquadRcon } from '@/lib/rcon/rcon-squad-mock'
+import { AsyncResource, resolvePromises } from '@/lib/async'
+import Rcon from '@/lib/rcon/rcon-core'
+import * as Queries from '@/lib/rcon/rcon-squad-queries'
 import * as SM from '@/lib/rcon/squad-models'
+import * as M from '@/models.ts'
+import * as C from '@/server/context'
 
 import { ENV } from '../env'
 import { baseLogger } from '../logger'
 
-export let server!: SM.ISquadRcon
-export let mockServer: MockSquadRcon | undefined
-export let squadEvent$: Observable<SM.SquadEvent>
+type QueryCtx = C.Log
+export let rcon!: Rcon
+
+export let serverStatus: AsyncResource<[QueryCtx], SM.ServerStatus>
+export let currentLayer: AsyncResource<[QueryCtx], M.MiniLayer>
+export let nextLayer: AsyncResource<[QueryCtx], M.MiniLayer | null>
+export let playerList: AsyncResource<[QueryCtx], SM.Player[]>
+export let squadList: AsyncResource<[QueryCtx], SM.Squad[]>
 
 export async function setupSquadServer() {
-	if (ENV.MOCK_SQUAD_SERVER) {
-		const log = baseLogger
-		mockServer = new MockSquadRcon({}, { log })
-		server = mockServer
-		squadEvent$ = mockServer.event$
-	} else {
-		throw new Error('implement actual squad server setup')
-	}
-	await server.connect()
-}
-
-export async function getServerStatus() {
-	return (await resolvePromises({
-		name: server.info.name,
-		currentLayer: server.getCurrentLayer(),
-		nextLayer: server.getNextLayer(),
-		currentPlayers: server.getListPlayers().then((p) => p.length),
-		currentPlayersInQueue: server.getPlayerQueueLength(),
-		maxPlayers: server.info.maxPlayers,
-	})) as SM.ServerStatus
+	const log = baseLogger
+	rcon = new Rcon({ host: ENV.DB_HOST, port: ENV.DB_PORT, password: ENV.DB_PASSWORD })
+	const rconCtx = { rcon }
+	serverStatus = new AsyncResource('serverStatus', (ctx) => Queries.getServerStatus({ ...ctx, ...rconCtx }))
+	currentLayer = new AsyncResource('currentLayer', (ctx) => Queries.getCurrentLayer({ ...ctx, ...rconCtx }))
+	nextLayer = new AsyncResource('nextLayer', (ctx) => Queries.getNextLayer({ ...ctx, ...rconCtx }))
+	playerList = new AsyncResource('playerList', (ctx) => Queries.getListPlayers({ ...ctx, ...rconCtx }))
+	squadList = new AsyncResource('squadList', (ctx) => Queries.getSquads({ ...ctx, ...rconCtx }))
+	await rcon.connect({ log })
 }

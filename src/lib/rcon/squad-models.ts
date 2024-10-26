@@ -1,32 +1,31 @@
-import * as M from '@/models'
 import { z } from 'zod'
 
-export const ServerStatusRawSchema = z.object({
-	name: z.string(),
-	maxPlayers: z.number().int().positive(),
-	reserveSlots: z.number().int().nonnegative(),
-	currentPlayers: z.number().int().nonnegative(),
-	currentPlayersInQueue: z.number().int().nonnegative(),
-	currentVIPsInQueue: z.number().int().nonnegative(),
-	gameMode: z.string(),
-	// could parse currentMap and currentFactions more strictly here, and apply an enum for allowed values
-	currentMap: z.string(),
-	currentFactions: z.string(),
-	nextMap: z.string(),
-	nextFactions: z.string(),
-	isLicensedServer: z.boolean(),
-	infoUpdatedAt: z.string().datetime(),
+import { parsedNum } from '@/lib/zod.ts'
+import * as M from '@/models'
+
+export const ServerRawInfoSchema = z.object({
+	ServerName_s: z.string(),
+	MaxPlayers: parsedNum('int', z.number().int().positive()),
+	PublicQueueLimit_I: parsedNum('int', z.number().int().nonnegative()),
+	PlayerReserveCount_I: parsedNum('int', z.number().int().nonnegative()),
+	PlayerCount_I: parsedNum('int', z.number().int().nonnegative()),
+	PublicQueue_I: parsedNum('int', z.number().int().nonnegative()),
+	ReservedQueue_I: parsedNum('int', z.number().int().nonnegative()),
+	MapName_s: z.string(),
+	NextLayer_s: z.string(),
+	TeamOne_s: z.string().optional(),
+	TeamTwo_s: z.string().optional(),
+	MatchTimeout_d: parsedNum('float', z.number().positive()),
+	PLAYTIME_I: parsedNum('int', z.number().int().nonnegative()),
+	GameVersion_s: z.string(),
 })
 
-export type ServerStatusRaw = z.infer<typeof ServerStatusRawSchema>
 export type ServerStatus = {
 	name: string
 	maxPlayers: number
 	reserveSlots: number
 	currentPlayers: number
 	currentPlayersInQueue: number
-	currentLayer: M.MiniLayer
-	nextLayer: M.MiniLayer
 }
 
 export const PlayerSchema = z.object({
@@ -133,13 +132,8 @@ export const SquadEventSchema = z.discriminatedUnion('type', [
 ])
 
 export type SquadEvent = z.infer<typeof SquadEventSchema>
-export type ServerInfo = {
-	maxPlayers: number
-	name: string
-}
 
 export interface ISquadRcon {
-	info: ServerInfo
 	connect(): Promise<void>
 	disconnect(): Promise<void>
 	getCurrentLayer(): Promise<M.MiniLayer>

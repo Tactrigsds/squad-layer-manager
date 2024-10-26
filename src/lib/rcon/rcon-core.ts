@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 
-import { Logger } from '@/server/logger.ts'
+import * as C from '@/server/context.ts'
 
 export default class Rcon extends EventEmitter {
 	private host: string
@@ -18,12 +18,7 @@ export default class Rcon extends EventEmitter {
 	private msgId: number
 	private responseString: { id: number; body: string }
 
-	constructor(
-		options: { host: string; port: number; password?: string; autoReconnectDelay?: number },
-		public log: Logger
-	) {
-		// = { host: '', port: 0, password: '' },
-		options.password ??= ''
+	constructor(options: { host: string; port: number; password: string; autoReconnectDelay?: number }) {
 		super()
 		for (const option of ['host', 'port', 'password']) {
 			if (!(option in options)) throw new Error(`${option} must be specified.`)
@@ -45,33 +40,39 @@ export default class Rcon extends EventEmitter {
 
 	processChatPacket(_decodedPacket: any): void {}
 
-	async connect(): Promise<void> {
+	private addLogProps(ctx: C.Log): C.Log {
+		return C.includeLogProperties(ctx, { host: this.host, port: this.port })
+	}
+
+	async connect(ctx: C.Log): Promise<void> {
+		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve, reject) => {
 			if (this.client && this.connected && !this.client.destroyed) return reject(new Error('Rcon.connect() Rcon already connected.'))
 			this.removeAllListeners('server')
 			this.removeAllListeners('auth')
 			this.on('server', (pkt) => this.processChatPacket(pkt)).once('auth', () => {
-				this.log.info(`Connected to: ${this.host}:${this.port}`)
+				ctx.log.info(`Connected to: ${this.host}:${this.port}`)
 				clearTimeout(this.connectionRetry)
 				this.connected = true
 				resolve()
 			})
-			this.log.info(`Connecting to: ${this.host}:${this.port}`)
-			this.connectionRetry = setTimeout(() => this.connect(), this.autoReconnectDelay)
+			ctx.log.info(`Connecting to: ${this.host}:${this.port}`)
+			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 			this.autoReconnect = true
 			this.client = net
-				.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth())
-				.on('data', (data) => this.#onData(data))
-				.on('end', () => this.#onClose())
-				.on('error', (error) => this.#onNetError(error))
+				.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
+				.on('data', (data) => this.#onData(ctx, data))
+				.on('end', () => this.#onClose(ctx))
+				.on('error', (error) => this.#onNetError(ctx, error))
 		}).catch((error) => {
-			this.log.error(`Rcon.connect() ${error}`)
+			ctx.log.error(`Rcon.connect() ${error}`)
 		})
 	}
 
-	async disconnect(): Promise<void> {
+	async disconnect(ctx: C.Log): Promise<void> {
+		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve) => {
-			this.log.info(`Disconnecting from: ${this.host}:${this.port}`)
+			ctx.log.info(`Disconnecting from: ${this.host}:${this.port}`)
 			clearTimeout(this.connectionRetry)
 			this.removeAllListeners()
 			this.autoReconnect = false
@@ -79,17 +80,18 @@ export default class Rcon extends EventEmitter {
 			this.connected = false
 			resolve()
 		}).catch((error) => {
-			this.log.error(`Rcon.disconnect() ${error}`)
+			ctx.log.error(`Rcon.disconnect() ${error}`)
 		})
 	}
 
-	async execute(body: string): Promise<any> {
+	async execute(ctx: C.Log, body: string): Promise<any> {
+		ctx = this.addLogProps(ctx)
 		return new Promise((resolve, reject) => {
 			if (!this.connected) return reject(new Error('Rcon not connected.'))
 			if (!this.client?.writable) return reject(new Error('Unable to write to node:net socket.'))
 			const string = String(body)
 			const length = Buffer.from(string).length
-			if (length > 4152) this.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
+			if (length > 4152) ctx.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
 			else {
 				const outputData = (data: any) => {
 					clearTimeout(timeOut)
@@ -103,27 +105,29 @@ export default class Rcon extends EventEmitter {
 				const listenerId = `response${this.msgId}`
 				const timeOut = setTimeout(timedOut, 10000)
 				this.once(listenerId, outputData)
-				this.#send(string, this.msgId)
+				this.#send(ctx, string, this.msgId)
 				this.msgId++
 			}
 		}).catch((error) => {
-			this.log.error(`Rcon.execute() ${error}`)
+			ctx.log.error(`Rcon.execute() ${error}`)
 		})
 	}
 
-	#sendAuth(): void {
-		this.log.info(`Sending Token to: ${this.host}:${this.port}`)
-		this.log.debug(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
+	#sendAuth(ctx: C.Log): void {
+		ctx = this.addLogProps(ctx)
+		ctx.log.info(`Sending Token to: ${this.host}:${this.port}`)
+		ctx.log.debug(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
 		this.client?.write(this.#encode(this.type.auth, 2147483647, this.password).toString('binary'), 'binary')
 	}
 
-	#send(body: string, id = 99): void {
-		this.#write(this.type.command, id, body)
-		this.#write(this.type.command, id + 2)
+	#send(ctx: C.Log, body: string, id = 99): void {
+		this.#write(ctx, this.type.command, id, body)
+		this.#write(ctx, this.type.command, id + 2)
 	}
 
-	#write(type: number, id: number, body?: string): void {
-		this.log.debug(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
+	#write(ctx: C.Log, type: number, id: number, body?: string): void {
+		ctx = this.addLogProps(ctx)
+		ctx.log.debug(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
 		this.client?.write(this.#encode(type, id, body).toString('binary'), 'binary')
 	}
 
@@ -138,20 +142,22 @@ export default class Rcon extends EventEmitter {
 		return buffer
 	}
 
-	#onData(data: Buffer): void {
-		this.log.debug(`Got data: ${this.#bufToHexString(data)}`)
+	#onData(ctx: C.Log, data: Buffer): void {
+		ctx = this.addLogProps(ctx)
+		ctx.log.debug(`Got data: ${this.#bufToHexString(data)}`)
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
-			const packet = this.#decode()
+			const packet = this.#decode(ctx)
 			if (!packet) break
-			else this.log.debug(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
-			if (packet.type === this.type.response) this.#onResponse(packet)
+			else ctx.log.debug(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+			if (packet.type === this.type.response) this.#onResponse(ctx, packet)
 			else if (packet.type === this.type.server) this.emit('server', packet)
 			else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}
 
-	#decode(): { size: number; id: number; type: number; body: string } | null {
+	#decode(ctx: C.Log): { size: number; id: number; type: number; body: string } | null {
+		ctx = this.addLogProps(ctx)
 		if (
 			this.stream[0] === 0 &&
 			this.stream[1] === 1 &&
@@ -165,12 +171,12 @@ export default class Rcon extends EventEmitter {
 			return this.soh
 		}
 		const bufSize = this.stream.readInt32LE(0)
-		if (bufSize > 8192 || bufSize < 10) return this.#badPacket()
+		if (bufSize > 8192 || bufSize < 10) return this.#badPacket(ctx)
 		else if (bufSize <= this.stream.byteLength - 4) {
 			const bufId = this.stream.readInt32LE(4)
 			const bufType = this.stream.readInt32LE(8)
 			if (this.stream[bufSize + 2] !== 0 || this.stream[bufSize + 3] !== 0 || bufId < 0 || bufType < 0 || bufType > 5)
-				return this.#badPacket()
+				return this.#badPacket(ctx)
 			else {
 				const response = { size: bufSize, id: bufId, type: bufType, body: this.stream.toString('utf8', 12, bufSize + 2) }
 				this.stream = this.stream.subarray(bufSize + 4)
@@ -179,41 +185,46 @@ export default class Rcon extends EventEmitter {
 		} else return null
 	}
 
-	#onResponse(packet: { size: number; id: number; type: number; body: string }): void {
+	#onResponse(ctx: C.Log, packet: { size: number; id: number; type: number; body: string }): void {
+		ctx = this.addLogProps(ctx)
 		if (packet.body === '') {
 			this.emit(`response${this.responseString.id - 2}`, this.responseString.body)
 			this.responseString.body = ''
 		} else if (!packet.body.includes('')) {
 			this.responseString.body = this.responseString.body += packet.body
 			this.responseString.id = packet.id
-		} else this.#badPacket()
+		} else this.#badPacket(ctx)
 	}
 
-	#badPacket(): null {
-		this.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${this.responseString}`)
+	#badPacket(ctx: C.Log): null {
+		ctx = this.addLogProps(ctx)
+		ctx.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${this.responseString}`)
 		this.stream = Buffer.alloc(0)
 		this.responseString = { id: 0, body: '' }
 		return null
 	}
 
-	#onClose(): void {
-		this.log.info(`Socket closed.`)
-		this.#cleanUp()
+	#onClose(ctx: C.Log): void {
+		ctx = this.addLogProps(ctx)
+		ctx.log.info(`Socket closed.`)
+		this.#cleanUp(ctx)
 	}
 
-	#onNetError(error: Error): void {
-		this.log.error(`node:net error:`, error)
+	#onNetError(ctx: C.Log, error: Error): void {
+		ctx = this.addLogProps(ctx)
+		ctx.log.error(`node:net error:`, error)
 		this.emit('RCON_ERROR', error)
-		this.#cleanUp()
+		this.#cleanUp(ctx)
 	}
 
-	#cleanUp(): void {
+	#cleanUp(ctx: C.Log): void {
+		ctx = this.addLogProps(ctx)
 		this.connected = false
 		this.removeAllListeners()
 		clearTimeout(this.connectionRetry)
 		if (this.autoReconnect) {
-			this.log.debug(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
-			this.connectionRetry = setTimeout(() => this.connect(), this.autoReconnectDelay)
+			ctx.log.debug(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
+			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 		}
 	}
 
@@ -221,15 +232,18 @@ export default class Rcon extends EventEmitter {
 		return buf.toString('hex').match(/../g)?.join(' ') || ''
 	}
 
-	async warn(steamID: string, message: string): Promise<void> {
-		this.execute(`AdminWarn "${steamID}" ${message}`)
+	async warn(ctx: C.Log, steamID: string, message: string): Promise<void> {
+		ctx = this.addLogProps(ctx)
+		this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
 	}
 
-	async kick(steamID: string, reason: string): Promise<void> {
-		this.execute(`AdminKick "${steamID}" ${reason}`)
+	async kick(ctx: C.Log, steamID: string, reason: string): Promise<void> {
+		ctx = this.addLogProps(ctx)
+		this.execute(ctx, `AdminKick "${steamID}" ${reason}`)
 	}
 
-	async forceTeamChange(steamID: string): Promise<void> {
-		this.execute(`AdminForceTeamChange "${steamID}"`)
+	async forceTeamChange(ctx: C.Log, steamID: string): Promise<void> {
+		ctx = this.addLogProps(ctx)
+		this.execute(ctx, `AdminForceTeamChange "${steamID}"`)
 	}
 }

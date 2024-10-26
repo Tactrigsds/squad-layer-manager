@@ -14,3 +14,11 @@ export function deepClone<T>(obj: T) {
 export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry, arr: Entry[]) {
 	return arr.map((entry) => entry[key])
 }
+
+export function exclude<T extends object, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+	const result = { ...obj }
+	for (const key of keys) {
+		delete result[key]
+	}
+	return result
+}

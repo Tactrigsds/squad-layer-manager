@@ -1,5 +1,6 @@
-import devtoolsTransport from '@/lib/pino-nodejs-devtools-console-transport.ts'
 import pino, { LoggerOptions, Logger as PinoLogger } from 'pino'
+
+import devtoolsTransport from '@/lib/pino-nodejs-devtools-console-transport.ts'
 
 import { ENV, Env } from './env'
 

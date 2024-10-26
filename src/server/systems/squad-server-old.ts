@@ -55,6 +55,10 @@ function parseLayer(layer: string, factions: string): M.MiniLayer {
 	return M.MiniLayerSchema.parse(miniLayer)
 }
 
+type ParsedFaction = {
+	faction: string
+	subFaction: string | null
+}
 function parseLayerFactions(factionsRaw: string) {
 	const parsedFactions: ParsedFaction[] = []
 	for (const factionRaw of factionsRaw.split(/\s/)) {
