@@ -9,8 +9,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useNextLayerState } from '@/hooks/server-state.ts'
-import { useNowPlayingState } from '@/hooks/use-now-playing.tsx'
+import { useNowPlayingState as useCurrentLayer } from '@/hooks/server-state.ts'
 import * as Helpers from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -26,8 +25,7 @@ const LayerQueueContext = createContext<object>({})
 
 export default function LayerQueue() {
 	const [layerQueue, setLayerQueue] = useState(null as null | M.LayerQueue)
-	const nowPlayingState = useNowPlayingState()
-	const nextLayerState = useNextLayerState()
+	const currentLayer = useCurrentLayer()
 	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
 	// TODO could use linked list model for editing so we can effectively diff it
 
@@ -140,19 +138,15 @@ export default function LayerQueue() {
 								<div>
 									{/* ------- top card ------- */}
 									<Card>
-										{!editing && nowPlayingState && (
+										{!editing && currentLayer && (
 											<>
 												<CardHeader>
 													<CardTitle>Now Playing</CardTitle>
 												</CardHeader>
-												<CardContent>
-													{nowPlayingState.status === 'synced' && Helpers.toShortLayerName(M.getMiniLayerFromId(nowPlayingState.value))}
-													{nowPlayingState.status === 'desynced' && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
-													{nowPlayingState.status === 'offline' && 'Server Offline'}
-												</CardContent>
+												<CardContent>{Helpers.toShortLayerName(currentLayer)}</CardContent>
 											</>
 										)}
-										{!editing && !nowPlayingState && <p className={Typography.P}>No active layer found</p>}
+										{!editing && !currentLayer && <p className={Typography.P}>No active layer found</p>}
 										{editing && (
 											<div className="flex flex-col space-y-2">
 												<Card>
@@ -217,7 +211,6 @@ export default function LayerQueue() {
 														index={index}
 														isLast={index + 1 === layerQueue.length}
 														dispatch={dispatch}
-														loadingChanges={index === 0 && nextLayerState.status === 'desynced'}
 													/>
 												)
 											})}
@@ -277,7 +270,6 @@ function QueueItem(props: {
 	isLast: boolean
 	edited: boolean
 	dispatch: React.Dispatch<QueueItemAction>
-	loadingChanges: boolean
 }) {
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: getQueueItemId(props.index),
@@ -306,8 +298,7 @@ function QueueItem(props: {
 	if (props.item.layerId) {
 		const layer = M.getMiniLayerFromId(props.item.layerId)
 		let color = 'bg-background'
-		if (props.loadingChanges) color = 'bg-green-400'
-		else if (props.edited) color = 'bg-slate-400'
+		if (props.edited) color = 'bg-slate-400'
 		return (
 			<div>
 				{props.index === 0 && <QueueItemSeparator afterIndex={-1} isLast={false} />}
@@ -325,9 +316,8 @@ function QueueItem(props: {
 					</div>
 					<div className="flex items-center min-h-0 space-x-1">
 						<span>
-							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2}
+							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2} {Helpers.toShortSubfaction(layer.SubFac_2)}
 						</span>
-						<span>{Helpers.toShortSubfaction(layer.SubFac_2)})</span>
 						<DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
 							<DropdownMenuTrigger asChild>
 								<Button className="group-hover:visible invisible" variant="ghost" size="icon">

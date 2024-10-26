@@ -42,6 +42,15 @@ test('can get current layer', async () => {
 
 test('can set next layer', async () => {
 	const ctx = C.includeLogProperties(baseCtx, { test: 'can set next layer' })
+	// make sure currently set next layer is not the same as the one we are going to set
+	await squadRcon.setNextLayer(ctx, {
+		Layer: 'Fallujah_RAAS_v1',
+		Faction_1: 'RGF',
+		Faction_2: 'USA',
+		SubFac_1: 'CombinedArms',
+		SubFac_2: 'CombinedArms',
+	})
+
 	const nextLayerOptions = {
 		Layer: 'GooseBay_RAAS_v1',
 		Faction_1: 'USA',

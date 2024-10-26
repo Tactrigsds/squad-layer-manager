@@ -1,4 +1,4 @@
-import { Observable, Subject } from 'rxjs'
+import { Subject } from 'rxjs'
 
 import { AsyncResource } from '@/lib/async'
 import Rcon from '@/lib/rcon/rcon-core'

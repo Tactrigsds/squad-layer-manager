@@ -1,6 +1,7 @@
-import * as M from '@/models.ts'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
+
+import * as M from '@/models.ts'
 
 import { mockSquadRouter as mockSquadServerRouter, setupMockSquadRouter } from './mock-squad-router.ts'
 import * as Schema from './schema.ts'
@@ -54,9 +55,9 @@ export function setupTrpcRouter() {
 		updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(async ({ input, ctx }) => {
 			return LQ.processLayerQueueUpdate(input, ctx)
 		}),
-		pollServerInfo: procedure.subscription(LQ.pollServerInfo),
-		watchNowPlayingState: procedure.subscription(LQ.watchNowPlayingState),
-		watchNextLayerState: procedure.subscription(LQ.watchNextLayerState),
+		pollServerInfo: procedure.subscription(({ ctx }) => LQ.pollServerState(ctx)),
+		watchNowPlayingState: procedure.subscription(({ ctx }) => LQ.watchCurrentLayerState(ctx)),
+		watchNextLayerState: procedure.subscription(({ ctx }) => LQ.watchNextLayerState(ctx)),
 		mockSquadServer: mockSquadServerRouter,
 		filters: filtersRouter,
 	})

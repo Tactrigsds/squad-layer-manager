@@ -1,10 +1,10 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
-import { BehaviorSubject, Subscription, combineLatest, distinctUntilChanged, of, timeout } from 'rxjs'
+import { BehaviorSubject, Subscription, combineLatest, of, timeout } from 'rxjs'
 import StringComparison from 'string-comparison'
 
-import { toAsyncGenerator } from '@/lib/async.ts'
+import { distinctDeepEquals, toAsyncGenerator } from '@/lib/async.ts'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { deepClone } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
@@ -274,20 +274,23 @@ export async function* watchServerStateUpdates() {
 	}
 }
 
-export async function* pollServerInfo(ctx: C.Log) {
-	const o = SquadServer.serverStatus.observe(ctx).pipe(distinctUntilChanged((a, b) => deepEqual(a, b)))
+export async function* pollServerState(ctx: C.Log) {
+	const o = SquadServer.serverStatus.observe(ctx).pipe(distinctDeepEquals())
 	for await (const info of toAsyncGenerator(o)) {
 		yield info
 	}
 }
 
-export async function* watchNowPlayingState(ctx: C.Log) {
-	for await (const status of toAsyncGenerator(SquadServer.currentLayer.observe(ctx))) {
+export async function* watchCurrentLayerState(ctx: C.Log) {
+	const currentLayer$ = SquadServer.currentLayer.observe(ctx).pipe(distinctDeepEquals())
+	for await (const status of toAsyncGenerator(currentLayer$)) {
 		yield status
 	}
 }
+
 export async function* watchNextLayerState(ctx: C.Log) {
-	for await (const state of toAsyncGenerator(SquadServer.nextLayer.observe(ctx))) {
+	const nextLayer$ = SquadServer.nextLayer.observe(ctx).pipe(distinctDeepEquals())
+	for await (const state of toAsyncGenerator(nextLayer$)) {
 		yield state
 	}
 }

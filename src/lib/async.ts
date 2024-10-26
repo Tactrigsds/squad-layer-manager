@@ -1,4 +1,5 @@
 import { Mutex } from 'async-mutex'
+import deepEqual from 'fast-deep-equal'
 import {
 	EMPTY,
 	Observable,
@@ -7,6 +8,7 @@ import {
 	Subscription,
 	asapScheduler,
 	asyncScheduler,
+	distinctUntilChanged,
 	finalize,
 	observeOn,
 	of,
@@ -20,6 +22,10 @@ import type * as C from '@/server/context.ts'
 
 export function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export function distinctDeepEquals<T>() {
+	return (o: Observable<T>) => o.pipe(distinctUntilChanged((a, b) => deepEqual(a, b)))
 }
 
 /**

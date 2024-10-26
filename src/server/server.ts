@@ -116,7 +116,6 @@ server.post(AR.exists('/logout'), async function (req, res) {
 
 server.register(ws)
 server.register(fastifySocketIo)
-
 server.register(fastifyTRPCPlugin, {
 	prefix: AR.exists('/trpc'),
 	useWSS: true,

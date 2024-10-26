@@ -1,15 +1,18 @@
+import { Link } from 'react-router-dom'
+
 import * as AR from '@/app-routes.ts'
-import { useServerInfo } from '@/hooks/use-server-info'
-import * as DH from '@/lib/display-helpers'
+import { useNextLayerState, useNowPlayingState, useServerInfo } from '@/hooks/server-state.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import { Link } from 'react-router-dom'
 
 import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const serverInfo = useServerInfo()
+	const currentLayer = useNowPlayingState()
+	const nextLayer = useNextLayerState()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
 		<div className="w-full h-full">
@@ -23,8 +26,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
-					{serverInfo && (
-						<>
+					<>
+						{serverInfo && (
 							<div className="flex flex-col">
 								<div className={Typography.Small}>
 									<span className="font-bold">{serverInfo.currentPlayers}</span> /{' '}
@@ -34,14 +37,14 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									<span className="font-bold">{serverInfo.currentPlayersInQueue}</span> players in queue
 								</div>
 							</div>
-							<div className="grid grid-cols-[auto_auto] h-full">
-								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
-								<span className={cn(Typography.Small, 'font-bold')}>{DH.toShortLayerName(serverInfo.currentLayer)}</span>
-								<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
-								<span className={cn(Typography.Small, 'font-bold')}>{DH.toShortLayerName(serverInfo.nextLayer)}</span>
-							</div>
-						</>
-					)}
+						)}
+						<div className="grid grid-cols-[auto_auto] h-full">
+							<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
+							<span className={cn(Typography.Small, 'font-bold')}>{currentLayer && DH.toShortLayerName(currentLayer)}</span>
+							<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
+							<span className={cn(Typography.Small, 'font-bold')}>{nextLayer && DH.toShortLayerName(nextLayer)}</span>
+						</div>
+					</>
 					{userRes.data && (
 						<div className="flex flex-row items-center space-x-4">
 							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
