@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNowPlayingState as useCurrentLayer } from '@/hooks/server-state.ts'
+import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -48,13 +49,20 @@ export default function LayerQueue() {
 			layerQueueSeqIdRef.current = data.layerQueueSeqId
 		},
 	})
+	const toaster = useToast()
 	const updateQueueMutation = trpcReact.updateQueue.useMutation()
-	function saveLayers() {
+	async function saveLayers() {
 		if (!editing || !layerQueue || !lastUpdateRef.current) return
-		updateQueueMutation.mutate({
+		const res = await updateQueueMutation.mutateAsync({
 			queue: layerQueue,
 			seqId: layerQueueSeqIdRef.current,
 		})
+		if (res.code === 'err:out-of-sync') {
+			toaster.toast({ title: 'Queue state changed before submission, please try again.', variant: 'destructive' })
+		}
+		if (res.code === 'ok') {
+			toaster.toast({ title: 'Updated next layer on game server' })
+		}
 	}
 
 	function reset() {

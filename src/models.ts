@@ -396,7 +396,12 @@ export const LayerVoteSchema = z.object({
 	choices: z.array(z.string()),
 })
 
-export const LayerQueueItemSchema = z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional(), generated: z.boolean() })
+export const LayerQueueItemSchema = z.object({
+	layerId: z.string().optional(),
+	vote: LayerVoteSchema.optional(),
+	generated: z.boolean(),
+})
+
 export const LayerQueueSchema = z.array(LayerQueueItemSchema)
 
 export type LayerQueue = z.infer<typeof LayerQueueSchema>

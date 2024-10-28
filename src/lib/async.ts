@@ -234,8 +234,9 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 				startWith(undefined)
 			)
 
-			this.refetchSub = refetch$.pipe(observeOn(asyncScheduler)).subscribe(() => {
+			this.refetchSub = refetch$.pipe(observeOn(asyncScheduler)).subscribe(async () => {
 				if (this.observingTTL === null) return
+				await sleep(0)
 				this.get(ctx, opts)
 			})
 		}

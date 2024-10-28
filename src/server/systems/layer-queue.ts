@@ -13,32 +13,66 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as S from '@/server/schema.ts'
+import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 
 let serverState$!: BehaviorSubject<[M.ServerState, C.Log]>
 let voteEndTask: Subscription | null = null
 export async function setupLayerQueue() {
 	const log = baseLogger.child({ ctx: 'layer-queue' })
-	const ctx = { log }
-	const db = DB.get(ctx)
+	const systemCtx = { log }
+	const db = DB.get(systemCtx)
 
 	// -------- bring server up to date with configuration --------
 	const server = await db.transaction(async (db) => {
-		let [server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId)).for('update')
+		let [server] = await db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId)).for('update')
 		if (!server) {
-			await db.insert(S.servers).values({ id: CONFIG.serverId, displayName: CONFIG.serverDisplayName })
-			;[server] = await db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
+			await db.insert(Schema.servers).values({ id: CONFIG.serverId, displayName: CONFIG.serverDisplayName })
+			;[server] = await db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId))
 		}
 		if (server.displayName !== CONFIG.serverDisplayName) {
-			await db.update(S.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(S.servers.id, CONFIG.serverId))
+			await db.update(Schema.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(Schema.servers.id, CONFIG.serverId))
 			server.displayName = CONFIG.serverDisplayName
 		}
 		return server
 	})
 
-	serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), ctx])
+	serverState$ = new BehaviorSubject([M.ServerStateSchema.parse(server), systemCtx])
 
+	await db.transaction(async (tx) => {
+		const { value: squadServerNextLayer, release } = await SquadServer.nextLayer.get(systemCtx, { lock: true, ttl: 0 })
+		try {
+			const _ctx = { ...systemCtx, db: tx }
+			const serverState = await getServerState({ lock: true }, _ctx)
+			if (!serverState.layerQueue[0]?.layerId) return null
+			if (
+				squadServerNextLayer === null ||
+				(serverState.layerQueue[0]?.layerId && serverState.layerQueue[0]?.layerId !== squadServerNextLayer.id)
+			) {
+				await SquadServer.setNextLayer(_ctx, M.getMiniLayerFromId(serverState.layerQueue[0].layerId))
+			}
+		} finally {
+			release()
+		}
+	})
+
+	SquadServer.nextLayer.observe(systemCtx).subscribe(async (nextLayer) => {
+		if (nextLayer === null) return
+		await db.transaction(async (tx) => {
+			const { value: squadServerNextLayer, release } = await SquadServer.nextLayer.get(systemCtx, { lock: true, ttl: 50 })
+			try {
+				const _ctx = { ...systemCtx, db: tx }
+				const serverState = await getServerState({ lock: true }, _ctx)
+				if (squadServerNextLayer !== null && serverState.layerQueue[0]?.layerId !== squadServerNextLayer.id) {
+					const layerQueue = deepClone(serverState.layerQueue)
+					layerQueue.unshift({ layerId: squadServerNextLayer.id, generated: false })
+					await tx.update(Schema.servers).set({ layerQueue, currentVote: null }).where(eq(Schema.servers.id, CONFIG.serverId))
+				}
+			} finally {
+				release()
+			}
+		})
+	})
 	// -------- keep squad server state in line with ours --------
 	// nowPlayingState$.subscribe(async function syncCurrentLayer(syncState) {
 	// 	if (syncState.status === 'desynced') {
@@ -47,14 +81,36 @@ export async function setupLayerQueue() {
 	// 	}
 	// })
 
-	combineLatest([SquadServer.nextLayer.observe({ log }), serverState$]).subscribe(([squadServerNextLayer, [serverState]]) => {
+	function getNextLayerUpdate(serverState: M.ServerState, squadServerNextLayer: M.MiniLayer | null) {
+		if (!serverState.layerQueue[0]?.layerId) return null
 		if (
-			squadServerNextLayer !== null &&
-			serverState.layerQueue[0]?.layerId &&
-			serverState.layerQueue[0]?.layerId !== squadServerNextLayer.id
+			squadServerNextLayer === null ||
+			(serverState.layerQueue[0]?.layerId && serverState.layerQueue[0]?.layerId !== squadServerNextLayer.id)
 		)
-			SquadServer.setNextLayer(ctx, M.getMiniLayerFromId(serverState.layerQueue[0].layerId))
-	})
+			return M.getMiniLayerFromId(serverState.layerQueue[0].layerId)
+		return null
+	}
+
+	combineLatest([SquadServer.nextLayer.observe(systemCtx).pipe(distinctDeepEquals()), serverState$]).subscribe(
+		async ([squadServerNextLayer, [serverState, ctx]]) => {
+			if (!serverState.layerQueue[0]?.layerId) return
+			if (getNextLayerUpdate(serverState, squadServerNextLayer)) {
+				// get fresh data, lock resource and serverState while we update the layer so we can't run into atomicity bugs
+				const { release, value: squadServerNextLayer } = await SquadServer.nextLayer.get(ctx, { lock: true, ttl: 0 })
+				const db = DB.get(ctx)
+				try {
+					await db.transaction(async (tx) => {
+						const _ctx = { ...ctx, db: tx }
+						const serverState = await getServerState({ lock: true }, _ctx)
+						const newNextLayer = getNextLayerUpdate(serverState, squadServerNextLayer)
+						if (newNextLayer !== null) await SquadServer.setNextLayer(ctx, newNextLayer)
+					})
+				} finally {
+					release()
+				}
+			}
+		}
+	)
 
 	SquadServer.squadEvent$.subscribe(async (event) => {
 		const _log = log.child({ msgEventId: event.eventId })
@@ -76,7 +132,7 @@ export async function setupLayerQueue() {
 				const updatedState = deepClone(serverState)
 				updatedState.layerQueue.shift()
 				updatedState.layerQueueSeqId++
-				await db.update(S.servers).set({ layerQueue: updatedState.layerQueue, layerQueueSeqId: updatedState.layerQueueSeqId })
+				await db.update(Schema.servers).set({ layerQueue: updatedState.layerQueue, layerQueueSeqId: updatedState.layerQueueSeqId })
 				updated = updatedState
 			})
 			if (updated) serverState$.next([updated, ctx])
@@ -92,8 +148,8 @@ export async function setupLayerQueue() {
 }
 
 async function getServerState({ lock }: { lock: boolean }, ctx: C.Db) {
-	const query = ctx.db.select().from(S.servers).where(eq(S.servers.id, CONFIG.serverId))
-	let serverRaw: S.Server | undefined
+	const query = ctx.db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId))
+	let serverRaw: Schema.Server | undefined
 	if (lock) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
 	return M.ServerStateSchema.parse(serverRaw)
@@ -174,7 +230,7 @@ async function startVote(ctx: C.Log & C.Db) {
 			deadline: Date.now() + CONFIG.voteLengthSeconds * 1000,
 			votes: {},
 		}
-		await db.update(S.servers).set({ currentVote }).where(eq(S.servers.id, CONFIG.serverId))
+		await db.update(Schema.servers).set({ currentVote }).where(eq(Schema.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, currentVote }
 	})
 	if (res.code !== 'ok') return res
@@ -218,9 +274,9 @@ async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.
 	const choiceIdx = parseInt(evt.message)
 	await ctx.db.transaction(async (db) => {
 		const [{ currentVote: currentVoteRaw }] = await db
-			.select({ currentVote: S.servers.currentVote })
-			.from(S.servers)
-			.where(eq(S.servers.id, CONFIG.serverId))
+			.select({ currentVote: Schema.servers.currentVote })
+			.from(Schema.servers)
+			.where(eq(Schema.servers.id, CONFIG.serverId))
 			.for('update')
 
 		const currentVote = M.ServerStateSchema.shape.currentVote.parse(currentVoteRaw)
@@ -229,7 +285,7 @@ async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.
 		}
 		const updatedVoteState = deepClone(currentVote)
 		updatedVoteState.votes[evt.playerId] = updatedVoteState.choices[choiceIdx]
-		await db.update(S.servers).set({ currentVote: updatedVoteState }).where(eq(S.servers.id, CONFIG.serverId))
+		await db.update(Schema.servers).set({ currentVote: updatedVoteState }).where(eq(Schema.servers.id, CONFIG.serverId))
 	})
 }
 
@@ -248,9 +304,9 @@ async function handleVoteEnded(endReason: 'timeout' | 'aborted', ctx: C.Log & C.
 		queue[0].layerId = result.choice
 		serverState.layerQueueSeqId++
 		await ctx.db
-			.update(S.servers)
+			.update(Schema.servers)
 			.set({ layerQueueSeqId: serverState.layerQueueSeqId, layerQueue: queue, currentVote })
-			.where(eq(S.servers.id, CONFIG.serverId))
+			.where(eq(Schema.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, serverState }
 	})
 	voteEndTask?.unsubscribe()
@@ -322,13 +378,13 @@ export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.D
 		serverState.layerQueueSeqId++
 		queue.shift()
 		await db
-			.update(S.servers)
+			.update(Schema.servers)
 			.set({
 				layerQueueSeqId: serverState.layerQueueSeqId,
 				layerQueue: queue,
 				currentVote: null,
 			})
-			.where(eq(S.servers.id, CONFIG.serverId))
+			.where(eq(Schema.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, nextLayerId }
 	})
 	if (res.code !== 'ok') {
@@ -345,31 +401,44 @@ export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.D
 }
 
 export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: C.Log & C.Db) {
-	const res = await ctx.db.transaction(async (db) => {
-		const _ctx = { ...ctx, db }
-		const serverState = deepClone(await getServerState({ lock: true }, _ctx))
-		if (update.seqId !== serverState.layerQueueSeqId) {
-			return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
-		}
-
-		if (update.queue[0] && !deepEqual(update.queue[0], serverState.layerQueue[0])) {
-			if (serverState.currentVote) {
-				const res = await handleVoteEnded('aborted', _ctx)
-				if (res.code === 'err:no-vote-active') throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Tried to end inactive vote' })
-				serverState.layerQueueSeqId = res.serverState.layerQueueSeqId
+	const { release, value: nextLayerOnServer } = await SquadServer.nextLayer.get(ctx, { lock: true, ttl: 0 })
+	try {
+		const res = await ctx.db.transaction(async (db) => {
+			const _ctx = { ...ctx, db }
+			const serverState = deepClone(await getServerState({ lock: true }, _ctx))
+			if (update.seqId !== serverState.layerQueueSeqId) {
+				return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 			}
-		}
 
-		serverState.layerQueue = update.queue
-		serverState.layerQueueSeqId++
+			if (update.queue[0] && !deepEqual(update.queue[0], serverState.layerQueue[0])) {
+				if (serverState.currentVote) {
+					const res = await handleVoteEnded('aborted', _ctx)
+					if (res.code === 'err:no-vote-active')
+						throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Tried to end inactive vote' })
+					serverState.layerQueueSeqId = res.serverState.layerQueueSeqId
+				}
+			}
 
-		await db
-			.update(S.servers)
-			.set({ layerQueue: serverState.layerQueue, layerQueueSeqId: serverState.layerQueueSeqId })
-			.where(eq(S.servers.id, CONFIG.serverId))
-		return { code: 'ok' as const, serverState }
-	})
-	if (res.code === 'err:out-of-sync') return res
-	serverState$.next([res.serverState, ctx])
-	return { code: 'ok' as const }
+			serverState.layerQueue = update.queue
+			serverState.layerQueueSeqId++
+			let nextLayerUpdated = false
+			if (serverState.layerQueue[0]?.layerId && nextLayerOnServer?.id !== serverState.layerQueue[0].layerId) {
+				const layer = M.getMiniLayerFromId(serverState.layerQueue[0].layerId)
+				await SquadServer.setNextLayer(_ctx, layer)
+				nextLayerUpdated = true
+			}
+
+			await db
+				.update(Schema.servers)
+				.set({ layerQueue: serverState.layerQueue, layerQueueSeqId: serverState.layerQueueSeqId })
+				.where(eq(Schema.servers.id, CONFIG.serverId))
+			return { code: 'ok' as const, serverState, nextLayerUpdated }
+		})
+
+		if (res.code === 'err:out-of-sync') return res
+		serverState$.next([res.serverState, ctx])
+		return { code: 'ok' as const, nextLayerUpdated: res.nextLayerUpdated }
+	} finally {
+		release()
+	}
 }
