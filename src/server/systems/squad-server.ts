@@ -38,11 +38,11 @@ export function endGame(ctx: C.Log) {
 export async function setupSquadServer() {
 	const log = baseLogger
 	rcon = new Rcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD })
+	await rcon.connect({ log })
 	squadRcon = new SquadRcon(rcon)
 	serverStatus = new AsyncResource('serverStatus', (ctx) => squadRcon.getServerStatus(ctx))
 	currentLayer = new AsyncResource('currentLayer', (ctx) => squadRcon.getCurrentLayer(ctx))
 	nextLayer = new AsyncResource('nextLayer', (ctx) => squadRcon.getNextLayer(ctx))
 	playerList = new AsyncResource('playerList', (ctx) => squadRcon.getListPlayers(ctx))
 	squadList = new AsyncResource('squadList', (ctx) => squadRcon.getSquads(ctx))
-	await rcon.connect({ log })
 }

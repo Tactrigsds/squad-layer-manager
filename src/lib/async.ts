@@ -8,8 +8,8 @@ import {
 	Subscription,
 	asapScheduler,
 	asyncScheduler,
+	concat,
 	distinctUntilChanged,
-	finalize,
 	observeOn,
 	of,
 	startWith,
@@ -240,22 +240,25 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 			})
 		}
 
-		return this.valueSubject.pipe(
-			traceTag(`asyncResourceObserve__${this.name}`),
-			tap({
-				subscribe: () => {
-					this.observeRefs++
-					if (this.observeRefs === 1) setupRefetch()
-				},
-				finalize: () => {
-					this.observeRefs--
-					if (this.observeRefs === 0) {
-						this.refetchSub?.unsubscribe()
-						this.refetchSub = null
-						this.observingTTL = null
-					}
-				},
-			})
+		return concat(
+			this.fetchedValue ? this.fetchedValue : EMPTY,
+			this.valueSubject.pipe(
+				traceTag(`asyncResourceObserve__${this.name}`),
+				tap({
+					subscribe: () => {
+						this.observeRefs++
+						if (this.observeRefs === 1) setupRefetch()
+					},
+					finalize: () => {
+						this.observeRefs--
+						if (this.observeRefs === 0) {
+							this.refetchSub?.unsubscribe()
+							this.refetchSub = null
+							this.observingTTL = null
+						}
+					},
+				})
+			)
 		)
 	}
 }

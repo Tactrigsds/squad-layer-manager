@@ -156,6 +156,11 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			}
 		/>
 	)
+
+	const deleteNode = () => {
+		setNode(() => undefined)
+	}
+
 	if (node.type === 'and' || node.type === 'or') {
 		const childrenLen = node.children.length
 		const children = node.children?.map((child, i) => {
@@ -199,9 +204,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				})
 			)
 		}
-		const deleteNode = () => {
-			setNode(() => undefined)
-		}
 		function changeBlockNodeType(type: M.BlockType) {
 			setNode(
 				produce((draft) => {
@@ -222,6 +224,11 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						options={['and', 'or']}
 						onSelect={(v) => changeBlockNodeType(v as M.BlockType)}
 					/>
+					{props.depth > 0 && (
+						<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
+							<Minus color="hsl(var(--destructive))" />
+						</Button>
+					)}
 				</div>
 				{children!}
 				<span>
@@ -240,21 +247,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</span>
-				{props.depth > 0 && (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button size="icon" variant="outline" className="absolute top-0 right-0 translate-y-[-50%] z-10 rounded-md">
-								...
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem className="bg-destructive" onClick={() => deleteNode()}>
-								delete "{node.type}"
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)}
 			</div>
 		)
 	}
@@ -355,9 +347,9 @@ export function Comparison(props: {
 				}
 				if (column && M.isColType(column, 'float')) {
 					setComp((c) => {
-						return { column: c.column, code: c.code }
+						return { column, code: c.code ?? 'lt' }
 					})
-					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
+					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
 				return setComp(() => ({ column: column as M.LayerColumnKey }))

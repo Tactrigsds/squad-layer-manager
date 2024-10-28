@@ -1,8 +1,9 @@
+import { Link } from 'react-router-dom'
+
 import * as AR from '@/app-routes.ts'
 import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import { Link } from 'react-router-dom'
 
 import { buttonVariants } from './ui/button'
 
@@ -23,8 +24,12 @@ export default function FiltersIndex() {
 							to={AR.link('/filters/:id/edit', [filter.id])}
 						>
 							<span>{filter.name}</span>
-							<span>{' - '}</span>
-							<span className={Typography.Muted}>{filter.description}</span>
+							{filter.description && (
+								<>
+									<span>{' - '}</span>
+									<span className={Typography.Muted}>{filter.description}</span>
+								</>
+							)}
 						</Link>
 					</div>
 				))}

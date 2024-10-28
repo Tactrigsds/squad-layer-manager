@@ -1,5 +1,6 @@
 import { useForm } from '@tanstack/react-form'
 import { zodValidator } from '@tanstack/zod-form-adapter'
+import deepEqual from 'fast-deep-equal'
 import { FormEvent, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -43,7 +44,7 @@ export default function FilterEdit() {
 	// the unedited filter entity from the server
 	const [filterEntity, setFilterEntity] = useState<M.FilterEntity | undefined>(undefined)
 	const [editedFilter, setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
-	const [localFilterModified, setLocalFilterModified] = useState(false)
+	const editedFilterModified = useMemo(() => !deepEqual(filterEntity?.filter, editedFilter), [filterEntity?.filter, editedFilter])
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	const navigate = useNavigate()
 	const onWatchFilterData = useCallback(
@@ -68,7 +69,6 @@ export default function FilterEdit() {
 
 					setFilterEntity(e.mutation.value)
 					setEditedFilter(e.mutation.value.filter as M.EditableFilterNode)
-					setLocalFilterModified(false)
 				}
 			}
 		},
@@ -81,7 +81,7 @@ export default function FilterEdit() {
 	}, [editedFilter])
 	const updateFilterMutation = trpcReact.filters.updateFilter.useMutation()
 	const deleteFilterMutation = trpcReact.filters.deleteFilter.useMutation()
-	const canSaveFilter = !!localFilterModified && !!validFilter && !updateFilterMutation.isPending
+	const canSaveFilter = editedFilterModified && !!validFilter && !updateFilterMutation.isPending
 
 	if (!editedFilter || !filterEntity) {
 		return <FullPageSpinner />

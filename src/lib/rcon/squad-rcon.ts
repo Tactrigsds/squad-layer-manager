@@ -144,6 +144,7 @@ export default class SquadRcon extends EventEmitter {
 	async getNextLayer(ctx: C.Log) {
 		const response = await this.rcon.execute(ctx, 'ShowNextMap')
 		const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/)
+		if (!match) return null
 		const layer = match[2]
 		const factions = match[3]
 		if (!layer || !factions) return null

@@ -60,7 +60,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 		defaultValues: {
 			id: '',
 			name: '',
-			description: '',
+			description: null as string | null,
 		},
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {
@@ -128,6 +128,12 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 											onBlur={field.handleBlur}
 											onChange={(e) => onNameChange(e.target.value)}
 										/>
+										{field.state.meta.errors.length > 0 && (
+											<Alert variant="destructive">
+												<AlertTitle>Errors</AlertTitle>
+												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+											</Alert>
+										)}
 									</div>
 								)
 							}}
@@ -148,6 +154,12 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 											onBlur={field.handleBlur}
 											onChange={(e) => field.handleChange(e.target.value)}
 										/>
+										{field.state.meta.errors.length > 0 && (
+											<Alert variant="destructive">
+												<AlertTitle>Errors</AlertTitle>
+												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+											</Alert>
+										)}
 									</div>
 								)
 							}}
@@ -167,8 +179,14 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 										name={field.name}
 										value={field.state.value}
 										onBlur={field.handleBlur}
-										onChange={(e) => field.handleChange(e.target.value)}
+										onChange={(e) => field.handleChange(e.target.value.trim() || null)}
 									/>
+									{field.state.meta.errors.length > 0 && (
+										<Alert variant="destructive">
+											<AlertTitle>Errors</AlertTitle>
+											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+										</Alert>
+									)}
 								</div>
 							)
 						}}
@@ -189,7 +207,9 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 						)}
 					</div>
 					<div className="flex items-center justify-end">
-						<Button type="submit">Submit</Button>
+						<Button type="submit" disabled={!form.state.isFormValid}>
+							Submit
+						</Button>
 					</div>
 				</form>
 			</DialogContent>

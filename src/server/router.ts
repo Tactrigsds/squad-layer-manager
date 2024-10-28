@@ -35,6 +35,7 @@ export function setupTrpcRouter() {
 			type Columns = (typeof input.columns)[number]
 			const selectObj = input.columns.reduce(
 				(acc, column) => {
+					//@ts-expect-error no idea
 					acc[column] = Schema.layers[column]
 					return acc
 				},

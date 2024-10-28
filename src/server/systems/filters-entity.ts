@@ -1,12 +1,13 @@
+import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
+import { Subject } from 'rxjs'
+import { z } from 'zod'
+
 import { toAsyncGenerator } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
 import { procedure, procedureWithInput, router } from '@/server/trpc'
-import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
-import { Subject } from 'rxjs'
-import { z } from 'zod'
 
 import * as Sessions from './sessions.ts'
 
@@ -61,7 +62,7 @@ export const filtersRouter = router({
 		input,
 		ctx,
 	}): AsyncGenerator<WatchFilterOutput, void, unknown> {
-		const [filterRaw] = await ctx.db.select().from(Schema.filters)
+		const [filterRaw] = await ctx.db.select().from(Schema.filters).where(eq(Schema.filters.id, input))
 		if (!filterRaw) {
 			yield { code: `err:not-found` as const }
 		}
