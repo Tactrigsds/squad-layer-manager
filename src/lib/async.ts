@@ -135,7 +135,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 	constructor(
 		private name: string,
 		private cb: (ctx: Ctx) => Promise<T>,
-		opts?: AsyncResourceOpts
+		opts?: Partial<AsyncResourceOpts>
 	) {
 		//@ts-expect-error init
 		this.opts = opts ?? {}
@@ -245,6 +245,8 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 			this.fetchedValue ? this.fetchedValue : EMPTY,
 			this.valueSubject.pipe(
 				traceTag(`asyncResourceObserve__${this.name}`),
+				observeOn(asapScheduler),
+				distinctDeepEquals(),
 				tap({
 					subscribe: () => {
 						this.observeRefs++

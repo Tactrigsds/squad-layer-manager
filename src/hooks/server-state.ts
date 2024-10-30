@@ -7,7 +7,7 @@ import * as M from '@/models.ts'
 
 export function useServerInfo() {
 	const [serverInfo, setServerInfo] = useState<Squad.ServerStatus | null>(null)
-	trpcReact.pollServerInfo.useSubscription(undefined, {
+	trpcReact.server.pollServerState.useSubscription(undefined, {
 		onData: (data) => {
 			setServerInfo(data)
 		},
@@ -17,13 +17,13 @@ export function useServerInfo() {
 
 export function useNowPlayingState() {
 	const [nowPlaying, setNowPlaying] = React.useState<M.MiniLayer | null>(null)
-	trpcReact.watchNowPlayingState.useSubscription(undefined, { onData: (d) => setNowPlaying(d) })
+	trpcReact.server.watchCurrentLayerState.useSubscription(undefined, { onData: (d) => setNowPlaying(d) })
 	return nowPlaying
 }
 
 export function useNextLayerState() {
 	const [nextLayerState, setNextLayerState] = React.useState<M.MiniLayer | null>(null)
-	trpcReact.watchNextLayerState.useSubscription(undefined, { onData: setNextLayerState })
+	trpcReact.server.watchNextLayerState.useSubscription(undefined, { onData: setNextLayerState })
 	return nextLayerState
 }
 

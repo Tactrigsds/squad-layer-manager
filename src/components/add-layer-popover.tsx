@@ -1,5 +1,7 @@
 import { produce } from 'immer'
+import { Minus } from 'lucide-react'
 import React from 'react'
+import { flushSync } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -15,6 +17,7 @@ import { cn } from '@/lib/utils'
 import * as M from '@/models'
 
 import { Comparison } from './filter-card'
+import TabsList from './ui/tabs-list.tsx'
 
 const DEFAULT_ADD_LAYER_FILTERS = EFB.and([
 	EFB.comp(EFB.eq('Layer')),
@@ -26,7 +29,7 @@ const DEFAULT_ADD_LAYER_FILTERS = EFB.and([
 ]) satisfies Extract<M.EditableFilterNode, { type: 'and' }>
 export default function AddLayerPopover(props: {
 	children: React.ReactNode
-	addLayers: (ids: M.MiniLayer[]) => void
+	addQueueItems: (queueItems: M.LayerQueueItem[]) => void
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 }) {
@@ -38,7 +41,6 @@ export default function AddLayerPopover(props: {
 		: undefined
 	const shouldQuery = filterStates.includes(true)
 	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	//
 	const res = trpcReact.getLayers.useQuery(
 		{
 			filter: validFilter,
@@ -73,26 +75,69 @@ export default function AddLayerPopover(props: {
 	const [height, setHeight] = React.useState<number | null>(null)
 	const contentRef = React.useRef<HTMLDivElement>(null)
 
-	const [layersToAdd, setLayersToAdd] = React.useState<M.MiniLayer[]>([])
-	function toggleLayerAdded(layerToAdd: M.MiniLayer) {
-		setLayersToAdd((prevLayers) => {
-			if (prevLayers.some((l) => l.id === layerToAdd.id)) {
-				return prevLayers.filter((layer) => layer.id !== layerToAdd.id)
-			} else {
-				return [...prevLayers, layerToAdd]
-			}
+	const [selectedLayers, setSelectedLayers] = React.useState<M.MiniLayer[]>([])
+	type AdditionType = 'vote' | 'layers'
+	const [additionType, _setAdditionType] = React.useState<AdditionType>('layers')
+	function setAdditionType(newAdditionType: AdditionType) {
+		if (newAdditionType === 'vote') {
+			setSelectedLayers((prev) => {
+				const seenIds = new Set<string>()
+				return prev.filter((layer) => {
+					if (seenIds.has(layer.id)) {
+						return false
+					}
+					seenIds.add(layer.id)
+					return true
+				})
+			})
+		}
+		_setAdditionType(newAdditionType)
+	}
+	const selectedLayersBoxRef = React.useRef<HTMLDivElement>(null)
+	function addLayer(layer: M.MiniLayer) {
+		flushSync(() => {
+			setSelectedLayers((layers) => {
+				const updated = [...layers, layer]
+				return updated
+			})
 		})
+		selectedLayersBoxRef.current?.scrollTo({ top: selectedLayersBoxRef.current.scrollHeight })
+	}
+	function toggleLayer(layer: M.MiniLayer) {
+		flushSync(() => {
+			setSelectedLayers((layers) => {
+				const hasLayer = layers.includes(layer)
+				return hasLayer ? layers.filter((l) => l !== layer) : [...layers, layer]
+			})
+		})
+		selectedLayersBoxRef.current?.scrollTo({ top: selectedLayersBoxRef.current.scrollHeight })
+	}
+
+	function removeLayer(index: number) {
+		setSelectedLayers((layers) => layers.filter((l, idx) => idx !== index))
 	}
 
 	function reset() {
 		props.onOpenChange(false)
-		setLayersToAdd([])
+		setSelectedLayers([])
 		setFilter(DEFAULT_ADD_LAYER_FILTERS)
 		lastDataRef.current = undefined
 	}
 
-	function addAndClose() {
-		props.addLayers(layersToAdd)
+	const canSubmit = selectedLayers.length > 0
+	function submit() {
+		if (!canSubmit) return
+		if (additionType === 'layers') {
+			const items: M.LayerQueueItem[] = selectedLayers.map((l) => ({ layerId: l.id, generated: false }))
+			props.addQueueItems(items)
+		}
+		if (additionType === 'vote') {
+			const item: M.LayerQueueItem = {
+				vote: { choices: selectedLayers.map((selected) => selected.id), defaultChoice: selectedLayers[0].id },
+				generated: false,
+			}
+			props.addQueueItems([item])
+		}
 		reset()
 	}
 
@@ -150,22 +195,27 @@ export default function AddLayerPopover(props: {
 	return (
 		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent side="bottom" className="w-max">
+			<PopoverContent side="bottom" className="h-[400px] w-max flex flex-col">
 				<div className="flex items-center justify-between">
-					<h3 className={Typography.H3}>Add Layers to Queue</h3>
-					<div className="flex items-center space-x-1">
-						<p className={Typography.P}>{layersToAdd.length} layers selected</p>
-						<Button disabled={layersToAdd.length === 0 || !props.open} variant="secondary" onClick={() => setLayersToAdd([])}>
-							Clear
-						</Button>
-						<Button disabled={layersToAdd.length === 0 || !props.open} onClick={addAndClose}>
-							Add Selected
+					<h3 className={Typography.H3}>Add {additionType === 'vote' ? 'Vote' : 'Layers'} to Queue</h3>
+					<div className="flex items-center space-x-2">
+						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
+						<TabsList
+							options={[
+								{ label: 'Vote', value: 'vote' },
+								{ label: 'Layers', value: 'layers' },
+							]}
+							active={additionType}
+							setActive={setAdditionType}
+						/>
+						<Button disabled={!canSubmit} onClick={() => submit()}>
+							Submit
 						</Button>
 					</div>
 				</div>
-				<div ref={contentRef} style={height ? { height } : {}} className="flex items-center space-x-2 min-h-0">
+				<div ref={contentRef} className="flex items-center space-x-2 min-h-0">
 					{/* ------ filter config ------ */}
-					<div className="grid grid-cols-[auto_min-content_auto] gap-2">
+					<div className="grid grid-cols-[auto_min-content_auto] gap-2 h-full">
 						{filter.children.map((_node, index) => {
 							const setComp = (updateCallback: (prevComp: M.EditableComparison) => M.EditableComparison) => {
 								setFilter(
@@ -180,7 +230,7 @@ export default function AddLayerPopover(props: {
 								if (!filterStates[i]) continue
 								appliedFilters.push(filter.children[i] as M.FilterNode)
 							}
-							const autocompleteFilter = appliedFilters.length === 0 ? undefined : FB.and(...appliedFilters)
+							const autocompleteFilter = appliedFilters.length === 0 ? undefined : FB.and(appliedFilters)
 							const node = _node as Extract<M.EditableFilterNode, { type: 'comp' }>
 							return (
 								<React.Fragment key={index}>
@@ -204,34 +254,55 @@ export default function AddLayerPopover(props: {
 						})}
 					</div>
 					{/* ------ filter results ------ */}
-					<div className="min-w-[300px] h-full">
-						{layersToDisplay && (
-							<ScrollArea className={`h-full min-h-0 max-h-[500px]`}>
-								<div className="h-full min-h-0 text-xs">
-									{!res.isFetchedAfterMount && layersToDisplay.length === 0 && (
-										<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
-									)}
-									{res.isFetchedAfterMount && layersToDisplay.length === 0 && (
-										<div className="p-2 text-sm text-gray-500">No results found</div>
-									)}
-									{layersToDisplay.length > 0 &&
-										layersToDisplay.map((layer, index) => {
-											const layerAdded = layersToAdd.includes(layer)
-											return (
-												<React.Fragment key={layer.id}>
-													{index > 0 && <Separator />}
-													<button
-														className={cn('w-full py-2 text-left', Typography.Small, layerAdded && 'bg-accent')}
-														onClick={() => toggleLayerAdded(layer)}
-													>
-														{Helpers.toShortLayerName(layer)}
-													</button>
-												</React.Fragment>
-											)
-										})}
-								</div>
+					<div className="min-w-[300px] h-full flex space-x-2">
+						<div className="flex flex-col h-full">
+							<h4 className={Typography.H4}>Results</h4>
+							<ScrollArea className="h-full min-h-0 max-h-[500px] text-xs space-y-2">
+								{!res.isFetchedAfterMount && selectedLayers.length === 0 && (
+									<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
+								)}
+								{res.isFetchedAfterMount && layersToDisplay?.length === 0 && (
+									<div className="p-2 text-sm text-gray-500">No results found</div>
+								)}
+								{layersToDisplay &&
+									layersToDisplay?.length > 0 &&
+									layersToDisplay.map((layer, index) => {
+										const layerSelected = selectedLayers.includes(layer)
+										return (
+											<React.Fragment key={layer.id + index.toString()}>
+												{index > 0 && <Separator />}
+												<button
+													className={cn('w-full p-2 text-left data-[selected=true]:bg-accent', Typography.Small)}
+													data-selected={additionType === 'vote' && layerSelected}
+													onClick={() => (additionType === 'layers' ? addLayer(layer) : toggleLayer(layer))}
+												>
+													{Helpers.toShortLayerName(layer)}
+												</button>
+											</React.Fragment>
+										)
+									})}
 							</ScrollArea>
-						)}
+						</div>
+						<div className="flex flex-col h-full">
+							<h4 className={Typography.H4}>Selected</h4>
+							<ScrollArea ref={selectedLayersBoxRef} className="h-full min-h-0 max-h-[500px] text-xs space-y-2">
+								{selectedLayers.length === 0 && <div className="p-2 text-sm text-gray-500">No Layers Selected</div>}
+								{selectedLayers.length > 0 &&
+									selectedLayers.map((layer, index) => {
+										return (
+											<React.Fragment key={layer.id + index.toString()}>
+												{index > 0 && <Separator />}
+												<div className={cn('w-full flex justify-between place-items-center p-2 rounded', Typography.Small)}>
+													{Helpers.toShortLayerName(layer)}
+													<Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => removeLayer(index)}>
+														<Minus color="hsl(var(--destructive))" />
+													</Button>
+												</div>
+											</React.Fragment>
+										)
+									})}
+							</ScrollArea>
+						</div>
 					</div>
 				</div>
 			</PopoverContent>

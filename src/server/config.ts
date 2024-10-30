@@ -1,7 +1,8 @@
-import * as SM from '@/lib/rcon/squad-models.ts'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
+
+import * as SM from '@/lib/rcon/squad-models.ts'
 
 const strNoWhitespace = z.string().regex(/^[^\s]+$/, { message: 'Must not contain whitespace' })
 export const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
@@ -21,6 +22,7 @@ const ConfigSchema = z.object({
 		startVote: CommandConfigSchema,
 		showNext: CommandConfigSchema,
 	}),
+	adminListSources: z.array(SM.AdminListSourceSchema),
 })
 
 export let CONFIG!: Config

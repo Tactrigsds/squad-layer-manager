@@ -1,8 +1,9 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
-import { BehaviorSubject, Subscription, combineLatest, of, timeout } from 'rxjs'
+import { BehaviorSubject, Subscription, asapScheduler, combineLatest, observeOn, of, timeout } from 'rxjs'
 import StringComparison from 'string-comparison'
+import { z } from 'zod'
 
 import { distinctDeepEquals, toAsyncGenerator } from '@/lib/async.ts'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
@@ -16,9 +17,18 @@ import { baseLogger } from '@/server/logger.ts'
 import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 
+import { procedure, procedureWithInput, router } from '../trpc'
+
 let serverState$!: BehaviorSubject<[M.ServerState, C.Log]>
 let voteEndTask: Subscription | null = null
-export async function setupLayerQueue() {
+// -------- generic errors --------
+const GENERIC_ERRORS = {
+	outOfSyncError() {
+		return { code: 'err:out-of-sync' as const, message: 'Server state was out of sync with server. Please retry update.' }
+	},
+}
+
+export async function setupServerstate() {
 	const log = baseLogger.child({ ctx: 'layer-queue' })
 	const systemCtx = { log }
 	const db = DB.get(systemCtx)
@@ -252,24 +262,6 @@ async function startVote(ctx: C.Log & C.Db) {
 	return { code: 'ok' as const }
 }
 
-function getVoteResults(state: M.VoteState) {
-	if (!state.endReason) return null
-	if (state.endReason === 'aborted') return { resultType: 'aborted' as const, choice: state.defaultChoice }
-	if (state.endReason === 'timeout') {
-		const counts: Record<string, number> = {}
-		for (const choice of state.choices) {
-			counts[choice] = 0
-		}
-		for (const choice of Object.values(state.votes)) {
-			counts[choice]++
-		}
-
-		const sortedChoices = Object.entries(counts).sort((a, b) => b[1] - a[1])
-		return { resultType: 'winner' as const, choice: sortedChoices[0][0] }
-	}
-	throw new Error('unhandled endReason')
-}
-
 async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.Log & C.Db) {
 	const choiceIdx = parseInt(evt.message)
 	await ctx.db.transaction(async (db) => {
@@ -288,7 +280,6 @@ async function handleVote(evt: SM.SquadEvent & { type: 'chat-message' }, ctx: C.
 		await db.update(Schema.servers).set({ currentVote: updatedVoteState }).where(eq(Schema.servers.id, CONFIG.serverId))
 	})
 }
-
 async function handleVoteEnded(endReason: 'timeout' | 'aborted', ctx: C.Log & C.Db) {
 	const severState = await ctx.db.transaction(async (db) => {
 		const serverState = deepClone(await getServerState({ lock: true }, { ...ctx, db }))
@@ -298,7 +289,7 @@ async function handleVoteEnded(endReason: 'timeout' | 'aborted', ctx: C.Log & C.
 			return { code: 'err:no-vote-active' as const }
 		}
 		currentVote.endReason = endReason
-		const result = getVoteResults(currentVote)
+		const result = M.getVoteStatus(currentVote)
 		if (result === null) throw new Error('setting endReason should have ended vote')
 		const queue = serverState.layerQueue
 		queue[0].layerId = result.choice
@@ -324,38 +315,56 @@ function canCountVote(ctx: C.Log, choiceIdx: number, playerId: string, voteState
 	return true
 }
 
-export async function* watchServerStateUpdates() {
+async function includeServerStateParts(ctx: C.Db & C.Log, _serverState: M.ServerState): Promise<M.ServerStateWithParts> {
+	const serverState: M.ServerStateWithParts = deepClone(_serverState)
+	if (serverState.currentVote) {
+		const result = M.getVoteStatus(serverState.currentVote)
+		if (result?.code === 'aborted') {
+			serverState.parts ??= {}
+			serverState.parts.users ??= new Map()
+			const [user] = await ctx.db.select().from(Schema.users).where(eq(Schema.users.discordId, result.aborter))
+			if (user) {
+				serverState.parts.users.set(user.discordId, user)
+			} else {
+				ctx.log.warn('cannot find user data for vote aborter: %d', result.aborter)
+			}
+		}
+	}
+	return serverState
+}
+
+async function* watchServerStateUpdates(args: { ctx: C.Log & C.Db }) {
 	for await (const [update] of toAsyncGenerator(serverState$)) {
-		yield update
+		yield await includeServerStateParts(args.ctx, update)
 	}
 }
 
-export async function* pollServerState(ctx: C.Log) {
-	const o = SquadServer.serverStatus.observe(ctx).pipe(distinctDeepEquals())
-	for await (const info of toAsyncGenerator(o)) {
+async function* watchServerState({ ctx }: { ctx: C.Log }) {
+	const serverStatus$ = SquadServer.serverStatus.observe(ctx)
+	for await (const info of toAsyncGenerator(serverStatus$)) {
 		yield info
 	}
 }
 
-export async function* watchCurrentLayerState(ctx: C.Log) {
-	const currentLayer$ = SquadServer.currentLayer.observe(ctx).pipe(distinctDeepEquals())
+async function* watchCurrentLayerState(ctx: C.Log) {
+	const currentLayer$ = SquadServer.currentLayer.observe(ctx)
 	for await (const status of toAsyncGenerator(currentLayer$)) {
 		yield status
 	}
 }
 
-export async function* watchNextLayerState(ctx: C.Log) {
-	const nextLayer$ = SquadServer.nextLayer.observe(ctx).pipe(distinctDeepEquals())
+async function* watchNextLayerState(ctx: C.Log) {
+	const nextLayer$ = SquadServer.nextLayer.observe(ctx)
 	for await (const state of toAsyncGenerator(nextLayer$)) {
 		yield state
 	}
 }
 
-export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.Db) {
+async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.Db) {
 	const res = await ctx.db.transaction(async (db) => {
 		const serverState = deepClone(await getServerState({ lock: true }, { ...ctx, db }))
 		if (state.seqId !== serverState.layerQueueSeqId) {
-			return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
+			return GENERIC_ERRORS.outOfSyncError()
 		}
 		const nextQueueItem = serverState.layerQueue[0]
 		if (!nextQueueItem) {
@@ -400,45 +409,111 @@ export async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.D
 	}
 }
 
-export async function processLayerQueueUpdate(update: M.LayerQueueUpdate, ctx: C.Log & C.Db) {
+async function abortVote({ ctx, input }: { ctx: C.Log & C.Db; input: { seqId: number } }) {
+	const res = await ctx.db.transaction(async (tx) => {
+		const _ctx = { ...ctx, db: tx }
+		const serverState = deepClone(await getServerState({ lock: true }, _ctx))
+		if (input.seqId !== serverState.layerQueueSeqId) return GENERIC_ERRORS.outOfSyncError()
+		if (!serverState.currentVote) {
+			return { code: 'err:no-vote-set' as const }
+		}
+		let result = M.getVoteStatus(serverState.currentVote)
+		if (result) {
+			return { code: 'err:vote-already-resolved' as const }
+		}
+		serverState.currentVote!.endReason = 'aborted'
+		result = M.getVoteStatus(serverState.currentVote)
+		serverState.layerQueue[0].layerId = result!.choice
+		serverState.layerQueueSeqId++
+		await tx.update(Schema.servers).set(serverState)
+		return { code: 'ok' as const, serverState }
+	})
+	if (res.code !== 'ok') return res
+	SquadServer.warn
+	serverState$.next([res.serverState, ctx])
+	return res
+}
+
+async function restartVote({ ctx, input }: { ctx: C.Log & C.Db; input: { seqId: number } }) {
+	const res = await ctx.db.transaction(async (tx) => {
+		const _ctx = { ...ctx, db: tx }
+		const serverState = deepClone(await getServerState({ lock: true }, _ctx))
+		if (input.seqId !== serverState.layerQueueSeqId) {
+			return GENERIC_ERRORS.outOfSyncError()
+		}
+		if (!serverState.currentVote) {
+			return { code: 'err:no-vote-set' as const }
+		}
+
+		delete serverState.currentVote.aborter
+		delete serverState.currentVote.endReason
+		serverState.currentVote.votes = {}
+		serverState.currentVote.deadline = Date.now() + CONFIG.voteLengthSeconds * 1000
+		serverState.layerQueueSeqId++
+		await tx.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, serverState.id))
+		return { code: 'ok' as const, serverState }
+	})
+	if (res.code !== 'ok') return
+	serverState$.next([res.serverState, ctx])
+	return res
+}
+
+async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db }) {
+	const { input, ctx } = args
 	const { release, value: nextLayerOnServer } = await SquadServer.nextLayer.get(ctx, { lock: true, ttl: 0 })
 	try {
 		const res = await ctx.db.transaction(async (db) => {
 			const _ctx = { ...ctx, db }
 			const serverState = deepClone(await getServerState({ lock: true }, _ctx))
-			if (update.seqId !== serverState.layerQueueSeqId) {
+			if (input.seqId !== serverState.layerQueueSeqId) {
 				return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 			}
 
-			if (update.queue[0] && !deepEqual(update.queue[0], serverState.layerQueue[0])) {
-				if (serverState.currentVote) {
-					const res = await handleVoteEnded('aborted', _ctx)
-					if (res.code === 'err:no-vote-active')
-						throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Tried to end inactive vote' })
-					serverState.layerQueueSeqId = res.serverState.layerQueueSeqId
+			if (input.queue[0] && !deepEqual(input.queue[0], serverState.layerQueue[0])) {
+				if (serverState.currentVote)
+					return {
+						code: 'err:next-layer-changed-while-vote-active' as const,
+					}
+
+				if (input.queue[0].vote) {
+					serverState.currentVote = {
+						choices: input.queue[0].vote.choices,
+						defaultChoice: input.queue[0].vote.defaultChoice,
+						deadline: Date.now() + CONFIG.voteLengthSeconds * 1000,
+						votes: {},
+					}
 				}
 			}
 
-			serverState.layerQueue = update.queue
+			serverState.layerQueue = input.queue
 			serverState.layerQueueSeqId++
 			let nextLayerUpdated = false
-			if (serverState.layerQueue[0]?.layerId && nextLayerOnServer?.id !== serverState.layerQueue[0].layerId) {
-				const layer = M.getMiniLayerFromId(serverState.layerQueue[0].layerId)
+			// we're setting the default choice of a layer temporarily if
+			const nextLayerId = serverState.layerQueue[0]?.layerId
+			if (nextLayerId && nextLayerOnServer?.id !== nextLayerId) {
+				const layer = M.getMiniLayerFromId(nextLayerId)
 				await SquadServer.setNextLayer(_ctx, layer)
 				nextLayerUpdated = true
 			}
 
-			await db
-				.update(Schema.servers)
-				.set({ layerQueue: serverState.layerQueue, layerQueueSeqId: serverState.layerQueueSeqId })
-				.where(eq(Schema.servers.id, CONFIG.serverId))
+			await db.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
 			return { code: 'ok' as const, serverState, nextLayerUpdated }
 		})
 
-		if (res.code === 'err:out-of-sync') return res
+		if (res.code !== 'ok') return res
 		serverState$.next([res.serverState, ctx])
 		return { code: 'ok' as const, nextLayerUpdated: res.nextLayerUpdated }
 	} finally {
 		release()
 	}
 }
+
+export const serverRouter = router({
+	watchServerUpdates: procedure.subscription(watchServerStateUpdates),
+	updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(processLayerQueueUpdate),
+	restartVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(restartVote),
+	abortVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(abortVote),
+	watchServerstate: procedure.subscription(watchServerState),
+	watchCurrentLayerState: procedure.subscription(({ ctx }) => watchCurrentLayerState(ctx)),
+	watchNextLayerState: procedure.subscription(({ ctx }) => watchNextLayerState(ctx)),
+})

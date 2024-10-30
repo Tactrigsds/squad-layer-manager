@@ -8,10 +8,10 @@
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
 		"preview": "vite preview",
-		"server": "tsx --tsconfig tsconfig.node.json src/server/server.ts",
-		"server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/server.ts",
+		"server": "tsx --tsconfig tsconfig.node.json src/server/main.ts",
+		"server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/main.ts",
 		"__comment__": "use chrome node devtools with below script",
-		"server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/server.ts",
+		"server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/main.ts",
 		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts"
 	},
 	"dependencies": {
@@ -70,6 +70,7 @@
 		"ace-builds": "^1.36.2",
 		"aria-hidden": "^1.2.4",
 		"async-mutex": "^0.5.0",
+		"basic-ftp": "^5.0.5",
 		"cache-manager": "^6.1.1",
 		"class-variance-authority": "^0.7.0",
 		"clsx": "^2.1.1",

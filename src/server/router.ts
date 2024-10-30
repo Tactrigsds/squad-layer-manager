@@ -6,8 +6,8 @@ import * as M from '@/models.ts'
 import { mockSquadRouter as mockSquadServerRouter, setupMockSquadRouter } from './mock-squad-router.ts'
 import * as Schema from './schema.ts'
 import { filtersRouter } from './systems/filters-entity.ts'
-import * as LQ from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
+import * as ServerState from './systems/server.ts'
 import { procedure, procedureWithInput, router } from './trpc.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
@@ -24,7 +24,7 @@ export function setupTrpcRouter() {
 				.leftJoin(Schema.users, eq(Schema.sessions.userId, Schema.users.discordId))
 			return row.users
 		}),
-		// could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
+		// TODO could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
 		getUniqueValues: procedureWithInput(
 			z.object({
 				columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
@@ -52,14 +52,7 @@ export function setupTrpcRouter() {
 			return rows
 		}),
 		getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
-		watchServerUpdates: procedure.subscription(LQ.watchServerStateUpdates),
-		updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(async ({ input, ctx }) => {
-			return LQ.processLayerQueueUpdate(input, ctx)
-		}),
-		pollServerInfo: procedure.subscription(({ ctx }) => LQ.pollServerState(ctx)),
-		watchNowPlayingState: procedure.subscription(({ ctx }) => LQ.watchCurrentLayerState(ctx)),
-		watchNextLayerState: procedure.subscription(({ ctx }) => LQ.watchNextLayerState(ctx)),
-		mockSquadServer: mockSquadServerRouter,
+		server: ServerState.serverStateRouter,
 		filters: filtersRouter,
 	})
 	appRouter = _appRouter

@@ -132,21 +132,7 @@ export const SquadEventSchema = z.discriminatedUnion('type', [
 ])
 
 export type SquadEvent = z.infer<typeof SquadEventSchema>
-
-export interface ISquadRcon {
-	connect(): Promise<void>
-	disconnect(): Promise<void>
-	getCurrentLayer(): Promise<M.MiniLayer>
-	getNextLayer(): Promise<M.MiniLayer | null>
-	getListPlayers(): Promise<Player[]>
-	getPlayerQueueLength(): Promise<number>
-	getSquads(): Promise<Squad[]>
-	broadcast(message: string): Promise<void>
-	setFogOfWar(mode: string): Promise<void>
-	warn(anyID: string, message: string): Promise<void>
-	ban(anyID: string, banLength: string, message: string): Promise<void>
-	switchTeam(anyID: string | number): Promise<void>
-	leaveSquad(playerId: number): Promise<void>
-	setNextLayer(options: M.AdminSetNextLayerOptions): Promise<void>
-	endGame(): Promise<void>
-}
+export const AdminListSourceSchema = z.object({ type: z.enum(['remote', 'local', 'ftp']), source: z.string().url() })
+export type AdminListSource = z.infer<typeof AdminListSourceSchema>
+export type SquadAdminPerms = { [key: string]: boolean }
+export type SquadAdmins = { [s64Id: string]: SquadAdminPerms }

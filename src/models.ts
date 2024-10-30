@@ -1,8 +1,10 @@
 import * as z from 'zod'
 
+import CONFIG from '../config.json'
 import LayerComponents from './assets/layer-components.json'
 import * as C from './lib/constants'
 import { reverseMapping } from './lib/object'
+import { assertNever } from './lib/typeGuards'
 import type * as Schema from './server/schema'
 
 export const getLayerKey = (layer: Layer) =>
@@ -425,12 +427,12 @@ export const MiniLayerSchema = z.object({
 
 export type MiniLayer = z.infer<typeof MiniLayerSchema>
 
-export type LayerVote = unknown
-
 export type MiniUser = {
-	steamId: bigint
 	username: string
+	discordId: string
 }
+
+export type LayerVote = unknown
 
 export const FilterUpdateSchema = z.object({
 	name: z.string().trim().min(3).max(128),
@@ -475,9 +477,31 @@ export const VoteStateSchema = z.object({
 	votes: z.record(z.string(), z.string()),
 	deadline: z.number(),
 	endReason: z.enum(['timeout', 'aborted']).optional(),
+	aborter: z.bigint().optional(),
 })
 
 export type VoteState = z.infer<typeof VoteStateSchema>
+
+export function getVoteStatus(state: VoteState) {
+	if (!state.endReason) return { code: 'in-progress' as const }
+	if (state.endReason === 'aborted') return { code: 'aborted' as const, choice: state.defaultChoice, aborter: state.aborter! }
+	if (state.endReason === 'timeout') {
+		if (Object.values(state.votes).length < CONFIG.minValidVotes) {
+			return { code: 'insufficient-votes' as const, choice: state.defaultChoice }
+		}
+		const counts: Record<string, number> = {}
+		for (const choice of state.choices) {
+			counts[choice] = 0
+		}
+		for (const choice of Object.values(state.votes)) {
+			counts[choice]++
+		}
+
+		const sortedChoices = Object.entries(counts).sort((a, b) => b[1] - a[1])
+		return { code: 'winner' as const, choice: sortedChoices[0][0] }
+	}
+	assertNever(state.endReason)
+}
 
 export const ServerStateSchema = z.object({
 	id: z.string().min(1).max(256),
@@ -490,7 +514,8 @@ export const ServerStateSchema = z.object({
 }) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
-
+export type UserParts = { users?: Map<bigint, Schema.User> }
+export type ServerStateWithParts = ServerState & { parts?: UserParts }
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated
