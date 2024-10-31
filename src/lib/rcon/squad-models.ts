@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { parsedNum } from '@/lib/zod.ts'
+import { parsedBigint, parsedNum } from '@/lib/zod.ts'
 import * as M from '@/models'
 
 export const ServerRawInfoSchema = z.object({
@@ -30,6 +30,7 @@ export type ServerStatus = {
 
 export const PlayerSchema = z.object({
 	playerID: z.number(),
+	steamID: parsedBigint(),
 	name: z.string().min(1),
 	teamID: z.number(),
 	squadID: z.number().optional(),
@@ -135,4 +136,4 @@ export type SquadEvent = z.infer<typeof SquadEventSchema>
 export const AdminListSourceSchema = z.object({ type: z.enum(['remote', 'local', 'ftp']), source: z.string().url() })
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type SquadAdminPerms = { [key: string]: boolean }
-export type SquadAdmins = { [s64Id: string]: SquadAdminPerms }
+export type SquadAdmins = Map<bigint, Record<string, boolean>>

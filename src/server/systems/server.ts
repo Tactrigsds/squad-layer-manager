@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
-import { BehaviorSubject, Subscription, asapScheduler, combineLatest, observeOn, of, timeout } from 'rxjs'
+import { BehaviorSubject, Subscription, combineLatest, of, timeout } from 'rxjs'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
@@ -429,7 +429,7 @@ async function abortVote({ ctx, input }: { ctx: C.Log & C.Db; input: { seqId: nu
 		return { code: 'ok' as const, serverState }
 	})
 	if (res.code !== 'ok') return res
-	SquadServer.warn
+	SquadServer.broadcast(ctx, 'Next Layer Vote was aborted.')
 	serverState$.next([res.serverState, ctx])
 	return res
 }
@@ -469,6 +469,7 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 				return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 			}
 
+			let voteStarted = false
 			if (input.queue[0] && !deepEqual(input.queue[0], serverState.layerQueue[0])) {
 				if (serverState.currentVote)
 					return {
@@ -482,27 +483,28 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 						deadline: Date.now() + CONFIG.voteLengthSeconds * 1000,
 						votes: {},
 					}
+					voteStarted = true
 				}
 			}
 
 			serverState.layerQueue = input.queue
 			serverState.layerQueueSeqId++
-			let nextLayerUpdated = false
+			let updatedNextLayerId: string | null = null
 			// we're setting the default choice of a layer temporarily if
 			const nextLayerId = serverState.layerQueue[0]?.layerId
 			if (nextLayerId && nextLayerOnServer?.id !== nextLayerId) {
-				const layer = M.getMiniLayerFromId(nextLayerId)
-				await SquadServer.setNextLayer(_ctx, layer)
-				nextLayerUpdated = true
+				updatedNextLayerId = nextLayerId
 			}
 
 			await db.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
-			return { code: 'ok' as const, serverState, nextLayerUpdated }
+			return { code: 'ok' as const, serverState, updatedNextLayerId, voteStarted }
 		})
 
 		if (res.code !== 'ok') return res
+		SquadServer.broadcast(ctx, 'Unknown Username')
+		if (res.updatedNextLayerId !== null) await SquadServer.setNextLayer(ctx, M.getMiniLayerFromId(res.updatedNextLayerId))
 		serverState$.next([res.serverState, ctx])
-		return { code: 'ok' as const, nextLayerUpdated: res.nextLayerUpdated }
+		return res
 	} finally {
 		release()
 	}

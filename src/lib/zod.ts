@@ -10,3 +10,11 @@ export function parsedNum<T extends z.ZodTypeAny>(type: 'float' | 'int', schema?
 	}
 	return base
 }
+
+export function parsedBigint() {
+	const base = z
+		.string()
+		.transform((val) => BigInt(val))
+		.pipe(z.bigint())
+	return base
+}

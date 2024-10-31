@@ -11,7 +11,7 @@ import WritableBuffer from './writable-buffer.ts'
 export default async function fetchAdminLists(ctx: C.Log, sources: SM.AdminListSource[]) {
 	ctx.log.debug(`Fetching Admin Lists...`)
 	const groups: { [key: string]: string[] } = {}
-	const admins: SM.SquadAdmins = {}
+	const admins: SM.SquadAdmins = new Map()
 
 	for (const [idx, source] of sources.entries()) {
 		let data = ''
@@ -67,13 +67,14 @@ export default async function fetchAdminLists(ctx: C.Log, sources: SM.AdminListS
 				const perms: SM.SquadAdminPerms = {}
 				for (const groupPerm of group) perms[groupPerm.toLowerCase()] = true
 
-				const adminID = m.groups!.adminID
-				if (adminID in admins) {
-					admins[adminID] = Object.assign(admins[adminID], perms)
-					ctx.log.debug(`Merged duplicate Admin ${adminID} to ${Object.keys(admins[adminID])}`)
+				const adminID = BigInt(m.groups!.adminID)
+				if (admins.has(adminID)) {
+					const existingPerms = admins.get(adminID)!
+					admins.set(adminID, Object.assign(existingPerms, perms))
+					ctx.log.debug(`Merged duplicate Admin ${adminID} to ${Object.keys(admins.get(adminID)!)}`)
 				} else {
-					admins[adminID] = Object.assign(perms)
-					ctx.log.debug(`Added Admin ${adminID} with ${Object.keys(admins[adminID])}`)
+					admins.set(adminID, perms)
+					ctx.log.debug(`Added Admin ${adminID} with ${Object.keys(perms)}`)
 				}
 			} catch (error) {
 				ctx.log.error(`Error parsing admin group ${m.groups!.groupID} from admin list: ${source.source}`, error)

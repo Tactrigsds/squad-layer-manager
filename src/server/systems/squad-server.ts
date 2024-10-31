@@ -33,8 +33,15 @@ export function warn(ctx: C.Log, anyId: string, message: string) {
 }
 
 export async function warnAllAdmins(ctx: C.Log, message: string) {
-	const { value: _admins } = await adminList.get(ctx)
-	const {value: players
+	const [{ value: admins }, { value: players }] = await Promise.all([adminList.get(ctx), playerList.get(ctx)])
+	const ops: Promise<void>[] = []
+	for (const player of players) {
+		if (admins.has(player.steamID)) {
+			ops.push(warn(ctx, player.steamID.toString(), message))
+			break
+		}
+	}
+	await Promise.all(ops)
 }
 
 export function broadcast(ctx: C.Log, message: string) {
@@ -50,6 +57,12 @@ export async function setupSquadServer() {
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: 1000 * 60 * 60 })
 	// initialize cache
 	adminList.get({ log })
+	setInterval(
+		() => {
+			adminList.get({ log }, { ttl: 0 })
+		},
+		1000 * 60 * 60
+	)
 	await rcon.connect({ log })
 	squadRcon = new SquadRcon(rcon)
 	serverStatus = new AsyncResource('serverStatus', (ctx) => squadRcon.getServerStatus(ctx))
