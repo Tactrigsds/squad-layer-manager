@@ -12,6 +12,7 @@ import { Server } from 'socket.io'
 
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
+import { assertNever } from '@/lib/typeGuards.ts'
 
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -26,6 +27,7 @@ import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
 
 // --------  system initialization --------
+// TODO nice graceful shutdowns
 setupEnv()
 await setupLogger()
 await Config.setupConfig()
@@ -137,14 +139,18 @@ async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 	res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'require-corp')
 	const authRes = await C.createAuthorizedRequestContext(req, res)
 	switch (authRes.code) {
+		case 'ok':
+			break
 		case 'unauthorized:no-cookie':
 		case 'unauthorized:no-session':
 		case 'unauthorized:invalid-session':
 			return Sessions.clearInvalidSession({ req, res })
+		default:
+			assertNever(authRes)
 	}
 
 	// --------  dev server proxy setup --------
-	// when running in dev mode, we're proxying all public routes through to fastify so we an do auth and stuff. non-proxied routes will just return the dev index.html, so we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
+	// When running in dev mode, we're proxying all public routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
 	if (ENV.NODE_ENV === 'development') {
 		const htmlRes = await fetch(`${ENV.ORIGIN}/idk`)
 		return res.type('text/html').send(htmlRes.body)

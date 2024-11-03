@@ -22,3 +22,11 @@ export function exclude<T extends object, K extends keyof T>(obj: T, keys: K[]):
 	}
 	return result
 }
+
+export function selectProps<T extends object, K extends keyof T>(obj: T, selected: [K, ...K[]]) {
+	const result: Partial<T> = {}
+	for (const key of selected) {
+		result[key] = obj[key]
+	}
+	return result as Pick<T, (typeof selected)[number]>
+}

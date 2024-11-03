@@ -1,10 +1,9 @@
 import * as z from 'zod'
 
-import CONFIG from '../config.json'
 import LayerComponents from './assets/layer-components.json'
 import * as C from './lib/constants'
-import { reverseMapping } from './lib/object'
-import { assertNever } from './lib/typeGuards'
+import { reverseMapping, selectProps } from './lib/object'
+import { Parts } from './lib/types'
 import type * as Schema from './server/schema'
 
 export const getLayerKey = (layer: Layer) =>
@@ -113,6 +112,18 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		SubFac_2: subfac2,
 	}
 }
+
+function validateId(id: string) {
+	try {
+		getMiniLayerFromId(id)
+		return true
+	} catch {
+		return false
+	}
+}
+
+export const LayerIdSchema = z.string().refine(validateId, { message: 'Is valid layer id' })
+export type LayerId = z.infer<typeof LayerIdSchema>
 
 function parseFactionPart(part: string): [string, C.Subfaction | null] {
 	const [faction, subfacAbbr] = part.split('-')
@@ -394,12 +405,12 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	}) as z.ZodType<FilterNode>
 
 export const LayerVoteSchema = z.object({
-	defaultChoice: z.string(),
-	choices: z.array(z.string()),
+	defaultChoice: LayerIdSchema,
+	choices: z.array(LayerIdSchema),
 })
 
 export const LayerQueueItemSchema = z.object({
-	layerId: z.string().optional(),
+	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
 	generated: z.boolean(),
 })
@@ -411,7 +422,7 @@ export type LayerQueueItem = z.infer<typeof LayerQueueItemSchema>
 // doing this because Omit<> sucks to work with
 
 export const MiniLayerSchema = z.object({
-	id: z.string(),
+	id: LayerIdSchema,
 	Level: z.string(),
 	Layer: z.string(),
 	Gamemode: z.string(),
@@ -470,38 +481,50 @@ export const QueueUpdateSchema = z.object({
 	queue: LayerQueueSchema,
 })
 export type LayerQueueUpdate = z.infer<typeof QueueUpdateSchema>
-
-export const VoteStateSchema = z.object({
-	choices: z.array(z.string()),
-	defaultChoice: z.string(),
-	votes: z.record(z.string(), z.string()),
+const TallyProperties = {
+	votes: z.record(z.string(), LayerIdSchema),
 	deadline: z.number(),
-	endReason: z.enum(['timeout', 'aborted']).optional(),
-	aborter: z.bigint().optional(),
-})
+	defaultChoice: LayerIdSchema,
+	choices: z.array(LayerIdSchema),
+}
+export const VoteStateSchema = z.discriminatedUnion('code', [
+	z.object({ code: z.literal('ready') }),
+	z.object({
+		code: z.literal('in-progress'),
+		...TallyProperties,
+	}),
+	z.object({
+		code: z.literal('ended:winner'),
+		winner: LayerIdSchema,
+		...TallyProperties,
+	}),
+	z.object({
+		code: z.literal('ended:aborted'),
+		abortReason: z.enum(['timeout:insufficient-votes', 'manual']),
+		aborter: z.bigint().optional(),
+		...TallyProperties,
+	}),
+])
+
+export function tallyVotes(currentVote: Extract<VoteState, { code: 'in-progress' }>) {
+	if (Object.values(currentVote.votes).length == 0) throw new Error('No votes to tally')
+	const tally = new Map<string, number>()
+	let maxVotes: string | null = null
+	for (const choice of Object.values(currentVote.votes)) {
+		tally.set(choice, (tally.get(choice) || 0) + 1)
+
+		if (maxVotes === null || tally.get(choice)! > tally.get(maxVotes)!) {
+			maxVotes = choice
+		}
+	}
+	return { choice: maxVotes!, votes: tally.get(maxVotes!)! }
+}
+
+export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready' }>) {
+	return selectProps(state, ['votes', 'deadline', 'choices', 'defaultChoice'])
+}
 
 export type VoteState = z.infer<typeof VoteStateSchema>
-
-export function getVoteStatus(state: VoteState) {
-	if (!state.endReason) return { code: 'in-progress' as const }
-	if (state.endReason === 'aborted') return { code: 'aborted' as const, choice: state.defaultChoice, aborter: state.aborter! }
-	if (state.endReason === 'timeout') {
-		if (Object.values(state.votes).length < CONFIG.minValidVotes) {
-			return { code: 'insufficient-votes' as const, choice: state.defaultChoice }
-		}
-		const counts: Record<string, number> = {}
-		for (const choice of state.choices) {
-			counts[choice] = 0
-		}
-		for (const choice of Object.values(state.votes)) {
-			counts[choice]++
-		}
-
-		const sortedChoices = Object.entries(counts).sort((a, b) => b[1] - a[1])
-		return { code: 'winner' as const, choice: sortedChoices[0][0] }
-	}
-	assertNever(state.endReason)
-}
 
 export const ServerStateSchema = z.object({
 	id: z.string().min(1).max(256),
@@ -514,8 +537,7 @@ export const ServerStateSchema = z.object({
 }) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
-export type UserParts = { users?: Map<bigint, Schema.User> }
-export type ServerStateWithParts = ServerState & { parts?: UserParts }
+export type UserPart = Parts<{ users?: Schema.User[] }>
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

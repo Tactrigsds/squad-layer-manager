@@ -5,9 +5,9 @@ import type * as Squad from '@/lib/rcon/squad-models'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'
 
-export function useServerInfo() {
+export function useSquadServerStatus() {
 	const [serverInfo, setServerInfo] = useState<Squad.ServerStatus | null>(null)
-	trpcReact.server.pollServerState.useSubscription(undefined, {
+	trpcReact.squadServer.watchServerStatus.useSubscription(undefined, {
 		onData: (data) => {
 			setServerInfo(data)
 		},

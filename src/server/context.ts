@@ -14,8 +14,16 @@ import * as Sessions from './systems/sessions.ts'
 export type Log = {
 	log: Logger
 }
-export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
-	return { ...ctx, log: ctx.log.child(fields) }
+export function includeLogProperties<T extends Log & Partial<Db>>(ctx: T, fields: Record<string, any>): T {
+	const log = ctx.log.child(fields)
+	if (ctx.db) {
+		//@ts-expect-error monkey patching
+		ctx.db.session.logger.logQuery = function logQuery(query: string, params: unknown[]) {
+			if (log.level === 'trace') ctx.log.trace('DB: %s: %o', params)
+			else log.debug('DB: %s, %o', query, params)
+		}
+	}
+	return { ...ctx, log }
 }
 
 export type Db = {

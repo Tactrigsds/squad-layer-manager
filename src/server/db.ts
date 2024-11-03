@@ -17,7 +17,7 @@ export function setupDatabase() {
 }
 
 export function get(ctx: C.Log) {
-	return drizzle(pool, {
+	const db = drizzle(pool, {
 		logger: {
 			logQuery(query: string, params: unknown[]) {
 				if (ctx.log.level === 'trace') ctx.log.trace('DB: %s: %o', params)
@@ -25,6 +25,7 @@ export function get(ctx: C.Log) {
 			},
 		},
 	})
+	return db
 }
 
 export type Db = ReturnType<typeof get>

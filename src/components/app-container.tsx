@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
-import { useNextLayerState, useNowPlayingState, useServerInfo } from '@/hooks/server-state.ts'
+import { useNextLayerState, useNowPlayingState, useSquadServerStatus } from '@/hooks/server-state.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
-	const serverInfo = useServerInfo()
+	const serverInfo = useSquadServerStatus()
 	const currentLayer = useNowPlayingState()
 	const nextLayer = useNextLayerState()
 	const userRes = trpcReact.getLoggedInUser.useQuery()

@@ -1,6 +1,6 @@
 import { Subject } from 'rxjs'
 
-import { AsyncResource } from '@/lib/async'
+import { AsyncResource, toAsyncGenerator } from '@/lib/async'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import Rcon from '@/lib/rcon/rcon-core'
 import * as SM from '@/lib/rcon/squad-models'
@@ -11,6 +11,7 @@ import * as C from '@/server/context.ts'
 
 import { ENV } from '../env'
 import { baseLogger } from '../logger'
+import { procedure, router } from '../trpc'
 
 export let rcon!: Rcon
 let squadRcon!: SquadRcon
@@ -51,18 +52,23 @@ export function endGame(ctx: C.Log) {
 	return squadRcon.endGame(ctx)
 }
 
+async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
+	for await (const info of toAsyncGenerator(serverStatus.observe(ctx))) {
+		yield info
+	}
+}
+
 export async function setupSquadServer() {
 	const log = baseLogger
 	rcon = new Rcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD })
-	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: 1000 * 60 * 60 })
+	const adminListTTL = 1000 * 60 * 60
+	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	// initialize cache
 	adminList.get({ log })
-	setInterval(
-		() => {
-			adminList.get({ log }, { ttl: 0 })
-		},
-		1000 * 60 * 60
-	)
+	setInterval(() => {
+		adminList.get({ log }, { ttl: 0 })
+	}, adminListTTL)
+
 	await rcon.connect({ log })
 	squadRcon = new SquadRcon(rcon)
 	serverStatus = new AsyncResource('serverStatus', (ctx) => squadRcon.getServerStatus(ctx))
@@ -71,3 +77,7 @@ export async function setupSquadServer() {
 	playerList = new AsyncResource('playerList', (ctx) => squadRcon.getListPlayers(ctx))
 	squadList = new AsyncResource('squadList', (ctx) => squadRcon.getSquads(ctx))
 }
+
+export const squadServerRouter = router({
+	watchServerStatus: procedure.subscription(watchServerStatus),
+})

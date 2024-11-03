@@ -8,9 +8,8 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip } from '@/components/ui/tooltip.tsx'
-import { useNowPlayingState as useCurrentLayer } from '@/hooks/server.ts'
+import { useNowPlayingState as useCurrentLayer } from '@/hooks/server-state.ts'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
@@ -22,6 +21,7 @@ import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { ScrollArea } from './ui/scroll-area.tsx'
 import { Separator } from './ui/separator'
 import { TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
@@ -31,9 +31,8 @@ export default function LayerQueue() {
 	const [layerQueue, setLayerQueue] = useState(null as null | M.LayerQueue)
 	const currentLayer = useCurrentLayer()
 	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
-	// TODO could use linked list model for editing so we can effectively diff it
 
-	const [serverState, setServerState] = useState(null as null | M.ServerStateWithParts)
+	const [serverState, setServerState] = useState(null as null | (M.ServerState & M.UserPart))
 	const layerQueueSeqIdRef = useRef(-1)
 	const poolFilterEdited = !!serverState && serverState.poolFilterId !== poolFilterId
 	function updatePoolFilter(filterId: M.ServerState['poolFilterId']) {
@@ -43,7 +42,7 @@ export default function LayerQueue() {
 		serverState && layerQueue ? (differ.diff(serverState.layerQueue, layerQueue) as diffpatch.ArrayDelta) : undefined
 	const editing = !!queueDiff
 
-	trpcReact.server.watchServerUpdates.useSubscription(undefined, {
+	trpcReact.server.watchServerState.useSubscription(undefined, {
 		onData: (data) => {
 			setLayerQueue(data.layerQueue)
 			setPoolFilterId(data.poolFilterId)
@@ -51,6 +50,7 @@ export default function LayerQueue() {
 			layerQueueSeqIdRef.current = data.layerQueueSeqId
 		},
 	})
+
 	const toaster = useToast()
 	const updateQueueMutation = trpcReact.server.updateQueue.useMutation()
 	async function saveLayers() {
@@ -75,6 +75,7 @@ export default function LayerQueue() {
 			return
 		}
 	}
+
 	async function restartVote() {}
 
 	function reset() {
@@ -139,7 +140,7 @@ export default function LayerQueue() {
 		<div className="contianer mx-auto py-10 grid place-items-center">
 			<LayerQueueContext.Provider value={{}}>
 				<span className="flex space-x-4">
-					{serverState?.currentVote && <VoteState state={serverState.currentVote} userParts={serverState.parts} />}
+					{serverState?.currentVote && <VoteState state={serverState.currentVote} parts={serverState.parts} />}
 					<DndContext onDragEnd={handleDragEnd}>
 						<Card className="flex flex-col w-max">
 							<div className="p-6 w-full flex justify-between">
@@ -246,18 +247,22 @@ export default function LayerQueue() {
 	)
 }
 
-function VoteState(props: { state: M.VoteState; userParts?: M.UserParts; rerunVote: () => void; abortVote: () => void }) {
-	const result = M.getVoteStatus(props.state)
-	let status: React.ReactNode
-	if (result.code === 'in-progress') {
-		status = <span>In Progress</span>
-	} else if (result.code === 'winner') {
-		status = <span>winner: {Helpers.toShortLayerNameFromId(result.choice)}</span>
-	} else if (result.code === 'aborted') {
-		const user = props.userParts!.users!.get(result.aborter)!
-		status = <span>aborted by {user.username}</span>
-	} else if (result.code === 'insufficient-votes') {
-		status = <span>insufficient votes</span>
+function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote: () => void } & M.UserPart) {
+	let node: React.ReactNode
+	const state = props.state
+	if (state.code === 'in-progress') {
+		node = <span>In Progress</span>
+	} else if (state.code === 'ended:winner') {
+		node = <span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
+	} else if (state.code === 'ended:aborted') {
+		if (state.abortReason === 'manual') {
+			const user = (props.users.node = <span>aborted by {user.username}</span>)
+		} else if (state.abortReason === 'timeout:insufficient-votes') {
+			node = <span>aborted due to insufficient votes</span>
+		} else {
+		}
+	} else if (state.code === 'insufficient-votes') {
+		node = <span>insufficient votes</span>
 	} else {
 		assertNever(result)
 	}
@@ -269,7 +274,7 @@ function VoteState(props: { state: M.VoteState; userParts?: M.UserParts; rerunVo
 			</CardHeader>
 			<CardContent className="flex flex-col">
 				<Timer deadline={props.state.deadline} />
-				{status}
+				{node}
 			</CardContent>
 			<CardFooter>
 				<Button>Rerun</Button>
@@ -464,7 +469,7 @@ function QueueItem(props: {
 							{props.item.vote.choices.map((choice, index) => {
 								const layer = M.getMiniLayerFromId(choice)
 								return (
-									<li className="flex items-center space-x-2">
+									<li key={choice} className="flex items-center space-x-2">
 										<span>{index + 1}.</span>
 										<span>
 											{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}

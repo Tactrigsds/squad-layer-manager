@@ -1,11 +1,12 @@
 {
 	"serverId": "test-server",
 	"serverDisplayName": "Test Server",
-	"voteLengthSeconds": 180,
+	"voteDurationSeconds": 180,
 	"minValidVotes": 3,
 	"commandPrefix": "!",
 	"commands": {
 		"startVote": { "strings": ["rtv", "rockthevote"] },
 		"showNext": { "strings": ["pool", "shownext"] }
-	}
+	},
+	"adminListSources": [{ "type": "remote", "source": "https://tt-roles.tacticaltriggernometry.com/adminlist" }]
 }

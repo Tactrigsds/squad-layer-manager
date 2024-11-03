@@ -130,8 +130,7 @@ export default function AddLayerPopover(props: {
 		if (additionType === 'layers') {
 			const items: M.LayerQueueItem[] = selectedLayers.map((l) => ({ layerId: l.id, generated: false }))
 			props.addQueueItems(items)
-		}
-		if (additionType === 'vote') {
+		} else if (additionType === 'vote') {
 			const item: M.LayerQueueItem = {
 				vote: { choices: selectedLayers.map((selected) => selected.id), defaultChoice: selectedLayers[0].id },
 				generated: false,
