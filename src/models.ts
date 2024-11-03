@@ -480,6 +480,10 @@ export const QueueUpdateSchema = z.object({
 	seqId: z.number(),
 	queue: LayerQueueSchema,
 })
+export const StartVoteSchema = z.object({
+	seqId: z.number(),
+	restart: z.boolean(),
+})
 export type LayerQueueUpdate = z.infer<typeof QueueUpdateSchema>
 const TallyProperties = {
 	votes: z.record(z.string(), LayerIdSchema),
@@ -517,7 +521,7 @@ export function tallyVotes(currentVote: Extract<VoteState, { code: 'in-progress'
 			maxVotes = choice
 		}
 	}
-	return { choice: maxVotes!, votes: tally.get(maxVotes!)! }
+	return { totals: tally, choice: maxVotes!, votes: tally.get(maxVotes!)! }
 }
 
 export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready' }>) {
@@ -537,7 +541,7 @@ export const ServerStateSchema = z.object({
 }) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
-export type UserPart = Parts<{ users?: Schema.User[] }>
+export type UserPart = Parts<{ users: Schema.User[] }>
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

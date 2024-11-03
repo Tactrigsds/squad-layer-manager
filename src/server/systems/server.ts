@@ -1,5 +1,4 @@
 // I'm aware that this entire system is terribly named, and I apologize
-import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import { BehaviorSubject, Subscription, of, timeout } from 'rxjs'
@@ -197,12 +196,15 @@ async function handleCommand(evt: SM.SquadEvent & { type: 'chat-message' }, ctx:
 	SquadServer.rcon.warn(ctx, evt.playerId, msg)
 }
 
-async function startVote(ctx: C.Log & C.Db, opts?: { restarting?: boolean }) {
+async function startVote(ctx: C.Log & C.Db, opts?: { restarting?: boolean; seqId?: number }) {
 	opts ??= {}
 	opts.restarting ??= false
 	const res = await DB.get(ctx).transaction(async (db) => {
 		const _ctx = { ...ctx, db }
 		const state = await getServerState({ lock: true }, _ctx)
+		if (opts.seqId && state.layerQueueSeqId !== opts.seqId) {
+			return GENERIC_ERRORS.outOfSyncError()
+		}
 		if (!state.currentVote) {
 			return { code: 'err:no-vote-exists' as const, msg: 'No vote currently exists' }
 		}
@@ -400,7 +402,7 @@ async function abortVote(ctx: C.Log & C.Db, aborter: bigint, seqId?: number) {
 	return res
 }
 
-async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db }) {
+async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db }) {
 	const { input, ctx } = args
 	const { release, value: nextLayerOnServer } = await SquadServer.nextLayer.get(ctx, { lock: true, ttl: 0 })
 	try {
@@ -411,7 +413,6 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 				return { code: 'err:out-of-sync' as const, message: 'Update is out of sync' }
 			}
 
-			let voteStarted = false
 			if (input.queue[0] && !deepEqual(input.queue[0], serverState.layerQueue[0])) {
 				if (serverState.currentVote)
 					return {
@@ -419,16 +420,9 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 					}
 
 				if (input.queue[0].vote) {
-					serverState.currentVote = {
-						choices: input.queue[0].vote.choices,
-						defaultChoice: input.queue[0].vote.defaultChoice,
-						deadline: Date.now() + CONFIG.voteDurationSeconds * 1000,
-						votes: {},
-					}
-					voteStarted = true
+					serverState.currentVote = { code: 'ready' }
 				}
 			}
-
 			serverState.layerQueue = input.queue
 			serverState.layerQueueSeqId++
 			let updatedNextLayerId: string | null = null
@@ -439,10 +433,11 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 			}
 
 			await db.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
-			return { code: 'ok' as const, serverState, updatedNextLayerId, voteStarted }
+			return { code: 'ok' as const, serverState, updatedNextLayerId }
 		})
 
 		if (res.code !== 'ok') return res
+		SquadServer.broadcast(ctx, 'Unknown Username')
 		SquadServer.broadcast(ctx, 'Unknown Username')
 		if (res.updatedNextLayerId !== null) await SquadServer.setNextLayer(ctx, M.getMiniLayerFromId(res.updatedNextLayerId))
 		serverState$.next([res.serverState, ctx])
@@ -454,12 +449,13 @@ async function processLayerQueueUpdate(args: { input: M.LayerQueueUpdate; ctx: C
 
 export const serverRouter = router({
 	watchServerState: procedure.subscription(watchServerStateUpdates),
-	updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(processLayerQueueUpdate),
-	restartVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(restartVote),
+	startVote: procedureWithInput(M.StartVoteSchema).mutation(async ({ input, ctx }) => startVote(ctx, input)),
 	abortVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(async ({ input, ctx }) => {
 		const user = await Sessions.getUser({ lock: false }, ctx)
 		return await abortVote(ctx, user.discordId, input.seqId)
 	}),
+	updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(updateQueue),
 	watchCurrentLayerState: procedure.subscription(({ ctx }) => watchCurrentLayerState(ctx)),
 	watchNextLayerState: procedure.subscription(({ ctx }) => watchNextLayerState(ctx)),
+	rollToNextLayer: procedureWithInput(z.object({ seqId: z.number() })).mutation(({ ctx, input }) => rollToNextLayer(input, ctx)),
 })

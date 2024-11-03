@@ -6,6 +6,7 @@ import { EllipsisVertical, GripVertical, PlusIcon } from 'lucide-react'
 import { createContext, useRef, useState } from 'react'
 import React from 'react'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip } from '@/components/ui/tooltip.tsx'
@@ -21,9 +22,11 @@ import AddLayerPopover from './add-layer-popover'
 import ComboBox from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { useAlertDialog } from './ui/lazy-alert-dialog.tsx'
 import { ScrollArea } from './ui/scroll-area.tsx'
 import { Separator } from './ui/separator'
 import { TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
+import VoteTallyDisplay from './votes-display.tsx'
 
 const LayerQueueContext = createContext<object>({})
 
@@ -50,6 +53,8 @@ export default function LayerQueue() {
 			layerQueueSeqIdRef.current = data.layerQueueSeqId
 		},
 	})
+	const abortVoteMutation = trpcReact.server.abortVote.useMutation()
+	const startVoteMutation = trpcReact.server.startVote.useMutation()
 
 	const toaster = useToast()
 	const updateQueueMutation = trpcReact.server.updateQueue.useMutation()
@@ -75,8 +80,6 @@ export default function LayerQueue() {
 			return
 		}
 	}
-
-	async function restartVote() {}
 
 	function reset() {
 		if (!editing || !layerQueue || !serverState) return
@@ -140,7 +143,15 @@ export default function LayerQueue() {
 		<div className="contianer mx-auto py-10 grid place-items-center">
 			<LayerQueueContext.Provider value={{}}>
 				<span className="flex space-x-4">
-					{serverState?.currentVote && <VoteState state={serverState.currentVote} parts={serverState.parts} />}
+					{serverState?.currentVote && (
+						<VoteState
+							abortVote={() => abortVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId })}
+							startVote={() => startVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId })}
+							rerunVote={() => startVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId, restart: true })}
+							state={serverState.currentVote}
+							parts={serverState.parts}
+						/>
+					)}
 					<DndContext onDragEnd={handleDragEnd}>
 						<Card className="flex flex-col w-max">
 							<div className="p-6 w-full flex justify-between">
@@ -247,35 +258,84 @@ export default function LayerQueue() {
 	)
 }
 
-function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote: () => void } & M.UserPart) {
-	let node: React.ReactNode
+function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote: () => void; startVote: () => void } & M.UserPart) {
+	const openDialog = useAlertDialog()
+	let body: React.ReactNode
 	const state = props.state
-	if (state.code === 'in-progress') {
-		node = <span>In Progress</span>
-	} else if (state.code === 'ended:winner') {
-		node = <span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
-	} else if (state.code === 'ended:aborted') {
-		if (state.abortReason === 'manual') {
-			const user = (props.users.node = <span>aborted by {user.username}</span>)
-		} else if (state.abortReason === 'timeout:insufficient-votes') {
-			node = <span>aborted due to insufficient votes</span>
-		} else {
-		}
-	} else if (state.code === 'insufficient-votes') {
-		node = <span>insufficient votes</span>
-	} else {
-		assertNever(result)
+	const restartBtn = (
+		<Button onClick={props.rerunVote} variant="secondary">
+			Rerun Vote
+		</Button>
+	)
+	const cancelBtn = (
+		<Button onClick={props.abortVote} variant="secondary">
+			Cancel Vote
+		</Button>
+	)
+
+	switch (state.code) {
+		case 'ready':
+			body = (
+				<span>
+					<Button onClick={props.startVote}>Start Vote</Button>
+				</span>
+			)
+			break
+		case 'in-progress':
+			{
+				const tally = M.tallyVotes(state)
+				body = (
+					<>
+						<Timer deadline={state.deadline} />
+						<VoteTallyDisplay {...tally} />
+						{cancelBtn}
+					</>
+				)
+			}
+			break
+		case 'ended:winner':
+			body = <span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
+			break
+		case 'ended:aborted':
+			if (state.abortReason === 'manual') {
+				const user = props.parts.users.find((u) => u.discordId === state.aborter!)!
+				body = (
+					<span>
+						<Alert>
+							<AlertTitle>Vote Aborted</AlertTitle>
+							<AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
+						</Alert>
+						<Button
+							onClick={async () => {
+								await props.rerunVote()
+							}}
+						>
+							Restart
+						</Button>
+					</span>
+				)
+			} else if (state.abortReason === 'timeout:insufficient-votes') {
+				body = (
+					<span>
+						<Alert>
+							<AlertTitle>Vote Aborted</AlertTitle>
+							<AlertDescription>Vote was aborted due to insufficient votes</AlertDescription>
+						</Alert>
+						<Button onClick={props.rerunVote}>Restart</Button>
+					</span>
+				)
+			}
+			break
+		default:
+			assertNever(state)
 	}
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Current Vote</CardTitle>
+				<CardTitle>Vote</CardTitle>
 			</CardHeader>
-			<CardContent className="flex flex-col">
-				<Timer deadline={props.state.deadline} />
-				{node}
-			</CardContent>
+			<CardContent className="flex flex-col">{body}</CardContent>
 			<CardFooter>
 				<Button>Rerun</Button>
 				{!result && (
