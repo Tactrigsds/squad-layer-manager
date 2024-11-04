@@ -22,10 +22,10 @@ import { procedure, procedureWithInput, router } from '../trpc'
 
 let serverState$!: BehaviorSubject<[M.ServerState, C.Log]>
 let voteEndTask: Subscription | null = null
-// -------- generic errors --------
+
 const GENERIC_ERRORS = {
 	outOfSyncError() {
-		return { code: 'err:out-of-sync' as const, message: 'Server state was out of sync with server. Please retry update.' }
+		return { code: 'err:out-of-sync' as const, message: 'Out of sync with server. Please retry update.' }
 	},
 }
 

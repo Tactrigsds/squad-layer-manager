@@ -262,13 +262,34 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 	const openDialog = useAlertDialog()
 	let body: React.ReactNode
 	const state = props.state
-	const restartBtn = (
-		<Button onClick={props.rerunVote} variant="secondary">
+	const rerunVoteBtn = (
+		<Button
+			onClick={async () => {
+				const id = await openDialog({
+					title: 'Rerun Vote',
+					description: 'Are you sure you want to return the vote?',
+					buttons: [{ label: 'Rerun Vote', id: 'confirm' }],
+				})
+				if (id === 'confirm') props.rerunVote()
+			}}
+			variant="secondary"
+		>
 			Rerun Vote
 		</Button>
 	)
 	const cancelBtn = (
-		<Button onClick={props.abortVote} variant="secondary">
+		<Button
+			onClick={() => {
+				openDialog({
+					title: 'Cancel Vote',
+					description: 'Are you sure you want to cancel the vote?',
+					buttons: [{ label: 'Cancel Vote', id: 'confirm' }],
+				}).then((id) => {
+					if (id === 'confirm') props.abortVote()
+				})
+			}}
+			variant="secondary"
+		>
 			Cancel Vote
 		</Button>
 	)
@@ -277,7 +298,18 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 		case 'ready':
 			body = (
 				<span>
-					<Button onClick={props.startVote}>Start Vote</Button>
+					<Button
+						onClick={async () => {
+							const id = await openDialog({
+								title: 'Start Vote',
+								description: 'Are you sure you want to start the vote?',
+								buttons: [{ label: 'Start Vote', id: 'confirm' }],
+							})
+							if (id === 'confirm') props.startVote()
+						}}
+					>
+						Start Vote
+					</Button>
 				</span>
 			)
 			break
@@ -288,13 +320,19 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 					<>
 						<Timer deadline={state.deadline} />
 						<VoteTallyDisplay {...tally} />
+						{rerunVoteBtn}
 						{cancelBtn}
 					</>
 				)
 			}
 			break
 		case 'ended:winner':
-			body = <span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
+			body = (
+				<span>
+					<span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
+					{rerunVoteBtn}
+				</span>
+			)
 			break
 		case 'ended:aborted':
 			if (state.abortReason === 'manual') {
@@ -305,23 +343,17 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 							<AlertTitle>Vote Aborted</AlertTitle>
 							<AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
 						</Alert>
-						<Button
-							onClick={async () => {
-								await props.rerunVote()
-							}}
-						>
-							Restart
-						</Button>
+						{rerunVoteBtn}
 					</span>
 				)
 			} else if (state.abortReason === 'timeout:insufficient-votes') {
 				body = (
 					<span>
-						<Alert>
+						<Alert variant="destructive">
 							<AlertTitle>Vote Aborted</AlertTitle>
 							<AlertDescription>Vote was aborted due to insufficient votes</AlertDescription>
 						</Alert>
-						<Button onClick={props.rerunVote}>Restart</Button>
+						{rerunVoteBtn}
 					</span>
 				)
 			}
@@ -336,19 +368,7 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 				<CardTitle>Vote</CardTitle>
 			</CardHeader>
 			<CardContent className="flex flex-col">{body}</CardContent>
-			<CardFooter>
-				<Button>Rerun</Button>
-				{!result && (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button>Abort</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>When a vote is aborted, the default choice will be selected.</p>
-						</TooltipContent>
-					</Tooltip>
-				)}
-			</CardFooter>
+			{/* <CardFooter>{body}</CardFooter> */}
 		</Card>
 	)
 }

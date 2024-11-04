@@ -22,7 +22,7 @@ import { Logger, baseLogger, setupLogger } from './logger.ts'
 import * as TrpcRouter from './router'
 import * as Schema from './schema.ts'
 import * as Discord from './systems/discord.ts'
-import * as ServerState from './systems/server.ts'
+import * as LayerQueue from './systems/layer-queue.ts'
 import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
 
@@ -34,7 +34,7 @@ await Config.setupConfig()
 DB.setupDatabase()
 Sessions.setupSessions()
 await SquadServer.setupSquadServer()
-await ServerState.setupServerstate()
+await LayerQueue.setupServerstate()
 TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized, starting http server...')
