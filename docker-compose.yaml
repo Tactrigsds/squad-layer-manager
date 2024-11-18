@@ -31,5 +31,5 @@ services:
       - 27166:27166/udp
       - 21114:21114/udp
 volumes:
-  db_data:
   squad_data:
+  db_data:

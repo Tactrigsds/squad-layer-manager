@@ -41,7 +41,7 @@ export default class Rcon extends EventEmitter {
 	processChatPacket(_decodedPacket: any): void {}
 
 	private addLogProps(ctx: C.Log): C.Log {
-		return C.includeLogProperties(ctx, { host: this.host, port: this.port })
+		return C.includeLogProperties(ctx, { module: 'rcon' })
 	}
 
 	async connect(ctx: C.Log): Promise<void> {
@@ -51,12 +51,12 @@ export default class Rcon extends EventEmitter {
 			this.removeAllListeners('server')
 			this.removeAllListeners('auth')
 			this.on('server', (pkt) => this.processChatPacket(pkt)).once('auth', () => {
-				ctx.log.info(`Connected to: ${this.host}:${this.port}`)
+				ctx.log.trace(`Connected to: ${this.host}:${this.port}`)
 				clearTimeout(this.connectionRetry)
 				this.connected = true
 				resolve()
 			})
-			ctx.log.info(`Connecting to: ${this.host}:${this.port}`)
+			ctx.log.trace(`Connecting to: ${this.host}:${this.port}`)
 			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 			this.autoReconnect = true
 			this.client = net
@@ -72,7 +72,7 @@ export default class Rcon extends EventEmitter {
 	async disconnect(ctx: C.Log): Promise<void> {
 		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve) => {
-			ctx.log.info(`Disconnecting from: ${this.host}:${this.port}`)
+			ctx.log.trace(`Disconnecting from: ${this.host}:${this.port}`)
 			clearTimeout(this.connectionRetry)
 			this.removeAllListeners()
 			this.autoReconnect = false
@@ -115,7 +115,7 @@ export default class Rcon extends EventEmitter {
 
 	#sendAuth(ctx: C.Log): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.info(`Sending Token to: ${this.host}:${this.port}`)
+		ctx.log.trace(`Sending Token to: ${this.host}:${this.port}`)
 		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
 		this.client?.write(this.#encode(this.type.auth, 2147483647, this.password).toString('binary'), 'binary')
 	}
@@ -206,7 +206,7 @@ export default class Rcon extends EventEmitter {
 
 	#onClose(ctx: C.Log): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.info(`Socket closed.`)
+		ctx.log.trace(`Socket closed.`)
 		this.#cleanUp(ctx)
 	}
 
@@ -234,7 +234,7 @@ export default class Rcon extends EventEmitter {
 
 	async warn(ctx: C.Log, steamID: string, message: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		ctx.log.info(`Warned ${steamID}: ${message}`)
+		ctx.log.trace(`Warned ${steamID}: ${message}`)
 		this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
 	}
 

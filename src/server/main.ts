@@ -34,7 +34,7 @@ await Config.setupConfig()
 DB.setupDatabase()
 Sessions.setupSessions()
 await SquadServer.setupSquadServer()
-await LayerQueue.setupServerstate()
+await LayerQueue.setupLayerQueueAndServerState()
 TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized, starting http server...')
@@ -111,9 +111,12 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 })
 
 server.post(AR.exists('/logout'), async function (req, res) {
-	//@ts-expect-error lazy
-	const ctx = await createRequestContext({ req, res })
-	return await Sessions.logout(ctx)
+	const authRes = await C.createAuthorizedRequestContext(req, res)
+	if (authRes.code !== 'ok') {
+		return Sessions.clearInvalidSession({ req, res })
+	}
+
+	return await Sessions.logout(authRes.ctx)
 })
 
 server.register(ws)

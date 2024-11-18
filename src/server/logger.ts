@@ -16,6 +16,9 @@ export async function setupLogger() {
 	const envToLogger = {
 		development: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
+			serializers: {
+				bigint: (n: bigint) => n.toString(),
+			},
 			transport: {
 				target: 'pino-pretty',
 				options: {

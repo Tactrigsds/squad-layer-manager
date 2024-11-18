@@ -8,8 +8,7 @@ import React from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tooltip } from '@/components/ui/tooltip.tsx'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useNowPlayingState as useCurrentLayer } from '@/hooks/server-state.ts'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
@@ -54,7 +53,33 @@ export default function LayerQueue() {
 		},
 	})
 	const abortVoteMutation = trpcReact.server.abortVote.useMutation()
+	async function abortVote() {
+		const res = await abortVoteMutation.mutateAsync({ seqId: layerQueueSeqIdRef.current })
+
+		if (res.code === 'ok') {
+			toaster.toast({ title: 'Vote aborted' })
+			return
+		}
+		return toaster.toast({ title: 'Failed to abort vote', description: res.code, variant: 'destructive' })
+	}
 	const startVoteMutation = trpcReact.server.startVote.useMutation()
+	async function startVote() {
+		const res = await startVoteMutation.mutateAsync({ seqId: serverState!.layerQueueSeqId })
+		if (res.code === 'ok') {
+			toaster.toast({ title: 'Vote started' })
+			return
+		}
+		toaster.toast({ title: 'Failed to start vote', description: res.code, variant: 'destructive' })
+	}
+
+	async function rerunVote() {
+		const res = await startVoteMutation.mutateAsync({ seqId: serverState!.layerQueueSeqId, restart: true })
+		if (res.code === 'ok') {
+			toaster.toast({ title: 'Vote restarted' })
+			return
+		}
+		toaster.toast({ title: 'Failed to restart vote', description: res.code, variant: 'destructive' })
+	}
 
 	const toaster = useToast()
 	const updateQueueMutation = trpcReact.server.updateQueue.useMutation()
@@ -145,9 +170,9 @@ export default function LayerQueue() {
 				<span className="flex space-x-4">
 					{serverState?.currentVote && (
 						<VoteState
-							abortVote={() => abortVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId })}
-							startVote={() => startVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId })}
-							rerunVote={() => startVoteMutation.mutateAsync({ seqId: serverState.layerQueueSeqId, restart: true })}
+							abortVote={abortVote}
+							startVote={startVote}
+							rerunVote={rerunVote}
 							state={serverState.currentVote}
 							parts={serverState.parts}
 						/>
@@ -315,11 +340,10 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 			break
 		case 'in-progress':
 			{
-				const tally = M.tallyVotes(state)
 				body = (
 					<>
 						<Timer deadline={state.deadline} />
-						<VoteTallyDisplay {...tally} />
+						<VoteTallyDisplay voteState={state} />
 						{rerunVoteBtn}
 						{cancelBtn}
 					</>
@@ -368,7 +392,6 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 				<CardTitle>Vote</CardTitle>
 			</CardHeader>
 			<CardContent className="flex flex-col">{body}</CardContent>
-			{/* <CardFooter>{body}</CardFooter> */}
 		</Card>
 	)
 }
@@ -456,76 +479,6 @@ function QueueItem(props: {
 	}
 
 	const style = { transform: CSS.Translate.toString(transform) }
-	if (props.item.layerId) {
-		const layer = M.getMiniLayerFromId(props.item.layerId)
-		let color = 'bg-background'
-		if (props.edited) color = 'bg-slate-400'
-		return (
-			<div>
-				{props.index === 0 && <QueueItemSeparator afterIndex={-1} isLast={false} />}
-				<li
-					ref={setNodeRef}
-					style={style}
-					{...attributes}
-					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${color} bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
-				>
-					<div className="flex items-center">
-						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
-							<GripVertical />
-						</Button>
-						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
-					</div>
-					<div className="flex items-center min-h-0 space-x-1">
-						<span>
-							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2} {Helpers.toShortSubfaction(layer.SubFac_2)}
-						</span>
-						<DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-							<DropdownMenuTrigger asChild>
-								<Button className="group-hover:visible invisible" variant="ghost" size="icon">
-									<EllipsisVertical />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent>
-								<DropdownMenuItem onClick={() => props.dispatch({ code: 'swap-factions' })}>Swap Factions</DropdownMenuItem>
-
-								{/* ------ Add Layer Before ------ */}
-								<AddLayerPopover
-									open={addBeforePopoverOpen}
-									onOpenChange={setAddBeforePopoverOpen}
-									addQueueItems={(items) => {
-										props.dispatch({ code: 'add-before', items })
-									}}
-								>
-									<DropdownMenuItem>Add layers before</DropdownMenuItem>
-								</AddLayerPopover>
-
-								{/* ------ Add Layer After ------ */}
-								<AddLayerPopover
-									open={addAfterPopoverOpen}
-									onOpenChange={setAddAfterPopoverOpen}
-									addQueueItems={(items) => {
-										props.dispatch({ code: 'add-after', items })
-									}}
-								>
-									<DropdownMenuItem>Add layers after</DropdownMenuItem>
-								</AddLayerPopover>
-
-								<DropdownMenuItem
-									onClick={() => {
-										return props.dispatch({ code: 'delete' })
-									}}
-									className="bg-destructive focus:bg-red-600 text-destructive-foreground"
-								>
-									Delete
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				</li>
-				<QueueItemSeparator afterIndex={props.index} isLast={props.isLast} />
-			</div>
-		)
-	}
 	if (props.item.vote) {
 		let color = 'bg-background'
 		if (props.edited) color = 'bg-slate-400'
@@ -611,6 +564,78 @@ function QueueItem(props: {
 			</div>
 		)
 	}
+
+	if (props.item.layerId) {
+		const layer = M.getMiniLayerFromId(props.item.layerId)
+		let color = 'bg-background'
+		if (props.edited) color = 'bg-slate-400'
+		return (
+			<div>
+				{props.index === 0 && <QueueItemSeparator afterIndex={-1} isLast={false} />}
+				<li
+					ref={setNodeRef}
+					style={style}
+					{...attributes}
+					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${color} bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
+				>
+					<div className="flex items-center">
+						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
+							<GripVertical />
+						</Button>
+						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
+					</div>
+					<div className="flex items-center min-h-0 space-x-1">
+						<span>
+							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2} {Helpers.toShortSubfaction(layer.SubFac_2)}
+						</span>
+						<DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+							<DropdownMenuTrigger asChild>
+								<Button className="group-hover:visible invisible" variant="ghost" size="icon">
+									<EllipsisVertical />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent>
+								<DropdownMenuItem onClick={() => props.dispatch({ code: 'swap-factions' })}>Swap Factions</DropdownMenuItem>
+
+								{/* ------ Add Layer Before ------ */}
+								<AddLayerPopover
+									open={addBeforePopoverOpen}
+									onOpenChange={setAddBeforePopoverOpen}
+									addQueueItems={(items) => {
+										props.dispatch({ code: 'add-before', items })
+									}}
+								>
+									<DropdownMenuItem>Add layers before</DropdownMenuItem>
+								</AddLayerPopover>
+
+								{/* ------ Add Layer After ------ */}
+								<AddLayerPopover
+									open={addAfterPopoverOpen}
+									onOpenChange={setAddAfterPopoverOpen}
+									addQueueItems={(items) => {
+										props.dispatch({ code: 'add-after', items })
+									}}
+								>
+									<DropdownMenuItem>Add layers after</DropdownMenuItem>
+								</AddLayerPopover>
+
+								<DropdownMenuItem
+									onClick={() => {
+										return props.dispatch({ code: 'delete' })
+									}}
+									className="bg-destructive focus:bg-red-600 text-destructive-foreground"
+								>
+									Delete
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				</li>
+				<QueueItemSeparator afterIndex={props.index} isLast={props.isLast} />
+			</div>
+		)
+	}
+
 	throw new Error('Unknown layer queue item layout ' + JSON.stringify(props.item))
 }
 

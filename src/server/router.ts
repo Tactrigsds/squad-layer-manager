@@ -16,12 +16,7 @@ export type AppRouter = typeof appRouter
 export function setupTrpcRouter() {
 	const _appRouter = router({
 		getLoggedInUser: procedure.query(async ({ ctx }) => {
-			const [row] = await ctx.db
-				.select()
-				.from(Schema.sessions)
-				.where(eq(Schema.sessions.id, ctx.sessionId))
-				.leftJoin(Schema.users, eq(Schema.sessions.userId, Schema.users.discordId))
-			return row.users
+			return ctx.user
 		}),
 		// TODO could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
 		getUniqueValues: procedureWithInput(

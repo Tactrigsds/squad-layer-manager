@@ -261,11 +261,21 @@ export default class SquadRcon extends EventEmitter {
 
 	async getServerStatus(ctx: C.Log): Promise<SM.ServerStatus> {
 		const rawData = await this.rcon.execute(ctx, `ShowServerInfo`)
-		ctx.log.debug('SquadServer', 3, `Server information raw data`, rawData)
 		const data = JSON.parse(rawData)
-		const rawInfo = SM.ServerRawInfoSchema.parse(data)
+		const res = SM.ServerRawInfoSchema.safeParse(data)
+		if (!res.success) {
+			ctx.log.error(`Failed to parse server info: %O, %O`, res.error, data)
+			throw res.error
+		}
+
+		const rawInfo = res.data
+		const currentLayerTask = this.getCurrentLayer(ctx)
+		const nextLayerTask = this.getNextLayer(ctx)
+
 		return {
 			name: rawInfo.ServerName_s,
+			currentLayer: await currentLayerTask,
+			nextLayer: await nextLayerTask,
 			maxPlayers: rawInfo.MaxPlayers,
 			reserveSlots: rawInfo.PlayerReserveCount_I,
 			currentPlayers: rawInfo.PlayerCount_I,

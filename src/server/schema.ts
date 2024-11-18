@@ -1,19 +1,7 @@
-import { SUBFACTIONS } from '@/lib/constants'
-import {
-	bigint,
-	boolean,
-	float,
-	index,
-	int,
-	json,
-	mysqlEnum,
-	mysqlTable,
-	primaryKey,
-	serial,
-	timestamp,
-	varchar,
-} from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, varchar } from 'drizzle-orm/mysql-core'
 import { z } from 'zod'
+
+import { SUBFACTIONS } from '@/lib/constants'
 
 export const layers = mysqlTable(
 	'layers',
@@ -98,17 +86,6 @@ export const filters = mysqlTable('filters', {
 })
 export type Filter = typeof filters.$inferSelect
 
-export const LayerVoteSchema = z.object({
-	defaultChoiceLayerId: z.string(),
-	choiceLayerIds: z.record(z.string(), z.number()),
-	voteDeadline: z.date().optional(),
-	votes: z.record(z.string(), z.array(z.bigint())).optional(),
-})
-export type LayerVoteSchema = z.infer<typeof LayerVoteSchema>
-
-export const LayerQueueSchema = z.array(z.object({ layerId: z.string().optional(), vote: LayerVoteSchema.optional() }))
-export type LayerQueue = z.infer<typeof LayerQueueSchema>
-
 export const servers = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),
 	online: boolean('online').notNull().default(false),
@@ -144,39 +121,3 @@ export const sessions = mysqlTable(
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
 	})
 )
-
-export const layerVote = mysqlTable('layerVote', {
-	id: serial('id').primaryKey(),
-	defaultWinnerLayerId: varchar('defaultWinnerLayerId', { length: 24 }),
-	winnerLayerId: varchar('winnerLayerId', { length: 24 }),
-})
-
-export const layerVoteChoice = mysqlTable('layerVoteChoice', {
-	id: serial('id').primaryKey(),
-	layerVoteId: bigint('layerVoteId', { mode: 'bigint', unsigned: true }),
-	layerId: varchar('layerId', { length: 24 }),
-})
-
-export const player = mysqlTable('players', {
-	steamId: bigint('steamId', { mode: 'bigint' }).primaryKey(),
-	serverId: varchar('serverId', { length: 256 }),
-})
-
-export const layerVotePlayer = mysqlTable(
-	'layerVotePlayer',
-	{
-		playerId: bigint('playerId', { mode: 'bigint' }).notNull(),
-		choiceId: bigint('choiceId', { mode: 'bigint', unsigned: true }).notNull(),
-	},
-	(table) => ({
-		pk: primaryKey({ columns: [table.playerId, table.choiceId] }),
-	})
-)
-
-export const layerQueue = mysqlTable('layerQueue', {
-	id: serial('id').primaryKey(),
-	layerId: varchar('layerId', { length: 24 }),
-	layerVoteId: bigint('layerVoteId', { mode: 'number', unsigned: true }),
-	prevId: bigint('prev_id', { mode: 'bigint', unsigned: true }),
-	nextId: bigint('next_id', { mode: 'bigint', unsigned: true }),
-})

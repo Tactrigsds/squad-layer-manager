@@ -1,19 +1,19 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { getMiniLayerFromId } from '@/models'
-import type { LayerId } from '@/models'
+import * as M from '@/models'
 
 type VoteTallyProps = {
-	totals: Map<LayerId, number>
-	choice: LayerId
-	votes: number
+	voteState: M.VoteStateWithVoteData
 }
 
-export default function VoteTallyDisplay({ totals, choice, votes }: VoteTallyProps) {
-	const totalVotes = Array.from(totals.values()).reduce((sum, count) => sum + count, 0)
+export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
+	const tally = M.tallyVotes(voteState)
 
 	// Convert Map entries to array and sort by vote count descending
-	const sortedOptions = Array.from(totals.entries())
+	//
+	//
+	const sortedOptions = Array.from(tally.totals)
 		.sort(([, a], [, b]) => b - a)
 		.map(([layerId, voteCount]) => {
 			const layer = getMiniLayerFromId(layerId)
@@ -21,14 +21,15 @@ export default function VoteTallyDisplay({ totals, choice, votes }: VoteTallyPro
 				id: layerId,
 				name: `${layer.Level} ${layer.Gamemode} (${layer.Faction_1} vs ${layer.Faction_2})`,
 				votes: voteCount,
-				isWinner: layerId === choice,
+				isWinner: layerId === tally.choice,
 			}
 		})
 
 	return (
 		<Card className="w-full max-w-md mx-auto">
 			<CardHeader>
-				<CardTitle className="text-2xl font-bold text-center">Live Vote Results</CardTitle>
+				<CardTitle className="text-2xl font-bold text-center">Vote Results</CardTitle>
+				<CardDescription>{voteState.code}</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{sortedOptions.map((option) => (
@@ -43,12 +44,12 @@ export default function VoteTallyDisplay({ totals, choice, votes }: VoteTallyPro
 							</span>
 						</div>
 						<Progress
-							value={totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0}
+							value={tally.totalVotes > 0 ? (option.votes / tally.totalVotes) * 100 : 0}
 							className={`h-2 ${option.isWinner ? 'bg-green-100' : ''}`}
 						/>
 					</div>
 				))}
-				<div className="mt-4 text-center text-sm text-gray-500">Total Votes: {totalVotes}</div>
+				<div className="mt-4 text-center text-sm text-gray-500">Total Votes: {tally.totalVotes}</div>
 			</CardContent>
 		</Card>
 	)

@@ -1,26 +1,21 @@
-import { transformer } from '@/lib/trpc.ts'
 import { initTRPC } from '@trpc/server'
+import superjson from 'superjson'
 import { z } from 'zod'
 
-import { AuthedRequest } from './context.ts'
+import * as C from './context.ts'
 
-const t = initTRPC.context<AuthedRequest>().create({ transformer })
+const t = initTRPC.context<C.AuthedRequest>().create({ transformer: {input: superjson, output: superjson} })
 
-const loggerMiddleware = t.middleware(async ({ path, type, next, input, meta }) => {
-	const start = Date.now()
-	const result = await next()
-	const durationMs = Date.now() - start
-	if (result.ok) {
-		//@ts-expect-error idk man
-		const ctx = result.ctx as AuthedRequest
-		ctx.log = ctx.log.child({ type, input })
-		ctx.log.debug({ path, type, durationMs, input }, 'TRPC %s: %s ', type, path)
-	}
+const loggerMiddleware = t.middleware(async (opts) => {
+  const baseCtx = C.includeLogProperties(opts.ctx, {path: opts.path, input: opts.input})
+	await using ctx = C.pushOperation(baseCtx, `trpc:${opts.type}:${opts.path}`)
+	opts.ctx = ctx
+	const result = await opts.next(opts)
 	return result
 })
 
 export const router = t.router
 export const procedure = t.procedure.use(loggerMiddleware)
 export function procedureWithInput<InputSchema extends z.ZodType<any, any, any>>(input: InputSchema) {
-	return procedure.input(input).use(loggerMiddleware)
+	return procedure.input(input)
 }

@@ -28,12 +28,14 @@ export const LayersQuerySchema = z.object({
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
 export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.Db }) {
-	const { ctx, input: input } = args
+	const { ctx: baseCtx, input: input } = args
+	await using opCtx = C.pushOperation(baseCtx, 'layers-query:run')
+
 	let whereCondition = sql`1=1`
-	const db = ctx.db
+	const db = opCtx.db
 
 	if (input.filter) {
-		whereCondition = (await getWhereFilterConditions(input.filter, [], ctx)) ?? whereCondition
+		whereCondition = (await getWhereFilterConditions(input.filter, [], opCtx)) ?? whereCondition
 	}
 
 	let query = db.select().from(Schema.layers).where(whereCondition)

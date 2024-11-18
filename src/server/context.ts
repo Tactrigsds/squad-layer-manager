@@ -3,7 +3,9 @@ import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import * as CacheManager from 'cache-manager'
 import Cookie from 'cookie'
 import { FastifyReply, FastifyRequest } from 'fastify'
+import Pino from 'pino'
 
+import { createId } from '@/lib/id.ts'
 import RconCore from '@/lib/rcon/rcon-core.ts'
 
 import * as DB from './db.ts'
@@ -11,6 +13,7 @@ import { Logger, baseLogger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
 
+// -------- Logging --------
 export type Log = {
 	log: Logger
 }
@@ -19,12 +22,55 @@ export function includeLogProperties<T extends Log & Partial<Db>>(ctx: T, fields
 	if (ctx.db) {
 		//@ts-expect-error monkey patching
 		ctx.db.session.logger.logQuery = function logQuery(query: string, params: unknown[]) {
-			if (log.level === 'trace') ctx.log.trace('DB: %s: %o', params)
+			if (log.level === 'trace') log.trace('DB: %s: %o', params)
 			else log.debug('DB: %s, %o', query, params)
 		}
 	}
 	return { ...ctx, log }
 }
+export type Op = {
+	tasks: Promise<void>[]
+	result?: 'ok' | string
+	[Symbol.asyncDispose]: (err?: any) => Promise<void>
+	[Symbol.dispose]: (err?: any) => void
+}
+
+const opBaseId = createId(6)
+let opIdx = 0
+export function pushOperation<T extends Log & Partial<DB.Db>>(ctx: T, type: string, opts?: { level?: Pino.Level }): T & Op {
+	opts ??= {}
+	opts.level ??= 'debug'
+	const operationId = opBaseId + '/' + opIdx++
+	const bindings = ctx.log.bindings()
+	const ops = bindings.ops ? [...bindings.ops] : []
+	ops.push({ id: operationId, type })
+
+	const handleResult = async function (this: any, err?: any) {
+		const result = err ? 'error' : (this.result ?? 'ok')
+		if (result && result !== 'ok') {
+			this.log.error({ err, result }, 'Operation %s::%s failed', type, operationId)
+			return
+		}
+		await Promise.all(this.tasks).catch((err) => {
+			lifeCycleLog.error({ err }, 'Operation %s::%s failed', type, operationId)
+			throw err
+		})
+		lifeCycleLog[opts.level!]('Operation %s::%s completed', type, operationId)
+	}
+
+	const newCtx = {
+		...includeLogProperties(ctx, { ops }),
+		tasks: [],
+		[Symbol.asyncDispose]: handleResult,
+		[Symbol.dispose]: handleResult,
+	}
+	const lifeCycleLog = newCtx.log.child({ opLifecycle: true })
+
+	lifeCycleLog[opts.level]('Operation %s::%s started', type, operationId)
+	return newCtx
+}
+
+// -------- Logging end --------
 
 export type Db = {
 	db: DB.Db
@@ -53,11 +99,12 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 
 	const db = DB.get({ log })
 	const validSession = await Sessions.validateSession(sessionId, { log, db })
-	if (!validSession) return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
+	if (validSession.code !== 'ok') return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
 
-	return { code: 'ok' as const, ctx: { req: req, res: res, log, sessionId, db } }
+	return { code: 'ok' as const, ctx: { req: req, res: res, log, sessionId, user: validSession.user, db } }
 }
 
+// with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
 export async function createTrpcRequestContext(options: CreateFastifyContextOptions) {
 	const result = await createAuthorizedRequestContext(options.req, options.res)
 	if (result.code !== 'ok') {

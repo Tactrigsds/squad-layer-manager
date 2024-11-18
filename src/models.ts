@@ -482,7 +482,7 @@ export const QueueUpdateSchema = z.object({
 })
 export const StartVoteSchema = z.object({
 	seqId: z.number(),
-	restart: z.boolean(),
+	restart: z.boolean().default(false),
 })
 export type LayerQueueUpdate = z.infer<typeof QueueUpdateSchema>
 const TallyProperties = {
@@ -505,23 +505,28 @@ export const VoteStateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('ended:aborted'),
 		abortReason: z.enum(['timeout:insufficient-votes', 'manual']),
-		aborter: z.bigint().optional(),
+		aborter: z.string().optional(),
 		...TallyProperties,
 	}),
 ])
 
-export function tallyVotes(currentVote: Extract<VoteState, { code: 'in-progress' }>) {
-	if (Object.values(currentVote.votes).length == 0) throw new Error('No votes to tally')
+export function tallyVotes(currentVote: VoteStateWithVoteData) {
+	if (Object.values(currentVote.choices).length == 0) throw new Error('No chlices listsed')
 	const tally = new Map<string, number>()
 	let maxVotes: string | null = null
+	for (const choice of currentVote.choices) {
+		tally.set(choice, 0)
+	}
+
 	for (const choice of Object.values(currentVote.votes)) {
-		tally.set(choice, (tally.get(choice) || 0) + 1)
+		tally.set(choice, tally.get(choice)! + 1)
 
 		if (maxVotes === null || tally.get(choice)! > tally.get(maxVotes)!) {
 			maxVotes = choice
 		}
 	}
-	return { totals: tally, choice: maxVotes!, votes: tally.get(maxVotes!)! }
+	const totalVotes = Object.values(currentVote.votes).length
+	return { totals: tally, totalVotes, choice: maxVotes, votes: tally.get(maxVotes!)! }
 }
 
 export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready' }>) {
@@ -529,6 +534,7 @@ export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready'
 }
 
 export type VoteState = z.infer<typeof VoteStateSchema>
+export type VoteStateWithVoteData = Extract<VoteState, { code: 'in-progress' | 'ended:winner' | 'ended:aborted' }>
 
 export const ServerStateSchema = z.object({
 	id: z.string().min(1).max(256),

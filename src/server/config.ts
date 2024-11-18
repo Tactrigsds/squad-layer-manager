@@ -9,7 +9,7 @@ export const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
 
 const CommandConfigSchema = z.object({
 	strings: z.array(strNoWhitespace),
-	allowedChats: SM.CHATS.default('admin'),
+	allowedChats: SM.CHAT_CHANNEL.default('admin'),
 })
 
 const ConfigSchema = z.object({

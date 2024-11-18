@@ -17,6 +17,7 @@ export const ServerRawInfoSchema = z.object({
 	TeamTwo_s: z.string().optional(),
 	MatchTimeout_d: z.number().int().nonnegative(),
 	PLAYTIME_I: parsedNum('int', z.number().int().nonnegative()),
+	GameMode_s: z.string(),
 	GameVersion_s: z.string(),
 })
 
@@ -26,6 +27,8 @@ export type ServerStatus = {
 	reserveSlots: number
 	currentPlayers: number
 	currentPlayersInQueue: number
+	currentLayer: M.MiniLayer
+	nextLayer: M.MiniLayer | null
 }
 
 export const PlayerSchema = z.object({
@@ -106,13 +109,14 @@ export const SquadCreatedSchema = z
 	})
 	.catchall(z.string())
 
-export const CHATS = z.enum(['admin', 'all', 'team', 'squad'])
+export const CHAT_CHANNEL = z.enum(['admin', 'all', 'team', 'squad'])
+export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
 export const COMMANDS = ['vote', 'rtv', 'setpool'] as const
 
 export const SquadEventSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('chat-message'),
-		chat: CHATS,
+		chat: CHAT_CHANNEL,
 		playerId: z.string(),
 		message: z.string().trim(),
 		eventId: z.number(),
@@ -133,7 +137,7 @@ export const SquadEventSchema = z.discriminatedUnion('type', [
 ])
 
 export type SquadEvent = z.infer<typeof SquadEventSchema>
-export const AdminListSourceSchema = z.object({ type: z.enum(['remote', 'local', 'ftp']), source: z.string().url() })
+export const AdminListSourceSchema = z.object({ type: z.enum(['remote', 'local', 'ftp']), source: z.string() })
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type SquadAdminPerms = { [key: string]: boolean }
 export type SquadAdmins = Map<bigint, Record<string, boolean>>
