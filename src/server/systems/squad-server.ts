@@ -23,6 +23,7 @@ export let playerList: AsyncResource<SM.Player[]>
 export let squadList: AsyncResource<SM.Squad[]>
 export const squadEvent$ = new Subject<SM.SquadEvent>()
 let adminList: AsyncResource<SM.SquadAdmins>
+let mockServer:
 
 
 export async function setNextLayer(ctx: C.Log, layer: M.MiniLayer) {
