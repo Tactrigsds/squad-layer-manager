@@ -1,139 +1,16 @@
-import { EventEmitter } from 'node:events'
-
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 
-import { capitalID, iterateIDs, lowerID } from './id-parser'
+import {capitalID, iterateIDs, lowerID} from './id-parser'
 import Rcon from './rcon-core'
 import * as SM from './squad-models'
 
-export default class SquadRcon extends EventEmitter {
+export default class SquadRcon implements SM.ISquadRcon {
 	constructor(private rcon: Rcon) {
 		super()
 	}
 
-	async processChatPacket(ctx: C.Log, decodedPacket: any) {
-		const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
-		if (matchChat) {
-			ctx.log.info(`Matched chat message: ${decodedPacket.body}`)
-
-			const result: any = {
-				raw: decodedPacket.body,
-				chat: matchChat[1],
-				name: matchChat[3],
-				message: matchChat[4],
-				time: new Date(),
-			}
-			iterateIDs(matchChat[2]).forEach((platform, id) => {
-				result[lowerID(platform)] = id
-			})
-			const parsedResult = SM.ChatMessageSchema.parse(result)
-			this.emit('CHAT_MESSAGE', parsedResult)
-			return
-		}
-
-		const matchPossessedAdminCam = decodedPacket.body.match(/\[Online Ids:([^\]]+)\] (.+) has possessed admin camera\./)
-		if (matchPossessedAdminCam) {
-			ctx.log.info(`Matched admin camera possessed: ${decodedPacket.body}`)
-			const result: any = {
-				raw: decodedPacket.body,
-				name: matchPossessedAdminCam[2],
-				time: new Date(),
-			}
-			iterateIDs(matchPossessedAdminCam[1]).forEach((platform, id) => {
-				result[lowerID(platform)] = id
-			})
-			const parsedResult = SM.AdminCameraSchema.parse(result)
-			this.emit('POSSESSED_ADMIN_CAMERA', parsedResult)
-			return
-		}
-
-		const matchUnpossessedAdminCam = decodedPacket.body.match(/\[Online IDs:([^\]]+)\] (.+) has unpossessed admin camera\./)
-		if (matchUnpossessedAdminCam) {
-			ctx.log.info(`Matched admin camera unpossessed: ${decodedPacket.body}`)
-			const result: any = {
-				raw: decodedPacket.body,
-				name: matchUnpossessedAdminCam[2],
-				time: new Date(),
-			}
-			iterateIDs(matchUnpossessedAdminCam[1]).forEach((platform, id) => {
-				result[lowerID(platform)] = id
-			})
-			const parsedResult = SM.AdminCameraSchema.parse(result)
-			this.emit('UNPOSSESSED_ADMIN_CAMERA', parsedResult)
-			return
-		}
-
-		const matchWarn = decodedPacket.body.match(/Remote admin has warned player (.*)\. Message was "(.*)"/)
-		if (matchWarn) {
-			ctx.log.info(`Matched warn message: ${decodedPacket.body}`)
-
-			const result = {
-				raw: decodedPacket.body,
-				name: matchWarn[1],
-				reason: matchWarn[2],
-				time: new Date(),
-			}
-			const parsedResult = SM.WarnMessageSchema.parse(result)
-			this.emit('PLAYER_WARNED', parsedResult)
-			return
-		}
-
-		const matchKick = decodedPacket.body.match(/Kicked player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*)/)
-		if (matchKick) {
-			ctx.log.info(`Matched kick message: ${decodedPacket.body}`)
-
-			const result: any = {
-				raw: decodedPacket.body,
-				playerID: matchKick[1],
-				name: matchKick[3],
-				time: new Date(),
-			}
-			iterateIDs(matchKick[2]).forEach((platform, id) => {
-				result[lowerID(platform)] = id
-			})
-			const parsedResult = SM.KickMessageSchema.parse(result)
-			this.emit('PLAYER_KICKED', parsedResult)
-			return
-		}
-
-		const matchSqCreated = decodedPacket.body.match(
-			/(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadID>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/
-		)
-		if (matchSqCreated) {
-			ctx.log.info(`Matched Squad Created: ${decodedPacket.body}`)
-			const result: any = {
-				time: new Date(),
-				...matchSqCreated.groups,
-			}
-			iterateIDs(matchSqCreated[2]).forEach((platform, id) => {
-				result['player' + capitalID(platform)] = id
-			})
-			const parsedResult = SM.SquadCreatedSchema.parse(result)
-			this.emit('SQUAD_CREATED', parsedResult)
-			return
-		}
-
-		const matchBan = decodedPacket.body.match(/Banned player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*) for interval (.*)/)
-		if (matchBan) {
-			ctx.log.info(`Matched ban message: ${decodedPacket.body}`)
-
-			const result: any = {
-				raw: decodedPacket.body,
-				playerID: matchBan[1],
-				name: matchBan[3],
-				interval: matchBan[4],
-				time: new Date(),
-			}
-			iterateIDs(matchBan[2]).forEach((platform, id) => {
-				result[lowerID(platform)] = id
-			})
-			const parsedResult = SM.BanMessageSchema.parse(result)
-			this.emit('PLAYER_BANNED', parsedResult)
-		}
-	}
-
-	async getCurrentMap(ctx: C.Log): Promise<M.MiniLayer> {
+	async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
 		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
 		const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/)
 		const layer = match[2]
@@ -239,7 +116,8 @@ export default class SquadRcon extends EventEmitter {
 		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
 	}
 
-	async endGame(_ctx: C.Log) {}
+	async endGame(_ctx: C.Log) {
+	}
 
 	async leaveSquad(ctx: C.Log, playerId: number) {
 		await this.rcon.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)
@@ -249,14 +127,6 @@ export default class SquadRcon extends EventEmitter {
 		const response = await this.rcon.execute(ctx, 'ListPlayers')
 		const match = response.match(/\[Players in Queue: (\d+)\]/)
 		return match ? parseInt(match[1], 10) : 0
-	}
-
-	async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
-		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
-		const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/)
-		const layer = match[2]
-		const factions = match[3]
-		return parseLayer(layer, factions)
 	}
 
 	async getServerStatus(ctx: C.Log): Promise<SM.ServerStatus> {

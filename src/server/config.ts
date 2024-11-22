@@ -4,12 +4,12 @@ import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
 
-const strNoWhitespace = z.string().regex(/^[^\s]+$/, { message: 'Must not contain whitespace' })
+const strNoWhitespace = z.string().regex(/^\S+$/, { message: 'Must not contain whitespace' })
 export const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
 
 const CommandConfigSchema = z.object({
 	strings: z.array(strNoWhitespace),
-	allowedChats: SM.CHAT_CHANNEL.default('admin'),
+	allowedChats: z.array(SM.CHAT_CHANNEL.default('admin')),
 })
 
 const ConfigSchema = z.object({

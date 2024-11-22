@@ -15,7 +15,7 @@ const EnvSchema = {
 	NODE_ENV: z.enum(['development'], { message: 'TODO configure prod' }),
 	ORIGIN: z.string().url(),
 
-	DB_HOST: z.string().min(1),
+	DB_HOST: z.string().min(1).default('localhost'),
 	DB_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
@@ -31,7 +31,7 @@ const EnvSchema = {
 	DISCORD_CLIENT_SECRET: z.string().min(1),
 
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
-	MOCK_SQUAD_SERVER: Flag.default('false'),
+	MOCK_SQUAD_SERVER_PATH: z.string().optional(),
 
 	RCON_HOST: z.string().min(1),
 	RCON_PORT: z
@@ -59,7 +59,7 @@ export function setupEnv() {
 		DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
 
 		LOG_LEVEL_OVERRIDE: process.env.LOG_LEVEL_OVERRIDE,
-		MOCK_SQUAD_SERVER: process.env.MOCK_SQUAD_SERVER,
+		MOCK_SQUAD_SERVER_PATH: process.env.MOCK_SQUAD_SERVER_PATH,
 		RCON_HOST: process.env.RCON_HOST,
 		RCON_PORT: process.env.RCON_PORT,
 		RCON_PASSWORD: process.env.RCON_PASSWORD,
