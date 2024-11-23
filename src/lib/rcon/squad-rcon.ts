@@ -1,14 +1,12 @@
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 
-import {capitalID, iterateIDs, lowerID} from './id-parser'
+import { capitalID, iterateIDs, lowerID } from './id-parser'
 import Rcon from './rcon-core'
 import * as SM from './squad-models'
 
 export default class SquadRcon implements SM.ISquadRcon {
-	constructor(private rcon: Rcon) {
-		super()
-	}
+	constructor(private rcon: Rcon) {}
 
 	async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
 		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
@@ -116,8 +114,7 @@ export default class SquadRcon implements SM.ISquadRcon {
 		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
 	}
 
-	async endGame(_ctx: C.Log) {
-	}
+	async endGame(_ctx: C.Log) {}
 
 	async leaveSquad(ctx: C.Log, playerId: number) {
 		await this.rcon.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)

@@ -12,11 +12,13 @@ let squadRcon!: SquadRcon
 let rcon!: Rcon
 let baseCtx: C.Log
 
-beforeAll(async () => {
+beforeAll(async () => {MyPassword
 	setupEnv()
 	await setupLogger()
 	baseCtx = { log: baseLogger }
-	rcon = new Rcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD })
+	const config = { host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD }
+	console.log(config)
+	rcon = new Rcon(config)
 	await rcon.connect(baseCtx)
 	squadRcon = new SquadRcon(rcon)
 })
@@ -30,7 +32,7 @@ afterEach(() => {
 	release?.()
 })
 
-test('Rcon should be connected', () => {
+test.only('Rcon should be connected', () => {
 	expect(rcon.connected).toBe(true)
 })
 

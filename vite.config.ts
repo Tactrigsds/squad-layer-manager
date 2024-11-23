@@ -3,6 +3,11 @@ import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 import * as AR from './src/app-routes.ts'
+import {setupEnv,  ENV} from "./src/server/env.ts";
+
+
+
+setupEnv()
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -22,7 +27,7 @@ export default defineConfig({
 function newFunction() {
 	const stuff = Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
-			const target = r.websocket ? 'ws://localhost:3000' : 'http://localhost:3000'
+			const target = r.websocket ? `ws://localhost:${ENV.PORT}` : `http://localhost:${ENV.PORT}`
 			return [`^${r.client}(\\?.+)?$`, { target, changeOrigin: true, ws: r.websocket }]
 		})
 	)

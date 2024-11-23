@@ -1,13 +1,3 @@
-import ComboBox from '@/components/combo-box/combo-box.tsx'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import * as DH from '@/lib/display-helpers'
-import type { ServerState } from '@/lib/rcon/rcon-squad-mock'
-import * as Rcon from '@/lib/rcon/squad-models'
-import { trpcReact } from '@/lib/trpc.client'
-import * as Typography from '@/lib/typography'
-import * as M from '@/models.ts'
 import { useForm } from '@tanstack/react-form'
 import {
 	ColumnDef,
@@ -25,6 +15,17 @@ import {
 } from '@tanstack/react-table'
 import { zodValidator } from '@tanstack/zod-form-adapter'
 import React from 'react'
+
+import ComboBox from '@/components/combo-box/combo-box.tsx'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import * as DH from '@/lib/display-helpers'
+import type { ServerState } from '@/lib/rcon/rcon-squad-mock'
+import * as Rcon from '@/lib/rcon/squad-models'
+import { trpcReact } from '@/lib/trpc.client'
+import * as Typography from '@/lib/typography'
+import * as M from '@/models.ts'
 
 import AddLayerPopover from './add-layer-popover'
 import { Alert } from './ui/alert'

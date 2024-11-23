@@ -1,14 +1,3 @@
-import { Button } from '@/components/ui/button'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useToast } from '@/hooks/use-toast'
-import * as DH from '@/lib/display-helpers'
-import { trpcReact } from '@/lib/trpc.client.ts'
-import * as M from '@/models'
-import { LayersQuery } from '@/server/systems/layers-query.ts'
-import * as S from '@/stores'
 import {
 	ColumnDef,
 	OnChangeFn,
@@ -25,6 +14,18 @@ import {
 } from '@tanstack/react-table'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useToast } from '@/hooks/use-toast'
+import * as DH from '@/lib/display-helpers'
+import { trpcReact } from '@/lib/trpc.client.ts'
+import * as M from '@/models'
+import { LayersQuery } from '@/server/systems/layers-query.ts'
+import * as S from '@/stores'
 
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'

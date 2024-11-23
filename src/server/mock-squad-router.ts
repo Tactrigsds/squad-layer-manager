@@ -1,9 +1,10 @@
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+
 import { MockSquadRcon, ServerState } from '@/lib/rcon/rcon-squad-mock.ts'
 import { PlayerSchema, SquadSchema } from '@/lib/rcon/squad-models'
 import * as M from '@/models'
 import * as SquadServer from '@/server/systems/squad-server'
-import { TRPCError } from '@trpc/server'
-import { z } from 'zod'
 
 import { baseLogger } from './logger'
 import { procedure, procedureWithInput, router } from './trpc'

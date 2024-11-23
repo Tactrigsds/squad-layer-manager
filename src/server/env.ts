@@ -1,5 +1,5 @@
 import { createEnv } from '@t3-oss/env-core'
-import dotenv from 'dotenv'
+import * as dotenv from 'dotenv'
 import { z } from 'zod'
 
 const Flag = z
@@ -37,9 +37,11 @@ const EnvSchema = {
 	RCON_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
-		.pipe(z.number().int().positive().default(21114))
+		.pipe(z.number().int().positive())
 		.default('21114'),
 	RCON_PASSWORD: z.string(),
+
+	PORT: z.number().int().positive().default(3000),
 }
 export function setupEnv() {
 	dotenv.config()

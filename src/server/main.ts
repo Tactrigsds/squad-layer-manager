@@ -167,9 +167,11 @@ for (const route of Object.values(AR.routes)) {
 }
 
 // --------  start server  --------
+server.log.info('Starting server...')
 try {
-	const port = 3000
-	await server.listen({ port })
+	const port = ENV.PORT
+	await server.listen({ port, })
+	server.log.info(`Server listening on port ${port}`)
 } catch (err) {
 	server.log.error(err)
 	process.exit(1)
