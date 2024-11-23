@@ -26,15 +26,15 @@ export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
 		})
 
 	return (
-		<Card className="w-full max-w-md mx-auto">
+		<Card className="mx-auto w-full max-w-md">
 			<CardHeader>
-				<CardTitle className="text-2xl font-bold text-center">Vote Results</CardTitle>
+				<CardTitle className="text-center text-2xl font-bold">Vote Results</CardTitle>
 				<CardDescription>{voteState.code}</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{sortedOptions.map((option) => (
 					<div key={option.id} className="mb-4">
-						<div className="flex justify-between items-center mb-2">
+						<div className="mb-2 flex items-center justify-between">
 							<span className={`font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
 								{option.name}
 								{option.isWinner && ' ★'}

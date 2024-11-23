@@ -1,14 +1,42 @@
+import { Subject } from 'rxjs'
+import { AsyncResource } from '@/lib/async'
+
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 
 import { capitalID, iterateIDs, lowerID } from './id-parser'
-import Rcon from './rcon-core'
+import Rcon, { DecodedPacket } from './rcon-core'
 import * as SM from './squad-models'
 
-export default class SquadRcon implements SM.ISquadRcon {
-	constructor(private rcon: Rcon) {}
+export default class SquadRcon {
+	event$: Subject<SM.SquadEvent> = new Subject()
 
-	async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
+	serverStatus: AsyncResource<SM.ServerStatus>
+	playerList: AsyncResource<SM.Player[]>
+	squadList: AsyncResource<SM.Squad[]>
+
+	constructor(
+		initCtx: C.Log,
+		private rcon: Rcon
+	) {
+		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx))
+		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx))
+		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx))
+
+		const onServerMsg = (pkt: DecodedPacket) => {
+			const message = processChatPacket(initCtx, pkt as DecodedPacket)
+			if (message === null) return
+			this.event$.next({ type: 'chat-message', message })
+		}
+		rcon.on('server', onServerMsg)
+		this[Symbol.dispose] = () => {
+			rcon.off('server', onServerMsg)
+		}
+	}
+
+	[Symbol.dispose]() {}
+
+	private async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
 		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
 		const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/)
 		const layer = match[2]
@@ -16,7 +44,7 @@ export default class SquadRcon implements SM.ISquadRcon {
 		return parseLayer(layer, factions)
 	}
 
-	async getNextLayer(ctx: C.Log) {
+	private async getNextLayer(ctx: C.Log) {
 		const response = await this.rcon.execute(ctx, 'ShowNextMap')
 		if (!response) return null
 		const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/)
@@ -27,7 +55,7 @@ export default class SquadRcon implements SM.ISquadRcon {
 		return parseLayer(layer, factions)
 	}
 
-	async getListPlayers(ctx: C.Log) {
+	private async getListPlayers(ctx: C.Log) {
 		const response = await this.rcon.execute(ctx, 'ListPlayers')
 
 		const players: SM.Player[] = []
@@ -97,8 +125,21 @@ export default class SquadRcon implements SM.ISquadRcon {
 		await this.rcon.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
+	async warnAllAdmins(ctx: C.Log, message: string) {
+		await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
+		const [{ value: admins }, { value: players }] = await Promise.all([this.adminList.get(opCtx), this.playerList.get(opCtx)])
+		const ops: Promise<void>[] = []
+		for (const player of players) {
+			if (admins.has(player.steamID)) {
+				ops.push(this.warn(opCtx, player.steamID.toString(), message))
+				break
+			}
+		}
+		await Promise.all(ops)
+	}
+
 	async warn(ctx: C.Log, anyID: string, message: string) {
-		await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${message}`)
+		await this.rcon.execute(opCtx, `AdminWarn "${anyID}" ${message}`)
 	}
 
 	// 0 = Perm | 1m = 1 minute | 1d = 1 Day | 1M = 1 Month | etc...
@@ -108,25 +149,33 @@ export default class SquadRcon implements SM.ISquadRcon {
 
 	async switchTeam(ctx: C.Log, anyID: string) {
 		await this.rcon.execute(ctx, `AdminForceTeamChange "${anyID}"`)
+		this.playerList.invalidate(ctx)
+		this.squadList.invalidate(ctx)
 	}
 
 	async setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
-		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
+		await using opCtx = C.pushOperation(ctx, 'squad-server:set-next-layer')
+		await this.rcon.execute(opCtx, M.getAdminSetNextLayerCommand(layer))
+		this.serverStatus.invalidate(opCtx)
 	}
 
-	async endGame(_ctx: C.Log) {}
+	async endGame(_ctx: C.Log) {
+		throw new Error('Method not implemented.')
+	}
 
 	async leaveSquad(ctx: C.Log, playerId: number) {
 		await this.rcon.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)
+		this.squadList.invalidate(ctx)
+		this.playerList.invalidate(ctx)
 	}
 
-	async getPlayerQueueLength(ctx: C.Log): Promise<number> {
+	private async getPlayerQueueLength(ctx: C.Log): Promise<number> {
 		const response = await this.rcon.execute(ctx, 'ListPlayers')
 		const match = response.match(/\[Players in Queue: (\d+)\]/)
 		return match ? parseInt(match[1], 10) : 0
 	}
 
-	async getServerStatus(ctx: C.Log): Promise<SM.ServerStatus> {
+	private async getServerStatus(ctx: C.Log): Promise<SM.ServerStatus> {
 		const rawData = await this.rcon.execute(ctx, `ShowServerInfo`)
 		const data = JSON.parse(rawData)
 		const res = SM.ServerRawInfoSchema.safeParse(data)
@@ -186,4 +235,33 @@ function parseLayerFactions(factionsRaw: string) {
 		})
 	}
 	return parsedFactions as [ParsedFaction, ParsedFaction]
+}
+
+function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
+	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
+	if (matchChat) {
+		ctx.log.trace(`Matched chat message: %s`, decodedPacket.body)
+
+		const result = {
+			raw: decodedPacket.body,
+			chat: matchChat[1],
+			name: matchChat[3],
+			message: matchChat[4],
+			time: new Date(),
+			steamID: null as string | null,
+			eosID: null as string | null,
+		}
+
+		iterateIDs(matchChat[2]).forEach((platform, id) => {
+			//@ts-expect-error not typesafe
+			result[lowerID(platform)] = id
+		})
+		return SM.ChatMessageSchema.parse(result)
+	}
+
+	const matchWarn = decodedPacket.body.match(/Remote admin has warned player (.*)\. Message was "(.*)"/)
+	if (matchWarn) {
+		ctx.log.trace(`Matched warn message: %s`, decodedPacket.body)
+	}
+	return null
 }

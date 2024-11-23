@@ -54,7 +54,7 @@ describe('pushOperation', () => {
 		expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('Operation test-op::'), expect.stringMatching(/completed$/))
 	})
 
-	it('should handle error on disposal', () => {
+	it('should handle error on disposal', async () => {
 		await using opContext = Context.pushOperation(mockContext, 'test-op')
 		const error = new Error('Test error')
 

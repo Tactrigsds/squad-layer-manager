@@ -105,7 +105,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 	return (
 		<Dialog onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="items-center flex flex-col">
+			<DialogContent className="flex flex-col items-center">
 				<DialogHeader>
 					<DialogTitle>Submit New Filter</DialogTitle>
 				</DialogHeader>

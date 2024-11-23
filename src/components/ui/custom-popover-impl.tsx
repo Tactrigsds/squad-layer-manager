@@ -471,30 +471,30 @@ const Close = PopoverClose
 const Arrow = PopoverArrow
 
 export {
+	Anchor,
+	Arrow,
+	Close,
+	Content,
 	createPopoverScope,
 	//
 	Popover,
 	PopoverAnchor,
-	PopoverTrigger,
-	PopoverPortal,
-	PopoverContent,
-	PopoverClose,
 	PopoverArrow,
+	PopoverClose,
+	PopoverContent,
+	PopoverPortal,
+	PopoverTrigger,
+	Portal,
 	//
 	Root,
-	Anchor,
 	Trigger,
-	Portal,
-	Content,
-	Close,
-	Arrow,
 }
 export type {
-	PopoverProps,
 	PopoverAnchorProps,
-	PopoverTriggerProps,
-	PopoverPortalProps,
-	PopoverContentProps,
-	PopoverCloseProps,
 	PopoverArrowProps,
+	PopoverCloseProps,
+	PopoverContentProps,
+	PopoverPortalProps,
+	PopoverProps,
+	PopoverTriggerProps,
 }

@@ -46,7 +46,7 @@ function getConsoleArgs(level: number, obj: any) {
 		hour: '2-digit',
 		minute: '2-digit',
 		second: '2-digit',
-		//@ts-expect-error wwhy
+		// @ts-expect-error wwhy
 		fractionalSecondDigits: 3,
 	})
 	obj = { ...obj }
@@ -99,7 +99,7 @@ export default async function (opts: { ignore?: string }) {
 				const msg = obj.msg as string
 				obj = { ...obj }
 
-				//@ts-expect-error fuck you
+				// @ts-expect-error fuck you
 				obj.levelStr = levels[level] ?? 'unknown'
 
 				// Remove ignored fields from the log object
@@ -175,7 +175,7 @@ export default async function (opts: { ignore?: string }) {
 	)
 }
 
-//@ts-expect-error idk
+// @ts-expect-error idk
 globalThis.OPS = {
 	displayStrategy: 'table' as 'json' | 'table' | 'raw',
 	ops: operations,

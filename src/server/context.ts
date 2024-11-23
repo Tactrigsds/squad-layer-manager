@@ -20,7 +20,7 @@ export type Log = {
 export function includeLogProperties<T extends Log & Partial<Db>>(ctx: T, fields: Record<string, any>): T {
 	const log = ctx.log.child(fields)
 	if (ctx.db) {
-		//@ts-expect-error monkey patching
+		// @ts-expect-error monkey patching
 		ctx.db.session.logger.logQuery = function logQuery(query: string, params: unknown[]) {
 			if (log.level === 'trace') log.trace('DB: %s: %o', params)
 			else log.debug('DB: %s, %o', query, params)

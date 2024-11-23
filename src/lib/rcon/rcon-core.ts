@@ -3,6 +3,13 @@ import net from 'node:net'
 
 import * as C from '@/server/context.ts'
 
+export type DecodedPacket = {
+	type: number
+	size: number
+	id: number
+	body: string
+}
+
 export default class Rcon extends EventEmitter {
 	private host: string
 	private port: number
@@ -50,7 +57,7 @@ export default class Rcon extends EventEmitter {
 			if (this.client && this.connected && !this.client.destroyed) return reject(new Error('Rcon.connect() Rcon already connected.'))
 			this.removeAllListeners('server')
 			this.removeAllListeners('auth')
-			this.on('server', (pkt) => this.processChatPacket(pkt)).once('auth', () => {
+			this.once('auth', () => {
 				ctx.log.trace(`Connected to: ${this.host}:${this.port}`)
 				clearTimeout(this.connectionRetry)
 				this.connected = true
@@ -175,10 +182,15 @@ export default class Rcon extends EventEmitter {
 		else if (bufSize <= this.stream.byteLength - 4) {
 			const bufId = this.stream.readInt32LE(4)
 			const bufType = this.stream.readInt32LE(8)
-			if (this.stream[bufSize + 2] !== 0 || this.stream[bufSize + 3] !== 0 || bufId < 0 || bufType < 0 || bufType > 5)
+			if (this.stream[bufSize + 2] !== 0 || this.stream[bufSize + 3] !== 0 || bufId < 0 || bufType < 0 || bufType > 5) {
 				return this.#badPacket(ctx)
-			else {
-				const response = { size: bufSize, id: bufId, type: bufType, body: this.stream.toString('utf8', 12, bufSize + 2) }
+			} else {
+				const response = {
+					size: bufSize,
+					id: bufId,
+					type: bufType,
+					body: this.stream.toString('utf8', 12, bufSize + 2),
+				} satisfies DecodedPacket
 				this.stream = this.stream.subarray(bufSize + 4)
 				return response
 			}

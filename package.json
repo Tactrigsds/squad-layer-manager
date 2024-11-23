@@ -12,7 +12,8 @@
 		"server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/main.ts",
 		"__comment__": "use chrome node devtools with below script",
 		"server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/main.ts",
-		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts"
+		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts",
+		"format": "prettier ./**/*.{ts,tsx,js} -w --plugin '@babel/plugin-proposal-explicit-resource-management'"
 	},
 	"dependencies": {
 		"@dnd-kit/core": "^6.1.0",
@@ -120,6 +121,7 @@
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {
+		"@babel/plugin-proposal-explicit-resource-management": "^7.25.9",
 		"@eslint/js": "^9.9.0",
 		"@types/ace": "^0.0.52",
 		"@types/diff": "^5.2.3",

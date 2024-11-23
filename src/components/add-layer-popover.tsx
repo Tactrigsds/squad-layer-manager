@@ -194,7 +194,7 @@ export default function AddLayerPopover(props: {
 	return (
 		<Popover open={props.open} modal={true} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent side="bottom" className="h-[400px] w-max flex flex-col">
+			<PopoverContent side="bottom" className="flex h-[400px] w-max flex-col">
 				<div className="flex items-center justify-between">
 					<h3 className={Typography.H3}>Add {additionType === 'vote' ? 'Vote' : 'Layers'} to Queue</h3>
 					<div className="flex items-center space-x-2">
@@ -212,9 +212,9 @@ export default function AddLayerPopover(props: {
 						</Button>
 					</div>
 				</div>
-				<div ref={contentRef} className="flex items-center space-x-2 min-h-0">
+				<div ref={contentRef} className="flex min-h-0 items-center space-x-2">
 					{/* ------ filter config ------ */}
-					<div className="grid grid-cols-[auto_min-content_auto] gap-2 h-full">
+					<div className="grid h-full grid-cols-[auto_min-content_auto] gap-2">
 						{filter.children.map((_node, index) => {
 							const setComp = (updateCallback: (prevComp: M.EditableComparison) => M.EditableComparison) => {
 								setFilter(
@@ -253,10 +253,10 @@ export default function AddLayerPopover(props: {
 						})}
 					</div>
 					{/* ------ filter results ------ */}
-					<div className="min-w-[300px] h-full flex space-x-2">
-						<div className="flex flex-col h-full">
+					<div className="flex h-full min-w-[300px] space-x-2">
+						<div className="flex h-full flex-col">
 							<h4 className={Typography.H4}>Results</h4>
-							<ScrollArea className="h-full min-h-0 max-h-[500px] text-xs space-y-2">
+							<ScrollArea className="h-full max-h-[500px] min-h-0 space-y-2 text-xs">
 								{!res.isFetchedAfterMount && selectedLayers.length === 0 && (
 									<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
 								)}
@@ -282,16 +282,16 @@ export default function AddLayerPopover(props: {
 									})}
 							</ScrollArea>
 						</div>
-						<div className="flex flex-col h-full">
+						<div className="flex h-full flex-col">
 							<h4 className={Typography.H4}>Selected</h4>
-							<ScrollArea ref={selectedLayersBoxRef} className="h-full min-h-0 max-h-[500px] text-xs space-y-2">
+							<ScrollArea ref={selectedLayersBoxRef} className="h-full max-h-[500px] min-h-0 space-y-2 text-xs">
 								{selectedLayers.length === 0 && <div className="p-2 text-sm text-gray-500">No Layers Selected</div>}
 								{selectedLayers.length > 0 &&
 									selectedLayers.map((layer, index) => {
 										return (
 											<React.Fragment key={layer.id + index.toString()}>
 												{index > 0 && <Separator />}
-												<div className={cn('w-full flex justify-between place-items-center p-2 rounded', Typography.Small)}>
+												<div className={cn('flex w-full place-items-center justify-between rounded p-2', Typography.Small)}>
 													{Helpers.toShortLayerName(layer)}
 													<Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => removeLayer(index)}>
 														<Minus color="hsl(var(--destructive))" />

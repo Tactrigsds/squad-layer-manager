@@ -260,8 +260,8 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 
 	return (
 		<div className="pt-2">
-			<div className="flex justify-between items-center mb-2">
-				<span className="flex items-center space-x-2 h-10">
+			<div className="mb-2 flex items-center justify-between">
+				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -312,7 +312,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 						</>
 					)}
 				</span>
-				<span className="flex items-center space-x-2 h-10">
+				<span className="flex h-10 items-center space-x-2">
 					<Button onClick={generateSeed} variant="outline" size="icon" className={randomize ? '' : 'invisible'}>
 						<Dices />
 					</Button>

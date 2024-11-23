@@ -48,7 +48,7 @@ export default function FilterCard(props: FilterCardProps) {
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	return (
 		<div defaultValue="builder" className="w-full space-y-2">
-			<div className="w-full flex justify-end space-x-2">
+			<div className="flex w-full justify-end space-x-2">
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
@@ -111,7 +111,7 @@ function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPres
 			pressed={pressed}
 			onPressedChange={onPressedChange}
 			variant="default"
-			className="hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground px-2 h-9"
+			className="h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground"
 		>
 			<EqualNot className="w-4" />
 		</Toggle>
@@ -214,7 +214,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		}
 
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex flex-col space-y-2 relative')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'relative flex flex-col space-y-2')}>
 				<div className="flex items-center space-x-1">
 					{negationToggle}
 					<ComboBox
@@ -263,7 +263,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 	if (node.type === 'comp' && node.comp) {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-1 items-center')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
@@ -274,7 +274,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	}
 	if (node.type === 'apply-filter') {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex space-x-1 items-center')}>
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<ApplyFilter
 					defaultEditing={props.defaultEditing}
@@ -653,7 +653,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	ref: React.ForwardedRef<Focusable>
 ) {
 	return (
-		<div className="flex w-[200px] space-x-2 items-center">
+		<div className="flex w-[200px] items-center space-x-2">
 			<NumericSingleValueConfig ref={ref} value={props.min} setValue={props.setMin} />
 			<span>to</span>
 			<NumericSingleValueConfig value={props.max} setValue={props.setMax} />

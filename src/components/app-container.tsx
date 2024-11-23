@@ -15,8 +15,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const nextLayer = useNextLayerState()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
-		<div className="w-full h-full">
-			<nav className="flex items-center justify-between h-16 px-4 border-b">
+		<div className="h-full w-full">
+			<nav className="flex h-16 items-center justify-between border-b px-4">
 				<div className="flex items-start space-x-6">
 					<Link to={AR.link('/', [])} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
@@ -25,7 +25,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						Filters
 					</Link>
 				</div>
-				<div className="flex flex-row space-x-8 items-center min-h-0 h-max">
+				<div className="flex h-max min-h-0 flex-row items-center space-x-8">
 					<>
 						{serverInfo && (
 							<div className="flex flex-col">
@@ -38,7 +38,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 								</div>
 							</div>
 						)}
-						<div className="grid grid-cols-[auto_auto] h-full">
+						<div className="grid h-full grid-cols-[auto_auto]">
 							<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
 							<span className={cn(Typography.Small, 'font-bold')}>{currentLayer && DH.toShortLayerName(currentLayer)}</span>
 							<span className={cn(Typography.Small, 'mr-2')}>Next:</span>

@@ -61,9 +61,9 @@ export default function FilterEdit() {
 					return
 				}
 				if (e.mutation.type === 'update') {
-					if (!userRes.data?.username || userRes.data.username !== e.mutation.username)
+					if (!userRes.data?.username || userRes.data.username !== e.mutation.username) {
 						toast({ title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}` })
-					else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
+					} else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
 						toast({ title: `Updated ${e.mutation.value.name}` })
 					}
 
@@ -124,7 +124,7 @@ export default function FilterEdit() {
 
 	return (
 		<div className="container mx-auto py-10">
-			<div className="w-full flex justify-center items-center">
+			<div className="flex w-full items-center justify-center">
 				<h3 className={Typography.H3 + ' m-auto'}>{filterEntity.name}</h3>
 			</div>
 			<div className="flex space-x-2">
@@ -202,7 +202,7 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 	return (
 		<Dialog open={isOpen} onOpenChange={setIsOpen}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="items-center flex flex-col">
+			<DialogContent className="flex flex-col items-center">
 				<DialogHeader>
 					<DialogTitle>Submit New Filter</DialogTitle>
 				</DialogHeader>

@@ -41,17 +41,17 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	let query = db.select().from(Schema.layers).where(whereCondition)
 
 	if (input.sort.type === 'column') {
-		//@ts-expect-error idk
+		// @ts-expect-error idk
 		query = query.orderBy(
 			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
 		)
 	} else if (input.sort.type === 'random') {
-		//@ts-expect-error idk
+		// @ts-expect-error idk
 		query = query.orderBy(sql`RAND(${input.sort.seed})`)
 	}
 
 	if (input.groupBy) {
-		//@ts-expect-error idk
+		// @ts-expect-error idk
 		query = query.groupBy(...input.groupBy.map((col) => Schema.layers[col]))
 	}
 	const [layers, [countResult]] = await Promise.all([
@@ -80,11 +80,11 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 
 		switch (comp.code) {
 			case 'eq':
-				//@ts-expect-error idk
+				// @ts-expect-error idk
 				res = E.eq(column, comp.value)
 				break
 			case 'in':
-				//@ts-expect-error idk
+				// @ts-expect-error idk
 				res = E.inArray(column, comp.values)
 				break
 			case 'like':

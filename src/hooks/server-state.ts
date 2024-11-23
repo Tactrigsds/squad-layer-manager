@@ -1,30 +1,17 @@
 import { useState } from 'react'
-import React from 'react'
 
 import type * as Squad from '@/lib/rcon/squad-models'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'
 
 export function useSquadServerStatus() {
-	const [serverInfo, setServerInfo] = useState<Squad.ServerStatus | null>(null)
+	const [serverStatus, setServerStatus] = useState<Squad.ServerStatus | null>(null)
 	trpcReact.squadServer.watchServerStatus.useSubscription(undefined, {
 		onData: (data) => {
-			setServerInfo(data)
+			setServerStatus(data)
 		},
 	})
-	return serverInfo
-}
-
-export function useNowPlayingState() {
-	const [nowPlaying, setNowPlaying] = React.useState<M.MiniLayer | null>(null)
-	trpcReact.server.watchCurrentLayerState.useSubscription(undefined, { onData: (d) => setNowPlaying(d) })
-	return nowPlaying
-}
-
-export function useNextLayerState() {
-	const [nextLayerState, setNextLayerState] = React.useState<M.MiniLayer | null>(null)
-	trpcReact.server.watchNextLayerState.useSubscription(undefined, { onData: setNextLayerState })
-	return nextLayerState
+	return serverStatus
 }
 
 export type FilterMutationHandle = {

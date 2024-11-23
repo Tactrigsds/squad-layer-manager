@@ -1,3 +1,4 @@
+import { Observable } from 'rxjs'
 import { z } from 'zod'
 
 import { parsedBigint, parsedNum } from '@/lib/zod.ts'
@@ -56,13 +57,18 @@ export const SquadSchema = z.object({
 
 export type Squad = z.infer<typeof SquadSchema>
 
-export const ChatMessageSchema = z.object({
-	raw: z.string(),
-	chat: z.string(),
-	name: z.string(),
-	message: z.string(),
-	time: z.date(),
-})
+export const ChatMessageSchema = z
+	.object({
+		raw: z.string(),
+		chat: z.string(),
+		name: z.string(),
+		message: z.string(),
+		time: z.date(),
+		steamID: z.string(),
+		eosID: z.string(),
+	})
+	.refine((msg) => msg.steamID || msg.eosID, { message: 'steamID or eosID must be present' })
+export type ChatMessage = z.infer<typeof ChatMessageSchema>
 
 export const AdminCameraSchema = z
 	.object({
@@ -126,6 +132,7 @@ export type SquadAdminPerms = { [key: string]: boolean }
 export type SquadAdmins = Map<bigint, Record<string, boolean>>
 
 export interface ISquadRcon {
+	event$: Observable<SquadEvent>
 	getCurrentMap(ctx: C.Log): Promise<M.MiniLayer>
 
 	getNextLayer(ctx: C.Log): Promise<M.MiniLayer>

@@ -88,7 +88,7 @@ server.register(oauthPlugin, {
 })
 
 server.get(AR.exists('/login/callback'), async function (req, reply) {
-	//@ts-expect-error lame
+	// @ts-expect-error lame
 	const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 	const token = tokenResult.token as { access_token: string; token_type: string }
 	const discordUser = await Discord.getUser(token)
@@ -170,7 +170,7 @@ for (const route of Object.values(AR.routes)) {
 server.log.info('Starting server...')
 try {
 	const port = ENV.PORT
-	await server.listen({ port, })
+	await server.listen({ port })
 	server.log.info(`Server listening on port ${port}`)
 } catch (err) {
 	server.log.error(err)

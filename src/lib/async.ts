@@ -137,7 +137,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 		private cb: (ctx: Ctx) => Promise<T>,
 		opts?: Partial<AsyncResourceOpts>
 	) {
-		//@ts-expect-error init
+		// @ts-expect-error init
 		this.opts = opts ?? {}
 		this.opts.maxLockTime ??= 2000
 		this.opts.defaultTTL ??= 1000

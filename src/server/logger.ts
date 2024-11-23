@@ -30,7 +30,7 @@ export async function setupLogger() {
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
 	const baseConfig = envToLogger[ENV.NODE_ENV]
 	if (ENV.USING_DEVTOOLS) {
-		//@ts-expect-error don't need it
+		// @ts-expect-error don't need it
 		delete baseConfig.transport
 		baseLogger = pino(baseConfig, await devtoolsTransport({ ignore }))
 	} else {

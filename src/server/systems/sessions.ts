@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import * as DB from '@/server/db.ts'
-import { Logger, baseLogger as log } from '@/server/logger'
+import { baseLogger as log, Logger } from '@/server/logger'
 import * as Schema from '@/server/schema.ts'
 
 import * as C from '../context'
@@ -27,18 +27,18 @@ export async function setupSessions() {
 }
 
 export async function validateSession(sessionId: string, ctx: C.Log & C.Db) {
-  await using opCtx = C.pushOperation(ctx, 'sessions:validate')
-  const [row] = await opCtx.db
-   .select({ session: Schema.sessions, user: Schema.users })
-   .from(Schema.sessions)
-   .where(eq(Schema.sessions.id, sessionId))
-   .innerJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
-  if (!row) return { code: 'err:not-found' as const }
-  if (new Date() > row.session.expiresAt) {
-   await opCtx.db.delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id))
-   return {code: 'err:expired' as const }
-  }
-  return { code: 'ok' as const, sessionId: row.session.id, user: row.user }
+	await using opCtx = C.pushOperation(ctx, 'sessions:validate')
+	const [row] = await opCtx.db
+		.select({ session: Schema.sessions, user: Schema.users })
+		.from(Schema.sessions)
+		.where(eq(Schema.sessions.id, sessionId))
+		.innerJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
+	if (!row) return { code: 'err:not-found' as const }
+	if (new Date() > row.session.expiresAt) {
+		await opCtx.db.delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id))
+		return { code: 'err:expired' as const }
+	}
+	return { code: 'ok' as const, sessionId: row.session.id, user: row.user }
 }
 
 export async function logout(ctx: C.AuthedRequest) {

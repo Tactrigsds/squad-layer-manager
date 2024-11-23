@@ -10,8 +10,8 @@ import { buttonVariants } from './ui/button'
 export default function FiltersIndex() {
 	const filtersData = trpcReact.filters.getFilters.useQuery()
 	return (
-		<div className="w-full mt-4">
-			<div className="flex flex-col space-y-2 w-[500px] mx-auto">
+		<div className="mt-4 w-full">
+			<div className="mx-auto flex w-[500px] flex-col space-y-2">
 				<div>
 					<Link className={buttonVariants()} to={AR.link('/filters/new', [])}>
 						New Filter
@@ -20,7 +20,7 @@ export default function FiltersIndex() {
 				{filtersData.data?.map((filter) => (
 					<div key={filter.id} className="w-full">
 						<Link
-							className={cn('flex-grow flex justify-between items-center w-full space-x-4', buttonVariants({ variant: 'outline' }))}
+							className={cn('flex w-full flex-grow items-center justify-between space-x-4', buttonVariants({ variant: 'outline' }))}
 							to={AR.link('/filters/:id/edit', [filter.id])}
 						>
 							<span>{filter.name}</span>

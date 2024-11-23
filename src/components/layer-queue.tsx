@@ -165,7 +165,7 @@ export default function LayerQueue() {
 	}
 
 	return (
-		<div className="contianer mx-auto py-10 grid place-items-center">
+		<div className="contianer mx-auto grid place-items-center py-10">
 			<LayerQueueContext.Provider value={{}}>
 				<span className="flex space-x-4">
 					{serverState?.currentVote && (
@@ -178,11 +178,11 @@ export default function LayerQueue() {
 						/>
 					)}
 					<DndContext onDragEnd={handleDragEnd}>
-						<Card className="flex flex-col w-max">
-							<div className="p-6 w-full flex justify-between">
+						<Card className="flex w-max flex-col">
+							<div className="flex w-full justify-between p-6">
 								<h3 className={Typography.H3}>Layer Queue</h3>
 								<AddLayerPopover addQueueItems={addItems} open={addLayersPopoverOpen} onOpenChange={setAddLayersPopoverOpen}>
-									<Button className="space-x-1 flex items-center w-min" variant="default">
+									<Button className="flex w-min items-center space-x-1" variant="default">
 										<PlusIcon />
 										<span>Add To Queue</span>
 									</Button>
@@ -223,7 +223,7 @@ export default function LayerQueue() {
 
 									<h4 className={Typography.H4}>Up Next</h4>
 									<ScrollArea>
-										<ul className="flex flex-col space-y-1 w-max">
+										<ul className="flex w-max flex-col space-y-1">
 											{/* -------- queue items -------- */}
 											{layerQueue?.map((item, index) => {
 												function dispatch(action: QueueItemAction) {
@@ -489,10 +489,12 @@ function QueueItem(props: {
 					ref={setNodeRef}
 					style={style}
 					{...attributes}
-					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${color} bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
+					className={`group flex w-full items-center justify-between space-x-2 px-1 pb-2 pt-1 ${color} rounded-md bg-opacity-30 ${
+						isDragging ? 'border' : ''
+					}`}
 				>
 					<div className="flex items-center">
-						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
+						<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
 							<GripVertical />
 						</Button>
 					</div>
@@ -507,7 +509,7 @@ function QueueItem(props: {
 										<span>
 											{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
 										</span>
-										<div className="flex items-center min-h-0 space-x-1">
+										<div className="flex min-h-0 items-center space-x-1">
 											<span>
 												{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2}{' '}
 												{Helpers.toShortSubfaction(layer.SubFac_2)}
@@ -520,7 +522,7 @@ function QueueItem(props: {
 					</div>
 					<DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
 						<DropdownMenuTrigger asChild>
-							<Button className="group-hover:visible invisible" variant="ghost" size="icon">
+							<Button className="invisible group-hover:visible" variant="ghost" size="icon">
 								<EllipsisVertical />
 							</Button>
 						</DropdownMenuTrigger>
@@ -553,7 +555,7 @@ function QueueItem(props: {
 								onClick={() => {
 									return props.dispatch({ code: 'delete' })
 								}}
-								className="bg-destructive focus:bg-red-600 text-destructive-foreground"
+								className="bg-destructive text-destructive-foreground focus:bg-red-600"
 							>
 								Delete
 							</DropdownMenuItem>
@@ -576,21 +578,23 @@ function QueueItem(props: {
 					ref={setNodeRef}
 					style={style}
 					{...attributes}
-					className={`px-1 pt-1 pb-2 flex items-center justify-between space-x-2 w-full group ${color} bg-opacity-30 rounded-md ${isDragging ? ' border' : ''}`}
+					className={`group flex w-full items-center justify-between space-x-2 px-1 pb-2 pt-1 ${color} rounded-md bg-opacity-30 ${
+						isDragging ? 'border' : ''
+					}`}
 				>
 					<div className="flex items-center">
-						<Button {...listeners} variant="ghost" size="icon" className="cursor-grab group-hover:visible invisible">
+						<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
 							<GripVertical />
 						</Button>
 						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
 					</div>
-					<div className="flex items-center min-h-0 space-x-1">
+					<div className="flex min-h-0 items-center space-x-1">
 						<span>
 							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2} {Helpers.toShortSubfaction(layer.SubFac_2)}
 						</span>
 						<DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
 							<DropdownMenuTrigger asChild>
-								<Button className="group-hover:visible invisible" variant="ghost" size="icon">
+								<Button className="invisible group-hover:visible" variant="ghost" size="icon">
 									<EllipsisVertical />
 								</Button>
 							</DropdownMenuTrigger>
@@ -623,7 +627,7 @@ function QueueItem(props: {
 									onClick={() => {
 										return props.dispatch({ code: 'delete' })
 									}}
-									className="bg-destructive focus:bg-red-600 text-destructive-foreground"
+									className="bg-destructive text-destructive-foreground focus:bg-red-600"
 								>
 									Delete
 								</DropdownMenuItem>

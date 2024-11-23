@@ -156,7 +156,10 @@ export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 		return `${subFac ? `+${subFac}` : ''}`
 	}
 
-	return `AdminSetNextLayer ${layer.Layer} ${getFactionModifier(layer.Faction_1, layer.SubFac_1)} ${getFactionModifier(layer.Faction_2, layer.SubFac_2)}`
+	return `AdminSetNextLayer ${layer.Layer} ${getFactionModifier(layer.Faction_1, layer.SubFac_1)} ${getFactionModifier(
+		layer.Faction_2,
+		layer.SubFac_2
+	)}`
 }
 
 export function getSetNextVoteCommand(ids: string[]) {
@@ -219,11 +222,11 @@ export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPI
 	...LayerColumnKey[],
 ]
 
-//@ts-expect-error initialize
+// @ts-expect-error initialize
 export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey, ColumnType> = {}
 for (const [key, values] of Object.entries(COLUMN_TYPE_MAPPINGS)) {
 	for (const value of values) {
-		//@ts-expect-error initialize
+		// @ts-expect-error initialize
 		COLUMN_KEY_TO_TYPE[value] = key
 	}
 }

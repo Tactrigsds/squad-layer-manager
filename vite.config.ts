@@ -3,9 +3,7 @@ import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 import * as AR from './src/app-routes.ts'
-import {setupEnv,  ENV} from "./src/server/env.ts";
-
-
+import { ENV, setupEnv } from './src/server/env.ts'
 
 setupEnv()
 

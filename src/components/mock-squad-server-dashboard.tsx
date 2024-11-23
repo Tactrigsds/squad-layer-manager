@@ -56,7 +56,7 @@ export default function MockSquadServerDashboard() {
 	return (
 		<MockSquadServerContext.Provider value={{ refetch: serverStateQuery.refetch, state: serverStateQuery.data }}>
 			<div className="container mx-auto py-10">
-				<h1 className="text-2xl font-bold mb-5">Admin Dashboard</h1>
+				<h1 className="mb-5 text-2xl font-bold">Admin Dashboard</h1>
 				<div className="grid grid-cols-2 gap-4">
 					<AddPlayerForm />
 					<CreateSquadForm />
@@ -113,7 +113,7 @@ export default function MockSquadServerDashboard() {
 								</div>
 								<div>
 									<h3 className="text-lg font-medium">Squads</h3>
-									<ul className="list-disc list-inside">
+									<ul className="list-inside list-disc">
 										{serverStateQuery.data.squads.map((squad) => (
 											<li key={squad.squadID}>{squad.squadName}</li>
 										))}
@@ -237,7 +237,7 @@ function AddPlayerForm() {
 
 	return (
 		<div>
-			<h2 className="text-xl font-semibold mb-3">Connect Player</h2>
+			<h2 className="mb-3 text-xl font-semibold">Connect Player</h2>
 			<form onSubmit={onSubmit} className="space-y-4">
 				<form.Field name="name" validators={{ onChange: Rcon.PlayerSchema.shape.name }}>
 					{(field) => (
