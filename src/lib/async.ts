@@ -223,9 +223,9 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 		if (this.disposed) return EMPTY
+		this.observingTTL = Math.min(opts.ttl!, this.observingTTL ?? Infinity)
+
 		const setupRefetch = () => {
-			this.observingTTL = Math.min(opts.ttl!, this.observingTTL ?? Infinity)
-			// we could be more sophisticated about handling transitions between observingTTLs better but can't be bothered for now
 			const refetch$ = this.valueSubject.pipe(
 				switchMap(() => {
 					if (!this.observingTTL) return EMPTY
@@ -236,8 +236,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 
 			this.refetchSub = refetch$.pipe(observeOn(asyncScheduler)).subscribe(async () => {
 				if (this.observingTTL === null) return
-				await sleep(0)
-				this.get(ctx, opts)
+				this.get(ctx, { ttl: 0 })
 			})
 		}
 

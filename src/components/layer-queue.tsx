@@ -9,7 +9,6 @@ import React from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useNowPlayingState as useCurrentLayer } from '@/hooks/server-state.ts'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
@@ -24,14 +23,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useAlertDialog } from './ui/lazy-alert-dialog.tsx'
 import { ScrollArea } from './ui/scroll-area.tsx'
 import { Separator } from './ui/separator'
-import { TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
+import { useSquadServerStatus } from '@/hooks/server-state.ts'
 
 const LayerQueueContext = createContext<object>({})
 
 export default function LayerQueue() {
 	const [layerQueue, setLayerQueue] = useState(null as null | M.LayerQueue)
-	const currentLayer = useCurrentLayer()
+	const serverStatus = useSquadServerStatus()
+	const currentLayer = serverStatus?.currentLayer
 	const [poolFilterId, setPoolFilterId] = useState(null as M.ServerState['poolFilterId'])
 
 	const [serverState, setServerState] = useState(null as null | (M.ServerState & M.UserPart))
@@ -360,7 +360,7 @@ function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote
 			break
 		case 'ended:aborted':
 			if (state.abortReason === 'manual') {
-				const user = props.parts.users.find((u) => u.discordId === state.aborter!)!
+				const user = props.parts.users.find((u) => u.discordId === BigInt(state.aborter!))!
 				body = (
 					<span>
 						<Alert>
@@ -425,7 +425,12 @@ function PoolConfigurationPanel(props: {
 				<CardTitle>Pool Configuration</CardTitle>
 			</CardHeader>
 			<CardContent>
-				<ComboBox title="Pool Filter" options={filterOptions ?? LOADING} value={selected} onSelect={props.updateFilter} />
+				<ComboBox
+					title="Pool Filter"
+					options={filterOptions ?? LOADING}
+					value={selected}
+					onSelect={(filter) => props.updateFilter(filter ?? null)}
+				/>
 			</CardContent>
 		</Card>
 	)

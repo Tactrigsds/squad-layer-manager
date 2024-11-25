@@ -16,7 +16,7 @@ export default class SquadRcon {
 	squadList: AsyncResource<SM.Squad[]>
 
 	constructor(
-		initCtx: C.Log,
+		ctx: C.Log,
 		private rcon: Rcon
 	) {
 		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx))
@@ -24,7 +24,7 @@ export default class SquadRcon {
 		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx))
 
 		const onServerMsg = (pkt: DecodedPacket) => {
-			const message = processChatPacket(initCtx, pkt as DecodedPacket)
+			const message = processChatPacket(ctx, pkt)
 			if (message === null) return
 			this.event$.next({ type: 'chat-message', message })
 		}
@@ -248,14 +248,18 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 			name: matchChat[3],
 			message: matchChat[4],
 			time: new Date(),
-			steamID: null as string | null,
-			eosID: null as string | null,
+			steamID: undefined as string | undefined,
+			eosID: undefined as string | undefined,
+			playerId: null as unknown as string,
 		}
 
 		iterateIDs(matchChat[2]).forEach((platform, id) => {
 			//@ts-expect-error not typesafe
 			result[lowerID(platform)] = id
 		})
+		result.playerId = (result.steamID || result.eosID)!
+		ctx.log.info(result)
+		debugger
 		return SM.ChatMessageSchema.parse(result)
 	}
 

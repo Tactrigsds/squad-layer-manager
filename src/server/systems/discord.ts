@@ -25,6 +25,6 @@ export async function getUser(token: AccessToken) {
 		return Promise.resolve(null)
 	}
 
-	let data = await fetchDiscordUserRes.json()
+	const data = await fetchDiscordUserRes.json()
 	return DiscordUserSchema.parse(data)
 }

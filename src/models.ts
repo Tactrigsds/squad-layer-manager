@@ -70,7 +70,7 @@ export function parseLayerString(layer: string) {
 
 export function getLayerId(layer: LayerIdArgs) {
 	let mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}`
-	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion}`
+	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
 
 	let faction1 = layer.Faction_1
 	if (layer.SubFac_1) faction1 += `-${UNIT_ABBREVIATION[layer.SubFac_1]}`
@@ -424,9 +424,15 @@ export type LayerQueue = z.infer<typeof LayerQueueSchema>
 export type LayerQueueItem = z.infer<typeof LayerQueueItemSchema>
 // doing this because Omit<> sucks to work with
 
+export function preprocessLevel(level: string) {
+	if (level.startsWith('Sanxian')) return 'Sanxian'
+	if (level.startsWith('Belaya')) return 'Belaya'
+	return level
+}
+
 export const MiniLayerSchema = z.object({
 	id: LayerIdSchema,
-	Level: z.string(),
+	Level: z.string().transform(preprocessLevel),
 	Layer: z.string(),
 	Gamemode: z.string(),
 	LayerVersion: z

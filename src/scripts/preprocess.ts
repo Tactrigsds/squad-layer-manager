@@ -1,8 +1,8 @@
 import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
-import { parse } from 'csv-parse/sync'
 import { sql } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import * as fs from 'fs'
+import { parse } from 'csv-parse/sync'
 import * as fsPromise from 'fs/promises'
 import path from 'path'
 import { z } from 'zod'
@@ -17,8 +17,11 @@ import * as DB from '@/server/db'
 import { setupEnv } from '@/server/env'
 import { baseLogger, Logger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
+import { Alliance, Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
+import XLSX from 'xlsx'
 
 // Define the schema for raw data
+const ASSETS_DIR = path.join(PROJECT_ROOT, 'src', 'assets')
 
 export const RawLayerSchema = z.object({
 	Level: z.string(),
@@ -50,9 +53,12 @@ async function main() {
 	const db = DB.get({ log })
 	const ctx = { log, db }
 
+	const alliances = await parseAlliances()
+	const biomes = await parseBiomes()
+
 	await downloadPipeline(ctx)
-	// const pipeline = await parsePipelineData()
-	await updateLayersTable(ctx)
+	const pipeline = await parsePipelineData()
+	await updateLayersTable(ctx, pipeline, alliances, biomes)
 	await updateLayerComponents(ctx)
 }
 
@@ -63,13 +69,14 @@ async function downloadPipeline(ctx: Context) {
 		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
 	)
 	const data = await res.json()
-	await fsPromise.writeFile(path.join(PROJECT_ROOT, 'src', 'assets', 'squad-pipeline.json'), JSON.stringify(data, null, 2))
+	await fsPromise.writeFile(path.join(ASSETS_DIR, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
 }
 
 function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 	const { gamemode, version } = M.parseLayerString(rawLayer.Layer)
+	const level = M.preprocessLevel(rawLayer.Level)
 	const id = M.getLayerId({
-		Level: rawLayer.Level,
+		Level: level,
 		Gamemode: gamemode,
 		LayerVersion: version,
 		Faction_1: rawLayer.Faction_1,
@@ -80,7 +87,7 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 
 	return {
 		id,
-		Level: rawLayer.Level,
+		Level: level,
 		Layer: rawLayer.Layer,
 		Size: rawLayer.Size,
 		Gamemode: gamemode,
@@ -111,59 +118,18 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 
 async function parsePipelineData() {
 	return await fsPromise
-		.readFile(path.join(PROJECT_ROOT, 'src', 'assets', 'squad-pipeline.json'), 'utf8')
-		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(pipelineData)))
+		.readFile(path.join(ASSETS_DIR, 'squad-pipeline.json'), 'utf8')
+		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
 }
 
-async function updateLayersTable({ db, log }: Context, pipeline: SquadPipelineModels.PipelineOutput) {
+async function updateLayersTable(
+	{ db, log }: Context,
+	pipeline: SquadPipelineModels.PipelineOutput,
+	alliances: Alliance[],
+	biomes: Biome[]
+) {
 	const t0 = performance.now()
-	baseLogger.info('Reading layers.csv..')
-	const csvData = await fsPromise.readFile('layers.csv', 'utf8')
-	// TODO can optimize by pulling out rows incrementally
-	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
-	const t1 = performance.now()
-	const elapsedSecondsParse = (t1 - t0) / 1000
-
-	if (records.length === 0) {
-		throw new Error('No records found in CSV file')
-	}
-
-	const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter((field) => field in records[0])
-	const processedLayers = records.map((record, index) => {
-		const updatedRecord = { ...record } as { [key: string]: number | string }
-		originalNumericFields.forEach((field) => {
-			if (!record[field]) {
-				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
-			}
-			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') updatedRecord[field] = parseInt(record[field])
-			else updatedRecord[field] = parseFloat(record[field])
-			if (isNaN(updatedRecord[field] as number)) {
-				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
-			}
-		})
-
-		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
-		return processLayer(validatedRawLayer)
-	})
-	log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
-
-	const t2 = performance.now()
-
-	// truncate the table
-	log.info('Truncating layers table')
-	await db.execute(sql`
-        TRUNCATE TABLE ${Schema.layers}
-
-    `)
-	log.info('layers table truncated')
-	log.info('inserting layers')
-	// Insert the processed layers
-	const chunkSize = 2500
-	for (let i = 0; i < processedLayers.length; i += chunkSize) {
-		const chunk = processedLayers.slice(i, i + chunkSize)
-		await db.insert(Schema.layers).values(chunk)
-		log.info(`Inserted ${i + chunk.length} rows`)
-	}
+	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, alliances)
 
 	// add jensens range layers
 	const extraJensensLayers: M.Layer[] = [
@@ -216,8 +182,50 @@ async function updateLayersTable({ db, log }: Context, pipeline: SquadPipelineMo
 		}
 	})
 
-	await db.insert(Schema.layers).values(extraJensensLayers)
-	log.info(`Inserted ${extraJensensLayers.length} extra Jensen's Range layers`)
+	baseLogger.info('Reading layers.csv..')
+	const csvData = await fsPromise.readFile('layers.csv', 'utf8')
+	// TODO can optimize by pulling out rows incrementally
+	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
+	const t1 = performance.now()
+	const elapsedSecondsParse = (t1 - t0) / 1000
+
+	if (records.length === 0) {
+		throw new Error('No records found in CSV file')
+	}
+
+	const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter((field) => field in records[0])
+	let processedLayers = records.map((record, index) => {
+		const updatedRecord = { ...record } as { [key: string]: number | string }
+		originalNumericFields.forEach((field) => {
+			if (!record[field]) {
+				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
+			}
+			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') updatedRecord[field] = parseInt(record[field])
+			else updatedRecord[field] = parseFloat(record[field])
+			if (isNaN(updatedRecord[field] as number)) {
+				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
+			}
+		})
+
+		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
+		return processLayer(validatedRawLayer)
+	})
+	processedLayers = [...processedLayers, ...seedLayers, ...extraJensensLayers]
+	log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
+
+	const t2 = performance.now()
+
+	// truncate the table
+	log.info('Truncating layers table')
+	await db.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
+	log.info('inserting layers')
+	// Insert the processed layers
+	const chunkSize = 2500
+	for (let i = 0; i < processedLayers.length; i += chunkSize) {
+		const chunk = processedLayers.slice(i, i + chunkSize)
+		await db.insert(Schema.layers).values(chunk)
+		log.info(`Inserted ${i + chunk.length} rows`)
+	}
 
 	const t3 = performance.now()
 	const elapsedSecondsInsert = (t3 - t2) / 1000
@@ -227,6 +235,56 @@ async function updateLayersTable({ db, log }: Context, pipeline: SquadPipelineMo
 type Context = {
 	log: Logger
 	db: DB.Db
+}
+
+function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: Biome[], alliances: Alliance[]) {
+	const seedLayers: M.Layer[] = []
+	for (const layer of pipeline.Maps) {
+		if (!layer.levelName.toLowerCase().includes('seed')) continue
+		const mapName = M.preprocessLevel(layer.mapId)
+
+		const matchups = getSeedingMatchupsForLayer(layer.mapName, alliances, biomes)
+		for (const [team1, team2] of matchups) {
+			seedLayers.push({
+				id: M.getLayerId({
+					Level: mapName,
+					Gamemode: layer.gamemode,
+					LayerVersion: layer.layerVersion.toUpperCase(),
+					Faction_1: team1,
+					SubFac_1: null,
+					Faction_2: team2,
+					SubFac_2: null,
+				}),
+				Level: mapName,
+				Layer: layer.levelName,
+				Size: layer.mapSize,
+				Gamemode: layer.gamemode,
+				LayerVersion: layer.layerVersion.toUpperCase(),
+				Faction_1: team1,
+				SubFac_1: null,
+				Faction_2: team2,
+				SubFac_2: null,
+				Logistics_1: 0,
+				Transportation_1: 0,
+				'Anti-Infantry_1': 0,
+				Armor_1: 0,
+				ZERO_Score_1: 0,
+				Logistics_2: 0,
+				Transportation_2: 0,
+				'Anti-Infantry_2': 0,
+				Armor_2: 0,
+				ZERO_Score_2: 0,
+				Balance_Differential: 0,
+				'Asymmetry Score': 0,
+				Logistics_Diff: 0,
+				Transportation_Diff: 0,
+				'Anti-Infantry_Diff': 0,
+				Armor_Diff: 0,
+				ZERO_Score_Diff: 0,
+			})
+		}
+	}
+	return seedLayers
 }
 
 async function updateLayerComponents({ db, log }: Context) {
@@ -241,6 +299,7 @@ async function updateLayerComponents({ db, log }: Context) {
 		.from(Schema.layers)
 		.groupBy(Schema.layers.SubFac_1)
 		.then((result) => derefEntries('subfaction', result))
+		.then((subfactions) => subfactions.filter((sf) => sf !== null))
 
 	const levelsPromise = db
 		.select({ level: Schema.layers.Level })
@@ -293,9 +352,7 @@ async function updateLayerComponents({ db, log }: Context) {
 	)
 	if (!deepEqual(Constants.SUBFACTIONS, layerComponents.subfactions)) {
 		throw new Error(
-			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS: ${Constants.SUBFACTIONS.join(', ')}, ${layerComponents.subfactions.join(
-				', '
-			)}`
+			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS : ${layerComponents.subfactions.join(', ')}`
 		)
 	}
 }
@@ -377,6 +434,74 @@ const SUBFACTION_SHORT_NAMES = {
 	Support: 'Sup',
 	AirAssault: 'Air',
 } satisfies Record<M.Subfaction, string>
+
+async function parseBiomes() {
+	const rawBiomes = await fsPromise.readFile(path.join(ASSETS_DIR, 'biomes.csv'), 'utf-8')
+	const biomesRows = parse(rawBiomes, { columns: false }) as string[][]
+	const biomes: Biome[] = []
+	for (const row of biomesRows.slice(1).slice(0, -1)) {
+		const maps = row[1].split(/\r?\n/).map((e) => e.replace('- ', ''))
+		const name = row[0].replace('\n', '')
+		biomes.push({
+			name,
+			maps,
+			//@ts-expect-error nodude
+			factions: BIOME_FACTIONS[name],
+		})
+	}
+
+	return biomes
+}
+
+async function parseAlliances() {
+	const rawAlliances = await fsPromise.readFile(path.join(ASSETS_DIR, 'alliances.csv'), 'utf-8')
+	const alliancesRows = parse(rawAlliances, { columns: false }) as string[][]
+	let currentAlliance!: Alliance
+	const alliances: Alliance[] = []
+	for (const row of alliancesRows.slice(1)) {
+		if (row[0]) {
+			currentAlliance = {
+				name: row[0],
+				factions: [],
+			}
+			continue
+		}
+		const factions = row.slice(1).filter((f) => !!f)
+		currentAlliance.factions.push(...factions)
+		alliances.push(currentAlliance)
+	}
+
+	return alliances
+}
+
+function normalizeMapName(name: string) {
+	return name.toLowerCase().replace(/[^a-z]/g, '')
+}
+function compareMapNames(a: string, b: string) {
+	a = normalizeMapName(a)
+	b = normalizeMapName(b)
+	return a.includes(a) || b.includes(a)
+}
+
+function getSeedingMatchupsForLayer(mapName: string, alliances: Alliance[], biomes: Biome[]) {
+	const biome = biomes.find((b) => b.maps.some((map) => compareMapNames(map, mapName)))!
+	if (!biome) {
+		throw new Error(`No biome found for map ${mapName}`)
+	}
+	const allBiomeFactions = alliances.flatMap((a) => a.factions).filter((f) => biome.factions.includes(f))
+	const matchups: [string, string][] = []
+	for (const team1 of allBiomeFactions) {
+		const team1Alliance = alliances.find((a) => a.factions.includes(team1))!
+		for (const team2 of allBiomeFactions) {
+			const team2Alliance = alliances.find((a) => a.factions.includes(team2))!
+			if (team1Alliance.name !== 'INDEPENDENT' && team1Alliance === team2Alliance) {
+				continue
+			}
+			matchups.push([team1, team2])
+		}
+	}
+	return matchups
+}
 
 await main()
 

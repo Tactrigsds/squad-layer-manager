@@ -6,7 +6,7 @@
 	"scripts": {
 		"client:dev": "vite",
 		"build": "tsc -b && vite build",
-		"lint": "eslint .",
+		"lint": "eslint . --fix",
 		"preview": "vite preview",
 		"server": "tsx --tsconfig tsconfig.node.json src/server/main.ts",
 		"server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/main.ts",
@@ -118,6 +118,7 @@
 		"tailwind-merge": "^2.5.2",
 		"tailwindcss-animate": "^1.0.7",
 		"trpc-transformer": "^3.2.2",
+		"xlsx": "^0.18.5",
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {

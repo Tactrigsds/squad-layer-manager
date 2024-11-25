@@ -64,8 +64,9 @@ export const ChatMessageSchema = z
 		name: z.string(),
 		message: z.string(),
 		time: z.date(),
-		steamID: z.string(),
-		eosID: z.string(),
+		steamID: z.string().optional(),
+		eosID: z.string().optional(),
+		playerId: z.string(),
 	})
 	.refine((msg) => msg.steamID || msg.eosID, { message: 'steamID or eosID must be present' })
 export type ChatMessage = z.infer<typeof ChatMessageSchema>
@@ -162,4 +163,30 @@ export interface ISquadRcon {
 	getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer>
 
 	getServerStatus(ctx: C.Log): Promise<ServerStatus>
+}
+
+export const BiomeSchema = z.object({
+	name: z.string(),
+	maps: z.array(z.string()),
+	factions: z.array(z.string()),
+})
+export type Biome = z.infer<typeof BiomeSchema>
+
+export const AllianceSchema = z.object({
+	name: z.string(),
+	factions: z.array(z.string()),
+})
+export type Alliance = z.infer<typeof AllianceSchema>
+
+const bluefor = ['ADF', 'BAF', 'CAF', 'USA', 'USMC'] as const
+const pac = ['PLA', 'PLAAGF', 'PLANMC'] as const
+const redfor = ['RGF', 'VDV'] as const
+export const BIOME_FACTIONS = {
+	'Afghanistan / Central Asia': [...bluefor, 'MEA', 'INS', 'TLF', 'WPMC', ...redfor, ...pac],
+	'Middle East': [...bluefor, 'MEA', 'INS', 'TLF', 'WPMC', ...redfor, ...pac],
+	// https://docs.google.com/spreadsheets/d/1uRUfh-HvOncjHo36uciChQn4MD2oK78g3WLoHLtTREk/edit?pli=1&gid=1025614852#gid=1025614852 sheet appears to be wrong, no  IMF
+	'Eastern Europe': [...bluefor, 'MEA', 'TLF', 'WPMC', 'IMF', ...redfor, ...pac],
+	'Northern Europe': [...bluefor, 'WPMC', 'IMF', ...redfor],
+	'North America': [...bluefor, 'WPMC', ...redfor, ...pac],
+	Asia: [...bluefor, 'WPMC', ...pac],
 }

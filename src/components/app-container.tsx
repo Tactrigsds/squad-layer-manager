@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
-import { useNextLayerState, useNowPlayingState, useSquadServerStatus } from '@/hooks/server-state.ts'
+import { useSquadServerStatus } from '@/hooks/server-state.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
@@ -10,9 +10,7 @@ import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
-	const serverInfo = useSquadServerStatus()
-	const currentLayer = useNowPlayingState()
-	const nextLayer = useNextLayerState()
+	const status = useSquadServerStatus()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
 		<div className="h-full w-full">
@@ -27,22 +25,22 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-8">
 					<>
-						{serverInfo && (
+						{status && (
 							<div className="flex flex-col">
 								<div className={Typography.Small}>
-									<span className="font-bold">{serverInfo.currentPlayers}</span> /{' '}
-									<span className="font-bold">{serverInfo.maxPlayers}</span> players online
+									<span className="font-bold">{status.currentPlayers}</span> / <span className="font-bold">{status.maxPlayers}</span>{' '}
+									players online
 								</div>
 								<div className={Typography.Small}>
-									<span className="font-bold">{serverInfo.currentPlayersInQueue}</span> players in queue
+									<span className="font-bold">{status.currentPlayersInQueue}</span> players in queue
 								</div>
 							</div>
 						)}
 						<div className="grid h-full grid-cols-[auto_auto]">
 							<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
-							<span className={cn(Typography.Small, 'font-bold')}>{currentLayer && DH.toShortLayerName(currentLayer)}</span>
+							<span className={cn(Typography.Small, 'font-bold')}>{status?.currentLayer && DH.toShortLayerName(status?.currentLayer)}</span>
 							<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
-							<span className={cn(Typography.Small, 'font-bold')}>{nextLayer && DH.toShortLayerName(nextLayer)}</span>
+							<span className={cn(Typography.Small, 'font-bold')}>{status?.nextLayer && DH.toShortLayerName(status?.nextLayer)}</span>
 						</div>
 					</>
 					{userRes.data && (

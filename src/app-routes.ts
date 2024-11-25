@@ -1,5 +1,3 @@
-import { useParams } from 'react-router-dom'
-
 export type RouteDefinition<Params extends string[] = string[]> = {
 	server: string
 	client?: string

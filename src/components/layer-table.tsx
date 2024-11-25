@@ -25,7 +25,6 @@ import * as DH from '@/lib/display-helpers'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
 import { LayersQuery } from '@/server/systems/layers-query.ts'
-import * as S from '@/stores'
 
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'

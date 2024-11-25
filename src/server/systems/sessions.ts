@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import * as DB from '@/server/db.ts'
-import { baseLogger as log, Logger } from '@/server/logger'
+import { baseLogger as log } from '@/server/logger'
 import * as Schema from '@/server/schema.ts'
 
 import * as C from '../context'

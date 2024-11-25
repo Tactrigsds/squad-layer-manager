@@ -13,6 +13,7 @@ const GameModeSchema = z.enum([
 	'Track Attack',
 	'Training',
 	'Tutorial',
+	'Tanks',
 ])
 export type GameMode = z.infer<typeof GameModeSchema>
 
@@ -25,6 +26,7 @@ const CapturePointsGraphTypeSchema = z.enum([
 	'TC Hex Zone',
 	'Insurgency',
 	'Destruction',
+	'Track Attack',
 ])
 export type CapturePointsGraphType = z.infer<typeof CapturePointsGraphTypeSchema>
 
@@ -269,11 +271,13 @@ export const MapSchema = z.object({
 			z.object({}),
 		]),
 	}),
-	teamConfigs: z.object({
-		team1: TeamSchema,
-		team2: TeamSchema,
-		factions: FactionsSchema,
-	}),
+	teamConfigs: z
+		.object({
+			team1: TeamSchema,
+			team2: TeamSchema,
+			factions: FactionsSchema,
+		})
+		.optional(),
 })
 
 export type Map = z.infer<typeof MapSchema>

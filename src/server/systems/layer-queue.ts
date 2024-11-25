@@ -99,25 +99,25 @@ export async function setupLayerQueueAndServerState() {
 		const ctx = C.pushOperation({ db, log: _log }, 'layer-queue:handle-event')
 
 		if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-			handleCommand(event, ctx)
+			handleCommand(event.message, ctx)
 		}
 
 		if (event.type === 'chat-message' && event.message.message.match(/^\d+$/)) {
-			handleVote(event, ctx)
+			handleVote(event.message, ctx)
 		}
 	})
 }
 
-async function handleCommand(msg: SM.ChatMessage & { type: 'chat-message' }, ctx: C.Log) {
+async function handleCommand(msg: SM.ChatMessage, ctx: C.Log) {
 	const words = msg.message.split(/\s+/)
 	const cmdText = words[0].slice(1)
-	const args = words.slice(1)
+	// const args = words.slice(1)
 	const allCommandStrings = Object.values(CONFIG.commands)
 		.map((c) => c.strings)
 		.flat()
 	if (!allCommandStrings.includes(cmdText)) {
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(cmdText, allCommandStrings)
-		SquadServer.rcon.warn(ctx, msg.steamID ?? msg.eosID, `Unknown command "${cmdText}". Did you mean ${sortedMatches[0]}?`)
+		SquadServer.rcon.warn(ctx, msg.playerId, `Unknown command "${cmdText}". Did you mean ${sortedMatches[0]}?`)
 		return
 	}
 
@@ -171,7 +171,7 @@ async function handleCommand(msg: SM.ChatMessage & { type: 'chat-message' }, ctx
 
 	const errorMessage = `Error: Command type ${cmdText} is valid but unhandled`
 	ctx.log.error(errorMessage)
-	await SquadServer.rcon.warn(ctx, msg.steamID ?? msg.eosID, errorMessage)
+	await SquadServer.rcon.warn(ctx, msg.playerId, errorMessage)
 }
 
 // -------- voting --------
@@ -231,7 +231,7 @@ async function startVote(ctx: C.Log & C.Db, opts?: { restart?: boolean; seqId?: 
 	return { code: 'ok' as const }
 }
 
-async function handleVote(msg: SM.ChatMessage & { type: 'chat-message' }, ctx: C.Log & C.Db) {
+async function handleVote(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 	await using opCtx = C.pushOperation(ctx, 'layer-queue:vote:handle-vote')
 	const choiceIdx = parseInt(msg.message)
 	await opCtx.db.transaction(async (db) => {
@@ -246,7 +246,7 @@ async function handleVote(msg: SM.ChatMessage & { type: 'chat-message' }, ctx: C
 		}
 
 		const updatedVoteState = deepClone(currentVote)
-		updatedVoteState.votes[msg.steamID ?? msg.eosID] = updatedVoteState.choices[choiceIdx]
+		updatedVoteState.votes[msg.playerId] = updatedVoteState.choices[choiceIdx]
 		await db.update(Schema.servers).set({ currentVote: updatedVoteState }).where(eq(Schema.servers.id, CONFIG.serverId))
 	})
 }
@@ -389,7 +389,7 @@ async function rollToNextLayer(state: { seqId: number }, ctx: C.Log & C.Db) {
 
 async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db }) {
 	await using opCtx = C.pushOperation(args.ctx, 'layer-queue:update')
-	const { release, value: nextLayerOnServer } = await SquadServer.nextLayer.get(opCtx, { lock: true, ttl: 0 })
+	const { release, value: status } = await SquadServer.rcon.serverStatus.get(opCtx, { lock: true, ttl: 0 })
 	try {
 		const res = await opCtx.db.transaction(async (db) => {
 			const _ctx = { ...opCtx, db }
@@ -416,7 +416,7 @@ async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db 
 			let updatedNextLayerId: string | null = null
 			// we're setting the default choice of a layer temporarily if
 			const nextLayerId = serverState.layerQueue[0]?.layerId
-			if (nextLayerId && nextLayerOnServer?.id !== nextLayerId) {
+			if (nextLayerId && status.nextLayer?.id !== nextLayerId) {
 				updatedNextLayerId = nextLayerId
 			}
 
@@ -448,7 +448,10 @@ async function includeServerStateParts(ctx: C.Db & C.Log, _serverState: M.Server
 	state.parts = { users: [] }
 	if (state.currentVote?.code === 'ended:aborted' && state.currentVote.abortReason === 'manual') {
 		if (state.currentVote.aborter === undefined) throw new Error('aborter is undefined when given abortReason of "manual"')
-		const [user] = await ctx.db.select().from(Schema.users).where(eq(Schema.users.discordId, state.currentVote.aborter))
+		const [user] = await ctx.db
+			.select()
+			.from(Schema.users)
+			.where(eq(Schema.users.discordId, BigInt(state.currentVote.aborter)))
 		if (user) {
 			state.parts.users.push(user)
 		} else {

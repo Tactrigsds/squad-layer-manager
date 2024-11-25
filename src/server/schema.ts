@@ -1,5 +1,4 @@
 import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, varchar } from 'drizzle-orm/mysql-core'
-import { z } from 'zod'
 
 import { SUBFACTIONS } from '@/lib/constants'
 

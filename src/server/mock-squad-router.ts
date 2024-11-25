@@ -6,7 +6,6 @@ import { PlayerSchema, SquadSchema } from '@/lib/rcon/squad-models'
 import * as M from '@/models'
 import * as SquadServer from '@/server/systems/squad-server'
 
-import { baseLogger } from './logger'
 import { procedure, procedureWithInput, router } from './trpc'
 
 export let mockSquadRouter: ReturnType<typeof setupMockSquadRouter>['router']
