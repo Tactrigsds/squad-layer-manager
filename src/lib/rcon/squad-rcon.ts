@@ -125,21 +125,8 @@ export default class SquadRcon {
 		await this.rcon.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
-	async warnAllAdmins(ctx: C.Log, message: string) {
-		await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
-		const [{ value: admins }, { value: players }] = await Promise.all([this.adminList.get(opCtx), this.playerList.get(opCtx)])
-		const ops: Promise<void>[] = []
-		for (const player of players) {
-			if (admins.has(player.steamID)) {
-				ops.push(this.warn(opCtx, player.steamID.toString(), message))
-				break
-			}
-		}
-		await Promise.all(ops)
-	}
-
 	async warn(ctx: C.Log, anyID: string, message: string) {
-		await this.rcon.execute(opCtx, `AdminWarn "${anyID}" ${message}`)
+		await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${message}`)
 	}
 
 	// 0 = Perm | 1m = 1 minute | 1d = 1 Day | 1M = 1 Month | etc...
@@ -154,9 +141,8 @@ export default class SquadRcon {
 	}
 
 	async setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
-		await using opCtx = C.pushOperation(ctx, 'squad-server:set-next-layer')
-		await this.rcon.execute(opCtx, M.getAdminSetNextLayerCommand(layer))
-		this.serverStatus.invalidate(opCtx)
+		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
+		this.serverStatus.invalidate(ctx)
 	}
 
 	async endGame(_ctx: C.Log) {
@@ -201,7 +187,7 @@ export default class SquadRcon {
 }
 
 function parseLayer(layer: string, factions: string): M.MiniLayer {
-	const { level, gamemode, version } = M.parseLayerString(layer)
+	const { level: level, gamemode, version: version } = M.parseLayerString(layer)
 	const [faction1, faction2] = parseLayerFactions(factions)
 	const layerIdArgs: M.LayerIdArgs = {
 		Level: level,
@@ -259,7 +245,6 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 		})
 		result.playerId = (result.steamID || result.eosID)!
 		ctx.log.info(result)
-		debugger
 		return SM.ChatMessageSchema.parse(result)
 	}
 

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 const Checkbox = React.forwardRef<
 	React.ElementRef<typeof CheckboxPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
+	{ onCheckedChange?: (checked: boolean) => void } & React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
 >(({ className, ...props }, ref) => (
 	<CheckboxPrimitive.Root
 		ref={ref}
@@ -15,6 +15,10 @@ const Checkbox = React.forwardRef<
 			className
 		)}
 		{...props}
+		onCheckedChange={(checked) => {
+			if (checked === 'indeterminate') props.onCheckedChange?.(true)
+			else props.onCheckedChange?.(checked)
+		}}
 	>
 		<CheckboxPrimitive.Indicator className={cn('flex items-center justify-center text-current')}>
 			<CheckIcon className="h-4 w-4" />

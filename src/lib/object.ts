@@ -30,3 +30,16 @@ export function selectProps<T extends object, K extends keyof T>(obj: T, selecte
 	}
 	return result as Pick<T, (typeof selected)[number]>
 }
+
+/*
+assumes that both objects have the same keys
+ */
+export function getModifiedProperties<T extends object>(original: T, modified: T) {
+	const result: string[] = []
+	for (const key in modified) {
+		if (original[key] !== modified[key]) {
+			result.push(key)
+		}
+	}
+	return result
+}

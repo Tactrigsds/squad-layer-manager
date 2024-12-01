@@ -288,7 +288,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 					}}
 				/>
 				<Link
-					to={AR.link('/filters/:id/edit', [node.filterId ?? ''])}
+					to={AR.link('/filters/:id/edit', node.filterId ?? '')}
 					target="_blank"
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
@@ -537,7 +537,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 
 function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, _setInputValue] = useState<string>(value?.split(',')[0] ?? '')
+	const [inputValue, _setInputValue] = useState<string>(value?.split?.(',')?.[0] ?? '')
 	function setDebouncedInput(value: string) {
 		const v = value.trim()
 		_setDebouncedInput(v)

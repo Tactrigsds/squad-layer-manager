@@ -93,7 +93,7 @@ export const servers = mysqlTable('servers', {
 	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
 	layerQueue: json('layerQueue').notNull().default('[]'),
 	currentVote: json('currentVote'),
-	poolFilterId: varchar('poolFilterId', { length: 64 }).references(() => filters.id),
+	settings: json('settings').default('{}'),
 })
 
 export type Server = typeof servers.$inferSelect

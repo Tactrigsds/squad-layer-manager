@@ -8,10 +8,8 @@ import * as C from '@/server/context.ts'
 import * as SM from './squad-models.ts'
 import WritableBuffer from './writable-buffer.ts'
 
-export default async function fetchAdminLists(ctx: C.Log, sources: SM.AdminListSource[]) {
-	ctx = { ...ctx, log: ctx.log.child({ name: 'FetchAdminLists' }) }
-	ctx.log.level = 'error'
-	ctx.log.debug(`Fetching Admin Lists...`)
+export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminListSource[]) {
+	await using ctx = C.pushOperation(_ctx, 'fetch-admin-lists')
 	const groups: { [key: string]: string[] } = {}
 	const admins: SM.SquadAdmins = new Map()
 

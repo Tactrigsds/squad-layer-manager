@@ -8,9 +8,12 @@ import FilterEdit from './components/filter-edit.tsx'
 import FilterIndex from './components/filter-index.tsx'
 import FilterNew from './components/filter-new.tsx'
 import LayerQueue from './components/layer-queue.tsx'
-import MockSquadServerDashboard from './components/mock-squad-server-dashboard.tsx'
 import Providers from './components/providers.tsx'
 import './index.css'
+import { enableMapSet } from 'immer'
+
+// Enable Map and Set support in Immer
+enableMapSet()
 
 const router = createBrowserRouter([
 	{
@@ -42,14 +45,6 @@ const router = createBrowserRouter([
 		element: (
 			<AppContainer>
 				<LayerQueue />
-			</AppContainer>
-		),
-	},
-	{
-		path: exists('/mock-server'),
-		element: (
-			<AppContainer>
-				<MockSquadServerDashboard />
 			</AppContainer>
 		),
 	},

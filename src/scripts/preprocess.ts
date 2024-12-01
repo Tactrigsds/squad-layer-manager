@@ -73,7 +73,7 @@ async function downloadPipeline(ctx: Context) {
 }
 
 function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
-	const { gamemode, version } = M.parseLayerString(rawLayer.Layer)
+	const { gamemode, version: version } = M.parseLayerString(rawLayer.Layer)
 	const level = M.preprocessLevel(rawLayer.Level)
 	const id = M.getLayerId({
 		Level: level,

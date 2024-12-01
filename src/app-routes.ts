@@ -49,7 +49,7 @@ export function exists<P extends Platform>(route: Route<P>) {
 	return route
 }
 
-export function link<R extends Route<'server'>>(routePath: R, args: (typeof routes)[R]['params']) {
+export function link<R extends Route<'server'>>(routePath: R, ...args: (typeof routes)[R]['params']) {
 	const linkFn = routes[routePath].link
 	if (!linkFn) {
 		throw new Error(`Route ${routePath} is not defined in the routes array`)

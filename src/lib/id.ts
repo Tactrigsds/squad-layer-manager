@@ -28,3 +28,9 @@ export function createId(size: number) {
 
 	throw new Error('ran out of entropy somehow')
 }
+
+export function getNextIntId(existing: number[]) {
+	let id = 0
+	while (existing.includes(id)) id++
+	return id
+}

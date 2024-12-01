@@ -2,7 +2,7 @@ import * as z from 'zod'
 
 import LayerComponents from './assets/layer-components.json'
 import * as C from './lib/constants'
-import { reverseMapping, selectProps } from './lib/object'
+import { deepClone, reverseMapping, selectProps } from './lib/object'
 import { Parts } from './lib/types'
 import type * as Schema from './server/schema'
 
@@ -61,11 +61,20 @@ export type LayerIdArgs = {
 	SubFac_2: string | null
 }
 
+export const LAYER_STRING_PROPERTIES = ['Level', 'Gamemode', 'LayerVersion'] as const satisfies (keyof MiniLayer)[]
 export function parseLayerString(layer: string) {
 	// eslint-disable-next-line prefer-const
 	let [level, gamemode, version] = layer.split('_')
 	if (level === 'JensensRange') gamemode = 'Training'
-	return { level, gamemode, version: version?.toUpperCase() ?? null }
+	return { level: level, gamemode: gamemode, version: version?.toUpperCase() ?? null }
+}
+export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | 'LayerVersion'>) {
+	if (details.Level === 'JensensRange') {
+		return `${details.Level}_Training`
+	}
+	let layer = `${details.Level}_${details.Gamemode}`
+	if (details.LayerVersion) layer += `_${details.LayerVersion.toLowerCase()}`
+	return layer
 }
 
 export function getLayerId(layer: LayerIdArgs) {
@@ -85,7 +94,9 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 	const [mapPart, faction1Part, faction2Part] = id.split(':')
 	const [mapAbbr, gamemode, versionPart] = mapPart.split('-')
 	const level = LEVEL_ABBREVIATION_REVERSE[mapAbbr]
-	if (!level) throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
+	if (!level) {
+		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
+	}
 	const [faction1, subfac1] = parseFactionPart(faction1Part)
 	const [faction2, subfac2] = parseFactionPart(faction2Part)
 
@@ -98,7 +109,9 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 			(l) => l.startsWith(`${level}_${gamemode}`) && (layerVersion ? l.endsWith(layerVersion.toLowerCase()) : true)
 		)
 	}
-	if (!layer) throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
+	if (!layer) {
+		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
+	}
 
 	return {
 		id,
@@ -361,6 +374,8 @@ export type EditableFilterNode =
 			filterId?: string
 	  }
 
+export type BlockTypeEditableFilterNode = Extract<EditableFilterNode, { type: BlockType }>
+
 export const BLOCK_TYPES = ['and', 'or'] as const
 export function isBlockType(type: string): type is BlockType {
 	return BLOCK_TYPES.includes(type as BlockType)
@@ -447,6 +462,10 @@ export const MiniLayerSchema = z.object({
 
 export type MiniLayer = z.infer<typeof MiniLayerSchema>
 
+export function isFullMiniLayer(layer: Partial<MiniLayer>): layer is MiniLayer {
+	return MiniLayerSchema.safeParse(layer).success
+}
+
 export type MiniUser = {
 	username: string
 	discordId: string
@@ -472,6 +491,7 @@ export const FilterEntityIdSchema = z
 	.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
 	.min(3)
 	.max(64)
+export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
 
 export const FilterEntitySchema = z
 	.object({
@@ -485,15 +505,11 @@ export const FilterEntitySchema = z
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
-export const QueueUpdateSchema = z.object({
-	seqId: z.number(),
-	queue: LayerQueueSchema,
-})
 export const StartVoteSchema = z.object({
 	seqId: z.number(),
 	restart: z.boolean().default(false),
 })
-export type LayerQueueUpdate = z.infer<typeof QueueUpdateSchema>
+export type LayerQueueUpdate = z.infer<typeof GenericServerStateUpdateSchema>
 const TallyProperties = {
 	votes: z.record(z.string(), LayerIdSchema),
 	deadline: z.number(),
@@ -544,6 +560,21 @@ export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready'
 
 export type VoteState = z.infer<typeof VoteStateSchema>
 export type VoteStateWithVoteData = Extract<VoteState, { code: 'in-progress' | 'ended:winner' | 'ended:aborted' }>
+export const ServerSettingsSchema = z
+	.object({
+		queue: z
+			.object({
+				poolFilterId: FilterEntityIdSchema.optional(),
+				preferredLength: z.number().default(12),
+			})
+			.default({
+				preferredLength: 12,
+			}),
+	})
+	// avoid sharing default queue object
+	.transform((obj) => deepClone(obj))
+
+export type ServerSettings = z.infer<typeof ServerSettingsSchema>
 
 export const ServerStateSchema = z.object({
 	id: z.string().min(1).max(256),
@@ -552,7 +583,7 @@ export const ServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
 	layerQueue: LayerQueueSchema,
 	currentVote: VoteStateSchema.nullable(),
-	poolFilterId: z.string().min(1).max(64).nullable(),
+	settings: ServerSettingsSchema,
 }) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
@@ -574,6 +605,13 @@ export type LayerSyncState =
 			status: 'synced'
 			value: string
 	  }
+
+// for the basic dialog
+export const GenericServerStateUpdateSchema = z.object({
+	seqId: z.number(),
+	queue: LayerQueueSchema,
+	settings: ServerSettingsSchema,
+})
 
 // represents a user's edit or deletion of an entity
 export type UserEntityMutation<K> = {

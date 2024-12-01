@@ -411,6 +411,7 @@ async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db 
 					serverState.currentVote = null
 				}
 			}
+			serverState.settings = args.input.settings
 			serverState.layerQueue = args.input.queue
 			serverState.layerQueueSeqId++
 			let updatedNextLayerId: string | null = null
@@ -434,7 +435,7 @@ async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db 
 }
 
 // -------- utility --------
-async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db) {
+async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
 	lock ??= false
 	const query = ctx.db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId))
 	let serverRaw: Schema.Server | undefined
@@ -468,6 +469,6 @@ export const serverRouter = router({
 	abortVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(async ({ input, ctx }) => {
 		return await abortVote(ctx, ctx.user.discordId, input.seqId)
 	}),
-	updateQueue: procedureWithInput(M.QueueUpdateSchema).mutation(updateQueue),
+	updateQueue: procedureWithInput(M.GenericServerStateUpdateSchema).mutation(updateQueue),
 	rollToNextLayer: procedureWithInput(z.object({ seqId: z.number() })).mutation(({ ctx, input }) => rollToNextLayer(input, ctx)),
 })

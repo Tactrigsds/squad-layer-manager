@@ -86,8 +86,6 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 	}
 
 	async beginTransaction(): Promise<void> {
-		await using ctx = C.pushOperation(this.ctx, 'db:transaction')
-		debugger
 		await this.basePool.beginTransaction()
 	}
 

@@ -13,6 +13,20 @@ import { CONFIG } from '@/server/config'
 export let rcon!: SquadRcon
 export let adminList!: AsyncResource<SM.SquadAdmins>
 
+export async function warnAllAdmins(ctx: C.Log, message: string) {
+	await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
+	const [{ value: admins }, { value: players }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
+	const ops: Promise<void>[] = []
+
+	for (const player of players) {
+		if (admins.has(player.steamID)) {
+			ops.push(rcon.warn(opCtx, player.steamID.toString(), message))
+			break
+		}
+	}
+	await Promise.all(ops)
+}
+
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 	using opCtx = C.pushOperation(ctx, 'squad-server:watch-status')
 	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 1000 }))) {
@@ -26,7 +40,7 @@ export async function setupSquadServer() {
 
 	await using opCtx = C.pushOperation(baseCtx, 'squad-server:setup')
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
-	adminList.get(opCtx)
+	void adminList.get(opCtx)
 
 	const coreRcon = new Rcon({ host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD })
 	await coreRcon.connect(opCtx)

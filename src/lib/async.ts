@@ -7,18 +7,14 @@ import {
 	Subject,
 	Subscription,
 	asapScheduler,
-	asyncScheduler,
 	concat,
 	distinctUntilChanged,
 	observeOn,
-	of,
-	startWith,
-	switchMap,
 	tap,
-	timeout,
 } from 'rxjs'
 
 import type * as C from '@/server/context.ts'
+import { getNextIntId } from './id'
 
 export function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms))
@@ -103,7 +99,12 @@ export function traceTag<T>(tag: string): OperatorFunction<T, T> {
 }
 
 export function cancellableTimeout(ms: number): Observable<void> {
-	return of(undefined).pipe(timeout(ms))
+	return new Observable((subscriber) => {
+		const timeout = setTimeout(() => {
+			subscriber.next()
+		}, ms)
+		return () => clearTimeout(timeout)
+	})
 }
 
 export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
@@ -212,51 +213,54 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 		if (!this.lastResolveTime) return
 		this.fetchedValue = null
 		this.lastResolveTime = null
-		if (this.observeRefs > 0) this.fetchValue(ctx)
+		if (this.observingTTLs.length > 0) this.fetchValue(ctx)
 	}
 
-	observingTTL: number | null = null
-	observeRefs = 0
+	observingTTLs: [number, number][] = []
 	refetchSub: Subscription | null = null
-	// listen to all updates to this resourc
+
+	// listen to all updates to this resource, refreshing at a minumum when the ttl expires
 	observe(ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 		if (this.disposed) return EMPTY
-		this.observingTTL = Math.min(opts.ttl!, this.observingTTL ?? Infinity)
 
-		const setupRefetch = () => {
-			const refetch$ = this.valueSubject.pipe(
-				switchMap(() => {
-					if (!this.observingTTL) return EMPTY
-					return cancellableTimeout(this.observingTTL)
-				}),
-				startWith(undefined)
-			)
-
-			this.refetchSub = refetch$.pipe(observeOn(asyncScheduler)).subscribe(async () => {
-				if (this.observingTTL === null) return
-				this.get(ctx, { ttl: 0 })
+		const setupRefetches = () => {
+			const refetch$ = new Observable<void>(() => {
+				let refetching = false
+				;(async () => {
+					while (refetching) {
+						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
+						const sleepTime = Math.max(activettl - (Date.now() - (this.lastResolveTime ?? 0)), 0)
+						await sleep(sleepTime)
+						await this.get(ctx, { ttl: 0 })
+					}
+				})()
+				return () => (refetching = false)
 			})
+
+			this.refetchSub?.unsubscribe()
+			this.refetchSub = refetch$.subscribe()
 		}
 
+		const refId = getNextIntId(this.observingTTLs.map(([id]) => id))
+		this.observingTTLs.push([refId, opts.ttl!])
 		return concat(
-			this.fetchedValue ? this.fetchedValue : EMPTY,
+			this.fetchedValue ?? EMPTY,
 			this.valueSubject.pipe(
 				traceTag(`asyncResourceObserve__${this.name}`),
 				observeOn(asapScheduler),
 				distinctDeepEquals(),
 				tap({
 					subscribe: () => {
-						this.observeRefs++
-						if (this.observeRefs === 1) setupRefetch()
+						if (this.observingTTLs.length > 0 && this.refetchSub === null) setupRefetches()
+						this.get(ctx, { ttl: opts.ttl })
 					},
 					finalize: () => {
-						this.observeRefs--
-						if (this.observeRefs === 0) {
+						this.observingTTLs = this.observingTTLs.filter(([id]) => refId !== id)
+						if (this.observingTTLs.length === 0) {
 							this.refetchSub?.unsubscribe()
 							this.refetchSub = null
-							this.observingTTL = null
 						}
 					},
 				})
