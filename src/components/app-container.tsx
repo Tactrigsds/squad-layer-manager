@@ -16,10 +16,10 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 		<div className="h-full w-full">
 			<nav className="flex h-16 items-center justify-between border-b px-4">
 				<div className="flex items-start space-x-6">
-					<Link to={AR.link('/', [])} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
+					<Link to={AR.link('/')} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
 					</Link>
-					<Link to={AR.link('/filters', [])} className={`${Typography.Lead} ${location.pathname === '/filters' ? 'underline' : ''}`}>
+					<Link to={AR.link('/filters')} className={`${Typography.Lead} ${location.pathname === '/filters' ? 'underline' : ''}`}>
 						Filters
 					</Link>
 				</div>

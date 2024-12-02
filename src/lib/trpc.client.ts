@@ -11,7 +11,7 @@ const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
 export const links = [
 	wsLink({
 		client: createWSClient({ url: wsUrl }),
-		transformer: { input: superjson, output: superjson },
+		transformer: superjson,
 	}),
 ]
 export const trpc = createTRPCClient<AppRouter>({ links })

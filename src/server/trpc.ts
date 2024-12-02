@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import * as C from './context.ts'
 
-const t = initTRPC.context<C.AuthedRequest>().create({ transformer: { input: superjson, output: superjson } })
+const t = initTRPC.context<C.AuthedRequest>().create({ transformer: superjson })
 
 const loggerMiddleware = t.middleware(async (opts) => {
 	const baseCtx = C.includeLogProperties(opts.ctx, { path: opts.path, input: opts.input })

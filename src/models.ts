@@ -430,7 +430,8 @@ export const LayerVoteSchema = z.object({
 export const LayerQueueItemSchema = z.object({
 	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
-	generated: z.boolean(),
+	source: z.enum(['generated', 'gameserver', 'manual']),
+	lastModifiedBy: z.bigint().optional(),
 })
 
 export const LayerQueueSchema = z.array(LayerQueueItemSchema)

@@ -13,7 +13,7 @@ export default function FiltersIndex() {
 		<div className="mt-4 w-full">
 			<div className="mx-auto flex w-[500px] flex-col space-y-2">
 				<div>
-					<Link className={buttonVariants()} to={AR.link('/filters/new', [])}>
+					<Link className={buttonVariants()} to={AR.link('/filters/new')}>
 						New Filter
 					</Link>
 				</div>
@@ -21,7 +21,7 @@ export default function FiltersIndex() {
 					<div key={filter.id} className="w-full">
 						<Link
 							className={cn('flex w-full flex-grow items-center justify-between space-x-4', buttonVariants({ variant: 'outline' }))}
-							to={AR.link('/filters/:id/edit', [filter.id])}
+							to={AR.link('/filters/:id/edit', filter.id)}
 						>
 							<span>{filter.name}</span>
 							{filter.description && (

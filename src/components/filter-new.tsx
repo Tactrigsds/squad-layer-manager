@@ -74,7 +74,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 				alert('Failed to create filter: ' + code)
 				return
 			}
-			navigate(AR.link('/filters/:id/edit', [value.id]))
+			navigate(AR.link('/filters/:id/edit', value.id))
 		},
 	})
 

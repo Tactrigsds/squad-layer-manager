@@ -114,7 +114,7 @@ export default function FilterEdit() {
 			toast({
 				title: `Filter "${filterEntity.name}" deleted`,
 			})
-			navigate(AR.link('/filters', []))
+			navigate(AR.link('/filters'))
 		} else {
 			toast({
 				title: `Failed to delete filter "${filterEntity.name}"`,

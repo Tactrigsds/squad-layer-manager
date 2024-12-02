@@ -6,10 +6,7 @@ import ws from '@fastify/websocket'
 import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import fastifySocketIo from 'fastify-socket.io'
 import path from 'node:path'
-import { Server } from 'socket.io'
-
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
@@ -37,7 +34,7 @@ await SquadServer.setupSquadServer()
 await LayerQueue.setupLayerQueueAndServerState()
 TrpcRouter.setupTrpcRouter()
 
-baseLogger.info('Systems initialized, starting http server...')
+baseLogger.info('Systems initialized...')
 
 // --------  http server configuration --------
 const server = fastify({
@@ -120,7 +117,6 @@ server.post(AR.exists('/logout'), async function (req, res) {
 })
 
 server.register(ws)
-server.register(fastifySocketIo)
 server.register(fastifyTRPCPlugin, {
 	prefix: AR.exists('/trpc'),
 	useWSS: true,
@@ -153,7 +149,7 @@ async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 	}
 
 	// --------  dev server proxy setup --------
-	// When running in dev mode, we're proxying all public routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
+	// When running in dev mode, we're proxying all html routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
 	if (ENV.NODE_ENV === 'development') {
 		const htmlRes = await fetch(`${ENV.ORIGIN}/idk`)
 		return res.type('text/html').send(htmlRes.body)
@@ -175,10 +171,4 @@ try {
 } catch (err) {
 	server.log.error(err)
 	process.exit(1)
-}
-
-declare module 'fastify' {
-	interface FastifyInstance {
-		io: Server<{ hello: any }>
-	}
 }

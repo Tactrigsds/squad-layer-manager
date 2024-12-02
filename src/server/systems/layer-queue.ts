@@ -17,6 +17,7 @@ import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 
 import { procedure, procedureWithInput, router } from '../trpc'
+import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 
 let serverState$!: BehaviorSubject<[M.ServerState, C.Log & C.Db]>
 let voteEndTask: Subscription | null = null
@@ -44,7 +45,7 @@ export async function setupLayerQueueAndServerState() {
 			await db.update(Schema.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(Schema.servers.id, CONFIG.serverId))
 			server.displayName = CONFIG.serverDisplayName
 		}
-		return M.ServerStateSchema.parse(server)
+		return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, server))
 	})
 
 	serverState$ = new BehaviorSubject([initialServerState, systemCtx])
@@ -83,8 +84,13 @@ export async function setupLayerQueueAndServerState() {
 				const serverState = await getServerState({ lock: true }, _ctx)
 				if (status.nextLayer !== null && serverState.layerQueue[0]?.layerId !== status.nextLayer.id) {
 					const layerQueue = deepClone(serverState.layerQueue)
-					layerQueue.unshift({ layerId: status.nextLayer.id, generated: false })
-					await tx.update(Schema.servers).set({ layerQueue, currentVote: null }).where(eq(Schema.servers.id, CONFIG.serverId))
+					// if the last layer was also set by the gameserver, then we're replacing it
+					if (layerQueue[0]?.source === 'gameserver') layerQueue.shift()
+					layerQueue.unshift({ layerId: status.nextLayer.id, source: 'gameserver' })
+					await tx
+						.update(Schema.servers)
+						.set(superjsonify(Schema.servers, { layerQueue, currentVote: null }))
+						.where(eq(Schema.servers.id, CONFIG.serverId))
 				}
 			} finally {
 				release()
@@ -421,7 +427,7 @@ async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db 
 				updatedNextLayerId = nextLayerId
 			}
 
-			await db.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
+			await db.update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(eq(Schema.servers.id, CONFIG.serverId))
 			return { code: 'ok' as const, serverState, updatedNextLayerId }
 		})
 
@@ -438,10 +444,10 @@ async function updateQueue(args: { input: M.LayerQueueUpdate; ctx: C.Log & C.Db 
 async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
 	lock ??= false
 	const query = ctx.db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId))
-	let serverRaw: Schema.Server | undefined
+	let serverRaw: any
 	if (lock) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
-	return M.ServerStateSchema.parse(serverRaw)
+	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
 async function includeServerStateParts(ctx: C.Db & C.Log, _serverState: M.ServerState): Promise<M.ServerState & M.UserPart> {

@@ -157,7 +157,7 @@ export default function LayerQueue() {
 		index ??= layerQueue!.length
 		setLayerQueue((existing) => {
 			existing ??= []
-			const withIds = getNewItemsWithIds(existing, addedQueueItems)
+			const withIds = getNewItemsWithIds(existing, addedQueueItems, queueMutations)
 			const ids = withIds.map((item) => item.id)
 			setQueueMutations(
 				produce((draft) => {
@@ -170,7 +170,8 @@ export default function LayerQueue() {
 		})
 	}
 
-	const [addLayersPopoverOpen, setAddLayersPopoverOpen] = useState(false)
+	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
+	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
 
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
@@ -187,20 +188,36 @@ export default function LayerQueue() {
 					)}
 					<DndContext onDragEnd={handleDragEnd}>
 						<Card className="flex w-max flex-col">
-							<div className="flex w-full justify-between p-6">
+							<div className="flex w-full justify-between p-6 space-x-2">
 								<h3 className={Typography.H3}>Layer Queue</h3>
-								<SelectLayersPopover
-									title="Add to Queue"
-									baseFilter={basePoolFilter?.filter}
-									selectQueueItems={addItems}
-									open={addLayersPopoverOpen}
-									onOpenChange={setAddLayersPopoverOpen}
-								>
-									<Button className="flex w-min items-center space-x-1" variant="default">
-										<PlusIcon />
-										<span>Add To Queue</span>
-									</Button>
-								</SelectLayersPopover>
+								<div className="flex items-center space-x-1">
+									<SelectLayersPopover
+										title="Add to Queue"
+										description="Select layers to add to the queue"
+										baseFilter={basePoolFilter?.filter}
+										selectQueueItems={addItems}
+										open={appendLayersPopoverOpen}
+										onOpenChange={setAppendLayersPopoverOpen}
+									>
+										<Button className="flex w-min items-center space-x-1" variant="default">
+											<PlusIcon />
+											<span>Append</span>
+										</Button>
+									</SelectLayersPopover>
+									<SelectLayersPopover
+										title="Play Next"
+										description="Select layers to play next"
+										baseFilter={basePoolFilter?.filter}
+										selectQueueItems={(items) => addItems(items, 0)}
+										open={playNextPopoverOpen}
+										onOpenChange={setPlayNextPopoverOpen}
+									>
+										<Button className="flex w-min items-center space-x-1" variant="default">
+											<PlusIcon />
+											<span>Play Next</span>
+										</Button>
+									</SelectLayersPopover>
+								</div>
 							</div>
 							<CardContent className="flex space-x-4">
 								<div>
@@ -221,8 +238,8 @@ export default function LayerQueue() {
 													<CardHeader>
 														<CardTitle>Changes pending</CardTitle>
 														<CardDescription>
-															<Badge>{queueMutations.added.size} added</Badge>, {queueMutations.moved.size} moved,{' '}
-															{queueMutations.edited.size} edited, {queueMutations.removed.size} deleted
+															{queueMutations.added.size} added, {queueMutations.moved.size} moved, {queueMutations.edited.size} edited,{' '}
+															{queueMutations.removed.size} deleted
 														</CardDescription>
 													</CardHeader>
 													<CardContent>
@@ -749,8 +766,11 @@ function toItemMutationState(mutations: QueueMutations, id: number): ItemMutatio
 	}
 }
 
-function getNewItemsWithIds(existingItems: IdedLayerQueueItem[], newItems: M.LayerQueueItem[]) {
-	const ids = existingItems.map((item) => item.id)
+function getNewItemsWithIds(existingItems: IdedLayerQueueItem[], newItems: M.LayerQueueItem[], mutations: QueueMutations) {
+	let ids = existingItems.map((item) => item.id)
+	ids.push(...getAllMutationIds(mutations))
+	ids = Array.from(new Set(ids))
+
 	const withIds = []
 	for (const item of newItems) {
 		const id = getNextIntId(ids)

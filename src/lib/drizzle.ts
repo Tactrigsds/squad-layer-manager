@@ -1,3 +1,7 @@
+import { AnyColumn } from 'drizzle-orm'
+import { MySqlTableWithColumns, TableConfig, getTableConfig } from 'drizzle-orm/mysql-core'
+import { z } from 'zod'
+import superjson from 'superjson'
 export type Error = {
 	code: string
 }
@@ -18,6 +22,41 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 		}
 		throw err
 	}
+}
+
+export function superjsonify<C extends TableConfig, T extends Partial<MySqlTableWithColumns<TableConfig>['$inferInsert']>>(
+	schema: MySqlTableWithColumns<C>,
+	obj: T
+) {
+	const out = {} as typeof obj
+	const config = getTableConfig(schema)
+	for (const name of Object.keys(obj)) {
+		const column = config.columns.find((c) => c.name === name)
+		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		if (column.columnType === 'json') {
+			//@ts-expect-error idk
+			out[name] = superjson.serialize(obj[name])
+		} else {
+			//@ts-expect-error idk
+			out[name] = obj[name]
+		}
+	}
+	return out
+}
+
+export function unsuperjsonify<C extends TableConfig>(schema: MySqlTableWithColumns<C>, obj: any) {
+	const out = {} as Record<string, any>
+	const config = getTableConfig(schema)
+	for (const name of Object.keys(obj)) {
+		const column = config.columns.find((c) => c.name === name)
+		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		if (column.columnType === 'json') {
+			out[name] = superjson.deserialize(obj[name])
+		} else {
+			out[name] = obj[name]
+		}
+	}
+	return out
 }
 
 // assumes single row update

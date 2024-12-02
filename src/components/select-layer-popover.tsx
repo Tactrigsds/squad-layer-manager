@@ -27,6 +27,7 @@ import { Checkbox } from './ui/checkbox.tsx'
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
 	title: string
+	description: React.ReactNode
 	pinMode?: SelectMode
 	children: React.ReactNode
 	selectQueueItems: (queueItems: M.LayerQueueItem[]) => void
@@ -73,17 +74,21 @@ export function SelectLayersPopover(props: {
 		}
 		_setSelectMode(newAdditionType)
 	}
+	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
 
-	const canSubmit = selectedLayers.length > 0
+	const canSubmit = selectedLayers.length > 0 && loggedInUserRes.isSuccess
 	function submit() {
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
-			const items: M.LayerQueueItem[] = selectedLayers.map((l) => ({ layerId: l.id, generated: false }))
+			const items: M.LayerQueueItem[] = selectedLayers.map(
+				(l) => ({ layerId: l.id, source: 'manual', lastModifiedBy: loggedInUserRes.data.discordId }) satisfies M.LayerQueueItem
+			)
 			props.selectQueueItems(items)
 		} else if (selectMode === 'vote') {
 			const item: M.LayerQueueItem = {
 				vote: { choices: selectedLayers.map((selected) => selected.id), defaultChoice: selectedLayers[0].id },
-				generated: false,
+				source: 'manual',
+				lastModifiedBy: loggedInUserRes.data.discordId,
 			}
 			props.selectQueueItems([item])
 		}
@@ -106,7 +111,7 @@ export function SelectLayersPopover(props: {
 			<DialogContent className="w-auto max-w-full min-w-0">
 				<DialogHeader>
 					<DialogTitle>{props.title}</DialogTitle>
-					<DialogDescription>Select layers to add to the queue, or to vote on.</DialogDescription>
+					<DialogDescription>{props.description}</DialogDescription>
 					<div className="flex items-center w-full space-x-2">
 						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
 						<div className="items-top flex space-x-2">
@@ -399,6 +404,7 @@ export function EditLayerQueueItemPopover(props: {
 		}
 		props.onOpenChange(open)
 	}
+	const user = trpcReact.getLoggedInUser.useQuery().data
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
@@ -437,18 +443,19 @@ export function EditLayerQueueItemPopover(props: {
 						setActive={(itemType) => {
 							setEditedItem((prev) => {
 								const selectedLayers = itemToLayers(prev)
+								const attribution = { source: 'manual' as const, lastModifiedBy: user!.discordId }
 								if (itemType === 'vote') {
 									return {
 										vote: {
 											choices: selectedLayers.map((l) => l.id),
 											defaultChoice: selectedLayers[0].id,
 										},
-										generated: false,
+										...attribution,
 									}
 								} else if (itemType === 'layer') {
 									return {
 										layerId: selectedLayers[0].id,
-										generated: false,
+										...attribution,
 									}
 								} else {
 									assertNever(itemType)
