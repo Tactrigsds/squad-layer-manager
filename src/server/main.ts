@@ -7,6 +7,7 @@ import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapte
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import path from 'node:path'
+
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
@@ -32,6 +33,7 @@ DB.setupDatabase()
 Sessions.setupSessions()
 await SquadServer.setupSquadServer()
 await LayerQueue.setupLayerQueueAndServerState()
+await Discord.setupDiscordSystem()
 TrpcRouter.setupTrpcRouter()
 
 baseLogger.info('Systems initialized...')
@@ -59,13 +61,15 @@ server.addHook('onResponse', async (request, reply) => {
 	log.info('completed %s %s : %d', request.method, request.url, reply.statusCode)
 })
 
-server.register(fastifyStatic, {
-	root: path.join(Config.PROJECT_ROOT, 'dist'),
-	setHeaders: (res) => {
-		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
-	},
-})
+// if (ENV.NODE_ENV === 'production') {
+// 	server.register(fastifyStatic, {
+// 		root: path.join(Config.PROJECT_ROOT, 'dist'),
+// 		setHeaders: (res) => {
+// 			res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+// 			res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+// 		},
+// 	})
+// }
 
 server.register(fastifyFormBody)
 
@@ -88,9 +92,25 @@ server.get(AR.exists('/login/callback'), async function (req, reply) {
 	// @ts-expect-error lame
 	const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 	const token = tokenResult.token as { access_token: string; token_type: string }
-	const discordUser = await Discord.getUser(token)
+	const discordUser = await Discord.getOauthUser(token)
 	if (!discordUser) return reply.status(401).send('Failed to get user info from Discord')
-	const db = DB.get({ log: req.log as Logger })
+	const ctx = { log: req.log as Logger }
+	const userHasRoleRes = await Discord.checkDiscordUserAuthorization(ctx, discordUser.id)
+	switch (userHasRoleRes.code) {
+		case 'ok':
+			break
+		case 'err:unauthorized':
+			return reply.status(401).send('You have not been granted access to this application.')
+		case 'err:discord':
+			return reply.status(500).send({
+				message: 'Encountered discord API error while performing roles check',
+				code: userHasRoleRes.errCode,
+				err: userHasRoleRes.err,
+			})
+		default:
+			assertNever(userHasRoleRes)
+	}
+	const db = DB.get(ctx)
 
 	const sessionId = createId(64)
 	await db.transaction(async (db) => {

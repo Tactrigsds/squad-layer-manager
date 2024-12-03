@@ -3,6 +3,7 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
+import { parsedBigint } from '@/lib/zod'
 
 const strNoWhitespace = z.string().regex(/^\S+$/, { message: 'Must not contain whitespace' })
 export const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
@@ -23,6 +24,14 @@ export const ConfigSchema = z.object({
 		showNext: CommandConfigSchema,
 	}),
 	adminListSources: z.array(SM.AdminListSourceSchema),
+	authorizedDiscordRoles: z
+		.array(
+			z.object({
+				serverId: parsedBigint(),
+				roleId: parsedBigint(),
+			})
+		)
+		.min(1),
 })
 
 export let CONFIG!: Config

@@ -29,6 +29,7 @@ const EnvSchema = {
 
 	DISCORD_CLIENT_ID: z.string().min(1),
 	DISCORD_CLIENT_SECRET: z.string().min(1),
+	DISCORD_BOT_TOKEN: z.string().min(1),
 
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 	MOCK_SQUAD_SERVER_PATH: z.string().optional(),
@@ -59,6 +60,7 @@ export function setupEnv() {
 
 		DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID,
 		DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
+		DISCORD_BOT_TOKEN: process.env.DISCORD_BOT_TOKEN,
 
 		LOG_LEVEL_OVERRIDE: process.env.LOG_LEVEL_OVERRIDE,
 		MOCK_SQUAD_SERVER_PATH: process.env.MOCK_SQUAD_SERVER_PATH,

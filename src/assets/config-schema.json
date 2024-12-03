@@ -49,6 +49,28 @@
         "additionalProperties": false
       }
     },
+    "authorizedDiscordRoles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "allOf": [
+              {"type": "string"},
+              {"type": "integer", "format": "int64"}
+            ]
+          },
+          "roleId": {
+            "allOf": [
+              {"type": "string"},
+              {"type": "integer", "format": "int64"}
+            ]
+          }
+        },
+        "required": ["serverId", "roleId"],
+        "additionalProperties": false
+      }
+    },
     "$schema": {"type": "string"}
   },
   "required": [
@@ -59,6 +81,7 @@
     "minValidVotes",
     "commands",
     "adminListSources",
+    "authorizedDiscordRoles",
     "$schema"
   ],
   "additionalProperties": false,
