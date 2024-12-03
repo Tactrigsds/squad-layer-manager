@@ -12,7 +12,7 @@ const CommandConfigSchema = z.object({
 	allowedChats: z.array(SM.CHAT_CHANNEL.default('admin')),
 })
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: strNoWhitespace,

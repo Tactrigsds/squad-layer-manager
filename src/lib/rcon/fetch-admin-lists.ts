@@ -71,7 +71,7 @@ export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminList
 				if (admins.has(adminID)) {
 					const existingPerms = admins.get(adminID)!
 					admins.set(adminID, Object.assign(existingPerms, perms))
-					ctx.log.warn(`Merged duplicate Admin ${adminID} to ${Object.keys(admins.get(adminID)!)}`)
+					ctx.log.trace(`Merged duplicate Admin ${adminID} to ${Object.keys(admins.get(adminID)!)}`)
 				} else {
 					admins.set(adminID, perms)
 					ctx.log.trace(`Added Admin ${adminID} with ${Object.keys(perms)}`)

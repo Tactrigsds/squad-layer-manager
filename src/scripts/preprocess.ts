@@ -5,12 +5,15 @@ import * as fs from 'fs'
 import { parse } from 'csv-parse/sync'
 import * as fsPromise from 'fs/promises'
 import path from 'path'
+import stringifyCompact from 'json-stringify-pretty-compact'
 import { z } from 'zod'
 
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import { resolvePromises } from '@/lib/async'
 import * as Constants from '@/lib/constants'
 import { deref as derefEntries } from '@/lib/object'
 import * as M from '@/models'
+import * as Config from '@/server/config.ts'
 import { PROJECT_ROOT } from '@/server/config'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -49,12 +52,11 @@ async function main() {
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
-	const log = baseLogger.child({ module: 'preprocess' })
-	const db = DB.get({ log })
-	const ctx = { log, db }
+	await using ctx = C.pushOperation({ log: baseLogger, db: DB.get({ log: baseLogger }) }, "preprocess")
 
-	const alliances = await parseAlliances()
-	const biomes = await parseBiomes()
+	await generateConfigJsonSchema(ctx)
+	const alliances = await parseAlliances(ctx)
+	const biomes = await parseBiomes(ctx)
 
 	await downloadPipeline(ctx)
 	const pipeline = await parsePipelineData()
@@ -62,14 +64,15 @@ async function main() {
 	await updateLayerComponents(ctx)
 }
 
-async function downloadPipeline(ctx: Context) {
+async function downloadPipeline(_ctx: Context) {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	await using ctxOp = C.pushOperation(ctx, 'preprocess:download-pipeline')
+	await using ctx = C.pushOperation(_ctx, 'download-pipeline')
 	const res = await fetch(
 		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
 	)
 	const data = await res.json()
 	await fsPromise.writeFile(path.join(ASSETS_DIR, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
+	ctx.log.info('Downloaded squad pipeline data')
 }
 
 function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
@@ -123,11 +126,13 @@ async function parsePipelineData() {
 }
 
 async function updateLayersTable(
-	{ db, log }: Context,
+	_ctx: Context,
 	pipeline: SquadPipelineModels.PipelineOutput,
 	alliances: Alliance[],
 	biomes: Biome[]
 ) {
+  using ctx = C.pushOperation(_ctx, 'update-layers-table')
+  const { log, db } = ctx
 	const t0 = performance.now()
 	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, alliances)
 
@@ -232,11 +237,6 @@ async function updateLayersTable(
 	log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
 
-type Context = {
-	log: Logger
-	db: DB.Db
-}
-
 function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: Biome[], alliances: Alliance[]) {
 	const seedLayers: M.Layer[] = []
 	for (const layer of pipeline.Maps) {
@@ -287,33 +287,34 @@ function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: 
 	return seedLayers
 }
 
-async function updateLayerComponents({ db, log }: Context) {
-	const factionsPromise = db
+async function updateLayerComponents(_ctx: C.Log & C.Db) {
+  using ctx = C.pushOperation(_ctx, 'update-layer-components')
+	const factionsPromise = ctx.db
 		.select({ faction: Schema.layers.Faction_1 })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Faction_1)
 		.then((result) => derefEntries('faction', result))
 
-	const subfactionsPromise = db
+	const subfactionsPromise = ctx.db
 		.select({ subfaction: Schema.layers.SubFac_1 })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.SubFac_1)
 		.then((result) => derefEntries('subfaction', result))
 		.then((subfactions) => subfactions.filter((sf) => sf !== null))
 
-	const levelsPromise = db
+	const levelsPromise = ctx.db
 		.select({ level: Schema.layers.Level })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Level)
 		.then((result) => derefEntries('level', result))
 
-	const layersPromise = db
+	const layersPromise = ctx.db
 		.select({ layer: Schema.layers.Layer })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Layer)
 		.then((result) => derefEntries('layer', result))
 
-	const layerVersionsPromise = db
+	const layerVersionsPromise = ctx.db
 		.select({ version: Schema.layers.LayerVersion })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.LayerVersion)
@@ -342,7 +343,7 @@ async function updateLayerComponents({ db, log }: Context) {
 	})
 
 	fs.writeFileSync(path.join(PROJECT_ROOT, 'src', 'assets', 'layer-components.json'), JSON.stringify(layerComponents, null, 2))
-	log.info(
+	ctx.log.info(
 		'Updated layer-components.json with %d factions, %d subfactions, %d levels, %d layers, and %d layer versions',
 		layerComponents.factions.length,
 		layerComponents.subfactions.length,
@@ -435,7 +436,8 @@ const SUBFACTION_SHORT_NAMES = {
 	AirAssault: 'Air',
 } satisfies Record<M.Subfaction, string>
 
-async function parseBiomes() {
+async function parseBiomes(_ctx: C.Log) {
+  using ctx = C.pushOperation(_ctx, 'parse-biomes')
 	const rawBiomes = await fsPromise.readFile(path.join(ASSETS_DIR, 'biomes.csv'), 'utf-8')
 	const biomesRows = parse(rawBiomes, { columns: false }) as string[][]
 	const biomes: Biome[] = []
@@ -449,11 +451,13 @@ async function parseBiomes() {
 			factions: BIOME_FACTIONS[name],
 		})
 	}
+	ctx.log.info('Parsed %d biomes', biomes.length)
 
 	return biomes
 }
 
-async function parseAlliances() {
+async function parseAlliances(_ctx: C.Log) {
+  using ctx = C.pushOperation(_ctx, 'parse-alliances')
 	const rawAlliances = await fsPromise.readFile(path.join(ASSETS_DIR, 'alliances.csv'), 'utf-8')
 	const alliancesRows = parse(rawAlliances, { columns: false }) as string[][]
 	let currentAlliance!: Alliance
@@ -470,7 +474,7 @@ async function parseAlliances() {
 		currentAlliance.factions.push(...factions)
 		alliances.push(currentAlliance)
 	}
-
+	ctx.log.info('Parsed %d alliances', alliances.length)
 	return alliances
 }
 
@@ -501,6 +505,15 @@ function getSeedingMatchupsForLayer(mapName: string, alliances: Alliance[], biom
 		}
 	}
 	return matchups
+}
+
+
+async function generateConfigJsonSchema(_ctx: C.Log) {
+  using ctx = C.pushOperation(_ctx, 'generate-config-schema')
+  const schemaPath = path.join(ASSETS_DIR, 'config-schema.json')
+  const schema = zodToJsonSchema(Config.ConfigSchema.extend({["$schema"]: z.string()}))
+  await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
+  ctx.log.info('Wrote generated config schema to %s', schemaPath)
 }
 
 await main()

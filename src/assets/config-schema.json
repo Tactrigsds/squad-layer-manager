@@ -1,0 +1,66 @@
+{
+  "type": "object",
+  "properties": {
+    "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
+    "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
+    "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
+    "voteDurationSeconds": {"type": "number", "exclusiveMinimum": 0},
+    "minValidVotes": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum threshold for a vote tally to be valid"
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "startVote": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"}
+            },
+            "allowedChats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["admin", "team", "squad"],
+                "default": "admin"
+              }
+            }
+          },
+          "required": ["strings", "allowedChats"],
+          "additionalProperties": false
+        },
+        "showNext": {"$ref": "#/properties/commands/properties/startVote"}
+      },
+      "required": ["startVote", "showNext"],
+      "additionalProperties": false
+    },
+    "adminListSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {"type": "string", "enum": ["remote", "local", "ftp"]},
+          "source": {"type": "string"}
+        },
+        "required": ["type", "source"],
+        "additionalProperties": false
+      }
+    },
+    "$schema": {"type": "string"}
+  },
+  "required": [
+    "serverId",
+    "serverDisplayName",
+    "commandPrefix",
+    "voteDurationSeconds",
+    "minValidVotes",
+    "commands",
+    "adminListSources",
+    "$schema"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
