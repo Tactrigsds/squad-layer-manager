@@ -506,6 +506,13 @@ export const FilterEntitySchema = z
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+export const GenLayerQueueItemsOptionsSchema = z.object({
+	numToAdd: z.number().positive(),
+	numVoteChoices: z.number().positive(),
+	itemType: z.enum(['layer', 'vote']),
+	baseFilterId: FilterEntityIdSchema.optional(),
+})
+export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
 export const StartVoteSchema = z.object({
 	seqId: z.number(),
 	restart: z.boolean().default(false),
@@ -567,15 +574,41 @@ export const ServerSettingsSchema = z
 			.object({
 				poolFilterId: FilterEntityIdSchema.optional(),
 				preferredLength: z.number().default(12),
+				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
+				preferredNumVoteChoices: z.number().default(3),
 			})
 			.default({
 				preferredLength: 12,
+				generatedItemType: 'layer',
+				preferredNumVoteChoices: 3,
 			}),
 	})
 	// avoid sharing default queue object
 	.transform((obj) => deepClone(obj))
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
+
+export type Changed<T> = {
+	[K in keyof T]: T[K] extends object ? Changed<T[K]> : boolean
+}
+
+export type SettingsChanged = Changed<ServerSettings>
+
+export function getSettingsChanged(original: ServerSettings, modified: ServerSettings) {
+	// @ts-expect-error it works
+	const result: SettingsChanged = {}
+	for (const _key in original) {
+		const key = _key as keyof ServerSettings
+		if (typeof original[key] === 'object') {
+			// @ts-expect-error it works
+			result[key] = getSettingsChanged(original[key] as ServerSettings, modified[key] as ServerSettings)
+		} else {
+			// @ts-expect-error it works
+			result[key] = original[key] !== modified[key]
+		}
+	}
+	return result
+}
 
 export const ServerStateSchema = z.object({
 	id: z.string().min(1).max(256),

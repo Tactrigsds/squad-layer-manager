@@ -3,6 +3,7 @@ import deepEqual from 'fast-deep-equal'
 import { BehaviorSubject, mergeMap, of, Subscription } from 'rxjs'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
+import * as FB from '@/lib/filter-builders.ts'
 
 import { sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
@@ -15,9 +16,11 @@ import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
+import { runLayersQuery } from '@/server/systems/layers-query.ts'
 
-import { procedure, procedureWithInput, router } from '../trpc'
+import { procedure, router } from '../trpc'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { assertNever } from '@/lib/typeGuards'
 
 let serverState$!: BehaviorSubject<[M.ServerState, C.Log & C.Db]>
 let voteEndTask: Subscription | null = null
@@ -37,15 +40,17 @@ export async function setupLayerQueueAndServerState() {
 	// -------- bring server up to date with configuration --------
 	const initialServerState = await opCtx.db.transaction(async (db) => {
 		let [server] = await db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId)).for('update')
+		server = server ? (unsuperjsonify(Schema.servers, server) as typeof server) : server
 		if (!server) {
 			await db.insert(Schema.servers).values({ id: CONFIG.serverId, displayName: CONFIG.serverDisplayName })
 			;[server] = await db.select().from(Schema.servers).where(eq(Schema.servers.id, CONFIG.serverId))
+			server = server ? (unsuperjsonify(Schema.servers, server) as typeof server) : server
 		}
 		if (server.displayName !== CONFIG.serverDisplayName) {
 			await db.update(Schema.servers).set({ displayName: CONFIG.serverDisplayName }).where(eq(Schema.servers.id, CONFIG.serverId))
 			server.displayName = CONFIG.serverDisplayName
 		}
-		return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, server))
+		return M.ServerStateSchema.parse(server)
 	})
 
 	serverState$ = new BehaviorSubject([initialServerState, systemCtx])
@@ -217,7 +222,7 @@ async function startVote(ctx: C.Log & C.Db, opts?: { restart?: boolean; seqId?: 
 		state.currentVote = currentVote
 		// state of currentVote can affect which mutations are allowed in the layerQueue
 		state.layerQueueSeqId++
-		await db.update(Schema.servers).set(state).where(eq(Schema.servers.id, CONFIG.serverId))
+		await db.update(Schema.servers).set(superjsonify(Schema.servers, state)).where(eq(Schema.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, currentVote, serverState: state }
 	})
 	if (res.code !== 'ok') return res
@@ -253,7 +258,10 @@ async function handleVote(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 
 		const updatedVoteState = deepClone(currentVote)
 		updatedVoteState.votes[msg.playerId] = updatedVoteState.choices[choiceIdx]
-		await db.update(Schema.servers).set({ currentVote: updatedVoteState }).where(eq(Schema.servers.id, CONFIG.serverId))
+		await db
+			.update(Schema.servers)
+			.set(superjsonify(Schema.servers, { currentVote: updatedVoteState }))
+			.where(eq(Schema.servers.id, CONFIG.serverId))
 	})
 }
 
@@ -275,7 +283,7 @@ async function abortVote(ctx: C.Log & C.Db, aborter: bigint, seqId?: number) {
 
 		serverState.layerQueue[0].layerId = serverState.currentVote.defaultChoice
 		serverState.layerQueueSeqId++
-		await tx.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
+		await tx.update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(eq(Schema.servers.id, CONFIG.serverId))
 		return { code: 'ok' as const, serverState }
 	})
 	if (res.code !== 'ok') return res
@@ -351,7 +359,7 @@ async function handleVoteTimeout(ctx: C.Log & C.Db) {
 		}
 		serverState.layerQueueSeqId++
 
-		await ctx.db.update(Schema.servers).set(serverState).where(eq(Schema.servers.id, CONFIG.serverId))
+		await ctx.db.update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(eq(Schema.servers.id, CONFIG.serverId))
 		ctx.log.info('Vote timed out')
 		return { code: 'ok' as const, serverState }
 	})
@@ -468,13 +476,63 @@ async function includeServerStateParts(ctx: C.Db & C.Log, _serverState: M.Server
 	return state
 }
 
+async function generateLayerQueueItems(_ctx: C.Log & C.Db, opts: M.GenLayerQueueItemsOptions) {
+	await using ctx = C.pushOperation(_ctx, 'layer-queue:generate-layer-items')
+	if (opts.numToAdd <= 0) {
+		throw new Error('cannot generate layers with count <= 0')
+	}
+
+	let pageSize: number
+	switch (opts.itemType) {
+		case 'layer':
+			pageSize = opts.numToAdd
+			break
+		case 'vote':
+			pageSize = opts.numToAdd * opts.numVoteChoices
+			break
+		default:
+			assertNever(opts.itemType)
+	}
+	const filter = opts.baseFilterId ? FB.applyFilter(opts.baseFilterId) : undefined
+	const layers = await runLayersQuery({
+		ctx,
+		input: {
+			sort: { seed: Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER), type: 'random' },
+			pageSize,
+			pageIndex: 0,
+			filter,
+		},
+	}).then((r) => r.layers)
+
+	const res: M.LayerQueueItem[] = []
+	switch (opts.itemType) {
+		case 'layer':
+			for (const layer of layers) {
+				res.push({ layerId: layer.id, source: 'generated' })
+			}
+			break
+		case 'vote':
+			for (let i = 0; i < opts.numToAdd; i++) {
+				const choices = layers.slice(i * opts.numVoteChoices, (i + 1) * opts.numVoteChoices).map((l) => l.id)
+				res.push({ vote: { choices, defaultChoice: choices[0] }, source: 'generated' })
+			}
+			break
+		default:
+			assertNever(opts.itemType)
+	}
+	return res
+}
+
 // -------- setup router --------
 export const serverRouter = router({
 	watchServerState: procedure.subscription(watchServerStateUpdates),
-	startVote: procedureWithInput(M.StartVoteSchema).mutation(async ({ input, ctx }) => startVote(ctx, input)),
-	abortVote: procedureWithInput(z.object({ seqId: z.number() })).mutation(async ({ input, ctx }) => {
+	generateLayerQueueItems: procedure
+		.input(M.GenLayerQueueItemsOptionsSchema)
+		.query(({ input, ctx }) => generateLayerQueueItems(ctx, input)),
+	startVote: procedure.input(M.StartVoteSchema).mutation(async ({ input, ctx }) => startVote(ctx, input)),
+	abortVote: procedure.input(z.object({ seqId: z.number() })).mutation(async ({ input, ctx }) => {
 		return await abortVote(ctx, ctx.user.discordId, input.seqId)
 	}),
-	updateQueue: procedureWithInput(M.GenericServerStateUpdateSchema).mutation(updateQueue),
-	rollToNextLayer: procedureWithInput(z.object({ seqId: z.number() })).mutation(({ ctx, input }) => rollToNextLayer(input, ctx)),
+	updateQueue: procedure.input(M.GenericServerStateUpdateSchema).mutation(updateQueue),
+	rollToNextLayer: procedure.input(z.object({ seqId: z.number() })).mutation(({ ctx, input }) => rollToNextLayer(input, ctx)),
 })

@@ -33,7 +33,7 @@ export function superjsonify<C extends TableConfig, T extends Partial<MySqlTable
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
 		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
-		if (column.columnType === 'json') {
+		if (column.dataType === 'json') {
 			//@ts-expect-error idk
 			out[name] = superjson.serialize(obj[name])
 		} else {
@@ -50,7 +50,7 @@ export function unsuperjsonify<C extends TableConfig>(schema: MySqlTableWithColu
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
 		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
-		if (column.columnType === 'json') {
+		if (column.dataType === 'json' && obj[name] !== null && obj[name]) {
 			out[name] = superjson.deserialize(obj[name])
 		} else {
 			out[name] = obj[name]

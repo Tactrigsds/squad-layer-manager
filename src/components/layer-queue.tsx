@@ -1,4 +1,5 @@
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
+import { trpc } from '@/lib/trpc.client.ts'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
 import { EllipsisVertical, GripVertical, PlusIcon, Edit } from 'lucide-react'
@@ -8,7 +9,7 @@ import * as AR from '@/app-routes.ts'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge.tsx'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
@@ -29,6 +30,9 @@ import { useSquadServerStatus } from '@/hooks/server-state.ts'
 import { getNextIntId } from '@/lib/id.ts'
 import { useFilter } from '@/hooks/filters.ts'
 import { cn } from '@/lib/utils.ts'
+import { Input } from './ui/input.tsx'
+import { Label } from './ui/label.tsx'
+import { deepClone } from '@/lib/object.ts'
 
 const LayerQueueContext = createContext<object>({})
 
@@ -41,7 +45,10 @@ export default function LayerQueue() {
 
 	const [serverState, setServerState] = useState(null as null | (M.ServerState & M.UserPart))
 	const layerQueueSeqIdRef = useRef(-1)
-	const editing = hasMutations(queueMutations) || !deepEqual(settings, serverState?.settings)
+	const editing = hasMutations(queueMutations) || !deepEqual(settings, settings)
+	const settingsPanelRef = useRef<ServerSettingsPanelHandle>(null)
+
+	const settingsChanged = serverState != null ? M.getSettingsChanged(serverState.settings, settings) : null
 
 	function initLayerQueue(initialQueue: M.LayerQueue) {
 		setLayerQueue(initialQueue.map((item, idx) => ({ ...item, id: idx })))
@@ -54,6 +61,7 @@ export default function LayerQueue() {
 			setServerState(data)
 			setQueueMutations(initMutations())
 			layerQueueSeqIdRef.current = data.layerQueueSeqId
+			settingsPanelRef.current?.reset(data.settings)
 		},
 	})
 
@@ -146,9 +154,12 @@ export default function LayerQueue() {
 			produce((draft) => {
 				let insertIndex = targetIndex + 1
 				if (!draft) throw new Error('layerQueue is null')
-				const [removed] = draft.splice(sourceIndex, 1)
+				const [moved] = draft
+					.splice(sourceIndex, 1)
+					.map((moved) => ({ ...moved, source: 'manual', lastModifiedBy: userQuery.data?.discordId }) as IdedLayerQueueItem)
+				moved.source = 'manual'
 				if (insertIndex > sourceIndex) insertIndex--
-				draft.splice(insertIndex, 0, removed)
+				draft.splice(insertIndex, 0, moved)
 			})
 		)
 	}
@@ -170,8 +181,39 @@ export default function LayerQueue() {
 		})
 	}
 
+	async function backfillLayerQueueItems() {
+		if (!layerQueue || !settings) return
+		const numVoteChoices = settings.queue.preferredNumVoteChoices
+		const numToAdd = settings.queue.preferredLength - layerQueue.length
+		const itemType = settings.queue.generatedItemType
+		if (numToAdd === 0) return layerQueue
+		if (numToAdd < 0) {
+			let lastTrailingGeneratedIdx = -1
+			for (let i = layerQueue.length - 1; i >= settings.queue.preferredLength; i--) {
+				if (layerQueue[i].source === 'generated') lastTrailingGeneratedIdx = i
+				else break
+			}
+			if (lastTrailingGeneratedIdx === -1) {
+				return
+			}
+			return
+		}
+
+		const seqIdBefore = layerQueueSeqIdRef.current
+		const before = deepClone(layerQueue)
+		const generated = await trpc.server.generateLayerQueueItems.query({
+			numToAdd,
+			numVoteChoices,
+			itemType,
+			baseFilterId: settings.queue.poolFilterId,
+		})
+		if (seqIdBefore !== layerQueueSeqIdRef.current || !deepEqual(before, layerQueue)) return
+		addItems(generated)
+	}
+
 	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
 	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
+	const userQuery = trpcReact.getLoggedInUser.useQuery()
 
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
@@ -201,7 +243,7 @@ export default function LayerQueue() {
 									>
 										<Button className="flex w-min items-center space-x-1" variant="default">
 											<PlusIcon />
-											<span>Append</span>
+											<span>Play After</span>
 										</Button>
 									</SelectLayersPopover>
 									<SelectLayersPopover
@@ -236,18 +278,23 @@ export default function LayerQueue() {
 											<div className="flex flex-col space-y-2">
 												<Card>
 													<CardHeader>
-														<CardTitle>Changes pending</CardTitle>
+														<CardTitle>Layer Changes pending</CardTitle>
 														<CardDescription>
-															{queueMutations.added.size} added, {queueMutations.moved.size} moved, {queueMutations.edited.size} edited,{' '}
-															{queueMutations.removed.size} deleted
+															<span className="flex space-x-1">
+																{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
+																{queueMutations.removed.size > 0 && <Badge variant="removed">{queueMutations.removed.size} deleted</Badge>}
+																{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
+																{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
+															</span>
 														</CardDescription>
 													</CardHeader>
-													<CardContent>
+													<CardContent></CardContent>
+													<CardFooter>
 														<Button onClick={saveLayers}>Save</Button>
 														<Button onClick={reset} variant="secondary">
 															Cancel
 														</Button>
-													</CardContent>
+													</CardFooter>
 												</Card>
 											</div>
 										)}
@@ -307,7 +354,15 @@ export default function LayerQueue() {
 							</CardContent>
 						</Card>
 					</DndContext>
-					<ServerSettingsPanel settings={settings} setSettings={setSettings} />
+					{settingsChanged && (
+						<ServerSettingsPanel
+							ref={settingsPanelRef}
+							settings={settings}
+							setSettings={setSettings}
+							settingsChanged={settingsChanged}
+							backfillLayerQueueItems={backfillLayerQueueItems}
+						/>
+					)}
 				</span>
 			</LayerQueueContext.Provider>
 		</div>
@@ -442,43 +497,112 @@ function Timer(props: { deadline: number }) {
 	return <div ref={eltRef} className={Typography.Blockquote} />
 }
 
-function ServerSettingsPanel(props: { settings: M.ServerSettings; setSettings: React.Dispatch<React.SetStateAction<M.ServerSettings>> }) {
+type ServerSettingsPanelHandle = {
+	reset(settings: M.ServerSettings): void
+}
+const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
+	props: {
+		settings: M.ServerSettings
+		setSettings: React.Dispatch<React.SetStateAction<M.ServerSettings>>
+		settingsChanged: M.SettingsChanged
+		backfillLayerQueueItems: () => void
+	},
+	ref: React.ForwardedRef<ServerSettingsPanelHandle>
+) {
 	const filtersRes = trpcReact.filters.getFilters.useQuery()
+
+	const preferredLengthRef = React.useRef<HTMLInputElement>(null)
+	const preferredLengthId = React.useId()
+
+	const preferredNumVoteChoicesRef = React.useRef<HTMLInputElement>(null)
+	const preferredNumVoteChoicesId = React.useId()
+
 	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: f.name }))
+
+	React.useImperativeHandle(ref, () => ({
+		reset: (settings) => {
+			preferredLengthRef.current!.value = settings.queue.preferredLength.toString()
+			preferredNumVoteChoicesRef.current!.value = settings.queue.preferredNumVoteChoices.toString()
+		},
+	}))
+
 	return (
 		<Card className="">
 			<CardHeader>
 				<CardTitle>Pool Configuration</CardTitle>
 			</CardHeader>
 			<CardContent>
-				<span className="flex items-center space-x-1">
-					<ComboBox
-						title="Pool Filter"
-						options={filterOptions ?? LOADING}
-						value={props.settings.queue.poolFilterId}
-						onSelect={(filter) =>
-							props.setSettings(
-								produce((draft) => {
-									draft.queue.poolFilterId = filter ?? undefined
-								})
-							)
-						}
-					/>
-					{props.settings.queue.poolFilterId && (
-						<a
-							className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-							target="_blank"
-							href={AR.link('/filters/:id/edit', props.settings.queue.poolFilterId)}
-						>
-							<Edit />
-						</a>
-					)}
+				<span className="flex flex-col space-y-2">
+					<div className="flex space-x-1">
+						<ComboBox
+							title="Pool Filter"
+							className="flex-grow"
+							options={filterOptions ?? LOADING}
+							value={props.settings.queue.poolFilterId}
+							onSelect={(filter) =>
+								props.setSettings(
+									produce((draft) => {
+										draft.queue.poolFilterId = filter ?? undefined
+									})
+								)
+							}
+						/>
+						{props.settings.queue.poolFilterId && (
+							<a
+								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+								target="_blank"
+								href={AR.link('/filters/:id/edit', props.settings.queue.poolFilterId)}
+							>
+								<Edit />
+							</a>
+						)}
+					</div>
+					<div className="flex flex-col space-y-1">
+						<Label htmlFor={preferredLengthId}>Preferred Queue Length</Label>
+						<Input
+							type="number"
+							ref={preferredLengthRef}
+							min="0"
+							id={preferredLengthId}
+							className="data-[edited=true]:border-edited"
+							data-edited={props.settingsChanged.queue.preferredLength}
+							defaultValue={props.settings.queue.preferredLength}
+							onChange={(e) => {
+								props.setSettings(
+									produce((draft) => {
+										draft.queue.preferredLength = parseInt(e.target.value)
+									})
+								)
+							}}
+						/>
+					</div>
+					<div className="flex flex-col space-y-1">
+						<Label htmlFor={preferredNumVoteChoicesId}>Preferred Number of Choices</Label>
+						<Input
+							type="number"
+							ref={preferredNumVoteChoicesRef}
+							min="0"
+							id={preferredNumVoteChoicesId}
+							className="data-[edited=true]:border-edited"
+							data-edited={props.settingsChanged.queue.preferredNumVoteChoices}
+							defaultValue={props.settings.queue.preferredNumVoteChoices}
+							onChange={(e) => {
+								props.setSettings(
+									produce((draft) => {
+										draft.queue.preferredNumVoteChoices = parseInt(e.target.value)
+									})
+								)
+							}}
+						/>
+					</div>
 				</span>
-				<Button>Reload Pool</Button>
 			</CardContent>
+			<CardFooter>
+				<Button onClick={() => props.backfillLayerQueueItems()}>Autogenerate queue items</Button>
+			</CardFooter>
 		</Card>
 	)
-}
+})
 
 type QueueItemAction =
 	| {
@@ -522,11 +646,27 @@ function QueueItem(props: QueueItemProps) {
 			</Button>
 		</ItemDropdown>
 	)
-	const queueItemStyles = `bg-background data-[mutation=added]:${MUTATION_COLORS.added} data-[mutation=moved]:${MUTATION_COLORS.moved} data-[mutation=edited]:${MUTATION_COLORS.edited} data-[is-dragging]:border rounded-md bg-opacity-30`
+	let sourceDisplay: React.ReactNode
+
+	switch (props.item.source) {
+		case 'gameserver':
+			sourceDisplay = <Badge variant="outline">Game Server</Badge>
+			break
+		case 'generated':
+			sourceDisplay = <Badge variant="outline">Generated</Badge>
+			break
+		case 'manual':
+			sourceDisplay = <Badge variant="outline">Manual</Badge>
+			break
+		default:
+			assertNever(props.item.source)
+	}
+
+	const queueItemStyles = `bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30`
 
 	if (props.item.vote) {
 		return (
-			<div>
+			<>
 				{props.index === 0 && <QueueItemSeparator itemId={toDraggableItemId(null)} isLast={false} />}
 				<li
 					ref={setNodeRef}
@@ -547,57 +687,49 @@ function QueueItem(props: QueueItemProps) {
 							{props.item.vote.choices.map((choice, index) => {
 								const layer = M.getMiniLayerFromId(choice)
 								return (
-									<li key={choice} className="flex items-center space-x-2">
-										<span>{index + 1}.</span>
+									<li key={choice} className="flex items-center ">
+										<span className="mr-2">{index + 1}.</span>
 										<span>
-											{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
+											{Helpers.toShortLayerName(layer)}{' '}
+											{choice === props.item.vote!.defaultChoice && <Badge variant="outline">default</Badge>}
 										</span>
-										<div className="flex min-h-0 items-center space-x-1">
-											<span>
-												{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2}{' '}
-												{Helpers.toShortSubfaction(layer.SubFac_2)}
-											</span>
-										</div>
 									</li>
 								)
 							})}
 						</ol>
+						{sourceDisplay}
 					</div>
 					{itemDropdown}
 				</li>
 				<QueueItemSeparator itemId={draggableItemId} isLast={props.isLast} />
-			</div>
+			</>
 		)
 	}
 
 	if (props.item.layerId) {
 		const layer = M.getMiniLayerFromId(props.item.layerId)
 		return (
-			<div>
+			<>
 				{props.index === 0 && <QueueItemSeparator itemId={toDraggableItemId(null)} isLast={false} />}
 				<li
 					ref={setNodeRef}
 					style={style}
 					{...attributes}
-					className={cn(`group flex w-full items-center justify-between space-x-2 px-1 pb-2 pt-1`, queueItemStyles)}
+					className={cn(`group flex w-full items-center justify-between space-x-2 px-1 pb-2 pt-1 min-w-0`, queueItemStyles)}
 					data-mutation={getDisplayedMutation(props.mutationState)}
 					data-is-dragging={isDragging}
 				>
-					<div className="flex items-center">
-						<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
-							<GripVertical />
-						</Button>
-						{Helpers.toShortLevel(layer.Level)} {layer.Gamemode} {layer.LayerVersion || ''}
+					<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
+						<GripVertical />
+					</Button>
+					<div className="flex flex-col w-max flex-grow">
+						<div className="flex items-center flex-shrink-0">{Helpers.toShortLayerName(layer)}</div>
+						<span>{sourceDisplay}</span>
 					</div>
-					<div className="flex min-h-0 items-center space-x-1">
-						<span>
-							{layer.Faction_1} {Helpers.toShortSubfaction(layer.SubFac_1)} vs {layer.Faction_2} {Helpers.toShortSubfaction(layer.SubFac_2)}
-						</span>
-						{itemDropdown}
-					</div>
+					{itemDropdown}
 				</li>
 				<QueueItemSeparator itemId={draggableItemId} isLast={props.isLast} />
-			</div>
+			</>
 		)
 	}
 
@@ -651,6 +783,7 @@ function ItemDropdown(props: {
 
 				<SelectLayersPopover
 					title="Add layers before"
+					description="Select layers to add before"
 					open={subDropdownState === 'add-before'}
 					onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
 					selectingSingleLayerQueueItem={true}
@@ -663,6 +796,7 @@ function ItemDropdown(props: {
 
 				<SelectLayersPopover
 					title="Add layers after"
+					description="Select layers to add after"
 					open={subDropdownState === 'add-after'}
 					onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
 					selectQueueItems={(items) => {
@@ -694,7 +828,7 @@ function QueueItemSeparator(props: {
 	return (
 		<Separator
 			ref={setNodeRef}
-			className="w-full min-w-0 data-[is-last=true]:invisible data-[is-over=true]:bg-green-400"
+			className="w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-green-400"
 			data-is-last={props.isLast && !isOver}
 			data-is-over={isOver}
 		/>
@@ -707,13 +841,6 @@ type QueueMutations = {
 	removed: Set<number>
 	moved: Set<number>
 	edited: Set<number>
-}
-
-const MUTATION_COLORS = {
-	added: 'bg-green-600',
-	moved: 'bg-blue-600',
-	removed: 'bg-red-600',
-	edited: 'bg-orange-600',
 }
 
 type ItemMutationState = { [key in keyof QueueMutations]: boolean }

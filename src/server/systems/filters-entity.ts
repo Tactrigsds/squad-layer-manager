@@ -7,7 +7,7 @@ import { toAsyncGenerator } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
-import { procedure, procedureWithInput, router } from '@/server/trpc'
+import { procedure, router } from '@/server/trpc'
 
 import * as Sessions from './sessions.ts'
 
@@ -17,13 +17,13 @@ export const filtersRouter = router({
 	getFilters: procedure.query(async ({ ctx }) => {
 		return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
 	}),
-	createFilter: procedureWithInput(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
+	createFilter: procedure.input(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
 		const res = await returnInsertErrors(ctx.db.insert(Schema.filters).values(input))
 		const user = await Sessions.getUser({}, ctx)
 		if (res.code === 'ok') filterMutation$.next({ type: 'add', value: input, username: user.username })
 		return res.code
 	}),
-	updateFilter: procedureWithInput(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
+	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
 		const [id, update] = input
 		const res = await ctx.db.transaction(async (tx) => {
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')
@@ -41,7 +41,7 @@ export const filtersRouter = router({
 		if (res.code === 'ok') filterMutation$.next({ type: 'update', value: res.filter, username: user.username })
 		return res
 	}),
-	deleteFilter: procedureWithInput(M.FilterEntityIdSchema).mutation(async ({ input, ctx }) => {
+	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input, ctx }) => {
 		const res = await ctx.db.transaction(async (tx) => {
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, input)).for('update')
 			if (!rawFilter) {
@@ -58,7 +58,7 @@ export const filtersRouter = router({
 		filterMutation$.next({ type: 'delete', username: user.username, value: res.filter })
 		return { code: 'ok' }
 	}),
-	watchFilter: procedureWithInput(M.FilterEntityIdSchema).subscription(async function* watchFilter({
+	watchFilter: procedure.input(M.FilterEntityIdSchema).subscription(async function* watchFilter({
 		input,
 		ctx,
 	}): AsyncGenerator<WatchFilterOutput, void, unknown> {

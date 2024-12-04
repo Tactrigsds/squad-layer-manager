@@ -1,3 +1,4 @@
+import superjson from 'superjson'
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 	// @ts-expect-error it works
 	const reversed: { [key in T[keyof T]]: keyof T } = {}
@@ -8,7 +9,7 @@ export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 }
 
 export function deepClone<T>(obj: T) {
-	return JSON.parse(JSON.stringify(obj)) as T
+	return superjson.parse(superjson.stringify(obj)) as T
 }
 
 export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry, arr: Entry[]) {

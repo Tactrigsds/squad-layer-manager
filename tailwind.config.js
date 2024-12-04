@@ -1,3 +1,4 @@
+import colors from 'tailwindcss/colors'
 /** @type {import('tailwindcss').Config} */
 export default {
 	darkMode: ['class'],
@@ -39,6 +40,22 @@ export default {
 				destructive: {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))',
+				},
+				moved: {
+					DEFAULT: colors.blue[800],
+					foreground: colors.blue[50],
+				},
+				edited: {
+					DEFAULT: colors.yellow[800],
+					foreground: colors.yellow[50],
+				},
+				added: {
+					DEFAULT: colors.green[800],
+					foreground: colors.green[50],
+				},
+				removed: {
+					DEFAULT: colors.red[800],
+					foreground: colors.red[50],
 				},
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

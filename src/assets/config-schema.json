@@ -54,22 +54,13 @@
       "items": {
         "type": "object",
         "properties": {
-          "serverId": {
-            "allOf": [
-              {"type": "string"},
-              {"type": "integer", "format": "int64"}
-            ]
-          },
-          "roleId": {
-            "allOf": [
-              {"type": "string"},
-              {"type": "integer", "format": "int64"}
-            ]
-          }
+          "serverId": {"type": "string", "pattern": "^\\d+$"},
+          "roleId": {"type": "string", "pattern": "^\\d+$"}
         },
         "required": ["serverId", "roleId"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     },
     "$schema": {"type": "string"}
   },

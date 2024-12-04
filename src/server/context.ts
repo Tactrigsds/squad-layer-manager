@@ -35,12 +35,11 @@ export type Op = {
 	[Symbol.dispose]: (err?: any) => void
 }
 
-const opBaseId = createId(6)
 let opIdx = 0
 export function pushOperation<T extends Log & Partial<DB.Db>>(ctx: T, type: string, opts?: { level?: Pino.Level }): T & Op {
 	opts ??= {}
 	opts.level ??= 'debug'
-	const operationId = opBaseId + '/' + opIdx++
+	const operationId = (opIdx++).toString()
 	const bindings = ctx.log.bindings()
 	const ops = bindings.ops ? [...bindings.ops] : []
 	ops.push({ id: operationId, type })

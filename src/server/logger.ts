@@ -3,6 +3,7 @@ import pino, { LoggerOptions, Logger as PinoLogger } from 'pino'
 import devtoolsTransport from '@/lib/pino-nodejs-devtools-console-transport.ts'
 
 import { ENV, Env } from './env'
+import { createId } from '@/lib/id'
 
 // const projectRoot = path.resolve(__dirname, '..')
 // const devtoolsTransportPath = path.join(projectRoot, 'src/lib', 'pino-nodejs-devtools-console-transport')
@@ -36,4 +37,5 @@ export async function setupLogger() {
 	} else {
 		baseLogger = pino(baseConfig)
 	}
+	baseLogger = baseLogger.child({ runId: createId(24) })
 }

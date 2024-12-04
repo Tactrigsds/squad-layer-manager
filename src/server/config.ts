@@ -27,8 +27,8 @@ export const ConfigSchema = z.object({
 	authorizedDiscordRoles: z
 		.array(
 			z.object({
-				serverId: parsedBigint(),
-				roleId: parsedBigint(),
+				serverId: z.string().regex(/^\d+$/, { message: 'Must be a valid Discord server ID' }),
+				roleId: z.string().regex(/^\d+$/, { message: 'Must be a valid Discord role ID' }),
 			})
 		)
 		.min(1),

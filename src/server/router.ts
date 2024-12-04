@@ -8,7 +8,7 @@ import { filtersRouter } from './systems/filters-entity.ts'
 import * as Server from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 import * as SquadServer from './systems/squad-server.ts'
-import { procedure, procedureWithInput, router } from './trpc.ts'
+import { procedure, router } from './trpc.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
 export type AppRouter = typeof appRouter
@@ -19,7 +19,7 @@ export function setupTrpcRouter() {
 			return ctx.user
 		}),
 		// TODO could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
-		getUniqueValues: procedureWithInput(
+		getUniqueValues: procedure.input(
 			z.object({
 				columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
 				limit: z.number().positive().max(500).default(500),
@@ -45,7 +45,7 @@ export function setupTrpcRouter() {
 				.limit(input.limit)
 			return rows
 		}),
-		getLayers: procedureWithInput(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
+		getLayers: procedure.input(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
 		server: Server.serverRouter,
 		squadServer: SquadServer.squadServerRouter,
 		filters: filtersRouter,

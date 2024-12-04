@@ -16,6 +16,3 @@ const loggerMiddleware = t.middleware(async (opts) => {
 
 export const router = t.router
 export const procedure = t.procedure.use(loggerMiddleware)
-export function procedureWithInput<InputSchema extends z.ZodType<any, any, any>>(input: InputSchema) {
-	return procedure.input(input)
-}

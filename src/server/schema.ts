@@ -92,9 +92,9 @@ export const servers = mysqlTable('servers', {
 	displayName: varchar('displayName', { length: 256 }).notNull(),
 	// should be incremented whenver layer queue is modified. used to make sure modifiers are up-to-date with the current state of the queue before submitting modifications
 	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
-	layerQueue: json('layerQueue').notNull().default('[]'),
+	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
 	currentVote: json('currentVote'),
-	settings: json('settings').default('{}'),
+	settings: json('settings').default(superjson.stringify({})),
 })
 
 export type Server = typeof servers.$inferSelect
