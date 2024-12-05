@@ -21,7 +21,6 @@ import { setupEnv } from '@/server/env'
 import { baseLogger, Logger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
 import { Alliance, Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
-import XLSX from 'xlsx'
 
 // Define the schema for raw data
 const ASSETS_DIR = path.join(PROJECT_ROOT, 'src', 'assets')
@@ -52,9 +51,10 @@ async function main() {
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
-	await using ctx = C.pushOperation({ log: baseLogger, db: DB.get({ log: baseLogger }) }, "preprocess")
+	await using ctx = C.pushOperation({ log: baseLogger, db: DB.get({ log: baseLogger }) }, 'preprocess')
 
 	await generateConfigJsonSchema(ctx)
+	await generateFilterSchema(ctx)
 	const alliances = await parseAlliances(ctx)
 	const biomes = await parseBiomes(ctx)
 
@@ -125,14 +125,9 @@ async function parsePipelineData() {
 		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
 }
 
-async function updateLayersTable(
-	_ctx: Context,
-	pipeline: SquadPipelineModels.PipelineOutput,
-	alliances: Alliance[],
-	biomes: Biome[]
-) {
-  using ctx = C.pushOperation(_ctx, 'update-layers-table')
-  const { log, db } = ctx
+async function updateLayersTable(_ctx: Context, pipeline: SquadPipelineModels.PipelineOutput, alliances: Alliance[], biomes: Biome[]) {
+	using ctx = C.pushOperation(_ctx, 'update-layers-table')
+	const { log, db } = ctx
 	const t0 = performance.now()
 	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, alliances)
 
@@ -288,7 +283,7 @@ function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: 
 }
 
 async function updateLayerComponents(_ctx: C.Log & C.Db) {
-  using ctx = C.pushOperation(_ctx, 'update-layer-components')
+	using ctx = C.pushOperation(_ctx, 'update-layer-components')
 	const factionsPromise = ctx.db
 		.select({ faction: Schema.layers.Faction_1 })
 		.from(Schema.layers)
@@ -437,7 +432,7 @@ const SUBFACTION_SHORT_NAMES = {
 } satisfies Record<M.Subfaction, string>
 
 async function parseBiomes(_ctx: C.Log) {
-  using ctx = C.pushOperation(_ctx, 'parse-biomes')
+	using ctx = C.pushOperation(_ctx, 'parse-biomes')
 	const rawBiomes = await fsPromise.readFile(path.join(ASSETS_DIR, 'biomes.csv'), 'utf-8')
 	const biomesRows = parse(rawBiomes, { columns: false }) as string[][]
 	const biomes: Biome[] = []
@@ -457,7 +452,7 @@ async function parseBiomes(_ctx: C.Log) {
 }
 
 async function parseAlliances(_ctx: C.Log) {
-  using ctx = C.pushOperation(_ctx, 'parse-alliances')
+	using ctx = C.pushOperation(_ctx, 'parse-alliances')
 	const rawAlliances = await fsPromise.readFile(path.join(ASSETS_DIR, 'alliances.csv'), 'utf-8')
 	const alliancesRows = parse(rawAlliances, { columns: false }) as string[][]
 	let currentAlliance!: Alliance
@@ -507,13 +502,12 @@ function getSeedingMatchupsForLayer(mapName: string, alliances: Alliance[], biom
 	return matchups
 }
 
-
 async function generateConfigJsonSchema(_ctx: C.Log) {
-  using ctx = C.pushOperation(_ctx, 'generate-config-schema')
-  const schemaPath = path.join(ASSETS_DIR, 'config-schema.json')
-  const schema = zodToJsonSchema(Config.ConfigSchema.extend({["$schema"]: z.string()}))
-  await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
-  ctx.log.info('Wrote generated config schema to %s', schemaPath)
+	using ctx = C.pushOperation(_ctx, 'generate-config-schema')
+	const schemaPath = path.join(ASSETS_DIR, 'config-schema.json')
+	const schema = zodToJsonSchema(Config.ConfigSchema.extend({ ['$schema']: z.string() }))
+	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
+	ctx.log.info('Wrote generated config schema to %s', schemaPath)
 }
 
 await main()

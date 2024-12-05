@@ -124,7 +124,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 											ref={nameRef}
 											id={field.name}
 											name={field.name}
-											value={field.state.value}
+											defaultValue={field.state.value}
 											onBlur={field.handleBlur}
 											onChange={(e) => onNameChange(e.target.value)}
 										/>
@@ -177,7 +177,7 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 									<Textarea
 										id={field.name}
 										name={field.name}
-										value={field.state.value}
+										defaultValue={field.state.value ?? undefined}
 										onBlur={field.handleBlur}
 										onChange={(e) => field.handleChange(e.target.value.trim() || null)}
 									/>

@@ -204,7 +204,7 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="flex flex-col items-center">
 				<DialogHeader>
-					<DialogTitle>Submit New Filter</DialogTitle>
+					<DialogTitle>Edit Filter</DialogTitle>
 				</DialogHeader>
 				<form onSubmit={onSubmit} className="flex flex-col space-y-4">
 					<div className="flex items-center space-x-2">
@@ -219,7 +219,7 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 											ref={nameRef}
 											id={field.name}
 											name={field.name}
-											value={field.state.value}
+											defaultValue={field.state.value}
 											onBlur={field.handleBlur}
 											onChange={(e) => field.setValue(e.target.value)}
 										/>
@@ -242,6 +242,7 @@ function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.F
 									<Textarea
 										id={field.name}
 										name={field.name}
+										defaultValue={field.state.value ?? undefined}
 										onBlur={field.handleBlur}
 										onChange={(e) => field.handleChange(e.target.value)}
 									/>

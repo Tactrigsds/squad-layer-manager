@@ -1,5 +1,3 @@
-import { Button } from './button'
-
 export default function TabsList<T extends string>(props: {
 	options: { value: T; label: string; disabled?: boolean }[]
 	active: T
@@ -11,6 +9,7 @@ export default function TabsList<T extends string>(props: {
 				<button
 					key={option.value}
 					disabled={option.disabled}
+					type="button"
 					data-state={props.active === option.value && 'active'}
 					onClick={() => {
 						props.setActive(option.value)

@@ -78,6 +78,7 @@ export default function FilterCard(props: FilterCardProps) {
 				)}
 				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
+						type="button"
 						disabled={!props.validNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
@@ -88,7 +89,12 @@ export default function FilterCard(props: FilterCardProps) {
 					>
 						Text
 					</button>
-					<button data-state={activeTab === 'builder' && 'active'} onClick={() => setActiveTab('builder')} className={triggerClass}>
+					<button
+						type="button"
+						data-state={activeTab === 'builder' && 'active'}
+						onClick={() => setActiveTab('builder')}
+						className={triggerClass}
+					>
 						Builder
 					</button>
 				</div>

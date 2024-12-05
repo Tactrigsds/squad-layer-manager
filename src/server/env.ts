@@ -44,6 +44,7 @@ const EnvSchema = {
 
 	PORT: z.number().int().positive().default(3000),
 }
+
 export function setupEnv() {
 	dotenv.config()
 	const runtimeEnv = {

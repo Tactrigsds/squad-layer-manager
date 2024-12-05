@@ -1,15 +1,10 @@
 import { produce } from 'immer'
-import { Minus } from 'lucide-react'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import { flushSync } from 'react-dom'
-import stringifyCompact from 'json-stringify-pretty-compact'
-
 import { Button } from '@/components/ui/button'
-import { useToast } from '@/hooks/use-toast'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { sleepUntil } from '@/lib/async'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import * as Helpers from '@/lib/display-helpers'
 import * as EFB from '@/lib/editable-filter-builders'
@@ -23,6 +18,7 @@ import { Comparison } from './filter-card'
 import TabsList from './ui/tabs-list.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
+import deepEqual from 'fast-deep-equal'
 
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
@@ -76,19 +72,20 @@ export function SelectLayersPopover(props: {
 	}
 	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
 
-	const canSubmit = selectedLayers.length > 0 && loggedInUserRes.isSuccess
-	function submit() {
+	const canSubmit = selectedLayers.length > 0
+	function submit(e: React.FormEvent) {
+		e.preventDefault()
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
 			const items: M.LayerQueueItem[] = selectedLayers.map(
-				(l) => ({ layerId: l.id, source: 'manual', lastModifiedBy: loggedInUserRes.data.discordId }) satisfies M.LayerQueueItem
+				(l) => ({ layerId: l.id, source: 'manual', lastModifiedBy: loggedInUserRes.data!.discordId }) satisfies M.LayerQueueItem
 			)
 			props.selectQueueItems(items)
 		} else if (selectMode === 'vote') {
 			const item: M.LayerQueueItem = {
 				vote: { choices: selectedLayers.map((selected) => selected.id), defaultChoice: selectedLayers[0].id },
 				source: 'manual',
-				lastModifiedBy: loggedInUserRes.data.discordId,
+				lastModifiedBy: loggedInUserRes.data!.discordId,
 			}
 			props.selectQueueItems([item])
 		}
@@ -97,7 +94,6 @@ export function SelectLayersPopover(props: {
 	const applyBaseFilterId = React.useId()
 
 	function onOpenChange(open: boolean) {
-		console.log('onOpenChange', open)
 		if (open) {
 			setSelectedLayers(defaultSelected)
 			setFilterItem({})
@@ -109,57 +105,65 @@ export function SelectLayersPopover(props: {
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="w-auto max-w-full min-w-0">
-				<DialogHeader>
-					<DialogTitle>{props.title}</DialogTitle>
-					<DialogDescription>{props.description}</DialogDescription>
-					<div className="flex items-center w-full space-x-2">
-						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
-						<div className="items-top flex space-x-2">
-							<Checkbox
-								checked={applyBaseFilter}
-								onCheckedChange={(v) => {
-									if (v === 'indeterminate') return
-									setApplyBaseFilter(v)
-								}}
-								id={applyBaseFilterId}
-							/>
-							<div className="grid gap-1.5 leading-none">
-								<label
-									htmlFor={applyBaseFilterId}
-									className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-								>
-									Apply base filter
-								</label>
+				<form className="h-full w-full" onSubmit={submit}>
+					<DialogHeader>
+						<DialogTitle>{props.title}</DialogTitle>
+						<DialogDescription>{props.description}</DialogDescription>
+						<div className="flex items-center w-full space-x-2">
+							<p className={Typography.P}>{selectedLayers.length} layers selected</p>
+							<div className="items-top flex space-x-2">
+								<Checkbox
+									checked={applyBaseFilter}
+									onCheckedChange={(v) => {
+										if (v === 'indeterminate') return
+										setApplyBaseFilter(v)
+									}}
+									id={applyBaseFilterId}
+								/>
+								<div className="grid gap-1.5 leading-none">
+									<label
+										htmlFor={applyBaseFilterId}
+										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+									>
+										Apply base filter
+									</label>
+								</div>
 							</div>
+							{!props.pinMode && (
+								<TabsList
+									options={[
+										{ label: 'Vote', value: 'vote' },
+										{ label: 'Layers', value: 'layers' },
+									]}
+									active={selectMode}
+									setActive={setAdditionType}
+								/>
+							)}
 						</div>
-						{!props.pinMode && (
-							<TabsList
-								options={[
-									{ label: 'Vote', value: 'vote' },
-									{ label: 'Layers', value: 'layers' },
-								]}
-								active={selectMode}
-								setActive={setAdditionType}
-							/>
-						)}
+					</DialogHeader>
+
+					<div className="flex min-h-0 items-center space-x-2">
+						<LayerFilterMenu
+							filterLayer={filterItem}
+							setFilterLayer={setFilterItem}
+							baseFilter={props.baseFilter}
+							applyBaseFilter={applyBaseFilter}
+							setApplyBaseFilter={setApplyBaseFilter}
+						/>
+						<ListStyleLayerPicker
+							filter={pickerFilter}
+							selected={selectedLayers}
+							setSelected={setSelectedLayers}
+							pickerMode={selectMode === 'vote' ? 'toggle' : 'add'}
+						/>
 					</div>
-				</DialogHeader>
 
-				<div className="flex min-h-0 items-center space-x-2">
-					<LayerSelect filterLayer={filterItem} setFilterLayer={setFilterItem} baseFilter={props.baseFilter} />
-					<ListStyleLayerPicker
-						filter={pickerFilter}
-						selected={selectedLayers}
-						setSelected={setSelectedLayers}
-						pickerMode={selectMode === 'vote' ? 'toggle' : 'add'}
-					/>
-				</div>
-
-				<DialogFooter>
-					<Button disabled={!canSubmit} onClick={submit}>
-						Submit
-					</Button>
-				</DialogFooter>
+					<DialogFooter>
+						<Button disabled={!canSubmit} type="submit" onClick={submit}>
+							Submit
+						</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	)
@@ -201,8 +205,8 @@ function ListStyleLayerPicker(props: {
 	function toggleLayer(layer: M.MiniLayer) {
 		flushSync(() => {
 			props.setSelected((layers) => {
-				const hasLayer = layers.includes(layer)
-				return hasLayer ? layers.filter((l) => l !== layer) : [...layers, layer]
+				const hasLayer = layers.some((l) => l.id === layer.id)
+				return hasLayer ? layers.filter((l) => l.id !== layer.id) : [...layers, layer]
 			})
 		})
 		selectedLayersBoxRef.current?.scrollTo({ top: selectedLayersBoxRef.current.scrollHeight })
@@ -214,6 +218,22 @@ function ListStyleLayerPicker(props: {
 		},
 		[setSelected]
 	)
+
+	function onLayerSelect(layer: M.MiniLayer) {
+		switch (props.pickerMode) {
+			case 'add':
+				addLayer(layer)
+				break
+			case 'toggle':
+				toggleLayer(layer)
+				break
+			case 'single':
+				setLayer(layer)
+				break
+			default:
+				assertNever(props.pickerMode)
+		}
+	}
 
 	const lastDataRef = React.useRef(res.data)
 	React.useLayoutEffect(() => {
@@ -253,8 +273,9 @@ function ListStyleLayerPicker(props: {
 									{index > 0 && <Separator />}
 									<button
 										className={cn('w-full p-2 text-left data-[selected=true]:bg-accent', Typography.Small)}
+										type="button"
 										data-selected={props.selected[0]?.id === layer.id}
-										onClick={() => setLayer(layer)}
+										onClick={() => onLayerSelect(layer)}
 									>
 										{Helpers.toShortLayerName(layer)}
 									</button>
@@ -288,11 +309,8 @@ function ListStyleLayerPicker(props: {
 										<button
 											className={cn('w-full p-2 text-left data-[selected=true]:bg-accent', Typography.Small)}
 											data-selected={props.pickerMode === 'toggle' && layerSelected}
-											onClick={() => {
-												if (props.pickerMode === 'add') return addLayer(layer)
-												if (props.pickerMode === 'toggle') return toggleLayer(layer)
-												throw new Error('Unexpected picker mode ' + props.pickerMode)
-											}}
+											onClick={() => onLayerSelect(layer)}
+											type="button"
 										>
 											{Helpers.toShortLayerName(layer)}
 										</button>
@@ -306,25 +324,32 @@ function ListStyleLayerPicker(props: {
 				<div className="flex flex-col">
 					<h4 className={Typography.H4}>Selected</h4>
 					<ScrollArea className="h-full max-h-[500px] w-max min-h-0 space-y-2 text-xs" ref={selectedLayersBoxRef}>
-						{props.selected.map((layer, index) => {
-							return (
-								<React.Fragment key={layer.id + index.toString()}>
-									{index > 0 && <Separator />}
-									<button
-										className={cn(
-											'flex min-w-0 space-x-2 items-center w-full p-2 text-left data-[selected=true]:bg-accent',
-											Typography.Small
-										)}
-										onClick={() => {
-											setSelected((prev) => prev.filter((l) => l !== layer))
-										}}
-									>
-										<span className="whitespace-nowrap grow">{Helpers.toShortLayerName(layer)}</span>
-										<Minus color="hsl(var(--destructive))" />
-									</button>
-								</React.Fragment>
-							)
-						})}
+						<ol>
+							{props.selected.map((layer, index) => {
+								return (
+									<React.Fragment key={layer.id + index.toString()}>
+										{index > 0 && <Separator />}
+										<li
+											className={cn(
+												'flex min-w-0 space-x-2 items-center w-full p-2 text-left data-[selected=true]:bg-accent',
+												Typography.Small
+											)}
+										>
+											<span className="whitespace-nowrap grow">{Helpers.toShortLayerName(layer)}</span>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => {
+													toggleLayer(layer)
+												}}
+											>
+												<Icons.Minus color="hsl(var(--destructive))" />
+											</Button>
+										</li>
+									</React.Fragment>
+								)
+							})}
+						</ol>
 					</ScrollArea>
 				</div>
 			</div>
@@ -355,7 +380,6 @@ export function EditLayerQueueItemPopover(props: {
 	const [editedItem, setEditedItem] = React.useState<M.LayerQueueItem>(props.item)
 	const [filterLayer, setFilterLayer] = React.useState<Partial<M.MiniLayer>>(itemToMiniLayer(props.item))
 	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
-	const applyBaseFilterId = React.useId()
 
 	const pickerFilter = React.useMemo(() => {
 		const nodes: M.FilterNode[] = []
@@ -389,7 +413,7 @@ export function EditLayerQueueItemPopover(props: {
 		)
 	}
 
-	const canSubmit = selectedLayers.length > 0
+	const canSubmit = selectedLayers.length > 0 && !deepEqual(props.item, editedItem)
 	function submit(e: React.FormEvent) {
 		e.preventDefault()
 		if (!canSubmit) return
@@ -400,7 +424,7 @@ export function EditLayerQueueItemPopover(props: {
 	function onOpenChange(open: boolean) {
 		if (open) {
 			setEditedItem(props.item)
-			setFilterLayer({})
+			setFilterLayer(itemToMiniLayer(props.item))
 		}
 		props.onOpenChange(open)
 	}
@@ -410,80 +434,71 @@ export function EditLayerQueueItemPopover(props: {
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="w-auto max-w-full min-w-0">
-				<DialogHeader>
-					<DialogTitle>Edit</DialogTitle>
-					<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
-				</DialogHeader>
-
-				<div className="flex space-x-2 items-center">
-					<div className="items-top flex space-x-2">
-						<Checkbox
-							checked={applyBaseFilter}
-							onCheckedChange={(v) => {
-								if (v === 'indeterminate') return
-								setApplyBaseFilter(v)
-							}}
-							id={applyBaseFilterId}
-						/>
-						<div className="grid gap-1.5 leading-none">
-							<label
-								htmlFor={applyBaseFilterId}
-								className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-							>
-								Apply base filter
-							</label>
+				<form className="w-full h-full" onSubmit={submit}>
+					<DialogHeader>
+						<div className="flex justify-between mr-6">
+							<div className="flex flex-col">
+								<DialogTitle>Edit</DialogTitle>
+								<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
+							</div>
+							<TabsList
+								options={[
+									{ label: 'Vote', value: 'vote' },
+									{ label: 'Set Layer', value: 'layer' },
+								]}
+								active={editedItem.vote ? 'vote' : 'layer'}
+								setActive={(itemType) => {
+									setEditedItem((prev) => {
+										const selectedLayers = itemToLayers(prev)
+										const attribution = { source: 'manual' as const, lastModifiedBy: user!.discordId }
+										if (itemType === 'vote') {
+											return {
+												vote: {
+													choices: selectedLayers.map((l) => l.id),
+													defaultChoice: selectedLayers[0].id,
+												},
+												...attribution,
+											}
+										} else if (itemType === 'layer') {
+											return {
+												layerId: selectedLayers[0].id,
+												...attribution,
+											}
+										} else {
+											assertNever(itemType)
+										}
+									})
+								}}
+							/>
 						</div>
+					</DialogHeader>
+
+					<div className="flex space-x-2 items-center"></div>
+
+					<div className="flex space-x-2 min-h-0">
+						<div>
+							<LayerFilterMenu
+								filterLayer={filterLayer}
+								setFilterLayer={setFilterLayer}
+								baseFilter={applyBaseFilter ? props.baseFilter : undefined}
+								applyBaseFilter={applyBaseFilter}
+								setApplyBaseFilter={setApplyBaseFilter}
+							/>
+						</div>
+						<ListStyleLayerPicker
+							pickerMode={editedItem.vote ? 'toggle' : 'single'}
+							selected={selectedLayers}
+							setSelected={setSelectedLayers}
+							filter={pickerFilter}
+						/>
 					</div>
-					<TabsList
-						options={[
-							{ label: 'Vote', value: 'vote' },
-							{ label: 'Set Layer', value: 'layer' },
-						]}
-						active={editedItem.vote ? 'vote' : 'layer'}
-						setActive={(itemType) => {
-							setEditedItem((prev) => {
-								const selectedLayers = itemToLayers(prev)
-								const attribution = { source: 'manual' as const, lastModifiedBy: user!.discordId }
-								if (itemType === 'vote') {
-									return {
-										vote: {
-											choices: selectedLayers.map((l) => l.id),
-											defaultChoice: selectedLayers[0].id,
-										},
-										...attribution,
-									}
-								} else if (itemType === 'layer') {
-									return {
-										layerId: selectedLayers[0].id,
-										...attribution,
-									}
-								} else {
-									assertNever(itemType)
-								}
-							})
-						}}
-					/>
-				</div>
 
-				<div className="flex space-x-2 min-h-0">
-					<LayerSelect
-						filterLayer={filterLayer}
-						setFilterLayer={setFilterLayer}
-						baseFilter={applyBaseFilter ? props.baseFilter : undefined}
-					/>
-					<ListStyleLayerPicker
-						pickerMode={editedItem.vote ? 'toggle' : 'single'}
-						selected={selectedLayers}
-						setSelected={setSelectedLayers}
-						filter={pickerFilter}
-					/>
-				</div>
-
-				<DialogFooter>
-					<Button disabled={!canSubmit} onClick={submit}>
-						Submit
-					</Button>
-				</DialogFooter>
+					<DialogFooter>
+						<Button disabled={!canSubmit} type="submit">
+							Submit
+						</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	)
@@ -511,96 +526,143 @@ const FILTER_ORDER = [
 	'SubFac_2',
 ] as const satisfies (keyof M.MiniLayer)[]
 
-function LayerSelect(props: {
+function LayerFilterMenu(props: {
 	filterLayer: Partial<M.MiniLayer>
 	setFilterLayer: React.Dispatch<React.SetStateAction<Partial<M.MiniLayer>>>
+	applyBaseFilter: boolean
+	setApplyBaseFilter: React.Dispatch<React.SetStateAction<boolean>>
 	baseFilter?: M.FilterNode
 }) {
+	const applyBaseFilterId = React.useId()
+
 	const filterComparisons: [keyof M.MiniLayer, M.EditableComparison][] = []
 	for (const key of FILTER_ORDER) {
 		filterComparisons.push([key, EFB.eq(key, props.filterLayer[key])])
 	}
 
 	return (
-		<div className="grid h-full grid-cols-[auto_min-content_auto] gap-2">
-			{filterComparisons.map(([name, comparison], index) => {
-				const setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>> = (update) => {
-					props.setFilterLayer(
-						produce((prev) => {
-							const comp = typeof update === 'function' ? update(EFB.eq(name, prev[name])) : update
-							if (comp.column === 'id' && comp.value) {
-								return M.getMiniLayerFromId(comp.value as string)
-							} else if (comp.column === 'Layer' && comp.value) {
-								const parsedLayer = M.parseLayerString(comp.value as string)
-								prev.Level = parsedLayer.level
-								prev.Gamemode = parsedLayer.gamemode
-								prev.LayerVersion = parsedLayer.version
-							} else if (comp.column === 'Layer' && !comp.value) {
-								delete prev.Layer
-								delete prev.Level
-								delete prev.Gamemode
-								delete prev.LayerVersion
-							} else if (comp !== undefined) {
-								// @ts-expect-error null can be valid here
-								prev[name] = comp.value
-							} else if (comp.value === undefined) {
-								delete prev[name]
-							}
-							if (M.LAYER_STRING_PROPERTIES.every((p) => p in prev)) {
-								prev.Layer = M.getLayerString(prev as M.MiniLayer)
-							} else {
-								delete prev.Layer
-							}
-							delete prev.id
+		<div className="flex flex-col space-x-2">
+			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
+				{filterComparisons.map(([name, comparison], index) => {
+					const setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>> = (update) => {
+						props.setFilterLayer(
+							produce((prev) => {
+								const comp = typeof update === 'function' ? update(EFB.eq(name, prev[name])) : update
+								if (comp.column === 'id' && comp.value) {
+									return M.getMiniLayerFromId(comp.value as string)
+								} else if (comp.column === 'Layer' && comp.value) {
+									const parsedLayer = M.parseLayerString(comp.value as string)
+									prev.Level = parsedLayer.level
+									prev.Gamemode = parsedLayer.gamemode
+									prev.LayerVersion = parsedLayer.version
+								} else if (comp.column === 'Layer' && !comp.value) {
+									delete prev.Layer
+									delete prev.Level
+									delete prev.Gamemode
+									delete prev.LayerVersion
+								} else if (comp !== undefined) {
+									// @ts-expect-error null can be valid here
+									prev[name] = comp.value
+								} else if (comp.value === undefined) {
+									delete prev[name]
+								}
+								if (M.LAYER_STRING_PROPERTIES.every((p) => p in prev)) {
+									prev.Layer = M.getLayerString(prev as M.MiniLayer)
+								} else {
+									delete prev.Layer
+								}
+								delete prev.id
 
-							// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
-							// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
-							// 	prev.id = M.getLayerId(prev as M.LayerIdArgs)
-							// }
-						})
+								// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
+								// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
+								// 	prev.id = M.getLayerId(prev as M.LayerIdArgs)
+								// }
+							})
+						)
+					}
+
+					function clear() {
+						setComp(
+							produce((prev) => {
+								delete prev.value
+							})
+						)
+					}
+
+					function swapFactions() {
+						props.setFilterLayer(
+							produce((prev) => {
+								const faction1 = prev.Faction_1
+								const subFac1 = prev.SubFac_1
+								prev.Faction_1 = prev.Faction_2
+								prev.SubFac_1 = prev.SubFac_2
+								prev.Faction_2 = faction1
+								prev.SubFac_2 = subFac1
+							})
+						)
+					}
+
+					const appliedFilters: M.FilterNode[] | undefined = []
+					if (props.baseFilter && props.applyBaseFilter) {
+						appliedFilters.push(props.baseFilter)
+					}
+					// skip the first two filters (id and Layer) because of their very high specificity
+					for (let i = 2; i < index; i++) {
+						const comparison = filterComparisons[i][1]
+						if (!M.isValidComparison(comparison)) continue
+						appliedFilters.push(FB.comp(comparison))
+					}
+					const autocompleteFilter = appliedFilters.length > 0 ? FB.and(appliedFilters) : undefined
+
+					return (
+						<React.Fragment key={name}>
+							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
+							{name === 'Faction_2' && (
+								<>
+									<Button
+										disabled={
+											!(props.filterLayer.Faction_1 || props.filterLayer.SubFac_1) &&
+											!(props.filterLayer.Faction_2 || props.filterLayer.SubFac_2)
+										}
+										onClick={swapFactions}
+										variant="secondary"
+									>
+										Swap Factions
+									</Button>
+									<span />
+									<span />
+									<span />
+								</>
+							)}
+							<Comparison columnEditable={false} comp={comparison} setComp={setComp} valueAutocompleteFilter={autocompleteFilter} />
+							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
+								<Icons.Trash />{' '}
+							</Button>
+						</React.Fragment>
 					)
-				}
-				function swapFactions() {
-					props.setFilterLayer(
-						produce((prev) => {
-							const faction1 = prev.Faction_1
-							const subFac1 = prev.SubFac_1
-							prev.Faction_1 = prev.Faction_2
-							prev.SubFac_1 = prev.SubFac_2
-							prev.Faction_2 = faction1
-							prev.SubFac_2 = subFac1
-						})
-					)
-				}
-
-				const appliedFilters: M.FilterNode[] | undefined = []
-				if (props.baseFilter) {
-					appliedFilters.push(props.baseFilter)
-				}
-				// skip the first two filters (id and Layer) because of their very high specificity
-				for (let i = 2; i < index; i++) {
-					const comparison = filterComparisons[i][1]
-					if (!M.isValidComparison(comparison)) continue
-					appliedFilters.push(FB.comp(comparison))
-				}
-				const autocompleteFilter = appliedFilters.length > 0 ? FB.and(appliedFilters) : undefined
-
-				return (
-					<React.Fragment key={name}>
-						{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-3 my-2" />}
-						{name === 'Faction_2' && (
-							<>
-								<Button onClick={swapFactions} variant="outline">
-									Swap Factions
-								</Button>
-								<span />
-								<span />
-							</>
-						)}
-						<Comparison columnEditable={false} comp={comparison} setComp={setComp} valueAutocompleteFilter={autocompleteFilter} />
-					</React.Fragment>
-				)
-			})}
+				})}
+			</div>
+			<div className="flex space-x-2 items-center">
+				<div className="items-top flex space-x-1">
+					<Checkbox
+						checked={props.applyBaseFilter}
+						onCheckedChange={(v) => {
+							if (v === 'indeterminate') return
+							props.setApplyBaseFilter(v)
+						}}
+						id={applyBaseFilterId}
+					/>
+					<label
+						htmlFor={applyBaseFilterId}
+						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+					>
+						Apply base filter
+					</label>
+				</div>
+				<Button variant="secondary" onClick={() => props.setFilterLayer({})}>
+					Clear All
+				</Button>
+			</div>
 		</div>
 	)
 }
