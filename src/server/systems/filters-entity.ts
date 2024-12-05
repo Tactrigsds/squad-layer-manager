@@ -15,17 +15,17 @@ const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
 
 export const filtersRouter = router({
 	getFilters: procedure.query(async ({ ctx }) => {
-		return ctx.db.select().from(Schema.filters) as Promise<M.FilterEntity[]>
+		return ctx.db().select().from(Schema.filters) as Promise<M.FilterEntity[]>
 	}),
 	createFilter: procedure.input(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
-		const res = await returnInsertErrors(ctx.db.insert(Schema.filters).values(input))
+		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(input))
 		const user = await Sessions.getUser({}, ctx)
 		if (res.code === 'ok') filterMutation$.next({ type: 'add', value: input, username: user.username })
 		return res.code
 	}),
 	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
 		const [id, update] = input
-		const res = await ctx.db.transaction(async (tx) => {
+		const res = await ctx.db().transaction(async (tx) => {
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')
 			if (!rawFilter) {
 				return { code: 'err:not-found' as const }
@@ -42,7 +42,7 @@ export const filtersRouter = router({
 		return res
 	}),
 	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input, ctx }) => {
-		const res = await ctx.db.transaction(async (tx) => {
+		const res = await ctx.db().transaction(async (tx) => {
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, input)).for('update')
 			if (!rawFilter) {
 				return { code: 'err:filter-not-found' as const }
@@ -62,7 +62,7 @@ export const filtersRouter = router({
 		input,
 		ctx,
 	}): AsyncGenerator<WatchFilterOutput, void, unknown> {
-		const [filterRaw] = await ctx.db.select().from(Schema.filters).where(eq(Schema.filters.id, input))
+		const [filterRaw] = await ctx.db().select().from(Schema.filters).where(eq(Schema.filters.id, input))
 		if (!filterRaw) {
 			yield { code: `err:not-found` as const }
 		}

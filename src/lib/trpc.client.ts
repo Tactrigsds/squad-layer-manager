@@ -1,6 +1,5 @@
 import { createTRPCClient } from '@trpc/client'
 import { createTRPCReact, createWSClient, wsLink } from '@trpc/react-query'
-import { createTRPCJotai } from 'jotai-trpc'
 import superjson from 'superjson'
 
 import * as AR from '@/app-routes'
@@ -14,6 +13,6 @@ export const links = [
 		transformer: superjson,
 	}),
 ]
+
 export const trpc = createTRPCClient<AppRouter>({ links })
-export const trpcJotai = createTRPCJotai<AppRouter>({ links })
 export const trpcReact = createTRPCReact<AppRouter>()

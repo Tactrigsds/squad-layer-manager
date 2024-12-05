@@ -1,25 +1,24 @@
 import pino, { LoggerOptions, Logger as PinoLogger } from 'pino'
 
-import devtoolsTransport from '@/lib/pino-nodejs-devtools-console-transport.ts'
-
-import { ENV, Env } from './env'
+import devtoolsTransport from '@/lib/devtools-log-transport.ts'
 import { createId } from '@/lib/id'
 
-// const projectRoot = path.resolve(__dirname, '..')
-// const devtoolsTransportPath = path.join(projectRoot, 'src/lib', 'pino-nodejs-devtools-console-transport')
+import { ENV, Env } from './env'
 
 const ignore = 'pid,hostname,req.remotePort,req.remoteAddress,req.host'
 
 export type Logger = PinoLogger
 export let baseLogger!: Logger
 
+const serializers = {
+	bigint: (n: bigint) => n.toString() + n,
+}
+
 export async function setupLogger() {
 	const envToLogger = {
 		development: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
-			serializers: {
-				bigint: (n: bigint) => n.toString(),
-			},
+			serializers,
 			transport: {
 				target: 'pino-pretty',
 				options: {
@@ -27,6 +26,10 @@ export async function setupLogger() {
 					ignore,
 				},
 			},
+		},
+		production: {
+			level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
+			serializers,
 		},
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
 	const baseConfig = envToLogger[ENV.NODE_ENV]

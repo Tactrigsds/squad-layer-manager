@@ -12,7 +12,7 @@ beforeAll(async () => {
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
-	db = DB.get({ log: baseLogger })
+	db = DB.addPooledDb({ log: baseLogger }).db
 })
 
 test('getMiniLayerFromId consistency', async () => {

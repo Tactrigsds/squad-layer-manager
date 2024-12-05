@@ -11,23 +11,18 @@ setupEnv()
 export default defineConfig({
 	plugins: [react(), tsconfigPaths()],
 	server: {
-		// headers: {
-		// 'Cross-Origin-Opener-Policy': 'same-origin',
-		// 'Cross-Origin-Embedder-Policy': 'require-corp',
-		// },
-		proxy: newFunction(),
+		proxy: buildProxy(),
 	},
 	build: {
 		sourcemap: true,
 	},
 })
 
-function newFunction() {
-	const stuff = Object.fromEntries(
+function buildProxy() {
+	return Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
 			const target = r.websocket ? `ws://localhost:${ENV.PORT}` : `http://localhost:${ENV.PORT}`
 			return [`^${r.client}(\\?.+)?$`, { target, changeOrigin: true, ws: r.websocket }]
 		})
 	)
-	return stuff
 }

@@ -32,13 +32,12 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	await using opCtx = C.pushOperation(baseCtx, 'layers-query:run')
 
 	let whereCondition = sql`1=1`
-	const db = opCtx.db
 
 	if (input.filter) {
 		whereCondition = (await getWhereFilterConditions(input.filter, [], opCtx)) ?? whereCondition
 	}
 
-	let query = db.select().from(Schema.layers).where(whereCondition)
+	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
 
 	if (input.sort.type === 'column') {
 		// @ts-expect-error idk
@@ -56,7 +55,8 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	}
 	const [layers, [countResult]] = await Promise.all([
 		query.offset(input.pageIndex * input.pageSize).limit(input.pageSize),
-		db
+		opCtx
+			.db()
 			.select({ count: sql<number>`count(*)` })
 			.from(Schema.layers)
 			.where(whereCondition),
@@ -72,7 +72,11 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
-export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilterIds: string[], ctx: C.Db): Promise<SQL | undefined> {
+export async function getWhereFilterConditions(
+	node: M.FilterNode,
+	reentrantFilterIds: string[],
+	ctx: C.Db & C.Log
+): Promise<SQL | undefined> {
 	let res: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
@@ -129,6 +133,6 @@ export async function getWhereFilterConditions(node: M.FilterNode, reentrantFilt
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
-	const [filter] = await ctx.db.select().from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
+	const [filter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	return filter as Schema.Filter | undefined
 }

@@ -1,5 +1,5 @@
 import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
-import { sql } from 'drizzle-orm'
+import { DefaultLogger, sql } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import * as fs from 'fs'
 import { parse } from 'csv-parse/sync'
@@ -51,10 +51,9 @@ async function main() {
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
-	await using ctx = C.pushOperation({ log: baseLogger, db: DB.get({ log: baseLogger }) }, 'preprocess')
+	await using ctx = C.pushOperation(DB.addPooledDb({ log: baseLogger }), 'preprocess')
 
 	await generateConfigJsonSchema(ctx)
-	await generateFilterSchema(ctx)
 	const alliances = await parseAlliances(ctx)
 	const biomes = await parseBiomes(ctx)
 
@@ -64,8 +63,7 @@ async function main() {
 	await updateLayerComponents(ctx)
 }
 
-async function downloadPipeline(_ctx: Context) {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function downloadPipeline(_ctx: C.Log) {
 	await using ctx = C.pushOperation(_ctx, 'download-pipeline')
 	const res = await fetch(
 		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
@@ -125,7 +123,7 @@ async function parsePipelineData() {
 		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
 }
 
-async function updateLayersTable(_ctx: Context, pipeline: SquadPipelineModels.PipelineOutput, alliances: Alliance[], biomes: Biome[]) {
+async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.PipelineOutput, alliances: Alliance[], biomes: Biome[]) {
 	using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const { log, db } = ctx
 	const t0 = performance.now()
@@ -284,32 +282,37 @@ function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: 
 
 async function updateLayerComponents(_ctx: C.Log & C.Db) {
 	using ctx = C.pushOperation(_ctx, 'update-layer-components')
-	const factionsPromise = ctx.db
+	const factionsPromise = ctx
+		.db()
 		.select({ faction: Schema.layers.Faction_1 })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Faction_1)
 		.then((result) => derefEntries('faction', result))
 
-	const subfactionsPromise = ctx.db
+	const subfactionsPromise = ctx
+		.db()
 		.select({ subfaction: Schema.layers.SubFac_1 })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.SubFac_1)
 		.then((result) => derefEntries('subfaction', result))
 		.then((subfactions) => subfactions.filter((sf) => sf !== null))
 
-	const levelsPromise = ctx.db
+	const levelsPromise = ctx
+		.db()
 		.select({ level: Schema.layers.Level })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Level)
 		.then((result) => derefEntries('level', result))
 
-	const layersPromise = ctx.db
+	const layersPromise = ctx
+		.db()
 		.select({ layer: Schema.layers.Layer })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.Layer)
 		.then((result) => derefEntries('layer', result))
 
-	const layerVersionsPromise = ctx.db
+	const layerVersionsPromise = ctx
+		.db()
 		.select({ version: Schema.layers.LayerVersion })
 		.from(Schema.layers)
 		.groupBy(Schema.layers.LayerVersion)

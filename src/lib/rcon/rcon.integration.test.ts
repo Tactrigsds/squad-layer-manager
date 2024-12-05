@@ -19,7 +19,7 @@ beforeAll(async () => {
 	const config = { host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD }
 	rcon = new Rcon(config)
 	await rcon.connect(baseCtx)
-	squadRcon = new SquadRcon(rcon)
+	squadRcon = new SquadRcon(baseCtx, rcon)
 })
 
 const mtx = new Mutex()
@@ -35,39 +35,37 @@ test('Rcon should be connected', () => {
 	expect(rcon.connected).toBe(true)
 })
 
-test('can get current layer', async () => {
-	const ctx = C.includeLogProperties(baseCtx, { test: 'can get current layer' })
-	const layer = await squadRcon.getCurrentLayer(ctx)
-	expect(layer).toBeDefined()
-})
-
 test('can set next layer', async () => {
 	const ctx = C.includeLogProperties(baseCtx, { test: 'can set next layer' })
-	// make sure currently set next layer is not the same as the one we are going to set
-	await squadRcon.setNextLayer(ctx, {
+	const layer1Options = {
 		Layer: 'Fallujah_RAAS_v1',
 		Faction_1: 'RGF',
 		Faction_2: 'USA',
 		SubFac_1: 'CombinedArms',
 		SubFac_2: 'CombinedArms',
-	})
+	}
+	// make sure currently set next layer is not the same as the one we are going to set
+	await squadRcon.setNextLayer(ctx, layer1Options)
 
-	const nextLayerOptions = {
+	const nextLayer1 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
+	expect(nextLayer1).toBeDefined()
+	expect(nextLayer1!.Layer).toBe(layer1Options.Layer)
+	const layer2Options = {
 		Layer: 'GooseBay_RAAS_v1',
 		Faction_1: 'USA',
 		SubFac_1: 'CombinedArms',
 		Faction_2: 'RGF',
 		SubFac_2: 'CombinedArms',
 	}
-	await squadRcon.setNextLayer(ctx, nextLayerOptions)
-	const nextLayer = await squadRcon.getNextLayer(ctx)
-	expect(nextLayer).toBeDefined()
-	expect(nextLayer?.Layer).toBe(nextLayerOptions.Layer)
+	await squadRcon.setNextLayer(ctx, layer2Options)
+	const nextLayer2 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
+	expect(nextLayer2).toBeDefined()
+	expect(nextLayer2!.Layer).toBe(layer2Options.Layer)
 })
 
 test('can get server status', async () => {
 	const ctx = C.includeLogProperties(baseCtx, { test: 'can get server status' })
-	const status = await squadRcon.getServerStatus(ctx)
+	const status = await squadRcon.serverStatus.get(ctx)
 	ctx.log.info('server status %o', status)
 	expect(status).toBeDefined()
 })

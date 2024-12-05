@@ -17,17 +17,11 @@ import * as Sessions from './systems/sessions.ts'
 export type Log = {
 	log: Logger
 }
-export function includeLogProperties<T extends Log & Partial<Db>>(ctx: T, fields: Record<string, any>): T {
-	const log = ctx.log.child(fields)
-	if (ctx.db) {
-		// @ts-expect-error monkey patching
-		ctx.db.session.logger.logQuery = function logQuery(query: string, params: unknown[]) {
-			if (log.level === 'trace') log.trace('DB: %s: %o', params)
-			else log.debug('DB: %s, %o', query, params)
-		}
-	}
-	return { ...ctx, log }
+
+export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
+	return { ...ctx, log: ctx.log.child(fields) }
 }
+
 export type Op = {
 	tasks: Promise<void>[]
 	result?: 'ok' | string
@@ -36,7 +30,7 @@ export type Op = {
 }
 
 let opIdx = 0
-export function pushOperation<T extends Log & Partial<DB.Db>>(ctx: T, type: string, opts?: { level?: Pino.Level }): T & Op {
+export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { level?: Pino.Level }): T & Op {
 	opts ??= {}
 	opts.level ??= 'debug'
 	const operationId = (opIdx++).toString()
@@ -72,14 +66,14 @@ export function pushOperation<T extends Log & Partial<DB.Db>>(ctx: T, type: stri
 // -------- Logging end --------
 
 export type Db = {
-	db: DB.Db
+	db(): DB.Db
 }
 
 export type Rcon = {
 	rcon: RconCore
 }
 
-export type UnauthorizedRequest = { req: FastifyRequest; res: FastifyReply }
+export type AnyRequest = { req: FastifyRequest; res: FastifyReply }
 
 export type User = {
 	user: Schema.User
@@ -96,11 +90,11 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 	const sessionId = Cookie.parse(cookie).sessionId
 	if (!sessionId) return { code: 'unauthorized:no-session' as const, message: 'No session provided' }
 
-	const db = DB.get({ log })
-	const validSession = await Sessions.validateSession(sessionId, { log, db })
+	const ctx = DB.addPooledDb({ log })
+	const validSession = await Sessions.validateSession(sessionId, ctx)
 	if (validSession.code !== 'ok') return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
 
-	return { code: 'ok' as const, ctx: { req: req, res: res, log, sessionId, user: validSession.user, db } }
+	return { code: 'ok' as const, ctx: { ...ctx, req: req, res: res, sessionId, user: validSession.user } }
 }
 
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:

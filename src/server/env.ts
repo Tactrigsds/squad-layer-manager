@@ -12,7 +12,7 @@ const Flag = z
 export let ENV!: ReturnType<typeof setupEnv>
 export type Env = typeof ENV
 const EnvSchema = {
-	NODE_ENV: z.enum(['development'], { message: 'TODO configure prod' }),
+	NODE_ENV: z.enum(['development', 'production'], { message: 'TODO configure prod' }),
 	ORIGIN: z.string().url(),
 
 	DB_HOST: z.string().min(1).default('localhost'),
@@ -43,6 +43,7 @@ const EnvSchema = {
 	RCON_PASSWORD: z.string(),
 
 	PORT: z.number().int().positive().default(3000),
+	HOST: z.string().default('127.0.0.1'),
 }
 
 export function setupEnv() {

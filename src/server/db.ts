@@ -1,10 +1,13 @@
 import { TRPCError } from '@trpc/server'
-import { drizzle } from 'drizzle-orm/mysql2'
+import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
 import MySQL from 'mysql2/promise'
+import * as Schema from './schema.ts'
 import { EventEmitter } from 'node:events'
 
 import * as C from './context.ts'
 import { ENV } from './env.ts'
+
+export type Db = MySql2Database<Record<string, never>>
 
 let pool: MySQL.Pool
 
@@ -19,18 +22,23 @@ export function setupDatabase() {
 	pool = MySQL.createPool(env)
 }
 
-export function get(ctx: C.Log) {
-	const loggedPool = new TracedPool(ctx, pool)
-	// @ts-expect-error idk
-	const db = drizzle(loggedPool, {
-		logger: {
-			logQuery(query: string, params: unknown[]) {
-				if (ctx.log.level === 'trace') ctx.log.trace('DB: %s: %o', params)
-				else ctx.log.debug('DB: %s, %o', query, params)
-			},
+// try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date
+export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
+	if (ctx.db) throw new Error('db already exists')
+	return {
+		...ctx,
+		db() {
+			const tracedPool = new TracedPool(this, pool) as unknown as MySQL.Pool
+			const db = drizzle(tracedPool, {
+				logger: {
+					logQuery: (query: string, params: unknown[]) => {
+						this.log.debug('DB: %s, %o', query, params)
+					},
+				},
+			})
+			return db
 		},
-	})
-	return db
+	}
 }
 
 // I hate OOP
@@ -194,5 +202,3 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 		}
 	}
 }
-
-export type Db = ReturnType<typeof get>

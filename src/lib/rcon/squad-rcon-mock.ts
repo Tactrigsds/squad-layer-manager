@@ -174,12 +174,13 @@ export class SquadRconMock implements SM.ISquadRcon {
 
 	async endGame(ctx: C.Log) {
 		this.state.currentMap = this.state.nextMap
-		const _ctx = { ...ctx, db: DB.get(ctx) }
+		const _ctx = DB.addPooledDb(ctx)
 		this.state.nextMap = await this.getRandomLayer(_ctx)
 	}
 
 	async getRandomLayer(ctx: C.Db) {
-		const [randomLayer] = await ctx.db
+		const [randomLayer] = await ctx
+			.db()
 			.select({
 				id: Schema.layers.id,
 				Level: Schema.layers.Level,
