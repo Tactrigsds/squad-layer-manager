@@ -20,7 +20,8 @@ WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/docker ./docker
-COPY --from=build /app/public ./public
+# public dir empty right now
+# COPY --from=build /app/public ./public
 COPY --from=build /app/assets ./assets
 COPY --from=build /app/src ./src
 COPY --from=build /app/drizzle.config.ts ./
