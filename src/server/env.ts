@@ -44,6 +44,8 @@ const EnvSchema = {
 
 	PORT: z.number().int().positive().default(3000),
 	HOST: z.string().default('127.0.0.1'),
+
+	PROD_LOG_PATH: z.string().min(1).optional().describe('Path to write logs to in production'),
 }
 
 export function setupEnv() {

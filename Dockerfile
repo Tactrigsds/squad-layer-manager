@@ -28,6 +28,7 @@ COPY --from=build /app/drizzle.config.ts ./
 COPY --from=build /app/tsconfig.*.json ./
 COPY --from=build /app/docker/logrotate.conf /etc/logrotate.d/app
 RUN mkdir -p /logs
-
+ENV HOST=0.0.0.0
+ENV PORT=3000
 ENV NODE_ENV=production
 CMD ["sh", "/app/docker/entry.sh"]
