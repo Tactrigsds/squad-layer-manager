@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
 
+import * as Paths from '@/server/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
@@ -66,7 +67,7 @@ export async function setupFastify() {
 	switch (ENV.NODE_ENV) {
 		case 'production':
 			server.register(fastifyStatic, {
-				root: path.join(Config.PROJECT_ROOT_DIR, 'dist'),
+				root: path.join(Paths.PROJECT_ROOT, 'dist'),
 				setHeaders: (res) => {
 					res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 					res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')

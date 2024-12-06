@@ -31,4 +31,5 @@ RUN mkdir -p /logs
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV NODE_ENV=production
-CMD ["sh", "/app/docker/entry.sh"]
+ENV PROD_LOG_PATH=/logs/app.jsonl
+CMD ["pnpm", "run", "server:prod"]

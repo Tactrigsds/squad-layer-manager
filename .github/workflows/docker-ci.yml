@@ -27,7 +27,7 @@ jobs:
             version: latest
 
         - name: Install dependencies
-          run: pnpm install
+          run: pnpm install --frozen-lockfile
 
         - name: Check formatting
           run: pnpm prettier **/*.{ts,tsx,js} --check --plugin '@babel/plugin-proposal-explicit-resource-management'
