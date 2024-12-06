@@ -15,7 +15,7 @@
 		"server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/main.ts",
 		"__server:dev:debug:comment__": "use chrome node devtools with below script",
 		"server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/main.ts",
-		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts",
+		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts"
 	},
 	"dependencies": {
 		"@dnd-kit/core": "^6.1.0",
