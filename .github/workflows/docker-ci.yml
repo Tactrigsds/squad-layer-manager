@@ -11,6 +11,30 @@ on:
     branches: [ "main" ]
 
 jobs:
+  typecheck_and_format:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Setup Node
+          uses: actions/setup-node@v4
+          with:
+            node-version: '18'
+
+        - name: Setup pnpm
+          uses: pnpm/action-setup@v2
+          with:
+            version: latest
+
+        - name: Install dependencies
+          run: pnpm install
+
+        - name: Check formatting
+          run: pnpm prettier **/*.{ts,tsx,js} --check --plugin '@babel/plugin-proposal-explicit-resource-management'
+
+        - name: Type check
+          run: pnpm tsc -b
+
   build:
     runs-on: ubuntu-latest
     steps:
