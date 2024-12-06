@@ -5,13 +5,13 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import * as AR from './src/app-routes.ts'
 import { ENV, setupEnv } from './src/server/env.ts'
 
-setupEnv()
+const prod = process.env.NODE_ENV === 'production'
 
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [react(), tsconfigPaths()],
 	server: {
-		proxy: buildProxy(),
+		proxy: !prod ? buildProxy() : undefined,
 	},
 	build: {
 		sourcemap: true,
@@ -19,6 +19,7 @@ export default defineConfig({
 })
 
 function buildProxy() {
+	setupEnv()
 	return Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
 			const target = r.websocket ? `ws://localhost:${ENV.PORT}` : `http://localhost:${ENV.PORT}`

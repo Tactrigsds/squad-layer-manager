@@ -35,7 +35,7 @@ export async function setupLayerQueueAndServerState() {
 	const log = baseLogger
 	const systemCtx = DB.addPooledDb({ log })
 
-	await using opCtx = C.pushOperation(systemCtx, 'layer-queue:setup')
+	await using opCtx = C.pushOperation(systemCtx, 'layer-queue:setup', { level: 'info' })
 
 	// -------- bring server up to date with configuration --------
 	const initialServerState = await opCtx.db().transaction(async (tx) => {

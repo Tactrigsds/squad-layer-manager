@@ -25,22 +25,20 @@ export type AccessToken = {
 let client!: D.Client
 
 export async function setupDiscordSystem() {
-  using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup')
-  client = new D.Client({ intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers] });
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', { level: 'info' })
+	client = new D.Client({ intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers] })
 
-  return new Promise((resolve, reject) => {
-    client.once('ready', () => {
-      ctx.log.info('Discord client ready')
-      resolve(client)
-    })
-    client.once('error', (err) => {
-      ctx.log.error({ err }, 'Discord client error')
-      reject(err)
-    })
-    client.login(ENV.DISCORD_BOT_TOKEN)
-  })
+	await new Promise((resolve, reject) => {
+		client.once('ready', () => {
+			resolve(client)
+		})
+		client.once('error', (err) => {
+			reject(err)
+		})
+		client.login(ENV.DISCORD_BOT_TOKEN)
+	})
 }
-
 
 export async function getOauthUser(token: AccessToken) {
 	const fetchDiscordUserRes = await fetch('https://discord.com/api/users/@me', {
@@ -54,46 +52,45 @@ export async function getOauthUser(token: AccessToken) {
 	return DiscordUserSchema.parse(data)
 }
 
-
 async function fetchGuild(_ctx: C.Log, guildId: bigint) {
-  using ctx = C.pushOperation(_ctx, 'discord:fetch-guild')
-  try {
-    const guild = await client.guilds.fetch(guildId.toString())
-    return { code: 'ok' as const, guild }
-  } catch (err) {
-    ctx.log.warn({ err }, 'Failed to fetch guild with id %s', guildId)
-    if (err instanceof D.DiscordAPIError) {
-      return { code: 'err:discord' as const, err: err.message, errCode: err.code }
-    }
-    throw err
-  }
+	using ctx = C.pushOperation(_ctx, 'discord:fetch-guild')
+	try {
+		const guild = await client.guilds.fetch(guildId.toString())
+		return { code: 'ok' as const, guild }
+	} catch (err) {
+		ctx.log.warn({ err }, 'Failed to fetch guild with id %s', guildId)
+		if (err instanceof D.DiscordAPIError) {
+			return { code: 'err:discord' as const, err: err.message, errCode: err.code }
+		}
+		throw err
+	}
 }
 
 async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
-  using ctx = C.pushOperation(_ctx, 'discord:fetch-member')
-  const { code, guild } = await fetchGuild(ctx, guildId)
-  if (code !== 'ok') return { code }
+	using ctx = C.pushOperation(_ctx, 'discord:fetch-member')
+	const { code, guild } = await fetchGuild(ctx, guildId)
+	if (code !== 'ok') return { code }
 
-  try {
-    const member = await guild.members.fetch(memberId.toString())
-    return { code: 'ok' as const, member }
-  } catch (err) {
-    ctx.log.warn({ err }, 'Failed to fetch member with id %s', memberId)
-    if (err instanceof D.DiscordAPIError) {
-      return { code: 'err:discord' as const, err: err.message, errCode: err.code }
-    }
-    throw err
-  }
+	try {
+		const member = await guild.members.fetch(memberId.toString())
+		return { code: 'ok' as const, member }
+	} catch (err) {
+		ctx.log.warn({ err }, 'Failed to fetch member with id %s', memberId)
+		if (err instanceof D.DiscordAPIError) {
+			return { code: 'err:discord' as const, err: err.message, errCode: err.code }
+		}
+		throw err
+	}
 }
 
 export async function checkDiscordUserAuthorization(_ctx: C.Log, discordId: bigint) {
-  using ctx = C.pushOperation(_ctx, 'discord:check-user-authorization')
-  for (const authorized of CONFIG.authorizedDiscordRoles) {
-    const res = await fetchMember(ctx, authorized.serverId, discordId)
-    if (res.code != 'ok') return res
-    if (res.member.roles.cache.has(authorized.roleId.toString())) {
-      return { code: 'ok' as const }
-    }
-  }
-  return { code: 'err:unauthorized' as const }
+	using ctx = C.pushOperation(_ctx, 'discord:check-user-authorization')
+	for (const authorized of CONFIG.authorizedDiscordRoles) {
+		const res = await fetchMember(ctx, authorized.serverId, discordId)
+		if (res.code != 'ok') return res
+		if (res.member.roles.cache.has(authorized.roleId.toString())) {
+			return { code: 'ok' as const }
+		}
+	}
+	return { code: 'err:unauthorized' as const }
 }

@@ -2,7 +2,7 @@ import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
 
-import { PROJECT_ROOT } from '@/server/config.ts'
+import { PROJECT_ROOT_DIR } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 
 import * as SM from './squad-models.ts'
@@ -23,7 +23,7 @@ export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminList
 					break
 				}
 				case 'local': {
-					const listPath = path.resolve(PROJECT_ROOT, source.source)
+					const listPath = path.resolve(PROJECT_ROOT_DIR, source.source)
 					if (!fs.existsSync(listPath)) throw new Error(`Could not find Admin List at ${listPath}`)
 					data = fs.readFileSync(listPath, 'utf8')
 					break

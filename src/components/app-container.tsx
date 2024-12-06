@@ -31,9 +31,6 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									<span className="font-bold">{status.currentPlayers}</span> / <span className="font-bold">{status.maxPlayers}</span>{' '}
 									players online
 								</div>
-								<div className={Typography.Small}>
-									<span className="font-bold">{status.currentPlayersInQueue}</span> players in queue
-								</div>
 							</div>
 						)}
 						<div className="grid h-full grid-cols-[auto_auto]">

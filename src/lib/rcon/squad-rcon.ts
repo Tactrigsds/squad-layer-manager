@@ -180,9 +180,7 @@ export default class SquadRcon {
 			currentLayer: await currentLayerTask,
 			nextLayer: await nextLayerTask,
 			maxPlayers: rawInfo.MaxPlayers,
-			reserveSlots: rawInfo.PlayerReserveCount_I,
 			currentPlayers: rawInfo.PlayerCount_I,
-			currentPlayersInQueue: rawInfo.PublicQueue_I,
 		}
 	}
 }

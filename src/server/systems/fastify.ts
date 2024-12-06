@@ -66,7 +66,7 @@ export async function setupFastify() {
 	switch (ENV.NODE_ENV) {
 		case 'production':
 			server.register(fastifyStatic, {
-				root: path.join(Config.PROJECT_ROOT, 'dist'),
+				root: path.join(Config.PROJECT_ROOT_DIR, 'dist'),
 				setHeaders: (res) => {
 					res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 					res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
@@ -156,7 +156,7 @@ export async function setupFastify() {
 			router: TrpcRouter.appRouter,
 			createContext: C.createTrpcRequestContext,
 			onError({ path, error }) {
-				server.log.error(error, `Error in tRPC handler on path '${path}':`)
+				server.log.error(error, `Error in tRPC handler on path '${path ?? 'unknown'}':`)
 			},
 		} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 	})

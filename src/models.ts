@@ -1,6 +1,6 @@
 import * as z from 'zod'
 
-import LayerComponents from './assets/layer-components.json'
+import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
 import { deepClone, reverseMapping, selectProps } from './lib/object'
 import { Parts } from './lib/types'

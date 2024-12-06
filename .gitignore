@@ -24,7 +24,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
+*.tsbuildinfo
 .env*
 
 config.json

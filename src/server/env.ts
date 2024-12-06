@@ -48,29 +48,7 @@ const EnvSchema = {
 
 export function setupEnv() {
 	dotenv.config()
-	const runtimeEnv = {
-		NODE_ENV: process.env.NODE_ENV,
-		ORIGIN: process.env.ORIGIN,
-
-		DB_HOST: process.env.DB_HOST,
-		DB_PORT: process.env.DB_PORT,
-		DB_USER: process.env.DB_USER,
-		DB_PASSWORD: process.env.DB_PASSWORD,
-		DB_DATABASE: process.env.DB_DATABASE,
-
-		USING_DEVTOOLS: process.env.USING_DEVTOOLS,
-
-		DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID,
-		DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET,
-		DISCORD_BOT_TOKEN: process.env.DISCORD_BOT_TOKEN,
-
-		LOG_LEVEL_OVERRIDE: process.env.LOG_LEVEL_OVERRIDE,
-		MOCK_SQUAD_SERVER_PATH: process.env.MOCK_SQUAD_SERVER_PATH,
-		RCON_HOST: process.env.RCON_HOST,
-		RCON_PORT: process.env.RCON_PORT,
-		RCON_PASSWORD: process.env.RCON_PASSWORD,
-	}
-
+	const runtimeEnv = Object.fromEntries(Object.keys(EnvSchema).map((key) => [key, process.env[key]]))
 	const env = createEnv({
 		server: EnvSchema,
 		runtimeEnv: runtimeEnv,

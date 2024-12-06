@@ -39,9 +39,7 @@ export const ServerRawInfoSchema = z.object({
 export type ServerStatus = {
 	name: string
 	maxPlayers: number
-	reserveSlots: number
 	currentPlayers: number
-	currentPlayersInQueue: number
 	currentLayer: M.MiniLayer
 	nextLayer: M.MiniLayer | null
 }

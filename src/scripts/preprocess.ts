@@ -1,5 +1,5 @@
 import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
-import { DefaultLogger, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import * as fs from 'fs'
 import { parse } from 'csv-parse/sync'
@@ -14,16 +14,15 @@ import * as Constants from '@/lib/constants'
 import { deref as derefEntries } from '@/lib/object'
 import * as M from '@/models'
 import * as Config from '@/server/config.ts'
-import { PROJECT_ROOT } from '@/server/config'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { setupEnv } from '@/server/env'
-import { baseLogger, Logger, setupLogger } from '@/server/logger'
+import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
+import * as Paths from '@/server/paths'
 import { Alliance, Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
 
 // Define the schema for raw data
-const ASSETS_DIR = path.join(PROJECT_ROOT, 'src', 'assets')
 
 export const RawLayerSchema = z.object({
 	Level: z.string(),
@@ -69,7 +68,7 @@ async function downloadPipeline(_ctx: C.Log) {
 		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
 	)
 	const data = await res.json()
-	await fsPromise.writeFile(path.join(ASSETS_DIR, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
+	await fsPromise.writeFile(path.join(Paths.DATA, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
 	ctx.log.info('Downloaded squad pipeline data')
 }
 
@@ -119,13 +118,12 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 
 async function parsePipelineData() {
 	return await fsPromise
-		.readFile(path.join(ASSETS_DIR, 'squad-pipeline.json'), 'utf8')
+		.readFile(path.join(Paths.DATA, 'squad-pipeline.json'), 'utf8')
 		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
 }
 
 async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.PipelineOutput, alliances: Alliance[], biomes: Biome[]) {
 	using ctx = C.pushOperation(_ctx, 'update-layers-table')
-	const { log, db } = ctx
 	const t0 = performance.now()
 	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, alliances)
 
@@ -181,7 +179,7 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 	})
 
 	baseLogger.info('Reading layers.csv..')
-	const csvData = await fsPromise.readFile('layers.csv', 'utf8')
+	const csvData = await fsPromise.readFile(path.join(Paths.DATA, 'layers.csv'), 'utf8')
 	// TODO can optimize by pulling out rows incrementally
 	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
 	const t1 = performance.now()
@@ -209,25 +207,25 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 		return processLayer(validatedRawLayer)
 	})
 	processedLayers = [...processedLayers, ...seedLayers, ...extraJensensLayers]
-	log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
+	ctx.log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
 
 	const t2 = performance.now()
 
 	// truncate the table
-	log.info('Truncating layers table')
-	await db.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
-	log.info('inserting layers')
+	ctx.log.info('Truncating layers table')
+	await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
+	ctx.log.info('inserting layers')
 	// Insert the processed layers
 	const chunkSize = 2500
 	for (let i = 0; i < processedLayers.length; i += chunkSize) {
 		const chunk = processedLayers.slice(i, i + chunkSize)
-		await db.insert(Schema.layers).values(chunk)
-		log.info(`Inserted ${i + chunk.length} rows`)
+		await ctx.db().insert(Schema.layers).values(chunk)
+		ctx.log.info(`Inserted ${i + chunk.length} rows`)
 	}
 
 	const t3 = performance.now()
 	const elapsedSecondsInsert = (t3 - t2) / 1000
-	log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
+	ctx.log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
 
 function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: Biome[], alliances: Alliance[]) {
@@ -340,7 +338,7 @@ async function updateLayerComponents(_ctx: C.Log & C.Db) {
 		layerVersions: layerVersionsPromise,
 	})
 
-	fs.writeFileSync(path.join(PROJECT_ROOT, 'src', 'assets', 'layer-components.json'), JSON.stringify(layerComponents, null, 2))
+	fs.writeFileSync(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(layerComponents, null, 2))
 	ctx.log.info(
 		'Updated layer-components.json with %d factions, %d subfactions, %d levels, %d layers, and %d layer versions',
 		layerComponents.factions.length,
@@ -436,7 +434,7 @@ const SUBFACTION_SHORT_NAMES = {
 
 async function parseBiomes(_ctx: C.Log) {
 	using ctx = C.pushOperation(_ctx, 'parse-biomes')
-	const rawBiomes = await fsPromise.readFile(path.join(ASSETS_DIR, 'biomes.csv'), 'utf-8')
+	const rawBiomes = await fsPromise.readFile(path.join(Paths.DATA, 'biomes.csv'), 'utf-8')
 	const biomesRows = parse(rawBiomes, { columns: false }) as string[][]
 	const biomes: Biome[] = []
 	for (const row of biomesRows.slice(1).slice(0, -1)) {
@@ -456,7 +454,7 @@ async function parseBiomes(_ctx: C.Log) {
 
 async function parseAlliances(_ctx: C.Log) {
 	using ctx = C.pushOperation(_ctx, 'parse-alliances')
-	const rawAlliances = await fsPromise.readFile(path.join(ASSETS_DIR, 'alliances.csv'), 'utf-8')
+	const rawAlliances = await fsPromise.readFile(path.join(Paths.DATA, 'alliances.csv'), 'utf-8')
 	const alliancesRows = parse(rawAlliances, { columns: false }) as string[][]
 	let currentAlliance!: Alliance
 	const alliances: Alliance[] = []
@@ -507,7 +505,7 @@ function getSeedingMatchupsForLayer(mapName: string, alliances: Alliance[], biom
 
 async function generateConfigJsonSchema(_ctx: C.Log) {
 	using ctx = C.pushOperation(_ctx, 'generate-config-schema')
-	const schemaPath = path.join(ASSETS_DIR, 'config-schema.json')
+	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
 	const schema = zodToJsonSchema(Config.ConfigSchema.extend({ ['$schema']: z.string() }))
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
 	ctx.log.info('Wrote generated config schema to %s', schemaPath)

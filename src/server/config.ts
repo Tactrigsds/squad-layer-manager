@@ -3,10 +3,9 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
-import { parsedBigint } from '@/lib/zod'
+import * as Paths from '@/server/paths.ts'
 
 const strNoWhitespace = z.string().regex(/^\S+$/, { message: 'Must not contain whitespace' })
-export const PROJECT_ROOT = path.join(path.dirname(import.meta.dirname), '..')
 
 const CommandConfigSchema = z.object({
 	strings: z.array(strNoWhitespace),
@@ -37,7 +36,7 @@ export const ConfigSchema = z.object({
 export let CONFIG!: Config
 
 export async function setupConfig() {
-	const raw = await fs.readFile(path.join(PROJECT_ROOT, 'config.json'), 'utf-8')
+	const raw = await fs.readFile(path.join(Paths.PROJECT_ROOT, 'config.json'), 'utf-8')
 	const rawObj = JSON.parse(raw)
 	CONFIG = ConfigSchema.parse(rawObj)
 

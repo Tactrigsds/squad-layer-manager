@@ -19,6 +19,7 @@ export async function setupLogger() {
 		development: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
 			serializers,
+			base: undefined,
 			transport: {
 				target: 'pino-pretty',
 				options: {
@@ -29,6 +30,7 @@ export async function setupLogger() {
 		},
 		production: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
+			base: undefined,
 			serializers,
 		},
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
@@ -40,5 +42,5 @@ export async function setupLogger() {
 	} else {
 		baseLogger = pino(baseConfig)
 	}
-	baseLogger = baseLogger.child({ runId: createId(24) })
+	baseLogger = baseLogger.child({ runId: createId(12) })
 }

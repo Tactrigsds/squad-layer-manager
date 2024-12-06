@@ -1,11 +1,9 @@
 import { TRPCError } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
-import * as CacheManager from 'cache-manager'
 import Cookie from 'cookie'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
 
-import { createId } from '@/lib/id.ts'
 import RconCore from '@/lib/rcon/rcon-core.ts'
 
 import * as DB from './db.ts'
@@ -41,14 +39,14 @@ export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { leve
 	const handleResult = async function (this: any, err?: any) {
 		const result = err ? 'error' : (this.result ?? 'ok')
 		if (result && result !== 'ok') {
-			this.log.error({ err, result }, 'Operation %s::%s failed', type, operationId)
+			this.log.error({ err, result }, 'operation failed', type, operationId)
 			return
 		}
 		await Promise.all(this.tasks).catch((err) => {
-			lifeCycleLog.error({ err }, 'Operation %s::%s failed', type, operationId)
+			lifeCycleLog.error({ err }, 'operation failed', type, operationId)
 			throw err
 		})
-		lifeCycleLog[opts.level!]('Operation %s::%s completed', type, operationId)
+		lifeCycleLog[opts.level!]('operation completed', type, operationId)
 	}
 
 	const newCtx = {
@@ -59,7 +57,7 @@ export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { leve
 	}
 	const lifeCycleLog = newCtx.log.child({ opLifecycle: true })
 
-	lifeCycleLog[opts.level]('Operation %s::%s started', type, operationId)
+	lifeCycleLog[opts.level]('operation started', type, operationId)
 	return newCtx
 }
 
@@ -77,10 +75,6 @@ export type AnyRequest = { req: FastifyRequest; res: FastifyReply }
 
 export type User = {
 	user: Schema.User
-}
-
-export type Cache = {
-	cache: ReturnType<typeof CacheManager.createCache>
 }
 
 export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {

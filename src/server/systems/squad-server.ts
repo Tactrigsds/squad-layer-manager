@@ -38,7 +38,7 @@ export async function setupSquadServer() {
 	const adminListTTL = 1000 * 60 * 60
 	const baseCtx = { log: baseLogger }
 
-	await using opCtx = C.pushOperation(baseCtx, 'squad-server:setup')
+	await using opCtx = C.pushOperation(baseCtx, 'squad-server:setup', { level: 'info' })
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	void adminList.get(opCtx)
 
