@@ -6,3 +6,5 @@
 /.zed
 /config.json
 logs
+/.github
+/README.md
