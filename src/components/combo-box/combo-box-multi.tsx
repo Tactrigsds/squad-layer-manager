@@ -17,13 +17,14 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
+	selectionLimit?: number
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: React.Dispatch<React.SetStateAction<T[]>>
 }
 
 function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values } = props
+	const { values, selectionLimit } = props
 	const [open, setOpen] = useState(false)
 	const openRef = useRef(open)
 	openRef.current = open
@@ -37,7 +38,13 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	}))
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
-		props.onSelect(updater)
+		props.onSelect((currentValues) => {
+			const newValues = typeof updater === 'function' ? updater(currentValues) : updater
+			if (selectionLimit && newValues.length > selectionLimit) {
+				return currentValues
+			}
+			return newValues
+		})
 	}
 
 	let options: ComboBoxOption<T>[] | typeof LOADING
@@ -47,15 +54,21 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
 
-	let valuesDisplay =
-		values.length > 0
-			? values
-					.map((value) => {
-						const option = options !== LOADING && options.find((opt) => opt.value === value)
-						return option ? (option.label ?? option.value) : value
-					})
-					.join(', ')
-			: 'Select...'
+	let valuesDisplay = ''
+	console.log({ values })
+	if (values.length > 0) {
+		const displayText = values
+			.map((value) => {
+				const option = options !== LOADING && options.find((opt) => opt.value === value)
+				return option ? (option.label ?? option.value) : value
+			})
+			.join(', ')
+
+		valuesDisplay = selectionLimit ? `${displayText} (${values.length}/${selectionLimit})` : displayText
+	} else {
+		valuesDisplay = 'Select...'
+	}
+
 	if (valuesDisplay.length > 25) {
 		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
 	}
@@ -83,6 +96,7 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 									<CommandItem
 										key={option.value}
 										value={option.value === null ? NULL.current : option.value}
+										disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
 										onSelect={(selected) => {
 											onSelect((values) => {
 												const selectedValue = selected as T

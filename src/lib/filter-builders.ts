@@ -73,3 +73,10 @@ export const like = <T extends M.StringColumn>(column: T, value: string) =>
 		column,
 		value,
 	}) satisfies M.Comparison
+
+export const hasAll = <T extends M.CollectionColumn>(column: T, values: string[]) =>
+	({
+		code: 'has' as const,
+		column,
+		values,
+	}) satisfies M.Comparison

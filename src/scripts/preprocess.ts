@@ -251,46 +251,50 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 	for (const layer of pipeline.Maps) {
 		if (!layer.levelName.toLowerCase().includes('seed')) continue
 		const mapName = M.preprocessLevel(layer.mapId)
+		// gross
+		if (layer.levelName.startsWith('Albasrah')) layer.levelName = layer.levelName.replace('Albasrah', 'AlBasrah')
 
 		const matchups = getSeedingMatchupsForLayer(layer.mapName, alliances, biomes)
 		for (const [team1, team2] of matchups) {
-			seedLayers.push({
-				id: M.getLayerId({
+			seedLayers.push(
+				M.includeComputedCollections({
+					id: M.getLayerId({
+						Level: mapName,
+						Gamemode: layer.gamemode,
+						LayerVersion: layer.layerVersion.toUpperCase(),
+						Faction_1: team1,
+						SubFac_1: null,
+						Faction_2: team2,
+						SubFac_2: null,
+					}),
 					Level: mapName,
+					Layer: layer.levelName,
+					Size: layer.mapSize,
 					Gamemode: layer.gamemode,
 					LayerVersion: layer.layerVersion.toUpperCase(),
 					Faction_1: team1,
 					SubFac_1: null,
 					Faction_2: team2,
 					SubFac_2: null,
-				}),
-				Level: mapName,
-				Layer: layer.levelName,
-				Size: layer.mapSize,
-				Gamemode: layer.gamemode,
-				LayerVersion: layer.layerVersion.toUpperCase(),
-				Faction_1: team1,
-				SubFac_1: null,
-				Faction_2: team2,
-				SubFac_2: null,
-				Logistics_1: 0,
-				Transportation_1: 0,
-				'Anti-Infantry_1': 0,
-				Armor_1: 0,
-				ZERO_Score_1: 0,
-				Logistics_2: 0,
-				Transportation_2: 0,
-				'Anti-Infantry_2': 0,
-				Armor_2: 0,
-				ZERO_Score_2: 0,
-				Balance_Differential: 0,
-				'Asymmetry Score': 0,
-				Logistics_Diff: 0,
-				Transportation_Diff: 0,
-				'Anti-Infantry_Diff': 0,
-				Armor_Diff: 0,
-				ZERO_Score_Diff: 0,
-			})
+					Logistics_1: 0,
+					Transportation_1: 0,
+					'Anti-Infantry_1': 0,
+					Armor_1: 0,
+					ZERO_Score_1: 0,
+					Logistics_2: 0,
+					Transportation_2: 0,
+					'Anti-Infantry_2': 0,
+					Armor_2: 0,
+					ZERO_Score_2: 0,
+					Balance_Differential: 0,
+					'Asymmetry Score': 0,
+					Logistics_Diff: 0,
+					Transportation_Diff: 0,
+					'Anti-Infantry_Diff': 0,
+					Armor_Diff: 0,
+					ZERO_Score_Diff: 0,
+				})
+			)
 		}
 	}
 	return seedLayers

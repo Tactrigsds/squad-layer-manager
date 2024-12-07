@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
+import * as LayerComponents from '$root/assets/layer-components.json'
 import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 
 import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
-import ComboBox, { ComboBoxHandle } from './combo-box/combo-box.tsx'
+import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
 import { Button, buttonVariants } from './ui/button'
@@ -23,6 +24,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from './ui/input'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
+import { assertNever } from '@/lib/typeGuards.ts'
+import { arrProduct } from '@/lib/itertools.ts'
+import { Checkbox } from './ui/checkbox.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -340,8 +344,10 @@ export function Comparison(props: {
 			value={comp.column}
 			options={M.COLUMN_KEYS}
 			ref={columnBoxRef}
-			onSelect={(column) => {
-				if (column && M.isColType(column, 'string')) {
+			onSelect={(_column) => {
+				if (!_column) return setComp(() => ({ column: undefined }))
+				const column = _column as M.LayerColumnKey
+				if (M.isColType(column, 'string')) {
 					setComp((c) => {
 						const code = c.code ?? 'eq'
 						return { column, code }
@@ -351,14 +357,21 @@ export function Comparison(props: {
 					})
 					return
 				}
-				if (column && M.isColType(column, 'float')) {
+				if (M.isColType(column, 'float')) {
 					setComp((c) => {
 						return { column, code: c.code ?? 'lt' }
 					})
 					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
-				return setComp(() => ({ column: column as M.LayerColumnKey }))
+				if (M.isColType(column, 'collection')) {
+					setComp((c) => {
+						return { column, code: c.code ?? 'has', values: [] }
+					})
+					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
+					return
+				}
+				assertNever(column)
 			}}
 		/>
 	) : (
@@ -444,6 +457,7 @@ export function Comparison(props: {
 			)}
 			{comp.code === 'inrange' && (
 				<NumericRangeConfig
+					ref={valueBoxRef}
 					min={comp.min}
 					max={comp.max}
 					setMin={(min) => {
@@ -451,6 +465,18 @@ export function Comparison(props: {
 					}}
 					setMax={(max) => {
 						setComp((c) => ({ ...c, max }))
+					}}
+				/>
+			)}
+			{comp.code === 'has' && (
+				<HasAllConfig
+					ref={valueBoxRef}
+					column={comp.column as M.CollectionColumn}
+					values={comp.values as string[]}
+					setValues={(updater) => {
+						//@ts-expect-error idk
+						const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
+						return setComp((c) => ({ ...c, values: values as (string | null)[] }))
 					}}
 				/>
 			)}
@@ -665,4 +691,107 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 			<NumericSingleValueConfig value={props.max} setValue={props.setMax} />
 		</div>
 	)
+})
+
+const HasAllConfig = React.forwardRef(function HasAllConfig(
+	props: {
+		values: string[]
+		column: M.CollectionColumn
+		setValues: React.Dispatch<React.SetStateAction<string[]>>
+		autocompleteFilter?: M.FilterNode
+	},
+	ref: React.ForwardedRef<ComboBoxHandle>
+) {
+	const factions1Res = trpcReact.getUniqueValues.useQuery({ columns: ['Faction_1', 'SubFac_1'], filter: props.autocompleteFilter })
+	const factions2Res = trpcReact.getUniqueValues.useQuery({ columns: ['Faction_2', 'SubFac_2'], filter: props.autocompleteFilter })
+	const mirrorCheckboxId = React.useId()
+	const [mirror, setMirror] = useState(false)
+
+	if (props.column === 'FactionMatchup') {
+		const onSelect = props.setValues as ComboBoxMultiProps['onSelect']
+		const allFactions = [
+			...new Set([...(factions1Res.data?.map((r) => r.Faction_1) ?? []), ...(factions2Res.data?.map((r) => r.Faction_2) ?? [])]),
+		]
+		return (
+			<ComboBoxMulti title={props.column} ref={ref} values={props.values} options={allFactions} onSelect={onSelect} selectionLimit={2} />
+		)
+	}
+
+	if (props.column === 'SubFacMatchup') {
+		const allSubFactions = [
+			...new Set([...(factions1Res.data?.map((r) => r.SubFac_1) ?? []), ...(factions2Res.data?.map((r) => r.SubFac_2) ?? [])]),
+		]
+
+		function canMirror(values: string[]) {
+			return values.length === 1 || (values.length === 2 && values[0] === values[1])
+		}
+
+		const onSelect: ComboBoxMultiProps['onSelect'] = (updater) => {
+			props.setValues((currentValues) => {
+				const newValues = (typeof updater === 'function' ? updater(currentValues) : updater) as string[]
+				if (!canMirror(newValues)) {
+					setMirror(false)
+				}
+				if (canMirror(newValues) && mirror) {
+					return [newValues[0], newValues[0]]
+				}
+				return newValues
+			})
+		}
+		return (
+			<div className="flex space-x-2">
+				<ComboBoxMulti
+					title={props.column}
+					ref={ref}
+					values={mirror ? props.values.slice(1) : props.values}
+					options={allSubFactions}
+					onSelect={onSelect}
+					selectionLimit={mirror ? undefined : 2}
+				/>
+				<div className="items-top flex space-x-1 items-center">
+					<Checkbox
+						checked={mirror}
+						disabled={!canMirror(props.values)}
+						onCheckedChange={(v) => {
+							if (v === 'indeterminate' || !canMirror(props.values)) return
+							if (v) {
+								props.setValues([props.values[0], props.values[0]])
+							} else {
+								props.setValues([props.values[0]])
+							}
+							setMirror(v)
+						}}
+						id={mirrorCheckboxId}
+					/>
+					<label
+						htmlFor={mirrorCheckboxId}
+						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+					>
+						Mirror
+					</label>
+				</div>
+			</div>
+		)
+	}
+
+	if (props.column === 'FullMatchup') {
+		const allFullTeams = [
+			...new Set([
+				...(factions1Res.data?.map((r) => M.getLayerTeamString(r.Faction_1, r.SubFac_1)) ?? []),
+				...(factions2Res.data?.map((r) => M.getLayerTeamString(r.Faction_2, r.SubFac_2)) ?? []),
+			]),
+		]
+
+		const allTeamOptions: ComboBoxOption<string>[] = allFullTeams.map((team) => {
+			const { faction, subfac } = M.parseTeamString(team)
+			return { value: team, label: [faction, subfac].join(' ') }
+		})
+
+		const onSelect = props.setValues as ComboBoxMultiProps['onSelect']
+		return (
+			<ComboBoxMulti title={props.column} ref={ref} values={props.values} selectionLimit={2} options={allTeamOptions} onSelect={onSelect} />
+		)
+	}
+
+	assertNever(props.column)
 })

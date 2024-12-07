@@ -16,6 +16,23 @@
     "VDV",
     "WPMC"
   ],
+  "factionFullNames": {
+    "ADF": "Australian Defence Force",
+    "PLA": "People's Liberation Army",
+    "RGF": "Russian Ground Forces",
+    "INS": "Insurgent Forces",
+    "MEA": "Middle Eastern Alliance",
+    "CAF": "Canadian Armed Forces",
+    "VDV": "Russian Airborne Forces",
+    "TLF": "Turkish Land Forces",
+    "USA": "United States Army",
+    "BAF": "British Armed Forces",
+    "USMC": "United States Marine Corps",
+    "IMF": "Irregular Militia Forces",
+    "PLANMC": "PLA Navy Marine Corps",
+    "WPMC": "Western Private Military Contractors",
+    "PLAAGF": "PLA Amphibious Ground Forces"
+  },
   "subfactions": [
     "CombinedArms",
     "Armored",
@@ -130,7 +147,7 @@
   "layers": [
     "AlBasrah_AAS_v1",
     "AlBasrah_RAAS_v1",
-    "Albasrah_Seed_v1",
+    "AlBasrah_Seed_v1",
     "AlBasrah_Skirmish_v1",
     "AlBasrah_Skirmish_v2",
     "AlBasrah_TC_v1",

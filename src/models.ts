@@ -5,51 +5,13 @@ import * as C from './lib/constants'
 import { deepClone, reverseMapping, selectProps } from './lib/object'
 import { Parts } from './lib/types'
 import type * as Schema from './server/schema'
+import { arrProduct } from './lib/itertools'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
-export type Layer = Schema.Layer
+export type Layer = Schema.Layer & MiniLayer
 export type Subfaction = C.Subfaction
-
-const MAP_ABBREVIATION = {
-	AlBasrah: 'AB',
-	Anvil: 'AN',
-	Belaya: 'BL',
-	BlackCoast: 'BC',
-	Chora: 'CH',
-	Fallujah: 'FL',
-	FoolsRoad: 'FR',
-	GooseBay: 'GB',
-	Gorodok: 'GD',
-	Harju: 'HJ',
-	Kamdesh: 'KD',
-	Kohat: 'KH',
-	Kokan: 'KK',
-	Lashkar: 'LK',
-	Logar: 'LG',
-	Manicouagan: 'MN',
-	Mestia: 'MS',
-	Mutaha: 'MT',
-	Narva: 'NV',
-	PacificProvingGrounds: 'PPG',
-	Sanxian: 'SX',
-	Skorpo: 'SK',
-	Sumari: 'SM',
-	Tallil: 'TL',
-	Yehorivka: 'YH',
-	JensensRange: 'JR',
-} as Record<string, string>
-
-const UNIT_ABBREVIATION = {
-	AirAssault: 'AA',
-	Armored: 'AR',
-	CombinedArms: 'CA',
-	LightInfantry: 'LI',
-	Mechanized: 'MZ',
-	Motorized: 'MT',
-	Support: 'SP',
-} as Record<string, string>
 
 export type LayerIdArgs = {
 	Level: string
@@ -78,23 +40,30 @@ export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | '
 }
 
 export function getLayerId(layer: LayerIdArgs) {
-	let mapLayer = `${MAP_ABBREVIATION[layer.Level]}-${layer.Gamemode}`
+	let mapLayer = `${LayerComponents.levelAbbreviations[layer.Level as keyof typeof LayerComponents.levelAbbreviations]}-${layer.Gamemode}`
 	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
 
-	let faction1 = layer.Faction_1
-	if (layer.SubFac_1) faction1 += `-${UNIT_ABBREVIATION[layer.SubFac_1]}`
+	const team1 = getLayerTeamString(layer.Faction_1, layer.SubFac_1)
+	const team2 = getLayerTeamString(layer.Faction_2, layer.SubFac_2)
+	return `${mapLayer}:${team1}:${team2}`
+}
 
-	let faction2 = layer.Faction_2
-	if (layer.SubFac_2) faction2 += `-${UNIT_ABBREVIATION[layer.SubFac_2]}`
-
-	return `${mapLayer}:${faction1}:${faction2}`
+export function getLayerTeamString(faction: string, subfac: string | null) {
+	const abbrSubfac = subfac ? LayerComponents.subfactionAbbreviations[subfac as keyof typeof LayerComponents.subfactionAbbreviations] : ''
+	return abbrSubfac ? `${faction}-${abbrSubfac}` : faction
+}
+export function parseTeamString(team: string): { faction: string; subfac: string | null } {
+	const [faction, subfac] = team.split('-')
+	return { faction, subfac: subfac ? SUBFAC_ABBREVIATIONS_REVERSE[subfac] : null }
 }
 
 export function getMiniLayerFromId(id: string): MiniLayer {
+	// console.trace('getMiniLayerFromId', id)
 	const [mapPart, faction1Part, faction2Part] = id.split(':')
 	const [mapAbbr, gamemode, versionPart] = mapPart.split('-')
 	const level = LEVEL_ABBREVIATION_REVERSE[mapAbbr]
 	if (!level) {
+		console.log('invalid map abbreviation', mapAbbr)
 		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
 	}
 	const [faction1, subfac1] = parseFactionPart(faction1Part)
@@ -106,14 +75,15 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		layer = `${level}_${faction1}-${faction2}`
 	} else {
 		layer = LayerComponents.layers.find(
-			(l) => l.startsWith(`${level}_${gamemode}`) && (layerVersion ? l.endsWith(layerVersion.toLowerCase()) : true)
+			(l) => l.startsWith(`${level}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase()))
 		)
 	}
 	if (!layer) {
+		console.log('invalid layer', level, gamemode, layerVersion)
 		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 
-	return {
+	return includeComputedCollections({
 		id,
 		Level: level,
 		Layer: layer,
@@ -123,7 +93,7 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		SubFac_1: subfac1,
 		Faction_2: faction2,
 		SubFac_2: subfac2,
-	}
+	})
 }
 
 function validateId(id: string) {
@@ -183,15 +153,16 @@ export const LEVEL_ABBREVIATION_REVERSE = reverseMapping(LayerComponents.levelAb
 export const SUBFAC_ABBREVIATIONS_REVERSE = reverseMapping(LayerComponents.subfactionAbbreviations)
 
 type ComparisonType = {
-	coltype: 'string' | 'float' | 'integer'
+	coltype: ColumnType
 	code: string
 	displayName: string
 }
-export const COLUMN_TYPES = ['float', 'string', 'integer'] as const
+export const COLUMN_TYPES = ['float', 'string', 'integer', 'collection'] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
 export type StringColumn = (typeof COLUMN_TYPE_MAPPINGS)['string'][number]
 export type FloatColumn = (typeof COLUMN_TYPE_MAPPINGS)['float'][number]
+export type CollectionColumn = (typeof COLUMN_TYPE_MAPPINGS)['collection'][number]
 export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'lt', displayName: 'Less Than' },
 	{ coltype: 'float', code: 'gt', displayName: 'Greater Than' },
@@ -199,6 +170,7 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'in', displayName: 'In' },
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
 	{ coltype: 'string', code: 'like', displayName: 'Like' },
+	{ coltype: 'collection', code: 'has', displayName: 'Has All' },
 ] as const satisfies ComparisonType[]
 
 // we're keeping this definition separate to reduce type inference a bit
@@ -224,16 +196,20 @@ export const COLUMN_TYPE_MAPPINGS = {
 	] as const,
 	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
 	integer: [] as const,
+	collection: ['FactionMatchup', 'FullMatchup', 'SubFacMatchup'] as const,
 } satisfies { [key in ColumnType]: LayerColumnKey[] }
 
 export function isColType<T extends ColumnType>(col: string, type: T): col is (typeof COLUMN_TYPE_MAPPINGS)[T][number] {
 	return (COLUMN_TYPE_MAPPINGS[type] as string[]).includes(col)
 }
 
-export const COLUMN_KEYS = [...COLUMN_TYPE_MAPPINGS.string, ...COLUMN_TYPE_MAPPINGS.float, ...COLUMN_TYPE_MAPPINGS.integer] as [
-	LayerColumnKey,
-	...LayerColumnKey[],
-]
+export const COLUMN_KEYS_NON_COLLECTION = [
+	...COLUMN_TYPE_MAPPINGS.string,
+	...COLUMN_TYPE_MAPPINGS.float,
+	...COLUMN_TYPE_MAPPINGS.integer,
+] as const
+
+export const COLUMN_KEYS = [...COLUMN_KEYS_NON_COLLECTION, ...COLUMN_TYPE_MAPPINGS.collection] as [LayerColumnKey, ...LayerColumnKey[]]
 
 // @ts-expect-error initialize
 export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey, ColumnType> = {}
@@ -257,7 +233,7 @@ export type EditableComparison = {
 	min?: number
 	max?: number
 }
-
+// --------  numeric --------
 export const LessThanComparison = z.object({
 	code: z.literal('lt'),
 	value: z.number(),
@@ -281,7 +257,9 @@ export const InRangeComparison = z.object({
 export type InRangeComparison = z.infer<typeof InRangeComparison>
 
 export type NumericComparison = LessThanComparison | GreaterThanComparison | InRangeComparison
+// --------  numeric end --------
 
+// --------  string --------
 export const InComparison = z.object({
 	code: z.literal('in'),
 	values: z.array(z.string().nullable()),
@@ -305,10 +283,30 @@ export const LikeComparison = z.object({
 export type LikeComparison = z.infer<typeof LikeComparison>
 
 export type StringComparison = InComparison | EqualComparison | LikeComparison
+// --------  string end --------
+
+// --------  collection --------
+export const HasAllComparisonSchema = z.object({
+	code: z.literal('has'),
+	values: z.array(z.string()),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.collection),
+})
+export type HasComparison = z.infer<typeof HasAllComparisonSchema>
+export type CollectionComparison = HasComparison
+
+// --------  collection end --------
 
 // Combine into the final ComparisonSchema
 export const ComparisonSchema = z
-	.discriminatedUnion('code', [LessThanComparison, GreaterThanComparison, InRangeComparison, InComparison, EqualComparison, LikeComparison])
+	.discriminatedUnion('code', [
+		LessThanComparison,
+		GreaterThanComparison,
+		InRangeComparison,
+		InComparison,
+		EqualComparison,
+		LikeComparison,
+		HasAllComparisonSchema,
+	])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), { message: 'Invalid comparison type' })
 	.refine(
 		(comp) => {
@@ -404,7 +402,8 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 }
 
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
-	return !!comp.code && !!comp.column && (comp.code === 'in' ? comp.values : comp.value) !== undefined
+	if (comp.code === 'has' && (!comp.values || comp.values.length === 0)) return false
+	return !!comp.code && !!comp.column && (['in', 'has'].includes(comp.code) ? comp.values : comp.value) !== undefined
 }
 export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {
 	return !!node.filterId
@@ -443,10 +442,11 @@ export type LayerQueueItem = z.infer<typeof LayerQueueItemSchema>
 export function preprocessLevel(level: string) {
 	if (level.startsWith('Sanxian')) return 'Sanxian'
 	if (level.startsWith('Belaya')) return 'Belaya'
+	if (level.startsWith('Albasra')) return level.replace('Albasra', 'AlBasrah')
 	return level
 }
 
-export const MiniLayerSchema = z.object({
+const _MiniLayerSchema = z.object({
 	id: LayerIdSchema,
 	Level: z.string().transform(preprocessLevel),
 	Layer: z.string(),
@@ -460,6 +460,15 @@ export const MiniLayerSchema = z.object({
 	Faction_2: z.string(),
 	SubFac_2: z.enum(C.SUBFACTIONS).nullable(),
 })
+export const MiniLayerSchema = _MiniLayerSchema.transform(includeComputedCollections)
+export function includeComputedCollections<T extends z.infer<typeof _MiniLayerSchema>>(layer: T) {
+	return {
+		...layer,
+		FactionMatchup: [layer.Faction_1, layer.Faction_2].sort(),
+		FullMatchup: [getLayerTeamString(layer.Faction_1, layer.SubFac_1), getLayerTeamString(layer.Faction_2, layer.SubFac_2)].sort(),
+		SubFacMatchup: [layer.SubFac_1, layer.SubFac_2].sort(),
+	}
+}
 
 export type MiniLayer = z.infer<typeof MiniLayerSchema>
 

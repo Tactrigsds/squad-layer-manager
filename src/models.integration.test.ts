@@ -2,24 +2,25 @@ import { beforeAll, expect, test } from 'vitest'
 
 import * as M from '@/models'
 import * as DB from '@/server/db'
+import * as C from '@/server/context'
 import { setupEnv } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
 
-let db: DB.Db
+let ctx!: C.Db & C.Log
 
 beforeAll(async () => {
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
-	db = DB.addPooledDb({ log: baseLogger }).db
+	ctx = DB.addPooledDb({ log: baseLogger })
 })
 
 test('getMiniLayerFromId consistency', async () => {
-	const sampleLayers = await db.select(Schema.MINI_LAYER_SELECT).from(Schema.layers)
-
-	for (const layer of sampleLayers) {
+	const sampleLayers = ctx.db().select(Schema.MINI_LAYER_SELECT).from(Schema.layers).iterator()
+	for await (const _layer of sampleLayers) {
+		const layer = M.includeComputedCollections(_layer)
 		const fromId = M.getMiniLayerFromId(layer.id)
 		expect(fromId).toEqual(layer)
 	}
-})
+}, 10000)

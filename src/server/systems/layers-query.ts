@@ -6,22 +6,26 @@ import { z } from 'zod'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
+import { assertNever } from '@/lib/typeGuards'
 
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),
 	pageSize: z.number().int().min(1).max(200),
-	sort: z.discriminatedUnion('type', [
-		z.object({
-			type: z.literal('column'),
-			sortBy: z.enum(M.COLUMN_KEYS),
-			sortDirection: z.enum(['ASC', 'DESC']),
-		}),
-		z.object({
-			type: z.literal('random'),
-			seed: z.number().int().positive(),
-		}),
-	]),
-	groupBy: z.array(z.enum(M.COLUMN_KEYS))?.optional(),
+	sort: z
+		.discriminatedUnion('type', [
+			z.object({
+				type: z.literal('column'),
+				sortBy: z.enum(M.COLUMN_KEYS_NON_COLLECTION),
+				sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
+			}),
+			z.object({
+				type: z.literal('random'),
+				seed: z.number().int().positive(),
+			}),
+		])
+		.optional()
+		.describe('if not provided, no sorting will be done'),
+	groupBy: z.array(z.enum(M.COLUMN_KEYS_NON_COLLECTION))?.optional(),
 	filter: M.FilterNodeSchema.optional(),
 })
 
@@ -39,12 +43,12 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 
 	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
 
-	if (input.sort.type === 'column') {
+	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
 		query = query.orderBy(
 			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
 		)
-	} else if (input.sort.type === 'random') {
+	} else if (input.sort && input.sort.type === 'random') {
 		// @ts-expect-error idk
 		query = query.orderBy(sql`RAND(${input.sort.seed})`)
 	}
@@ -54,7 +58,10 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 		query = query.groupBy(...input.groupBy.map((col) => Schema.layers[col]))
 	}
 	const [layers, [countResult]] = await Promise.all([
-		query.offset(input.pageIndex * input.pageSize).limit(input.pageSize),
+		query
+			.offset(input.pageIndex * input.pageSize)
+			.limit(input.pageSize)
+			.then((layers) => layers.map(M.includeComputedCollections)),
 		opCtx
 			.db()
 			.select({ count: sql<number>`count(*)` })
@@ -66,7 +73,7 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	return {
 		layers,
 		totalCount,
-		pageCount: input.sort.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
+		pageCount: input.sort?.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
 	}
 }
 
@@ -80,29 +87,85 @@ export async function getWhereFilterConditions(
 	let res: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
-		const column = Schema.layers[comp.column]
-
 		switch (comp.code) {
-			case 'eq':
-				// @ts-expect-error idk
+			case 'has': {
+				if (comp.values.length === 0) {
+					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' cannot be empty` })
+				}
+				if (comp.values.length > 2) {
+					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' must be less than 3 values` })
+				}
+				if (comp.column !== 'SubFacMatchup' && new Set(comp.values).size !== comp.values.length) {
+					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' has duplicates` })
+				}
+
+				if (comp.column === 'FactionMatchup') {
+					const conditions: SQL[] = []
+					for (const faction of comp.values) {
+						conditions.push(hasTeam(faction))
+					}
+					res = E.and(...conditions)
+					break
+				}
+				if (comp.column === 'FullMatchup') {
+					const conditions: SQL[] = []
+					for (const { faction, subfac } of comp.values.map(M.parseTeamString)) {
+						conditions.push(hasTeam(faction, subfac as M.Subfaction))
+					}
+					res = E.and(...conditions)
+					break
+				}
+				if (comp.column === 'SubFacMatchup') {
+					if (comp.values[0] === comp.values[1]) {
+						const value = comp.values[0] as M.Subfaction
+						return E.and(E.eq(Schema.layers.SubFac_1, value), E.eq(Schema.layers.SubFac_2, value))
+					}
+					const conditions: SQL[] = []
+					for (const subfaction of comp.values) {
+						conditions.push(hasTeam(null, subfaction as M.Subfaction))
+					}
+					res = E.and(...conditions)
+					break
+				}
+				throw new TRPCError({
+					code: 'BAD_REQUEST',
+					message: 'has can currently only be used with FactionMatchup, FullMatchup, SubFacMatchup',
+				})
+			}
+			case 'eq': {
+				const column = Schema.layers[comp.column]
+				// @ts-expect-error idc
 				res = E.eq(column, comp.value)
 				break
-			case 'in':
-				// @ts-expect-error idk
+			}
+			case 'in': {
+				const column = Schema.layers[comp.column]
+				// @ts-expect-error idc
 				res = E.inArray(column, comp.values)
 				break
-			case 'like':
+			}
+			case 'like': {
+				const column = Schema.layers[comp.column]
 				res = E.like(column, comp.value)
 				break
-			case 'gt':
+			}
+			case 'gt': {
+				const column = Schema.layers[comp.column]
 				res = E.gt(column, comp.value)
 				break
-			case 'lt':
+			}
+			case 'lt': {
+				const column = Schema.layers[comp.column]
 				res = E.lt(column, comp.value)
 				break
-			case 'inrange':
+			}
+			case 'inrange': {
+				const column = Schema.layers[comp.column]
 				res = E.between(column, comp.min, comp.max)
 				break
+			}
+			default:
+				assertNever(comp)
 		}
 	}
 	if (node.type === 'apply-filter') {
@@ -130,6 +193,23 @@ export async function getWhereFilterConditions(
 
 	if (res && node.neg) return E.not(res)
 	return res
+}
+
+function hasTeam(faction: string | null = null, subfaction: M.Subfaction | null = null) {
+	if (!faction && !subfaction) {
+		throw new Error('At least one of faction or subfaction must be provided')
+	}
+
+	if (subfaction === null) {
+		return E.or(E.eq(Schema.layers.Faction_1, faction!), E.eq(Schema.layers.Faction_2, faction!))!
+	}
+	if (faction === null) {
+		return E.or(E.eq(Schema.layers.SubFac_1, subfaction), E.eq(Schema.layers.SubFac_2, subfaction))!
+	}
+	return E.or(
+		E.and(E.eq(Schema.layers.Faction_1, faction), E.eq(Schema.layers.SubFac_1, subfaction)),
+		E.and(E.eq(Schema.layers.Faction_2, faction), E.eq(Schema.layers.SubFac_2, subfaction))
+	)!
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
