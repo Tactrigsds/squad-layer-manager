@@ -24,6 +24,7 @@ const EnvSchema = {
 	DB_USER: z.string().min(1),
 	DB_PASSWORD: z.string().min(1),
 	DB_DATABASE: z.string().min(1),
+	DB_DATABASE_SQUADJS: z.string().min(1),
 
 	USING_DEVTOOLS: Flag.default('false'),
 

@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { resolvePromises } from '@/lib/async'
 import * as Constants from '@/lib/constants'
-import { deref as derefEntries } from '@/lib/object'
+import { deref as derefEntries, objKeys } from '@/lib/object'
 import * as M from '@/models'
 import * as Config from '@/server/config.ts'
 import * as C from '@/server/context'
@@ -23,7 +23,6 @@ import * as Paths from '@/server/paths'
 import { Alliance, Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
 
 // Define the schema for raw data
-
 export const RawLayerSchema = z.object({
 	Level: z.string(),
 	Layer: z.string(),
@@ -46,20 +45,33 @@ export const RawLayerSchema = z.object({
 	'Asymmetry Score': z.number(),
 })
 
+const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
+
 async function main() {
+	const args = z.array(Steps).parse(process.argv.slice(2))
+	if (args.length === 0) {
+		args.push(...objKeys(Steps.Values))
+	}
 	setupEnv()
 	await setupLogger()
 	DB.setupDatabase()
+
 	await using ctx = C.pushOperation(DB.addPooledDb({ log: baseLogger }), 'preprocess')
 
-	await generateConfigJsonSchema(ctx)
-	const alliances = await parseAlliances(ctx)
-	const biomes = await parseBiomes(ctx)
-
-	await downloadPipeline(ctx)
-	const pipeline = await parsePipelineData()
-	await updateLayersTable(ctx, pipeline, alliances, biomes)
-	await updateLayerComponents(ctx)
+	if (args.includes('generate-config-schema')) ctx.tasks.push(generateConfigJsonSchema(ctx))
+	if (args.includes('download-pipeline')) await downloadPipeline(ctx)
+	let pipeline: SquadPipelineModels.Output | null = null
+	if (args.includes('update-layers-table')) {
+		let alliances: Alliance[]
+		let biomes: Biome[]
+		;[pipeline, alliances, biomes] = await Promise.all([parsePipelineData(), parseAlliances(ctx), parseBiomes(ctx)])
+		await updateLayersTable(ctx, pipeline, alliances, biomes)
+	}
+	if (args.includes('update-layer-components')) {
+		if (!pipeline) pipeline = await parsePipelineData()
+		await updateLayerComponents(ctx, pipeline)
+	}
+	await Promise.all(ctx.tasks)
 }
 
 async function downloadPipeline(_ctx: C.Log) {
@@ -122,7 +134,7 @@ async function parsePipelineData() {
 		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
 }
 
-async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.PipelineOutput, alliances: Alliance[], biomes: Biome[]) {
+async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.Output, alliances: Alliance[], biomes: Biome[]) {
 	using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const t0 = performance.now()
 	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, alliances)
@@ -210,25 +222,31 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 	ctx.log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
 
 	const t2 = performance.now()
+	const factionFullNames = getFactionFullNames(pipeline)
+	await ctx.db().transaction(async (tx) => {
+		// process factions
+		ctx.log.info('truncating factions table')
+		await tx.execute(sql`TRUNCATE TABLE ${Schema.factions} `)
+		ctx.log.info('inserting factions')
+		await tx.insert(Schema.factions).values(Object.entries(factionFullNames).map(([shortName, fullName]) => ({ shortName, fullName })))
 
-	// truncate the table
-	ctx.log.info('Truncating layers table')
-	await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
-	ctx.log.info('inserting layers')
-	// Insert the processed layers
-	const chunkSize = 2500
-	for (let i = 0; i < processedLayers.length; i += chunkSize) {
-		const chunk = processedLayers.slice(i, i + chunkSize)
-		await ctx.db().insert(Schema.layers).values(chunk)
-		ctx.log.info(`Inserted ${i + chunk.length} rows`)
-	}
+		// process layers
+		ctx.log.info('Truncating layers table')
+		await tx.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
+		const chunkSize = 2500
+		for (let i = 0; i < processedLayers.length; i += chunkSize) {
+			const chunk = processedLayers.slice(i, i + chunkSize)
+			await tx.insert(Schema.layers).values(chunk)
+			ctx.log.info(`Inserted ${i + chunk.length} rows`)
+		}
+	})
 
 	const t3 = performance.now()
 	const elapsedSecondsInsert = (t3 - t2) / 1000
 	ctx.log.info(`Inserting ${processedLayers.length} rows took ${elapsedSecondsInsert} s`)
 }
 
-function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: Biome[], alliances: Alliance[]) {
+function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[], alliances: Alliance[]) {
 	const seedLayers: M.Layer[] = []
 	for (const layer of pipeline.Maps) {
 		if (!layer.levelName.toLowerCase().includes('seed')) continue
@@ -277,8 +295,20 @@ function getSeedingLayers(pipeline: SquadPipelineModels.PipelineOutput, biomes: 
 	}
 	return seedLayers
 }
+function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
+	const factionFullNames = Object.fromEntries(
+		Object.values(pipeline.Maps)
+			.map((map) => {
+				return [[map.team1.shortName, map.team1.faction] as const, [map.team2.shortName, map.team2.faction] as const]
+			})
+			.flat()
+	)
+	factionFullNames.WPMC = 'Western Private Military Contractors'
+	factionFullNames.PLAAGF = 'PLA Amphibious Ground Forces'
+	return factionFullNames
+}
 
-async function updateLayerComponents(_ctx: C.Log & C.Db) {
+async function updateLayerComponents(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.Output) {
 	using ctx = C.pushOperation(_ctx, 'update-layer-components')
 	const factionsPromise = ctx
 		.db()
@@ -325,9 +355,22 @@ async function updateLayerComponents(_ctx: C.Log & C.Db) {
 		if (!(subfaction in SUBFACTION_ABBREVIATIONS)) throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
 		if (!(subfaction in SUBFACTION_SHORT_NAMES)) throw new Error(`subfaction ${subfaction} doesn't have a short name`)
 	}
+	const factionFullNames = getFactionFullNames(pipeline)
+
+	factionsPromise.then((factions) => {
+		const missingFactionNames = factions.filter((faction) => !factionFullNames[faction])
+		if (missingFactionNames.length > 0) {
+			throw new Error(`Missing faction full names for: ${missingFactionNames.join(', ')}`)
+		}
+		const extraFactionNames = Object.entries(factionFullNames).filter(([faction]) => !factions.includes(faction))
+		if (extraFactionNames.length > 0) {
+			throw new Error(`Extra faction full names for: ${extraFactionNames.map(([f]) => f).join(', ')}`)
+		}
+	})
 
 	const layerComponents = await resolvePromises({
 		factions: factionsPromise,
+		factionFullNames: factionFullNames,
 		subfactions: subfactionsPromise,
 		subfactionAbbreviations: SUBFACTION_ABBREVIATIONS,
 		subfactionShortNames: SUBFACTION_SHORT_NAMES,

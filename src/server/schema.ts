@@ -3,6 +3,17 @@ import superjson from 'superjson'
 
 import { SUBFACTIONS } from '@/lib/constants'
 
+export const factions = mysqlTable(
+	'factions',
+	{
+		shortName: varchar('shortName', { length: 10 }).primaryKey().notNull(),
+		fullName: varchar('fullName', { length: 255 }).notNull(),
+	},
+	(factions) => ({
+		fullNameIndex: index('fullNameIndex').on(factions.fullName),
+	})
+)
+
 export const layers = mysqlTable(
 	'layers',
 	{

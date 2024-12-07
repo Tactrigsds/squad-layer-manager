@@ -1,6 +1,7 @@
 import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
+// TODO use layer-components.json instead
 export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 	AlBasrah: 'Basrah',
 	Anvil: 'Anvil',

@@ -1,0 +1,26 @@
+import { mysqlTable, mysqlSchema, AnyMySqlColumn, int, tinytext, datetime, tinyint } from 'drizzle-orm/mysql-core'
+
+export const dbLogMatches = mysqlTable('DBLog_Matches', {
+	id: int('id'),
+	dlc: tinytext('dlc'),
+	mapClassname: tinytext('mapClassname'),
+	layerClassname: tinytext('layerClassname'),
+	map: tinytext('map'),
+	layer: tinytext('layer'),
+	startTime: datetime('startTime', { mode: 'string' }),
+	endTime: datetime('endTime', { mode: 'string' }),
+	tickets: int('tickets'),
+	winner: tinytext('winner'),
+	team1: tinytext('team1'),
+	team2: tinytext('team2'),
+	team1Short: tinytext('team1Short'),
+	team2Short: tinytext('team2Short'),
+	subFactionTeam1: tinytext('subFactionTeam1'),
+	subFactionTeam2: tinytext('subFactionTeam2'),
+	subFactionShortTeam1: tinytext('subFactionShortTeam1'),
+	subFactionShortTeam2: tinytext('subFactionShortTeam2'),
+	winnerTeam: tinytext('winnerTeam'),
+	winnerTeamId: int('winnerTeamID'),
+	isDraw: tinyint('isDraw'),
+	server: int('server'),
+})

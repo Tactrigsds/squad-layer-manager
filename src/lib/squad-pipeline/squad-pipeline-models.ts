@@ -271,6 +271,14 @@ export const MapSchema = z.object({
 			z.object({}),
 		]),
 	}),
+	team1: z.object({
+		faction: z.string(),
+		shortName: z.string(),
+	}),
+	team2: z.object({
+		faction: z.string(),
+		shortName: z.string(),
+	}),
 	teamConfigs: z
 		.object({
 			team1: TeamSchema,
@@ -289,4 +297,4 @@ export const PipelineOutputSchema = z.object({
 	Maps: z.array(MapSchema),
 })
 
-export type PipelineOutput = z.infer<typeof PipelineOutputSchema>
+export type Output = z.infer<typeof PipelineOutputSchema>
