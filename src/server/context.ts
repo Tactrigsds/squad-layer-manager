@@ -88,7 +88,17 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 	const validSession = await Sessions.validateSession(sessionId, ctx)
 	if (validSession.code !== 'ok') return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
 
-	return { code: 'ok' as const, ctx: { ...ctx, req: req, res: res, sessionId, user: validSession.user } }
+	return {
+		code: 'ok' as const,
+		ctx: {
+			...ctx,
+			log: ctx.log.child({ username: validSession.user.username, disordId: validSession.user.discordId }),
+			req: req,
+			res: res,
+			sessionId,
+			user: validSession.user,
+		},
+	}
 }
 
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
