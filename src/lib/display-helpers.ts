@@ -50,9 +50,9 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	let txt = `${LEVEL_SHORT_NAMES[layer.Level]} `
 	txt += `${layer.Gamemode}${layerVersion}`
 	txt += ' '
-	txt += `- ${layer.Faction_1} ${subfaction1}`.trim()
+	txt += `- ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
-	txt += `${layer.Faction_2} ${subFaction2}`.trim()
+	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}`.trim()
 	return txt
 }
 export function toShortLayerNameFromId(id: string) {

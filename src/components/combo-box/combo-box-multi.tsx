@@ -55,7 +55,6 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	}
 
 	let valuesDisplay = ''
-	console.log({ values })
 	if (values.length > 0) {
 		const displayText = values
 			.map((value) => {

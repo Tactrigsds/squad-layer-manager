@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import * as FB from '@/lib/filter-builders'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
@@ -175,14 +176,15 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 	}
 
 	if (showSelectedLayers) {
-		filter = { type: 'comp', comp: { code: 'in', column: 'id', values: selectedLayerIds } }
+		filter = FB.comp(FB.inValues('id', selectedLayerIds))
 	}
+
 	let sort: LayersQuery['sort'] = DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
 	} else if (sortingState.length > 0) {
 		const { id, desc } = sortingState[0]
-		sort = { type: 'column', sortBy: id as M.LayerColumnKey, sortDirection: desc ? 'DESC' : 'ASC' }
+		sort = { type: 'column', sortBy: id as (typeof M.COLUMN_KEYS_NON_COLLECTION)[number], sortDirection: desc ? 'DESC' : 'ASC' }
 	}
 
 	const { data: dataRaw } = trpcReact.getLayers.useQuery({

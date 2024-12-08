@@ -49,6 +49,7 @@ export default class SquadRcon {
 		const response = await this.rcon.execute(ctx, 'ShowNextMap')
 		if (!response) return null
 		const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/)
+		ctx.log.info(`Matched next layer: %s`, match)
 		if (!match) return null
 		const layer = match[2]
 		const factions = match[3]
@@ -175,13 +176,15 @@ export default class SquadRcon {
 		const currentLayerTask = this.getCurrentLayer(ctx)
 		const nextLayerTask = this.getNextLayer(ctx)
 
-		return {
+		const status = {
 			name: rawInfo.ServerName_s,
 			currentLayer: await currentLayerTask,
 			nextLayer: await nextLayerTask,
 			maxPlayers: rawInfo.MaxPlayers,
 			currentPlayers: rawInfo.PlayerCount_I,
 		}
+		ctx.log.debug(`Server status: %O`, res)
+		return status
 	}
 }
 

@@ -63,7 +63,6 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 	const [mapAbbr, gamemode, versionPart] = mapPart.split('-')
 	const level = LEVEL_ABBREVIATION_REVERSE[mapAbbr]
 	if (!level) {
-		console.log('invalid map abbreviation', mapAbbr)
 		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
 	}
 	const [faction1, subfac1] = parseFactionPart(faction1Part)
@@ -79,7 +78,6 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		)
 	}
 	if (!layer) {
-		console.log('invalid layer', level, gamemode, layerVersion)
 		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 
@@ -127,16 +125,15 @@ export function swapFactionsInId(id: string) {
 
 export type AdminSetNextLayerOptions = {
 	Layer: string
-	Faction_1: string | null
+	Faction_1: string
 	SubFac_1: string | null
-	Faction_2: string | null
+	Faction_2: string
 	SubFac_2: string | null
 }
 
 export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
-	function getFactionModifier(faction: string | null, subFac: string | null) {
-		if (!faction) return ''
-		return `${subFac ? `+${subFac}` : ''}`
+	function getFactionModifier(faction: string, subFac: string | null) {
+		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
 
 	return `AdminSetNextLayer ${layer.Layer} ${getFactionModifier(layer.Faction_1, layer.SubFac_1)} ${getFactionModifier(

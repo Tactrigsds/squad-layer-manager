@@ -11,6 +11,7 @@ import { Button, buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
+	console.log(status?.nextLayer)
 	const userRes = trpcReact.getLoggedInUser.useQuery()
 	return (
 		<div className="h-full w-full">

@@ -91,13 +91,14 @@ export default class Rcon extends EventEmitter {
 		})
 	}
 
-	async execute(ctx: C.Log, body: string): Promise<any> {
-		ctx = this.addLogProps(ctx)
+	async execute(_ctx: C.Log, body: string): Promise<any> {
+		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute')
+		ctx.log.debug(`Executing %s `, body)
+		if (typeof body !== 'string') throw new Error('Rcon.execute() body must be a string.')
 		return new Promise((resolve, reject) => {
 			if (!this.connected) return reject(new Error('Rcon not connected.'))
 			if (!this.client?.writable) return reject(new Error('Unable to write to node:net socket.'))
-			const string = String(body)
-			const length = Buffer.from(string).length
+			const length = Buffer.from(body).length
 			if (length > 4152) ctx.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
 			else {
 				const outputData = (data: any) => {
@@ -112,7 +113,7 @@ export default class Rcon extends EventEmitter {
 				const listenerId = `response${this.msgId}`
 				const timeOut = setTimeout(timedOut, 10000)
 				this.once(listenerId, outputData)
-				this.#send(ctx, string, this.msgId)
+				this.#send(ctx, body, this.msgId)
 				this.msgId++
 			}
 		}).catch((error) => {
