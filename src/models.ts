@@ -512,6 +512,19 @@ export const FilterEntitySchema = z
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+
+export const HistoryFilterSchema = z
+	.object({
+		comparison: ComparisonSchema,
+		substitutedColumn: z.enum(COLUMN_KEYS).optional(),
+		excludeFor: z.object({
+			matches: z.number().int().positive(),
+		}),
+	})
+	.describe('exclude a layer that has been previously played within a certain threshold')
+
+export type HistoryFilter = z.infer<typeof HistoryFilterSchema>
+
 export const GenLayerQueueItemsOptionsSchema = z.object({
 	numToAdd: z.number().positive(),
 	numVoteChoices: z.number().positive(),

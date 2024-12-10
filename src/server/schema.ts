@@ -1,4 +1,4 @@
-import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 
 import { SUBFACTIONS } from '@/lib/constants'
@@ -6,11 +6,29 @@ import { SUBFACTIONS } from '@/lib/constants'
 export const factions = mysqlTable(
 	'factions',
 	{
-		shortName: varchar('shortName', { length: 10 }).primaryKey().notNull(),
+		shortName: varchar('shortName', { length: 255 }).primaryKey().notNull(),
 		fullName: varchar('fullName', { length: 255 }).notNull(),
+		alliance: varchar('alliance', { length: 255 }).notNull(),
 	},
 	(factions) => ({
 		fullNameIndex: index('fullNameIndex').on(factions.fullName),
+		allianceIndex: index('allianceIndex').on(factions.alliance),
+	})
+)
+
+export const subfactions = mysqlTable(
+	'subfactions',
+	{
+		shortName: varchar('shortName', { length: 255 }).notNull(),
+		factionShortName: varchar('factionShortName', { length: 255 })
+			.notNull()
+			.references(() => factions.shortName),
+		fullName: varchar('fullName', { length: 255 }).notNull(),
+	},
+	(subfactions) => ({
+		primaryKey: unique().on(subfactions.shortName, subfactions.factionShortName),
+		fullName: index('fullName').on(subfactions.fullName),
+		factionShortName: index('factionShortName').on(subfactions.factionShortName),
 	})
 )
 

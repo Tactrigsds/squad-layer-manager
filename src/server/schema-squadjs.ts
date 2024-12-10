@@ -1,26 +1,36 @@
-import { mysqlTable, mysqlSchema, AnyMySqlColumn, int, tinytext, datetime, tinyint } from 'drizzle-orm/mysql-core'
+import { int, varchar, index, primaryKey, datetime, tinyint, mysqlSchema } from 'drizzle-orm/mysql-core'
 
-export const dbLogMatches = mysqlTable('DBLog_Matches', {
-	id: int('id'),
-	dlc: tinytext('dlc'),
-	mapClassname: tinytext('mapClassname'),
-	layerClassname: tinytext('layerClassname'),
-	map: tinytext('map'),
-	layer: tinytext('layer'),
-	startTime: datetime('startTime', { mode: 'string' }),
-	endTime: datetime('endTime', { mode: 'string' }),
-	tickets: int('tickets'),
-	winner: tinytext('winner'),
-	team1: tinytext('team1'),
-	team2: tinytext('team2'),
-	team1Short: tinytext('team1Short'),
-	team2Short: tinytext('team2Short'),
-	subFactionTeam1: tinytext('subFactionTeam1'),
-	subFactionTeam2: tinytext('subFactionTeam2'),
-	subFactionShortTeam1: tinytext('subFactionShortTeam1'),
-	subFactionShortTeam2: tinytext('subFactionShortTeam2'),
-	winnerTeam: tinytext('winnerTeam'),
-	winnerTeamId: int('winnerTeamID'),
-	isDraw: tinyint('isDraw'),
-	server: int('server'),
-})
+const schema = mysqlSchema('dblog')
+export const dbLogMatches = schema.table(
+	'DBLog_Matches',
+	{
+		id: int('id').autoincrement().notNull(),
+		dlc: varchar('dlc', { length: 255 }),
+		mapClassname: varchar('mapClassname', { length: 255 }),
+		layerClassname: varchar('layerClassname', { length: 255 }),
+		map: varchar('map', { length: 255 }),
+		layer: varchar('layer', { length: 255 }),
+		startTime: datetime('startTime', { mode: 'date' }),
+		endTime: datetime('endTime', { mode: 'date' }),
+		tickets: int('tickets'),
+		winner: varchar('winner', { length: 255 }),
+		team1: varchar('team1', { length: 255 }),
+		team2: varchar('team2', { length: 255 }),
+		team1Short: varchar('team1Short', { length: 255 }),
+		team2Short: varchar('team2Short', { length: 255 }),
+		subFactionTeam1: varchar('subFactionTeam1', { length: 255 }),
+		subFactionTeam2: varchar('subFactionTeam2', { length: 255 }),
+		subFactionShortTeam1: varchar('subFactionShortTeam1', { length: 255 }),
+		subFactionShortTeam2: varchar('subFactionShortTeam2', { length: 255 }),
+		winnerTeam: varchar('winnerTeam', { length: 255 }),
+		winnerTeamId: int('winnerTeamID'),
+		isDraw: tinyint('isDraw'),
+		server: int('server').notNull(),
+	},
+	(table) => {
+		return {
+			server: index('server').on(table.server),
+			dbLogMatchesId: primaryKey({ columns: [table.id], name: 'DBLog_Matches_id' }),
+		}
+	}
+)

@@ -31,6 +31,7 @@ import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
+import { assertNever } from '@/lib/typeGuards'
 
 const columnHelper = createColumnHelper<M.Layer>()
 
@@ -53,8 +54,21 @@ function getColumn(key: M.LayerColumnKey) {
 		},
 		cell: (info) => {
 			const value = info.getValue()
-			if (value == null) return DH.NULL_DISPLAY
-			return M.COLUMN_KEY_TO_TYPE[key] === 'float' ? formatFloat(value as number) : value
+			if (!value) return DH.NULL_DISPLAY
+			const type = M.COLUMN_KEY_TO_TYPE[key]
+
+			switch (type) {
+				case 'float':
+					return formatFloat(value as number)
+				case 'string':
+					return value
+				case 'collection':
+					return (value as string[]).filter((v) => !!v).join(', ')
+				case 'integer':
+					return value.toString() ?? DH.NULL_DISPLAY
+				default:
+					assertNever(type)
+			}
 		},
 	})
 }
@@ -78,18 +92,38 @@ const columns: ColumnDef<M.Layer, any>[] = [
 	getColumn('id'),
 	getColumn('Level'),
 	getColumn('Layer'),
-	getColumn('Size'),
 	getColumn('Gamemode'),
 	getColumn('LayerVersion'),
+	getColumn('Size'),
+
 	getColumn('Faction_1'),
 	getColumn('SubFac_1'),
+
 	getColumn('Faction_2'),
 	getColumn('SubFac_2'),
+	getColumn('FactionMatchup'),
+	getColumn('SubFacMatchup'),
+
+	getColumn('Logistics_1'),
+	getColumn('Logistics_2'),
 	getColumn('Logistics_Diff'),
+
+	getColumn('Transportation_1'),
+	getColumn('Transportation_2'),
 	getColumn('Transportation_Diff'),
+
+	getColumn('Anti-Infantry_1'),
+	getColumn('Anti-Infantry_2'),
 	getColumn('Anti-Infantry_Diff'),
+
+	getColumn('Armor_1'),
+	getColumn('Armor_2'),
 	getColumn('Armor_Diff'),
+
+	getColumn('ZERO_Score_1'),
+	getColumn('ZERO_Score_2'),
 	getColumn('ZERO_Score_Diff'),
+
 	getColumn('Balance_Differential'),
 	getColumn('Asymmetry Score'),
 ]
@@ -268,7 +302,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 						<DropdownMenuTrigger asChild>
 							<Button variant="outline">Toggle Columns</Button>
 						</DropdownMenuTrigger>
-						<DropdownMenuContent className="w-56">
+						<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
 							{table.getAllLeafColumns().map((column) => {
 								return (
 									<DropdownMenuCheckboxItem

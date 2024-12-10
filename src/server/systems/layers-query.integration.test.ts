@@ -1,12 +1,18 @@
-import { beforeAll, expect, it } from 'vitest'
+import { beforeAll, expect } from 'vitest'
 import { setupEnv } from '../env'
+import { unionAll, union } from 'drizzle-orm/mysql-core'
+import { addHours } from 'date-fns'
 import * as Log from '../logger'
+import * as SquadjsSchema from '@/server/schema-squadjs'
+import * as Schema from '@/server/schema'
+import * as E from 'drizzle-orm/expressions'
 import * as C from '@/server/context'
 import * as M from '@/models'
 import * as DB from '@/server/db'
 import * as FB from '@/lib/filter-builders'
 import { test } from 'vitest'
-import { runLayersQuery } from './layers-query'
+import { getHistoryFilterConditions, getWhereFilterConditions, runLayersQuery } from './layers-query'
+import { aliasedTable, sql, max } from 'drizzle-orm'
 
 let ctx!: C.Db & C.Log
 beforeAll(() => {
@@ -57,4 +63,97 @@ test('can filter by full faction matchup', async () => {
 		expect([team1, team2]).toContain(matchup[0])
 		expect([team1, team2]).toContain(matchup[1])
 	}
+})
+
+test('hello there', async () => {
+	// 2023-12-31T23:05:09Z
+	// 2024-12-09 19:57:07
+	// const startTime = addHours(Date.parse('2024-12-09'), 0)
+
+	const queued = [
+		'LK-AAS-V1:MEA-AR:USMC-LI',
+		'KH-AAS-V1:PLA-LI:TLF-SP',
+		'HJ-RAAS-V1:USA-MZ:RGF-SP',
+		'SX-AAS-V2:VDV-AR:BAF-AA',
+		'SX-AAS-V2:PLANMC-SP:BAF-AA',
+		'MN-RAAS-V2:USA-LI:PLANMC-MT',
+		'TL-AAS-V1:PLA-SP:INS-SP',
+		'LK-TC-V2:VDV-AR:USA-SP',
+		'MT-RAAS-V2:INS-MT:USA-AR',
+		'MT-RAAS-V2:MEA-LI:WPMC-CA',
+		'HJ-AAS-V1:VDV-CA:CAF-AA',
+		'SX-RAAS-V1:WPMC-CA:RGF-MZ',
+		'MT-RAAS-V1:INS-LI:MEA-LI',
+		'AB-TC-V1:PLA-AR:USA-AR',
+		'AN-AAS-V1:TLF-SP:PLA-SP',
+	]
+	const queuedLayersQuery = ctx.db().select().from(Schema.layers).where(E.inArray(Schema.layers.id, queued)).as('layers-in-queue')
+	const applicableMatches = ctx
+		.db()
+		.select({ ...SquadjsSchema.dbLogMatches, ord: sql`ROW_NUMBER() OVER()`.as('ord') })
+		.from(SquadjsSchema.dbLogMatches)
+		.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
+		.limit(100 - queued.length)
+		.as('applicable-matches')
+
+	// const applicableMatches = union(queuedLayersQuery, historyLayersQuery).as('applicable')
+
+	// console.log(startTime.toLocaleDateString())
+	const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
+	const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
+	const queuedLayersTable = aliasedTable(Schema.layers, 'queued-layers')
+	const historyLayersQuery = ctx
+		.db()
+		.select()
+		.from(applicableMatches)
+		.leftJoin(
+			subfacteam1,
+			E.and(E.eq(subfacteam1.fullName, applicableMatches.subFactionTeam1), E.eq(subfacteam1.factionShortName, applicableMatches.team1Short))
+		)
+		.leftJoin(
+			subfacteam2,
+			E.and(E.eq(subfacteam2.fullName, applicableMatches.subFactionTeam2), E.eq(subfacteam2.factionShortName, applicableMatches.team2Short))
+		)
+		.leftJoin(
+			queuedLayersTable,
+			E.and(
+				E.eq(queuedLayersTable.Layer, applicableMatches.layerClassname),
+				E.eq(queuedLayersTable.Faction_1, applicableMatches.team1Short),
+				E.eq(queuedLayersTable.Faction_2, applicableMatches.team2Short),
+				E.eq(subfacteam1.shortName, queuedLayersTable.SubFac_1),
+				E.eq(subfacteam2.shortName, queuedLayersTable.SubFac_2)
+			)
+		)
+		.where(
+			E.and(
+				// E.like(applicableMatches.layerClassname, '%Goro%')
+				// E.isNotNull(queuedLayersTable.id),
+				E.gt(applicableMatches.ord, 70),
+				await getWhereFilterConditions(FB.comp(FB.eq('Level', 'Gorodok')), [], ctx, queuedLayersTable)
+			)
+		)
+
+	const res = await historyLayersQuery
+	const rawSql = historyLayersQuery.toSQL()
+	console.log(rawSql)
+	console.log(res)
+}, 30_000)
+
+test.only('test ordinal', async () => {
+	const layer = 'Narva_AAS_v1'
+	const historyFilters: M.HistoryFilter[] = [{ comparison: FB.eq('Layer', layer), excludeFor: { matches: 100 } }]
+	const regFilters = FB.and([
+		FB.comp(FB.eq('Layer', layer)),
+		// FB.comp(FB.eq('Faction_1', 'PLA')),
+		// FB.comp(FB.eq('Faction_2', 'RGF')),
+		// FB.comp(FB.eq('SubFac_1', 'CombinedArms')),
+		// FB.comp(FB.eq('SubFac_2', 'CombinedArms')),
+	])
+	const regCond = await getWhereFilterConditions(regFilters, [], ctx, Schema.layers)
+	const historyCond = await getHistoryFilterConditions(ctx, historyFilters, [])
+
+	const q = ctx.db().select(Schema.MINI_LAYER_SELECT).from(Schema.layers).where(E.and(regCond, historyCond))
+	const rawSql = q.toSQL()
+	console.log(rawSql)
+	console.log(await q)
 })

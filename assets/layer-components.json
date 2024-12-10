@@ -60,6 +60,118 @@
     "Support": "Sup",
     "AirAssault": "Air"
   },
+  "subfactionFullNames": {
+    "ADF": {
+      "AirAssault": "3rd Battalion, Royal Australian Regiment",
+      "CombinedArms": "3rd Brigade Battle Group",
+      "Mechanized": "1st Battalion, Royal Australian Regiment"
+    },
+    "BAF": {
+      "AirAssault": "2nd Battalion, Parachute Regiment",
+      "Armored": "Queen's Royal Hussars Battle Group",
+      "CombinedArms": "3rd Division Battle Group",
+      "Mechanized": "1 Yorks Battle Group",
+      "Support": "Royal Logistics Corps Battle Group"
+    },
+    "CAF": {
+      "AirAssault": "3rd Battalion, Royal Canadian Regiment",
+      "Armored": "Lord Strathcona's Horse Regiment",
+      "CombinedArms": "1 Canadian Mechanized Brigade Group",
+      "Mechanized": "1st Battalion, Royal 22e Régiment",
+      "Motorized": "The 12e Régiment Blindé du Canada",
+      "Support": "6 Canadian Combat Support Brigade"
+    },
+    "USA": {
+      "AirAssault": "1st Brigade Combat Team, 82nd Airborne Division",
+      "Armored": "37th Armored Regiment, 1st Armored Division",
+      "CombinedArms": "3rd Brigade Combat Team, 1st Infantry Division",
+      "LightInfantry": "1st Brigade Combat Team, 10th Mountain Division",
+      "Mechanized": "1st Cavalry Regiment",
+      "Motorized": "2nd Cavalry Stryker Brigade Combat Team",
+      "Support": "497th Combat Sustainment Support Battalion"
+    },
+    "USMC": {
+      "Armored": "1st Tank Battalion, 1st Marines",
+      "CombinedArms": "31st Marine Expeditionary Unit",
+      "LightInfantry": "1st Marines Regimental Combat Team",
+      "Motorized": "3rd Light Armored Recon Battalion",
+      "Support": "2nd Marine Logistics Group"
+    },
+    "IMF": {
+      "Armored": "Irregular Armored Squadron",
+      "CombinedArms": "Irregular Battle Group",
+      "LightInfantry": "Irregular Light Infantry",
+      "Mechanized": "Irregular Mechanized Platoon",
+      "Motorized": "Irregular Motorized Platoon",
+      "Support": "Irregular Fire Support Group"
+    },
+    "INS": {
+      "Armored": "Irregular Armored Squadron",
+      "CombinedArms": "Irregular Battle Group",
+      "LightInfantry": "Irregular Light Infantry",
+      "Mechanized": "Irregular Mechanized Platoon",
+      "Motorized": "Irregular Motorized Platoon",
+      "Support": "Irregular Fire Support Group"
+    },
+    "MEA": {
+      "AirAssault": "91st Air Assault Battalion",
+      "Armored": "60th Prince Assur Armored Brigade",
+      "CombinedArms": "1st Battalion, Legion of Babylon",
+      "LightInfantry": "4th Border Guards",
+      "Mechanized": "3rd King Qadesh Mechanized Infantry Brigade",
+      "Support": "Vizir Hussein 2nd Support Battalion"
+    },
+    "TLF": {
+      "AirAssault": "1st Commando Brigade Battle Group",
+      "Armored": "4th Armored Brigade Battle Group",
+      "CombinedArms": "1st Army Battle Group",
+      "Mechanized": "66th Mechanized Infantry Brigade Battle Group",
+      "Motorized": "51st Motorized Infantry Brigade Battle Group",
+      "Support": "Land Forces Logistics Command Battle Group"
+    },
+    "WPMC": {
+      "AirAssault": "Murk Water Air Wing",
+      "CombinedArms": "Manticore Security Task Force",
+      "LightInfantry": "Overwatch 6 Patrol Group"
+    },
+    "PLA": {
+      "AirAssault": "161st Air Assault Brigade",
+      "Armored": "195th Heavy Combined Arms Brigade",
+      "CombinedArms": "118th Combined Arms Brigade",
+      "LightInfantry": "149th Mountain Infantry Brigade",
+      "Motorized": "112th Medium Combined Arms Brigade",
+      "Support": "80th Support Brigade"
+    },
+    "PLAAGF": {
+      "Armored": "9th Heavy Combined Arms Battalion",
+      "CombinedArms": "14th Amphibious Combined Arms Brigade",
+      "Mechanized": "4th Medium Combined Arms Battalion"
+    },
+    "PLANMC": {
+      "AirAssault": "4th Marine Special Combat Battalion",
+      "Armored": "3rd Marine Heavy Battalion",
+      "CombinedArms": "5th Marine Combined Arms Brigade",
+      "LightInfantry": "4th Marine Special Combat Battalion",
+      "Mechanized": "3rd Marine Heavy Battalion",
+      "Motorized": "7th Marine Medium Battalion",
+      "Support": "17th Marine Support Battalion"
+    },
+    "RGF": {
+      "Armored": "6th Separate Tank Brigade",
+      "CombinedArms": "49th Combined Arms Army",
+      "LightInfantry": "1398th Separate Reconnaissance Battalion",
+      "Mechanized": "205th Separate Motor Rifle Brigade",
+      "Motorized": "3rd Motor Rifle Brigade",
+      "Support": "78th Detached Logistics Brigade"
+    },
+    "VDV": {
+      "AirAssault": "217th Guards Airborne Regiment",
+      "Armored": "104th Tank Battalion",
+      "CombinedArms": "7th Guards Mountain Air Assault Division",
+      "Mechanized": "108th Guards Air Assault Regiment",
+      "Support": "150th Support Battalion"
+    }
+  },
   "levels": [
     "AlBasrah",
     "Anvil",
