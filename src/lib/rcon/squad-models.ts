@@ -79,7 +79,9 @@ export const ChatMessageSchema = z
 		eosID: z.string().optional(),
 		playerId: z.string(),
 	})
-	.refine((msg) => msg.steamID || msg.eosID, { message: 'steamID or eosID must be present' })
+	.refine((msg) => msg.steamID || msg.eosID, {
+		message: 'steamID or eosID must be present',
+	})
 export type ChatMessage = z.infer<typeof ChatMessageSchema>
 
 export const AdminCameraSchema = z
@@ -138,7 +140,10 @@ export const SquadEventSchema = z.discriminatedUnion('type', [
 ])
 
 export type SquadEvent = z.infer<typeof SquadEventSchema>
-export const AdminListSourceSchema = z.object({ type: z.enum(['remote', 'local', 'ftp']), source: z.string() })
+export const AdminListSourceSchema = z.object({
+	type: z.enum(['remote', 'local', 'ftp']),
+	source: z.string(),
+})
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type SquadAdminPerms = { [key: string]: boolean }
 export type SquadAdmins = Map<bigint, Record<string, boolean>>

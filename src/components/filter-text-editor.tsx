@@ -98,7 +98,9 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		editorRef.current = editor
 		errorViewRef.current = errorView
 		const initialRes = M.FilterNodeSchema.safeParse(props.node)
-		if (!initialRes.success) errorView.setValue(stringifyCompact(initialRes.error))
+		if (!initialRes.success) {
+			errorView.setValue(stringifyCompact(initialRes.error))
+		}
 
 		return () => {
 			editor.destroy()
@@ -117,7 +119,10 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 				obj = JSON.parse(value)
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					toaster.toast({ title: 'Unable to format: invalid json', description: err.message })
+					toaster.toast({
+						title: 'Unable to format: invalid json',
+						description: err.message,
+					})
 				}
 				return
 			}

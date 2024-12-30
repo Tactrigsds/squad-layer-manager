@@ -4,11 +4,15 @@ import { z } from 'zod'
 
 import * as C from './context.ts'
 
-const t = initTRPC.context<C.AuthedRequest>().create({ transformer: superjson })
+const t = initTRPC.context<C.AuthedRequest>().create({
+	transformer: superjson,
+})
 
 const loggerMiddleware = t.middleware(async (opts) => {
 	const baseCtx = C.includeLogProperties(opts.ctx, { input: opts.input })
-	await using ctx = C.pushOperation(baseCtx, `trpc:${opts.type}:${opts.path}`, { level: 'info' })
+	await using ctx = C.pushOperation(baseCtx, `trpc:${opts.type}:${opts.path}`, {
+		level: 'info',
+	})
 	opts.ctx = ctx
 	const result = await opts.next(opts)
 	return result

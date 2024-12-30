@@ -49,6 +49,27 @@ export function setupTrpcRouter() {
 				return rows
 			}),
 		getLayers: procedure.input(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
+		getHistoryFilter: procedure
+			.input(
+				z.object({
+					historyFilters: z.array(M.HistoryFilterSchema),
+					layerQueue: z.array(M.LayerQueueItemSchema),
+				})
+			)
+			.query(async ({ input, ctx }) => {
+				const queuedLayerIds = new Set<M.LayerId>()
+				for (const item of input.layerQueue) {
+					if (item.layerId) {
+						queuedLayerIds.add(item.layerId)
+					}
+					if (item.vote) {
+						for (const choice of item.vote.choices) {
+							queuedLayerIds.add(choice)
+						}
+					}
+				}
+				return await LayersQuery.getHistoryFilter(ctx, input.historyFilters, [...queuedLayerIds])
+			}),
 		server: Server.serverRouter,
 		squadServer: SquadServer.squadServerRouter,
 		filters: filtersRouter,

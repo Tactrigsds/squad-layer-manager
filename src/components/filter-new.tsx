@@ -91,7 +91,9 @@ function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.Filt
 		// check if id field is dirty
 		const isIdDirty = form.getFieldMeta('id')?.isDirty
 		if (!isIdDirty) {
-			form.setFieldValue('id', name.toLowerCase().replace(/\s+/g, '-'), { dontUpdateMeta: true })
+			form.setFieldValue('id', name.toLowerCase().replace(/\s+/g, '-'), {
+				dontUpdateMeta: true,
+			})
 		}
 	}
 	function onOpenChange(isOpen: boolean) {

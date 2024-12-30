@@ -24,7 +24,9 @@ export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminList
 				}
 				case 'local': {
 					const listPath = path.resolve(Paths.PROJECT_ROOT, source.source)
-					if (!fs.existsSync(listPath)) throw new Error(`Could not find Admin List at ${listPath}`)
+					if (!fs.existsSync(listPath)) {
+						throw new Error(`Could not find Admin List at ${listPath}`)
+					}
 					data = fs.readFileSync(listPath, 'utf8')
 					break
 				}
@@ -43,7 +45,12 @@ export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminList
 
 					const buffer = new WritableBuffer()
 					const ftpClient = new FTPClient()
-					await ftpClient.access({ host, port: port as number, user, password })
+					await ftpClient.access({
+						host,
+						port: port as number,
+						user,
+						password,
+					})
 					await ftpClient.downloadTo(buffer, remoteFilePath)
 					data = buffer.toString('utf8')
 					break

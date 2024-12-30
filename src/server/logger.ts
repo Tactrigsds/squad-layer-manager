@@ -1,4 +1,4 @@
-import pino, { LoggerOptions, Logger as PinoLogger } from 'pino'
+import pino, { Logger as PinoLogger, LoggerOptions } from 'pino'
 
 import devtoolsTransport from '@/lib/devtools-log-transport.ts'
 import { createId } from '@/lib/id'

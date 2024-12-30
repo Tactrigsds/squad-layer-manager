@@ -12,7 +12,9 @@ const Flag = z
 export let ENV!: ReturnType<typeof setupEnv>
 export type Env = typeof ENV
 const EnvSchema = {
-	NODE_ENV: z.enum(['development', 'production'], { message: 'TODO configure prod' }),
+	NODE_ENV: z.enum(['development', 'production'], {
+		message: 'TODO configure prod',
+	}),
 	ORIGIN: z.string().url(),
 
 	DB_HOST: z.string().min(1).default('localhost'),

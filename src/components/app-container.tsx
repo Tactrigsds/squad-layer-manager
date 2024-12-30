@@ -45,7 +45,13 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						<div className="flex flex-row items-center space-x-4">
 							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
 							<form action={AR.exists('/logout')} method="POST">
-								<Button type="submit" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+								<Button
+									type="submit"
+									className={buttonVariants({
+										variant: 'secondary',
+										size: 'sm',
+									})}
+								>
 									Log Out
 								</Button>
 							</form>

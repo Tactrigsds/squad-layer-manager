@@ -26,8 +26,12 @@ let client!: D.Client
 
 export async function setupDiscordSystem() {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', { level: 'info' })
-	client = new D.Client({ intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers] })
+	using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', {
+		level: 'info',
+	})
+	client = new D.Client({
+		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],
+	})
 
 	await new Promise((resolve, reject) => {
 		client.once('ready', () => {
@@ -60,7 +64,11 @@ async function fetchGuild(_ctx: C.Log, guildId: bigint) {
 	} catch (err) {
 		ctx.log.warn({ err }, 'Failed to fetch guild with id %s', guildId)
 		if (err instanceof D.DiscordAPIError) {
-			return { code: 'err:discord' as const, err: err.message, errCode: err.code }
+			return {
+				code: 'err:discord' as const,
+				err: err.message,
+				errCode: err.code,
+			}
 		}
 		throw err
 	}
@@ -77,7 +85,11 @@ async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
 	} catch (err) {
 		ctx.log.warn({ err }, 'Failed to fetch member with id %s', memberId)
 		if (err instanceof D.DiscordAPIError) {
-			return { code: 'err:discord' as const, err: err.message, errCode: err.code }
+			return {
+				code: 'err:discord' as const,
+				err: err.message,
+				errCode: err.code,
+			}
 		}
 		throw err
 	}

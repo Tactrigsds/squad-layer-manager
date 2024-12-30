@@ -5,7 +5,6 @@ import * as C from './lib/constants'
 import { deepClone, reverseMapping, selectProps } from './lib/object'
 import { Parts } from './lib/types'
 import type * as Schema from './server/schema'
-import { arrProduct } from './lib/itertools'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
@@ -28,7 +27,11 @@ export function parseLayerString(layer: string) {
 	// eslint-disable-next-line prefer-const
 	let [level, gamemode, version] = layer.split('_')
 	if (level === 'JensensRange') gamemode = 'Training'
-	return { level: level, gamemode: gamemode, version: version?.toUpperCase() ?? null }
+	return {
+		level: level,
+		gamemode: gamemode,
+		version: version?.toUpperCase() ?? null,
+	}
 }
 export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | 'LayerVersion'>) {
 	if (details.Level === 'JensensRange') {
@@ -54,7 +57,10 @@ export function getLayerTeamString(faction: string, subfac: string | null) {
 }
 export function parseTeamString(team: string): { faction: string; subfac: string | null } {
 	const [faction, subfac] = team.split('-')
-	return { faction, subfac: subfac ? SUBFAC_ABBREVIATIONS_REVERSE[subfac] : null }
+	return {
+		faction,
+		subfac: subfac ? SUBFAC_ABBREVIATIONS_REVERSE[subfac] : null,
+	}
 }
 
 export function getMiniLayerFromId(id: string): MiniLayer {
@@ -103,7 +109,9 @@ function validateId(id: string) {
 	}
 }
 
-export const LayerIdSchema = z.string().refine(validateId, { message: 'Is valid layer id' })
+export const LayerIdSchema = z.string().refine(validateId, {
+	message: 'Is valid layer id',
+})
 export type LayerId = z.infer<typeof LayerIdSchema>
 
 function parseFactionPart(part: string): [string, C.Subfaction | null] {
@@ -169,6 +177,8 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'like', displayName: 'Like' },
 	{ coltype: 'collection', code: 'has', displayName: 'Has All' },
 ] as const satisfies ComparisonType[]
+export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
+export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code)
 
 // we're keeping this definition separate to reduce type inference a bit
 export const COLUMN_TYPE_MAPPINGS = {
@@ -304,7 +314,9 @@ export const ComparisonSchema = z
 		LikeComparison,
 		HasAllComparisonSchema,
 	])
-	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), { message: 'Invalid comparison type' })
+	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {
+		message: 'Invalid comparison type',
+	})
 	.refine(
 		(comp) => {
 			const coltype = COMPARISON_TYPES.find((type) => type.code === comp.code)!.coltype
@@ -386,7 +398,9 @@ export type BlockType = (typeof BLOCK_TYPES)[number]
 
 export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
 	if (!isLocallyValidFilterNode(node)) return false
-	if (node.type === 'and' || node.type === 'or') return node.children.every((child) => isValidFilterNode(child))
+	if (node.type === 'and' || node.type === 'or') {
+		return node.children.every((child) => isValidFilterNode(child))
+	}
 	return true
 }
 
@@ -399,7 +413,9 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 }
 
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
-	if (comp.code === 'has' && (!comp.values || comp.values.length === 0)) return false
+	if (comp.code === 'has' && (!comp.values || comp.values.length === 0)) {
+		return false
+	}
 	return !!comp.code && !!comp.column && (['in', 'has'].includes(comp.code) ? comp.values : comp.value) !== undefined
 }
 export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {
@@ -409,8 +425,12 @@ export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply
 export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	children: z.lazy(() => FilterNodeSchema.array().optional()),
 })
-	.refine((node) => node.type !== 'comp' || node.comp !== undefined, { message: 'comp must be defined for type "comp"' })
-	.refine((node) => node.type !== 'comp' || node.children === undefined, { message: 'children must not be defined for type "comp"' })
+	.refine((node) => node.type !== 'comp' || node.comp !== undefined, {
+		message: 'comp must be defined for type "comp"',
+	})
+	.refine((node) => node.type !== 'comp' || node.children === undefined, {
+		message: 'children must not be defined for type "comp"',
+	})
 	.refine((node) => node.type !== 'apply-filter' || typeof node.filterId === 'string', {
 		message: 'filterId must be defined for type "apply-filter"',
 	})
@@ -487,7 +507,9 @@ export const FilterUpdateSchema = z.object({
 }) satisfies z.ZodType<Partial<Schema.Filter>>
 
 function filterContainsId(id: string, node: FilterNode): boolean {
-	if (node.type === 'and' || node.type === 'or') return node.children.every((n) => filterContainsId(id, n))
+	if (node.type === 'and' || node.type === 'or') {
+		return node.children.every((n) => filterContainsId(id, n))
+	}
 	if (node.type === 'comp') return false
 	return node.filterId === id
 }
@@ -495,7 +517,9 @@ function filterContainsId(id: string, node: FilterNode): boolean {
 export const FilterEntityIdSchema = z
 	.string()
 	.trim()
-	.regex(/^[a-z0-9-_]+$/, { message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"' })
+	.regex(/^[a-z0-9-_]+$/, {
+		message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"',
+	})
 	.min(3)
 	.max(64)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
@@ -508,22 +532,58 @@ export const FilterEntitySchema = z
 		filter: FilterNodeSchema,
 	})
 	// this refinement does not deal with mutual recustion
-	.refine((e) => !filterContainsId(e.id, e.filter), { message: 'filter cannot be recursive' }) satisfies z.ZodType<Schema.Filter>
+	.refine((e) => !filterContainsId(e.id, e.filter), {
+		message: 'filter cannot be recursive',
+	}) satisfies z.ZodType<Schema.Filter>
 
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
-export const HistoryFilterSchema = z
-	.object({
-		comparison: ComparisonSchema,
-		substitutedColumn: z.enum(COLUMN_KEYS).optional(),
-		excludeFor: z.object({
-			matches: z.number().int().positive(),
+export const HistoryFilterSchema = z.discriminatedUnion(
+	'type',
+	[
+		z.object({
+			type: z.literal('static', {
+				description: 'sets hardcoded filters which match on attributes that should not be repeated within a certain threshold',
+			}),
+			comparison: ComparisonSchema,
+			excludeFor: z.object({
+				matches: z.number().int().positive(),
+			}),
 		}),
-	})
-	.describe('exclude a layer that has been previously played within a certain threshold')
+		z.object({
+			type: z.literal('dynamic', {
+				description:
+					'Will use an equality comparison to check if any layers in the history match the predicated layer under the specific column',
+			}),
+			column: z.enum(COLUMN_KEYS),
+			excludeFor: z.object({
+				matches: z.number().int().positive(),
+			}),
+		}),
+	],
+	{ description: 'exclude layers based on the match history' }
+)
 
 export type HistoryFilter = z.infer<typeof HistoryFilterSchema>
+
+export type HistoryFilterEdited =
+	| {
+			type: 'dynamic'
+			column: (typeof COLUMN_KEYS)[number]
+			id: number
+			excludeFor: {
+				matches: number
+			}
+	  }
+	| {
+			type: 'static'
+			comparison: EditableComparison
+			id: number
+			excludeFor: {
+				matches: number
+			}
+	  }
 
 export const GenLayerQueueItemsOptionsSchema = z.object({
 	numToAdd: z.number().positive(),
@@ -531,12 +591,13 @@ export const GenLayerQueueItemsOptionsSchema = z.object({
 	itemType: z.enum(['layer', 'vote']),
 	baseFilterId: FilterEntityIdSchema.optional(),
 })
+
 export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
 export const StartVoteSchema = z.object({
 	seqId: z.number(),
 	restart: z.boolean().default(false),
 })
-export type LayerQueueUpdate = z.infer<typeof GenericServerStateUpdateSchema>
+
 const TallyProperties = {
 	votes: z.record(z.string(), LayerIdSchema),
 	deadline: z.number(),
@@ -563,7 +624,9 @@ export const VoteStateSchema = z.discriminatedUnion('code', [
 ])
 
 export function tallyVotes(currentVote: VoteStateWithVoteData) {
-	if (Object.values(currentVote.choices).length == 0) throw new Error('No chlices listsed')
+	if (Object.values(currentVote.choices).length == 0) {
+		throw new Error('No chlices listsed')
+	}
 	const tally = new Map<string, number>()
 	let maxVotes: string | null = null
 	for (const choice of currentVote.choices) {
@@ -578,7 +641,12 @@ export function tallyVotes(currentVote: VoteStateWithVoteData) {
 		}
 	}
 	const totalVotes = Object.values(currentVote.votes).length
-	return { totals: tally, totalVotes, choice: maxVotes, votes: tally.get(maxVotes!)! }
+	return {
+		totals: tally,
+		totalVotes,
+		choice: maxVotes,
+		votes: tally.get(maxVotes!)!,
+	}
 }
 
 export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready' }>) {
@@ -629,14 +697,21 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 	return result
 }
 
-export const ServerStateSchema = z.object({
-	id: z.string().min(1).max(256),
-	online: z.boolean(),
-	displayName: z.string().min(1).max(256),
+export const MutableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
 	layerQueue: LayerQueueSchema,
-	currentVote: VoteStateSchema.nullable(),
+	historyFilters: z.array(HistoryFilterSchema),
+	historyFiltersEnabled: z.boolean(),
 	settings: ServerSettingsSchema,
+})
+
+export type MutableServerState = z.infer<typeof MutableServerStateSchema>
+
+export const ServerStateSchema = MutableServerStateSchema.extend({
+	id: z.string().min(1).max(256),
+	displayName: z.string().min(1).max(256),
+	online: z.boolean(),
+	currentVote: VoteStateSchema.nullable(),
 }) satisfies z.ZodType<Schema.Server>
 
 export type ServerState = z.infer<typeof ServerStateSchema>
@@ -659,12 +734,7 @@ export type LayerSyncState =
 			value: string
 	  }
 
-// for the basic dialog
-export const GenericServerStateUpdateSchema = z.object({
-	seqId: z.number(),
-	queue: LayerQueueSchema,
-	settings: ServerSettingsSchema,
-})
+export const GenericServerStateUpdateSchema = MutableServerStateSchema
 
 // represents a user's edit or deletion of an entity
 export type UserEntityMutation<K> = {

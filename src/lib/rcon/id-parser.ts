@@ -34,7 +34,10 @@ class IdsIterator {
 	next(): IteratorResult<{ key: string; value: string }> {
 		const match = this.inner.next()
 		if (match.done) return { value: undefined, done: true }
-		return { value: { key: match.value.groups!.name, value: match.value.groups!.id }, done: false }
+		return {
+			value: { key: match.value.groups!.name, value: match.value.groups!.id },
+			done: false,
+		}
 	}
 
 	forEach(callbackFn: (key: string, value: string) => void): void {

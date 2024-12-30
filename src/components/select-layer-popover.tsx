@@ -19,6 +19,9 @@ import TabsList from './ui/tabs-list.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import deepEqual from 'fast-deep-equal'
+import { useRefConstructor } from '@/lib/react.ts'
+import { createStore } from 'jotai'
+import { LayerQueue, QueueItemAction } from './layer-queue.tsx'
 
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
@@ -78,12 +81,20 @@ export function SelectLayersPopover(props: {
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
 			const items: M.LayerQueueItem[] = selectedLayers.map(
-				(l) => ({ layerId: l.id, source: 'manual', lastModifiedBy: loggedInUserRes.data!.discordId }) satisfies M.LayerQueueItem
+				(l) =>
+					({
+						layerId: l.id,
+						source: 'manual',
+						lastModifiedBy: loggedInUserRes.data!.discordId,
+					}) satisfies M.LayerQueueItem
 			)
 			props.selectQueueItems(items)
 		} else if (selectMode === 'vote') {
 			const item: M.LayerQueueItem = {
-				vote: { choices: selectedLayers.map((selected) => selected.id), defaultChoice: selectedLayers[0].id },
+				vote: {
+					choices: selectedLayers.map((selected) => selected.id),
+					defaultChoice: selectedLayers[0].id,
+				},
 				source: 'manual',
 				lastModifiedBy: loggedInUserRes.data!.discordId,
 			}
@@ -200,7 +211,9 @@ function ListStyleLayerPicker(props: {
 				return updated
 			})
 		})
-		selectedLayersBoxRef.current?.scrollTo({ top: selectedLayersBoxRef.current.scrollHeight })
+		selectedLayersBoxRef.current?.scrollTo({
+			top: selectedLayersBoxRef.current.scrollHeight,
+		})
 	}
 	function toggleLayer(layer: M.MiniLayer) {
 		flushSync(() => {
@@ -209,7 +222,9 @@ function ListStyleLayerPicker(props: {
 				return hasLayer ? layers.filter((l) => l.id !== layer.id) : [...layers, layer]
 			})
 		})
-		selectedLayersBoxRef.current?.scrollTo({ top: selectedLayersBoxRef.current.scrollHeight })
+		selectedLayersBoxRef.current?.scrollTo({
+			top: selectedLayersBoxRef.current.scrollHeight,
+		})
 	}
 	const setSelected = props.setSelected
 	const setLayer = React.useCallback(
@@ -381,6 +396,27 @@ export function EditLayerQueueItemPopover(props: {
 	const [filterLayer, setFilterLayer] = React.useState<Partial<M.MiniLayer>>(itemToMiniLayer(props.item))
 	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
 
+	const layerQueue = editedItem.vote?.choices.map((id): M.LayerQueueItem => ({ layerId: id, source: 'manual' }))
+	function dispatchQueueItemAction(action: QueueItemAction) {
+		setEditedItem(
+			produce((editedItem) => {
+				if (!editedItem.vote) return
+				if (action.code === 'delete') {
+					editedItem.vote.choices = editedItem.vote.choices.filter((id) => id !== action.layerId)
+				}
+				if (action.code === 'move') {
+					const fromIndex = editedItem.vote.choices.indexOf(action.layerId)
+					const toIndex = action.index
+					if (fromIndex === -1 || toIndex === -1) return
+					editedItem.vote.choices.splice(toIndex, 0, editedItem.vote.choices.splice(fromIndex, 1)[0])
+				}
+				if (action.code === 'add') {
+					editedItem.vote.choices.push(action.layerId)
+				}
+			})
+		)
+	}
+
 	const pickerFilter = React.useMemo(() => {
 		const nodes: M.FilterNode[] = []
 
@@ -450,7 +486,10 @@ export function EditLayerQueueItemPopover(props: {
 								setActive={(itemType) => {
 									setEditedItem((prev) => {
 										const selectedLayers = itemToLayers(prev)
-										const attribution = { source: 'manual' as const, lastModifiedBy: user!.discordId }
+										const attribution = {
+											source: 'manual' as const,
+											lastModifiedBy: user!.discordId,
+										}
 										if (itemType === 'vote') {
 											return {
 												vote: {
@@ -475,23 +514,27 @@ export function EditLayerQueueItemPopover(props: {
 
 					<div className="flex space-x-2 items-center"></div>
 
-					<div className="flex space-x-2 min-h-0">
-						<div>
-							<LayerFilterMenu
-								filterLayer={filterLayer}
-								setFilterLayer={setFilterLayer}
-								baseFilter={applyBaseFilter ? props.baseFilter : undefined}
-								applyBaseFilter={applyBaseFilter}
-								setApplyBaseFilter={setApplyBaseFilter}
+					{editedItem.vote ? (
+						<LayerQueue lqStore={itemLqStoreRef.current} />
+					) : (
+						<div className="flex space-x-2 min-h-0">
+							<div>
+								<LayerFilterMenu
+									filterLayer={filterLayer}
+									setFilterLayer={setFilterLayer}
+									baseFilter={applyBaseFilter ? props.baseFilter : undefined}
+									applyBaseFilter={applyBaseFilter}
+									setApplyBaseFilter={setApplyBaseFilter}
+								/>
+							</div>
+							<ListStyleLayerPicker
+								pickerMode={editedItem.vote ? 'toggle' : 'single'}
+								selected={selectedLayers}
+								setSelected={setSelectedLayers}
+								filter={pickerFilter}
 							/>
 						</div>
-						<ListStyleLayerPicker
-							pickerMode={editedItem.vote ? 'toggle' : 'single'}
-							selected={selectedLayers}
-							setSelected={setSelectedLayers}
-							filter={pickerFilter}
-						/>
-					</div>
+					)}
 
 					<DialogFooter>
 						<Button disabled={!canSubmit} type="submit">

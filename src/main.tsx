@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client'
-import { RouterProvider, createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 
 import React from 'react'
 import { exists } from './app-routes.ts'

@@ -1,5 +1,5 @@
 import { AnyColumn } from 'drizzle-orm'
-import { MySqlTableWithColumns, TableConfig, getTableConfig } from 'drizzle-orm/mysql-core'
+import { getTableConfig, MySqlTableWithColumns, TableConfig } from 'drizzle-orm/mysql-core'
 import { z } from 'zod'
 import superjson from 'superjson'
 export type Error = {
@@ -32,7 +32,9 @@ export function superjsonify<C extends TableConfig, T extends Partial<MySqlTable
 	const config = getTableConfig(schema)
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
-		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		if (!column) {
+			throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		}
 		if (column.dataType === 'json') {
 			//@ts-expect-error idk
 			out[name] = superjson.serialize(obj[name])
@@ -49,7 +51,9 @@ export function unsuperjsonify<C extends TableConfig>(schema: MySqlTableWithColu
 	const config = getTableConfig(schema)
 	for (const name of Object.keys(obj)) {
 		const column = config.columns.find((c) => c.name === name)
-		if (!column) throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		if (!column) {
+			throw new Error(`Column ${name} not found in table ${config.baseName}`)
+		}
 		if (column.dataType === 'json' && obj[name] !== null && obj[name]) {
 			out[name] = superjson.deserialize(obj[name])
 		} else {

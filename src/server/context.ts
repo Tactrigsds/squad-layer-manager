@@ -7,7 +7,7 @@ import Pino from 'pino'
 import RconCore from '@/lib/rcon/rcon-core.ts'
 
 import * as DB from './db.ts'
-import { Logger, baseLogger } from './logger.ts'
+import { baseLogger, Logger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
 
@@ -42,10 +42,12 @@ export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { leve
 			this.log.error({ err, result }, 'operation failed', type, operationId)
 			return
 		}
-		await Promise.all(this.tasks).catch((err) => {
-			lifeCycleLog.error({ err }, 'operation failed', type, operationId)
-			throw err
-		})
+		if (this.tasks.length > 0) {
+			await Promise.all(this.tasks).catch((err) => {
+				lifeCycleLog.error({ err }, 'operation failed', type, operationId)
+				throw err
+			})
+		}
 		lifeCycleLog[opts.level!]('operation completed', type, operationId)
 	}
 
@@ -80,19 +82,37 @@ export type User = {
 export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {
 	const log = baseLogger.child({ reqId: req.id, path: req.url })
 	const cookie = req.headers.cookie
-	if (!cookie) return { code: 'unauthorized:no-cookie' as const, message: 'No cookie provided' }
+	if (!cookie) {
+		return {
+			code: 'unauthorized:no-cookie' as const,
+			message: 'No cookie provided',
+		}
+	}
 	const sessionId = Cookie.parse(cookie).sessionId
-	if (!sessionId) return { code: 'unauthorized:no-session' as const, message: 'No session provided' }
+	if (!sessionId) {
+		return {
+			code: 'unauthorized:no-session' as const,
+			message: 'No session provided',
+		}
+	}
 
 	const ctx = DB.addPooledDb({ log })
 	const validSession = await Sessions.validateSession(sessionId, ctx)
-	if (validSession.code !== 'ok') return { code: 'unauthorized:invalid-session' as const, message: 'Invalid session' }
+	if (validSession.code !== 'ok') {
+		return {
+			code: 'unauthorized:invalid-session' as const,
+			message: 'Invalid session',
+		}
+	}
 
 	return {
 		code: 'ok' as const,
 		ctx: {
 			...ctx,
-			log: ctx.log.child({ username: validSession.user.username, disordId: validSession.user.discordId }),
+			log: ctx.log.child({
+				username: validSession.user.username,
+				disordId: validSession.user.discordId,
+			}),
 			req: req,
 			res: res,
 			sessionId,
@@ -111,7 +131,10 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 			case 'unauthorized:invalid-session':
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
 			default:
-				throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Unknown error occurred' })
+				throw new TRPCError({
+					code: 'INTERNAL_SERVER_ERROR',
+					message: 'Unknown error occurred',
+				})
 		}
 	}
 	return result.ctx

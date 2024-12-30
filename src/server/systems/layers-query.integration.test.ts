@@ -1,7 +1,5 @@
 import { beforeAll, expect } from 'vitest'
 import { setupEnv } from '../env'
-import { unionAll, union } from 'drizzle-orm/mysql-core'
-import { addHours } from 'date-fns'
 import * as Log from '../logger'
 import * as SquadjsSchema from '@/server/schema-squadjs'
 import * as Schema from '@/server/schema'
@@ -11,8 +9,8 @@ import * as M from '@/models'
 import * as DB from '@/server/db'
 import * as FB from '@/lib/filter-builders'
 import { test } from 'vitest'
-import { getHistoryFilterConditions, getWhereFilterConditions, runLayersQuery } from './layers-query'
-import { aliasedTable, sql, max } from 'drizzle-orm'
+import { getHistoryFilter, getWhereFilterConditions, runLayersQuery } from './layers-query'
+import { aliasedTable, sql } from 'drizzle-orm'
 
 let ctx!: C.Db & C.Log
 beforeAll(() => {
@@ -24,7 +22,10 @@ beforeAll(() => {
 
 test('can filter results', async () => {
 	const filter = FB.and([FB.comp(FB.eq('Level', 'Lashkar')), FB.comp(FB.eq('Gamemode', 'TC'))])
-	const res = await runLayersQuery({ input: { filter, pageSize: 50, pageIndex: 0 }, ctx })
+	const res = await runLayersQuery({
+		input: { filter, pageSize: 50, pageIndex: 0 },
+		ctx,
+	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
 		expect(layer.Level).toBe('Skorpo')
@@ -34,7 +35,10 @@ test('can filter results', async () => {
 
 test('can filter by faction matchup', async () => {
 	const filter = FB.comp(FB.hasAll('FactionMatchup', ['MEA', 'PLA']))
-	const res = await runLayersQuery({ input: { filter, pageSize: 50, pageIndex: 0 }, ctx })
+	const res = await runLayersQuery({
+		input: { filter, pageSize: 50, pageIndex: 0 },
+		ctx,
+	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
 		expect([layer.Faction_1, layer.Faction_2]).toContain('MEA')
@@ -44,7 +48,10 @@ test('can filter by faction matchup', async () => {
 
 test('can filter by sub-faction matchup', async () => {
 	const filter = FB.comp(FB.hasAll('SubFacMatchup', ['CombinedArms', 'Armored']))
-	const res = await runLayersQuery({ input: { filter, pageSize: 50, pageIndex: 0 }, ctx })
+	const res = await runLayersQuery({
+		input: { filter, pageSize: 50, pageIndex: 0 },
+		ctx,
+	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
 		expect([layer.SubFac_1, layer.SubFac_2]).toContain('CombinedArms')
@@ -55,7 +62,10 @@ test('can filter by sub-faction matchup', async () => {
 test('can filter by full faction matchup', async () => {
 	const matchup = ['USA-CA', 'PLA-CA']
 	const filter = FB.comp(FB.hasAll('FullMatchup', matchup))
-	const res = await runLayersQuery({ input: { filter, pageSize: 50, pageIndex: 0 }, ctx })
+	const res = await runLayersQuery({
+		input: { filter, pageSize: 50, pageIndex: 0 },
+		ctx,
+	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
 		const team1 = M.getLayerTeamString(layer.Faction_1, layer.SubFac_1)
@@ -90,7 +100,10 @@ test('hello there', async () => {
 	const queuedLayersQuery = ctx.db().select().from(Schema.layers).where(E.inArray(Schema.layers.id, queued)).as('layers-in-queue')
 	const applicableMatches = ctx
 		.db()
-		.select({ ...SquadjsSchema.dbLogMatches, ord: sql`ROW_NUMBER() OVER()`.as('ord') })
+		.select({
+			...SquadjsSchema.dbLogMatches,
+			ord: sql`ROW_NUMBER() OVER()`.as('ord'),
+		})
 		.from(SquadjsSchema.dbLogMatches)
 		.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
 		.limit(100 - queued.length)
@@ -140,8 +153,15 @@ test('hello there', async () => {
 }, 30_000)
 
 test.only('test ordinal', async () => {
-	const layer = 'Narva_AAS_v1'
-	const historyFilters: M.HistoryFilter[] = [{ comparison: FB.eq('Layer', layer), excludeFor: { matches: 100 } }]
+	const layer = 'Narva_AAS_v2'
+	const historyFilters: M.HistoryFilter[] = [
+		{
+			comparison: FB.eq('Layer', layer),
+			substitutedColumn: 'Layer',
+			excludeFor: { matches: 10 },
+		},
+		// { comparison: FB.eq('Layer', layer), substitutedColumn: 'FullMatchup', excludeFor: { matches: 10 } },
+	]
 	const regFilters = FB.and([
 		FB.comp(FB.eq('Layer', layer)),
 		// FB.comp(FB.eq('Faction_1', 'PLA')),
@@ -149,11 +169,10 @@ test.only('test ordinal', async () => {
 		// FB.comp(FB.eq('SubFac_1', 'CombinedArms')),
 		// FB.comp(FB.eq('SubFac_2', 'CombinedArms')),
 	])
-	const regCond = await getWhereFilterConditions(regFilters, [], ctx, Schema.layers)
-	const historyCond = await getHistoryFilterConditions(ctx, historyFilters, [])
-
-	const q = ctx.db().select(Schema.MINI_LAYER_SELECT).from(Schema.layers).where(E.and(regCond, historyCond))
-	const rawSql = q.toSQL()
-	console.log(rawSql)
-	console.log(await q)
+	const regCond = await getWhereFilterConditions(regFilters, [], ctx)
+	const historyFilterNode = await getHistoryFilter(ctx, historyFilters, ['AB-AAS-V1:ADF-CA:PLA-SP'])
+	console.log(JSON.stringify(historyFilterNode))
+	const historyFilterCondition = await getWhereFilterConditions(historyFilterNode, [], ctx)
+	const res = await ctx.db().select(Schema.MINI_LAYER_SELECT).from(Schema.layers).where(E.and(regCond, historyFilterCondition))
+	console.log({ res })
 })

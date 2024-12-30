@@ -6,11 +6,10 @@ import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
-import * as LayerComponents from '$root/assets/layer-components.json'
 import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
-import { Focusable, SetState, eltToFocusable } from '@/lib/react'
+import { eltToFocusable, Focusable, SetState } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
@@ -25,7 +24,6 @@ import { Input } from './ui/input'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
-import { arrProduct } from '@/lib/itertools.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
@@ -319,9 +317,13 @@ export function Comparison(props: {
 	comp: M.EditableComparison
 	setComp: SetState<M.EditableComparison>
 	columnEditable?: boolean
+	allowedColumns?: M.LayerColumnKey[]
+	allowedComparisonCodes?: M.ComparisonCode[]
 	valueAutocompleteFilter?: M.FilterNode
+	showValueDropdown?: boolean
 	defaultEditing?: boolean
 }) {
+	const showValueDropdown = props.showValueDropdown ?? true
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
@@ -336,13 +338,20 @@ export function Comparison(props: {
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
+	const columnOptions = (props.allowedColumns ? props.allowedColumns : M.COLUMN_KEYS).map((c) => ({
+		value: c,
+	}))
+	let codeOptions = comp.column ? M.getComparisonTypesForColumn(comp.column).map((c) => ({ value: c.code })) : []
+	if (props.allowedComparisonCodes) {
+		codeOptions = codeOptions.filter((c) => props.allowedComparisonCodes!.includes(c.value))
+	}
 
 	const columnBox = columnEditable ? (
 		<ComboBox
 			title="Column"
 			allowEmpty={true}
 			value={comp.column}
-			options={M.COLUMN_KEYS}
+			options={columnOptions}
 			ref={columnBoxRef}
 			onSelect={(_column) => {
 				if (!_column) return setComp(() => ({ column: undefined }))
@@ -378,108 +387,142 @@ export function Comparison(props: {
 		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
 	)
 	if (!comp.column) return columnBox
-	const columnOptions = M.getComparisonTypesForColumn(comp.column).map((c) => ({ value: c.code }))
+
+	const codeBox = (
+		<ComboBox
+			allowEmpty={true}
+			title=""
+			value={comp.code}
+			options={codeOptions}
+			ref={codeBoxRef}
+			onSelect={(_code) => {
+				const code = _code as typeof comp.code
+				// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
+				if (code !== undefined) {
+					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
+				}
+				return setComp((c) => ({ ...c, code: code ?? undefined }))
+			}}
+		/>
+	)
+
+	if (!showValueDropdown) {
+		return (
+			<>
+				{columnBox}
+				{codeBox}
+			</>
+		)
+	}
+
+	let valueBox: React.ReactNode = undefined
+	if (comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+		valueBox = (
+			<StringEqConfig
+				ref={valueBoxRef}
+				column={comp.column as M.StringColumn}
+				value={comp.value as string | undefined | null}
+				setValue={(value) => {
+					return setComp((c) => ({ ...c, value }))
+				}}
+				autocompleteFilter={props.valueAutocompleteFilter}
+			/>
+		)
+	}
+
+	if (comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+		valueBox = (
+			<StringEqConfigLimitedAutocomplete
+				ref={valueBoxRef}
+				column={comp.column as M.StringColumn}
+				value={comp.value as string | undefined | null}
+				setValue={(value) => setComp((c) => ({ ...c, value }))}
+				autocompleteFilter={props.valueAutocompleteFilter}
+			/>
+		)
+	}
+
+	if (comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+		valueBox = (
+			<StringInConfig
+				ref={valueBoxRef}
+				column={comp.column as M.StringColumn}
+				values={(comp.values ?? []) as string[]}
+				autocompleteFilter={props.valueAutocompleteFilter}
+				setValues={(action) => {
+					setComp(
+						produce((c) => {
+							const values = typeof action === 'function' ? action(c.values ?? []) : action
+							c.values = values.length === 0 ? undefined : values
+						})
+					)
+				}}
+			/>
+		)
+	}
+
+	if (comp.code === 'in' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+		valueBox = (
+			<StringEqConfigLimitedAutocomplete
+				ref={valueBoxRef}
+				column={comp.column as M.StringColumn}
+				value={comp.value as string | undefined | null}
+				setValue={(value) => setComp((c) => ({ ...c, value }))}
+				autocompleteFilter={props.valueAutocompleteFilter}
+			/>
+		)
+	}
+
+	if (comp.code === 'gt' || comp.code === 'lt') {
+		valueBox = (
+			<NumericSingleValueConfig
+				ref={valueBoxRef}
+				className="w-[200px]"
+				value={comp.value as number | undefined}
+				setValue={(value) => {
+					return setComp((c) => ({ ...c, value }))
+				}}
+			/>
+		)
+	}
+
+	if (comp.code === 'inrange') {
+		valueBox = (
+			<NumericRangeConfig
+				ref={valueBoxRef}
+				min={comp.min}
+				max={comp.max}
+				setMin={(min) => {
+					return setComp((c) => ({ ...c, min }))
+				}}
+				setMax={(max) => {
+					setComp((c) => ({ ...c, max }))
+				}}
+			/>
+		)
+	}
+	if (comp.code === 'has') {
+		valueBox = (
+			<HasAllConfig
+				ref={valueBoxRef}
+				column={comp.column as M.CollectionColumn}
+				values={comp.values as string[]}
+				setValues={(updater) => {
+					//@ts-expect-error idk
+					const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
+					return setComp((c) => ({
+						...c,
+						values: values as (string | null)[],
+					}))
+				}}
+			/>
+		)
+	}
 	return (
 		<>
 			{columnBox}
-			<ComboBox
-				allowEmpty={true}
-				title=""
-				value={comp.code}
-				options={columnOptions}
-				ref={codeBoxRef}
-				onSelect={(_code) => {
-					const code = _code as typeof comp.code
-					// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
-					if (code !== undefined) sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
-					return setComp((c) => ({ ...c, code: code ?? undefined }))
-				}}
-			/>
-			{comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
-				<StringEqConfig
-					ref={valueBoxRef}
-					column={comp.column as M.StringColumn}
-					value={comp.value as string | undefined | null}
-					setValue={(value) => {
-						return setComp((c) => ({ ...c, value }))
-					}}
-					autocompleteFilter={props.valueAutocompleteFilter}
-				/>
-			)}
-			{comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
-				<StringEqConfigLimitedAutocomplete
-					ref={valueBoxRef}
-					column={comp.column as M.StringColumn}
-					value={comp.value as string | undefined | null}
-					setValue={(value) => setComp((c) => ({ ...c, value }))}
-					autocompleteFilter={props.valueAutocompleteFilter}
-				/>
-			)}
-			{comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
-				<StringInConfig
-					ref={valueBoxRef}
-					column={comp.column as M.StringColumn}
-					values={(comp.values ?? []) as string[]}
-					autocompleteFilter={props.valueAutocompleteFilter}
-					setValues={(action) => {
-						setComp(
-							produce((c) => {
-								const values = typeof action === 'function' ? action(c.values ?? []) : action
-								c.values = values.length === 0 ? undefined : values
-							})
-						)
-					}}
-				/>
-			)}
-			{comp.code === 'in' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column) && (
-				<StringInConfigLimitAutoComplete
-					ref={valueBoxRef}
-					column={comp.column as M.StringColumn}
-					values={(comp.values ?? []) as (string | null)[]}
-					autocompleteFilter={props.valueAutocompleteFilter}
-					setValues={(updater) => {
-						setComp((c) => {
-							const values = typeof updater === 'function' ? updater(c.values ?? []) : updater
-							return { ...c, values: values as (string | null)[] }
-						})
-					}}
-				/>
-			)}
-			{(comp.code === 'gt' || comp.code === 'lt') && (
-				<NumericSingleValueConfig
-					ref={valueBoxRef}
-					className="w-[200px]"
-					value={comp.value as number | undefined}
-					setValue={(value) => {
-						return setComp((c) => ({ ...c, value }))
-					}}
-				/>
-			)}
-			{comp.code === 'inrange' && (
-				<NumericRangeConfig
-					ref={valueBoxRef}
-					min={comp.min}
-					max={comp.max}
-					setMin={(min) => {
-						return setComp((c) => ({ ...c, min }))
-					}}
-					setMax={(max) => {
-						setComp((c) => ({ ...c, max }))
-					}}
-				/>
-			)}
-			{comp.code === 'has' && (
-				<HasAllConfig
-					ref={valueBoxRef}
-					column={comp.column as M.CollectionColumn}
-					values={comp.values as string[]}
-					setValues={(updater) => {
-						//@ts-expect-error idk
-						const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
-						return setComp((c) => ({ ...c, values: values as (string | null)[] }))
-					}}
-				/>
-			)}
+			{codeBox}
+			{valueBox}
 		</>
 	)
 }
@@ -495,7 +538,9 @@ type ApplyFilterProps = {
 function ApplyFilter(props: ApplyFilterProps) {
 	const getFiltersQuery = trpcReact.filters.getFilters.useQuery()
 	let filters = getFiltersQuery.data
-	if (props.editedFilterId) filters = filters?.filter((f) => f.id !== props.editedFilterId)
+	if (props.editedFilterId) {
+		filters = filters?.filter((f) => f.id !== props.editedFilterId)
+	}
 	const options = filters ? filters.map((f) => ({ label: f.name, value: f.id })) : LOADING
 	const boxRef = useRef<ComboBoxHandle>()
 	React.useEffect(() => {
@@ -529,7 +574,10 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
+	const valuesRes = trpcReact.getUniqueValues.useQuery({
+		columns: [props.column],
+		filter: props.autocompleteFilter,
+	})
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return (
 		<ComboBox
@@ -574,7 +622,11 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 		const v = value.trim()
 		_setDebouncedInput(v)
 	}
-	const debouncer = useDebounced({ defaultValue: () => inputValue, onChange: setDebouncedInput, delay: 500 })
+	const debouncer = useDebounced({
+		defaultValue: () => inputValue,
+		onChange: setDebouncedInput,
+		delay: 500,
+	})
 	function setInputValue(value: string) {
 		_setInputValue(value)
 		debouncer.setValue(value)
@@ -597,7 +649,9 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 	)
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
-	else if (debouncedInput && valuesRes.isSuccess) options = valuesRes.data!.map((v) => v[column]) as T[]
+	else if (debouncedInput && valuesRes.isSuccess) {
+		options = valuesRes.data!.map((v) => v[column]) as T[]
+	}
 
 	return {
 		inputValue,
@@ -619,7 +673,10 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const valuesRes = trpcReact.getUniqueValues.useQuery({ columns: [props.column], filter: props.autocompleteFilter })
+	const valuesRes = trpcReact.getUniqueValues.useQuery({
+		columns: [props.column],
+		filter: props.autocompleteFilter,
+	})
 	return (
 		<ComboBoxMulti
 			title={props.column}
@@ -655,7 +712,14 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 })
 
 const NumericSingleValueConfig = React.forwardRef(
-	(props: { className?: string; value?: number; setValue: (value?: number) => void }, forwardedRef: React.ForwardedRef<Focusable>) => {
+	(
+		props: {
+			className?: string
+			value?: number
+			setValue: (value?: number) => void
+		},
+		forwardedRef: React.ForwardedRef<Focusable>
+	) => {
 		const [value, setValue] = useState(props.value?.toString() ?? '')
 		const inputRef = React.useRef<HTMLInputElement>(null)
 		React.useImperativeHandle(forwardedRef, () => eltToFocusable(inputRef.current!))
@@ -702,8 +766,14 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const factions1Res = trpcReact.getUniqueValues.useQuery({ columns: ['Faction_1', 'SubFac_1'], filter: props.autocompleteFilter })
-	const factions2Res = trpcReact.getUniqueValues.useQuery({ columns: ['Faction_2', 'SubFac_2'], filter: props.autocompleteFilter })
+	const factions1Res = trpcReact.getUniqueValues.useQuery({
+		columns: ['Faction_1', 'SubFac_1'],
+		filter: props.autocompleteFilter,
+	})
+	const factions2Res = trpcReact.getUniqueValues.useQuery({
+		columns: ['Faction_2', 'SubFac_2'],
+		filter: props.autocompleteFilter,
+	})
 	const mirrorCheckboxId = React.useId()
 	const [mirror, setMirror] = useState(false)
 

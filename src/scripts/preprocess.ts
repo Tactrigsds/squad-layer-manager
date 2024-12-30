@@ -57,7 +57,9 @@ async function main() {
 
 	await using ctx = C.pushOperation(DB.addPooledDb({ log: baseLogger }), 'preprocess')
 
-	if (args.includes('generate-config-schema')) ctx.tasks.push(generateConfigJsonSchema(ctx))
+	if (args.includes('generate-config-schema')) {
+		ctx.tasks.push(generateConfigJsonSchema(ctx))
+	}
 	if (args.includes('download-pipeline')) await downloadPipeline(ctx)
 	let pipeline: SquadPipelineModels.Output | null = null
 	let factions: FactionDetails[] | null = null
@@ -193,7 +195,10 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 	baseLogger.info('Reading layers.csv..')
 	const csvData = await fsPromise.readFile(path.join(Paths.DATA, 'layers.csv'), 'utf8')
 	// TODO can optimize by pulling out rows incrementally
-	const records = parse(csvData, { columns: true, skip_empty_lines: true }) as Record<string, string>[]
+	const records = parse(csvData, {
+		columns: true,
+		skip_empty_lines: true,
+	}) as Record<string, string>[]
 	const t1 = performance.now()
 	const elapsedSecondsParse = (t1 - t0) / 1000
 
@@ -208,8 +213,9 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 			if (!record[field]) {
 				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
-			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') updatedRecord[field] = parseInt(record[field])
-			else updatedRecord[field] = parseFloat(record[field])
+			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') {
+				updatedRecord[field] = parseInt(record[field])
+			} else updatedRecord[field] = parseFloat(record[field])
 			if (isNaN(updatedRecord[field] as number)) {
 				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
@@ -233,11 +239,13 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 			sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`
 		)
 		ctx.log.info('inserting factions')
-		await tx
-			.insert(Schema.factions)
-			.values(
-				factions.map((faction) => ({ shortName: faction.faction, fullName: factionFullNames[faction.faction], alliance: faction.alliance }))
-			)
+		await tx.insert(Schema.factions).values(
+			factions.map((faction) => ({
+				shortName: faction.faction,
+				fullName: factionFullNames[faction.faction],
+				alliance: faction.alliance,
+			}))
+		)
 		await tx.insert(Schema.subfactions).values(
 			factions
 				.map((faction) =>
@@ -274,7 +282,9 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 		if (!layer.levelName.toLowerCase().includes('seed')) continue
 		const mapName = M.preprocessLevel(layer.mapId)
 		// gross
-		if (layer.levelName.startsWith('Albasrah')) layer.levelName = layer.levelName.replace('Albasrah', 'AlBasrah')
+		if (layer.levelName.startsWith('Albasrah')) {
+			layer.levelName = layer.levelName.replace('Albasrah', 'AlBasrah')
+		}
 
 		const matchups = getSeedingMatchupsForLayer(layer.mapName, factions, biomes)
 		for (const [team1, team2] of matchups) {
@@ -385,13 +395,21 @@ async function updateLayerComponentsAndSubfactionFunction(
 		.then((result) => derefEntries('version', result))
 
 	for (const level of await levelsPromise) {
-		if (!(level in LEVEL_SHORT_NAMES)) throw new Error(`level ${level} doesn't have a short name`)
-		if (!(level in LEVEL_ABBREVIATIONS)) throw new Error(`level ${level} doesn't have an abbreviation`)
+		if (!(level in LEVEL_SHORT_NAMES)) {
+			throw new Error(`level ${level} doesn't have a short name`)
+		}
+		if (!(level in LEVEL_ABBREVIATIONS)) {
+			throw new Error(`level ${level} doesn't have an abbreviation`)
+		}
 	}
 	for (const subfaction of await subfactionsPromise) {
 		if (subfaction === null) continue
-		if (!(subfaction in SUBFACTION_ABBREVIATIONS)) throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
-		if (!(subfaction in SUBFACTION_SHORT_NAMES)) throw new Error(`subfaction ${subfaction} doesn't have a short name`)
+		if (!(subfaction in SUBFACTION_ABBREVIATIONS)) {
+			throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
+		}
+		if (!(subfaction in SUBFACTION_SHORT_NAMES)) {
+			throw new Error(`subfaction ${subfaction} doesn't have a short name`)
+		}
 	}
 	const factionFullNames = getFactionFullNames(pipeline)
 
@@ -545,7 +563,11 @@ async function parseBiomes(_ctx: C.Log) {
 	return biomes
 }
 
-type FactionDetails = { faction: string; alliance: string; subfactions: Record<M.Subfaction, string> }
+type FactionDetails = {
+	faction: string
+	alliance: string
+	subfactions: Record<M.Subfaction, string>
+}
 
 async function parseFactionDetails(_ctx: C.Log) {
 	using _ = C.pushOperation(_ctx, 'parse-faction-details')
@@ -561,8 +583,12 @@ async function parseFactionDetails(_ctx: C.Log) {
 		const subfactions: Record<M.Subfaction, string> = {}
 		if (row['Air Assault']) subfactions['AirAssault'] = row['Air Assault']
 		if (row.Armored) subfactions['Armored'] = row.Armored
-		if (row['Combined Arms']) subfactions['CombinedArms'] = row['Combined Arms']
-		if (row['Light Infantry']) subfactions['LightInfantry'] = row['Light Infantry']
+		if (row['Combined Arms']) {
+			subfactions['CombinedArms'] = row['Combined Arms']
+		}
+		if (row['Light Infantry']) {
+			subfactions['LightInfantry'] = row['Light Infantry']
+		}
 		if (row.Mechanized) subfactions['Mechanized'] = row.Mechanized
 		if (row.Motorized) subfactions['Motorized'] = row.Motorized
 		if (row.Support) subfactions['Support'] = row.Support

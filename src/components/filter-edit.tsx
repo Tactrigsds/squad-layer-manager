@@ -56,13 +56,17 @@ export default function FilterEdit() {
 			}
 			if (e.code === 'mutation') {
 				if (e.mutation.type === 'delete') {
-					toast({ title: `Filter ${e.mutation.value.name} was deleted by ${e.mutation.username}` })
+					toast({
+						title: `Filter ${e.mutation.value.name} was deleted by ${e.mutation.username}`,
+					})
 					navigate(AR.exists('/filters'))
 					return
 				}
 				if (e.mutation.type === 'update') {
 					if (!userRes.data?.username || userRes.data.username !== e.mutation.username) {
-						toast({ title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}` })
+						toast({
+							title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}`,
+						})
 					} else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
 						toast({ title: `Updated ${e.mutation.value.name}` })
 					}
@@ -74,7 +78,9 @@ export default function FilterEdit() {
 		},
 		[setFilterEntity, setEditedFilter, toast, userRes.data?.username, navigate]
 	)
-	trpcReact.filters.watchFilter.useSubscription(id, { onData: onWatchFilterData })
+	trpcReact.filters.watchFilter.useSubscription(id, {
+		onData: onWatchFilterData,
+	})
 	const [pageIndex, setPageIndex] = useState(0)
 	const validFilter = useMemo(() => {
 		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : undefined
@@ -89,7 +95,12 @@ export default function FilterEdit() {
 
 	async function saveFilter() {
 		if (!canSaveFilter) return
-		const res = await updateFilterMutation.mutateAsync([filterEntity!.id, { filter: validFilter }])
+		const res = await updateFilterMutation.mutateAsync([
+			filterEntity!.id,
+			{
+				filter: validFilter,
+			},
+		])
 		if (res.code === 'err:not-found') {
 			toast({
 				title: 'Unable to save: Filter Not Found',

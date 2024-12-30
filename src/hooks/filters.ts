@@ -4,7 +4,10 @@ import React from 'react'
 
 export function useFilter(
 	filterId?: string,
-	options?: { onDelete?: () => void; onUpdate?: (update: M.UserEntityMutation<M.FilterEntity>) => void }
+	options?: {
+		onDelete?: () => void
+		onUpdate?: (update: M.UserEntityMutation<M.FilterEntity>) => void
+	}
 ) {
 	const [filter, setFilter] = React.useState<M.FilterEntity | undefined>(undefined)
 

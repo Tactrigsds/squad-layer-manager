@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import * as Paths from '@/server/paths'
 import * as fs from 'node:fs/promises'
 import * as fsOld from 'node:fs'
-import { setupEnv, ENV } from '@/server/env'
+import { ENV, setupEnv } from '@/server/env'
 
 setupEnv()
 // we don't need this, just calling it to check for errors before starting the server process
@@ -39,7 +39,12 @@ function startServer() {
 				await writeLog(logLine)
 			}
 		} catch (e) {
-			const output = JSON.stringify({ message: 'error while parsing log entries', error: e, data }) + '\n'
+			const output =
+				JSON.stringify({
+					message: 'error while parsing log entries',
+					error: e,
+					data,
+				}) + '\n'
 			process.stderr.write(output)
 			await writeLog(output)
 		}
@@ -56,7 +61,12 @@ function startServer() {
 				writeLog(logLine)
 			}
 		} catch (e) {
-			const error = JSON.stringify({ message: 'error while parsing log entries', error: e, data }) + '\n'
+			const error =
+				JSON.stringify({
+					message: 'error while parsing log entries',
+					error: e,
+					data,
+				}) + '\n'
 			process.stderr.write(error)
 			writeLog(error)
 		}
@@ -72,7 +82,9 @@ function startServer() {
 
 		const delay = Math.min(1000 * Math.pow(2, restartAttempts), MAX_RESTART_DELAY)
 		const delaySeconds = delay / 1000
-		const msg = JSON.stringify({ message: `Server exited with code ${code}, restarting in ${delaySeconds} seconds` })
+		const msg = JSON.stringify({
+			message: `Server exited with code ${code}, restarting in ${delaySeconds} seconds`,
+		})
 		process.stderr.write(msg)
 		writeLog(msg)
 		restartAttempts++

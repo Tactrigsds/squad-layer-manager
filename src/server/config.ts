@@ -5,7 +5,9 @@ import { z } from 'zod'
 import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Paths from '@/server/paths.ts'
 
-const strNoWhitespace = z.string().regex(/^\S+$/, { message: 'Must not contain whitespace' })
+const strNoWhitespace = z.string().regex(/^\S+$/, {
+	message: 'Must not contain whitespace',
+})
 
 const CommandConfigSchema = z.object({
 	strings: z.array(strNoWhitespace),
@@ -26,8 +28,12 @@ export const ConfigSchema = z.object({
 	authorizedDiscordRoles: z
 		.array(
 			z.object({
-				serverId: z.string().regex(/^\d+$/, { message: 'Must be a valid Discord server ID' }),
-				roleId: z.string().regex(/^\d+$/, { message: 'Must be a valid Discord role ID' }),
+				serverId: z.string().regex(/^\d+$/, {
+					message: 'Must be a valid Discord server ID',
+				}),
+				roleId: z.string().regex(/^\d+$/, {
+					message: 'Must be a valid Discord role ID',
+				}),
 			})
 		)
 		.min(1),

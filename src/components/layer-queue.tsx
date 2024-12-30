@@ -2,11 +2,15 @@ import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/c
 import { trpc } from '@/lib/trpc.client.ts'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
-import { EllipsisVertical, GripVertical, PlusIcon, Edit } from 'lucide-react'
+import { Edit, EllipsisVertical, GripVertical, Minus, PlusIcon } from 'lucide-react'
 import deepEqual from 'fast-deep-equal'
 import React, { createContext, useRef, useState } from 'react'
 import * as AR from '@/app-routes.ts'
+import * as FB from '@/lib/filter-builders.ts'
 
+import { createAtomStore } from 'jotai-x'
+import { atom, useAtom, createStore, useAtomValue } from 'jotai'
+import { useImmerAtom, userImmerAtom, withImmer } from 'jotai-immer'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +22,7 @@ import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import * as M from '@/models'
 
-import { SelectLayersPopover, EditLayerQueueItemPopover } from './select-layer-popover'
+import { EditLayerQueueItemPopover, SelectLayersPopover } from './select-layer-popover'
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -33,88 +37,347 @@ import { cn } from '@/lib/utils.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 import { deepClone } from '@/lib/object.ts'
+import { Comparison } from './filter-card.tsx'
+import { Checkbox } from './ui/checkbox.tsx'
 
-const LayerQueueContext = createContext<object>({})
+import { useHistoryFilterNode } from '@/hooks/history-filter.ts'
+import { useRefConstructor } from '@/lib/react.ts'
 
-export default function LayerQueue() {
-	const [layerQueue, setLayerQueue] = useState(null as null | IdedLayerQueueItem[])
+type EditedHistoryFilterWithId = M.HistoryFilterEdited
+type MutServerStateWithIds = M.MutableServerState & {
+	layerQueue: IdedLayerQueueItem[]
+	historyFilters: EditedHistoryFilterWithId[]
+}
+
+type QueueItemStore = {
+	queueMutations: ItemMutations
+	queueItems: IdedLayerQueueItem[]
+}
+
+type SDStore = {
+	serverState: (M.ServerState & M.UserPart) | null
+	serverStateMut: MutServerStateWithIds | null
+	queueMutations: ItemMutations
+	historyFiltersMutations: ItemMutations
+}
+
+const initialState: SDStore = {
+	serverState: null,
+	serverStateMut: null,
+	queueMutations: initMutations(),
+	historyFiltersMutations: initMutations(),
+}
+
+// TODO I don't really like this jotai-x thing, should probably just move away from it
+const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
+	name: 'SD',
+	extend: (atoms) => {
+		const addQueueItems = atom(null, (get, set, items: M.LayerQueueItem[], index?: number) => {
+			index ??= get(atoms.serverStateMut)!.layerQueue.length
+			const existing = get(atoms.serverStateMut)!.layerQueue
+			const withIds = getNewItemsWithIds(existing, items, get(atoms.queueMutations))
+			set(withImmer(atoms.queueMutations), (draft) => {
+				for (const { id } of withIds) {
+					tryApplyMutation('added', id, draft)
+				}
+			})
+			set(withImmer(atoms.serverStateMut), (draft) => {
+				draft!.layerQueue = [...existing.slice(0, index), ...withIds, ...existing.slice(index)] as IdedLayerQueueItem[]
+			})
+		})
+		return {
+			editing: atom(
+				(get) =>
+					hasMutations(get(atoms.queueMutations)) ||
+					!deepEqual(get(atoms.serverState)?.settings, get(atoms.serverStateMut)?.settings) ||
+					hasMutations(get(atoms.historyFiltersMutations))
+			),
+			reset: atom(null, (get, set) => {
+				const serverState = get(atoms.serverState)
+				if (serverState === null) {
+					set(atoms.serverStateMut, null)
+				} else {
+					set(atoms.serverStateMut, {
+						...serverState,
+						//@ts-expect-error idk
+						historyFilters: serverState.historyFilters.map((filter, idx) => ({ ...filter, id: idx }) as M.HistoryFilterEdited & WithId),
+						layerQueue: serverState.layerQueue.map((item, idx) => ({
+							...item,
+							id: idx,
+						})),
+					})
+				}
+				set(atoms.queueMutations, initMutations())
+				set(atoms.historyFiltersMutations, initMutations())
+			}),
+			applyServerUpdate: atom(null, (_, set, update: M.ServerState & M.UserPart) => {
+				set(atoms.serverState, update)
+				set(atoms.serverStateMut, {
+					historyFiltersEnabled: update.historyFiltersEnabled,
+					layerQueueSeqId: update.layerQueueSeqId,
+					settings: update.settings,
+					//@ts-expect-error idk
+					historyFilters: update.historyFilters.map((filter, idx) => ({ ...filter, id: idx }) as M.HistoryFilterEdited & WithId),
+					layerQueue: update.layerQueue.map((item, idx) => ({
+						...item,
+						id: idx,
+					})),
+				})
+				set(atoms.queueMutations, initMutations())
+				set(atoms.historyFiltersMutations, initMutations())
+			}),
+			changedSettings: atom((get) => {
+				const serverStateSettings = get(atoms.serverState)?.settings
+				const mutSettings = get(atoms.serverStateMut)?.settings
+				if (!serverStateSettings || !mutSettings) return null
+				return M.getSettingsChanged(serverStateSettings, mutSettings)
+			}),
+			validatedHistoryFilters: atom((get) => {
+				const historyFilters = get(atoms.serverStateMut)?.historyFilters
+				if (!historyFilters) return []
+				const validated: M.HistoryFilter[] = []
+				for (const filter of historyFilters) {
+					const res = M.HistoryFilterSchema.safeParse(filter)
+					if (res.success) {
+						validated.push(res.data)
+					}
+				}
+				return validated
+			}),
+			handleDragEnd: atom(null, (get, set, event: DragEndEvent, userDiscordId: bigint) => {
+				if (!event.over) return
+				const layerQueue = get(atoms.serverStateMut)!.layerQueue
+				const sourceIndex = getIndexFromQueueItemId(layerQueue, fromItemId(event.active.id as string))
+				const targetIndex = getIndexFromQueueItemId(layerQueue, fromItemId(event.over.id as string))
+				if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
+				const sourceId = layerQueue[sourceIndex].id
+				set(withImmer(atoms.queueMutations), (draft) => {
+					draft.moved.add(sourceId)
+				})
+				set(withImmer(atoms.serverStateMut), (draft) => {
+					const layerQueue = draft!.layerQueue
+					let insertIndex = targetIndex + 1
+					if (!layerQueue) throw new Error('layerQueue is null')
+					const [moved] = layerQueue.splice(sourceIndex, 1).map(
+						(moved) =>
+							({
+								...moved,
+								source: 'manual',
+								lastModifiedBy: userDiscordId,
+							}) as IdedLayerQueueItem
+					)
+					moved.source = 'manual'
+					if (insertIndex > sourceIndex) insertIndex--
+					layerQueue.splice(insertIndex, 0, moved)
+				})
+			}),
+			addQueueItems,
+			layerQueue: atom((get) => get(atoms.serverStateMut)?.layerQueue),
+			dispatchQueueItemAction: atom(null, (get, set, action: QueueItemAction) => {
+				const layerQueue = get(atoms.serverStateMut)!.layerQueue
+				if (action.code === 'delete') {
+					set(withImmer(atoms.queueMutations), (draft) => {
+						tryApplyMutation('removed', layerQueue[layerQueue.length - 1].id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						draft!.layerQueue = draft!.layerQueue.filter((_, i) => i !== layerQueue.length - 1) as IdedLayerQueueItem[]
+					})
+				} else if (action.code === 'edit') {
+					const oldItem = layerQueue[layerQueue.length - 1]
+					set(withImmer(atoms.queueMutations), (draft) => {
+						tryApplyMutation('edited', oldItem.id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						draft!.layerQueue[draft!.layerQueue.length - 1] = {
+							id: oldItem.id,
+							...action.item,
+						}
+					})
+				} else if (action.code === 'add-after') {
+					set(addQueueItems, action.items, layerQueue.length)
+				} else if (action.code === 'add-before') {
+					set(addQueueItems, action.items, layerQueue.length - 1)
+				}
+			}),
+			historyFilterActions: {
+				add: atom(null, (get, set, newFilter: M.HistoryFilter) => {
+					const historyFilters = get(atoms.serverStateMut)!.historyFilters as M.HistoryFilterEdited[]
+					const mutationIds = historyFilters.map((f) => f.id)
+					const newId = getNextIntId(mutationIds)
+					set(withImmer(atoms.historyFiltersMutations), (draft) => {
+						tryApplyMutation('added', newId, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						draft!.historyFilters.push({ id: newId, ...newFilter } as M.HistoryFilterEdited)
+					})
+				}),
+				remove: atom(null, (_, set, id: number) => {
+					set(withImmer(atoms.historyFiltersMutations), (draft) => {
+						tryApplyMutation('removed', id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						draft!.historyFilters = (draft!.historyFilters as EditedHistoryFilterWithId[]).filter(
+							(f) => f.id !== id
+						) as EditedHistoryFilterWithId[]
+					})
+				}),
+				edit: atom(null, (_, set, id: number, update: React.SetStateAction<M.HistoryFilterEdited & WithId>) => {
+					set(withImmer(atoms.historyFiltersMutations), (draft) => {
+						tryApplyMutation('edited', id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						const filters = draft!.historyFilters as EditedHistoryFilterWithId[]
+						const idx = filters.findIndex((f) => f.id === id)
+						if (typeof update === 'function') {
+							filters[idx] = update(filters[idx])
+						} else {
+							filters[idx] = update
+						}
+					})
+				}),
+			},
+			layerQueueItemActions: {
+				delete: atom(null, (_, set, id: number) => {
+					set(withImmer(atoms.queueMutations), (draft) => {
+						tryApplyMutation('removed', id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						//@ts-expect-error idk
+						draft!.layerQueue = draft!.layerQueue.filter((item) => item.id !== id)
+					})
+				}),
+				edit: atom(null, (_, set, id: number, update: React.SetStateAction<M.LayerQueueItem>) => {
+					set(withImmer(atoms.queueMutations), (draft) => {
+						tryApplyMutation('edited', id, draft)
+					})
+					set(withImmer(atoms.serverStateMut), (draft) => {
+						const layerQueue = draft!.layerQueue as IdedLayerQueueItem[]
+						const idx = layerQueue.findIndex((item) => item.id === id)
+						if (typeof update === 'function') {
+							//@ts-expect-error idk
+							layerQueue[idx] = update(draft!.layerQueue[idx])
+						} else {
+							//@ts-expect-error idk
+							layerQueue[idx] = update
+						}
+					})
+				}),
+				addBefore: atom(null, (get, set, id: number, items: M.LayerQueueItem[]) => {
+					const layerQueue = get(atoms.serverStateMut)!.layerQueue as IdedLayerQueueItem[]
+					const index = layerQueue.findIndex((item) => item.id === id)
+					set(addQueueItems, items, index)
+				}),
+				addAfter: atom(null, (get, set, id: number, items: M.LayerQueueItem[]) => {
+					const layerQueue = get(atoms.serverStateMut)!.layerQueue as IdedLayerQueueItem[]
+					const index = layerQueue.findIndex((item) => item.id === id)
+					set(addQueueItems, items, index + 1)
+				}),
+			},
+		}
+	},
+})
+
+export default function ServerDashBoardWrapped() {
+	return (
+		<SDProvider>
+			<ServerDashboard />
+		</SDProvider>
+	)
+}
+
+function ServerDashboard() {
 	const serverStatus = useSquadServerStatus()
-	const currentLayer = serverStatus?.currentLayer
-	const [settings, setSettings] = useState({ queue: {} } as M.ServerSettings)
-	const [queueMutations, setQueueMutations] = useState(initMutations())
-
-	const [serverState, setServerState] = useState(null as null | (M.ServerState & M.UserPart))
-	const layerQueueSeqIdRef = useRef(-1)
-	const editing = hasMutations(queueMutations) || !deepEqual(settings, settings)
 	const settingsPanelRef = useRef<ServerSettingsPanelHandle>(null)
-
-	const settingsChanged = serverState != null ? M.getSettingsChanged(serverState.settings, settings) : null
-
-	function initLayerQueue(initialQueue: M.LayerQueue) {
-		setLayerQueue(initialQueue.map((item, idx) => ({ ...item, id: idx })))
-	}
+	const serverState = useSDStore().get.serverState()
+	const serverStateMut = useSDStore().get.serverStateMut()
+	const resetSDStore = useSDStore().set.reset()
+	const sdStore = useSDStore().store()!
 
 	trpcReact.server.watchServerState.useSubscription(undefined, {
 		onData: (data) => {
-			initLayerQueue(data.layerQueue)
-			setSettings(data.settings)
-			setServerState(data)
-			setQueueMutations(initMutations())
-			layerQueueSeqIdRef.current = data.layerQueueSeqId
+			sdStore.set(SDStore.atom.applyServerUpdate, data)
 			settingsPanelRef.current?.reset(data.settings)
 		},
 	})
 
-	const basePoolFilter = useFilter(settings.queue.poolFilterId, {
+	const basePoolFilterEntity = useFilter(serverStateMut?.settings?.queue.poolFilterId, {
 		onUpdate: () => {
 			toaster.toast({ title: 'Pool Filter Updated' })
 		},
 	})
 
+	let basePoolFilter = basePoolFilterEntity?.filter
+
+	const validatedHistoryFilters = useSDStore().get.validatedHistoryFilters()
+	const historyFilterRes = useHistoryFilterNode({
+		historyFilters: validatedHistoryFilters,
+		layerQueue: serverStateMut?.layerQueue ?? [],
+		enabled:
+			validatedHistoryFilters.length === serverStateMut?.historyFilters.length &&
+			serverStateMut?.layerQueue !== null &&
+			serverStateMut.historyFiltersEnabled,
+	})
+
+	if (historyFilterRes.isSuccess && historyFilterRes.data && serverStateMut?.historyFiltersEnabled && basePoolFilter) {
+		basePoolFilter = FB.and([basePoolFilter, historyFilterRes.data])
+	}
+
 	const abortVoteMutation = trpcReact.server.abortVote.useMutation()
 	async function abortVote() {
-		const res = await abortVoteMutation.mutateAsync({ seqId: layerQueueSeqIdRef.current })
+		if (!serverStateMut?.layerQueueSeqId) return
+		const res = await abortVoteMutation.mutateAsync({
+			seqId: serverStateMut?.layerQueueSeqId,
+		})
 
 		if (res.code === 'ok') {
 			toaster.toast({ title: 'Vote aborted' })
 			return
 		}
-		return toaster.toast({ title: 'Failed to abort vote', description: res.code, variant: 'destructive' })
+		return toaster.toast({
+			title: 'Failed to abort vote',
+			description: res.code,
+			variant: 'destructive',
+		})
 	}
+
 	const startVoteMutation = trpcReact.server.startVote.useMutation()
 	async function startVote() {
-		const res = await startVoteMutation.mutateAsync({ seqId: serverState!.layerQueueSeqId })
+		const res = await startVoteMutation.mutateAsync({
+			seqId: serverState!.layerQueueSeqId,
+		})
 		if (res.code === 'ok') {
 			toaster.toast({ title: 'Vote started' })
 			return
 		}
-		toaster.toast({ title: 'Failed to start vote', description: res.code, variant: 'destructive' })
+		toaster.toast({
+			title: 'Failed to start vote',
+			description: res.code,
+			variant: 'destructive',
+		})
 	}
 
 	async function rerunVote() {
-		const res = await startVoteMutation.mutateAsync({ seqId: serverState!.layerQueueSeqId, restart: true })
+		const res = await startVoteMutation.mutateAsync({
+			seqId: serverState!.layerQueueSeqId,
+			restart: true,
+		})
 		if (res.code === 'ok') {
 			toaster.toast({ title: 'Vote restarted' })
 			return
 		}
-		toaster.toast({ title: 'Failed to restart vote', description: res.code, variant: 'destructive' })
+		toaster.toast({
+			title: 'Failed to restart vote',
+			description: res.code,
+			variant: 'destructive',
+		})
 	}
 
 	const toaster = useToast()
 	const updateQueueMutation = trpcReact.server.updateQueue.useMutation()
+	// const validatedHistoryFilters = M.histo
 	async function saveLayers() {
-		if (!editing || !layerQueue || !serverState) return
-		const res = await updateQueueMutation.mutateAsync({
-			queue: layerQueue.map((item) => {
-				const idStripped: M.LayerQueueItem = { ...item }
-
-				//@ts-expect-error id is not in LayerQueueItem
-				delete idStripped['id']
-				return idStripped
-			}),
-			seqId: layerQueueSeqIdRef.current,
-			settings,
-		})
+		if (!serverStateMut) return
+		const res = await updateQueueMutation.mutateAsync(serverStateMut)
 		if (res.code === 'err:next-layer-changed-while-vote-active') {
 			toaster.toast({
 				title: 'Cannot update: active layer vote in progress',
@@ -123,7 +386,10 @@ export default function LayerQueue() {
 			return
 		}
 		if (res.code === 'err:out-of-sync') {
-			toaster.toast({ title: 'State changed before submission, please try again.', variant: 'destructive' })
+			toaster.toast({
+				title: 'State changed before submission, please try again.',
+				variant: 'destructive',
+			})
 			return
 		}
 		if (res.code === 'ok') {
@@ -132,244 +398,159 @@ export default function LayerQueue() {
 		}
 	}
 
-	function reset() {
-		if (!editing || !layerQueue || !serverState) return
-		initLayerQueue(serverState.layerQueue)
-		setQueueMutations(initMutations())
-		setSettings(serverState.settings)
-	}
-
-	function handleDragEnd(event: DragEndEvent) {
-		if (!event.over) return
-		const sourceIndex = getIndexFromQueueItemId(layerQueue!, fromItemId(event.active.id as string))
-		const targetIndex = getIndexFromQueueItemId(layerQueue!, fromItemId(event.over.id as string))
-		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
-		const sourceId = layerQueue![sourceIndex].id
-		setQueueMutations(
-			produce((draft) => {
-				draft.moved.add(sourceId)
-			})
-		)
-		setLayerQueue(
-			produce((draft) => {
-				let insertIndex = targetIndex + 1
-				if (!draft) throw new Error('layerQueue is null')
-				const [moved] = draft
-					.splice(sourceIndex, 1)
-					.map((moved) => ({ ...moved, source: 'manual', lastModifiedBy: userQuery.data?.discordId }) as IdedLayerQueueItem)
-				moved.source = 'manual'
-				if (insertIndex > sourceIndex) insertIndex--
-				draft.splice(insertIndex, 0, moved)
-			})
-		)
-	}
-
-	function addItems(addedQueueItems: M.LayerQueueItem[], index?: number) {
-		index ??= layerQueue!.length
-		setLayerQueue((existing) => {
-			existing ??= []
-			const withIds = getNewItemsWithIds(existing, addedQueueItems, queueMutations)
-			const ids = withIds.map((item) => item.id)
-			setQueueMutations(
-				produce((draft) => {
-					for (const id of ids) {
-						tryApplyMutation('added', id, draft)
-					}
-				})
-			)
-			return [...existing.slice(0, index), ...withIds, ...existing.slice(index)]
-		})
-	}
-
-	async function backfillLayerQueueItems() {
-		if (!layerQueue || !settings) return
-		const numVoteChoices = settings.queue.preferredNumVoteChoices
-		const numToAdd = settings.queue.preferredLength - layerQueue.length
-		const itemType = settings.queue.generatedItemType
-		if (numToAdd === 0) return layerQueue
-		if (numToAdd < 0) {
-			let lastTrailingGeneratedIdx = -1
-			for (let i = layerQueue.length - 1; i >= settings.queue.preferredLength; i--) {
-				if (layerQueue[i].source === 'generated') lastTrailingGeneratedIdx = i
-				else break
-			}
-			if (lastTrailingGeneratedIdx === -1) {
-				return
-			}
-			return
-		}
-
-		const seqIdBefore = layerQueueSeqIdRef.current
-		const before = deepClone(layerQueue)
-		const generated = await trpc.server.generateLayerQueueItems.query({
-			numToAdd,
-			numVoteChoices,
-			itemType,
-			baseFilterId: settings.queue.poolFilterId,
-		})
-		if (seqIdBefore !== layerQueueSeqIdRef.current || !deepEqual(before, layerQueue)) return
-		addItems(generated)
-	}
+	const handleDragEnd = useSDStore().set.handleDragEnd()
 
 	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
 	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
 	const userQuery = trpcReact.getLoggedInUser.useQuery()
+	const addQueueItems = useSDStore().set.addQueueItems()
+	const editing = useSDStore().get.editing()
+	const queueMutations = useSDStore().get.queueMutations()
 
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
-			<LayerQueueContext.Provider value={{}}>
-				<span className="flex space-x-4">
-					{serverState?.currentVote && (
-						<VoteState
-							abortVote={abortVote}
-							startVote={startVote}
-							rerunVote={rerunVote}
-							state={serverState.currentVote}
-							parts={serverState.parts}
-						/>
-					)}
-					<DndContext onDragEnd={handleDragEnd}>
-						<Card className="flex w-max flex-col">
-							<div className="flex w-full justify-between p-6 space-x-2">
-								<h3 className={Typography.H3}>Layer Queue</h3>
-								<div className="flex items-center space-x-1">
-									<SelectLayersPopover
-										title="Add to Queue"
-										description="Select layers to add to the queue"
-										baseFilter={basePoolFilter?.filter}
-										selectQueueItems={addItems}
-										open={appendLayersPopoverOpen}
-										onOpenChange={setAppendLayersPopoverOpen}
-									>
-										<Button className="flex w-min items-center space-x-1" variant="default">
-											<PlusIcon />
-											<span>Play After</span>
-										</Button>
-									</SelectLayersPopover>
-									<SelectLayersPopover
-										title="Play Next"
-										description="Select layers to play next"
-										baseFilter={basePoolFilter?.filter}
-										selectQueueItems={(items) => addItems(items, 0)}
-										open={playNextPopoverOpen}
-										onOpenChange={setPlayNextPopoverOpen}
-									>
-										<Button className="flex w-min items-center space-x-1" variant="default">
-											<PlusIcon />
-											<span>Play Next</span>
-										</Button>
-									</SelectLayersPopover>
-								</div>
+			<span className="flex space-x-4">
+				{serverState?.currentVote && (
+					<VoteState
+						abortVote={abortVote}
+						startVote={startVote}
+						rerunVote={rerunVote}
+						state={serverState.currentVote}
+						parts={serverState.parts}
+					/>
+				)}
+				<DndContext onDragEnd={(evt) => handleDragEnd(evt, userQuery.data!.discordId)}>
+					<Card className="flex w-max flex-col">
+						<div className="flex w-full justify-between p-6 space-x-2">
+							<h3 className={Typography.H3}>Layer Queue</h3>
+							<div className="flex items-center space-x-1">
+								<SelectLayersPopover
+									title="Add to Queue"
+									description="Select layers to add to the queue"
+									baseFilter={basePoolFilterEntity?.filter}
+									selectQueueItems={addQueueItems}
+									open={appendLayersPopoverOpen}
+									onOpenChange={setAppendLayersPopoverOpen}
+								>
+									<Button className="flex w-min items-center space-x-1" variant="default">
+										<PlusIcon />
+										<span>Play After</span>
+									</Button>
+								</SelectLayersPopover>
+								<SelectLayersPopover
+									title="Play Next"
+									description="Select layers to play next"
+									baseFilter={basePoolFilterEntity?.filter}
+									selectQueueItems={(items) => addQueueItems(items, 0)}
+									open={playNextPopoverOpen}
+									onOpenChange={setPlayNextPopoverOpen}
+								>
+									<Button className="flex w-min items-center space-x-1" variant="default">
+										<PlusIcon />
+										<span>Play Next</span>
+									</Button>
+								</SelectLayersPopover>
 							</div>
-							<CardContent className="flex space-x-4">
-								<div>
-									{/* ------- top card ------- */}
-									<Card>
-										{!editing && currentLayer && (
-											<>
+						</div>
+						<CardContent className="flex space-x-4">
+							<div>
+								{/* ------- top card ------- */}
+								<Card>
+									{!editing && serverStatus?.currentLayer && (
+										<>
+											<CardHeader>
+												<CardTitle>Now Playing</CardTitle>
+											</CardHeader>
+											<CardContent>{Helpers.toShortLayerName(serverStatus?.currentLayer)}</CardContent>
+										</>
+									)}
+									{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
+									{editing && (
+										<div className="flex flex-col space-y-2">
+											<Card>
 												<CardHeader>
-													<CardTitle>Now Playing</CardTitle>
+													<CardDescription>
+														{hasMutations(queueMutations) && (
+															<>
+																<h3>Layer Changes pending</h3>
+																<span className="flex space-x-1">
+																	{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
+																	{queueMutations.removed.size > 0 && (
+																		<Badge variant="removed">{queueMutations.removed.size} deleted</Badge>
+																	)}
+																	{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
+																	{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
+																</span>
+															</>
+														)}
+													</CardDescription>
 												</CardHeader>
-												<CardContent>{Helpers.toShortLayerName(currentLayer)}</CardContent>
-											</>
-										)}
-										{!editing && !currentLayer && <p className={Typography.P}>No active layer found</p>}
-										{editing && (
-											<div className="flex flex-col space-y-2">
-												<Card>
-													<CardHeader>
-														<CardTitle>Layer Changes pending</CardTitle>
-														<CardDescription>
-															<span className="flex space-x-1">
-																{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
-																{queueMutations.removed.size > 0 && <Badge variant="removed">{queueMutations.removed.size} deleted</Badge>}
-																{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
-																{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
-															</span>
-														</CardDescription>
-													</CardHeader>
-													<CardContent></CardContent>
-													<CardFooter>
-														<Button onClick={saveLayers}>Save</Button>
-														<Button onClick={reset} variant="secondary">
-															Cancel
-														</Button>
-													</CardFooter>
-												</Card>
-											</div>
-										)}
-									</Card>
+												<CardContent></CardContent>
+												<CardFooter className="space-x-1">
+													<Button onClick={saveLayers}>Save</Button>
+													<Button onClick={resetSDStore} variant="secondary">
+														Cancel
+													</Button>
+												</CardFooter>
+											</Card>
+										</div>
+									)}
+								</Card>
 
-									<h4 className={Typography.H4}>Up Next</h4>
-									<ScrollArea>
-										<ul className="flex w-max flex-col space-y-1">
-											{/* -------- queue items -------- */}
-											{layerQueue?.map((item, index) => {
-												function dispatch(action: QueueItemAction) {
-													if (action.code === 'delete') {
-														setLayerQueue((existing) => {
-															if (!existing) throw new Error('layerQueue is null')
-															const newQueue = existing.filter((_, i) => i !== index)
-															return newQueue
-														})
-														setQueueMutations(
-															produce((draft) => {
-																tryApplyMutation('removed', item.id, draft)
-															})
-														)
-													} else if (action.code === 'edit') {
-														setLayerQueue(
-															produce((draft) => {
-																if (!draft) return
-																for (let i = 0; i < draft.length; i++) {
-																	const existing = draft[i]
-																	if (existing.id === item.id) {
-																		draft[i] = { id: item.id, ...action.item }
-																		break
-																	}
-																}
-																setQueueMutations(produce((draft) => tryApplyMutation('edited', item.id, draft)))
-															})
-														)
-													} else if (action.code === 'add-after') {
-														addItems(action.items, index + 1)
-													} else if (action.code === 'add-before') {
-														addItems(action.items, index)
-													}
-												}
-												return (
-													<QueueItem
-														key={item.layerId + '-' + index}
-														mutationState={toItemMutationState(queueMutations, item.id)}
-														item={item}
-														index={index}
-														isLast={index + 1 === layerQueue.length}
-														dispatch={dispatch}
-													/>
-												)
-											})}
-										</ul>
-									</ScrollArea>
-								</div>
-							</CardContent>
-						</Card>
-					</DndContext>
-					{settingsChanged && (
-						<ServerSettingsPanel
-							ref={settingsPanelRef}
-							settings={settings}
-							setSettings={setSettings}
-							settingsChanged={settingsChanged}
-							backfillLayerQueueItems={backfillLayerQueueItems}
-						/>
-					)}
-				</span>
-			</LayerQueueContext.Provider>
+								<h4 className={Typography.H4}>Up Next</h4>
+								<ScrollArea>
+									<ul className="flex w-max flex-col space-y-1">
+										<LayerQueue
+											layerQueue={serverStateMut?.layerQueue ?? []}
+											queueMutations={queueMutations}
+											dispatchQueueItemAction={(action) => sdStore.set(SDStore.atom.dispatchQueueItemAction, action)}
+										/>
+									</ul>
+								</ScrollArea>
+							</div>
+						</CardContent>
+					</Card>
+				</DndContext>
+				<ServerSettingsPanel ref={settingsPanelRef} />
+			</span>
 		</div>
 	)
 }
 
-function VoteState(props: { state: M.VoteState; rerunVote: () => void; abortVote: () => void; startVote: () => void } & M.UserPart) {
+type JotaiStore = ReturnType<typeof createStore>
+
+// TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
+export function LayerQueue(props: {
+	layerQueue: IdedLayerQueueItem[]
+	queueMutations: ItemMutations
+	dispatchQueueItemAction: (action: QueueItemAction) => void
+}) {
+	const layerQueue = props.layerQueue
+	return (
+		<ul className="flex w-max flex-col space-y-1">
+			{/* -------- queue items -------- */}
+			{layerQueue?.map((item, index) => (
+				<QueueItem
+					key={item.id}
+					mutationState={toItemMutationState(props.queueMutations, item.id)}
+					item={item}
+					index={index}
+					isLast={index + 1 === layerQueue.length}
+					dispatch={props.dispatchQueueItemAction}
+				/>
+			))}
+		</ul>
+	)
+}
+
+function VoteState(
+	props: {
+		state: M.VoteState
+		rerunVote: () => void
+		abortVote: () => void
+		startVote: () => void
+	} & M.UserPart
+) {
 	const openDialog = useAlertDialog()
 	let body: React.ReactNode
 	const state = props.state
@@ -501,12 +682,7 @@ type ServerSettingsPanelHandle = {
 	reset(settings: M.ServerSettings): void
 }
 const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
-	props: {
-		settings: M.ServerSettings
-		setSettings: React.Dispatch<React.SetStateAction<M.ServerSettings>>
-		settingsChanged: M.SettingsChanged
-		backfillLayerQueueItems: () => void
-	},
+	props: object,
 	ref: React.ForwardedRef<ServerSettingsPanelHandle>
 ) {
 	const filtersRes = trpcReact.filters.getFilters.useQuery()
@@ -517,7 +693,14 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	const preferredNumVoteChoicesRef = React.useRef<HTMLInputElement>(null)
 	const preferredNumVoteChoicesId = React.useId()
 
-	const filterOptions = filtersRes.data?.map((f) => ({ value: f.id, label: f.name }))
+	const filterOptions = filtersRes.data?.map((f) => ({
+		value: f.id,
+		label: f.name,
+	}))
+	const serverStateMut = useSDStore().get.serverStateMut()
+	const changedSettings = useSDStore().get.changedSettings()
+
+	const sdStore = useSDStore().store()!
 
 	React.useImperativeHandle(ref, () => ({
 		reset: (settings) => {
@@ -526,85 +709,274 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 		},
 	}))
 
+	// async function backfillLayerQueueItems() {
+	// 	if (!serverStateMut) return
+	// 	const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
+	// 	const numToAdd = serverStateMut.settings.queue.preferredLength - serverStateMut.layerQueue.length
+	// 	const itemType = serverStateMut.settings.queue.generatedItemType
+	// 	if (numToAdd === 0) return serverStateMut.layerQueue
+	// 	if (numToAdd < 0) {
+	// 		let lastTrailingGeneratedIdx = -1
+	// 		for (let i = serverStateMut.layerQueue.length - 1; i >= serverStateMut?.settings.queue.preferredLength; i--) {
+	// 			if (serverStateMut.layerQueue[i].source === 'generated') {
+	// 				lastTrailingGeneratedIdx = i
+	// 			} else break
+	// 		}
+	// 		if (lastTrailingGeneratedIdx === -1) {
+	// 			return
+	// 		}
+	// 		return
+	// 	}
+
+	// 	const seqIdBefore = serverStateMut.layerQueueSeqId
+	// 	const before = deepClone(serverStateMut.layerQueue)
+	// 	const generated = await trpc.server.generateLayerQueueItems.query({
+	// 		numToAdd,
+	// 		numVoteChoices,
+	// 		itemType,
+	// 		baseFilterId: serverStateMut?.settings.queue.poolFilterId,
+	// 	})
+	// 	const seqIdAfter = sdStore.get(SDStore.atom.serverState)!.layerQueueSeqId
+	// 	if (seqIdBefore !== seqIdAfter || !deepEqual(before, serverStateMut.layerQueue)) return
+	// 	sdStore.set(SDStore.atom.addQueueItems, generated)
+	// }
+
 	return (
 		<Card className="">
 			<CardHeader>
 				<CardTitle>Pool Configuration</CardTitle>
 			</CardHeader>
-			<CardContent>
-				<span className="flex flex-col space-y-2">
-					<div className="flex space-x-1">
-						<ComboBox
-							title="Pool Filter"
-							className="flex-grow"
-							options={filterOptions ?? LOADING}
-							value={props.settings.queue.poolFilterId}
-							onSelect={(filter) =>
-								props.setSettings(
-									produce((draft) => {
-										draft.queue.poolFilterId = filter ?? undefined
-									})
-								)
-							}
-						/>
-						{props.settings.queue.poolFilterId && (
-							<a
-								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-								target="_blank"
-								href={AR.link('/filters/:id/edit', props.settings.queue.poolFilterId)}
-							>
-								<Edit />
-							</a>
-						)}
-					</div>
-					<div className="flex flex-col space-y-1">
-						<Label htmlFor={preferredLengthId}>Preferred Queue Length</Label>
-						<Input
-							type="number"
-							ref={preferredLengthRef}
-							min="0"
-							id={preferredLengthId}
-							className="data-[edited=true]:border-edited"
-							data-edited={props.settingsChanged.queue.preferredLength}
-							defaultValue={props.settings.queue.preferredLength}
-							onChange={(e) => {
-								props.setSettings(
-									produce((draft) => {
-										draft.queue.preferredLength = parseInt(e.target.value)
-									})
-								)
-							}}
-						/>
-					</div>
-					<div className="flex flex-col space-y-1">
-						<Label htmlFor={preferredNumVoteChoicesId}>Preferred Number of Choices</Label>
-						<Input
-							type="number"
-							ref={preferredNumVoteChoicesRef}
-							min="0"
-							id={preferredNumVoteChoicesId}
-							className="data-[edited=true]:border-edited"
-							data-edited={props.settingsChanged.queue.preferredNumVoteChoices}
-							defaultValue={props.settings.queue.preferredNumVoteChoices}
-							onChange={(e) => {
-								props.setSettings(
-									produce((draft) => {
-										draft.queue.preferredNumVoteChoices = parseInt(e.target.value)
-									})
-								)
-							}}
-						/>
-					</div>
-				</span>
+			<CardContent className="flex flex-col space-y-2">
+				<div className="flex space-x-1">
+					<ComboBox
+						title="Pool Filter"
+						className="flex-grow"
+						options={filterOptions ?? LOADING}
+						value={serverStateMut?.settings.queue.poolFilterId}
+						onSelect={(filter) =>
+							sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
+								draft!.settings.queue.poolFilterId = filter ?? undefined
+							})
+						}
+					/>
+					{serverStateMut?.settings.queue.poolFilterId && (
+						<a
+							className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+							target="_blank"
+							href={AR.link('/filters/:id/edit', serverStateMut?.settings.queue.poolFilterId)}
+						>
+							<Edit />
+						</a>
+					)}
+				</div>
+				<div className="flex flex-col space-y-1">
+					<Label htmlFor={preferredLengthId}>Preferred Queue Length</Label>
+					<Input
+						type="number"
+						ref={preferredLengthRef}
+						min="0"
+						id={preferredLengthId}
+						className="data-[edited=true]:border-edited"
+						data-edited={changedSettings?.queue.preferredLength}
+						defaultValue={serverStateMut?.settings.queue.preferredLength}
+						onChange={(e) => {
+							SDStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
+								draft!.settings.queue.preferredLength = parseInt(e.target.value)
+							})
+						}}
+					/>
+				</div>
+				<div className="flex flex-col space-y-1">
+					<Label htmlFor={preferredNumVoteChoicesId}>Preferred Number of Choices</Label>
+					<Input
+						type="number"
+						ref={preferredNumVoteChoicesRef}
+						min="0"
+						id={preferredNumVoteChoicesId}
+						className="data-[edited=true]:border-edited"
+						data-edited={changedSettings?.queue.preferredNumVoteChoices}
+						defaultValue={serverStateMut?.settings.queue.preferredNumVoteChoices}
+						onChange={(e) => {
+							sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
+								draft!.settings.queue.preferredNumVoteChoices = parseInt(e.target.value)
+							})
+						}}
+					/>
+				</div>
+				<HistoryFilterPanel />
 			</CardContent>
-			<CardFooter>
-				<Button onClick={() => props.backfillLayerQueueItems()}>Autogenerate queue items</Button>
-			</CardFooter>
+			<CardFooter>{/* <Button onClick={() => props.backfillLayerQueueItems()}>Autogenerate queue items</Button> */}</CardFooter>
 		</Card>
 	)
 })
 
-type QueueItemAction =
+function HistoryFilterPanel(_props: object) {
+	const sdStore = useSDStore().store()!
+	const serverStateMut = useSDStore().get.serverStateMut()
+	const historyFilters = serverStateMut?.historyFilters as EditedHistoryFilterWithId[] | null
+	const historyFilterMutations = useSDStore().get.historyFiltersMutations()
+	const useHistoryFiltersCheckboxId = React.useId()
+
+	return (
+		<div className="flex flex-col space-y-2">
+			<h2>History Filters</h2>
+			<div className="items-top flex space-x-1 items-center">
+				<Checkbox
+					checked={serverStateMut?.historyFiltersEnabled}
+					onCheckedChange={(checked) => {
+						sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
+							if (checked === 'indeterminate') return
+							draft!.historyFiltersEnabled = checked
+						})
+					}}
+					id={useHistoryFiltersCheckboxId}
+				/>
+				<label
+					htmlFor={useHistoryFiltersCheckboxId}
+					className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+				>
+					Enable
+				</label>
+			</div>
+			{historyFilters?.map((filter) => {
+				const mutationState = toItemMutationState(historyFilterMutations, filter.id)
+				return (
+					<HistoryFilter
+						key={filter.id}
+						filter={filter}
+						setFilter={(update) => sdStore.set(SDStore.atom.historyFilterActions.edit, filter.id, update)}
+						removeFilter={() => sdStore.set(SDStore.atom.historyFilterActions.remove, filter.id)}
+						mutationState={mutationState}
+					/>
+				)
+			})}
+			<Button
+				onClick={() =>
+					sdStore.set(SDStore.atom.historyFilterActions.add, {
+						type: 'dynamic',
+						column: 'Layer',
+						excludeFor: { matches: 10 },
+					})
+				}
+			>
+				Add
+			</Button>
+		</div>
+	)
+}
+
+function HistoryFilter(props: {
+	filter: M.HistoryFilterEdited
+	setFilter: React.Dispatch<React.SetStateAction<M.HistoryFilterEdited>>
+	removeFilter: () => void
+	mutationState: ItemMutationState
+}) {
+	const setStaticValuesCheckboxId = React.useId()
+	const usingStaticValues = props.filter.type === 'static'
+	let inner: React.ReactNode
+	switch (props.filter.type) {
+		case 'dynamic': {
+			inner = (
+				<ComboBox
+					title="Column"
+					options={M.COLUMN_TYPE_MAPPINGS.string}
+					value={props.filter.column}
+					onSelect={(column) => {
+						props.setFilter(
+							produce((_filter) => {
+								const filter = _filter as Extract<M.HistoryFilterEdited, { type: 'dynamic' }>
+								filter.column = column as M.LayerColumnKey
+							})
+						)
+					}}
+				/>
+			)
+			break
+		}
+		case 'static': {
+			inner = (
+				<Comparison
+					comp={props.filter.comparison}
+					setComp={(compUpdate) => {
+						props.setFilter(
+							produce((_filter) => {
+								const filter = _filter as Extract<M.HistoryFilterEdited, { type: 'static' }>
+								filter.comparison = typeof compUpdate === 'function' ? compUpdate(filter.comparison) : compUpdate
+							})
+						)
+					}}
+				/>
+			)
+			break
+		}
+		default:
+			assertNever(props.filter)
+	}
+	return (
+		<div
+			className="flex flex-col space-y-2 border rounded p-2 data-[edited=true]:border-edited data-[added=true]:border-added"
+			data-edited={props.mutationState.edited}
+			data-added={props.mutationState.added}
+		>
+			<div className="items-top flex space-x-1 items-center">
+				<Checkbox
+					checked={usingStaticValues}
+					onCheckedChange={(checked) => {
+						props.setFilter((_filter) => {
+							if (checked === 'indeterminate') return _filter
+							if (checked) {
+								const existingFilter = _filter as Extract<M.HistoryFilterEdited, { type: 'dynamic' }>
+								return {
+									...existingFilter,
+									type: 'static',
+									comparison: {
+										column: existingFilter.column,
+									},
+								}
+							} else {
+								const existingFilter = _filter as Extract<M.HistoryFilterEdited, { type: 'static' }>
+								return {
+									...existingFilter,
+									type: 'dynamic',
+									column: existingFilter.comparison.column ?? 'Layer',
+								}
+							}
+						})
+					}}
+					id={setStaticValuesCheckboxId}
+				/>
+				<label
+					htmlFor={setStaticValuesCheckboxId}
+					className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+				>
+					Set static values
+				</label>
+			</div>
+			{inner}
+			<div className="flex space-x-1">
+				<span>
+					<Label htmlFor="excludeFor">Exclude for</Label>
+					<Input
+						type="number"
+						value={props.filter.excludeFor.matches}
+						onChange={(e) => {
+							props.setFilter(
+								produce((filter) => {
+									filter.excludeFor.matches = parseInt(e.target.value)
+								})
+							)
+						}}
+					/>
+				</span>
+			</div>
+			<Button onClick={() => props.removeFilter()} size="icon" variant="ghost">
+				<Minus color="hsl(var(--destructive))" />
+			</Button>
+		</div>
+	)
+}
+
+export type QueueItemAction =
 	| {
 			code: 'edit'
 			item: M.LayerQueueItem
@@ -625,7 +997,7 @@ function getIndexFromQueueItemId(items: IdedLayerQueueItem[], id: number | null)
 type QueueItemProps = {
 	index: number
 	item: IdedLayerQueueItem
-	mutationState: { [key in keyof QueueMutations]: boolean }
+	mutationState: { [key in keyof ItemMutations]: boolean }
 	isLast: boolean
 	dispatch: React.Dispatch<QueueItemAction>
 }
@@ -761,6 +1133,7 @@ function ItemDropdown(props: {
 	} else if (props.item.layerId) {
 		layersInItem.push(M.getMiniLayerFromId(props.item.layerId))
 	}
+	// store which we pass to the locally rendered layer queue for managing a vote layer queue item
 
 	return (
 		<DropdownMenu open={dropdownOpen || !!subDropdownState} onOpenChange={setDropdownOpen}>
@@ -836,14 +1209,15 @@ function QueueItemSeparator(props: {
 }
 
 // -------- Queue Mutations --------
-type QueueMutations = {
+type ItemMutations = {
 	added: Set<number>
 	removed: Set<number>
 	moved: Set<number>
 	edited: Set<number>
 }
 
-type ItemMutationState = { [key in keyof QueueMutations]: boolean }
+type ItemMutationState = { [key in keyof ItemMutations]: boolean }
+type WithId = { id: number }
 
 function getDisplayedMutation(mutation: ItemMutationState) {
 	if (mutation.added) return 'added'
@@ -851,7 +1225,7 @@ function getDisplayedMutation(mutation: ItemMutationState) {
 	if (mutation.moved) return 'moved'
 	if (mutation.edited) return 'edited'
 }
-function tryApplyMutation(type: keyof QueueMutations, id: number, mutations: QueueMutations) {
+function tryApplyMutation(type: keyof ItemMutations, id: number, mutations: ItemMutations) {
 	if (type === 'added') {
 		mutations.added.add(id)
 	}
@@ -872,19 +1246,24 @@ function tryApplyMutation(type: keyof QueueMutations, id: number, mutations: Que
 	}
 }
 
-function getAllMutationIds(mutations: QueueMutations) {
+function getAllMutationIds(mutations: ItemMutations) {
 	return new Set([...mutations.added, ...mutations.removed, ...mutations.moved, ...mutations.edited])
 }
 
-function initMutations(): QueueMutations {
-	return { added: new Set(), removed: new Set(), moved: new Set(), edited: new Set() }
+function initMutations(): ItemMutations {
+	return {
+		added: new Set(),
+		removed: new Set(),
+		moved: new Set(),
+		edited: new Set(),
+	}
 }
 
-function hasMutations(mutations: QueueMutations) {
+function hasMutations(mutations: ItemMutations) {
 	return mutations.added.size > 0 || mutations.removed.size > 0 || mutations.moved.size > 0
 }
 
-function toItemMutationState(mutations: QueueMutations, id: number): ItemMutationState {
+function toItemMutationState(mutations: ItemMutations, id: number): ItemMutationState {
 	return {
 		added: mutations.added.has(id),
 		removed: mutations.removed.has(id),
@@ -893,7 +1272,11 @@ function toItemMutationState(mutations: QueueMutations, id: number): ItemMutatio
 	}
 }
 
-function getNewItemsWithIds(existingItems: IdedLayerQueueItem[], newItems: M.LayerQueueItem[], mutations: QueueMutations) {
+function getNewItemsWithIds(
+	existingItems: IdedLayerQueueItem[],
+	newItems: M.LayerQueueItem[],
+	mutations: ItemMutations
+): IdedLayerQueueItem[] {
 	let ids = existingItems.map((item) => item.id)
 	ids.push(...getAllMutationIds(mutations))
 	ids = Array.from(new Set(ids))
@@ -917,4 +1300,5 @@ function toDraggableItemId(id: number | null) {
 function fromItemId(serialized: string) {
 	return JSON.parse(serialized) as number | null
 }
-type IdedLayerQueueItem = M.LayerQueueItem & { id: number }
+type HasId<T> = T & { id: number }
+type IdedLayerQueueItem = HasId<M.LayerQueueItem>

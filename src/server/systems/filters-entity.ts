@@ -20,7 +20,13 @@ export const filtersRouter = router({
 	createFilter: procedure.input(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
 		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(input))
 		const user = await Sessions.getUser({}, ctx)
-		if (res.code === 'ok') filterMutation$.next({ type: 'add', value: input, username: user.username })
+		if (res.code === 'ok') {
+			filterMutation$.next({
+				type: 'add',
+				value: input,
+				username: user.username,
+			})
+		}
 		return res.code
 	}),
 	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
@@ -32,13 +38,24 @@ export const filtersRouter = router({
 			}
 			const [updateResult] = await tx.update(Schema.filters).set(update).where(eq(Schema.filters.id, id))
 
-			if (updateResult.affectedRows === 0) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Unable to update filter' })
+			if (updateResult.affectedRows === 0) {
+				throw new TRPCError({
+					code: 'INTERNAL_SERVER_ERROR',
+					message: 'Unable to update filter',
+				})
+			}
 			const filter = M.FilterEntitySchema.parse(rawFilter)
 			return { code: 'ok' as const, filter: { ...filter, ...update } }
 		})
 		ctx.log.info(res, 'Updated filter %d', id)
 		const user = await Sessions.getUser({}, ctx)
-		if (res.code === 'ok') filterMutation$.next({ type: 'update', value: res.filter, username: user.username })
+		if (res.code === 'ok') {
+			filterMutation$.next({
+				type: 'update',
+				value: res.filter,
+				username: user.username,
+			})
+		}
 		return res
 	}),
 	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input, ctx }) => {
@@ -55,7 +72,11 @@ export const filtersRouter = router({
 			return res
 		}
 		const user = await Sessions.getUser({}, ctx)
-		filterMutation$.next({ type: 'delete', username: user.username, value: res.filter })
+		filterMutation$.next({
+			type: 'delete',
+			username: user.username,
+			value: res.filter,
+		})
 		return { code: 'ok' }
 	}),
 	watchFilter: procedure.input(M.FilterEntityIdSchema).subscription(async function* watchFilter({

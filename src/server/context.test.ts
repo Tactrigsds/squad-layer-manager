@@ -71,7 +71,12 @@ describe('pushOperation', () => {
 		const opContext = Context.pushOperation(mockContext, 'parent-op')
 		const childContext = Context.pushOperation(opContext, 'child-op')
 
-		expect(opContext.log.bindings().ops).toEqual([{ id: expect.any(String), type: 'parent-op' }])
+		expect(opContext.log.bindings().ops).toEqual([
+			{
+				id: expect.any(String),
+				type: 'parent-op',
+			},
+		])
 
 		expect(childContext.log.bindings().ops).toEqual([
 			{ id: expect.any(String), type: 'parent-op' },

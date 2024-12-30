@@ -39,7 +39,9 @@ export class SquadRconMock implements SM.ISquadRcon {
 	async setup(ctx: C.Log) {
 		const release = await this.saveMtx.acquire()
 		try {
-			const raw = await fs.readFile(ENV.MOCK_SQUAD_SERVER_PATH!, { encoding: 'utf-8' })
+			const raw = await fs.readFile(ENV.MOCK_SQUAD_SERVER_PATH!, {
+				encoding: 'utf-8',
+			})
 			this.state = ServerStateSchema.parse(JSON.parse(raw))
 		} finally {
 			release()
@@ -105,7 +107,9 @@ export class SquadRconMock implements SM.ISquadRcon {
 	}
 
 	async switchTeam(ctx: C.Log, playerId: number | string): Promise<void> {
-		if (typeof playerId === 'string') throw new Error('idk how to handle this yet')
+		if (typeof playerId === 'string') {
+			throw new Error('idk how to handle this yet')
+		}
 		await this.simulateLatency()
 		const player = this.state.players.find((p) => p.playerID === playerId)
 		if (player === undefined) return
@@ -123,7 +127,9 @@ export class SquadRconMock implements SM.ISquadRcon {
 		if (!thisPlayer.isLeader) return
 		const playerSquadIndex = this.state.squads.findIndex((squad) => squad.squadID === playerSquadId)
 		const playerSquad = this.state.squads[playerSquadIndex]
-		if (!playerSquad) throw new Error(`Squad not found for player ${thisPlayer.name}`)
+		if (!playerSquad) {
+			throw new Error(`Squad not found for player ${thisPlayer.name}`)
+		}
 		playerSquad.size--
 		if (playerSquad.size === 0) {
 			this.state.squads.splice(playerSquadIndex, 1)

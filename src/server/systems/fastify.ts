@@ -1,9 +1,10 @@
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
+
 import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
-import { FastifyTRPCPluginOptions, fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
+import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
@@ -16,7 +17,7 @@ import * as Config from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { ENV } from '@/server/env.ts'
-import { Logger, baseLogger } from '@/server/logger.ts'
+import { baseLogger, Logger } from '@/server/logger.ts'
 import * as TrpcRouter from '@/server/router'
 import * as Schema from '@/server/schema.ts'
 import * as Discord from '@/server/systems/discord.ts'
@@ -57,7 +58,12 @@ export async function setupFastify() {
 		// @ts-expect-error lame
 		const ctx = request.ctx
 		ctx.log.info(
-			{ reqUrl: request.url, method: request.method, statusCode: reply.statusCode, contentType: reply.getHeader('content-type') },
+			{
+				reqUrl: request.url,
+				method: request.method,
+				statusCode: reply.statusCode,
+				contentType: reply.getHeader('content-type'),
+			},
 			'request complete'
 		)
 		await ctx[Symbol.asyncDispose]()
@@ -80,10 +86,10 @@ export async function setupFastify() {
 			assertNever(ENV.NODE_ENV)
 	}
 
-	server.register(fastifyFormBody)
+	await server.register(fastifyFormBody)
 
-	server.register(fastifyCookie)
-	server.register(oauthPlugin, {
+	await server.register(fastifyCookie)
+	await server.register(oauthPlugin, {
 		name: 'discordOauth2',
 		credentials: {
 			client: {
@@ -93,6 +99,7 @@ export async function setupFastify() {
 			auth: oauthPlugin.DISCORD_CONFIGURATION,
 		},
 		startRedirectPath: AR.exists('/login'),
+
 		callbackUri: `${ENV.ORIGIN}${AR.exists('/login/callback')}`,
 		scope: ['identify'],
 	})
@@ -100,9 +107,14 @@ export async function setupFastify() {
 	server.get(AR.exists('/login/callback'), async function (req, reply) {
 		// @ts-expect-error lame
 		const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
-		const token = tokenResult.token as { access_token: string; token_type: string }
+		const token = tokenResult.token as {
+			access_token: string
+			token_type: string
+		}
 		const discordUser = await Discord.getOauthUser(token)
-		if (!discordUser) return reply.status(401).send('Failed to get user info from Discord')
+		if (!discordUser) {
+			return reply.status(401).send('Failed to get user info from Discord')
+		}
 		const ctx = DB.addPooledDb({ log: req.log as Logger })
 		const userHasRoleRes = await Discord.checkDiscordUserAuthorization(ctx, discordUser.id)
 		switch (userHasRoleRes.code) {
@@ -124,15 +136,27 @@ export async function setupFastify() {
 		await ctx.db().transaction(async (tx) => {
 			const [user] = await tx.select().from(Schema.users).where(eq(Schema.users.discordId, discordUser.id)).for('update')
 			if (!user) {
-				await tx.insert(Schema.users).values({ discordId: discordUser.id, username: discordUser.username, avatar: discordUser.avatar })
+				await tx.insert(Schema.users).values({
+					discordId: discordUser.id,
+					username: discordUser.username,
+					avatar: discordUser.avatar,
+				})
 			} else {
 				await tx.update(Schema.users).set({ username: discordUser.username }).where(eq(Schema.users.discordId, user.discordId))
 			}
-			await tx
-				.insert(Schema.sessions)
-				.values({ id: sessionId, userId: discordUser.id, expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE) })
+			await tx.insert(Schema.sessions).values({
+				id: sessionId,
+				userId: discordUser.id,
+				expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE),
+			})
 		})
-		reply.cookie('sessionId', sessionId, { path: '/', maxAge: Sessions.SESSION_MAX_AGE, httpOnly: true }).redirect('/')
+		reply
+			.cookie('sessionId', sessionId, {
+				path: '/',
+				maxAge: Sessions.SESSION_MAX_AGE,
+				httpOnly: true,
+			})
+			.redirect('/')
 	})
 
 	server.post(AR.exists('/logout'), async function (req, res) {
@@ -144,8 +168,8 @@ export async function setupFastify() {
 		return await Sessions.logout(authRes.ctx)
 	})
 
-	server.register(ws)
-	server.register(fastifyTRPCPlugin, {
+	await server.register(ws)
+	await server.register(fastifyTRPCPlugin, {
 		prefix: AR.exists('/trpc'),
 		useWSS: true,
 		keepAlive: {

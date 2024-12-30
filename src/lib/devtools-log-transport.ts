@@ -294,7 +294,12 @@ globalThis.OPS = {
 			}
 
 			if (!stats.byType[op.type]) {
-				stats.byType[op.type] = { total: 0, completed: 0, failed: 0, inProgress: 0 }
+				stats.byType[op.type] = {
+					total: 0,
+					completed: 0,
+					failed: 0,
+					inProgress: 0,
+				}
 			}
 			stats.byType[op.type].total++
 			if (op.completed) {

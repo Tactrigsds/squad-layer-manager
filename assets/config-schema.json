@@ -1,10 +1,10 @@
 {
   "type": "object",
   "properties": {
-    "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
-    "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
-    "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
-    "voteDurationSeconds": {"type": "number", "exclusiveMinimum": 0},
+    "serverId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "serverDisplayName": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "commandPrefix": { "type": "string", "pattern": "^\\S+$" },
+    "voteDurationSeconds": { "type": "number", "exclusiveMinimum": 0 },
     "minValidVotes": {
       "type": "number",
       "exclusiveMinimum": 0,
@@ -18,7 +18,7 @@
           "properties": {
             "strings": {
               "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"}
+              "items": { "$ref": "#/properties/commandPrefix" }
             },
             "allowedChats": {
               "type": "array",
@@ -32,7 +32,7 @@
           "required": ["strings", "allowedChats"],
           "additionalProperties": false
         },
-        "showNext": {"$ref": "#/properties/commands/properties/startVote"}
+        "showNext": { "$ref": "#/properties/commands/properties/startVote" }
       },
       "required": ["startVote", "showNext"],
       "additionalProperties": false
@@ -42,8 +42,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "type": {"type": "string", "enum": ["remote", "local", "ftp"]},
-          "source": {"type": "string"}
+          "type": { "type": "string", "enum": ["remote", "local", "ftp"] },
+          "source": { "type": "string" }
         },
         "required": ["type", "source"],
         "additionalProperties": false
@@ -54,15 +54,15 @@
       "items": {
         "type": "object",
         "properties": {
-          "serverId": {"type": "string", "pattern": "^\\d+$"},
-          "roleId": {"type": "string", "pattern": "^\\d+$"}
+          "serverId": { "type": "string", "pattern": "^\\d+$" },
+          "roleId": { "type": "string", "pattern": "^\\d+$" }
         },
         "required": ["serverId", "roleId"],
         "additionalProperties": false
       },
       "minItems": 1
     },
-    "$schema": {"type": "string"}
+    "$schema": { "type": "string" }
   },
   "required": [
     "serverId",

@@ -17,10 +17,20 @@ export function setupMockSquadRouter() {
 			server.connectPlayer(input)
 		}),
 		createSquad: procedure
-			.input(z.object({ squadName: SquadSchema.shape.squadName, creatorName: SquadSchema.shape.creatorName }))
+			.input(
+				z.object({
+					squadName: SquadSchema.shape.squadName,
+					creatorName: SquadSchema.shape.creatorName,
+				})
+			)
 			.mutation(async ({ input }) => {
 				const player = server.serverState.players.find((p) => p.name === input.creatorName)
-				if (!player) throw new TRPCError({ code: 'BAD_REQUEST', message: `player with name ${input.creatorName} doesn't exist` })
+				if (!player) {
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: `player with name ${input.creatorName} doesn't exist`,
+					})
+				}
 				const squadId = server.serverState.squads.length + 1
 				await server.createSquad({
 					...input,
@@ -57,9 +67,17 @@ export function setupMockSquadRouter() {
 		warn: procedure.input(z.object({ anyID: z.string(), message: z.string() })).mutation(({ input }) => {
 			server.warn(input.anyID, input.message)
 		}),
-		ban: procedure.input(z.object({ anyID: z.string(), banLength: z.string(), message: z.string() })).mutation(({ input }) => {
-			server.ban(input.anyID, input.banLength, input.message)
-		}),
+		ban: procedure
+			.input(
+				z.object({
+					anyID: z.string(),
+					banLength: z.string(),
+					message: z.string(),
+				})
+			)
+			.mutation(({ input }) => {
+				server.ban(input.anyID, input.banLength, input.message)
+			}),
 		switchTeam: procedure.input(z.number()).mutation(({ input }) => {
 			server.switchTeam(input)
 		}),

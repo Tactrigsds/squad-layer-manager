@@ -1,4 +1,4 @@
-import { int, varchar, index, primaryKey, datetime, tinyint, mysqlSchema } from 'drizzle-orm/mysql-core'
+import { datetime, index, int, mysqlSchema, primaryKey, tinyint, varchar } from 'drizzle-orm/mysql-core'
 
 const schema = mysqlSchema('dblog')
 export const dbLogMatches = schema.table(
@@ -30,7 +30,10 @@ export const dbLogMatches = schema.table(
 	(table) => {
 		return {
 			server: index('server').on(table.server),
-			dbLogMatchesId: primaryKey({ columns: [table.id], name: 'DBLog_Matches_id' }),
+			dbLogMatchesId: primaryKey({
+				columns: [table.id],
+				name: 'DBLog_Matches_id',
+			}),
 		}
 	}
 )

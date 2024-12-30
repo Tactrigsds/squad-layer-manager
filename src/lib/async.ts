@@ -1,15 +1,15 @@
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
 import {
-	EMPTY,
-	Observable,
-	OperatorFunction,
-	Subject,
-	Subscription,
 	asapScheduler,
 	concat,
 	distinctUntilChanged,
+	EMPTY,
+	Observable,
 	observeOn,
+	OperatorFunction,
+	Subject,
+	Subscription,
 	tap,
 } from 'rxjs'
 
@@ -38,7 +38,10 @@ export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
 	console.trace('sleepUntil timed out')
 }
 
-type Deferred<T> = Promise<T> & { resolve: (value: T | PromiseLike<T>) => void; reject: (reason?: any) => void }
+type Deferred<T> = Promise<T> & {
+	resolve: (value: T | PromiseLike<T>) => void
+	reject: (reason?: any) => void
+}
 
 function defer<T>(): Deferred<T> {
 	const properties = {},
@@ -110,7 +113,9 @@ export function cancellableTimeout(ms: number): Observable<void> {
 export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
 	const entries = Object.entries(obj)
 	const resolvedEntries = await Promise.all(entries.map(async ([key, value]) => [key, await value]))
-	return Object.fromEntries(resolvedEntries) as { [K in keyof T]: Awaited<T[K]> }
+	return Object.fromEntries(resolvedEntries) as {
+		[K in keyof T]: Awaited<T[K]>
+	}
 }
 
 type AsyncResourceOpts = {
@@ -253,7 +258,9 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 				distinctDeepEquals(),
 				tap({
 					subscribe: () => {
-						if (this.observingTTLs.length > 0 && this.refetchSub === null) setupRefetches()
+						if (this.observingTTLs.length > 0 && this.refetchSub === null) {
+							setupRefetches()
+						}
 						this.get(ctx, { ttl: opts.ttl })
 					},
 					finalize: () => {

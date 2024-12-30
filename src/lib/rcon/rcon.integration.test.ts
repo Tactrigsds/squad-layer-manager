@@ -16,7 +16,11 @@ beforeAll(async () => {
 	setupEnv()
 	await setupLogger()
 	baseCtx = { log: baseLogger }
-	const config = { host: ENV.RCON_HOST, port: ENV.RCON_PORT, password: ENV.RCON_PASSWORD }
+	const config = {
+		host: ENV.RCON_HOST,
+		port: ENV.RCON_PORT,
+		password: ENV.RCON_PASSWORD,
+	}
 	rcon = new Rcon(config)
 	await rcon.connect(baseCtx)
 	squadRcon = new SquadRcon(baseCtx, rcon)
@@ -64,7 +68,9 @@ test('can set next layer', async () => {
 })
 
 test('can get server status', async () => {
-	const ctx = C.includeLogProperties(baseCtx, { test: 'can get server status' })
+	const ctx = C.includeLogProperties(baseCtx, {
+		test: 'can get server status',
+	})
 	const status = await squadRcon.serverStatus.get(ctx)
 	ctx.log.info('server status %o', status)
 	expect(status).toBeDefined()

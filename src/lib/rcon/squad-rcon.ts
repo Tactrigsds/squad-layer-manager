@@ -19,7 +19,9 @@ export default class SquadRcon {
 		ctx: C.Log,
 		private rcon: Rcon
 	) {
-		if (!rcon.connected) throw new Error('Rcon must be connected before creating SquadRcon instance')
+		if (!rcon.connected) {
+			throw new Error('Rcon must be connected before creating SquadRcon instance')
+		}
 		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx))
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx))
 		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx))

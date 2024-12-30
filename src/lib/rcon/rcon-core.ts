@@ -16,7 +16,12 @@ export default class Rcon extends EventEmitter {
 	private password: string
 	private client: net.Socket | null
 	private stream: Buffer
-	private type: { auth: number; command: number; response: number; server: number }
+	private type: {
+		auth: number
+		command: number
+		response: number
+		server: number
+	}
 	private soh: { size: number; id: number; type: number; body: string }
 	public connected: boolean
 	private autoReconnect: boolean
@@ -54,7 +59,9 @@ export default class Rcon extends EventEmitter {
 	async connect(ctx: C.Log): Promise<void> {
 		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve, reject) => {
-			if (this.client && this.connected && !this.client.destroyed) return reject(new Error('Rcon.connect() Rcon already connected.'))
+			if (this.client && this.connected && !this.client.destroyed) {
+				return reject(new Error('Rcon.connect() Rcon already connected.'))
+			}
 			this.removeAllListeners('server')
 			this.removeAllListeners('auth')
 			this.once('auth', () => {
@@ -94,13 +101,18 @@ export default class Rcon extends EventEmitter {
 	async execute(_ctx: C.Log, body: string): Promise<any> {
 		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute')
 		ctx.log.debug(`Executing %s `, body)
-		if (typeof body !== 'string') throw new Error('Rcon.execute() body must be a string.')
+		if (typeof body !== 'string') {
+			throw new Error('Rcon.execute() body must be a string.')
+		}
 		return new Promise((resolve, reject) => {
 			if (!this.connected) return reject(new Error('Rcon not connected.'))
-			if (!this.client?.writable) return reject(new Error('Unable to write to node:net socket.'))
+			if (!this.client?.writable) {
+				return reject(new Error('Unable to write to node:net socket.'))
+			}
 			const length = Buffer.from(body).length
-			if (length > 4152) ctx.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
-			else {
+			if (length > 4152) {
+				ctx.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
+			} else {
 				const outputData = (data: any) => {
 					clearTimeout(timeOut)
 					resolve(data)
@@ -157,7 +169,9 @@ export default class Rcon extends EventEmitter {
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode(ctx)
 			if (!packet) break
-			else ctx.log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+			else {
+				ctx.log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+			}
 			if (packet.type === this.type.response) this.#onResponse(ctx, packet)
 			else if (packet.type === this.type.server) this.emit('server', packet)
 			else if (packet.type === this.type.command) this.emit('auth')

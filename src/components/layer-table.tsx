@@ -1,16 +1,16 @@
 import {
 	ColumnDef,
+	createColumnHelper,
+	flexRender,
+	getCoreRowModel,
+	getSortedRowModel,
 	OnChangeFn,
 	PaginationState,
 	Row,
 	RowSelectionState,
 	SortingState,
-	VisibilityState,
-	createColumnHelper,
-	flexRender,
-	getCoreRowModel,
-	getSortedRowModel,
 	useReactTable,
+	VisibilityState,
 } from '@tanstack/react-table'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -142,7 +142,11 @@ const DEFAULT_VISIBLE_COLUMNS = [
 ] as M.LayerColumnKey[]
 
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
-const DEFAULT_SORT: LayersQuery['sort'] = { type: 'column', sortBy: 'Asymmetry Score', sortDirection: 'ASC' }
+const DEFAULT_SORT: LayersQuery['sort'] = {
+	type: 'column',
+	sortBy: 'Asymmetry Score',
+	sortDirection: 'ASC',
+}
 
 export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: number; setPageIndex: (num: number) => void }) {
 	const { pageIndex, setPageIndex } = props
@@ -150,8 +154,9 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 	const [sortingState, _setSortingState] = useState<SortingState>([])
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
-			if (typeof sortingUpdate === 'function') return sortingUpdate(sortingState)
-			else return sortingState
+			if (typeof sortingUpdate === 'function') {
+				return sortingUpdate(sortingState)
+			} else return sortingState
 		})
 		setRandomize(false)
 		setPageIndex(0)
@@ -218,7 +223,11 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		sort = { type: 'random', seed: seed! }
 	} else if (sortingState.length > 0) {
 		const { id, desc } = sortingState[0]
-		sort = { type: 'column', sortBy: id as (typeof M.COLUMN_KEYS_NON_COLLECTION)[number], sortDirection: desc ? 'DESC' : 'ASC' }
+		sort = {
+			type: 'column',
+			sortBy: id as (typeof M.COLUMN_KEYS_NON_COLLECTION)[number],
+			sortDirection: desc ? 'DESC' : 'ASC',
+		}
 	}
 
 	const { data: dataRaw } = trpcReact.getLayers.useQuery({

@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server'
 import { aliasedTable, SQL, sql } from 'drizzle-orm'
+import superjson from 'superjson'
 import * as E from 'drizzle-orm/expressions'
 import { z } from 'zod'
 
@@ -9,8 +10,6 @@ import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
 import * as SquadjsSchema from '@/server/schema-squadjs'
 import { assertNever } from '@/lib/typeGuards'
-import { objKeys } from '@/lib/object'
-import { SubscriptionStatus } from 'discord.js'
 
 export const LayersQuerySchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),
@@ -34,6 +33,7 @@ export const LayersQuerySchema = z.object({
 	historyFilters: z.array(M.HistoryFilterSchema).optional(),
 	queuedLayerIds: z.array(M.LayerIdSchema).optional(),
 })
+export const historyFiltersCache = new Map<string, M.FilterNode>()
 
 export type LayersQuery = z.infer<typeof LayersQuerySchema>
 
@@ -42,12 +42,25 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 	await using opCtx = C.pushOperation(baseCtx, 'layers-query:run')
 
 	let whereCondition = sql`1=1`
+	let filter = input.filter
 
-	if (input.filter) {
-		whereCondition = (await getWhereFilterConditions(input.filter, [], opCtx)) ?? whereCondition
-	}
 	if (input.historyFilters) {
-		whereCondition = E.and(whereCondition, await getHistoryFilterConditions(opCtx, input.historyFilters, input.queuedLayerIds ?? []))
+		let historyFilter: M.FilterNode
+		if (historyFiltersCache.has(superjson.stringify(input.historyFilters))) {
+			historyFilter = historyFiltersCache.get(superjson.stringify(input.historyFilters))!
+		} else {
+			historyFilter = await getHistoryFilter(opCtx, input.historyFilters, input.queuedLayerIds ?? [])
+		}
+
+		if (filter) {
+			filter = FB.and([filter, historyFilter])
+		} else {
+			filter = historyFilter
+		}
+	}
+
+	if (filter) {
+		whereCondition = (await getWhereFilterConditions(filter, [], opCtx)) ?? whereCondition
 	}
 
 	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
@@ -92,58 +105,60 @@ export async function getWhereFilterConditions(
 	node: M.FilterNode,
 	reentrantFilterIds: string[],
 	ctx: C.Db & C.Log,
-	schema: typeof Schema.layers = Schema.layers,
-	substitutedTable?: typeof Schema.layers
-): Promise<SQL | undefined> {
+	schema: typeof Schema.layers = Schema.layers
+): Promise<SQL> {
 	let res: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
 		switch (comp.code) {
 			case 'has': {
 				if (comp.values.length === 0) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' cannot be empty` })
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: `value for ${comp.column} in 'has' cannot be empty`,
+					})
 				}
 				if (comp.values.length > 2) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' must be less than 3 values` })
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: `value for ${comp.column} in 'has' must be less than 3 values`,
+					})
 				}
 				if (comp.column !== 'SubFacMatchup' && new Set(comp.values).size !== comp.values.length) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: `value for ${comp.column} in 'has' has duplicates` })
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: `value for ${comp.column} in 'has' has duplicates`,
+					})
 				}
 
 				if (comp.column === 'FactionMatchup') {
-					const values = substitutedTable ? [substitutedTable?.Faction_1, substitutedTable?.Faction_2] : comp.values
+					const values = comp.values as string[]
 					const conditions: SQL[] = []
 					for (const faction of values) {
 						conditions.push(hasTeam(faction, null, schema))
 					}
-					res = E.and(...conditions)
+					res = E.and(...conditions)!
 					break
 				}
 				if (comp.column === 'FullMatchup') {
-					const factionValues = substitutedTable
-						? [
-								{ faction: substitutedTable?.Faction_1, subfac: substitutedTable.SubFac_1 },
-								{ faction: substitutedTable?.Faction_2, subfac: substitutedTable.SubFac_2 },
-							].slice(0, comp.values.length)
-						: comp.values.map(M.parseTeamString)
+					const factionValues = comp.values.map(M.parseTeamString)
 					const conditions: SQL[] = []
 					for (const { faction, subfac } of factionValues) {
 						conditions.push(hasTeam(faction, subfac as M.Subfaction, schema))
 					}
-					res = E.and(...conditions)
+					res = E.and(...conditions)!
 					break
 				}
 				if (comp.column === 'SubFacMatchup') {
-					const values = substitutedTable ? [substitutedTable?.SubFac_1, substitutedTable?.SubFac_2].slice(comp.values.length) : comp.values
-					if (values[0] === values[1]) {
+					if (comp.values[0] === comp.values[1]) {
 						const value = comp.values[0] as M.Subfaction
-						return E.and(E.eq(schema.SubFac_1, value), E.eq(schema.SubFac_2, value))
+						return E.and(E.eq(schema.SubFac_1, value), E.eq(schema.SubFac_2, value))!
 					}
 					const conditions: SQL[] = []
-					for (const subfaction of values) {
+					for (const subfaction of comp.values) {
 						conditions.push(hasTeam(null, subfaction as M.Subfaction, schema))
 					}
-					res = E.and(...conditions)
+					res = E.and(...conditions)!
 					break
 				}
 				throw new TRPCError({
@@ -154,45 +169,54 @@ export async function getWhereFilterConditions(
 			case 'eq': {
 				const column = schema[comp.column]
 				// @ts-expect-error idc
-				res = E.eq(column, substitutedTable[comp.column] ?? comp.value)
+				res = E.eq(column, comp.value)!
 				break
 			}
 			case 'in': {
 				const column = schema[comp.column]
 				// @ts-expect-error idc
-				res = E.inArray(column, substitutedTable[comp.column] ?? comp.values)
+				res = E.inArray(column, comp.values)!
 				break
 			}
 			case 'like': {
 				const column = schema[comp.column]
-				if (substitutedTable) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: 'Substituted table in like filter is not supported' })
+				if (schema) {
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: 'Substituted table in like filter is not supported',
+					})
 				}
-				res = E.like(column, comp.value)
+				res = E.like(column, comp.value)!
 				break
 			}
 			case 'gt': {
 				const column = schema[comp.column]
-				if (substitutedTable) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: 'Substituted table in gt filter is not supported' })
+				if (schema) {
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: 'Substituted table in gt filter is not supported',
+					})
 				}
-				res = E.gt(column, comp.value)
+				res = E.gt(column, comp.value)!
 				break
 			}
 			case 'lt': {
 				const column = schema[comp.column]
-				if (substitutedTable) {
-					throw new TRPCError({ code: 'BAD_REQUEST', message: 'Substituted table in lt filter is not supported' })
+				if (schema) {
+					throw new TRPCError({
+						code: 'BAD_REQUEST',
+						message: 'Substituted table in lt filter is not supported',
+					})
 				}
-				res = E.lt(column, comp.value)
+				res = E.lt(column, comp.value)!
 				break
 			}
 			case 'inrange': {
 				const column = schema[comp.column]
-				if (substitutedTable) {
+				if (schema) {
 					ctx.log.warn('Substituted table in inrange filter. This is not supported')
 				}
-				res = E.between(column, comp.min, comp.max)
+				res = E.between(column, comp.min, comp.max)!
 				break
 			}
 			default:
@@ -202,12 +226,18 @@ export async function getWhereFilterConditions(
 	if (node.type === 'apply-filter') {
 		if (reentrantFilterIds.includes(node.filterId)) {
 			// TODO too lazy to return an error here right now
-			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Filter mutually is recursive via filter: ' + node.filterId })
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Filter mutually is recursive via filter: ' + node.filterId,
+			})
 		}
 		const entity = await getFilterEntity(node.filterId, ctx)
 		if (!entity) {
 			// TODO too lazy to return an error here right now
-			throw new TRPCError({ code: 'BAD_REQUEST', message: `Filter ${node.filterId} Doesn't exist` })
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: `Filter ${node.filterId} Doesn't exist`,
+			})
 		}
 		const filter = M.FilterNodeSchema.parse(entity.filter)
 		res = await getWhereFilterConditions(filter, [...reentrantFilterIds, node.filterId], ctx, schema)
@@ -216,14 +246,14 @@ export async function getWhereFilterConditions(
 	if (M.isBlockNode(node)) {
 		const childConditions = await Promise.all(node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx, schema)))
 		if (node.type === 'and') {
-			res = E.and(...childConditions)
+			res = E.and(...childConditions)!
 		} else if (node.type === 'or') {
-			res = E.or(...childConditions)
+			res = E.or(...childConditions)!
 		}
 	}
 
-	if (res && node.neg) return E.not(res)
-	return res
+	if (res && node.neg) return E.not(res)!
+	return res!
 }
 
 function hasTeam(
@@ -256,80 +286,148 @@ async function getFilterEntity(filterId: string, ctx: C.Db) {
 
 // }
 
-export async function getHistoryFilterConditions(
-	ctx: C.Db & C.Log,
-	filteredLayerTable: typeof Schema.layers,
-	historyFilters: M.HistoryFilter[],
-	layerQueueIds: M.LayerId[]
-) {
-	if (historyFilters.length === 0) {
-		return sql`1=1`
-	}
-	historyFilters = [...historyFilters].sort((a, b) => b.excludeFor.matches - a.excludeFor.matches)
+export async function getHistoryFilter(_ctx: C.Db & C.Log, historyFilters: M.HistoryFilter[], queuedLayerIds: M.LayerId[]) {
+	await using ctx = C.pushOperation(_ctx, 'layers-query:get-history-filter-node')
+	const sortedHistoryFilters = historyFilters.sort((a, b) => a.excludeFor.matches - b.excludeFor.matches)
 
-	const historyMatches = ctx
-		.db()
-		.select({
-			ord: sql`ROW_NUMBER() OVER()`.as('ord'),
-			...SquadjsSchema.dbLogMatches,
-		})
-		.from(SquadjsSchema.dbLogMatches)
-		.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
-		.limit(historyFilters[0].excludeFor.matches - layerQueueIds.length)
-		.as('applicable-matches')
+	const comparisons: M.FilterNode[] = []
 
-	const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
-	const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
-	const layersTable = aliasedTable(Schema.layers, 'queued-layers')
+	for (const filter of sortedHistoryFilters) {
+		if (!comparisons) {
+			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid filter' })
+		}
+		const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
+		const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
 
-	const historyFilterConditions = []
-	for (const historyFilter of historyFilters) {
-		const node = FB.comp(historyFilter.comparison)
-		const sql = await getWhereFilterConditions(node, [], ctx, layersTable)
-		const historyCOndition = E.and(E.lte(historyMatches.ord, Math.max(historyFilter.excludeFor.matches - layerQueueIds.length, 0)), sql)
-		historyFilterConditions.push(historyCOndition)
-	}
-	const historyFilterCondition = E.or(...historyFilterConditions)
-
-	const matchedFromHistoryQuery = ctx
-		.db()
-		.select({ id: layersTable.id })
-		.from(historyMatches)
-		.leftJoin(
-			subfacteam1,
-			E.and(E.eq(subfacteam1.fullName, historyMatches.subFactionTeam1), E.eq(subfacteam1.factionShortName, historyMatches.team1Short))
-		)
-		.leftJoin(
-			subfacteam2,
-			E.and(E.eq(subfacteam2.fullName, historyMatches.subFactionTeam2), E.eq(subfacteam2.factionShortName, historyMatches.team2Short))
-		)
-		.leftJoin(
-			layersTable,
-			E.and(
-				E.eq(layersTable.Layer, historyMatches.layerClassname),
-				E.eq(layersTable.Faction_1, historyMatches.team1Short),
-				E.eq(layersTable.Faction_2, historyMatches.team2Short),
-				E.eq(subfacteam1.shortName, layersTable.SubFac_1),
-				E.eq(subfacteam2.shortName, layersTable.SubFac_2)
+		const numFromHistory = filter.excludeFor.matches - queuedLayerIds.length
+		const _sqApplicable = ctx
+			.db()
+			//@ts-expect-error this works trust me
+			.select(Schema.layers)
+			.from(SquadjsSchema.dbLogMatches)
+			.leftJoin(subfacteam1, E.eq(subfacteam1.fullName, SquadjsSchema.dbLogMatches.subFactionTeam1))
+			.leftJoin(subfacteam2, E.eq(subfacteam2.fullName, SquadjsSchema.dbLogMatches.subFactionTeam2))
+			.leftJoin(
+				Schema.layers,
+				E.and(
+					E.eq(Schema.layers.Layer, SquadjsSchema.dbLogMatches.layerClassname),
+					E.eq(subfacteam1.shortName, Schema.layers.SubFac_1),
+					E.eq(subfacteam2.shortName, Schema.layers.SubFac_2),
+					E.eq(Schema.layers.Faction_1, SquadjsSchema.dbLogMatches.team1Short),
+					E.eq(Schema.layers.Faction_2, SquadjsSchema.dbLogMatches.team2Short)
+				)
 			)
-		)
-		.where(E.and(E.isNotNull(layersTable.id), historyFilterCondition))
+			.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
+			.limit(numFromHistory)
+			.as('applicable-matches')
 
-	const queueConditions: SQL[] = []
+		const applicableHistoryLayerIds = ctx.db().select({ id: _sqApplicable.id }).from(_sqApplicable)
 
-	for (const filter of historyFilters) {
-		const node = FB.comp(filter.comparison)
-		const lastNItems = layerQueueIds.slice(0, filter.excludeFor.matches)
-		const condition = E.notExists(
-			ctx
-				.db()
-				.select()
-				.from(Schema.layers)
-				.where(E.and(E.inArray(Schema.layers.id, lastNItems), await getWhereFilterConditions(node, [], ctx, Schema.layers)))
+		const numFromQueue = Math.min(filter.excludeFor.matches, queuedLayerIds.length)
+		queuedLayerIds = queuedLayerIds.slice(0, numFromQueue)
+		const applicableLayers = ctx
+			.db()
+			.select()
+			.from(Schema.layers)
+			.where(E.or(E.inArray(Schema.layers.id, queuedLayerIds), E.inArray(Schema.layers.id, applicableHistoryLayerIds)))
+			.as('applicable-layers')
+
+		ctx.tasks.push(
+			(async () => {
+				switch (filter.type) {
+					case 'dynamic': {
+						let selectedCols: M.LayerColumnKey[] = []
+						if (filter.column === 'FullMatchup') {
+							selectedCols = ['Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
+						} else if (filter.column === 'FactionMatchup') {
+							selectedCols = ['Faction_1', 'Faction_2']
+						} else if (filter.column === 'SubFacMatchup') {
+							selectedCols = ['SubFac_1', 'SubFac_2']
+						} else {
+							selectedCols = [filter.column]
+						}
+						const selected = Object.fromEntries(selectedCols.map((col) => [col, applicableLayers[col]]))
+						const applicableValues = await ctx.db().select(selected).from(applicableLayers)
+						if (M.isColType(filter.column, 'string')) {
+							comparisons.push(
+								FB.comp(
+									FB.inValues(
+										filter.column,
+										//@ts-expect-error this works trust me
+										[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
+									),
+									{ neg: true }
+								)
+							)
+						} else {
+							throw new Error('not implemented')
+						}
+						break
+
+						// todo match on the column type instead
+						// 	if (filter.comparison.code === 'eq') {
+						// 		if (!M.isColType(filter.column, 'string')) throw new Error('invalid column type for eq filter')
+						// 		comparisons.push(
+						// 			FB.comp(
+						// 				FB.inValues(
+						// 					filter.column,
+						// 					//@ts-expect-error this works trust me
+						// 					[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
+						// 				),
+						// 				{ neg: true }
+						// 			)
+						// 		)
+						// 	} else if (filter.comparison.code === 'has') {
+						// 		let values: string[][]
+						// 		if (filter.substitutedColumn === 'FullMatchup') {
+						// 			values = applicableValues.map((row) => [
+						// 				M.getLayerTeamString(row.Faction_1, row.SubFac_1),
+						// 				M.getLayerTeamString(row.Faction_2, row.SubFac_2),
+						// 			])
+						// 		} else if (filter.substitutedColumn === 'FactionMatchup') {
+						// 			values = applicableValues.map((row) => [row.Faction_1, row.Faction_2])
+						// 		} else if (filter.substitutedColumn === 'SubFacMatchup') {
+						// 			values = applicableValues.map((row) => [row.SubFac_1, row.SubFac_2])
+						// 		} else {
+						// 			throw new Error('Invalid column for has filter')
+						// 		}
+
+						// 		for (const value of values) {
+						// 			comparisons.push(FB.comp(FB.hasAll(filter.substitutedColumn, value), { neg: true }))
+						// 		}
+						// 	} else {
+						// 		throw new Error('Unsupported comparison type for substituted column')
+						// 	}
+					}
+					case 'static': {
+						const condition = await getWhereFilterConditions(
+							FB.comp(filter.comparison),
+							[],
+							ctx,
+							applicableLayers as unknown as typeof Schema.layers
+						)
+						const query = ctx
+							.db()
+							.select({ count: sql<number>`count(*)` })
+							.from(applicableLayers)
+							.where(condition)
+
+						const [{ count }] = await query
+
+						if (count !== 0) {
+							comparisons.push(FB.comp(filter.comparison, { neg: true }))
+						}
+						break
+					}
+					default:
+						assertNever(filter)
+				}
+			})()
 		)
-		queueConditions.push(condition)
 	}
-	const queueCondition = E.and(...queueConditions)
 
-	return E.and(E.notInArray(filteredLayerTable.id, matchedFromHistoryQuery), queueCondition)
+	await Promise.all(ctx.tasks)
+	return FB.and(comparisons)
 }
+
+export function setupLayersQuerySystem() {}
