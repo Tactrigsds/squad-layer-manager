@@ -25,6 +25,7 @@ import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
+import { useLayersQuery } from '@/hooks/use-queries.ts'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -574,11 +575,12 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const valuesRes = trpcReact.getUniqueValues.useQuery({
-		columns: [props.column],
+	const valuesRes = useLayersQuery({
+		groupBy: [props.column],
 		filter: props.autocompleteFilter,
+		pageSize: 200,
 	})
-	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
+	const options = valuesRes.isSuccess ? valuesRes.data.layers.map((r) => r[props.column]) : LOADING
 	return (
 		<ComboBox
 			ref={ref}
@@ -638,9 +640,9 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 		filter = buildLikeFilter(column, debouncedInput)
 	}
 
-	const valuesRes = trpcReact.getUniqueValues.useQuery(
+	const valuesRes = useLayersQuery(
 		{
-			columns: [column],
+			groupBy: [column],
 			filter,
 		},
 		{
@@ -650,7 +652,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
 	else if (debouncedInput && valuesRes.isSuccess) {
-		options = valuesRes.data!.map((v) => v[column]) as T[]
+		options = valuesRes.data!.layers.map((v) => v[column]) as T[]
 	}
 
 	return {
@@ -673,8 +675,8 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const valuesRes = trpcReact.getUniqueValues.useQuery({
-		columns: [props.column],
+	const valuesRes = trpcReact.getLayers.useQuery({
+		groupBy: [props.column],
 		filter: props.autocompleteFilter,
 	})
 	return (
@@ -682,7 +684,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 			title={props.column}
 			ref={ref}
 			values={props.values}
-			options={valuesRes.data?.map((r) => r[props.column]) ?? []}
+			options={valuesRes.data?.layers.map((r) => r[props.column]) ?? []}
 			onSelect={props.setValues}
 		/>
 	)
@@ -766,12 +768,12 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>
 ) {
-	const factions1Res = trpcReact.getUniqueValues.useQuery({
-		columns: ['Faction_1', 'SubFac_1'],
+	const factions1Res = useLayersQuery({
+		groupBy: ['Faction_1', 'SubFac_1'],
 		filter: props.autocompleteFilter,
 	})
-	const factions2Res = trpcReact.getUniqueValues.useQuery({
-		columns: ['Faction_2', 'SubFac_2'],
+	const factions2Res = useLayersQuery({
+		groupBy: ['Faction_2', 'SubFac_2'],
 		filter: props.autocompleteFilter,
 	})
 	const mirrorCheckboxId = React.useId()
@@ -780,7 +782,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	if (props.column === 'FactionMatchup') {
 		const onSelect = props.setValues as ComboBoxMultiProps['onSelect']
 		const allFactions = [
-			...new Set([...(factions1Res.data?.map((r) => r.Faction_1) ?? []), ...(factions2Res.data?.map((r) => r.Faction_2) ?? [])]),
+			...new Set([...(factions1Res.data?.map((r) => r.Faction_1) ?? []), ...(factions2Res.data?.layers.map((r) => r.Faction_2) ?? [])]),
 		]
 		return (
 			<ComboBoxMulti title={props.column} ref={ref} values={props.values} options={allFactions} onSelect={onSelect} selectionLimit={2} />
@@ -789,7 +791,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 
 	if (props.column === 'SubFacMatchup') {
 		const allSubFactions = [
-			...new Set([...(factions1Res.data?.map((r) => r.SubFac_1) ?? []), ...(factions2Res.data?.map((r) => r.SubFac_2) ?? [])]),
+			...new Set([...(factions1Res.data?.map((r) => r.SubFac_1) ?? []), ...(factions2Res.data?.layers.map((r) => r.SubFac_2) ?? [])]),
 		]
 
 		function canMirror(values: string[]) {
@@ -847,8 +849,8 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	if (props.column === 'FullMatchup') {
 		const allFullTeams = [
 			...new Set([
-				...(factions1Res.data?.map((r) => M.getLayerTeamString(r.Faction_1, r.SubFac_1)) ?? []),
-				...(factions2Res.data?.map((r) => M.getLayerTeamString(r.Faction_2, r.SubFac_2)) ?? []),
+				...(factions1Res.data?.layers.map((r) => M.getLayerTeamString(r.Faction_1, r.SubFac_1)) ?? []),
+				...(factions2Res.data?.layers.map((r) => M.getLayerTeamString(r.Faction_2, r.SubFac_2)) ?? []),
 			]),
 		]
 

@@ -9,6 +9,7 @@ import { links, trpcReact } from '@/lib/trpc.client.ts'
 import { ThemeProvider } from './theme-provider'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 import { TooltipProvider } from './ui/tooltip'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
 export default function Providers(props: { children: ReactNode }) {
 	const [queryClient] = useState(() => new QueryClient())
@@ -16,6 +17,7 @@ export default function Providers(props: { children: ReactNode }) {
 	return (
 		<trpcReact.Provider client={trpcClient} queryClient={queryClient}>
 			<QueryClientProvider client={queryClient}>
+				<ReactQueryDevtools initialIsOpen={true} />
 				<jotai.Provider>
 					<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
 						<TooltipProvider>

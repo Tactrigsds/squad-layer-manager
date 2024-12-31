@@ -571,7 +571,6 @@ export type HistoryFilterEdited =
 	| {
 			type: 'dynamic'
 			column: (typeof COLUMN_KEYS)[number]
-			id: number
 			excludeFor: {
 				matches: number
 			}
@@ -579,7 +578,6 @@ export type HistoryFilterEdited =
 	| {
 			type: 'static'
 			comparison: EditableComparison
-			id: number
 			excludeFor: {
 				matches: number
 			}

@@ -180,8 +180,8 @@ export async function setupFastify() {
 		trpcOptions: {
 			router: TrpcRouter.appRouter,
 			createContext: C.createTrpcRequestContext,
-			onError({ path, error }) {
-				server.log.error(error, `Error in tRPC handler on path '${path ?? 'unknown'}':`)
+			onError({ path, error, ctx }) {
+				;(ctx ?? server).log.error(error, `Error in tRPC handler on path '${path ?? 'unknown'}':`)
 			},
 		} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 	})

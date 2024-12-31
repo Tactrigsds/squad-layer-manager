@@ -48,7 +48,7 @@ export function setupTrpcRouter() {
 					.limit(input.limit)
 				return rows
 			}),
-		getLayers: procedure.input(LayersQuery.LayersQuerySchema).query(LayersQuery.runLayersQuery),
+		getLayers: procedure.input(LayersQuery.LayersQueryInputSchema).query(LayersQuery.runLayersQuery),
 		getHistoryFilter: procedure
 			.input(
 				z.object({

@@ -11,9 +11,9 @@ import * as Schema from '@/server/schema'
 import * as SquadjsSchema from '@/server/schema-squadjs'
 import { assertNever } from '@/lib/typeGuards'
 
-export const LayersQuerySchema = z.object({
-	pageIndex: z.number().int().min(0).default(0),
-	pageSize: z.number().int().min(1).max(200),
+export const LayersQueryInputSchema = z.object({
+	pageIndex: z.number().int().min(0).optional(),
+	pageSize: z.number().int().min(1).max(200).optional(),
 	sort: z
 		.discriminatedUnion('type', [
 			z.object({
@@ -35,10 +35,12 @@ export const LayersQuerySchema = z.object({
 })
 export const historyFiltersCache = new Map<string, M.FilterNode>()
 
-export type LayersQuery = z.infer<typeof LayersQuerySchema>
+export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
 
-export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.Db }) {
+export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log & C.Db }) {
 	const { ctx: baseCtx, input: input } = args
+	input.pageSize ??= 200
+	input.pageIndex ??= 0
 	await using opCtx = C.pushOperation(baseCtx, 'layers-query:run')
 
 	let whereCondition = sql`1=1`
@@ -63,7 +65,11 @@ export async function runLayersQuery(args: { input: LayersQuery; ctx: C.Log & C.
 		whereCondition = (await getWhereFilterConditions(filter, [], opCtx)) ?? whereCondition
 	}
 
-	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
+	let query = opCtx
+		.db()
+		.select(input.groupBy ? Object.fromEntries(input.groupBy.map((col) => [col, Schema.layers[col]] as const)) : undefined)
+		.from(Schema.layers)
+		.where(whereCondition)
 
 	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
@@ -180,42 +186,21 @@ export async function getWhereFilterConditions(
 			}
 			case 'like': {
 				const column = schema[comp.column]
-				if (schema) {
-					throw new TRPCError({
-						code: 'BAD_REQUEST',
-						message: 'Substituted table in like filter is not supported',
-					})
-				}
 				res = E.like(column, comp.value)!
 				break
 			}
 			case 'gt': {
 				const column = schema[comp.column]
-				if (schema) {
-					throw new TRPCError({
-						code: 'BAD_REQUEST',
-						message: 'Substituted table in gt filter is not supported',
-					})
-				}
 				res = E.gt(column, comp.value)!
 				break
 			}
 			case 'lt': {
 				const column = schema[comp.column]
-				if (schema) {
-					throw new TRPCError({
-						code: 'BAD_REQUEST',
-						message: 'Substituted table in lt filter is not supported',
-					})
-				}
 				res = E.lt(column, comp.value)!
 				break
 			}
 			case 'inrange': {
 				const column = schema[comp.column]
-				if (schema) {
-					ctx.log.warn('Substituted table in inrange filter. This is not supported')
-				}
 				res = E.between(column, comp.min, comp.max)!
 				break
 			}

@@ -1,16 +1,15 @@
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
-import { trpc } from '@/lib/trpc.client.ts'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
 import { Edit, EllipsisVertical, GripVertical, Minus, PlusIcon } from 'lucide-react'
 import deepEqual from 'fast-deep-equal'
-import React, { createContext, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
 
 import { createAtomStore } from 'jotai-x'
-import { atom, useAtom, createStore, useAtomValue } from 'jotai'
-import { useImmerAtom, userImmerAtom, withImmer } from 'jotai-immer'
+import { atom, createStore } from 'jotai'
+import { withImmer } from 'jotai-immer'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,27 +30,28 @@ import { ScrollArea } from '@/components/ui/scroll-area.tsx'
 import { Separator } from '@/components/ui/separator'
 import VoteTallyDisplay from './votes-display.tsx'
 import { useSquadServerStatus } from '@/hooks/server-state.ts'
-import { getNextIntId } from '@/lib/id.ts'
+import { createId } from '@/lib/id.ts'
 import { useFilter } from '@/hooks/filters.ts'
 import { cn } from '@/lib/utils.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
-import { deepClone } from '@/lib/object.ts'
 import { Comparison } from './filter-card.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 
 import { useHistoryFilterNode } from '@/hooks/history-filter.ts'
-import { useRefConstructor } from '@/lib/react.ts'
+import {
+	getDisplayedMutation,
+	hasMutations,
+	initMutations,
+	toItemMutationState,
+	tryApplyMutation,
+	WithMutationId,
+} from '@/lib/item-mutations.ts'
 
-type EditedHistoryFilterWithId = M.HistoryFilterEdited
+type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
 	layerQueue: IdedLayerQueueItem[]
 	historyFilters: EditedHistoryFilterWithId[]
-}
-
-type QueueItemStore = {
-	queueMutations: ItemMutations
-	queueItems: IdedLayerQueueItem[]
 }
 
 type SDStore = {
@@ -75,7 +75,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 		const addQueueItems = atom(null, (get, set, items: M.LayerQueueItem[], index?: number) => {
 			index ??= get(atoms.serverStateMut)!.layerQueue.length
 			const existing = get(atoms.serverStateMut)!.layerQueue
-			const withIds = getNewItemsWithIds(existing, items, get(atoms.queueMutations))
+			const withIds = [...existing, ...items].map((item) => ({ id: createId(6), ...item }))
 			set(withImmer(atoms.queueMutations), (draft) => {
 				for (const { id } of withIds) {
 					tryApplyMutation('added', id, draft)
@@ -86,12 +86,13 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 			})
 		})
 		return {
-			editing: atom(
-				(get) =>
+			editing: atom((get) => {
+				return (
 					hasMutations(get(atoms.queueMutations)) ||
 					!deepEqual(get(atoms.serverState)?.settings, get(atoms.serverStateMut)?.settings) ||
 					hasMutations(get(atoms.historyFiltersMutations))
-			),
+				)
+			}),
 			reset: atom(null, (get, set) => {
 				const serverState = get(atoms.serverState)
 				if (serverState === null) {
@@ -101,9 +102,9 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						...serverState,
 						//@ts-expect-error idk
 						historyFilters: serverState.historyFilters.map((filter, idx) => ({ ...filter, id: idx }) as M.HistoryFilterEdited & WithId),
-						layerQueue: serverState.layerQueue.map((item, idx) => ({
+						layerQueue: serverState.layerQueue.map((item) => ({
 							...item,
-							id: idx,
+							id: createId(6),
 						})),
 					})
 				}
@@ -118,9 +119,9 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 					settings: update.settings,
 					//@ts-expect-error idk
 					historyFilters: update.historyFilters.map((filter, idx) => ({ ...filter, id: idx }) as M.HistoryFilterEdited & WithId),
-					layerQueue: update.layerQueue.map((item, idx) => ({
+					layerQueue: update.layerQueue.map((item) => ({
 						...item,
-						id: idx,
+						id: createId(6),
 					})),
 				})
 				set(atoms.queueMutations, initMutations())
@@ -147,13 +148,10 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 			handleDragEnd: atom(null, (get, set, event: DragEndEvent, userDiscordId: bigint) => {
 				if (!event.over) return
 				const layerQueue = get(atoms.serverStateMut)!.layerQueue
-				const sourceIndex = getIndexFromQueueItemId(layerQueue, fromItemId(event.active.id as string))
-				const targetIndex = getIndexFromQueueItemId(layerQueue, fromItemId(event.over.id as string))
+				const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
+				const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over.id as string))
 				if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
 				const sourceId = layerQueue[sourceIndex].id
-				set(withImmer(atoms.queueMutations), (draft) => {
-					draft.moved.add(sourceId)
-				})
 				set(withImmer(atoms.serverStateMut), (draft) => {
 					const layerQueue = draft!.layerQueue
 					let insertIndex = targetIndex + 1
@@ -170,11 +168,14 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 					if (insertIndex > sourceIndex) insertIndex--
 					layerQueue.splice(insertIndex, 0, moved)
 				})
+				set(withImmer(atoms.queueMutations), (draft) => {
+					tryApplyMutation('moved', sourceId, draft)
+				})
 			}),
 			addQueueItems,
 			layerQueue: atom((get) => get(atoms.serverStateMut)?.layerQueue),
 			dispatchQueueItemAction: atom(null, (get, set, action: QueueItemAction) => {
-				const layerQueue = get(atoms.serverStateMut)!.layerQueue
+				const layerQueue = get(atoms.serverStateMut)!.layerQueue as IdedLayerQueueItem[]
 				if (action.code === 'delete') {
 					set(withImmer(atoms.queueMutations), (draft) => {
 						tryApplyMutation('removed', layerQueue[layerQueue.length - 1].id, draft)
@@ -183,35 +184,32 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						draft!.layerQueue = draft!.layerQueue.filter((_, i) => i !== layerQueue.length - 1) as IdedLayerQueueItem[]
 					})
 				} else if (action.code === 'edit') {
-					const oldItem = layerQueue[layerQueue.length - 1]
 					set(withImmer(atoms.queueMutations), (draft) => {
-						tryApplyMutation('edited', oldItem.id, draft)
+						tryApplyMutation('edited', action.item.id, draft)
 					})
+					const index = layerQueue.findIndex((item) => item.id === action.item.id)
 					set(withImmer(atoms.serverStateMut), (draft) => {
-						draft!.layerQueue[draft!.layerQueue.length - 1] = {
-							id: oldItem.id,
-							...action.item,
-						}
+						draft!.layerQueue[index] = action.item
 					})
 				} else if (action.code === 'add-after') {
-					set(addQueueItems, action.items, layerQueue.length)
+					const itemIndex = layerQueue.findIndex((item) => item.id === action.id)
+					set(addQueueItems, action.items, itemIndex)
 				} else if (action.code === 'add-before') {
-					set(addQueueItems, action.items, layerQueue.length - 1)
+					const itemIndex = layerQueue.findIndex((item) => item.id === action.id)
+					set(addQueueItems, action.items, itemIndex)
 				}
 			}),
 			historyFilterActions: {
 				add: atom(null, (get, set, newFilter: M.HistoryFilter) => {
-					const historyFilters = get(atoms.serverStateMut)!.historyFilters as M.HistoryFilterEdited[]
-					const mutationIds = historyFilters.map((f) => f.id)
-					const newId = getNextIntId(mutationIds)
+					const newId = createId(6)
 					set(withImmer(atoms.historyFiltersMutations), (draft) => {
 						tryApplyMutation('added', newId, draft)
 					})
 					set(withImmer(atoms.serverStateMut), (draft) => {
-						draft!.historyFilters.push({ id: newId, ...newFilter } as M.HistoryFilterEdited)
+						draft!.historyFilters.push({ id: newId, ...newFilter } as EditedHistoryFilterWithId)
 					})
 				}),
-				remove: atom(null, (_, set, id: number) => {
+				remove: atom(null, (_, set, id: string) => {
 					set(withImmer(atoms.historyFiltersMutations), (draft) => {
 						tryApplyMutation('removed', id, draft)
 					})
@@ -221,7 +219,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						) as EditedHistoryFilterWithId[]
 					})
 				}),
-				edit: atom(null, (_, set, id: number, update: React.SetStateAction<M.HistoryFilterEdited & WithId>) => {
+				edit: atom(null, (_, set, id: string, update: React.SetStateAction<EditedHistoryFilterWithId>) => {
 					set(withImmer(atoms.historyFiltersMutations), (draft) => {
 						tryApplyMutation('edited', id, draft)
 					})
@@ -237,7 +235,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 				}),
 			},
 			layerQueueItemActions: {
-				delete: atom(null, (_, set, id: number) => {
+				delete: atom(null, (_, set, id: string) => {
 					set(withImmer(atoms.queueMutations), (draft) => {
 						tryApplyMutation('removed', id, draft)
 					})
@@ -246,7 +244,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						draft!.layerQueue = draft!.layerQueue.filter((item) => item.id !== id)
 					})
 				}),
-				edit: atom(null, (_, set, id: number, update: React.SetStateAction<M.LayerQueueItem>) => {
+				edit: atom(null, (_, set, id: string, update: React.SetStateAction<M.LayerQueueItem>) => {
 					set(withImmer(atoms.queueMutations), (draft) => {
 						tryApplyMutation('edited', id, draft)
 					})
@@ -262,12 +260,12 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						}
 					})
 				}),
-				addBefore: atom(null, (get, set, id: number, items: M.LayerQueueItem[]) => {
+				addBefore: atom(null, (get, set, id: string, items: M.LayerQueueItem[]) => {
 					const layerQueue = get(atoms.serverStateMut)!.layerQueue as IdedLayerQueueItem[]
 					const index = layerQueue.findIndex((item) => item.id === id)
 					set(addQueueItems, items, index)
 				}),
-				addAfter: atom(null, (get, set, id: number, items: M.LayerQueueItem[]) => {
+				addAfter: atom(null, (get, set, id: string, items: M.LayerQueueItem[]) => {
 					const layerQueue = get(atoms.serverStateMut)!.layerQueue as IdedLayerQueueItem[]
 					const index = layerQueue.findIndex((item) => item.id === id)
 					set(addQueueItems, items, index + 1)
@@ -402,7 +400,6 @@ function ServerDashboard() {
 
 	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
 	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
-	const userQuery = trpcReact.getLoggedInUser.useQuery()
 	const addQueueItems = useSDStore().set.addQueueItems()
 	const editing = useSDStore().get.editing()
 	const queueMutations = useSDStore().get.queueMutations()
@@ -419,127 +416,123 @@ function ServerDashboard() {
 						parts={serverState.parts}
 					/>
 				)}
-				<DndContext onDragEnd={(evt) => handleDragEnd(evt, userQuery.data!.discordId)}>
-					<Card className="flex w-max flex-col">
-						<div className="flex w-full justify-between p-6 space-x-2">
-							<h3 className={Typography.H3}>Layer Queue</h3>
-							<div className="flex items-center space-x-1">
-								<SelectLayersPopover
-									title="Add to Queue"
-									description="Select layers to add to the queue"
-									baseFilter={basePoolFilterEntity?.filter}
-									selectQueueItems={addQueueItems}
-									open={appendLayersPopoverOpen}
-									onOpenChange={setAppendLayersPopoverOpen}
-								>
-									<Button className="flex w-min items-center space-x-1" variant="default">
-										<PlusIcon />
-										<span>Play After</span>
-									</Button>
-								</SelectLayersPopover>
-								<SelectLayersPopover
-									title="Play Next"
-									description="Select layers to play next"
-									baseFilter={basePoolFilterEntity?.filter}
-									selectQueueItems={(items) => addQueueItems(items, 0)}
-									open={playNextPopoverOpen}
-									onOpenChange={setPlayNextPopoverOpen}
-								>
-									<Button className="flex w-min items-center space-x-1" variant="default">
-										<PlusIcon />
-										<span>Play Next</span>
-									</Button>
-								</SelectLayersPopover>
-							</div>
+				<Card className="flex w-max flex-col">
+					<div className="flex w-full justify-between p-6 space-x-2">
+						<h3 className={Typography.H3}>Layer Queue</h3>
+						<div className="flex items-center space-x-1">
+							<SelectLayersPopover
+								title="Add to Queue"
+								description="Select layers to add to the queue"
+								baseFilter={basePoolFilterEntity?.filter}
+								selectQueueItems={addQueueItems}
+								open={appendLayersPopoverOpen}
+								onOpenChange={setAppendLayersPopoverOpen}
+							>
+								<Button className="flex w-min items-center space-x-1" variant="default">
+									<PlusIcon />
+									<span>Play After</span>
+								</Button>
+							</SelectLayersPopover>
+							<SelectLayersPopover
+								title="Play Next"
+								description="Select layers to play next"
+								baseFilter={basePoolFilterEntity?.filter}
+								selectQueueItems={(items) => addQueueItems(items, 0)}
+								open={playNextPopoverOpen}
+								onOpenChange={setPlayNextPopoverOpen}
+							>
+								<Button className="flex w-min items-center space-x-1" variant="default">
+									<PlusIcon />
+									<span>Play Next</span>
+								</Button>
+							</SelectLayersPopover>
 						</div>
-						<CardContent className="flex space-x-4">
-							<div>
-								{/* ------- top card ------- */}
-								<Card>
-									{!editing && serverStatus?.currentLayer && (
-										<>
-											<CardHeader>
-												<CardTitle>Now Playing</CardTitle>
-											</CardHeader>
-											<CardContent>{Helpers.toShortLayerName(serverStatus?.currentLayer)}</CardContent>
-										</>
-									)}
-									{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
-									{editing && (
-										<div className="flex flex-col space-y-2">
-											<Card>
-												<CardHeader>
-													<CardDescription>
-														{hasMutations(queueMutations) && (
-															<>
-																<h3>Layer Changes pending</h3>
-																<span className="flex space-x-1">
-																	{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
-																	{queueMutations.removed.size > 0 && (
-																		<Badge variant="removed">{queueMutations.removed.size} deleted</Badge>
-																	)}
-																	{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
-																	{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
-																</span>
-															</>
-														)}
-													</CardDescription>
-												</CardHeader>
-												<CardContent></CardContent>
-												<CardFooter className="space-x-1">
-													<Button onClick={saveLayers}>Save</Button>
-													<Button onClick={resetSDStore} variant="secondary">
-														Cancel
-													</Button>
-												</CardFooter>
-											</Card>
-										</div>
-									)}
-								</Card>
+					</div>
+					<CardContent className="flex space-x-4">
+						<div>
+							{/* ------- top card ------- */}
+							<Card>
+								{!editing && serverStatus?.currentLayer && (
+									<>
+										<CardHeader>
+											<CardTitle>Now Playing</CardTitle>
+										</CardHeader>
+										<CardContent>{Helpers.toShortLayerName(serverStatus?.currentLayer)}</CardContent>
+									</>
+								)}
+								{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
+								{editing && (
+									<div className="flex flex-col space-y-2">
+										<Card>
+											<CardContent>
+												{hasMutations(queueMutations) && (
+													<>
+														<h3>Layer Changes pending</h3>
+														<span className="flex space-x-1">
+															{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
+															{queueMutations.removed.size > 0 && <Badge variant="removed">{queueMutations.removed.size} deleted</Badge>}
+															{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
+															{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
+														</span>
+													</>
+												)}
+											</CardContent>
+											<CardFooter className="space-x-1">
+												<Button onClick={saveLayers}>Save</Button>
+												<Button onClick={resetSDStore} variant="secondary">
+													Cancel
+												</Button>
+											</CardFooter>
+										</Card>
+									</div>
+								)}
+							</Card>
 
-								<h4 className={Typography.H4}>Up Next</h4>
-								<ScrollArea>
-									<ul className="flex w-max flex-col space-y-1">
-										<LayerQueue
-											layerQueue={serverStateMut?.layerQueue ?? []}
-											queueMutations={queueMutations}
-											dispatchQueueItemAction={(action) => sdStore.set(SDStore.atom.dispatchQueueItemAction, action)}
-										/>
-									</ul>
-								</ScrollArea>
-							</div>
-						</CardContent>
-					</Card>
-				</DndContext>
+							<h4 className={Typography.H4}>Up Next</h4>
+							<LayerQueue
+								layerQueue={serverStateMut?.layerQueue ?? []}
+								queueMutations={queueMutations}
+								dispatchQueueItemAction={(action) => sdStore.set(SDStore.atom.dispatchQueueItemAction, action)}
+								handleDragEnd={handleDragEnd}
+							/>
+						</div>
+					</CardContent>
+				</Card>
 				<ServerSettingsPanel ref={settingsPanelRef} />
 			</span>
 		</div>
 	)
 }
 
-type JotaiStore = ReturnType<typeof createStore>
-
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
 export function LayerQueue(props: {
 	layerQueue: IdedLayerQueueItem[]
 	queueMutations: ItemMutations
 	dispatchQueueItemAction: (action: QueueItemAction) => void
+	allowVotes?: boolean
+	handleDragEnd: (evt: DragEndEvent, userDiscordId: bigint) => void
 }) {
-	const layerQueue = props.layerQueue
+	const userQuery = trpcReact.getLoggedInUser.useQuery()
+	const allowVotes = props.allowVotes ?? true
 	return (
-		<ul className="flex w-max flex-col space-y-1">
-			{/* -------- queue items -------- */}
-			{layerQueue?.map((item, index) => (
-				<QueueItem
-					key={item.id}
-					mutationState={toItemMutationState(props.queueMutations, item.id)}
-					item={item}
-					index={index}
-					isLast={index + 1 === layerQueue.length}
-					dispatch={props.dispatchQueueItemAction}
-				/>
-			))}
-		</ul>
+		<DndContext onDragEnd={(evt) => props.handleDragEnd(evt, userQuery.data!.discordId)}>
+			<ScrollArea>
+				<ul className="flex w-max flex-col space-y-1">
+					{/* -------- queue items -------- */}
+					{props.layerQueue?.map((item, index) => (
+						<QueueItem
+							allowVotes={allowVotes}
+							key={item.id}
+							mutationState={toItemMutationState(props.queueMutations, item.id)}
+							item={item}
+							index={index}
+							isLast={index + 1 === props.layerQueue.length}
+							dispatch={props.dispatchQueueItemAction}
+						/>
+					))}
+				</ul>
+			</ScrollArea>
+		</DndContext>
 	)
 }
 
@@ -627,7 +620,7 @@ function VoteState(
 			break
 		case 'ended:aborted':
 			if (state.abortReason === 'manual') {
-				const user = props.parts.users.find((u) => u.discordId === BigInt(state.aborter!))!
+				const user = props.parts.users.find((u) => u.discordId === state.aborter!)!
 				body = (
 					<span>
 						<Alert>
@@ -780,7 +773,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 						data-edited={changedSettings?.queue.preferredLength}
 						defaultValue={serverStateMut?.settings.queue.preferredLength}
 						onChange={(e) => {
-							SDStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
+							sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
 								draft!.settings.queue.preferredLength = parseInt(e.target.value)
 							})
 						}}
@@ -979,17 +972,20 @@ function HistoryFilter(props: {
 export type QueueItemAction =
 	| {
 			code: 'edit'
-			item: M.LayerQueueItem
+			item: IdedLayerQueueItem
 	  }
 	| {
 			code: 'delete'
+			id: string
 	  }
 	| {
 			code: 'add-after' | 'add-before'
 			items: M.LayerQueueItem[]
+			id?: string
 	  }
 
-function getIndexFromQueueItemId(items: IdedLayerQueueItem[], id: number | null) {
+export function getIndexFromQueueItemId(items: IdedLayerQueueItem[], id: string | null) {
+	console.log({ id })
 	if (id === null) return -1
 	return items.findIndex((item) => item.id === id)
 }
@@ -1000,9 +996,11 @@ type QueueItemProps = {
 	mutationState: { [key in keyof ItemMutations]: boolean }
 	isLast: boolean
 	dispatch: React.Dispatch<QueueItemAction>
+	allowVotes?: boolean
 }
 
 function QueueItem(props: QueueItemProps) {
+	const allowVotes = props.allowVotes ?? true
 	const draggableItemId = toDraggableItemId(props.item.id)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: draggableItemId,
@@ -1012,7 +1010,7 @@ function QueueItem(props: QueueItemProps) {
 
 	const style = { transform: CSS.Translate.toString(transform) }
 	const itemDropdown = (
-		<ItemDropdown open={dropdownOpen} setOpen={setDropdownOpen} dispatch={props.dispatch} item={props.item}>
+		<ItemDropdown allowVotes={allowVotes} open={dropdownOpen} setOpen={setDropdownOpen} dispatch={props.dispatch} item={props.item}>
 			<Button className="invisible group-hover:visible" variant="ghost" size="icon">
 				<EllipsisVertical />
 			</Button>
@@ -1110,11 +1108,13 @@ function QueueItem(props: QueueItemProps) {
 
 function ItemDropdown(props: {
 	children: React.ReactNode
-	item: M.LayerQueueItem
+	item: IdedLayerQueueItem
 	dispatch: React.Dispatch<QueueItemAction>
 	open: boolean
 	setOpen: React.Dispatch<React.SetStateAction<boolean>>
+	allowVotes?: boolean
 }) {
+	const allowVotes = props.allowVotes ?? true
 	const [dropdownOpen, setDropdownOpen] = useState(false)
 
 	type SubDropdownState = 'add-before' | 'add-after' | 'edit' | null
@@ -1140,6 +1140,7 @@ function ItemDropdown(props: {
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<EditLayerQueueItemPopover
+					allowVotes={allowVotes}
 					open={subDropdownState === 'edit'}
 					onOpenChange={(update) => {
 						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
@@ -1148,7 +1149,7 @@ function ItemDropdown(props: {
 					item={props.item}
 					setItem={(update) => {
 						const newItem = typeof update === 'function' ? update(props.item) : update
-						props.dispatch({ code: 'edit', item: newItem })
+						props.dispatch({ code: 'edit', item: { ...newItem, id: props.item.id } })
 					}}
 				>
 					<DropdownMenuItem>Edit</DropdownMenuItem>
@@ -1173,7 +1174,7 @@ function ItemDropdown(props: {
 					open={subDropdownState === 'add-after'}
 					onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
 					selectQueueItems={(items) => {
-						props.dispatch({ code: 'add-after', items })
+						props.dispatch({ code: 'add-after', items, id: props.item.id })
 					}}
 				>
 					<DropdownMenuItem>Add layers after</DropdownMenuItem>
@@ -1181,7 +1182,7 @@ function ItemDropdown(props: {
 
 				<DropdownMenuItem
 					onClick={() => {
-						return props.dispatch({ code: 'delete' })
+						props.dispatch({ code: 'delete', id: props.item.id })
 					}}
 					className="bg-destructive text-destructive-foreground focus:bg-red-600"
 				>
@@ -1210,95 +1211,19 @@ function QueueItemSeparator(props: {
 
 // -------- Queue Mutations --------
 type ItemMutations = {
-	added: Set<number>
-	removed: Set<number>
-	moved: Set<number>
-	edited: Set<number>
+	added: Set<string>
+	removed: Set<string>
+	moved: Set<string>
+	edited: Set<string>
 }
 
 type ItemMutationState = { [key in keyof ItemMutations]: boolean }
-type WithId = { id: number }
 
-function getDisplayedMutation(mutation: ItemMutationState) {
-	if (mutation.added) return 'added'
-	if (mutation.removed) return 'removed'
-	if (mutation.moved) return 'moved'
-	if (mutation.edited) return 'edited'
-}
-function tryApplyMutation(type: keyof ItemMutations, id: number, mutations: ItemMutations) {
-	if (type === 'added') {
-		mutations.added.add(id)
-	}
-	if (type === 'removed') {
-		if (mutations.added.has(id)) {
-			mutations.added.delete(id)
-			return
-		}
-		mutations.removed.add(id)
-		mutations.edited.delete(id)
-		mutations.moved.delete(id)
-	}
-	if (type === 'moved' && !mutations.added.has(id)) {
-		mutations.moved.add(id)
-	}
-	if (type === 'edited' && !mutations.added.has(id)) {
-		mutations.edited.add(id)
-	}
-}
-
-function getAllMutationIds(mutations: ItemMutations) {
-	return new Set([...mutations.added, ...mutations.removed, ...mutations.moved, ...mutations.edited])
-}
-
-function initMutations(): ItemMutations {
-	return {
-		added: new Set(),
-		removed: new Set(),
-		moved: new Set(),
-		edited: new Set(),
-	}
-}
-
-function hasMutations(mutations: ItemMutations) {
-	return mutations.added.size > 0 || mutations.removed.size > 0 || mutations.moved.size > 0
-}
-
-function toItemMutationState(mutations: ItemMutations, id: number): ItemMutationState {
-	return {
-		added: mutations.added.has(id),
-		removed: mutations.removed.has(id),
-		moved: mutations.moved.has(id),
-		edited: mutations.edited.has(id),
-	}
-}
-
-function getNewItemsWithIds(
-	existingItems: IdedLayerQueueItem[],
-	newItems: M.LayerQueueItem[],
-	mutations: ItemMutations
-): IdedLayerQueueItem[] {
-	let ids = existingItems.map((item) => item.id)
-	ids.push(...getAllMutationIds(mutations))
-	ids = Array.from(new Set(ids))
-
-	const withIds = []
-	for (const item of newItems) {
-		const id = getNextIntId(ids)
-		withIds.push({
-			...item,
-			id: id,
-		})
-		ids.push(id)
-	}
-	return withIds
-}
-
-function toDraggableItemId(id: number | null) {
+function toDraggableItemId(id: string | null) {
 	return JSON.stringify(id)
 }
 
 function fromItemId(serialized: string) {
 	return JSON.parse(serialized) as number | null
 }
-type HasId<T> = T & { id: number }
-type IdedLayerQueueItem = HasId<M.LayerQueueItem>
+type IdedLayerQueueItem = M.LayerQueueItem & WithMutationId

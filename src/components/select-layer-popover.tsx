@@ -19,9 +19,10 @@ import TabsList from './ui/tabs-list.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import deepEqual from 'fast-deep-equal'
-import { useRefConstructor } from '@/lib/react.ts'
-import { createStore } from 'jotai'
-import { LayerQueue, QueueItemAction } from './layer-queue.tsx'
+import { LayerQueue, QueueItemAction, getIndexFromQueueItemId } from './layer-queue.tsx'
+import { initMutations, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
+import { useLayersQuery } from '@/hooks/use-queries.ts'
+import { DragEndEvent } from '@dnd-kit/core'
 
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
@@ -78,6 +79,7 @@ export function SelectLayersPopover(props: {
 	const canSubmit = selectedLayers.length > 0
 	function submit(e: React.FormEvent) {
 		e.preventDefault()
+		e.stopPropagation()
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
 			const items: M.LayerQueueItem[] = selectedLayers.map(
@@ -170,7 +172,7 @@ export function SelectLayersPopover(props: {
 					</div>
 
 					<DialogFooter>
-						<Button disabled={!canSubmit} type="submit" onClick={submit}>
+						<Button disabled={!canSubmit} type="submit">
 							Submit
 						</Button>
 					</DialogFooter>
@@ -187,10 +189,11 @@ function ListStyleLayerPicker(props: {
 	pickerMode: 'toggle' | 'add' | 'single'
 }) {
 	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	const res = trpcReact.getLayers.useQuery(
+	const res = useLayersQuery(
 		{
 			filter: props.filter,
 			groupBy: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
+			pageIndex: 0,
 			pageSize: 25,
 			sort: {
 				type: 'random',
@@ -388,30 +391,66 @@ export function EditLayerQueueItemPopover(props: {
 	open: boolean
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	children: React.ReactNode
+	allowVotes?: boolean
 	item: M.LayerQueueItem
 	setItem: React.Dispatch<React.SetStateAction<M.LayerQueueItem>>
 	baseFilter?: M.FilterNode
 }) {
+	const allowVotes = props.allowVotes ?? true
 	const [editedItem, setEditedItem] = React.useState<M.LayerQueueItem>(props.item)
 	const [filterLayer, setFilterLayer] = React.useState<Partial<M.MiniLayer>>(itemToMiniLayer(props.item))
 	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
+	const [queueItemMutations, setQueueItemMutations] = React.useState(initMutations())
 
-	const layerQueue = editedItem.vote?.choices.map((id): M.LayerQueueItem => ({ layerId: id, source: 'manual' }))
+	// the vote's choices formatted as a layer queue so we can use the LayerQueue component
+	const choicesLayerQueue =
+		editedItem.vote?.choices.map((id): M.LayerQueueItem & WithMutationId => ({ id, layerId: id, source: 'manual' })) ?? []
 	function dispatchQueueItemAction(action: QueueItemAction) {
 		setEditedItem(
 			produce((editedItem) => {
 				if (!editedItem.vote) return
-				if (action.code === 'delete') {
-					editedItem.vote.choices = editedItem.vote.choices.filter((id) => id !== action.layerId)
-				}
-				if (action.code === 'move') {
-					const fromIndex = editedItem.vote.choices.indexOf(action.layerId)
-					const toIndex = action.index
-					if (fromIndex === -1 || toIndex === -1) return
-					editedItem.vote.choices.splice(toIndex, 0, editedItem.vote.choices.splice(fromIndex, 1)[0])
-				}
-				if (action.code === 'add') {
-					editedItem.vote.choices.push(action.layerId)
+				switch (action.code) {
+					case 'delete': {
+						editedItem.vote.choices = editedItem.vote.choices.filter((id) => id !== action.id)
+						setQueueItemMutations(
+							produce((mutations) => {
+								tryApplyMutation('removed', action.id, mutations)
+							})
+						)
+						return
+					}
+					case 'add-after': {
+						const index = editedItem.vote.choices.findIndex((id) => id === action.id)
+						editedItem.vote.choices.splice(index + 1, 0, ...action.items.map((i) => i.layerId!))
+						setQueueItemMutations(
+							produce((mutations) => {
+								if (action.code !== 'add-after') return
+								tryApplyMutation('added', action.items.map((i) => i.layerId!)[0], mutations)
+							})
+						)
+						return
+					}
+					case 'add-before': {
+						const index = editedItem.vote.choices.findIndex((id) => id === action.id)
+						editedItem.vote.choices.splice(index, 0, ...action.items.map((i) => i.layerId!))
+						setQueueItemMutations(
+							produce((mutations) => {
+								if (action.code !== 'add-before') return
+								for (const item of action.items) {
+									tryApplyMutation('added', item.layerId!, mutations)
+								}
+							})
+						)
+						return
+					}
+					case 'edit': {
+						const index = editedItem.vote.choices.findIndex((id) => id === action.item.id)
+						editedItem.vote.choices[index] = action.item.layerId!
+						setQueueItemMutations(produce((mutations) => tryApplyMutation('edited', action.item.layerId!, mutations)))
+						return
+					}
+					default:
+						assertNever(action)
 				}
 			})
 		)
@@ -422,7 +461,7 @@ export function EditLayerQueueItemPopover(props: {
 
 		for (const _key in filterLayer) {
 			const key = _key as keyof M.MiniLayer
-			if (filterLayer[key] === undefined) continue
+			if (filterLayer[key] === undefined || M.COLUMN_KEY_TO_TYPE[key] === 'collection') continue
 			nodes.push(FB.comp(FB.eq(key, filterLayer[key])))
 		}
 		if (nodes.length === 0) return undefined
@@ -452,9 +491,28 @@ export function EditLayerQueueItemPopover(props: {
 	const canSubmit = selectedLayers.length > 0 && !deepEqual(props.item, editedItem)
 	function submit(e: React.FormEvent) {
 		e.preventDefault()
+		e.stopPropagation()
 		if (!canSubmit) return
 		props.setItem(editedItem)
 		onOpenChange(false)
+	}
+	function handleDragEnd(event: DragEndEvent) {
+		const layerQueue =
+			editedItem.vote?.choices.map((id): M.LayerQueueItem & WithMutationId => ({ id, layerId: id, source: 'manual' })) ?? []
+		if (!editedItem.vote || !event.over) return
+		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
+		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over?.id as string))
+
+		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
+		const sourceId = layerQueue[sourceIndex].id
+		setEditedItem(
+			produce((editedItem) => {
+				if (!editedItem.vote) return
+				const [moved] = editedItem.vote.choices.splice(sourceIndex, 1)
+				editedItem.vote.choices.splice(targetIndex, 0, moved)
+			})
+		)
+		setQueueItemMutations(produce((mutations) => tryApplyMutation('moved', sourceId, mutations)))
 	}
 
 	function onOpenChange(open: boolean) {
@@ -477,45 +535,55 @@ export function EditLayerQueueItemPopover(props: {
 								<DialogTitle>Edit</DialogTitle>
 								<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
 							</div>
-							<TabsList
-								options={[
-									{ label: 'Vote', value: 'vote' },
-									{ label: 'Set Layer', value: 'layer' },
-								]}
-								active={editedItem.vote ? 'vote' : 'layer'}
-								setActive={(itemType) => {
-									setEditedItem((prev) => {
-										const selectedLayers = itemToLayers(prev)
-										const attribution = {
-											source: 'manual' as const,
-											lastModifiedBy: user!.discordId,
-										}
-										if (itemType === 'vote') {
-											return {
-												vote: {
-													choices: selectedLayers.map((l) => l.id),
-													defaultChoice: selectedLayers[0].id,
-												},
-												...attribution,
+							{allowVotes && (
+								<TabsList
+									options={[
+										{ label: 'Vote', value: 'vote' },
+										{ label: 'Set Layer', value: 'layer' },
+									]}
+									active={editedItem.vote ? 'vote' : 'layer'}
+									setActive={(itemType) => {
+										setEditedItem((prev) => {
+											const selectedLayers = itemToLayers(prev)
+											const attribution = {
+												source: 'manual' as const,
+												lastModifiedBy: user!.discordId,
 											}
-										} else if (itemType === 'layer') {
-											return {
-												layerId: selectedLayers[0].id,
-												...attribution,
+											if (itemType === 'vote') {
+												return {
+													vote: {
+														choices: selectedLayers.map((l) => l.id),
+														defaultChoice: selectedLayers[0].id,
+													},
+													...attribution,
+												}
+											} else if (itemType === 'layer') {
+												return {
+													layerId: selectedLayers[0].id,
+													...attribution,
+												}
+											} else {
+												assertNever(itemType)
 											}
-										} else {
-											assertNever(itemType)
-										}
-									})
-								}}
-							/>
+										})
+									}}
+								/>
+							)}
 						</div>
 					</DialogHeader>
 
 					<div className="flex space-x-2 items-center"></div>
 
 					{editedItem.vote ? (
-						<LayerQueue lqStore={itemLqStoreRef.current} />
+						<div className="flex flex-col">
+							<LayerQueue
+								dispatchQueueItemAction={dispatchQueueItemAction}
+								layerQueue={choicesLayerQueue}
+								queueMutations={queueItemMutations}
+								handleDragEnd={handleDragEnd}
+								allowVotes={false}
+							/>
+						</div>
 					) : (
 						<div className="flex space-x-2 min-h-0">
 							<div>

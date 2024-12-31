@@ -23,15 +23,16 @@ import * as FB from '@/lib/filter-builders'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
-import { trpcReact } from '@/lib/trpc.client.ts'
+import { hashQueryKey, trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
-import { LayersQuery } from '@/server/systems/layers-query.ts'
+import { LayersQueryInput } from '@/server/systems/layers-query.ts'
 
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { assertNever } from '@/lib/typeGuards'
+import { useLayersQuery } from '@/hooks/use-queries.ts'
 
 const columnHelper = createColumnHelper<M.Layer>()
 
@@ -142,7 +143,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
 ] as M.LayerColumnKey[]
 
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
-const DEFAULT_SORT: LayersQuery['sort'] = {
+const DEFAULT_SORT: LayersQueryInput['sort'] = {
 	type: 'column',
 	sortBy: 'Asymmetry Score',
 	sortDirection: 'ASC',
@@ -218,7 +219,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		filter = FB.comp(FB.inValues('id', selectedLayerIds))
 	}
 
-	let sort: LayersQuery['sort'] = DEFAULT_SORT
+	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
 	} else if (sortingState.length > 0) {
@@ -230,7 +231,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		}
 	}
 
-	const { data: dataRaw } = trpcReact.getLayers.useQuery({
+	const { data: dataRaw } = useLayersQuery({
 		pageIndex,
 		pageSize,
 		sort,
