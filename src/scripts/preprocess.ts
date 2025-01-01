@@ -261,14 +261,14 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 		)
 
 		// process layers
-		// ctx.log.info('Truncating layers table')
-		// await tx.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
-		// const chunkSize = 2500
-		// for (let i = 0; i < processedLayers.length; i += chunkSize) {
-		// 	const chunk = processedLayers.slice(i, i + chunkSize)
-		// 	await tx.insert(Schema.layers).values(chunk)
-		// 	ctx.log.info(`Inserted ${i + chunk.length} rows`)
-		// }
+		ctx.log.info('Truncating layers table')
+		await tx.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
+		const chunkSize = 2500
+		for (let i = 0; i < processedLayers.length; i += chunkSize) {
+			const chunk = processedLayers.slice(i, i + chunkSize)
+			await tx.insert(Schema.layers).values(chunk)
+			ctx.log.info(`Inserted ${i + chunk.length} rows`)
+		}
 	})
 
 	const t3 = performance.now()
