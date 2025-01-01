@@ -57,8 +57,8 @@ function getConsoleArgs(level: number, obj: any) {
 	delete obj.level
 	delete obj.levelStr
 	if (obj.ops) {
-		const op = obj.ops[obj.ops.length - 1]
-		opStr = op.type + '::' + op.id
+		opStr = obj.ops.map((op: any) => `${op.type}::${op.id}`).join(' -> ')
+		opStr += '\n'
 	}
 	return [
 		'%c%s%c %c%s%c %c%s%c %s',
