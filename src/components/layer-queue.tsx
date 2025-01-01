@@ -620,7 +620,7 @@ function VoteState(
 			break
 		case 'ended:aborted':
 			if (state.abortReason === 'manual') {
-				const user = props.parts.users.find((u) => u.discordId === state.aborter!)!
+				const user = props.parts.users.find((u) => u.discordId.toString() === state.aborter!)!
 				body = (
 					<span>
 						<Alert>

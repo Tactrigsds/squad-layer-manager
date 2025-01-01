@@ -29,7 +29,7 @@ export async function warnAllAdmins(ctx: C.Log, message: string) {
 
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 	using opCtx = C.pushOperation(ctx, 'squad-server:watch-status')
-	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 1000 }))) {
+	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 3000 }))) {
 		yield info
 	}
 }

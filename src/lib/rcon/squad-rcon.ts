@@ -51,7 +51,6 @@ export default class SquadRcon {
 		const response = await this.rcon.execute(ctx, 'ShowNextMap')
 		if (!response) return null
 		const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/)
-		ctx.log.info(`Matched next layer: %s`, match)
 		if (!match) return null
 		const layer = match[2]
 		const factions = match[3]
@@ -165,8 +164,12 @@ export default class SquadRcon {
 		return match ? parseInt(match[1], 10) : 0
 	}
 
-	private async getServerStatus(ctx: C.Log): Promise<SM.ServerStatus> {
-		const rawData = await this.rcon.execute(ctx, `ShowServerInfo`)
+	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatus> {
+		using ctx = C.pushOperation(_ctx, 'squad-rcon::getServerstatus')
+		const rawDataPromise = this.rcon.execute(ctx, `ShowServerInfo`)
+		const currentLayerTask = this.getCurrentLayer(ctx)
+		const nextLayerTask = this.getNextLayer(ctx)
+		const rawData = await rawDataPromise
 		const data = JSON.parse(rawData)
 		const res = SM.ServerRawInfoSchema.safeParse(data)
 		if (!res.success) {
@@ -175,8 +178,6 @@ export default class SquadRcon {
 		}
 
 		const rawInfo = res.data
-		const currentLayerTask = this.getCurrentLayer(ctx)
-		const nextLayerTask = this.getNextLayer(ctx)
 
 		const status = {
 			name: rawInfo.ServerName_s,
@@ -185,7 +186,6 @@ export default class SquadRcon {
 			maxPlayers: rawInfo.MaxPlayers,
 			currentPlayers: rawInfo.PlayerCount_I,
 		}
-		ctx.log.debug(`Server status: %O`, res)
 		return status
 	}
 }

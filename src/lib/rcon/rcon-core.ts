@@ -99,8 +99,8 @@ export default class Rcon extends EventEmitter {
 	}
 
 	async execute(_ctx: C.Log, body: string): Promise<any> {
-		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute')
-		ctx.log.debug(`Executing %s `, body)
+		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute', { level: 'trace' })
+		ctx.log.trace(`Executing %s `, body)
 		if (typeof body !== 'string') {
 			throw new Error('Rcon.execute() body must be a string.')
 		}

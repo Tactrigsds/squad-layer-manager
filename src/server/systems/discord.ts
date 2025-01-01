@@ -98,7 +98,7 @@ async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
 export async function checkDiscordUserAuthorization(_ctx: C.Log, discordId: bigint) {
 	using ctx = C.pushOperation(_ctx, 'discord:check-user-authorization')
 	for (const authorized of CONFIG.authorizedDiscordRoles) {
-		const res = await fetchMember(ctx, authorized.serverId, discordId)
+		const res = await fetchMember(ctx, BigInt(authorized.serverId), discordId)
 		if (res.code != 'ok') return res
 		if (res.member.roles.cache.has(authorized.roleId.toString())) {
 			return { code: 'ok' as const }

@@ -232,7 +232,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 
 		const setupRefetches = () => {
 			const refetch$ = new Observable<void>(() => {
-				let refetching = false
+				let refetching = true
 				;(async () => {
 					while (refetching) {
 						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
