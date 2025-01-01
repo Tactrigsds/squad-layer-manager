@@ -1,7 +1,5 @@
-import { TRPCError } from '@trpc/server'
 import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
 import MySQL from 'mysql2/promise'
-import * as Schema from './schema.ts'
 import { EventEmitter } from 'node:events'
 
 import * as C from './context.ts'
@@ -32,7 +30,7 @@ export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
 			const db = drizzle(tracedPool, {
 				logger: {
 					logQuery: (query: string, params: unknown[]) => {
-						this.log.debug('DB: %s, %o', query, params)
+						this.log.debug({ params }, 'DB: %s', query)
 					},
 				},
 			})
