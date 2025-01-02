@@ -581,20 +581,7 @@ export function EditLayerQueueItemPopover(props: {
 
 					{editedItem.vote ? (
 						<div className="flex flex-col">
-							<div>
-								<SelectLayersPopover
-									title="Add"
-									description="Select layers to add to the voting pool"
-									open={addLayersOpen}
-									onOpenChange={setAddLayersOpen}
-									selectQueueItems={(items) => {
-										const last = choicesLayerQueue[choicesLayerQueue.length - 1]
-										dispatchQueueItemAction({ code: 'add-after', items, id: last.id })
-									}}
-								>
-									<DropdownMenuItem>Add layers</DropdownMenuItem>
-								</SelectLayersPopover>
-							</div>
+							<div className="flex w-min"></div>
 							<LayerQueue
 								dispatchQueueItemAction={dispatchQueueItemAction}
 								layerQueue={choicesLayerQueue}
@@ -624,6 +611,20 @@ export function EditLayerQueueItemPopover(props: {
 					)}
 
 					<DialogFooter>
+						{editedItem.vote && (
+							<SelectLayersPopover
+								title="Add"
+								description="Select layers to add to the voting pool"
+								open={addLayersOpen}
+								onOpenChange={setAddLayersOpen}
+								selectQueueItems={(items) => {
+									const last = choicesLayerQueue[choicesLayerQueue.length - 1]
+									dispatchQueueItemAction({ code: 'add-after', items, id: last.id })
+								}}
+							>
+								<DropdownMenuItem>Add layers</DropdownMenuItem>
+							</SelectLayersPopover>
+						)}
 						<Button disabled={!canSubmit} type="submit">
 							Submit
 						</Button>
