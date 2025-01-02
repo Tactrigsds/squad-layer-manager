@@ -705,6 +705,19 @@ export const MutableServerStateSchema = z.object({
 })
 
 export type MutableServerState = z.infer<typeof MutableServerStateSchema>
+export type LQServerStateUpdate = {
+	state: LQServerState
+	source:
+		| {
+				type: 'system'
+				reason: 'map-roll' | 'app-startup' | 'vote-timeout' | 'start-vote-command'
+		  }
+		| {
+				type: 'manual'
+				reason: 'edit' | 'start-vote' | 'abort-vote'
+				author: bigint
+		  }
+}
 
 export const ServerStateSchema = MutableServerStateSchema.extend({
 	id: z.string().min(1).max(256),
@@ -713,7 +726,7 @@ export const ServerStateSchema = MutableServerStateSchema.extend({
 	currentVote: VoteStateSchema.nullable(),
 }) satisfies z.ZodType<Schema.Server>
 
-export type ServerState = z.infer<typeof ServerStateSchema>
+export type LQServerState = z.infer<typeof ServerStateSchema>
 export type UserPart = Parts<{ users: Schema.User[] }>
 export type LayerSyncState =
 	| {

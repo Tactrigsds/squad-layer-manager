@@ -39,12 +39,12 @@ export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { leve
 	const handleResult = async function (this: any, err?: any) {
 		const result = err ? 'error' : (this.result ?? 'ok')
 		if (result && result !== 'ok') {
-			this.log.error({ err, result }, 'operation failed', type, operationId)
+			this.log.error(err, 'operation failed', type, operationId)
 			return
 		}
 		if (this.tasks.length > 0) {
 			await Promise.all(this.tasks).catch((err) => {
-				lifeCycleLog.error({ err }, 'operation failed', type, operationId)
+				lifeCycleLog.error(err, 'operation failed', type, operationId)
 				throw err
 			})
 		}

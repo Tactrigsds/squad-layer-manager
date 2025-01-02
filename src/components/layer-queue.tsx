@@ -56,7 +56,7 @@ type MutServerStateWithIds = M.MutableServerState & {
 }
 
 type SDStore = {
-	serverState: (M.ServerState & M.UserPart) | null
+	serverState: (M.LQServerState & M.UserPart) | null
 	serverStateMut: MutServerStateWithIds | null
 	queueMutations: ItemMutations
 	historyFiltersMutations: ItemMutations
@@ -112,7 +112,8 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 				set(atoms.queueMutations, initMutations())
 				set(atoms.historyFiltersMutations, initMutations())
 			}),
-			applyServerUpdate: atom(null, (get, set, update: M.ServerState & M.UserPart) => {
+			applyServerUpdate: atom(null, (_, set, _update: M.LQServerStateUpdate & M.UserPart) => {
+				const update = { ..._update.state, parts: _update.parts }
 				set(atoms.serverState, update)
 				set(atoms.serverStateMut, {
 					historyFiltersEnabled: update.historyFiltersEnabled,
@@ -291,12 +292,19 @@ function ServerDashboard() {
 	const serverStateMut = useSDStore().get.serverStateMut()
 	const resetSDStore = useSDStore().set.reset()
 	const sdStore = useSDStore().store()!
+	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
 
 	React.useEffect(() => {
 		const sub = trpc.layerQueueRouter.watchServerState.subscribe(undefined, {
 			onData: (data) => {
+				if (
+					sdStore.get(SDStore.atom.serverState) &&
+					data.source.type === 'manual' &&
+					data.source.author === loggedInUserRes.data?.discordId
+				)
+					return
 				sdStore.set(SDStore.atom.applyServerUpdate, data)
-				settingsPanelRef.current?.reset(data.settings)
+				settingsPanelRef.current?.reset(data.state.settings)
 			},
 		})
 		return () => sub.unsubscribe()
@@ -381,7 +389,7 @@ function ServerDashboard() {
 		mutationFn: trpc.layerQueueRouter.updateQueue.mutate,
 	})
 	// const validatedHistoryFilters = M.histo
-	async function saveLayers() {
+	async function saveLqState() {
 		if (!serverStateMut) return
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
 		if (res.code === 'err:next-layer-changed-while-vote-active') {
@@ -402,7 +410,7 @@ function ServerDashboard() {
 			return
 		}
 		if (res.code === 'ok') {
-			sdStore.set(SDStore.atom.applyServerUpdate, res.serverState)
+			sdStore.set(SDStore.atom.applyServerUpdate, res.serverStateUpdate)
 			toaster.toast({ title: 'Changes applied' })
 			return
 		}
@@ -490,7 +498,7 @@ function ServerDashboard() {
 												)}
 											</CardContent>
 											<CardFooter className="space-x-1">
-												<Button onClick={saveLayers} disabled={updateQueueMutation.isPending}>
+												<Button onClick={saveLqState} disabled={updateQueueMutation.isPending}>
 													Save Changes
 												</Button>
 												<Button onClick={resetSDStore} variant="secondary">
