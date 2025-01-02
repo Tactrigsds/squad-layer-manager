@@ -2,17 +2,24 @@ import type * as Squad from '@/lib/rcon/squad-models'
 import { trpc } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'
 import React from 'react'
+import { atom, getDefaultStore, useAtomValue } from 'jotai'
+
+const serverStatusAtom = atom<Squad.ServerStatus | null>(null)
 
 export function useSquadServerStatus() {
-	const [serverStatus, setServerStatus] = React.useState<Squad.ServerStatus | null>(null)
+	// TODO this is cringe but the type definitions of trpc-jotai are broken
 	React.useEffect(() => {
 		const sub = trpc.squadServer.watchServerStatus.subscribe(undefined, {
 			onData: (data) => {
-				setServerStatus(data)
+				const store = getDefaultStore()
+				store.set(serverStatusAtom, data)
 			},
 		})
-		return () => sub.unsubscribe()
+		return () => {
+			return sub.unsubscribe()
+		}
 	}, [])
+	const serverStatus = useAtomValue(serverStatusAtom, { store: getDefaultStore() })
 	return serverStatus
 }
 

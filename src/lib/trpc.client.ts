@@ -1,6 +1,7 @@
 import { createTRPCClient } from '@trpc/client'
 import { createTRPCReact, createWSClient, wsLink } from '@trpc/react-query'
 import { UndefinedInitialDataOptions, useQuery } from '@tanstack/react-query'
+
 import superjson from 'superjson'
 
 import * as AR from '@/app-routes'

@@ -236,8 +236,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 				;(async () => {
 					while (refetching) {
 						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
-						const sleepTime = Math.max(activettl - (Date.now() - (this.lastResolveTime ?? 0)), 0)
-						await sleep(sleepTime)
+						await sleep(activettl)
 						await this.get(ctx, { ttl: 0 })
 					}
 				})()
@@ -255,13 +254,12 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
 			this.valueSubject.pipe(
 				traceTag(`asyncResourceObserve__${this.name}`),
 				observeOn(asapScheduler),
-				distinctDeepEquals(),
 				tap({
 					subscribe: () => {
+						this.get(ctx, { ttl: opts.ttl })
 						if (this.observingTTLs.length > 0 && this.refetchSub === null) {
 							setupRefetches()
 						}
-						this.get(ctx, { ttl: opts.ttl })
 					},
 					finalize: () => {
 						this.observingTTLs = this.observingTTLs.filter(([id]) => refId !== id)

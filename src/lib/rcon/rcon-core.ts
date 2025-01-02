@@ -164,7 +164,6 @@ export default class Rcon extends EventEmitter {
 
 	#onData(ctx: C.Log, data: Buffer): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.trace(`Got data: ${this.#bufToHexString(data)}`)
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode(ctx)

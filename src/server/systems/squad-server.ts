@@ -1,4 +1,4 @@
-import { AsyncResource, toAsyncGenerator } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import Rcon from '@/lib/rcon/rcon-core'
 import * as SM from '@/lib/rcon/squad-models'
@@ -29,7 +29,9 @@ export async function warnAllAdmins(ctx: C.Log, message: string) {
 
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 	using opCtx = C.pushOperation(ctx, 'squad-server:watch-status')
-	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 3000 }))) {
+	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
+		opCtx.log.debug({ info }, 'pushing squad server status %s', info.nextLayer?.id)
+
 		yield info
 	}
 }

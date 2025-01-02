@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
-import { useSquadServerStatus } from '@/hooks/server-state.ts'
+import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'

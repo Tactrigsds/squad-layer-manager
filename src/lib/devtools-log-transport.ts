@@ -99,7 +99,7 @@ function printLogEntry(level: number, obj: any) {
 	const args = getConsoleArgs(level, obj)
 	switch (level) {
 		case 10:
-			console.trace(...args)
+			console.debug(...args)
 			break
 		case 20:
 			console.debug(...args)

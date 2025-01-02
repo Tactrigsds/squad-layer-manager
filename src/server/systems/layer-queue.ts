@@ -96,38 +96,42 @@ export async function setupLayerQueueAndServerState() {
 	}
 
 	// -------- If next layer is changed from ingame or some other system, then respect that and add layer to the front of the queue. --------
-	SquadServer.rcon.serverStatus.observe(systemCtx).subscribe(async (status) => {
-		if (status.nextLayer === null) return
-		await systemCtx.db().transaction(async (tx) => {
-			// TODO don't call this inside the transaction
-			const { value: status, release } = await SquadServer.rcon.serverStatus.get(systemCtx, { lock: true, ttl: 50 })
-			try {
-				const _ctx = { ...systemCtx, db: () => tx }
-				const serverState = await getServerState({ lock: true }, _ctx)
-				if (status.nextLayer !== null && serverState.layerQueue[0]?.layerId !== status.nextLayer.id) {
-					const layerQueue = deepClone(serverState.layerQueue)
-					// if the last layer was also set by the gameserver, then we're replacing it
-					if (layerQueue[0]?.source === 'gameserver') layerQueue.shift()
-					layerQueue.unshift({
-						layerId: status.nextLayer.id,
-						source: 'gameserver',
-					})
-					await tx
-						.update(Schema.servers)
-						.set(superjsonify(Schema.servers, { layerQueue, currentVote: null }))
-						.where(eq(Schema.servers.id, CONFIG.serverId))
+	SquadServer.rcon.serverStatus
+		.observe(systemCtx)
+		.pipe(distinctDeepEquals())
+		.subscribe(async (status) => {
+			if (status.nextLayer === null) return
+			await systemCtx.db().transaction(async (tx) => {
+				// TODO don't call this inside the transaction
+				const { value: status, release } = await SquadServer.rcon.serverStatus.get(systemCtx, { lock: true, ttl: 50 })
+				try {
+					const _ctx = { ...systemCtx, db: () => tx }
+					const serverState = await getServerState({ lock: true }, _ctx)
+					if (status.nextLayer !== null && serverState.layerQueue[0]?.layerId !== status.nextLayer.id) {
+						const layerQueue = deepClone(serverState.layerQueue)
+						// if the last layer was also set by the gameserver, then we're replacing it
+						if (layerQueue[0]?.source === 'gameserver') layerQueue.shift()
+						layerQueue.unshift({
+							layerId: status.nextLayer.id,
+							source: 'gameserver',
+						})
+						await tx
+							.update(Schema.servers)
+							.set(superjsonify(Schema.servers, { layerQueue, currentVote: null }))
+							.where(eq(Schema.servers.id, CONFIG.serverId))
+					}
+				} finally {
+					release()
 				}
-			} finally {
-				release()
-			}
+			})
 		})
-	})
 
 	// -------- apply history filters cache --------
 	{
 		const currentLayer$ = SquadServer.rcon.serverStatus
 			.observe(systemCtx)
 			.pipe(
+     			distinctDeepEquals(),
 				map((status) => status.currentLayer),
 				distinctUntilChanged()
 			)

@@ -55,7 +55,8 @@ export default class SquadRcon {
 		const layer = match[2]
 		const factions = match[3]
 		if (!layer || !factions) return null
-		return parseLayer(layer, factions)
+		const nextLayer = parseLayer(layer, factions)
+		return nextLayer
 	}
 
 	private async getListPlayers(ctx: C.Log) {

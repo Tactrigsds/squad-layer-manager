@@ -29,7 +29,7 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { ScrollArea } from '@/components/ui/scroll-area.tsx'
 import { Separator } from '@/components/ui/separator'
 import VoteTallyDisplay from './votes-display.tsx'
-import { useSquadServerStatus } from '@/hooks/server-state.ts'
+import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { createId } from '@/lib/id.ts'
 import { useFilter } from '@/hooks/filters.ts'
 import { cn } from '@/lib/utils.ts'
@@ -47,7 +47,7 @@ import {
 	tryApplyMutation,
 	WithMutationId,
 } from '@/lib/item-mutations.ts'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -127,7 +127,6 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 				})
 				set(atoms.queueMutations, initMutations())
 				set(atoms.historyFiltersMutations, initMutations())
-				console.log('applied', update.layerQueueSeqId)
 			}),
 			changedSettings: atom((get) => {
 				const serverStateSettings = get(atoms.serverState)?.settings
@@ -296,7 +295,6 @@ function ServerDashboard() {
 	React.useEffect(() => {
 		const sub = trpc.layerQueueRouter.watchServerState.subscribe(undefined, {
 			onData: (data) => {
-				console.log('receved', data.layerQueueSeqId)
 				sdStore.set(SDStore.atom.applyServerUpdate, data)
 				settingsPanelRef.current?.reset(data.settings)
 			},
@@ -385,10 +383,7 @@ function ServerDashboard() {
 	// const validatedHistoryFilters = M.histo
 	async function saveLayers() {
 		if (!serverStateMut) return
-		console.log()
-		console.log('saving layers after', serverStateMut.layerQueueSeqId)
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
-		console.log('received mutation response:', res.serverState?.layerQueueSeqId, res)
 		if (res.code === 'err:next-layer-changed-while-vote-active') {
 			toaster.toast({
 				title: 'Cannot update: active layer vote in progress',
@@ -701,7 +696,10 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	props: object,
 	ref: React.ForwardedRef<ServerSettingsPanelHandle>
 ) {
-	const filtersRes = trpcReact.filters.getFilters.useQuery()
+	const filtersRes = useQuery({
+		queryKey: ['filters'],
+		queryFn: () => trpc.filters.getFilters.query(),
+	})
 
 	const preferredLengthRef = React.useRef<HTMLInputElement>(null)
 	const preferredLengthId = React.useId()
@@ -709,7 +707,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	const preferredNumVoteChoicesRef = React.useRef<HTMLInputElement>(null)
 	const preferredNumVoteChoicesId = React.useId()
 
-	const filterOptions = filtersRes.data?.map((f) => ({
+	const filterOptions = filtersRes.data?.map?.((f) => ({
 		value: f.id,
 		label: f.name,
 	}))

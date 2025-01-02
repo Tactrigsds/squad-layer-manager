@@ -51,7 +51,7 @@ describe('AsyncResource', () => {
 		expect(count).toBe(2)
 	})
 
-	test.only('observe emits updates', async () => {
+	test('observe emits updates', async () => {
 		let count = 0
 		const resource = new AsyncResource('test', async () => {
 			count++
@@ -66,6 +66,34 @@ describe('AsyncResource', () => {
 		await sleep(100)
 
 		expect(values.slice(0, 2)).toEqual([1, 2])
+		sub.unsubscribe()
+	})
+
+	test('invalidation emits updates for all observers', async () => {
+		let count = 0
+		const resource = new AsyncResource(
+			'test',
+			async () => {
+				count++
+				return count
+			},
+			{ defaultTTL: 10_000 }
+		)
+
+		const values: number[] = []
+
+		const sub = resource.observe(ctx, { ttl: 10_000 }).subscribe((value) => {
+			values.push(value)
+		})
+
+		await sleep(100)
+		resource.invalidate(ctx)
+		await sleep(0)
+		resource.invalidate(ctx)
+		await sleep(0)
+
+		expect(values).toEqual([1, 2, 3])
+
 		sub.unsubscribe()
 	})
 
