@@ -1,7 +1,7 @@
 import { DndContext, DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { produce } from 'immer'
-import { Edit, EllipsisVertical, GripVertical, Minus, PlusIcon } from 'lucide-react'
+import { Edit, EllipsisVertical, GripVertical, LoaderCircle, Minus, PlusIcon } from 'lucide-react'
 import deepEqual from 'fast-deep-equal'
 import React, { useRef, useState } from 'react'
 import * as AR from '@/app-routes.ts'
@@ -47,6 +47,7 @@ import {
 	tryApplyMutation,
 	WithMutationId,
 } from '@/lib/item-mutations.ts'
+import { useMutation } from '@tanstack/react-query'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -111,7 +112,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 				set(atoms.queueMutations, initMutations())
 				set(atoms.historyFiltersMutations, initMutations())
 			}),
-			applyServerUpdate: atom(null, (_, set, update: M.ServerState & M.UserPart) => {
+			applyServerUpdate: atom(null, (get, set, update: M.ServerState & M.UserPart) => {
 				set(atoms.serverState, update)
 				set(atoms.serverStateMut, {
 					historyFiltersEnabled: update.historyFiltersEnabled,
@@ -126,6 +127,7 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 				})
 				set(atoms.queueMutations, initMutations())
 				set(atoms.historyFiltersMutations, initMutations())
+				console.log('applied', update.layerQueueSeqId)
 			}),
 			changedSettings: atom((get) => {
 				const serverStateSettings = get(atoms.serverState)?.settings
@@ -294,12 +296,15 @@ function ServerDashboard() {
 	React.useEffect(() => {
 		const sub = trpc.layerQueueRouter.watchServerState.subscribe(undefined, {
 			onData: (data) => {
+				console.log('receved', data.layerQueueSeqId)
 				sdStore.set(SDStore.atom.applyServerUpdate, data)
 				settingsPanelRef.current?.reset(data.settings)
 			},
 		})
 		return () => sub.unsubscribe()
-	}, [sdStore])
+
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	const basePoolFilterEntity = useFilter(serverStateMut?.settings?.queue.poolFilterId, {
 		onUpdate: () => {
@@ -374,16 +379,22 @@ function ServerDashboard() {
 	}
 
 	const toaster = useToast()
-	const updateQueueMutation = trpcReact.layerQueueRouter.updateQueue.useMutation()
+	const updateQueueMutation = useMutation({
+		mutationFn: trpc.layerQueueRouter.updateQueue.mutate,
+	})
 	// const validatedHistoryFilters = M.histo
 	async function saveLayers() {
 		if (!serverStateMut) return
+		console.log()
+		console.log('saving layers after', serverStateMut.layerQueueSeqId)
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
+		console.log('received mutation response:', res.serverState?.layerQueueSeqId, res)
 		if (res.code === 'err:next-layer-changed-while-vote-active') {
 			toaster.toast({
 				title: 'Cannot update: active layer vote in progress',
 				variant: 'destructive',
 			})
+			sdStore.set(SDStore.atom.reset)
 			return
 		}
 		if (res.code === 'err:out-of-sync') {
@@ -391,6 +402,8 @@ function ServerDashboard() {
 				title: 'State changed before submission, please try again.',
 				variant: 'destructive',
 			})
+			sdStore.set(SDStore.atom.reset)
+
 			return
 		}
 		if (res.code === 'ok') {
@@ -482,10 +495,16 @@ function ServerDashboard() {
 												)}
 											</CardContent>
 											<CardFooter className="space-x-1">
-												<Button onClick={saveLayers}>Save</Button>
+												<Button onClick={saveLayers} disabled={updateQueueMutation.isPending}>
+													Save Changes
+												</Button>
 												<Button onClick={resetSDStore} variant="secondary">
 													Cancel
 												</Button>
+												<LoaderCircle
+													className="animate-spin data-[pending=false]:invisible"
+													data-pending={updateQueueMutation.isPending}
+												/>
 											</CardFooter>
 										</Card>
 									</div>
