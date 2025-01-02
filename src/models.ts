@@ -9,6 +9,7 @@ import type * as Schema from './server/schema'
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
+export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = Schema.Layer & MiniLayer
 export type Subfaction = C.Subfaction
 

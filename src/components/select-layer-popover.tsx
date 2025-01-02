@@ -23,6 +23,7 @@ import { LayerQueue, QueueItemAction, getIndexFromQueueItemId } from './layer-qu
 import { initMutations, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
 import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import { DragEndEvent } from '@dnd-kit/core'
+import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
@@ -417,7 +418,7 @@ export function EditLayerQueueItemPopover(props: {
 								tryApplyMutation('removed', action.id, mutations)
 							})
 						)
-						return
+						break
 					}
 					case 'add-after': {
 						const index = editedItem.vote.choices.findIndex((id) => id === action.id)
@@ -425,10 +426,12 @@ export function EditLayerQueueItemPopover(props: {
 						setQueueItemMutations(
 							produce((mutations) => {
 								if (action.code !== 'add-after') return
-								tryApplyMutation('added', action.items.map((i) => i.layerId!)[0], mutations)
+								for (const item of action.items) {
+									tryApplyMutation('added', item.layerId!, mutations)
+								}
 							})
 						)
-						return
+						break
 					}
 					case 'add-before': {
 						const index = editedItem.vote.choices.findIndex((id) => id === action.id)
@@ -441,17 +444,18 @@ export function EditLayerQueueItemPopover(props: {
 								}
 							})
 						)
-						return
+						break
 					}
 					case 'edit': {
 						const index = editedItem.vote.choices.findIndex((id) => id === action.item.id)
 						editedItem.vote.choices[index] = action.item.layerId!
 						setQueueItemMutations(produce((mutations) => tryApplyMutation('edited', action.item.layerId!, mutations)))
-						return
+						break
 					}
 					default:
 						assertNever(action)
 				}
+				editedItem.vote!.defaultChoice = editedItem.vote!.choices[0] ?? M.DEFAULT_LAYER_ID
 			})
 		)
 	}
@@ -523,6 +527,7 @@ export function EditLayerQueueItemPopover(props: {
 		props.onOpenChange(open)
 	}
 	const user = trpcReact.getLoggedInUser.useQuery().data
+	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
@@ -576,6 +581,20 @@ export function EditLayerQueueItemPopover(props: {
 
 					{editedItem.vote ? (
 						<div className="flex flex-col">
+							<div>
+								<SelectLayersPopover
+									title="Add"
+									description="Select layers to add to the voting pool"
+									open={addLayersOpen}
+									onOpenChange={setAddLayersOpen}
+									selectQueueItems={(items) => {
+										const last = choicesLayerQueue[choicesLayerQueue.length - 1]
+										dispatchQueueItemAction({ code: 'add-after', items, id: last.id })
+									}}
+								>
+									<DropdownMenuItem>Add layers</DropdownMenuItem>
+								</SelectLayersPopover>
+							</div>
 							<LayerQueue
 								dispatchQueueItemAction={dispatchQueueItemAction}
 								layerQueue={choicesLayerQueue}

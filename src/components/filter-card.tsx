@@ -10,7 +10,7 @@ import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
 import { eltToFocusable, Focusable, SetState } from '@/lib/react'
-import { trpcReact, trpc } from '@/lib/trpc.client.ts'
+import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 
@@ -25,7 +25,7 @@ import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
-import { useLayersGroupedBy, useLayersQuery } from '@/hooks/use-layer-queries.ts'
+import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {

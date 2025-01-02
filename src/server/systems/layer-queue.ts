@@ -489,7 +489,7 @@ async function updateQueue(args: { input: M.MutableServerState; ctx: C.Log & C.D
 			serverState.layerQueueSeqId++
 			let updatedNextLayerId: string | null = null
 			// we're setting the default choice of a layer temporarily if
-			const nextLayerId = serverState.layerQueue[0]?.layerId
+			const nextLayerId = serverState.layerQueue?.[0]?.layerId ?? serverState.layerQueue?.[0]?.vote?.defaultChoice
 			if (nextLayerId && status.nextLayer?.id !== nextLayerId) {
 				updatedNextLayerId = nextLayerId
 			}
