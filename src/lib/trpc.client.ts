@@ -17,6 +17,10 @@ export const links = [
 ]
 
 export const trpc = createTRPCClient<AppRouter>({ links })
+
+/**
+ * @deprecated bad library, phase this out. doesn't handle transports well and a bug in its subscription implementation caused me great pain
+ */
 export const trpcReact = createTRPCReact<AppRouter>()
 
 export function hashQueryKey(queryKey: any): string {

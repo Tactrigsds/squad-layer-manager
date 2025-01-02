@@ -2,10 +2,11 @@ import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import * as M from '@/models.ts'
+import * as C from '@/server/context.ts'
 
 import * as Schema from './schema.ts'
 import { filtersRouter } from './systems/filters-entity.ts'
-import * as Server from './systems/layer-queue.ts'
+import * as LayerQueue from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 import * as SquadServer from './systems/squad-server.ts'
 import { procedure, router } from './trpc.ts'
@@ -19,7 +20,7 @@ export function setupTrpcRouter() {
 			return ctx.user
 		}),
 		// TODO could be merged with getLayers if this becomes too unweildy, mostly duplicate functionality
-		getUniqueValues: procedure
+		getLayersGroupedBy: procedure
 			.input(
 				z.object({
 					columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
@@ -70,7 +71,7 @@ export function setupTrpcRouter() {
 				}
 				return await LayersQuery.getHistoryFilter(ctx, input.historyFilters, [...queuedLayerIds])
 			}),
-		server: Server.serverRouter,
+		layerQueueRouter: LayerQueue.layerQueueRouter,
 		squadServer: SquadServer.squadServerRouter,
 		filters: filtersRouter,
 	})

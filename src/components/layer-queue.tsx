@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge.tsx'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
-import { trpcReact } from '@/lib/trpc.client.ts'
+import { trpcReact, trpc } from '@/lib/trpc.client.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import * as M from '@/models'
@@ -75,14 +75,14 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 		const addQueueItems = atom(null, (get, set, items: M.LayerQueueItem[], index?: number) => {
 			index ??= get(atoms.serverStateMut)!.layerQueue.length
 			const existing = get(atoms.serverStateMut)!.layerQueue
-			const withIds = [...existing, ...items].map((item) => ({ id: createId(6), ...item }))
+			const newItems = items.map((item) => ({ id: createId(6), ...item }))
 			set(withImmer(atoms.queueMutations), (draft) => {
-				for (const { id } of withIds) {
+				for (const { id } of newItems) {
 					tryApplyMutation('added', id, draft)
 				}
 			})
 			set(withImmer(atoms.serverStateMut), (draft) => {
-				draft!.layerQueue = [...existing.slice(0, index), ...withIds, ...existing.slice(index)] as IdedLayerQueueItem[]
+				draft!.layerQueue = [...existing.slice(0, index), ...newItems, ...existing.slice(index)] as IdedLayerQueueItem[]
 			})
 		})
 		return {
@@ -291,12 +291,15 @@ function ServerDashboard() {
 	const resetSDStore = useSDStore().set.reset()
 	const sdStore = useSDStore().store()!
 
-	trpcReact.server.watchServerState.useSubscription(undefined, {
-		onData: (data) => {
-			sdStore.set(SDStore.atom.applyServerUpdate, data)
-			settingsPanelRef.current?.reset(data.settings)
-		},
-	})
+	React.useEffect(() => {
+		const sub = trpc.layerQueueRouter.watchServerState.subscribe(undefined, {
+			onData: (data) => {
+				sdStore.set(SDStore.atom.applyServerUpdate, data)
+				settingsPanelRef.current?.reset(data.settings)
+			},
+		})
+		return () => sub.unsubscribe()
+	}, [sdStore])
 
 	const basePoolFilterEntity = useFilter(serverStateMut?.settings?.queue.poolFilterId, {
 		onUpdate: () => {
@@ -320,7 +323,7 @@ function ServerDashboard() {
 		basePoolFilter = FB.and([basePoolFilter, historyFilterRes.data])
 	}
 
-	const abortVoteMutation = trpcReact.server.abortVote.useMutation()
+	const abortVoteMutation = trpcReact.layerQueueRouter.abortVote.useMutation()
 	async function abortVote() {
 		if (!serverStateMut?.layerQueueSeqId) return
 		const res = await abortVoteMutation.mutateAsync({
@@ -338,7 +341,7 @@ function ServerDashboard() {
 		})
 	}
 
-	const startVoteMutation = trpcReact.server.startVote.useMutation()
+	const startVoteMutation = trpcReact.layerQueueRouter.startVote.useMutation()
 	async function startVote() {
 		const res = await startVoteMutation.mutateAsync({
 			seqId: serverState!.layerQueueSeqId,
@@ -371,7 +374,7 @@ function ServerDashboard() {
 	}
 
 	const toaster = useToast()
-	const updateQueueMutation = trpcReact.server.updateQueue.useMutation()
+	const updateQueueMutation = trpcReact.layerQueueRouter.updateQueue.useMutation()
 	// const validatedHistoryFilters = M.histo
 	async function saveLayers() {
 		if (!serverStateMut) return
@@ -391,6 +394,7 @@ function ServerDashboard() {
 			return
 		}
 		if (res.code === 'ok') {
+			sdStore.set(SDStore.atom.applyServerUpdate, res.serverState)
 			toaster.toast({ title: 'Changes applied' })
 			return
 		}
@@ -985,7 +989,6 @@ export type QueueItemAction =
 	  }
 
 export function getIndexFromQueueItemId(items: IdedLayerQueueItem[], id: string | null) {
-	console.log({ id })
 	if (id === null) return -1
 	return items.findIndex((item) => item.id === id)
 }

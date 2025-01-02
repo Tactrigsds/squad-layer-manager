@@ -32,7 +32,7 @@ import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { assertNever } from '@/lib/typeGuards'
-import { useLayersQuery } from '@/hooks/use-queries.ts'
+import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
 
 const columnHelper = createColumnHelper<M.Layer>()
 

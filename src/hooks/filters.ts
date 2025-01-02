@@ -1,4 +1,4 @@
-import { trpcReact } from '@/lib/trpc.client'
+import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
 import React from 'react'
 
@@ -10,25 +10,31 @@ export function useFilter(
 	}
 ) {
 	const [filter, setFilter] = React.useState<M.FilterEntity | undefined>(undefined)
+	const optionsRef = React.useRef(options)
+	optionsRef.current = options
 
-	trpcReact.filters.watchFilter.useSubscription(filterId ?? '__trash_default_value__', {
-		enabled: !!filterId,
-		onData: (data) => {
-			if (data.code === 'err:not-found') {
-				setFilter(undefined)
-			}
-			if (data.code === 'initial-value') {
-				setFilter(data.entity)
-			} else if (data.code === 'mutation') {
-				if (data.mutation.type === 'delete') {
-					options?.onDelete?.()
-				} else if (data.mutation.type === 'update') {
-					options?.onUpdate?.(data.mutation)
-					setFilter(data.mutation.value)
+	React.useEffect(() => {
+		if (!filterId) return
+		const sub = trpc.filters.watchFilter.subscribe(filterId, {
+			onData: (data) => {
+				if (data.code === 'err:not-found') {
+					setFilter(undefined)
 				}
-			}
-		},
-	})
+				if (data.code === 'initial-value') {
+					setFilter(data.entity)
+				} else if (data.code === 'mutation') {
+					if (data.mutation.type === 'delete') {
+						optionsRef.current?.onDelete?.()
+					} else if (data.mutation.type === 'update') {
+						optionsRef.current?.onUpdate?.(data.mutation)
+						setFilter(data.mutation.value)
+					}
+				}
+			},
+		})
+		return () => sub.unsubscribe()
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	return filter
 }

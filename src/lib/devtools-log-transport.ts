@@ -60,9 +60,21 @@ function getConsoleArgs(level: number, obj: any) {
 		opStr = obj.ops.map((op: any) => `${op.type}::${op.id}`).join(' -> ')
 		opStr += '\n'
 	}
-	return [
+	const line = [
 		'%c%s%c %c%s%c %c%s%c %s',
-		'color: green; font-weight: bold',
+		level === 10
+			? 'color: gray; font-weight: bold'
+			: level === 20
+				? 'color: lightblue; font-weight: bold'
+				: level === 30
+					? 'color: green; font-weight: bold'
+					: level === 40
+						? 'color: orange; font-weight: bold'
+						: level === 50
+							? 'color: red; font-weight: bold'
+							: level === 60
+								? 'color: purple; font-weight: bold'
+								: 'color: black; font-weight: bold',
 		levels[level as keyof typeof levels] || 'UNKNOWN',
 		'color: inherit',
 		'color: gray',
@@ -74,6 +86,13 @@ function getConsoleArgs(level: number, obj: any) {
 		msg,
 		obj,
 	]
+
+	if (obj.err) {
+		line.push(obj.err)
+		delete obj.err
+	}
+
+	return line
 }
 
 function printLogEntry(level: number, obj: any) {

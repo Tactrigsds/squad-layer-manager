@@ -10,6 +10,7 @@ import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
 import * as SquadjsSchema from '@/server/schema-squadjs'
 import { assertNever } from '@/lib/typeGuards'
+import { selectKeys } from '@/lib/drizzle'
 
 export const LayersQueryInputSchema = z.object({
 	pageIndex: z.number().int().min(0).optional(),
@@ -28,7 +29,6 @@ export const LayersQueryInputSchema = z.object({
 		])
 		.optional()
 		.describe('if not provided, no sorting will be done'),
-	groupBy: z.array(z.enum(M.COLUMN_KEYS_NON_COLLECTION))?.optional(),
 	filter: M.FilterNodeSchema.optional(),
 	historyFilters: z.array(M.HistoryFilterSchema).optional(),
 	queuedLayerIds: z.array(M.LayerIdSchema).optional(),
@@ -65,11 +65,7 @@ export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log
 		whereCondition = (await getWhereFilterConditions(filter, [], opCtx)) ?? whereCondition
 	}
 
-	let query = opCtx
-		.db()
-		.select(input.groupBy ? Object.fromEntries(input.groupBy.map((col) => [col, Schema.layers[col]] as const)) : undefined)
-		.from(Schema.layers)
-		.where(whereCondition)
+	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
 
 	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
@@ -81,10 +77,6 @@ export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log
 		query = query.orderBy(sql`RAND(${input.sort.seed})`)
 	}
 
-	if (input.groupBy) {
-		// @ts-expect-error idk
-		query = query.groupBy(...input.groupBy.map((col) => Schema.layers[col]))
-	}
 	const [layers, [countResult]] = await Promise.all([
 		query
 			.offset(input.pageIndex * input.pageSize)

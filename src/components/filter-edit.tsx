@@ -22,7 +22,7 @@ import { useToast } from '@/hooks/use-toast'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
-import { trpcReact } from '@/lib/trpc.client'
+import { trpc, trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
 import { type WatchFilterOutput } from '@/server/systems/filters-entity'
@@ -34,6 +34,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
+import React from 'react'
 
 const defaultFilter: M.EditableFilterNode = EFB.and()
 
@@ -78,9 +79,14 @@ export default function FilterEdit() {
 		},
 		[setFilterEntity, setEditedFilter, toast, userRes.data?.username, navigate]
 	)
-	trpcReact.filters.watchFilter.useSubscription(id, {
-		onData: onWatchFilterData,
-	})
+
+	React.useEffect(() => {
+		const sub = trpc.filters.watchFilter.subscribe(id, {
+			onData: onWatchFilterData,
+		})
+		return () => sub.unsubscribe()
+	}, [onWatchFilterData, id])
+
 	const [pageIndex, setPageIndex] = useState(0)
 	const validFilter = useMemo(() => {
 		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : undefined

@@ -21,7 +21,7 @@ import { Checkbox } from './ui/checkbox.tsx'
 import deepEqual from 'fast-deep-equal'
 import { LayerQueue, QueueItemAction, getIndexFromQueueItemId } from './layer-queue.tsx'
 import { initMutations, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
-import { useLayersQuery } from '@/hooks/use-queries.ts'
+import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import { DragEndEvent } from '@dnd-kit/core'
 
 type SelectMode = 'vote' | 'layers'

@@ -71,3 +71,16 @@ export async function returnUpdateErrors<T = never>(runningQuery: Promise<T[]>) 
 	}
 	return { code: 'ok' as const, data: rows[0] }
 }
+
+export async function selectKeys<C extends TableConfig>(
+	schema: MySqlTableWithColumns<C>,
+	keys: (keyof MySqlTableWithColumns<C>['$inferSelect'])[]
+) {
+	type Schema = MySqlTableWithColumns<C>
+	const out: { [K in keyof Schema['$inferSelect']]: Schema['$inferSelect'][K] } = {} as any
+
+	for (const key of keys) {
+		out[key] = schema[key]
+	}
+	return out
+}

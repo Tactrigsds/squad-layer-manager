@@ -67,6 +67,9 @@ export async function setupLayerQueueAndServerState() {
 	})
 
 	serverState$ = new BehaviorSubject([initialServerState, systemCtx])
+	serverState$.subscribe(([state, ctx]) => {
+		ctx.log.info({ state }, 'pushing server state update')
+	})
 
 	// -------- set next layer on server if necessary --------
 	await opCtx.db().transaction(async (tx) => {
@@ -425,7 +428,9 @@ async function handleVoteTimeout(ctx: C.Log & C.Db) {
 // -------- generic actions & data  --------
 async function* watchServerStateUpdates(args: { ctx: C.Log & C.Db }) {
 	for await (const [update] of toAsyncGenerator(serverState$)) {
-		yield await includeServerStateParts(args.ctx, update)
+		const withParts = await includeServerStateParts(args.ctx, update)
+		args.ctx.log.info(withParts, 'server state update')
+		yield withParts
 	}
 }
 
@@ -497,8 +502,8 @@ async function updateQueue(args: { input: M.MutableServerState; ctx: C.Log & C.D
 		if (res.updatedNextLayerId !== null) {
 			await SquadServer.rcon.setNextLayer(opCtx, M.getMiniLayerFromId(res.updatedNextLayerId))
 		}
-		serverState$.next([res.serverState, args.ctx])
-		return res
+		serverState$.next([res.serverState, opCtx])
+		return { ...res, serverState: await includeServerStateParts(opCtx, res.serverState) }
 	} finally {
 		release()
 	}
@@ -589,7 +594,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db, opts: M.GenLayerQueue
 }
 
 // -------- setup router --------
-export const serverRouter = router({
+export const layerQueueRouter = router({
 	watchServerState: procedure.subscription(watchServerStateUpdates),
 	generateLayerQueueItems: procedure
 		.input(M.GenLayerQueueItemsOptionsSchema)

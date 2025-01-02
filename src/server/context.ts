@@ -109,10 +109,7 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 		code: 'ok' as const,
 		ctx: {
 			...ctx,
-			log: ctx.log.child({
-				username: validSession.user.username,
-				discordId: validSession.user.discordId,
-			}),
+			log: ctx.log.child({ username: validSession.user.username }),
 			req: req,
 			res: res,
 			sessionId,
