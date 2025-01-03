@@ -20,7 +20,6 @@ import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
 import * as EFB from '@/lib/editable-filter-builders.ts'
-import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpc, trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
@@ -89,7 +88,7 @@ export default function FilterEdit() {
 
 	const [pageIndex, setPageIndex] = useState(0)
 	const validFilter = useMemo(() => {
-		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : undefined
+		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : null
 	}, [editedFilter])
 	const updateFilterMutation = trpcReact.filters.updateFilter.useMutation()
 	const deleteFilterMutation = trpcReact.filters.deleteFilter.useMutation()
@@ -147,8 +146,7 @@ export default function FilterEdit() {
 			<div className="flex space-x-2">
 				<FilterCard
 					node={editedFilter}
-					setNode={setEditedFilter as SetState<M.EditableFilterNode | undefined>}
-					validNode={validFilter}
+					setNode={setEditedFilter as React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>>}
 					filterId={filterEntity.id}
 					resetFilter={() => {
 						setEditedFilter(filterEntity.filter as M.EditableFilterNode)
@@ -166,7 +164,7 @@ export default function FilterEdit() {
 					</DeleteFilterDialog>
 				</div>
 			</div>
-			<LayerTable filter={validFilter} pageIndex={pageIndex} setPageIndex={setPageIndex} />
+			<LayerTable filter={validFilter ?? undefined} pageIndex={pageIndex} setPageIndex={setPageIndex} />
 		</div>
 	)
 }

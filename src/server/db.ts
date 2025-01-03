@@ -1,9 +1,10 @@
 import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
-import MySQL from 'mysql2/promise'
+import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
 import { EventEmitter } from 'node:events'
 
 import * as C from './context.ts'
 import { ENV } from './env.ts'
+import { Pool } from 'mysql2'
 
 export type Db = MySql2Database<Record<string, never>>
 
@@ -48,6 +49,9 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 		super()
 		Object.assign(this, basePool)
 	}
+	pool!: Pool
+	config!: MySQL.ConnectionOptions
+	threadId!: number
 
 	getConnection(): Promise<MySQL.PoolConnection> {
 		try {
@@ -171,8 +175,10 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 		return this.basePool.escape(value)
 	}
 
-	escapeId(value: string): string {
-		return this.basePool.escapeId(value)
+	escapeId(value: string): string
+	escapeId(values: string[]): string
+	escapeId(values: any): string {
+		return this.basePool.escapeId(values)
 	}
 
 	format(sql: string, values?: any | any[] | { [param: string]: any }): string {
@@ -191,7 +197,11 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 		}
 	}
 
-	async execute<T>(options: string | MySQL.QueryOptions, values?: any): Promise<[T, MySQL.FieldPacket[]]> {
+	execute<T extends QueryResult>(sql: string): Promise<[T, FieldPacket[]]>
+	execute<T extends QueryResult>(sql: string, values: any): Promise<[T, FieldPacket[]]>
+	execute<T extends QueryResult>(options: QueryOptions): Promise<[T, FieldPacket[]]>
+	execute<T extends QueryResult>(options: QueryOptions, values: any): Promise<[T, FieldPacket[]]>
+	async execute<T extends QueryResult>(options: any, values?: any): Promise<[T, MySQL.FieldPacket[]]> {
 		try {
 			return await this.basePool.execute<T>(options, values)
 		} catch (error) {

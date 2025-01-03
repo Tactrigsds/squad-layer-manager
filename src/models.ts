@@ -158,13 +158,14 @@ export function getSetNextVoteCommand(ids: string[]) {
 export const LEVEL_ABBREVIATION_REVERSE = reverseMapping(LayerComponents.levelAbbreviations)
 export const SUBFAC_ABBREVIATIONS_REVERSE = reverseMapping(LayerComponents.subfactionAbbreviations)
 
+export const COLUMN_TYPES = ['float', 'string', 'integer', 'collection', 'boolean'] as const
+export type ColumnType = (typeof COLUMN_TYPES)[number]
+
 type ComparisonType = {
 	coltype: ColumnType
 	code: string
 	displayName: string
 }
-export const COLUMN_TYPES = ['float', 'string', 'integer', 'collection'] as const
-export type ColumnType = (typeof COLUMN_TYPES)[number]
 
 export type StringColumn = (typeof COLUMN_TYPE_MAPPINGS)['string'][number]
 export type FloatColumn = (typeof COLUMN_TYPE_MAPPINGS)['float'][number]
@@ -177,11 +178,11 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
 	{ coltype: 'string', code: 'like', displayName: 'Like' },
 	{ coltype: 'collection', code: 'has', displayName: 'Has All' },
+	{ coltype: 'boolean', code: 'is', displayName: 'Is' },
 ] as const satisfies ComparisonType[]
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
 export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code)
 
-// we're keeping this definition separate to reduce type inference a bit
 export const COLUMN_TYPE_MAPPINGS = {
 	float: [
 		'Anti-Infantry_1',
@@ -205,22 +206,27 @@ export const COLUMN_TYPE_MAPPINGS = {
 	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
 	integer: [] as const,
 	collection: ['FactionMatchup', 'FullMatchup', 'SubFacMatchup'] as const,
-} satisfies { [key in ColumnType]: LayerColumnKey[] }
+	boolean: ['Z_Pool'] as const,
+} satisfies { [key in ColumnType]: (LayerColumnKey | LayerCompositeKey)[] }
 
 export function isColType<T extends ColumnType>(col: string, type: T): col is (typeof COLUMN_TYPE_MAPPINGS)[T][number] {
 	return (COLUMN_TYPE_MAPPINGS[type] as string[]).includes(col)
 }
 
-export const COLUMN_KEYS_NON_COLLECTION = [
+export const COLUMN_KEYS = [
 	...COLUMN_TYPE_MAPPINGS.string,
 	...COLUMN_TYPE_MAPPINGS.float,
 	...COLUMN_TYPE_MAPPINGS.integer,
+	...COLUMN_TYPE_MAPPINGS.boolean,
 ] as const
 
-export const COLUMN_KEYS = [...COLUMN_KEYS_NON_COLLECTION, ...COLUMN_TYPE_MAPPINGS.collection] as [LayerColumnKey, ...LayerColumnKey[]]
+export const COLUMN_KEYS_WITH_COMPUTED = [...COLUMN_KEYS, ...COLUMN_TYPE_MAPPINGS.collection] as [
+	LayerColumnKey | LayerCompositeKey,
+	...(LayerColumnKey | LayerCompositeKey)[],
+]
 
 // @ts-expect-error initialize
-export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey, ColumnType> = {}
+export const COLUMN_KEY_TO_TYPE: Record<LayerColumnKey | LayerCompositeKey, ColumnType> = {}
 for (const [key, values] of Object.entries(COLUMN_TYPE_MAPPINGS)) {
 	for (const value of values) {
 		// @ts-expect-error initialize
@@ -228,13 +234,13 @@ for (const [key, values] of Object.entries(COLUMN_TYPE_MAPPINGS)) {
 	}
 }
 
-export function getComparisonTypesForColumn(column: LayerColumnKey) {
+export function getComparisonTypesForColumn(column: LayerColumnKey | LayerCompositeKey) {
 	const colType = COLUMN_KEY_TO_TYPE[column]
 	return COMPARISON_TYPES.filter((type) => type.coltype === colType)
 }
 
 export type EditableComparison = {
-	column?: LayerColumnKey
+	column?: LayerColumnKey | LayerCompositeKey
 	code?: (typeof COMPARISON_TYPES)[number]['code']
 	value?: number | string | null
 	values?: (string | null)[]
@@ -464,7 +470,7 @@ export function preprocessLevel(level: string) {
 	return level
 }
 
-const _MiniLayerSchema = z.object({
+export const MiniLayerSchema = z.object({
 	id: LayerIdSchema,
 	Level: z.string().transform(preprocessLevel),
 	Layer: z.string(),
@@ -478,17 +484,25 @@ const _MiniLayerSchema = z.object({
 	Faction_2: z.string(),
 	SubFac_2: z.enum(C.SUBFACTIONS).nullable(),
 })
-export const MiniLayerSchema = _MiniLayerSchema.transform(includeComputedCollections)
-export function includeComputedCollections<T extends z.infer<typeof _MiniLayerSchema>>(layer: T) {
+
+export const MiniLayersWithCollections = MiniLayerSchema.transform(includeComputedCollections)
+export type LayerComposite = {
+	FactionMatchup: [string, string]
+	FullMatchup: [string, string]
+	SubFacMatchup: [string | null, string | null]
+}
+export type LayerCompositeKey = keyof LayerComposite
+export function includeComputedCollections<T extends MiniLayer>(layer: T): T & LayerComposite {
 	return {
 		...layer,
 		FactionMatchup: [layer.Faction_1, layer.Faction_2].sort(),
 		FullMatchup: [getLayerTeamString(layer.Faction_1, layer.SubFac_1), getLayerTeamString(layer.Faction_2, layer.SubFac_2)].sort(),
 		SubFacMatchup: [layer.SubFac_1, layer.SubFac_2].sort(),
-	}
+	} as T & LayerComposite
 }
 
 export type MiniLayer = z.infer<typeof MiniLayerSchema>
+export type PossibleUnknownMiniLayer = { code: 'known'; layer: MiniLayer } | { code: 'unknown'; layerString: string; factionString: string }
 
 export function isFullMiniLayer(layer: Partial<MiniLayer>): layer is MiniLayer {
 	return MiniLayerSchema.safeParse(layer).success
@@ -557,7 +571,7 @@ export const HistoryFilterSchema = z.discriminatedUnion(
 				description:
 					'Will use an equality comparison to check if any layers in the history match the predicated layer under the specific column',
 			}),
-			column: z.enum(COLUMN_KEYS),
+			column: z.enum(COLUMN_KEYS_WITH_COMPUTED),
 			excludeFor: z.object({
 				matches: z.number().int().positive(),
 			}),
@@ -571,7 +585,7 @@ export type HistoryFilter = z.infer<typeof HistoryFilterSchema>
 export type HistoryFilterEdited =
 	| {
 			type: 'dynamic'
-			column: (typeof COLUMN_KEYS)[number]
+			column: (typeof COLUMN_KEYS_WITH_COMPUTED)[number]
 			excludeFor: {
 				matches: number
 			}
@@ -592,9 +606,10 @@ export const GenLayerQueueItemsOptionsSchema = z.object({
 })
 
 export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
-export const StartVoteSchema = z.object({
+export const StartVoteInputSchema = z.object({
 	seqId: z.number(),
 	restart: z.boolean().default(false),
+	durationSeconds: z.number().positive().optional(),
 })
 
 const TallyProperties = {
@@ -717,6 +732,11 @@ export type LQServerStateUpdate = {
 				reason: 'edit' | 'start-vote' | 'abort-vote'
 				author: bigint
 		  }
+		| {
+				type: 'chat-command'
+				reason: 'start-vote' | 'abort-vote'
+				s64UserId: string
+		  }
 }
 
 export const ServerStateSchema = MutableServerStateSchema.extend({
@@ -724,7 +744,7 @@ export const ServerStateSchema = MutableServerStateSchema.extend({
 	displayName: z.string().min(1).max(256),
 	online: z.boolean(),
 	currentVote: VoteStateSchema.nullable(),
-}) satisfies z.ZodType<Schema.Server>
+})
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
 export type UserPart = Parts<{ users: Schema.User[] }>

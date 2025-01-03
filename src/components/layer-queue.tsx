@@ -48,6 +48,8 @@ import {
 	WithMutationId,
 } from '@/lib/item-mutations.ts'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { deepClone } from '@/lib/object.ts'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -216,12 +218,13 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						tryApplyMutation('removed', id, draft)
 					})
 					set(withImmer(atoms.serverStateMut), (draft) => {
+						//@ts-expect-error no idea
 						draft!.historyFilters = (draft!.historyFilters as EditedHistoryFilterWithId[]).filter(
 							(f) => f.id !== id
 						) as EditedHistoryFilterWithId[]
 					})
 				}),
-				edit: atom(null, (_, set, id: string, update: React.SetStateAction<EditedHistoryFilterWithId>) => {
+				edit: atom(null, (_, set, id: string, update: React.SetStateAction<M.HistoryFilterEdited>) => {
 					set(withImmer(atoms.historyFiltersMutations), (draft) => {
 						tryApplyMutation('edited', id, draft)
 					})
@@ -229,9 +232,9 @@ const { SDStore, useSDStore, SDProvider } = createAtomStore(initialState, {
 						const filters = draft!.historyFilters as EditedHistoryFilterWithId[]
 						const idx = filters.findIndex((f) => f.id === id)
 						if (typeof update === 'function') {
-							filters[idx] = update(filters[idx])
+							filters[idx] = { id, ...update(filters[idx]) }
 						} else {
-							filters[idx] = update
+							filters[idx] = { id, ...update }
 						}
 					})
 				}),
@@ -295,7 +298,7 @@ function ServerDashboard() {
 	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
 
 	React.useEffect(() => {
-		const sub = trpc.layerQueueRouter.watchServerState.subscribe(undefined, {
+		const sub = trpc.layerQueue.watchServerState.subscribe(undefined, {
 			onData: (data) => {
 				if (
 					sdStore.get(SDStore.atom.serverState) &&
@@ -334,7 +337,7 @@ function ServerDashboard() {
 		basePoolFilter = FB.and([basePoolFilter, historyFilterRes.data])
 	}
 
-	const abortVoteMutation = trpcReact.layerQueueRouter.abortVote.useMutation()
+	const abortVoteMutation = trpcReact.layerQueue.abortVote.useMutation()
 	async function abortVote() {
 		if (!serverStateMut?.layerQueueSeqId) return
 		const res = await abortVoteMutation.mutateAsync({
@@ -352,7 +355,7 @@ function ServerDashboard() {
 		})
 	}
 
-	const startVoteMutation = trpcReact.layerQueueRouter.startVote.useMutation()
+	const startVoteMutation = trpcReact.layerQueue.startVote.useMutation()
 	async function startVote() {
 		const res = await startVoteMutation.mutateAsync({
 			seqId: serverState!.layerQueueSeqId,
@@ -386,7 +389,7 @@ function ServerDashboard() {
 
 	const toaster = useToast()
 	const updateQueueMutation = useMutation({
-		mutationFn: trpc.layerQueueRouter.updateQueue.mutate,
+		mutationFn: trpc.layerQueue.updateQueue.mutate,
 	})
 	// const validatedHistoryFilters = M.histo
 	async function saveLqState() {
@@ -428,13 +431,15 @@ function ServerDashboard() {
 		<div className="contianer mx-auto grid place-items-center py-10">
 			<span className="flex space-x-4">
 				{serverState?.currentVote && (
-					<VoteState
-						abortVote={abortVote}
-						startVote={startVote}
-						rerunVote={rerunVote}
-						state={serverState.currentVote}
-						parts={serverState.parts}
-					/>
+					<div>
+						<VoteState
+							abortVote={abortVote}
+							startVote={startVote}
+							rerunVote={rerunVote}
+							state={serverState.currentVote}
+							parts={serverState.parts}
+						/>
+					</div>
 				)}
 				<Card className="flex w-max flex-col">
 					<div className="flex w-full justify-between p-6 space-x-2">
@@ -477,7 +482,7 @@ function ServerDashboard() {
 										<CardHeader>
 											<CardTitle>Now Playing</CardTitle>
 										</CardHeader>
-										<CardContent>{Helpers.toShortLayerName(serverStatus?.currentLayer)}</CardContent>
+										<CardContent>{Helpers.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
 									</>
 								)}
 								{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
@@ -516,6 +521,7 @@ function ServerDashboard() {
 
 							<h4 className={Typography.H4}>Up Next</h4>
 							<LayerQueue
+								parts={serverState?.parts ?? { users: [] }}
 								layerQueue={serverStateMut?.layerQueue ?? []}
 								queueMutations={queueMutations}
 								dispatchQueueItemAction={(action) => sdStore.set(SDStore.atom.dispatchQueueItemAction, action)}
@@ -531,13 +537,15 @@ function ServerDashboard() {
 }
 
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
-export function LayerQueue(props: {
-	layerQueue: IdedLayerQueueItem[]
-	queueMutations: ItemMutations
-	dispatchQueueItemAction: (action: QueueItemAction) => void
-	allowVotes?: boolean
-	handleDragEnd: (evt: DragEndEvent, userDiscordId: bigint) => void
-}) {
+export function LayerQueue(
+	props: {
+		layerQueue: IdedLayerQueueItem[]
+		queueMutations: ItemMutations
+		dispatchQueueItemAction: (action: QueueItemAction) => void
+		allowVotes?: boolean
+		handleDragEnd: (evt: DragEndEvent, userDiscordId: bigint) => void
+	} & M.UserPart
+) {
 	const userQuery = trpcReact.getLoggedInUser.useQuery()
 	const allowVotes = props.allowVotes ?? true
 	return (
@@ -547,6 +555,7 @@ export function LayerQueue(props: {
 					{/* -------- queue items -------- */}
 					{props.layerQueue?.map((item, index) => (
 						<QueueItem
+							parts={props.parts}
 							allowVotes={allowVotes}
 							key={item.id}
 							mutationState={toItemMutationState(props.queueMutations, item.id)}
@@ -562,6 +571,7 @@ export function LayerQueue(props: {
 	)
 }
 
+// TODO this is all kinds of fucked up
 function VoteState(
 	props: {
 		state: M.VoteState
@@ -573,6 +583,31 @@ function VoteState(
 	const openDialog = useAlertDialog()
 	let body: React.ReactNode
 	const state = props.state
+
+	const [voteConfig, setVoteConfig] = React.useState({ duration: 0, minVotes: 0 })
+	const voteConfigElt = (
+		<div className="flex flex-col space-y-2">
+			<div>
+				<Label>Vote Duration (seconds)</Label>
+				<Input
+					type="number"
+					min="0"
+					defaultValue={voteConfig.duration}
+					onChange={(e) => setVoteConfig((prev) => ({ ...prev, duration: parseInt(e.target.value) }))}
+				/>
+			</div>
+			<div>
+				<Label>Minimum Votes Required</Label>
+				<Input
+					type="number"
+					min="0"
+					defaultValue={voteConfig.minVotes}
+					onChange={(e) => setVoteConfig((prev) => ({ ...prev, minVotes: parseInt(e.target.value) }))}
+				/>
+			</div>
+		</div>
+	)
+
 	const rerunVoteBtn = (
 		<Button
 			onClick={async () => {
@@ -608,20 +643,23 @@ function VoteState(
 	switch (state.code) {
 		case 'ready':
 			body = (
-				<span>
-					<Button
-						onClick={async () => {
-							const id = await openDialog({
-								title: 'Start Vote',
-								description: 'Are you sure you want to start the vote?',
-								buttons: [{ label: 'Start Vote', id: 'confirm' }],
-							})
-							if (id === 'confirm') props.startVote()
-						}}
-					>
-						Start Vote
-					</Button>
-				</span>
+				<>
+					<span>
+						<Button
+							onClick={async () => {
+								const id = await openDialog({
+									title: 'Start Vote',
+									description: 'Are you sure you want to start the vote?',
+									buttons: [{ label: 'Start Vote', id: 'confirm' }],
+								})
+								if (id === 'confirm') props.startVote()
+							}}
+						>
+							Start Vote
+						</Button>
+					</span>
+					{voteConfigElt}
+				</>
 			)
 			break
 		case 'in-progress':
@@ -641,6 +679,7 @@ function VoteState(
 				<span>
 					<span>winner: {Helpers.toShortLayerNameFromId(state.winner)}</span>
 					{rerunVoteBtn}
+					{voteConfigElt}
 				</span>
 			)
 			break
@@ -654,6 +693,7 @@ function VoteState(
 							<AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
 						</Alert>
 						{rerunVoteBtn}
+						{voteConfigElt}
 					</span>
 				)
 			} else if (state.abortReason === 'timeout:insufficient-votes') {
@@ -664,6 +704,7 @@ function VoteState(
 							<AlertDescription>Vote was aborted due to insufficient votes</AlertDescription>
 						</Alert>
 						{rerunVoteBtn}
+						{voteConfigElt}
 					</span>
 				)
 			}
@@ -712,9 +753,6 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	const preferredLengthRef = React.useRef<HTMLInputElement>(null)
 	const preferredLengthId = React.useId()
 
-	const preferredNumVoteChoicesRef = React.useRef<HTMLInputElement>(null)
-	const preferredNumVoteChoicesId = React.useId()
-
 	const filterOptions = filtersRes.data?.map?.((f) => ({
 		value: f.id,
 		label: f.name,
@@ -725,43 +763,8 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	const sdStore = useSDStore().store()!
 
 	React.useImperativeHandle(ref, () => ({
-		reset: (settings) => {
-			preferredLengthRef.current!.value = settings.queue.preferredLength.toString()
-			preferredNumVoteChoicesRef.current!.value = settings.queue.preferredNumVoteChoices.toString()
-		},
+		reset: (settings) => {},
 	}))
-
-	// async function backfillLayerQueueItems() {
-	// 	if (!serverStateMut) return
-	// 	const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
-	// 	const numToAdd = serverStateMut.settings.queue.preferredLength - serverStateMut.layerQueue.length
-	// 	const itemType = serverStateMut.settings.queue.generatedItemType
-	// 	if (numToAdd === 0) return serverStateMut.layerQueue
-	// 	if (numToAdd < 0) {
-	// 		let lastTrailingGeneratedIdx = -1
-	// 		for (let i = serverStateMut.layerQueue.length - 1; i >= serverStateMut?.settings.queue.preferredLength; i--) {
-	// 			if (serverStateMut.layerQueue[i].source === 'generated') {
-	// 				lastTrailingGeneratedIdx = i
-	// 			} else break
-	// 		}
-	// 		if (lastTrailingGeneratedIdx === -1) {
-	// 			return
-	// 		}
-	// 		return
-	// 	}
-
-	// 	const seqIdBefore = serverStateMut.layerQueueSeqId
-	// 	const before = deepClone(serverStateMut.layerQueue)
-	// 	const generated = await trpc.server.generateLayerQueueItems.query({
-	// 		numToAdd,
-	// 		numVoteChoices,
-	// 		itemType,
-	// 		baseFilterId: serverStateMut?.settings.queue.poolFilterId,
-	// 	})
-	// 	const seqIdAfter = sdStore.get(SDStore.atom.serverState)!.layerQueueSeqId
-	// 	if (seqIdBefore !== seqIdAfter || !deepEqual(before, serverStateMut.layerQueue)) return
-	// 	sdStore.set(SDStore.atom.addQueueItems, generated)
-	// }
 
 	return (
 		<Card className="">
@@ -808,29 +811,115 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 						}}
 					/>
 				</div>
-				<div className="flex flex-col space-y-1">
-					<Label htmlFor={preferredNumVoteChoicesId}>Preferred Number of Choices</Label>
-					<Input
-						type="number"
-						ref={preferredNumVoteChoicesRef}
-						min="0"
-						id={preferredNumVoteChoicesId}
-						className="data-[edited=true]:border-edited"
-						data-edited={changedSettings?.queue.preferredNumVoteChoices}
-						defaultValue={serverStateMut?.settings.queue.preferredNumVoteChoices}
-						onChange={(e) => {
-							sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
-								draft!.settings.queue.preferredNumVoteChoices = parseInt(e.target.value)
-							})
-						}}
-					/>
-				</div>
+				<QueueGenerationCard />
 				<HistoryFilterPanel />
+				<Separator />
 			</CardContent>
-			<CardFooter>{/* <Button onClick={() => props.backfillLayerQueueItems()}>Autogenerate queue items</Button> */}</CardFooter>
+			<CardFooter></CardFooter>
 		</Card>
 	)
 })
+
+function QueueGenerationCard() {
+	const sdStore = useSDStore().store()!
+	const serverStateMut = useSDStore().get.serverStateMut()
+	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
+	const numItemsToGenerateId = React.useId()
+
+	const [itemType, setItemType] = React.useState<'layer' | 'vote'>('layer')
+	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(false)
+	const itemTypeId = React.useId()
+	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
+	const numVoteChoicesRef = React.useRef<HTMLInputElement>(null)
+	const numVoteChoicesId = React.useId()
+
+	const genereateMutation = useMutation({
+		mutationFn: generateLayerQueueItems,
+	})
+	async function generateLayerQueueItems() {
+		if (!serverStateMut) return
+		const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
+		const seqIdBefore = serverStateMut.layerQueueSeqId
+		const before = deepClone(serverStateMut.layerQueue)
+		const generated = await trpc.layerQueue.generateLayerQueueItems.query({
+			numToAdd: numItemsToGenerate,
+			numVoteChoices,
+			itemType,
+			baseFilterId: serverStateMut?.settings.queue.poolFilterId,
+		})
+
+		const seqIdAfter = sdStore.get(SDStore.atom.serverState)!.layerQueueSeqId
+		if (seqIdBefore !== seqIdAfter || !deepEqual(before, serverStateMut.layerQueue)) return
+
+		if (replaceCurrentGenerated) {
+			// Remove generated items from end of queue
+			while (
+				serverStateMut.layerQueue.length > 0 &&
+				serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].source === 'generated'
+			) {
+				sdStore.set(SDStore.atom.layerQueueItemActions.delete, serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].id)
+			}
+		}
+
+		sdStore.set(SDStore.atom.addQueueItems, generated)
+	}
+
+	return (
+		<Card className="flex flex-col space-y-1">
+			<CardHeader>
+				<CardTitle>Queue Generation</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-2">
+				<div>
+					<Label htmlFor={itemTypeId}>Item Type</Label>
+					<ToggleGroup
+						value={itemType}
+						onValueChange={(v) => {
+							setItemType(v as 'layer' | 'vote')
+						}}
+						type="single"
+						id={itemTypeId}
+					>
+						<ToggleGroupItem value="layer">Layer</ToggleGroupItem>
+						<ToggleGroupItem value="vote">Vote</ToggleGroupItem>
+					</ToggleGroup>
+				</div>
+				<div>
+					<Label htmlFor={numItemsToGenerateId}>Num of items to generate</Label>
+					<Input
+						type="number"
+						id={numItemsToGenerateId}
+						min="0"
+						defaultValue={numItemsToGenerate}
+						onChange={(e) => {
+							setNumItemsToGenerate(parseInt(e.target.value) ?? 0)
+						}}
+					/>
+				</div>
+				{itemType === 'vote' && (
+					<div>
+						<Label htmlFor={numVoteChoicesId}>Num of vote choices</Label>
+						<Input
+							type="number"
+							id={numVoteChoicesId}
+							min="0"
+							defaultValue={numVoteChoices}
+							onChange={(e) => {
+								setNumVoteChoices(parseInt(e.target.value) ?? 0)
+							}}
+						/>
+					</div>
+				)}
+				<div className="flex space-x-2">
+					<Button disabled={genereateMutation.isPending} onClick={() => genereateMutation.mutateAsync()}>
+						Generate
+					</Button>
+					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
+				</div>
+			</CardContent>
+		</Card>
+	)
+}
 
 function HistoryFilterPanel(_props: object) {
 	const sdStore = useSDStore().store()!
@@ -840,7 +929,7 @@ function HistoryFilterPanel(_props: object) {
 	const useHistoryFiltersCheckboxId = React.useId()
 
 	return (
-		<div className="flex flex-col space-y-2">
+		<Card className="flex flex-col space-y-2 p-4">
 			<h2>History Filters</h2>
 			<div className="items-top flex space-x-1 items-center">
 				<Checkbox
@@ -883,7 +972,7 @@ function HistoryFilterPanel(_props: object) {
 			>
 				Add
 			</Button>
-		</div>
+		</Card>
 	)
 }
 
@@ -934,6 +1023,7 @@ function HistoryFilter(props: {
 		default:
 			assertNever(props.filter)
 	}
+	const excludeForId = React.useId()
 	return (
 		<div
 			className="flex flex-col space-y-2 border rounded p-2 data-[edited=true]:border-edited data-[added=true]:border-added"
@@ -954,14 +1044,14 @@ function HistoryFilter(props: {
 									comparison: {
 										column: existingFilter.column,
 									},
-								}
+								} satisfies M.HistoryFilterEdited
 							} else {
 								const existingFilter = _filter as Extract<M.HistoryFilterEdited, { type: 'static' }>
 								return {
 									...existingFilter,
 									type: 'dynamic',
 									column: existingFilter.comparison.column ?? 'Layer',
-								}
+								} satisfies M.HistoryFilterEdited
 							}
 						})
 					}}
@@ -977,8 +1067,9 @@ function HistoryFilter(props: {
 			{inner}
 			<div className="flex space-x-1">
 				<span>
-					<Label htmlFor="excludeFor">Exclude for</Label>
+					<Label htmlFor={excludeForId}>Exclude for matches:</Label>
 					<Input
+						id={excludeForId}
 						type="number"
 						value={props.filter.excludeFor.matches}
 						onChange={(e) => {
@@ -1025,7 +1116,7 @@ type QueueItemProps = {
 	isLast: boolean
 	dispatch: React.Dispatch<QueueItemAction>
 	allowVotes?: boolean
-}
+} & M.UserPart
 
 function QueueItem(props: QueueItemProps) {
 	const allowVotes = props.allowVotes ?? true
@@ -1045,17 +1136,20 @@ function QueueItem(props: QueueItemProps) {
 		</ItemDropdown>
 	)
 	let sourceDisplay: React.ReactNode
+	const modifiedBy = props.item.lastModifiedBy && props.parts.users.find((u) => u.discordId === props.item.lastModifiedBy)
+	const modifiedByDisplay = modifiedBy ? `- ${modifiedBy.username}` : ''
 
 	switch (props.item.source) {
 		case 'gameserver':
 			sourceDisplay = <Badge variant="outline">Game Server</Badge>
 			break
 		case 'generated':
-			sourceDisplay = <Badge variant="outline">Generated</Badge>
+			sourceDisplay = <Badge variant="outline">Generated {modifiedByDisplay}</Badge>
 			break
-		case 'manual':
-			sourceDisplay = <Badge variant="outline">Manual</Badge>
+		case 'manual': {
+			sourceDisplay = <Badge variant="outline">Manual {modifiedByDisplay}</Badge>
 			break
+		}
 		default:
 			assertNever(props.item.source)
 	}
@@ -1079,9 +1173,9 @@ function QueueItem(props: QueueItemProps) {
 							<GripVertical />
 						</Button>
 					</div>
-					<div className="h-full">
+					<div className="h-full flex flex-col flex-grow">
 						<label className={Typography.Muted}>Vote</label>
-						<ol className={'flex flex-col space-y-1'}>
+						<ol className={'flex flex-col space-y-1 items-start'}>
 							{props.item.vote.choices.map((choice, index) => {
 								const layer = M.getMiniLayerFromId(choice)
 								return (
@@ -1095,7 +1189,7 @@ function QueueItem(props: QueueItemProps) {
 								)
 							})}
 						</ol>
-						{sourceDisplay}
+						<div>{sourceDisplay}</div>
 					</div>
 					{itemDropdown}
 				</li>
@@ -1251,7 +1345,4 @@ function toDraggableItemId(id: string | null) {
 	return JSON.stringify(id)
 }
 
-function fromItemId(serialized: string) {
-	return JSON.parse(serialized) as number | null
-}
 type IdedLayerQueueItem = M.LayerQueueItem & WithMutationId

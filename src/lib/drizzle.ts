@@ -80,6 +80,7 @@ export async function selectKeys<C extends TableConfig>(
 	const out: { [K in keyof Schema['$inferSelect']]: Schema['$inferSelect'][K] } = {} as any
 
 	for (const key of keys) {
+		//@ts-expect-error it works
 		out[key] = schema[key]
 	}
 	return out

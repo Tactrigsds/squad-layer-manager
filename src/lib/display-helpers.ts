@@ -43,6 +43,14 @@ export function toShortSubfaction(unitType: M.Subfaction | null) {
 export const NULL_DISPLAY = ' <empty> '
 export const MISSING_DISPLAY = ' - '
 
+export function displayPossibleUnknownLayer(possibleUnknown: M.PossibleUnknownMiniLayer) {
+	switch (possibleUnknown.code) {
+		case 'known':
+			return toShortLayerName(possibleUnknown.layer)
+		case 'unknown':
+			return `${possibleUnknown.layerString} ${possibleUnknown.factionString}`
+	}
+}
 export function toShortLayerName(layer: M.MiniLayer) {
 	const subfaction1 = toShortSubfaction(layer.SubFac_1)
 	const subFaction2 = toShortSubfaction(layer.SubFac_2)

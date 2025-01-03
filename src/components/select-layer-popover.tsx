@@ -21,7 +21,7 @@ import { Checkbox } from './ui/checkbox.tsx'
 import deepEqual from 'fast-deep-equal'
 import { LayerQueue, QueueItemAction, getIndexFromQueueItemId } from './layer-queue.tsx'
 import { initMutations, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
-import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
+import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 import { DragEndEvent } from '@dnd-kit/core'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
@@ -190,12 +190,10 @@ function ListStyleLayerPicker(props: {
 	pickerMode: 'toggle' | 'add' | 'single'
 }) {
 	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	const res = useLayersQuery(
+	const res = useLayersGroupedBy(
 		{
 			filter: props.filter,
-			groupBy: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
-			pageIndex: 0,
-			pageSize: 25,
+			columns: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
 			sort: {
 				type: 'random',
 				seed: seedRef.current,
@@ -261,14 +259,14 @@ function ListStyleLayerPicker(props: {
 		}
 	}, [res.data, res.isError])
 	React.useEffect(() => {
-		if (props.pickerMode !== 'single' || res.data?.layers?.length !== 1) return
-		const layer = res.data.layers[0]
-		if (layer.id !== props.selected[0]?.id) setLayer(res.data.layers[0])
+		if (props.pickerMode !== 'single' || res.data?.length !== 1) return
+		const layer = res.data[0]
+		if (layer.id !== props.selected[0]?.id) setLayer(res.data[0])
 	}, [res.data, props.pickerMode, setLayer, props.selected])
 
 	const data = res.data ?? lastDataRef.current
 
-	const layersToDisplay = data?.layers
+	const layersToDisplay = data
 	if (props.pickerMode === 'single') {
 		if (!layersToDisplay) return <div>Loading...</div>
 		if (layersToDisplay?.length === 1) {
@@ -583,6 +581,7 @@ export function EditLayerQueueItemPopover(props: {
 						<div className="flex flex-col">
 							<div className="flex w-min"></div>
 							<LayerQueue
+								parts={{ users: [] }}
 								dispatchQueueItemAction={dispatchQueueItemAction}
 								layerQueue={choicesLayerQueue}
 								queueMutations={queueItemMutations}
@@ -694,6 +693,7 @@ function LayerFilterMenu(props: {
 								} else if (comp !== undefined) {
 									// @ts-expect-error null can be valid here
 									prev[name] = comp.value
+									// @ts-expect-error not sure
 								} else if (comp.value === undefined) {
 									delete prev[name]
 								}

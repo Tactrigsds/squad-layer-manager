@@ -53,7 +53,10 @@ test('can set next layer', async () => {
 
 	const nextLayer1 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
 	expect(nextLayer1).toBeDefined()
-	expect(nextLayer1!.Layer).toBe(layer1Options.Layer)
+	if (nextLayer1!.code === 'unknown') {
+		throw new Error('nextLayer1 is unknown')
+	}
+	expect(nextLayer1!.layer.Layer).toBe(layer1Options.Layer)
 	const layer2Options = {
 		Layer: 'GooseBay_RAAS_v1',
 		Faction_1: 'USA',
@@ -64,7 +67,11 @@ test('can set next layer', async () => {
 	await squadRcon.setNextLayer(ctx, layer2Options)
 	const nextLayer2 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
 	expect(nextLayer2).toBeDefined()
-	expect(nextLayer2!.Layer).toBe(layer2Options.Layer)
+
+	if (nextLayer2!.code === 'unknown') {
+		throw new Error('nextLayer2 is unknown')
+	}
+	expect(nextLayer2!.layer.Layer).toBe(layer2Options.Layer)
 })
 
 test('can get server status', async () => {

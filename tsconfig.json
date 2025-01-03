@@ -6,6 +6,7 @@
 		"moduleResolution": "Node",
 		"lib": ["ESNext", "DOM"],
 		"target": "ESNext",
+		"strict": true,
 		"noImplicitAny": false,
 		"baseUrl": ".",
 		"paths": {

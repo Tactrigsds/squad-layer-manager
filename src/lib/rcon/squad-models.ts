@@ -40,8 +40,8 @@ export type ServerStatus = {
 	name: string
 	maxPlayers: number
 	currentPlayers: number
-	currentLayer: M.MiniLayer
-	nextLayer: M.MiniLayer | null
+	currentLayer: M.PossibleUnknownMiniLayer
+	nextLayer: M.PossibleUnknownMiniLayer | null
 }
 
 export const PlayerSchema = z.object({

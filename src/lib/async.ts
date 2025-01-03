@@ -123,16 +123,11 @@ type AsyncResourceOpts = {
 	defaultTTL: number
 }
 
-interface Disposable {
-	dispose(): void
-	disposed: boolean
-}
-
 // TODO add retries
 /**
  *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
  */
-export class AsyncResource<T, Ctx extends C.Log = C.Log> implements Disposable {
+export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 	mutex = new Mutex()
 	opts: AsyncResourceOpts
 	lastResolveTime: number | null = null

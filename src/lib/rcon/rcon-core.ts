@@ -238,7 +238,7 @@ export default class Rcon extends EventEmitter {
 
 	#onNetError(ctx: C.Log, error: Error): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.error(`node:net error:`, error)
+		ctx.log.error(error, `node:net error`)
 		this.emit('RCON_ERROR', error)
 		this.#cleanUp(ctx)
 	}
@@ -249,7 +249,7 @@ export default class Rcon extends EventEmitter {
 		this.removeAllListeners()
 		clearTimeout(this.connectionRetry)
 		if (this.autoReconnect) {
-			ctx.log.trace(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
+			ctx.log.info(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
 			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 		}
 	}

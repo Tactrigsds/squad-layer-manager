@@ -6,8 +6,6 @@ import { useNavigate } from 'react-router-dom'
 import * as AR from '@/app-routes.ts'
 import { Input } from '@/components/ui/input'
 import * as EFB from '@/lib/editable-filter-builders.ts'
-import * as FB from '@/lib/filter-builders.ts'
-import { SetState } from '@/lib/react'
 import { capitalize } from '@/lib/text'
 import { trpcReact } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
@@ -25,23 +23,26 @@ export default function FilterNew() {
 	const [filter, _setFilter] = useState(defaultFilter)
 	const [validFilter, setValidFilter] = useState(null as M.FilterNode | null)
 	const [pageIndex, setPageIndex] = useState(0)
-	const setFilter = (update: (prev: M.EditableFilterNode) => M.EditableFilterNode) => {
-		const newFilter = update(filter)
-		if (M.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
-			setValidFilter(null)
-		} else if (M.isValidFilterNode(newFilter)) {
-			setValidFilter(newFilter)
-		} else {
-			setValidFilter(null)
-		}
-		setPageIndex(0)
-		_setFilter(newFilter)
+	const setFilter: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
+		_setFilter((filter) => {
+			const newFilter = typeof update === 'function' ? update(filter) : update
+			if (!newFilter) return defaultFilter
+			if (newFilter && M.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
+				setValidFilter(null)
+			} else if (newFilter && M.isValidFilterNode(newFilter)) {
+				setValidFilter(newFilter)
+			} else {
+				setValidFilter(null)
+			}
+			setPageIndex(0)
+			return newFilter
+		})
 	}
 
 	return (
 		<div className="container mx-auto py-10">
 			<div className="flex space-x-2">
-				<FilterCard node={filter} setNode={setFilter as SetState<M.EditableFilterNode | undefined>} validNode={validFilter} />
+				<FilterCard node={filter} setNode={setFilter} />
 				<div className="flex flex-col space-y-2">
 					<CreateFilterPopover filter={validFilter ?? undefined}>
 						<Button disabled={!validFilter}>Create</Button>

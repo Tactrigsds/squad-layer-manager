@@ -1,7 +1,6 @@
-import { datetime, index, int, mysqlSchema, primaryKey, tinyint, varchar } from 'drizzle-orm/mysql-core'
+import { datetime, index, int, mysqlTable, primaryKey, tinyint, varchar } from 'drizzle-orm/mysql-core'
 
-const schema = mysqlSchema('dblog')
-export const dbLogMatches = schema.table(
+export const dbLogMatches = mysqlTable(
 	'DBLog_Matches',
 	{
 		id: int('id').autoincrement().notNull(),

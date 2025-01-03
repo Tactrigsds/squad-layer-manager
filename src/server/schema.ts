@@ -62,6 +62,7 @@ export const layers = mysqlTable(
 		'Anti-Infantry_Diff': float('Anti-Infantry_Diff').notNull(),
 		Armor_Diff: float('Armor_Diff').notNull(),
 		ZERO_Score_Diff: float('ZERO_Score_Diff').notNull(),
+		Z_Pool: boolean('Z_Pool').notNull().default(false),
 	},
 	(layers) => {
 		return {
@@ -91,6 +92,7 @@ export const layers = mysqlTable(
 			antiInfantryDiffIndex: index('antiInfantryDiffIndex').on(layers['Anti-Infantry_Diff']),
 			armorDiffIndex: index('armorDiffIndex').on(layers.Armor_Diff),
 			zeroScoreDiffIndex: index('zeroScoreDiffIndex').on(layers.ZERO_Score_Diff),
+			Z_PoolIndex: index('Z_PoolIndex').on(layers.Z_Pool),
 		}
 	}
 )

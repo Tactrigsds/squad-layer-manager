@@ -9,7 +9,6 @@ import './index.css'
 import { enableMapSet } from 'immer'
 
 import FullPageSpinner from './components/full-page-spinner.tsx'
-import { Dialog, DialogContent, DialogFooter, DialogTrigger } from '@/components/ui/dialog.tsx'
 
 // eslint-disable-next-line react-refresh/only-export-components
 const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))

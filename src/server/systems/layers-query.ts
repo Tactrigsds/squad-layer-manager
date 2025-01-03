@@ -10,25 +10,25 @@ import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
 import * as SquadjsSchema from '@/server/schema-squadjs'
 import { assertNever } from '@/lib/typeGuards'
-import { selectKeys } from '@/lib/drizzle'
+
+export const LayersQuerySortSchema = z
+	.discriminatedUnion('type', [
+		z.object({
+			type: z.literal('column'),
+			sortBy: z.enum(M.COLUMN_KEYS),
+			sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
+		}),
+		z.object({
+			type: z.literal('random'),
+			seed: z.number().int().positive(),
+		}),
+	])
+	.describe('if not provided, no sorting will be done')
 
 export const LayersQueryInputSchema = z.object({
 	pageIndex: z.number().int().min(0).optional(),
 	pageSize: z.number().int().min(1).max(200).optional(),
-	sort: z
-		.discriminatedUnion('type', [
-			z.object({
-				type: z.literal('column'),
-				sortBy: z.enum(M.COLUMN_KEYS_NON_COLLECTION),
-				sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
-			}),
-			z.object({
-				type: z.literal('random'),
-				seed: z.number().int().positive(),
-			}),
-		])
-		.optional()
-		.describe('if not provided, no sorting will be done'),
+	sort: LayersQuerySortSchema.optional(),
 	filter: M.FilterNodeSchema.optional(),
 	historyFilters: z.array(M.HistoryFilterSchema).optional(),
 	queuedLayerIds: z.array(M.LayerIdSchema).optional(),
@@ -89,12 +89,52 @@ export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log
 			.where(whereCondition),
 	])
 	const totalCount = countResult.count
+	console.log(Object.keys(layers[0] ?? {}))
 
 	return {
 		layers,
 		totalCount,
 		pageCount: input.sort?.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
 	}
+}
+
+export const LayersQueryGroupedByInputSchema = z.object({
+	columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
+	limit: z.number().positive().max(500).default(500),
+	filter: M.FilterNodeSchema.optional(),
+	sort: LayersQuerySortSchema.optional(),
+})
+export type LayersQueryGroupedByInput = z.infer<typeof LayersQueryGroupedByInputSchema>
+export async function runLayersQueryGroupedBy(ctx: C.Log & C.Db, input: LayersQueryGroupedByInput) {
+	type Columns = (typeof input.columns)[number]
+	const selectObj = input.columns.reduce(
+		(acc, column) => {
+			// @ts-expect-error no idea
+			acc[column] = Schema.layers[column]
+			return acc
+		},
+		{} as { [key in Columns]: (typeof Schema.layers)[key] }
+	)
+
+	let query = ctx
+		.db()
+		.select(selectObj)
+		.from(Schema.layers)
+		// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
+		.where(input.filter ? await getWhereFilterConditions(input.filter, [], ctx) : sql`1=1`)
+		.groupBy(...input.columns.map((column) => Schema.layers[column]))
+
+	if (input.sort && input.sort.type === 'column') {
+		// @ts-expect-error idk
+		query = query.orderBy(
+			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
+		)
+	} else if (input.sort && input.sort.type === 'random') {
+		// @ts-expect-error idk
+		query = query.orderBy(sql`RAND(${input.sort.seed})`)
+	}
+
+	return await query.limit(input.limit)
 }
 
 // reentrantFilterIds are IDs that cannot be present in this node,

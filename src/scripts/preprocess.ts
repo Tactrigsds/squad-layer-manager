@@ -42,6 +42,7 @@ export const RawLayerSchema = z.object({
 	ZERO_Score_2: z.number(),
 	Balance_Differential: z.number(),
 	'Asymmetry Score': z.number(),
+	Z_Pool: z.boolean(),
 })
 
 const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
@@ -127,6 +128,7 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 		'Anti-Infantry_Diff': rawLayer['Anti-Infantry_1'] - rawLayer['Anti-Infantry_2'],
 		Armor_Diff: rawLayer.Armor_1 - rawLayer.Armor_2,
 		ZERO_Score_Diff: rawLayer.ZERO_Score_1 - rawLayer.ZERO_Score_2,
+		Z_Pool: rawLayer.Z_Pool,
 	})
 }
 
@@ -134,6 +136,27 @@ async function parsePipelineData() {
 	return await fsPromise
 		.readFile(path.join(Paths.DATA, 'squad-pipeline.json'), 'utf8')
 		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
+}
+
+const DEFAULT_LAYER_VALUES = {
+	Logistics_1: 0,
+	Transportation_1: 0,
+	'Anti-Infantry_1': 0,
+	Armor_1: 0,
+	ZERO_Score_1: 0,
+	Logistics_2: 0,
+	Transportation_2: 0,
+	'Anti-Infantry_2': 0,
+	Armor_2: 0,
+	ZERO_Score_2: 0,
+	Balance_Differential: 0,
+	'Asymmetry Score': 0,
+	Logistics_Diff: 0,
+	Transportation_Diff: 0,
+	'Anti-Infantry_Diff': 0,
+	Armor_Diff: 0,
+	ZERO_Score_Diff: 0,
+	Z_Pool: false,
 }
 
 async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.Output, factions: FactionDetails[], biomes: Biome[]) {
@@ -172,23 +195,7 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 			SubFac_1: null,
 			Faction_2: faction2,
 			SubFac_2: null,
-			Logistics_1: 0,
-			Transportation_1: 0,
-			'Anti-Infantry_1': 0,
-			Armor_1: 0,
-			ZERO_Score_1: 0,
-			Logistics_2: 0,
-			Transportation_2: 0,
-			'Anti-Infantry_2': 0,
-			Armor_2: 0,
-			ZERO_Score_2: 0,
-			Balance_Differential: 0,
-			'Asymmetry Score': 0,
-			Logistics_Diff: 0,
-			Transportation_Diff: 0,
-			'Anti-Infantry_Diff': 0,
-			Armor_Diff: 0,
-			ZERO_Score_Diff: 0,
+			...DEFAULT_LAYER_VALUES,
 		})
 	})
 
@@ -208,7 +215,7 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 
 	const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter((field) => field in records[0])
 	let processedLayers = records.map((record, index) => {
-		const updatedRecord = { ...record } as { [key: string]: number | string }
+		const updatedRecord = { ...record } as { [key: string]: number | string | boolean }
 		originalNumericFields.forEach((field) => {
 			if (!record[field]) {
 				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
@@ -220,6 +227,7 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
 			}
 		})
+		updatedRecord['Z_Pool'] = record['Z_Pool'] === 'True'
 
 		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
 		return processLayer(validatedRawLayer)
@@ -308,23 +316,7 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 					SubFac_1: null,
 					Faction_2: team2,
 					SubFac_2: null,
-					Logistics_1: 0,
-					Transportation_1: 0,
-					'Anti-Infantry_1': 0,
-					Armor_1: 0,
-					ZERO_Score_1: 0,
-					Logistics_2: 0,
-					Transportation_2: 0,
-					'Anti-Infantry_2': 0,
-					Armor_2: 0,
-					ZERO_Score_2: 0,
-					Balance_Differential: 0,
-					'Asymmetry Score': 0,
-					Logistics_Diff: 0,
-					Transportation_Diff: 0,
-					'Anti-Infantry_Diff': 0,
-					Armor_Diff: 0,
-					ZERO_Score_Diff: 0,
+					...DEFAULT_LAYER_VALUES,
 				})
 			)
 		}

@@ -9,7 +9,7 @@ import { useDebounced } from '@/hooks/use-debounce'
 import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
-import { eltToFocusable, Focusable, SetState } from '@/lib/react'
+import { eltToFocusable, Focusable } from '@/lib/react'
 import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
@@ -38,8 +38,8 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 export type FilterCardProps = {
 	defaultEditing?: boolean
 	node: M.EditableFilterNode
-	validNode?: M.FilterNode
-	setNode: SetState<M.EditableFilterNode | undefined>
+	// weird way of passing this down but I guess good for perf?
+	setNode: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>>
 	resetFilter?: () => void
 	filterId?: string
 }
@@ -49,6 +49,7 @@ const triggerClass =
 export default function FilterCard(props: FilterCardProps) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
+	const validFilterNode = React.useMemo(() => M.isValidFilterNode(props.node), [props.node])
 	return (
 		<div defaultValue="builder" className="w-full space-y-2">
 			<div className="flex w-full justify-end space-x-2">
@@ -82,7 +83,7 @@ export default function FilterCard(props: FilterCardProps) {
 				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
 						type="button"
-						disabled={!props.validNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
+						disabled={!validFilterNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
 							setActiveTab('text')
@@ -167,19 +168,19 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	)
 
 	const deleteNode = () => {
-		setNode(() => undefined)
+		setNode(undefined)
 	}
 
 	if (node.type === 'and' || node.type === 'or') {
 		const childrenLen = node.children.length
 		const children = node.children?.map((child, i) => {
-			const setChild: SetState<M.EditableFilterNode | undefined> = (cb) => {
+			const setChild: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
 				setNode(
 					produce((draft) => {
 						if (!draft || (draft.type !== 'and' && draft.type !== 'or') || draft.children.length !== childrenLen) {
 							return
 						}
-						const newValue = cb(draft.children[i])
+						const newValue = typeof update === 'function' ? update(draft.children[i]) : update
 						if (newValue) draft.children[i] = newValue
 						else draft.children.splice(i, 1)
 					})
@@ -260,12 +261,12 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		)
 	}
 
-	const setComp: SetState<M.EditableComparison> = (cb) => {
+	const setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>> = (update) => {
 		setNode(
 			produce((draft) => {
 				if (!draft) return
 				if (draft.type !== 'comp') return
-				draft.comp = cb(draft.comp)
+				draft.comp = typeof update === 'function' ? update(draft.comp) : update
 			})
 		)
 	}
@@ -312,11 +313,11 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 	throw new Error('Invalid node type ' + node.type)
 }
-const LIMIT_AUTOCOMPLETE_COLS: M.LayerColumnKey[] = ['id']
+const LIMIT_AUTOCOMPLETE_COLS: (M.LayerColumnKey | M.LayerCompositeKey)[] = ['id']
 
 export function Comparison(props: {
 	comp: M.EditableComparison
-	setComp: SetState<M.EditableComparison>
+	setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>>
 	columnEditable?: boolean
 	allowedColumns?: M.LayerColumnKey[]
 	allowedComparisonCodes?: M.ComparisonCode[]
@@ -381,6 +382,14 @@ export function Comparison(props: {
 					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
+				if (M.isColType(column, 'integer')) {
+					throw new Error('integer columns are not supported')
+				}
+				if (M.isColType(column, 'boolean')) {
+					setComp(() => ({ column, code: 'is' }))
+					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
+					return
+				}
 				assertNever(column)
 			}}
 		/>
@@ -389,7 +398,7 @@ export function Comparison(props: {
 	)
 	if (!comp.column) return columnBox
 
-	const codeBox = (
+	const codeBox = !M.isColType(comp.column, 'boolean') ? (
 		<ComboBox
 			allowEmpty={true}
 			title=""
@@ -405,6 +414,8 @@ export function Comparison(props: {
 				return setComp((c) => ({ ...c, code: code ?? undefined }))
 			}}
 		/>
+	) : (
+		<span />
 	)
 
 	if (!showValueDropdown) {
@@ -518,6 +529,9 @@ export function Comparison(props: {
 				}}
 			/>
 		)
+	}
+	if (comp.code === 'is') {
+		valueBox = <span />
 	}
 	return (
 		<>

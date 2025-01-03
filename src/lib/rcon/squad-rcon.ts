@@ -39,7 +39,7 @@ export default class SquadRcon {
 
 	[Symbol.dispose]() {}
 
-	private async getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer> {
+	private async getCurrentLayer(ctx: C.Log) {
 		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
 		const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/)
 		const layer = match[2]
@@ -55,8 +55,7 @@ export default class SquadRcon {
 		const layer = match[2]
 		const factions = match[3]
 		if (!layer || !factions) return null
-		const nextLayer = parseLayer(layer, factions)
-		return nextLayer
+		return parseLayer(layer, factions)
 	}
 
 	private async getListPlayers(ctx: C.Log) {
@@ -191,7 +190,7 @@ export default class SquadRcon {
 	}
 }
 
-function parseLayer(layer: string, factions: string): M.MiniLayer {
+function parseLayer(layer: string, factions: string): M.PossibleUnknownMiniLayer {
 	const { level: level, gamemode, version: version } = M.parseLayerString(layer)
 	const [faction1, faction2] = parseLayerFactions(factions)
 	const layerIdArgs: M.LayerIdArgs = {
@@ -208,7 +207,13 @@ function parseLayer(layer: string, factions: string): M.MiniLayer {
 		id: M.getLayerId(layerIdArgs),
 		Layer: layer,
 	} as M.MiniLayer
-	return M.MiniLayerSchema.parse(miniLayer)
+	const res = M.MiniLayerSchema.safeParse(miniLayer)
+	if (res.success) return { code: 'known', layer: res.data }
+	return {
+		code: 'unknown',
+		layerString: layer,
+		factionString: factions,
+	}
 }
 
 type ParsedFaction = {

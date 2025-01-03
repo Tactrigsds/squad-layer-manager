@@ -43,9 +43,7 @@ export async function setupLayerQueueAndServerState() {
 	})
 
 	// -------- bring server up to date with configuration --------
-	console.log('initializing')
 	const initialServerState = await opCtx.db().transaction(async (tx) => {
-		console.log('setting up server state')
 		let [server] = await tx.select().from(Schema.servers).where(E.eq(Schema.servers.id, CONFIG.serverId)).for('update')
 		server = server ? (unsuperjsonify(Schema.servers, server) as typeof server) : server
 		if (!server) {
@@ -66,7 +64,6 @@ export async function setupLayerQueueAndServerState() {
 			server.displayName = CONFIG.serverDisplayName
 		}
 
-		console.log('finished setting up')
 		opCtx.log.info('finished setting up server state')
 		return M.ServerStateSchema.parse(server)
 	})
@@ -80,20 +77,9 @@ export async function setupLayerQueueAndServerState() {
 	// -------- set next layer on server if necessary --------
 	await opCtx.db().transaction(async (tx) => {
 		const ctx = { ...opCtx, db: () => tx }
-		const { value: serverStatus, release } = await SquadServer.rcon.serverStatus.get(ctx, { lock: true, ttl: 0 })
-		const squadServerNextLayer = serverStatus.nextLayer
-		try {
-			const serverState = await getServerState({ lock: true }, ctx)
-			if (!serverState.layerQueue[0]?.layerId) return null
-			if (
-				squadServerNextLayer === null ||
-				(serverState.layerQueue[0]?.layerId && serverState.layerQueue[0]?.layerId !== squadServerNextLayer.id)
-			) {
-				await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(serverState.layerQueue[0].layerId))
-			}
-		} finally {
-			release()
-		}
+		const serverState = await getServerState({ lock: true }, ctx)
+		const nextLayer = serverState.layerQueue[0]?.layerId ?? serverState.layerQueue[0]?.vote?.defaultChoice ?? M.DEFAULT_LAYER_ID
+		await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayer))
 	})
 
 	// -------- setup vote state events --------
@@ -111,12 +97,14 @@ export async function setupLayerQueueAndServerState() {
 				// TODO don't call this inside the transaction
 				const _ctx = { ...systemCtx, db: () => tx }
 				const serverState = await getServerState({ lock: true }, _ctx)
-				if (status.nextLayer !== null && serverState.layerQueue[0]?.layerId !== status.nextLayer.id) {
+				if (!status.nextLayer || status.nextLayer.code === 'unknown') return
+				const nextLayer = status.nextLayer.layer
+				if (serverState.layerQueue[0]?.layerId !== nextLayer.id) {
 					const layerQueue = deepClone(serverState.layerQueue)
 					// if the last layer was also set by the gameserver, then we're replacing it
 					if (layerQueue[0]?.source === 'gameserver') layerQueue.shift()
 					layerQueue.unshift({
-						layerId: status.nextLayer.id,
+						layerId: nextLayer.id,
 						source: 'gameserver',
 					})
 					await tx
@@ -221,10 +209,13 @@ async function handleCommand(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 }
 
 // -------- voting --------
-async function startVote(_ctx: C.Log & C.Db & Partial<C.User>, opts?: { restart?: boolean; seqId?: number; s64UserId?: string }) {
+async function startVote(
+	_ctx: C.Log & C.Db & Partial<C.User>,
+	opts: { restart?: boolean; durationSeconds?: number; seqId?: number; s64UserId?: string }
+) {
 	await using ctx = C.pushOperation(_ctx, 'layer-queue:vote:start')
-	opts ??= {}
-	opts.restart ??= false
+	const restart = opts.restart ?? false
+	const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
 	const res = await ctx.db().transaction(async (tx) => {
 		const txCtx = { ...ctx, db: () => tx }
 		const state = await getServerState({ lock: true }, txCtx)
@@ -237,19 +228,19 @@ async function startVote(_ctx: C.Log & C.Db & Partial<C.User>, opts?: { restart?
 				msg: 'No vote currently exists',
 			}
 		}
-		if (!opts.restart && state.currentVote.code === 'in-progress') {
+		if (!restart && state.currentVote.code === 'in-progress') {
 			return {
 				code: 'err:vote-in-progress' as const,
 				msg: 'A vote is already in progress',
 			}
 		}
-		if (!opts.restart && state.currentVote.code.startsWith('ended:')) {
+		if (!restart && state.currentVote.code.startsWith('ended:')) {
 			return {
 				code: 'err:vote-ended' as const,
 				msg: 'The previous vote has ended',
 			}
 		}
-		if (!opts.restart && state.currentVote.code !== 'ready') {
+		if (!restart && state.currentVote.code !== 'ready') {
 			return {
 				code: 'err:vote-not-ready' as const,
 				msg: 'Vote is not in a ready state',
@@ -263,7 +254,7 @@ async function startVote(_ctx: C.Log & C.Db & Partial<C.User>, opts?: { restart?
 			code: 'in-progress',
 			choices: voteConfig.choices,
 			defaultChoice: voteConfig.defaultChoice,
-			deadline: Date.now() + CONFIG.voteDurationSeconds * 1000,
+			deadline: Date.now() + durationSeconds * 1000,
 			votes: {},
 		} satisfies M.VoteState
 		state.currentVote = currentVote
@@ -280,7 +271,7 @@ async function startVote(_ctx: C.Log & C.Db & Partial<C.User>, opts?: { restart?
 	ctx.tasks.push(
 		SquadServer.rcon.broadcast(
 			ctx,
-			`Voting for next layer has started! Options:\n${optionsText}\nYou have ${CONFIG.voteDurationSeconds} seconds to vote!`
+			`Voting for next layer has started! Options:\n${optionsText}\nYou have ${durationSeconds} seconds to vote!`
 		)
 	)
 	if (voteEndTask) {
@@ -300,6 +291,10 @@ async function startVote(_ctx: C.Log & C.Db & Partial<C.User>, opts?: { restart?
 async function handleVote(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 	await using opCtx = C.pushOperation(ctx, 'layer-queue:vote:handle-vote')
 	const choiceIdx = parseInt(msg.message)
+	if (choiceIdx <= 0) {
+		SquadServer.rcon.warn(opCtx, msg.playerId, 'Invalid vote choice')
+		return
+	}
 	await opCtx.db().transaction(async (tx) => {
 		const serverState = await getServerState(
 			{ lock: true },
@@ -314,11 +309,18 @@ async function handleVote(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 			return
 		}
 		if (currentVote.code !== 'in-progress') {
+			SquadServer.rcon.warn(opCtx, msg.playerId, 'No vote in progress')
+			return
+		}
+		if (choiceIdx > currentVote.choices.length) {
+			SquadServer.rcon.warn(opCtx, msg.playerId, 'Invalid vote choice')
 			return
 		}
 
 		const updatedVoteState = deepClone(currentVote)
-		updatedVoteState.votes[msg.playerId] = updatedVoteState.choices[choiceIdx]
+		updatedVoteState.votes[msg.playerId] = updatedVoteState.choices[choiceIdx - 1]
+		const parsed = M.VoteStateSchema.parse(updatedVoteState)
+		ctx.log.info({ parsed }, 'vote state')
 		await tx
 			.update(Schema.servers)
 			.set(superjsonify(Schema.servers, { currentVote: updatedVoteState }))
@@ -536,23 +538,31 @@ async function includeServerUpdateParts(
 	const update = deepClone(_serverStateUpdate) as M.LQServerStateUpdate & M.UserPart
 	update.parts = { users: [] }
 	const state = update.state
+	const userIds: bigint[] = []
 	if (state.currentVote?.code === 'ended:aborted' && state.currentVote.abortReason === 'manual') {
 		if (state.currentVote.aborter === undefined) {
 			throw new Error('aborter is undefined when given abortReason of "manual"')
 		}
-		const userIds = [BigInt(state.currentVote.aborter)]
-		if (update.source.type === 'manual') {
-			userIds.push(BigInt(update.source.author))
-		}
-		const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, userIds))
-		for (const user of users) {
-			update.parts.users.push(user)
-		}
+		userIds.push(BigInt(state.currentVote.aborter))
+	}
+	if (update.source.type === 'manual') {
+		userIds.push(BigInt(update.source.author))
+	}
+	for (const item of state.layerQueue) {
+		if (item.lastModifiedBy) userIds.push(BigInt(item.lastModifiedBy))
+	}
+
+	let users: Schema.User[] = []
+	if (userIds.length > 0) {
+		users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, userIds))
+	}
+	for (const user of users) {
+		update.parts.users.push(user)
 	}
 	return update
 }
 
-async function generateLayerQueueItems(_ctx: C.Log & C.Db, opts: M.GenLayerQueueItemsOptions) {
+async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenLayerQueueItemsOptions) {
 	await using ctx = C.pushOperation(_ctx, 'layer-queue:generate-layer-items')
 	if (opts.numToAdd <= 0) {
 		throw new Error('cannot generate layers with count <= 0')
@@ -596,6 +606,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db, opts: M.GenLayerQueue
 				res.push({
 					vote: { choices, defaultChoice: choices[0] },
 					source: 'generated',
+					lastModifiedBy: ctx.user.discordId,
 				})
 			}
 			break
@@ -611,7 +622,7 @@ export const layerQueueRouter = router({
 	generateLayerQueueItems: procedure
 		.input(M.GenLayerQueueItemsOptionsSchema)
 		.query(({ input, ctx }) => generateLayerQueueItems(ctx, input)),
-	startVote: procedure.input(M.StartVoteSchema).mutation(async ({ input, ctx }) => startVote(ctx, input)),
+	startVote: procedure.input(M.StartVoteInputSchema).mutation(async ({ input, ctx }) => startVote(ctx, input)),
 	abortVote: procedure.input(z.object({ seqId: z.number() })).mutation(async ({ input, ctx }) => {
 		return await abortVote(ctx, ctx.user.discordId, input.seqId)
 	}),

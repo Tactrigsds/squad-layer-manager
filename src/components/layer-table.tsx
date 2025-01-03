@@ -23,7 +23,6 @@ import * as FB from '@/lib/filter-builders'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
-import { hashQueryKey, trpcReact } from '@/lib/trpc.client.ts'
 import * as M from '@/models'
 import { LayersQueryInput } from '@/server/systems/layers-query.ts'
 
@@ -33,8 +32,9 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { assertNever } from '@/lib/typeGuards'
 import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
+import React from 'react'
 
-const columnHelper = createColumnHelper<M.Layer>()
+const columnHelper = createColumnHelper<M.Layer & M.LayerComposite>()
 
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
@@ -43,7 +43,7 @@ const formatFloat = (value: number) => {
 	return formatted
 }
 
-function getColumn(key: M.LayerColumnKey) {
+function getColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	return columnHelper.accessor(key, {
 		header: ({ column }) => {
 			return (
@@ -57,6 +57,9 @@ function getColumn(key: M.LayerColumnKey) {
 			const value = info.getValue()
 			if (!value) return DH.NULL_DISPLAY
 			const type = M.COLUMN_KEY_TO_TYPE[key]
+			if (key === 'Z_Pool') {
+				console.log({ type, key, value })
+			}
 
 			switch (type) {
 				case 'float':
@@ -67,6 +70,8 @@ function getColumn(key: M.LayerColumnKey) {
 					return (value as string[]).filter((v) => !!v).join(', ')
 				case 'integer':
 					return value.toString() ?? DH.NULL_DISPLAY
+				case 'boolean':
+					return value ? 'True' : 'False'
 				default:
 					assertNever(type)
 			}
@@ -74,7 +79,7 @@ function getColumn(key: M.LayerColumnKey) {
 	})
 }
 
-const columns: ColumnDef<M.Layer, any>[] = [
+const columns: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 	{
 		id: 'select',
 		header: ({ table }) => (
@@ -90,44 +95,11 @@ const columns: ColumnDef<M.Layer, any>[] = [
 		enableSorting: false,
 		enableHiding: false,
 	},
-	getColumn('id'),
-	getColumn('Level'),
-	getColumn('Layer'),
-	getColumn('Gamemode'),
-	getColumn('LayerVersion'),
-	getColumn('Size'),
-
-	getColumn('Faction_1'),
-	getColumn('SubFac_1'),
-
-	getColumn('Faction_2'),
-	getColumn('SubFac_2'),
-	getColumn('FactionMatchup'),
-	getColumn('SubFacMatchup'),
-
-	getColumn('Logistics_1'),
-	getColumn('Logistics_2'),
-	getColumn('Logistics_Diff'),
-
-	getColumn('Transportation_1'),
-	getColumn('Transportation_2'),
-	getColumn('Transportation_Diff'),
-
-	getColumn('Anti-Infantry_1'),
-	getColumn('Anti-Infantry_2'),
-	getColumn('Anti-Infantry_Diff'),
-
-	getColumn('Armor_1'),
-	getColumn('Armor_2'),
-	getColumn('Armor_Diff'),
-
-	getColumn('ZERO_Score_1'),
-	getColumn('ZERO_Score_2'),
-	getColumn('ZERO_Score_Diff'),
-
-	getColumn('Balance_Differential'),
-	getColumn('Asymmetry Score'),
 ]
+
+for (const columnKey of M.COLUMN_KEYS_WITH_COMPUTED) {
+	columns.push(getColumn(columnKey))
+}
 
 const DEFAULT_VISIBLE_COLUMNS = [
 	'Layer',
@@ -226,7 +198,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		const { id, desc } = sortingState[0]
 		sort = {
 			type: 'column',
-			sortBy: id as (typeof M.COLUMN_KEYS_NON_COLLECTION)[number],
+			sortBy: id as (typeof M.COLUMN_KEYS)[number],
 			sortDirection: desc ? 'DESC' : 'ASC',
 		}
 	}
@@ -237,6 +209,10 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		sort,
 		filter: filter ?? undefined,
 	})
+	React.useEffect(() => {
+		if (!dataRaw) return
+		console.table(dataRaw.layers)
+	}, [dataRaw])
 
 	// for some reason I can't use usePreviousData via trpc
 	const lastDataRef = useRef(dataRaw)
@@ -248,7 +224,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 	const data = dataRaw ?? lastDataRef.current
 
 	const table = useReactTable({
-		data: data?.layers ?? ([] as M.Layer[]),
+		data: data?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
 		columns,
 		pageCount: data?.pageCount ?? -1,
 		state: {
