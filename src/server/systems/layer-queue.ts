@@ -442,7 +442,7 @@ async function handleVoteTimeout(ctx: C.Log & C.Db) {
 	if (res.voteUpdate!.state!.code === 'ended:insufficient-votes') {
 		await SquadServer.rcon.broadcast(
 			ctx,
-			`Voting has ended! Not enough votes to decide outcome. Defaulting to ${DisplayHelpers.toFullLayerName(M.getMiniLayerFromId(res.voteUpdate.state!.winner))}`
+			`Voting has ended! Not enough votes to decide outcome. Defaulting to ${DisplayHelpers.toFullLayerName(M.getMiniLayerFromId(res.voteUpdate.state!.defaultChoice))}`
 		)
 	}
 	return res

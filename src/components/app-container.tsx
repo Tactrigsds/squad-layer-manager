@@ -27,7 +27,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						Filters
 					</Link>
 				</div>
-				<div className="flex h-max min-h-0 flex-row items-center space-x-8">
+				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
 					<>
 						{status && (
 							<div className="flex flex-col">

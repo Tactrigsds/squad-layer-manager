@@ -342,10 +342,10 @@ function ServerDashboard() {
 							return user.discordId === data.source.user.discordId
 						})
 						if (updatingUser) {
-							toaster.toast({ title: `Layer Queue updated by ${updatingUser.username}.` })
+							toaster.toast({ title: `layer queue or qerver settings updated by ${updatingUser.username}.` })
 						}
 					} else {
-						toaster.toast({ title: 'Layer Queue updated' })
+						toaster.toast({ title: 'Layer Queue or server settings updated' })
 					}
 				},
 			})
@@ -696,9 +696,7 @@ function VoteState() {
 			{
 				body = (
 					<>
-						<span>
-							time left: <Timer deadline={voteState.deadline} />
-						</span>
+						<Timer deadline={voteState.deadline} />
 						<VoteTallyDisplay voteState={voteState} />
 						{rerunVoteBtn}
 						{cancelBtn}
@@ -955,9 +953,9 @@ function HistoryFilterPanel(_props: object) {
 		serverStateMut?.settings.queue.historyFilterEnabled !== serverState?.settings.queue.historyFilterEnabled
 
 	return (
-		<Card className="flex flex-col space-y-2 p-4">
-			<h2>History Filters</h2>
-			<div>
+		<Card>
+			<CardHeader>
+				<CardTitle>History Filters</CardTitle>
 				<div
 					className="w-min p-1 items-top flex space-x-1 items-center data-[changed=true]:bg-edited rounded"
 					data-changed={historyFilterEnabledChanged}
@@ -979,30 +977,34 @@ function HistoryFilterPanel(_props: object) {
 						Enable
 					</label>
 				</div>
-			</div>
-			{historyFilters?.map((filter) => {
-				const mutationState = toItemMutationState(historyFilterMutations, filter.id)
-				return (
-					<HistoryFilter
-						key={filter.id}
-						filter={filter}
-						setFilter={(update) => sdStore.set(SDStore.atom.historyFilterActions.edit, filter.id, update)}
-						removeFilter={() => sdStore.set(SDStore.atom.historyFilterActions.remove, filter.id)}
-						mutationState={mutationState}
-					/>
-				)
-			})}
-			<Button
-				onClick={() =>
-					sdStore.set(SDStore.atom.historyFilterActions.add, {
-						type: 'dynamic',
-						column: 'Layer',
-						excludeFor: { matches: 10 },
-					})
-				}
-			>
-				Add History Filter
-			</Button>
+			</CardHeader>
+			<CardContent>
+				{historyFilters?.map((filter) => {
+					const mutationState = toItemMutationState(historyFilterMutations, filter.id)
+					return (
+						<HistoryFilter
+							key={filter.id}
+							filter={filter}
+							setFilter={(update) => sdStore.set(SDStore.atom.historyFilterActions.edit, filter.id, update)}
+							removeFilter={() => sdStore.set(SDStore.atom.historyFilterActions.remove, filter.id)}
+							mutationState={mutationState}
+						/>
+					)
+				})}
+			</CardContent>
+			<CardFooter>
+				<Button
+					onClick={() =>
+						sdStore.set(SDStore.atom.historyFilterActions.add, {
+							type: 'dynamic',
+							column: 'Layer',
+							excludeFor: { matches: 10 },
+						})
+					}
+				>
+					Add History Filter
+				</Button>
+			</CardFooter>
 		</Card>
 	)
 }
