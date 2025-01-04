@@ -8,10 +8,14 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
 import { Button, buttonVariants } from './ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
 	const userRes = trpcReact.getLoggedInUser.useQuery()
+	const avatarUrl = userRes.data
+		? `https://cdn.discordapp.com/avatars/${userRes.data.discordId}/${userRes.data.avatar}.png`
+		: 'https://cdn.discordapp.com/embed/avatars/0.png'
 	return (
 		<div className="h-full w-full">
 			<nav className="flex h-16 items-center justify-between border-b px-4">
@@ -45,20 +49,23 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						</div>
 					</>
 					{userRes.data && (
-						<div className="flex flex-row items-center space-x-4">
-							<span className={Typography.Small}>Logged in as {userRes.data.username}</span>
-							<form action={AR.exists('/logout')} method="POST">
-								<Button
-									type="submit"
-									className={buttonVariants({
-										variant: 'secondary',
-										size: 'sm',
-									})}
-								>
-									Log Out
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant="ghost" size="icon" className="rounded-full overflow-hidden">
+									<img src={avatarUrl} alt="Discord Avatar" />
 								</Button>
-							</form>
-						</div>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent>
+								<DropdownMenuLabel>{userRes.data.username}</DropdownMenuLabel>
+								<form action={AR.exists('/logout')} method="POST">
+									<DropdownMenuItem asChild>
+										<button className="w-full" type="submit">
+											Log Out
+										</button>
+									</DropdownMenuItem>
+								</form>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					)}
 				</div>
 			</nav>

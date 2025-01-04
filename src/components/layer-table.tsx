@@ -57,9 +57,6 @@ function getColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 			const value = info.getValue()
 			if (!value) return DH.NULL_DISPLAY
 			const type = M.COLUMN_KEY_TO_TYPE[key]
-			if (key === 'Z_Pool') {
-				console.log({ type, key, value })
-			}
 
 			switch (type) {
 				case 'float':

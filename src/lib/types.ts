@@ -1,3 +1,4 @@
+// represents some normalized data that is referenced by ids in some object
 export type Parts<IncludedParts extends object> = { parts: IncludedParts }
 
 export type RecursivePartial<T> = {

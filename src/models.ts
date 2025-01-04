@@ -2,8 +2,7 @@ import * as z from 'zod'
 
 import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
-import { deepClone, reverseMapping, selectProps } from './lib/object'
-import { Parts } from './lib/types'
+import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 
 export const getLayerKey = (layer: Layer) =>
@@ -449,6 +448,7 @@ export const LayerVoteSchema = z.object({
 	defaultChoice: LayerIdSchema,
 	choices: z.array(LayerIdSchema),
 })
+export type LayerVote = z.infer<typeof LayerVoteSchema>
 
 export const LayerQueueItemSchema = z.object({
 	layerId: LayerIdSchema.optional(),
@@ -512,8 +512,6 @@ export type MiniUser = {
 	username: string
 	discordId: string
 }
-
-export type LayerVote = unknown
 
 export const FilterUpdateSchema = z.object({
 	name: z.string().trim().min(3).max(128),
@@ -607,35 +605,37 @@ export const GenLayerQueueItemsOptionsSchema = z.object({
 
 export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
 export const StartVoteInputSchema = z.object({
-	seqId: z.number(),
 	restart: z.boolean().default(false),
 	durationSeconds: z.number().positive().optional(),
 })
 
-const TallyProperties = {
-	votes: z.record(z.string(), LayerIdSchema),
-	deadline: z.number(),
-	defaultChoice: LayerIdSchema,
-	choices: z.array(LayerIdSchema),
+type TallyProperties = {
+	votes: Record<string, LayerId>
+	deadline: number
 }
-export const VoteStateSchema = z.discriminatedUnion('code', [
-	z.object({ code: z.literal('ready') }),
-	z.object({
-		code: z.literal('in-progress'),
-		...TallyProperties,
-	}),
-	z.object({
-		code: z.literal('ended:winner'),
-		winner: LayerIdSchema,
-		...TallyProperties,
-	}),
-	z.object({
-		code: z.literal('ended:aborted'),
-		abortReason: z.enum(['timeout:insufficient-votes', 'manual']),
-		aborter: z.string().optional(),
-		...TallyProperties,
-	}),
-])
+
+export type VoteState =
+	| ({ code: 'ready' } & LayerVote)
+	| ({
+			code: 'in-progress'
+			initiator: GuiOrChatUserId
+			minValidVotes: number
+	  } & TallyProperties &
+			LayerVote)
+	| ({
+			code: 'ended:winner'
+			winner: LayerId
+	  } & TallyProperties &
+			LayerVote)
+	| ({
+			code: 'ended:aborted'
+			aborter: GuiOrChatUserId
+	  } & TallyProperties &
+			LayerVote)
+	| ({
+			code: 'ended:insufficient-votes'
+	  } & TallyProperties &
+			LayerVote)
 
 export function tallyVotes(currentVote: VoteStateWithVoteData) {
 	if (Object.values(currentVote.choices).length == 0) {
@@ -655,19 +655,38 @@ export function tallyVotes(currentVote: VoteStateWithVoteData) {
 		}
 	}
 	const totalVotes = Object.values(currentVote.votes).length
+	const percentages = new Map<string, number>()
+	if (totalVotes > 0) {
+		for (const [choice, votes] of tally.entries()) {
+			percentages.set(choice, (votes / totalVotes) * 100)
+		}
+	}
 	return {
 		totals: tally,
 		totalVotes,
+		percentages,
 		choice: maxVotes,
 		votes: tally.get(maxVotes!)!,
 	}
 }
 
-export function getVoteTallyProperties(state: Exclude<VoteState, { code: 'ready' }>) {
-	return selectProps(state, ['votes', 'deadline', 'choices', 'defaultChoice'])
+export type GuiUserId = { discordId: bigint }
+export type ChatUserId = { steamId: string }
+export type GuiOrChatUserId = { discordId?: bigint; steamId?: string }
+export type VoteStateUpdate = {
+	state: VoteState | null
+	source:
+		| {
+				type: 'system'
+				event: 'vote-timeout' | 'queue-change' | 'next-layer-set' | 'app-startup'
+		  }
+		| {
+				type: 'manual'
+				event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change'
+				user: GuiOrChatUserId
+		  }
 }
 
-export type VoteState = z.infer<typeof VoteStateSchema>
 export type VoteStateWithVoteData = Extract<VoteState, { code: 'in-progress' | 'ended:winner' | 'ended:aborted' }>
 export const ServerSettingsSchema = z
 	.object({
@@ -677,11 +696,13 @@ export const ServerSettingsSchema = z
 				preferredLength: z.number().default(12),
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),
+				historyFilterEnabled: z.boolean().default(false),
 			})
 			.default({
 				preferredLength: 12,
 				generatedItemType: 'layer',
 				preferredNumVoteChoices: 3,
+				historyFilterEnabled: false,
 			}),
 	})
 	// avoid sharing default queue object
@@ -715,7 +736,6 @@ export const MutableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
 	layerQueue: LayerQueueSchema,
 	historyFilters: z.array(HistoryFilterSchema),
-	historyFiltersEnabled: z.boolean(),
 	settings: ServerSettingsSchema,
 })
 
@@ -725,29 +745,29 @@ export type LQServerStateUpdate = {
 	source:
 		| {
 				type: 'system'
-				reason: 'map-roll' | 'app-startup' | 'vote-timeout' | 'start-vote-command'
+				event: 'map-roll' | 'app-startup' | 'vote-timeout'
 		  }
+		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
 				type: 'manual'
-				reason: 'edit' | 'start-vote' | 'abort-vote'
-				author: bigint
-		  }
-		| {
-				type: 'chat-command'
-				reason: 'start-vote' | 'abort-vote'
-				s64UserId: string
+				event: 'edit'
+				user: GuiOrChatUserId
 		  }
 }
 
+export const ServerIdSchema = z.string().min(1).max(256)
+export type ServerId = z.infer<typeof ServerIdSchema>
 export const ServerStateSchema = MutableServerStateSchema.extend({
-	id: z.string().min(1).max(256),
+	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	online: z.boolean(),
-	currentVote: VoteStateSchema.nullable(),
 })
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
-export type UserPart = Parts<{ users: Schema.User[] }>
+export function getNextLayerId(layerQueue: LayerQueue) {
+	return layerQueue[0].layerId ?? layerQueue[0].vote?.defaultChoice
+}
+export type UserPart = { users: Schema.User[] }
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

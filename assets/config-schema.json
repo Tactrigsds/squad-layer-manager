@@ -12,14 +12,15 @@
           "exclusiveMinimum": 0,
           "default": 60,
           "description": "Duration of a vote in seconds"
+        },
+        "minValidVotes": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Minimum threshold for a vote tally to be valid"
         }
       },
+      "required": ["minValidVotes"],
       "additionalProperties": false
-    },
-    "minValidVotes": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "description": "Minimum threshold for a vote tally to be valid"
     },
     "commands": {
       "type": "object",
@@ -80,7 +81,6 @@
     "serverDisplayName",
     "commandPrefix",
     "defaults",
-    "minValidVotes",
     "commands",
     "adminListSources",
     "authorizedDiscordRoles",

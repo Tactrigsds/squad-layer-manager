@@ -20,8 +20,8 @@ export const ConfigSchema = z.object({
 	commandPrefix: strNoWhitespace,
 	defaults: z.object({
 		voteDurationSeconds: z.number().positive().default(60).describe('Duration of a vote in seconds'),
+		minValidVotes: z.number().positive().describe('Minimum threshold for a vote tally to be valid'),
 	}),
-	minValidVotes: z.number().positive().describe('Minimum threshold for a vote tally to be valid'),
 	commands: z.object({
 		startVote: CommandConfigSchema,
 		showNext: CommandConfigSchema,

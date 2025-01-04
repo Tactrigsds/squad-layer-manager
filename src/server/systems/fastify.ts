@@ -74,10 +74,10 @@ export async function setupFastify() {
 		case 'production':
 			server.register(fastifyStatic, {
 				root: path.join(Paths.PROJECT_ROOT, 'dist'),
-				setHeaders: (res) => {
-					res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-					res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
-				},
+				// setHeaders: (res) => {
+				// 	res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+				// 	res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+				// },
 			})
 			break
 		case 'development':
@@ -187,7 +187,7 @@ export async function setupFastify() {
 	})
 
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'require-corp')
+		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'unsafe-none')
 		const authRes = await C.createAuthorizedRequestContext(req, res)
 		switch (authRes.code) {
 			case 'ok':
@@ -205,7 +205,13 @@ export async function setupFastify() {
 				// --------  dev server proxy setup --------
 				// When running in dev mode, we're proxying all html routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
 				const htmlRes = await fetch(`${ENV.ORIGIN}/idk`)
-				return res.type('text/html').send(htmlRes.body)
+				return res
+					.type('text/html')
+					.header('Access-Control-Allow-Origin', '*')
+					.header('Access-Control-Allow-Methods', '*')
+					.header('Access-Control-Allow-Headers', '*')
+					.header('Cross-Origin-Resource-Policy', 'cross-origin')
+					.send(htmlRes.body)
 			}
 			case 'production': {
 				return res.sendFile('index.html')

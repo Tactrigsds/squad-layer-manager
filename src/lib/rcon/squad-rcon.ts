@@ -22,9 +22,9 @@ export default class SquadRcon {
 		if (!rcon.connected) {
 			throw new Error('Rcon must be connected before creating SquadRcon instance')
 		}
-		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx))
-		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx))
-		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx))
+		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx), { defaultTTL: 5000 })
+		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
+		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx), { defaultTTL: 5000 })
 
 		const onServerMsg = (pkt: DecodedPacket) => {
 			const message = processChatPacket(ctx, pkt)

@@ -6,6 +6,7 @@ import { filtersRouter } from './systems/filters-entity.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 import * as SquadServer from './systems/squad-server.ts'
+import { CONFIG } from '@/server/config.ts'
 import { procedure, router } from './trpc.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
@@ -45,6 +46,9 @@ export function setupTrpcRouter() {
 		layerQueue: LayerQueue.layerQueueRouter,
 		squadServer: SquadServer.squadServerRouter,
 		filters: filtersRouter,
+		config: procedure.query(async () => {
+			return CONFIG
+		}),
 	})
 	appRouter = _appRouter
 	return _appRouter

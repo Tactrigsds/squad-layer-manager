@@ -10,6 +10,7 @@ import * as DB from './db.ts'
 import { baseLogger, Logger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
+import { OperationResultEnvelope } from '@trpc/client'
 
 // -------- Logging --------
 export type Log = {
@@ -23,14 +24,20 @@ export function includeLogProperties<T extends Log>(ctx: T, fields: Record<strin
 export type Op = {
 	tasks: Promise<void>[]
 	result?: 'ok' | string
+	endMsgBindings: Record<string, any>
 	[Symbol.asyncDispose]: (err?: any) => Promise<void>
 	[Symbol.dispose]: (err?: any) => void
 }
 
 let opIdx = 0
-export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { level?: Pino.Level }): T & Op {
-	opts ??= {}
+type OperationOptions = {
+	level?: Pino.Level
+	startMsgBindings?: Record<string, any>
+}
+export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: OperationOptions): T & Op {
+	const opts: OperationOptions = _opts ?? {}
 	opts.level ??= 'debug'
+	opts.startMsgBindings ??= {}
 	const operationId = (opIdx++).toString()
 	const bindings = ctx.log.bindings()
 	const ops = bindings.ops ? [...bindings.ops] : []
@@ -53,13 +60,14 @@ export function pushOperation<T extends Log>(ctx: T, type: string, opts?: { leve
 
 	const newCtx = {
 		...includeLogProperties(ctx, { ops }),
+		endMsgBindings: {},
 		tasks: [],
 		[Symbol.asyncDispose]: handleResult,
 		[Symbol.dispose]: handleResult,
 	}
 	const lifeCycleLog = newCtx.log.child({ opLifecycle: true })
 
-	lifeCycleLog[opts.level]('operation started', type, operationId)
+	lifeCycleLog[opts.level](opts.startMsgBindings, 'operation started', type, operationId)
 	return newCtx
 }
 

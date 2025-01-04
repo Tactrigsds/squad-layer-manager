@@ -89,7 +89,6 @@ export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log
 			.where(whereCondition),
 	])
 	const totalCount = countResult.count
-	console.log(Object.keys(layers[0] ?? {}))
 
 	return {
 		layers,

@@ -8,9 +8,9 @@ const t = initTRPC.context<C.AuthedRequest>().create({
 })
 
 const loggerMiddleware = t.middleware(async (opts) => {
-	const baseCtx = C.includeLogProperties(opts.ctx, { input: opts.input })
-	await using ctx = C.pushOperation(baseCtx, `trpc:${opts.type}:${opts.path}`, {
+	await using ctx = C.pushOperation(opts.ctx, `trpc:${opts.type}:${opts.path}`, {
 		level: 'info',
+		startMsgBindings: { input: opts.input },
 	})
 	opts.ctx = ctx
 	const result = await opts.next(opts)

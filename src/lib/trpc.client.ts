@@ -19,6 +19,9 @@ export const links = [
 			onClose: () => {
 				globalToast$.next({ title: 'WebSocket connection closed. server may be offline', variant: 'destructive' })
 			},
+			onOpen: () => {
+				console.log('WebSocket connection opened')
+			},
 		}),
 		transformer: superjson,
 	}),

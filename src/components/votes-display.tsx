@@ -9,44 +9,39 @@ type VoteTallyProps = {
 
 export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
 	const tally = M.tallyVotes(voteState)
-
-	// Convert Map entries to array and sort by vote count descending
-	//
-	//
-	const sortedOptions = Array.from(tally.totals)
-		.sort(([, a], [, b]) => b - a)
+	const options = Array.from(tally.totals)
 		.map(([layerId, voteCount]) => {
 			const layer = getMiniLayerFromId(layerId)
+			const index = voteState.choices.findIndex((choice) => choice === layerId)
 			return {
 				id: layerId,
+				index,
+				percentage: tally.percentages.get(layerId),
 				name: `${layer.Level} ${layer.Gamemode} (${layer.Faction_1} vs ${layer.Faction_2})`,
 				votes: voteCount,
-				isWinner: layerId === tally.choice,
+				isWinner: voteState.code === 'ended:winner' && voteState.winner === layerId,
 			}
 		})
+		.sort((a, b) => a.index - b.index)
 
 	return (
 		<Card className="mx-auto w-full max-w-md">
 			<CardHeader>
-				<CardTitle className="text-center text-2xl font-bold">Vote Results</CardTitle>
-				<CardDescription>{voteState.code}</CardDescription>
+				<CardTitle className="">{voteState.code}</CardTitle>
 			</CardHeader>
 			<CardContent>
-				{sortedOptions.map((option) => (
+				{options.map((option) => (
 					<div key={option.id} className="mb-4">
-						<div className="mb-2 flex items-center justify-between">
+						<div className="mb-2 flex items-center justify-between space-x-1">
 							<span className={`font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
-								{option.name}
+								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>
 							<span className="text-sm text-gray-500">
-								{option.votes} vote{option.votes !== 1 ? 's' : ''}
+								{option.votes} vote{option.votes !== 1 ? 's' : ''} ({option.percentage?.toFixed(1) ?? 0}%)
 							</span>
 						</div>
-						<Progress
-							value={tally.totalVotes > 0 ? (option.votes / tally.totalVotes) * 100 : 0}
-							className={`h-2 ${option.isWinner ? 'bg-green-100' : ''}`}
-						/>
+						<Progress value={option.percentage ?? 0} className={`h-2 ${option.isWinner ? 'bg-green-100' : ''}`} />
 					</div>
 				))}
 				<div className="mt-4 text-center text-sm text-gray-500">Total Votes: {tally.totalVotes}</div>

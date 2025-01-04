@@ -51,6 +51,20 @@ export function displayPossibleUnknownLayer(possibleUnknown: M.PossibleUnknownMi
 			return `${possibleUnknown.layerString} ${possibleUnknown.factionString}`
 	}
 }
+
+export function toFullLayerName(layer: M.MiniLayer) {
+	const subfaction1 = layer.SubFac_1 ? ` ${layer.SubFac_1}` : ''
+	const subfaction2 = layer.SubFac_2 ? ` ${layer.SubFac_2}` : ''
+	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
+
+	return `${layer.Level} ${layer.Gamemode}${layerVersion} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
+}
+
+export function toFullLayerNameFromId(id: string) {
+	const layer = M.getMiniLayerFromId(id)
+	return toFullLayerName(layer)
+}
+
 export function toShortLayerName(layer: M.MiniLayer) {
 	const subfaction1 = toShortSubfaction(layer.SubFac_1)
 	const subFaction2 = toShortSubfaction(layer.SubFac_2)
