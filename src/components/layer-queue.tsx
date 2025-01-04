@@ -358,7 +358,6 @@ function ServerDashboard() {
 		sub.add(
 			trpc.layerQueue.watchVoteStateUpdates.subscribe(undefined, {
 				onData: (data) => {
-					console.log('received vote state update', data)
 					if (data.code === 'intial-state') {
 						sdStore.set(SDStore.atom.voteState, data.state)
 					} else if (data.code === 'update') {
@@ -603,7 +602,6 @@ function VoteState() {
 	let body: React.ReactNode
 
 	const slmConfig = useConfig()
-	console.log({ slmConfig })
 	const [voteConfig, setVoteConfig] = React.useState({
 		duration: slmConfig?.defaults.voteDurationSeconds ?? 30,
 	})

@@ -228,7 +228,7 @@ async function startVote(
 	_ctx: C.Log & C.Db & Partial<C.User>,
 	opts: { restart?: boolean; durationSeconds?: number; minValidVotes?: number; initiator: M.GuiOrChatUserId }
 ) {
-	await using ctx = C.pushOperation(_ctx, 'layer-queue:vote:start')
+	await using ctx = C.pushOperation(_ctx, 'layer-queue:vote:start', { startMsgBindings: opts })
 	const restart = opts.restart ?? false
 	const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
 	const minValidVotes = opts.minValidVotes ?? CONFIG.defaults.minValidVotes

@@ -1,20 +1,20 @@
-// This file controls the host process for the server in prod mode. It ensures that the server keeps running and writes incoming logs from stdout and stderr, while ensuring that all lines that are output to the logfile are valid json. If we decide to add some other logging  or telemetry integration, this is the place to do it
+// This file controls the host process for the server in prod mode. It ensures that the server keeps running and writes incoming logs from stdout and stderr, while ensuring that all lines that are output to the logfile are valid json. If we decide to add some other logging  or telemetry integration, this is the place to do it so we capture catastrophic failures
 import { exec } from 'node:child_process'
 import { setupConfig } from '@/server/config'
 import * as path from 'node:path'
 import * as Paths from '@/server/paths'
-import * as fs from 'node:fs/promises'
-import * as fsOld from 'node:fs'
+import * as fsAsync from 'node:fs/promises'
+import * as fs from 'node:fs'
 import { ENV, setupEnv } from '@/server/env'
 
 setupEnv()
-// we don't need this, just calling it to check for errors before starting the server process
+// we don't need this, just calling it to check for validation errors before starting the server process
 setupConfig()
 
 let restartAttempts = 0
 const MAX_RESTART_DELAY = 1000 * 60 * 5 // 5 minutes
 
-if (ENV.PROD_LOG_PATH && !fsOld.existsSync(ENV.PROD_LOG_PATH)) {
+if (ENV.PROD_LOG_PATH && !fs.existsSync(ENV.PROD_LOG_PATH)) {
 	process.stderr.write(`PROD_LOG_PATH ${ENV.PROD_LOG_PATH} does not exist\n`)
 	process.exit(1)
 }
@@ -26,7 +26,7 @@ function startServer() {
 
 	const writeLog = async (data: string) => {
 		if (!ENV.PROD_LOG_PATH) return
-		await fs.appendFile(ENV.PROD_LOG_PATH, data).catch(() => {})
+		await fsAsync.appendFile(ENV.PROD_LOG_PATH, data).catch(() => {})
 	}
 
 	child.stdout?.on('data', async (data: string) => {
@@ -41,8 +41,9 @@ function startServer() {
 		} catch (e) {
 			const output =
 				JSON.stringify({
-					message: 'error while parsing log entries',
-					error: e,
+					message: 'error while parsing stdout from server process',
+					module: 'host',
+					err: e,
 					data,
 				}) + '\n'
 			process.stderr.write(output)
@@ -63,8 +64,9 @@ function startServer() {
 		} catch (e) {
 			const error =
 				JSON.stringify({
-					message: 'error while parsing log entries',
-					error: e,
+					module: 'host',
+					msg: 'error while parsing stderr from server process',
+					err: e,
 					data,
 				}) + '\n'
 			process.stderr.write(error)
@@ -83,7 +85,9 @@ function startServer() {
 		const delay = Math.min(1000 * Math.pow(2, restartAttempts), MAX_RESTART_DELAY)
 		const delaySeconds = delay / 1000
 		const msg = JSON.stringify({
-			message: `Server exited with code ${code}, restarting in ${delaySeconds} seconds`,
+			module: 'host',
+			msg: `Server exited with code ${code}, restarting in ${delaySeconds} seconds`,
+			code,
 		})
 		process.stderr.write(msg)
 		writeLog(msg)

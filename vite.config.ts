@@ -25,7 +25,8 @@ function buildProxy() {
 	setupEnv()
 	return Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
-			const target = r.websocket ? `ws://localhost:${ENV.PORT}` : `http://localhost:${ENV.PORT}`
+			const protocol = r.websocket ? 'ws://' : 'http://'
+			const target = `${protocol}${ENV.HOST}:${ENV.PORT}`
 			return [
 				`^${r.client}(\\?.+)?$`,
 				{

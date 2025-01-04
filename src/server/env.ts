@@ -1,3 +1,4 @@
+import { parsedNum } from '../lib/zod'
 import { createEnv } from '@t3-oss/env-core'
 import * as dotenv from 'dotenv'
 import { z } from 'zod'
@@ -12,19 +13,13 @@ const Flag = z
 export let ENV!: ReturnType<typeof setupEnv>
 export type Env = typeof ENV
 const EnvSchema = {
-	NODE_ENV: z.enum(['development', 'production'], {
-		message: 'TODO configure prod',
-	}),
-	ORIGIN: z.string().url(),
+	NODE_ENV: z.enum(['development', 'production']),
+	ORIGIN: z.string().url().default('http://localhost:5173'),
 
 	DB_HOST: z.string().min(1).default('localhost'),
-	DB_PORT: z
-		.string()
-		.transform((val) => parseInt(val, 10))
-		.pipe(z.number().int().positive())
-		.default('3306'),
-	DB_USER: z.string().min(1),
-	DB_PASSWORD: z.string().min(1),
+	DB_PORT: parsedNum('int').default('3306'),
+	DB_USER: z.string().min(1).default('root'),
+	DB_PASSWORD: z.string().min(1).default('dev'),
 	DB_DATABASE: z.string().min(1),
 	DB_DATABASE_SQUADJS: z.string().min(1),
 
@@ -37,15 +32,15 @@ const EnvSchema = {
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 	MOCK_SQUAD_SERVER_PATH: z.string().optional(),
 
-	RCON_HOST: z.string().min(1),
+	RCON_HOST: z.string().min(1).default('localhost'),
 	RCON_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
 		.pipe(z.number().int().positive())
 		.default('21114'),
-	RCON_PASSWORD: z.string(),
+	RCON_PASSWORD: z.string().default('testpassword'),
 
-	PORT: z.number().int().positive().default(3000),
+	PORT: parsedNum('int').default('3000'),
 	HOST: z.string().default('127.0.0.1'),
 
 	PROD_LOG_PATH: z.string().min(1).optional().describe('Path to write logs to in production'),
