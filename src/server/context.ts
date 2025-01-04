@@ -10,7 +10,6 @@ import * as DB from './db.ts'
 import { baseLogger, Logger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
-import { OperationResultEnvelope } from '@trpc/client'
 
 // -------- Logging --------
 export type Log = {
