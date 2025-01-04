@@ -8,7 +8,7 @@ import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
 
 import { createAtomStore } from 'jotai-x'
-import { atom, getDefaultStore, useAtomValue } from 'jotai'
+import { atom } from 'jotai'
 import { withImmer } from 'jotai-immer'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -54,6 +54,7 @@ import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
 import { Parts } from '@/lib/types.ts'
 import { configAtom, useConfig } from '@/systems.client/config.client.ts'
 import { Subscription } from 'rxjs'
+import { useFeatureFlags } from '@/systems.client/feature-flags.ts'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -316,7 +317,6 @@ export default function ServerDashBoardWrapped() {
 function ServerDashboard() {
 	const serverStatus = useSquadServerStatus()
 	const settingsPanelRef = useRef<ServerSettingsPanelHandle>(null)
-	const serverState = useSDStore().get.serverState()
 	const serverStateMut = useSDStore().get.serverStateMut()
 	const resetSDStore = useSDStore().set.reset()
 	const sdStore = useSDStore().store()!
@@ -334,15 +334,19 @@ function ServerDashboard() {
 					)
 						return
 
+					const firstUpdate = sdStore.get(SDStore.atom.serverState) === null
 					sdStore.set(SDStore.atom.applyServerUpdate, data)
 					settingsPanelRef.current?.reset(data.state.settings)
+					if (firstUpdate) {
+						return
+					}
 					if (data.source.type === 'manual' && data.source.user.discordId) {
 						const updatingUser = data.parts?.users.find((user) => {
 							if (data.source.type !== 'manual') return false
 							return user.discordId === data.source.user.discordId
 						})
 						if (updatingUser) {
-							toaster.toast({ title: `layer queue or qerver settings updated by ${updatingUser.username}.` })
+							toaster.toast({ title: `layer queue or server settings updated by ${updatingUser.username}.` })
 						}
 					} else {
 						toaster.toast({ title: 'Layer Queue or server settings updated' })
@@ -455,6 +459,9 @@ function ServerDashboard() {
 						{editing && (
 							<div className="flex flex-col space-y-2">
 								<Card>
+									<CardHeader>
+										<CardTitle>Changes Pending</CardTitle>
+									</CardHeader>
 									<CardContent>
 										{hasMutations(queueMutations) && (
 											<>
@@ -794,6 +801,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 		value: f.id,
 		label: f.name,
 	}))
+	const serverState = useSDStore().get.serverState()
 	const serverStateMut = useSDStore().get.serverStateMut()
 	const changedSettings = useSDStore().get.changedSettings()
 
@@ -802,6 +810,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
 	}))
+	const featureFlags = useFeatureFlags()
 
 	return (
 		<div className="flex flex-col space-y-4">
@@ -810,7 +819,10 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 					<CardTitle>Pool Configuration</CardTitle>
 				</CardHeader>
 				<CardContent className="flex flex-col space-y-2">
-					<div className="flex space-x-1">
+					<div
+						className="flex space-x-1 p-1 data-[edited=true]:bg-edited data-[edited=true]:border-edited rounded"
+						data-edited={changedSettings?.queue.poolFilterId}
+					>
 						<ComboBox
 							title="Pool Filter"
 							className="flex-grow"
@@ -836,7 +848,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 				<CardFooter></CardFooter>
 			</Card>
 			<QueueGenerationCard />
-			<HistoryFilterPanel />
+			{featureFlags.historyFilters && <HistoryFilterPanel />}
 		</div>
 	)
 })
@@ -891,7 +903,7 @@ function QueueGenerationCard() {
 				<CardTitle>Queue Generation</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-2">
-				<div>
+				<div className="flex flex-col items-start space-y-1">
 					<Label htmlFor={itemTypeId}>Item Type</Label>
 					<ToggleGroup
 						value={itemType}
@@ -905,12 +917,12 @@ function QueueGenerationCard() {
 						<ToggleGroupItem value="vote">Vote</ToggleGroupItem>
 					</ToggleGroup>
 				</div>
-				<div>
+				<div className="flex flex-col items-start space-y-1">
 					<Label htmlFor={numItemsToGenerateId}>Num of items to generate</Label>
 					<Input
 						type="number"
 						id={numItemsToGenerateId}
-						min="0"
+						min="1"
 						defaultValue={numItemsToGenerate}
 						onChange={(e) => {
 							setNumItemsToGenerate(parseInt(e.target.value) ?? 0)
@@ -923,7 +935,7 @@ function QueueGenerationCard() {
 						<Input
 							type="number"
 							id={numVoteChoicesId}
-							min="0"
+							min="1"
 							defaultValue={numVoteChoices}
 							onChange={(e) => {
 								setNumVoteChoices(parseInt(e.target.value) ?? 0)
