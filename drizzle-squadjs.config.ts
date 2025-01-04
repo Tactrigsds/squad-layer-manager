@@ -11,7 +11,7 @@ export default defineConfig({
 	dbCredentials: {
 		host: ENV.DB_HOST,
 		port: ENV.DB_PORT,
-		user ENV.DB_USER,
+		user: ENV.DB_USER,
 		password: ENV.DB_PASSWORD,
 		database: ENV.DB_DATABASE_SQUADJS,
 	},
