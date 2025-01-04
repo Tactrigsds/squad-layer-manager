@@ -91,9 +91,9 @@ jobs:
             ${{ steps.branch.outputs.BRANCH_NAME == 'main' && format('ghcr.io/{0}/squad-layer-manager:latest', steps.owner.outputs.name) || '' }}
             ${{ contains(github.ref, 'refs/tags/') && format('ghcr.io/{0}/squad-layer-manager:{1}', steps.owner.outputs.name, github.ref_name) || '' }}
             ${{ github.event_name == 'pull_request' && format('ghcr.io/{0}/squad-layer-manager:latest-{1}', steps.owner.outputs.name, steps.branch.outputs.BRANCH_NAME) || '' }}
+            ${{ format('ghcr.io/{0}/squad-layer-manager:commit-{1}', steps.owner.outputs.name, github.sha) }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-
       # Move the cache
       - name: Move cache
         run: |
