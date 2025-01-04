@@ -66,7 +66,7 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 				case 'collection':
 					return (value as string[]).filter((v) => !!v).join(', ')
 				case 'integer':
-					return value.toString() ?? DH.NULL_DISPLAY
+					return value.toString()
 				case 'boolean':
 					return value ? 'True' : 'False'
 				default:
@@ -246,7 +246,18 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		}
 	}
 
-	function onCopyLayerCommand(row: Row<M.Layer>) {
+	function onCopyIdCommand(row: Row<M.Layer>) {
+		const chosenRows = getChosenRows(row)
+		let text = ''
+		for (const row of chosenRows) {
+			if (text !== '') text += '\n'
+			text += row.id
+		}
+		navigator.clipboard.writeText(text)
+		toast({ description: 'Layer ID copied to clipboard' })
+	}
+
+	function onCopySetNextLayerCommand(row: Row<M.Layer>) {
 		const chosenRows = getChosenRows(row)
 		let text = ''
 		for (const row of chosenRows) {
@@ -369,8 +380,11 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 									</TableRow>
 								</ContextMenuTrigger>
 								<ContextMenuContent>
-									<ContextMenuItem onClick={() => onCopyLayerCommand(row)}>
+									<ContextMenuItem onClick={() => onCopySetNextLayerCommand(row)}>
 										Copy AdminSetNextLayer {selectedLayerIds.includes(row.original.id) && 'for selected'}
+									</ContextMenuItem>
+									<ContextMenuItem onClick={() => onCopyIdCommand(row)}>
+										Copy ID {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 								</ContextMenuContent>
 							</ContextMenu>
