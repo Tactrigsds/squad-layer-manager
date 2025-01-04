@@ -56,7 +56,7 @@ export const layers = mysqlTable(
 		Armor_2: float('Armor_2').notNull(),
 		ZERO_Score_2: float('ZERO_Score_2').notNull(),
 		Balance_Differential: float('Balance_Differential').notNull(),
-		'Asymmetry_Score': float('Asymmetry_Score').notNull(),
+		Asymmetry_Score: float('Asymmetry_Score').notNull(),
 		Logistics_Diff: float('Logistics_Diff').notNull(),
 		Transportation_Diff: float('Transportation_Diff').notNull(),
 		'Anti-Infantry_Diff': float('Anti-Infantry_Diff').notNull(),

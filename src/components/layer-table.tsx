@@ -98,19 +98,10 @@ for (const columnKey of M.COLUMN_KEYS_WITH_COMPUTED) {
 	columns.push(buildColumn(columnKey))
 }
 
-const DEFAULT_VISIBLE_COLUMNS = [
-	'Layer',
-	// 'Faction_1',
-	// 'SubFac_1',
-	// 'Faction_2',
-	// 'SubFac_2',
-	// 'Anti-Infantry_1',
-	// 'Anti-Infantry_Diff',
-	// 'Armor_Diff',
-	// 'Balance_Differential',
-	// 'Asymmetry_Score',
-	'Z_Pool',
-] as (M.LayerColumnKey | M.LayerCompositeKey)[]
+const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2', 'Balance_Differential', 'Asymmetry_Score'] as (
+	| M.LayerColumnKey
+	| M.LayerCompositeKey
+)[]
 
 const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 const DEFAULT_SORT: LayersQueryInput['sort'] = {
