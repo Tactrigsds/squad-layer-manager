@@ -1,17 +1,23 @@
 import { z } from 'zod'
 
-export function parsedNum<T extends z.ZodTypeAny>(type: 'float' | 'int', schema?: T) {
-	const base = z
-		.string()
-		.transform((val) => (type === 'float' ? parseFloat(val) : parseInt(val, 10)))
-		.pipe(z.number().refine((n) => !isNaN(n), { message: 'Invalid number' }))
-	if (schema) {
-		return base.pipe(schema)
-	}
-	return base
-}
+export const ParsedIntSchema = z
+	.string()
+	.transform((val) => parseInt(val, 10))
+	.pipe(z.number().int().finite())
 
-export function parsedBigint() {
-	const base = z.string().pipe(z.bigint())
-	return base
-}
+export const ParsedFloatSchema = z
+	.string()
+	.transform((val) => parseFloat(val))
+	.pipe(z.number().finite())
+
+export const ParsedBigIntSchema = z
+	.string()
+	.transform((val) => BigInt(val))
+	.pipe(z.bigint())
+
+export const StrFlag = z
+	.string()
+	.toLowerCase()
+	.pipe(z.union([z.literal('true'), z.literal('false')]))
+	.transform((val) => val === 'true')
+	.pipe(z.boolean())

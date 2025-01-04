@@ -11,9 +11,6 @@ const prod = process.env.NODE_ENV === 'production'
 export default defineConfig({
 	plugins: [react(), tsconfigPaths()],
 	server: {
-		cors: {
-			origin: ['https://cdn.discordapp.com', 'https://discord.com'],
-		},
 		proxy: !prod ? buildProxy() : undefined,
 	},
 	build: {

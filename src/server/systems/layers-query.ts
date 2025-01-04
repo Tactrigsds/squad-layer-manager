@@ -235,6 +235,11 @@ export async function getWhereFilterConditions(
 				res = E.between(column, comp.min, comp.max)!
 				break
 			}
+			case 'is-true': {
+				const column = schema[comp.column]
+				res = E.eq(column, true)!
+				break
+			}
 			default:
 				assertNever(comp)
 		}

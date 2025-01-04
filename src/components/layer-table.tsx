@@ -43,7 +43,7 @@ const formatFloat = (value: number) => {
 	return formatted
 }
 
-function getColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
+function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	return columnHelper.accessor(key, {
 		header: ({ column }) => {
 			return (
@@ -55,7 +55,7 @@ function getColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 		},
 		cell: (info) => {
 			const value = info.getValue()
-			if (!value) return DH.NULL_DISPLAY
+			if (value === null) return DH.NULL_DISPLAY
 			const type = M.COLUMN_KEY_TO_TYPE[key]
 
 			switch (type) {
@@ -95,26 +95,27 @@ const columns: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 ]
 
 for (const columnKey of M.COLUMN_KEYS_WITH_COMPUTED) {
-	columns.push(getColumn(columnKey))
+	columns.push(buildColumn(columnKey))
 }
 
 const DEFAULT_VISIBLE_COLUMNS = [
 	'Layer',
-	'Faction_1',
-	'SubFac_1',
-	'Faction_2',
-	'SubFac_2',
-	'Anti-Infantry_1',
-	'Anti-Infantry_Diff',
-	'Armor_Diff',
-	'Balance_Differential',
-	'Asymmetry Score',
-] as M.LayerColumnKey[]
+	// 'Faction_1',
+	// 'SubFac_1',
+	// 'Faction_2',
+	// 'SubFac_2',
+	// 'Anti-Infantry_1',
+	// 'Anti-Infantry_Diff',
+	// 'Armor_Diff',
+	// 'Balance_Differential',
+	// 'Asymmetry_Score',
+	'Z_Pool',
+] as (M.LayerColumnKey | M.LayerCompositeKey)[]
 
-const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
+const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 const DEFAULT_SORT: LayersQueryInput['sort'] = {
 	type: 'column',
-	sortBy: 'Asymmetry Score',
+	sortBy: 'Asymmetry_Score',
 	sortDirection: 'ASC',
 }
 
@@ -206,10 +207,6 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		sort,
 		filter: filter ?? undefined,
 	})
-	React.useEffect(() => {
-		if (!dataRaw) return
-		console.table(dataRaw.layers)
-	}, [dataRaw])
 
 	// for some reason I can't use usePreviousData via trpc
 	const lastDataRef = useRef(dataRaw)
@@ -266,13 +263,6 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 			text += M.getAdminSetNextLayerCommand(row)
 		}
 		navigator.clipboard.writeText(text)
-		toast({ description: 'Command copied to clipboard' })
-	}
-
-	function onCopyVoteCommand(row: Row<M.Layer>) {
-		const chosenRows = getChosenRows(row)
-		const commandText = M.getSetNextVoteCommand(chosenRows.map((row) => row.id))
-		navigator.clipboard.writeText(commandText)
 		toast({ description: 'Command copied to clipboard' })
 	}
 
@@ -389,10 +379,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 								</ContextMenuTrigger>
 								<ContextMenuContent>
 									<ContextMenuItem onClick={() => onCopyLayerCommand(row)}>
-										Copy set next layer command {selectedLayerIds.includes(row.original.id) && 'for selected'}
-									</ContextMenuItem>
-									<ContextMenuItem onClick={() => onCopyVoteCommand(row)}>
-										Copy vote command {selectedLayerIds.includes(row.original.id) && 'for selected'}
+										Copy AdminSetNextLayer {selectedLayerIds.includes(row.original.id) && 'for selected'}
 									</ContextMenuItem>
 								</ContextMenuContent>
 							</ContextMenu>

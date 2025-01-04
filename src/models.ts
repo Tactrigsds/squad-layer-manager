@@ -177,7 +177,7 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
 	{ coltype: 'string', code: 'like', displayName: 'Like' },
 	{ coltype: 'collection', code: 'has', displayName: 'Has All' },
-	{ coltype: 'boolean', code: 'is', displayName: 'Is' },
+	{ coltype: 'boolean', code: 'is-true', displayName: 'Is True' },
 ] as const satisfies ComparisonType[]
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
 export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code)
@@ -195,7 +195,7 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'Logistics_2',
 		'Transportation_2',
 		'Balance_Differential',
-		'Asymmetry Score',
+		'Asymmetry_Score',
 		'Logistics_Diff',
 		'Transportation_Diff',
 		'Anti-Infantry_Diff',
@@ -308,6 +308,11 @@ export type HasComparison = z.infer<typeof HasAllComparisonSchema>
 export type CollectionComparison = HasComparison
 
 // --------  collection end --------
+//
+const IsTrueComparison = z.object({
+	code: z.literal('is-true'),
+	column: z.enum(COLUMN_TYPE_MAPPINGS.boolean),
+})
 
 // Combine into the final ComparisonSchema
 export const ComparisonSchema = z
@@ -319,6 +324,7 @@ export const ComparisonSchema = z
 		EqualComparison,
 		LikeComparison,
 		HasAllComparisonSchema,
+		IsTrueComparison,
 	])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {
 		message: 'Invalid comparison type',
@@ -339,7 +345,7 @@ export const BaseFilterNodeSchema = z.object({
 	type: z.union([z.literal('and'), z.literal('or'), z.literal('comp'), z.literal('apply-filter')]),
 	comp: ComparisonSchema.optional(),
 	// negations
-	neg: z.boolean(),
+	neg: z.boolean().default(false),
 	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
 })
 
@@ -422,6 +428,7 @@ export function isValidComparison(comp: EditableComparison): comp is Comparison 
 	if (comp.code === 'has' && (!comp.values || comp.values.length === 0)) {
 		return false
 	}
+	if (comp.code === 'is-true') return true
 	return !!comp.code && !!comp.column && (['in', 'has'].includes(comp.code) ? comp.values : comp.value) !== undefined
 }
 export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {

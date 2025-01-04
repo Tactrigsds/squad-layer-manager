@@ -1,35 +1,35 @@
 import { Observable } from 'rxjs'
 import { z } from 'zod'
+import { ParsedBigIntSchema, ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
 
-import { parsedBigint, parsedNum } from '@/lib/zod.ts'
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
 	MaxPlayers: z.number().int().nonnegative(),
-	PlayerCount_I: parsedNum('int', z.number().int().nonnegative()),
+	PlayerCount_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MapName_s: z.string(),
 	GameMode_s: z.string(),
 	GameVersion_s: z.string(),
 	LICENSEDSERVER_b: z.boolean(),
-	PLAYTIME_I: parsedNum('int', z.number().int().nonnegative()),
-	Flags_I: parsedNum('int', z.number().int().nonnegative()),
+	PLAYTIME_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	Flags_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MATCHHOPPER_s: z.string(),
 	MatchTimeout_d: z.number().int().nonnegative(),
 	SESSIONTEMPLATENAME_s: z.string(),
 	Password_b: z.boolean(),
-	CurrentModLoadedCount_I: parsedNum('int', z.number().int().nonnegative()),
+	CurrentModLoadedCount_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	AllModsWhitelisted_b: z.boolean(),
-	'ap-east-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'ap-southeast-2_I': parsedNum('int', z.number().int().nonnegative()),
-	'me-central-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'us-east-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'us-west-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'eu-west-2_I': parsedNum('int', z.number().int().nonnegative()),
-	'eu-central-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'eu-north-1_I': parsedNum('int', z.number().int().nonnegative()),
-	'ap-southeast-1_I': parsedNum('int', z.number().int().nonnegative()),
+	'ap-east-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'ap-southeast-2_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'me-central-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'us-east-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'us-west-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-west-2_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-central-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-north-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'ap-southeast-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	Region_s: z.string(),
 	NextLayer_s: z.string().optional(),
 	TeamOne_s: z.string().optional(),
@@ -46,7 +46,7 @@ export type ServerStatus = {
 
 export const PlayerSchema = z.object({
 	playerID: z.number(),
-	steamID: parsedBigint(),
+	steamID: ParsedBigIntSchema,
 	name: z.string().min(1),
 	teamID: z.number(),
 	squadID: z.number().optional(),

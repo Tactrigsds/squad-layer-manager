@@ -20,29 +20,31 @@ import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '@/server/schema'
 import * as Paths from '@/server/paths'
 import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
+import { assertNever } from '@/lib/typeGuards'
+import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
 
-// Define the schema for raw data
+// layout expected from csv
 export const RawLayerSchema = z.object({
 	Level: z.string(),
 	Layer: z.string(),
 	Size: z.string(),
 	Faction_1: z.string(),
-	SubFac_1: z.string(),
-	Logistics_1: z.number(),
-	Transportation_1: z.number(),
-	'Anti-Infantry_1': z.number(),
-	Armor_1: z.number(),
-	ZERO_Score_1: z.number(),
+	SubFac_1: z.enum(Constants.SUBFACTIONS),
+	Logistics_1: ParsedFloatSchema,
+	Transportation_1: ParsedFloatSchema,
+	'Anti-Infantry_1': ParsedFloatSchema,
+	Armor_1: ParsedFloatSchema,
+	ZERO_Score_1: ParsedFloatSchema,
 	Faction_2: z.string(),
-	SubFac_2: z.string(),
-	Logistics_2: z.number(),
-	Transportation_2: z.number(),
-	'Anti-Infantry_2': z.number(),
-	Armor_2: z.number(),
-	ZERO_Score_2: z.number(),
-	Balance_Differential: z.number(),
-	'Asymmetry Score': z.number(),
-	Z_Pool: z.boolean(),
+	SubFac_2: z.enum(Constants.SUBFACTIONS),
+	Logistics_2: ParsedFloatSchema,
+	Transportation_2: ParsedFloatSchema,
+	'Anti-Infantry_2': ParsedFloatSchema,
+	Armor_2: ParsedFloatSchema,
+	ZERO_Score_2: ParsedFloatSchema,
+	Balance_Differential: ParsedFloatSchema,
+	Asymmetry_Score: ParsedFloatSchema,
+	Z_Pool: StrFlag,
 })
 
 const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
@@ -87,7 +89,8 @@ async function downloadPipeline(_ctx: C.Log) {
 	ctx.log.info('Downloaded squad pipeline data')
 }
 
-function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
+function processLayer(record: Record<string, string>): M.Layer {
+	const rawLayer = RawLayerSchema.parse(record)
 	const { gamemode, version: version } = M.parseLayerString(rawLayer.Layer)
 	const level = M.preprocessLevel(rawLayer.Level)
 	const id = M.getLayerId({
@@ -102,34 +105,15 @@ function processLayer(rawLayer: z.infer<typeof RawLayerSchema>): M.Layer {
 
 	return M.includeComputedCollections({
 		id,
-		Level: level,
-		Layer: rawLayer.Layer,
-		Size: rawLayer.Size,
 		Gamemode: gamemode,
 		LayerVersion: version,
-		Faction_1: rawLayer.Faction_1,
-		SubFac_1: rawLayer.SubFac_1 as Constants.Subfaction,
-		Logistics_1: rawLayer.Logistics_1,
-		Transportation_1: rawLayer.Transportation_1,
-		'Anti-Infantry_1': rawLayer['Anti-Infantry_1'],
-		Armor_1: rawLayer.Armor_1,
-		ZERO_Score_1: rawLayer.ZERO_Score_1,
-		Faction_2: rawLayer.Faction_2,
-		SubFac_2: rawLayer.SubFac_2 as Constants.Subfaction,
-		Logistics_2: rawLayer.Logistics_2,
-		Transportation_2: rawLayer.Transportation_2,
-		'Anti-Infantry_2': rawLayer['Anti-Infantry_2'],
-		Armor_2: rawLayer.Armor_2,
-		ZERO_Score_2: rawLayer.ZERO_Score_2,
-		Balance_Differential: rawLayer.Balance_Differential,
-		'Asymmetry Score': rawLayer['Asymmetry Score'],
+		...rawLayer,
 		Logistics_Diff: rawLayer.Logistics_1 - rawLayer.Logistics_2,
 		Transportation_Diff: rawLayer.Transportation_1 - rawLayer.Transportation_2,
 		'Anti-Infantry_Diff': rawLayer['Anti-Infantry_1'] - rawLayer['Anti-Infantry_2'],
 		Armor_Diff: rawLayer.Armor_1 - rawLayer.Armor_2,
 		ZERO_Score_Diff: rawLayer.ZERO_Score_1 - rawLayer.ZERO_Score_2,
-		Z_Pool: rawLayer.Z_Pool,
-	})
+	}) satisfies M.Layer
 }
 
 async function parsePipelineData() {
@@ -150,7 +134,7 @@ const DEFAULT_LAYER_VALUES = {
 	Armor_2: 0,
 	ZERO_Score_2: 0,
 	Balance_Differential: 0,
-	'Asymmetry Score': 0,
+	Asymmetry_Score: 0,
 	Logistics_Diff: 0,
 	Transportation_Diff: 0,
 	'Anti-Infantry_Diff': 0,
@@ -213,25 +197,7 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 		throw new Error('No records found in CSV file')
 	}
 
-	const originalNumericFields = [...M.COLUMN_TYPE_MAPPINGS.float, ...M.COLUMN_TYPE_MAPPINGS.integer].filter((field) => field in records[0])
-	let processedLayers = records.map((record, index) => {
-		const updatedRecord = { ...record } as { [key: string]: number | string | boolean }
-		originalNumericFields.forEach((field) => {
-			if (!record[field]) {
-				throw new Error(`Missing value for field ${field}: rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
-			}
-			if (M.COLUMN_KEY_TO_TYPE[field] === 'integer') {
-				updatedRecord[field] = parseInt(record[field])
-			} else updatedRecord[field] = parseFloat(record[field])
-			if (isNaN(updatedRecord[field] as number)) {
-				throw new Error(`Invalid value for field ${field}: ${record[field]} rowIndex: ${index + 1} row: ${JSON.stringify(record)}`)
-			}
-		})
-		updatedRecord['Z_Pool'] = record['Z_Pool'] === 'True'
-
-		const validatedRawLayer = RawLayerSchema.parse(updatedRecord)
-		return processLayer(validatedRawLayer)
-	})
+	let processedLayers = records.map(processLayer)
 	processedLayers = [...processedLayers, ...seedLayers, ...extraJensensLayers]
 	ctx.log.info(`Parsing CSV took ${elapsedSecondsParse} s`)
 

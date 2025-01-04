@@ -340,7 +340,7 @@ export function Comparison(props: {
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
-	const columnOptions = (props.allowedColumns ? props.allowedColumns : M.COLUMN_KEYS).map((c) => ({
+	const columnOptions = (props.allowedColumns ? props.allowedColumns : M.COLUMN_KEYS_WITH_COMPUTED).map((c) => ({
 		value: c,
 	}))
 	let codeOptions = comp.column ? M.getComparisonTypesForColumn(comp.column).map((c) => ({ value: c.code })) : []
@@ -386,7 +386,7 @@ export function Comparison(props: {
 					throw new Error('integer columns are not supported')
 				}
 				if (M.isColType(column, 'boolean')) {
-					setComp(() => ({ column, code: 'is' }))
+					setComp(() => ({ column, code: 'is-true' }))
 					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
 					return
 				}
@@ -398,7 +398,7 @@ export function Comparison(props: {
 	)
 	if (!comp.column) return columnBox
 
-	const codeBox = !M.isColType(comp.column, 'boolean') ? (
+	const codeBox = (
 		<ComboBox
 			allowEmpty={true}
 			title=""
@@ -414,8 +414,6 @@ export function Comparison(props: {
 				return setComp((c) => ({ ...c, code: code ?? undefined }))
 			}}
 		/>
-	) : (
-		<span />
 	)
 
 	if (!showValueDropdown) {
@@ -428,110 +426,140 @@ export function Comparison(props: {
 	}
 
 	let valueBox: React.ReactNode = undefined
-	if (comp.code === 'eq' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
-		valueBox = (
-			<StringEqConfig
-				ref={valueBoxRef}
-				column={comp.column as M.StringColumn}
-				value={comp.value as string | undefined | null}
-				setValue={(value) => {
-					return setComp((c) => ({ ...c, value }))
-				}}
-				autocompleteFilter={props.valueAutocompleteFilter}
-			/>
-		)
-	}
+	switch (comp.code) {
+		case 'eq': {
+			if (!LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+				valueBox = (
+					<StringEqConfig
+						ref={valueBoxRef}
+						column={comp.column as M.StringColumn}
+						value={comp.value as string | undefined | null}
+						setValue={(value) => {
+							return setComp((c) => ({ ...c, value }))
+						}}
+						autocompleteFilter={props.valueAutocompleteFilter}
+					/>
+				)
+			} else {
+				valueBox = (
+					<StringEqConfigLimitedAutocomplete
+						ref={valueBoxRef}
+						column={comp.column as M.StringColumn}
+						value={comp.value as string | undefined | null}
+						setValue={(value) => setComp((c) => ({ ...c, value }))}
+						autocompleteFilter={props.valueAutocompleteFilter}
+					/>
+				)
+			}
+			break
+		}
 
-	if (comp.code === 'eq' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
-		valueBox = (
-			<StringEqConfigLimitedAutocomplete
-				ref={valueBoxRef}
-				column={comp.column as M.StringColumn}
-				value={comp.value as string | undefined | null}
-				setValue={(value) => setComp((c) => ({ ...c, value }))}
-				autocompleteFilter={props.valueAutocompleteFilter}
-			/>
-		)
-	}
+		case 'in': {
+			if (!LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
+				valueBox = (
+					<StringInConfig
+						ref={valueBoxRef}
+						column={comp.column as M.StringColumn}
+						values={(comp.values ?? []) as string[]}
+						autocompleteFilter={props.valueAutocompleteFilter}
+						setValues={(action) => {
+							setComp(
+								produce((c) => {
+									const values = typeof action === 'function' ? action(c.values ?? []) : action
+									c.values = values.length === 0 ? undefined : values
+								})
+							)
+						}}
+					/>
+				)
+			} else {
+				valueBox = (
+					<StringEqConfigLimitedAutocomplete
+						ref={valueBoxRef}
+						column={comp.column as M.StringColumn}
+						value={comp.value as string | undefined | null}
+						setValue={(value) => setComp((c) => ({ ...c, value }))}
+						autocompleteFilter={props.valueAutocompleteFilter}
+					/>
+				)
+			}
+			break
+		}
 
-	if (comp.code === 'in' && !LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
-		valueBox = (
-			<StringInConfig
-				ref={valueBoxRef}
-				column={comp.column as M.StringColumn}
-				values={(comp.values ?? []) as string[]}
-				autocompleteFilter={props.valueAutocompleteFilter}
-				setValues={(action) => {
-					setComp(
-						produce((c) => {
-							const values = typeof action === 'function' ? action(c.values ?? []) : action
-							c.values = values.length === 0 ? undefined : values
-						})
-					)
-				}}
-			/>
-		)
-	}
+		case 'gt':
+		case 'lt': {
+			valueBox = (
+				<NumericSingleValueConfig
+					ref={valueBoxRef}
+					className="w-[200px]"
+					value={comp.value as number | undefined}
+					setValue={(value) => {
+						return setComp((c) => ({ ...c, value }))
+					}}
+				/>
+			)
+			break
+		}
 
-	if (comp.code === 'in' && LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
-		valueBox = (
-			<StringEqConfigLimitedAutocomplete
-				ref={valueBoxRef}
-				column={comp.column as M.StringColumn}
-				value={comp.value as string | undefined | null}
-				setValue={(value) => setComp((c) => ({ ...c, value }))}
-				autocompleteFilter={props.valueAutocompleteFilter}
-			/>
-		)
-	}
+		case 'inrange': {
+			valueBox = (
+				<NumericRangeConfig
+					ref={valueBoxRef}
+					min={comp.min}
+					max={comp.max}
+					setMin={(min) => {
+						return setComp((c) => ({ ...c, min }))
+					}}
+					setMax={(max) => {
+						setComp((c) => ({ ...c, max }))
+					}}
+				/>
+			)
+			break
+		}
 
-	if (comp.code === 'gt' || comp.code === 'lt') {
-		valueBox = (
-			<NumericSingleValueConfig
-				ref={valueBoxRef}
-				className="w-[200px]"
-				value={comp.value as number | undefined}
-				setValue={(value) => {
-					return setComp((c) => ({ ...c, value }))
-				}}
-			/>
-		)
-	}
+		case 'has': {
+			valueBox = (
+				<HasAllConfig
+					ref={valueBoxRef}
+					column={comp.column as M.CollectionColumn}
+					values={comp.values as string[]}
+					setValues={(updater) => {
+						//@ts-expect-error idk
+						const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
+						return setComp((c) => ({
+							...c,
+							values: values as (string | null)[],
+						}))
+					}}
+				/>
+			)
+			break
+		}
 
-	if (comp.code === 'inrange') {
-		valueBox = (
-			<NumericRangeConfig
-				ref={valueBoxRef}
-				min={comp.min}
-				max={comp.max}
-				setMin={(min) => {
-					return setComp((c) => ({ ...c, min }))
-				}}
-				setMax={(max) => {
-					setComp((c) => ({ ...c, max }))
-				}}
-			/>
-		)
-	}
-	if (comp.code === 'has') {
-		valueBox = (
-			<HasAllConfig
-				ref={valueBoxRef}
-				column={comp.column as M.CollectionColumn}
-				values={comp.values as string[]}
-				setValues={(updater) => {
-					//@ts-expect-error idk
-					const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
-					return setComp((c) => ({
-						...c,
-						values: values as (string | null)[],
-					}))
-				}}
-			/>
-		)
-	}
-	if (comp.code === 'is') {
-		valueBox = <span />
+		case 'is-true': {
+			valueBox = <span />
+			break
+		}
+
+		case 'like': {
+			valueBox = (
+				<StringLikeConfig
+					setValue={(newValue) => {
+						setComp(
+							produce((c) => {
+								c.value = newValue
+							})
+						)
+					}}
+					value={(comp.value as string)!}
+				/>
+			)
+			break
+		}
+		default:
+			comp.code satisfies undefined
+			valueBox = <span />
 	}
 	return (
 		<>
@@ -625,6 +653,30 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
+})
+
+const StringLikeConfig = React.forwardRef(function StringLikeConfig(
+	props: { value: string; setValue: (value: string) => void },
+	ref: React.ForwardedRef<Focusable>
+) {
+	const debouncer = useDebounced({
+		defaultValue: () => props.value,
+		onChange: props.setValue,
+		delay: 500,
+	})
+	function setInputValue(value: string) {
+		debouncer.setValue(value)
+	}
+	const inputRef = React.useRef<HTMLInputElement>(null)
+
+	React.useImperativeHandle(ref, () => ({
+		focus: () => inputRef.current?.focus(),
+		get isFocused() {
+			return inputRef.current === document.activeElement
+		},
+	}))
+
+	return <Input ref={inputRef} onChange={(e) => setInputValue(e.target.value)} />
 })
 
 function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
