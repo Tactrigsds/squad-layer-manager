@@ -25,6 +25,7 @@ COPY --from=build /app/docker ./docker
 COPY --from=build /app/assets ./assets
 COPY --from=build /app/src ./src
 COPY --from=build /app/drizzle.config.ts ./
+COPY --from=build /app/vite.config.ts ./
 COPY --from=build /app/tsconfig.*.json ./
 COPY --from=build /app/docker/logrotate.conf /etc/logrotate.d/app
 RUN mkdir -p /logs
