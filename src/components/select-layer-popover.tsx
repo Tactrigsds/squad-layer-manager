@@ -510,9 +510,11 @@ export function EditLayerQueueItemPopover(props: {
 		const sourceId = layerQueue[sourceIndex].id
 		setEditedItem(
 			produce((editedItem) => {
+				let insertIndex = targetIndex - 1
 				if (!editedItem.vote) return
 				const [moved] = editedItem.vote.choices.splice(sourceIndex, 1)
-				editedItem.vote.choices.splice(targetIndex, 0, moved)
+				if (insertIndex > sourceIndex) insertIndex--
+				editedItem.vote.choices.splice(insertIndex, 0, moved)
 			})
 		)
 		setQueueItemMutations(produce((mutations) => tryApplyMutation('moved', sourceId, mutations)))
