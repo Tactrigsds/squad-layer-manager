@@ -18,7 +18,6 @@ if (ENV.PROD_LOG_PATH && !fs.existsSync(ENV.PROD_LOG_PATH)) {
 	if (!fs.existsSync(path.dirname(ENV.PROD_LOG_PATH))) {
 		fs.mkdirSync(path.dirname(ENV.PROD_LOG_PATH), { recursive: true })
 	}
-	// Create create file and any missing directories
 	fs.writeFileSync(ENV.PROD_LOG_PATH, '')
 }
 
