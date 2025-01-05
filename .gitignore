@@ -31,4 +31,4 @@ dist-ssr
 config.json
 google-credentials.json
 
-data/layers.csv
+/data/layers.csv
