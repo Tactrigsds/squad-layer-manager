@@ -11,7 +11,7 @@ export type Logger = PinoLogger
 export let baseLogger!: Logger
 
 const serializers = {
-	bigint: (n: bigint) => n.toString() + n,
+	bigint: (n: bigint) => n.toString() + 'n',
 }
 
 export async function setupLogger() {
