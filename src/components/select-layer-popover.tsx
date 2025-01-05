@@ -41,7 +41,7 @@ export function SelectLayersPopover(props: {
 	const defaultSelected: M.MiniLayer[] = props.defaultSelected ?? []
 
 	const [filterItem, setFilterItem] = React.useState<Partial<M.MiniLayer>>({})
-	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
+	const [applyBaseFilter, setApplyBaseFilter] = React.useState(!!props.baseFilter)
 	const pickerFilter = React.useMemo(() => {
 		const nodes: M.FilterNode[] = []
 
@@ -128,6 +128,7 @@ export function SelectLayersPopover(props: {
 							<div className="items-top flex space-x-2">
 								<Checkbox
 									checked={applyBaseFilter}
+									disabled={!props.baseFilter}
 									onCheckedChange={(v) => {
 										if (v === 'indeterminate') return
 										setApplyBaseFilter(v)
@@ -139,7 +140,7 @@ export function SelectLayersPopover(props: {
 										htmlFor={applyBaseFilterId}
 										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 									>
-										Apply base filter
+										Apply pool filter
 									</label>
 								</div>
 							</div>
@@ -671,7 +672,7 @@ function LayerFilterMenu(props: {
 	}
 
 	return (
-		<div className="flex flex-col space-x-2">
+		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
 				{filterComparisons.map(([name, comparison], index) => {
 					const setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>> = (update) => {
@@ -773,27 +774,9 @@ function LayerFilterMenu(props: {
 					)
 				})}
 			</div>
-			<div className="flex space-x-2 items-center">
-				<div className="items-top flex space-x-1">
-					<Checkbox
-						checked={props.applyBaseFilter}
-						onCheckedChange={(v) => {
-							if (v === 'indeterminate') return
-							props.setApplyBaseFilter(v)
-						}}
-						id={applyBaseFilterId}
-					/>
-					<label
-						htmlFor={applyBaseFilterId}
-						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-					>
-						Apply base filter
-					</label>
-				</div>
-				<Button variant="secondary" onClick={() => props.setFilterLayer({})}>
-					Clear All
-				</Button>
-			</div>
+			<Button variant="secondary" onClick={() => props.setFilterLayer({})}>
+				Clear All
+			</Button>
 		</div>
 	)
 }

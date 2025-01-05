@@ -377,6 +377,8 @@ function ServerDashboard() {
 		},
 	})
 
+	console.log(basePoolFilterEntity)
+
 	let basePoolFilter = basePoolFilterEntity?.filter
 
 	const validatedHistoryFilters = useSDStore().get.validatedHistoryFilters()
