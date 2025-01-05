@@ -772,7 +772,7 @@ export const ServerStateSchema = MutableServerStateSchema.extend({
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerQueue) {
-	return layerQueue[0].layerId ?? layerQueue[0].vote?.defaultChoice
+	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
 export type UserPart = { users: Schema.User[] }
 export type LayerSyncState =
