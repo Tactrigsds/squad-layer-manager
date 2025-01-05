@@ -1,7 +1,8 @@
 import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 
-import { SUBFACTIONS } from '@/lib/constants'
+// aliased imports fail when execing drizzle-kit commands from the docker image for some reason
+import { SUBFACTIONS } from '../lib/constants.ts'
 
 export const factions = mysqlTable(
 	'factions',
