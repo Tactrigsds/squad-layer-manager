@@ -15,8 +15,11 @@ let restartAttempts = 0
 const MAX_RESTART_DELAY = 1000 * 60 * 5 // 5 minutes
 
 if (ENV.PROD_LOG_PATH && !fs.existsSync(ENV.PROD_LOG_PATH)) {
-	process.stderr.write(`PROD_LOG_PATH ${ENV.PROD_LOG_PATH} does not exist\n`)
-	process.exit(1)
+	if (!fs.existsSync(path.dirname(ENV.PROD_LOG_PATH))) {
+		fs.mkdirSync(path.dirname(ENV.PROD_LOG_PATH), { recursive: true })
+	}
+	// Create create file and any missing directories
+	fs.writeFileSync(ENV.PROD_LOG_PATH, '')
 }
 
 function startServer() {
