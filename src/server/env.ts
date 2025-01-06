@@ -37,6 +37,7 @@ const EnvSchema = {
 	HOST: z.string().default('127.0.0.1'),
 
 	PROD_LOG_PATH: z.string().min(1).optional().describe('Path to write logs to in production'),
+	PROD_AUTORESTART: z.boolean().default(false).describe('Whether to auto-restart the server in production'),
 }
 
 export function setupEnv() {

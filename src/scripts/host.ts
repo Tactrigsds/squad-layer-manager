@@ -77,7 +77,7 @@ function startServer() {
 	})
 
 	child.on('exit', (code) => {
-		if (code == 0) process.exit(0)
+		if (code == 0 || !ENV.PROD_AUTORESTART) process.exit(code)
 		const now = Date.now()
 		if (now - lastRestartTime > 10 * 60 * 1000) {
 			restartAttempts = 0
