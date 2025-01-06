@@ -377,8 +377,6 @@ function ServerDashboard() {
 		},
 	})
 
-	console.log(basePoolFilterEntity)
-
 	let basePoolFilter = basePoolFilterEntity?.filter
 
 	const validatedHistoryFilters = useSDStore().get.validatedHistoryFilters()
@@ -553,7 +551,7 @@ export function LayerQueue(
 	const userQuery = trpcReact.getLoggedInUser.useQuery()
 	const allowVotes = props.allowVotes ?? true
 	return (
-		<DndContext onDragEnd={(evt) => props.handleDragEnd(evt, userQuery.data!.discordId)}>
+		<DndContext onDragEnd={(evt) => userQuery.data && props.handleDragEnd(evt, userQuery.data!.discordId)}>
 			<ScrollArea>
 				<ul className="flex w-max flex-col space-y-1">
 					{/* -------- queue items -------- */}

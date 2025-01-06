@@ -1,6 +1,7 @@
 import { createTRPCClient } from '@trpc/client'
 import { createTRPCReact, createWSClient, wsLink } from '@trpc/react-query'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { BehaviorSubject } from 'rxjs'
 
 import superjson from 'superjson'
 
@@ -9,6 +10,8 @@ import type { AppRouter } from '@/server/router'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
+
+export const trpcConnected$ = new BehaviorSubject(false)
 export const links = [
 	wsLink({
 		client: createWSClient({
@@ -18,9 +21,11 @@ export const links = [
 			},
 			onClose: () => {
 				globalToast$.next({ title: 'WebSocket connection closed. server may be offline', variant: 'destructive' })
+				trpcConnected$.next(false)
 			},
 			onOpen: () => {
 				console.log('WebSocket connection opened')
+				trpcConnected$.next(true)
 			},
 		}),
 		transformer: superjson,
