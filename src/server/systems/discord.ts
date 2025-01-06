@@ -43,9 +43,7 @@ export async function setupDiscordSystem() {
 		client.login(ENV.DISCORD_BOT_TOKEN)
 	})
 
-	for (const authorized of CONFIG.authorizedDiscordRoles) {
-		const roleId = authorized.roleId
-		const serverId = authorized.serverId
+	for (const { roleId, serverId } of CONFIG.authorizedDiscordRoles) {
 		const res = await fetchGuild(ctx, BigInt(serverId))
 		if (res.code !== 'ok') {
 			throw new Error(`Could not find Discord server ${serverId}`)
