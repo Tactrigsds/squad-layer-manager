@@ -324,6 +324,7 @@ function ServerDashboard() {
 	const sdStore = useSDStore().store()!
 	const loggedInUserRes = useLoggedInUser()
 
+	const [newSub, setNewSub] = React.useState(true)
 	React.useEffect(() => {
 		const sub = new Subscription()
 		sub.add(
@@ -336,10 +337,10 @@ function ServerDashboard() {
 					)
 						return
 
-					const firstUpdate = sdStore.get(SDStore.atom.serverState) === null
 					sdStore.set(SDStore.atom.applyServerUpdate, data)
 					settingsPanelRef.current?.reset(data.state.settings)
-					if (firstUpdate) {
+					if (newSub) {
+						setNewSub(false)
 						return
 					}
 					if (data.source.type === 'manual' && data.source.user.discordId) {
