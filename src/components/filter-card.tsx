@@ -25,7 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
-import { useFilter, useFilters } from '@/hooks/filters.ts'
+import { useFilters } from '@/hooks/filters.ts'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -778,6 +778,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 const NumericSingleValueConfig = React.forwardRef(
 	(
 		props: {
+			placeholder?: string
 			className?: string
 			value?: number
 			setValue: (value?: number) => void
@@ -791,6 +792,7 @@ const NumericSingleValueConfig = React.forwardRef(
 			<Input
 				ref={inputRef}
 				className={props.className}
+				placeholder={props.placeholder}
 				value={value}
 				onChange={(e) => {
 					setValue(e.target.value)
@@ -814,9 +816,9 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 ) {
 	return (
 		<div className="flex w-[200px] items-center space-x-2">
-			<NumericSingleValueConfig ref={ref} value={props.min} setValue={props.setMin} />
+			<NumericSingleValueConfig placeholder="min" value={props.min} setValue={props.setMax} />
 			<span>to</span>
-			<NumericSingleValueConfig value={props.max} setValue={props.setMax} />
+			<NumericSingleValueConfig placeholder="max" ref={ref} value={props.max} setValue={props.setMin} />
 		</div>
 	)
 })

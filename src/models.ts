@@ -425,11 +425,7 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 }
 
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
-	if (comp.code === 'has' && (!comp.values || comp.values.length === 0)) {
-		return false
-	}
-	if (comp.code === 'is-true') return true
-	return !!comp.code && !!comp.column && (['in', 'has'].includes(comp.code) ? comp.values : comp.value) !== undefined
+	return ComparisonSchema.safeParse(comp).success
 }
 export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {
 	return !!node.filterId
