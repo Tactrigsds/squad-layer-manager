@@ -33,9 +33,12 @@ export const ConfigSchema = z.object({
 				serverId: z.string().regex(/^\d+$/, {
 					message: 'Must be a valid Discord server ID',
 				}),
-				roleId: z.string().regex(/^\d+$/, {
-					message: 'Must be a valid Discord role ID',
-				}),
+				roleId: z
+					.string()
+					.regex(/^\d+$/, {
+						message: 'Must be a valid Discord role ID',
+					})
+					.optional(),
 			})
 		)
 		.min(1),

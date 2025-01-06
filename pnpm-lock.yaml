@@ -272,9 +272,6 @@ importers:
       typescript:
         specifier: 5.7.2
         version: 5.7.2
-      vitest:
-        specifier: ^2.1.2
-        version: 2.1.2(@types/node@22.7.4)(@vitest/browser@2.1.2)(msw@2.4.11(typescript@5.7.2))
       zod:
         specifier: ^3.23.8
         version: 3.23.8
@@ -351,6 +348,9 @@ importers:
       vite-tsconfig-paths:
         specifier: ^5.0.1
         version: 5.0.1(typescript@5.7.2)(vite@5.4.8(@types/node@22.7.4))
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.2(@types/node@22.7.4)(@vitest/browser@2.1.2)(msw@2.4.11(typescript@5.7.2))
 
 packages:
 

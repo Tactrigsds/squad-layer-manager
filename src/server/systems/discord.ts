@@ -42,6 +42,21 @@ export async function setupDiscordSystem() {
 		})
 		client.login(ENV.DISCORD_BOT_TOKEN)
 	})
+
+	for (const authorized of CONFIG.authorizedDiscordRoles) {
+		const roleId = authorized.roleId
+		const serverId = authorized.serverId
+		const res = await fetchGuild(ctx, BigInt(serverId))
+		if (res.code !== 'ok') {
+			throw new Error(`Could not find Discord server ${serverId}`)
+		}
+		if (roleId) {
+			const role = await res.guild.roles.fetch(roleId.toString())
+			if (!role) {
+				throw new Error(`Could not find role ${roleId} in Discord server ${serverId}`)
+			}
+		}
+	}
 }
 
 export async function getOauthUser(token: AccessToken) {
@@ -100,7 +115,7 @@ export async function checkDiscordUserAuthorization(_ctx: C.Log, discordId: bigi
 	for (const authorized of CONFIG.authorizedDiscordRoles) {
 		const res = await fetchMember(ctx, BigInt(authorized.serverId), discordId)
 		if (res.code != 'ok') return res
-		if (res.member.roles.cache.has(authorized.roleId.toString())) {
+		if (authorized.roleId == undefined || res.member.roles.cache.has(authorized.roleId.toString())) {
 			return { code: 'ok' as const }
 		}
 	}
