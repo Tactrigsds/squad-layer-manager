@@ -10,13 +10,13 @@ const serverStatusAtom = atom<SM.ServerStatus | null>(null)
 const squadServerStatus$ = new Observable<SM.ServerStatus>(() => {
 	const sub = new Subscription()
 	;(async () => {
-		const connected = await firstValueFrom(
-			trpcConnected$.pipe(
-				filter((connected) => !!connected),
-				endWith(false)
-			)
-		)
-		if (!connected || sub.closed) return
+		// const connected = await firstValueFrom(
+		// 	trpcConnected$.pipe(
+		// 		filter((connected) => !!connected),
+		// 		endWith(false)
+		// 	)
+		// )
+		// if (!connected || sub.closed) return
 		sub.add(
 			trpc.squadServer.watchServerStatus.subscribe(undefined, {
 				onData: (data) => {
