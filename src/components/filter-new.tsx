@@ -7,8 +7,8 @@ import * as AR from '@/app-routes.ts'
 import { Input } from '@/components/ui/input'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import { capitalize } from '@/lib/text'
-import { trpcReact } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
+import { useFilterCreate } from '@/hooks/filters'
 
 import FilterCard from './filter-card'
 import LayerTable from './layer-table'
@@ -55,7 +55,7 @@ export default function FilterNew() {
 }
 
 function CreateFilterPopover(props: { children: React.ReactNode; filter?: M.FilterNode }) {
-	const createFilterMutation = trpcReact.filters.createFilter.useMutation()
+	const createFilterMutation = useFilterCreate()
 	const navigate = useNavigate()
 	const form = useForm({
 		defaultValues: {

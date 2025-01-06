@@ -179,14 +179,15 @@ export default class SquadRcon {
 
 		const rawInfo = res.data
 
-		const status = {
+		return {
 			name: rawInfo.ServerName_s,
 			currentLayer: await currentLayerTask,
 			nextLayer: await nextLayerTask,
-			maxPlayers: rawInfo.MaxPlayers,
-			currentPlayers: rawInfo.PlayerCount_I,
+			maxPlayerCount: rawInfo.MaxPlayers,
+			playerCount: rawInfo.PlayerCount_I,
+			queueLength: rawInfo.PublicQueue_I,
+			maxQueueLength: rawInfo.PublicQueueLimit_I,
 		}
-		return status
 	}
 }
 

@@ -7,7 +7,7 @@ import * as LayerQueue from './systems/layer-queue.ts'
 import * as LayersQuery from './systems/layers-query.ts'
 import * as SquadServer from './systems/squad-server.ts'
 import { CONFIG } from '@/server/config.ts'
-import { procedure, router } from './trpc.ts'
+import { procedure, router } from './trpc.server.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
 export type AppRouter = typeof appRouter

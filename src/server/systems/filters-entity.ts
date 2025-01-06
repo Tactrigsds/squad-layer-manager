@@ -7,7 +7,7 @@ import { toAsyncGenerator } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
-import { procedure, router } from '@/server/trpc'
+import { procedure, router } from '@/server/trpc.server.ts'
 
 import * as Sessions from './sessions.ts'
 

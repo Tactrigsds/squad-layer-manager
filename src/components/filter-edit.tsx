@@ -21,7 +21,7 @@ import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import { capitalize } from '@/lib/text'
-import { trpc, trpcReact } from '@/lib/trpc.client'
+import { trpc } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
 import { type WatchFilterOutput } from '@/server/systems/filters-entity'
@@ -34,6 +34,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import React from 'react'
+import { useLoggedInUser } from '@/hooks/use-logged-in-user'
+import { useFilterDelete, useFilterUpdate } from '@/hooks/filters'
 
 const defaultFilter: M.EditableFilterNode = EFB.and()
 
@@ -45,7 +47,7 @@ export default function FilterEdit() {
 	const [filterEntity, setFilterEntity] = useState<M.FilterEntity | undefined>(undefined)
 	const [editedFilter, setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
 	const editedFilterModified = useMemo(() => !deepEqual(filterEntity?.filter, editedFilter), [filterEntity?.filter, editedFilter])
-	const userRes = trpcReact.getLoggedInUser.useQuery()
+	const userRes = useLoggedInUser()
 	const navigate = useNavigate()
 	const onWatchFilterData = useCallback(
 		(e: WatchFilterOutput) => {
@@ -90,8 +92,8 @@ export default function FilterEdit() {
 	const validFilter = useMemo(() => {
 		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : null
 	}, [editedFilter])
-	const updateFilterMutation = trpcReact.filters.updateFilter.useMutation()
-	const deleteFilterMutation = trpcReact.filters.deleteFilter.useMutation()
+	const updateFilterMutation = useFilterUpdate()
+	const deleteFilterMutation = useFilterDelete()
 	const canSaveFilter = editedFilterModified && !!validFilter && !updateFilterMutation.isPending
 
 	if (!editedFilter || !filterEntity) {
@@ -170,7 +172,7 @@ export default function FilterEdit() {
 }
 
 function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.FilterEntity }) {
-	const updateFiltersMutation = trpcReact.filters.updateFilter.useMutation()
+	const updateFiltersMutation = useFilterUpdate()
 	const [isOpen, _setIsOpen] = useState(false)
 	function setIsOpen(isOpen: boolean) {
 		if (isOpen) {

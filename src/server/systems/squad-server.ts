@@ -7,7 +7,7 @@ import * as C from '@/server/context.ts'
 
 import { ENV } from '../env'
 import { baseLogger } from '@/server/logger'
-import { procedure, router } from '../trpc'
+import { procedure, router } from '../trpc.server.ts'
 import { CONFIG } from '@/server/config'
 
 export let rcon!: SquadRcon

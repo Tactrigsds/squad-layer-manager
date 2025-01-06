@@ -3,16 +3,16 @@ import { Link } from 'react-router-dom'
 import * as AR from '@/app-routes.ts'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
-import { trpcReact } from '@/lib/trpc.client.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
-import { Button, buttonVariants } from './ui/button'
+import { Button } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { useLoggedInUser } from '@/hooks/use-logged-in-user'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
-	const userRes = trpcReact.getLoggedInUser.useQuery()
+	const userRes = useLoggedInUser()
 	const avatarUrl = userRes.data
 		? `https://cdn.discordapp.com/avatars/${userRes.data.discordId}/${userRes.data.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
@@ -28,26 +28,31 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
-					<>
-						{status && (
+					{status && (
+						<>
+							<h3 className={Typography.H4}>{status.name}</h3>
 							<div className="flex flex-col">
 								<div className={Typography.Small}>
-									<span className="font-bold">{status.currentPlayers}</span> / <span className="font-bold">{status.maxPlayers}</span>{' '}
-									players online
+									<span className="font-bold">{status.playerCount}</span> / <span className="font-bold">{status.maxPlayerCount}</span>{' '}
+									online
+								</div>
+								<div className={Typography.Small}>
+									<span className="font-bold">{status.queueLength}</span> / <span className="font-bold">{status.maxQueueLength}</span> in
+									queue
 								</div>
 							</div>
-						)}
-						<div className="grid h-full grid-cols-[auto_auto]">
-							<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
-							<span className={cn(Typography.Small, 'font-bold')}>
-								{status?.currentLayer && DH.displayPossibleUnknownLayer(status.currentLayer)}
-							</span>
-							<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
-							<span className={cn(Typography.Small, 'font-bold')}>
-								{status?.nextLayer && DH.displayPossibleUnknownLayer(status.nextLayer)}
-							</span>
-						</div>
-					</>
+							<div className="grid h-full grid-cols-[auto_auto]">
+								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
+								<span className={cn(Typography.Small, 'font-bold')}>
+									{status.currentLayer && DH.displayPossibleUnknownLayer(status.currentLayer)}
+								</span>
+								<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
+								<span className={cn(Typography.Small, 'font-bold')}>
+									{status.nextLayer && DH.displayPossibleUnknownLayer(status.nextLayer)}
+								</span>
+							</div>
+						</>
+					)}
 					{userRes.data && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>

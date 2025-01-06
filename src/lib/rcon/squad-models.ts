@@ -1,6 +1,6 @@
 import { Observable } from 'rxjs'
 import { z } from 'zod'
-import { ParsedBigIntSchema, ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
+import { ParsedBigIntSchema, ParsedIntSchema } from '@/lib/zod'
 
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
@@ -9,6 +9,8 @@ export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
 	MaxPlayers: z.number().int().nonnegative(),
 	PlayerCount_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueue_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueueLimit_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MapName_s: z.string(),
 	GameMode_s: z.string(),
 	GameVersion_s: z.string(),
@@ -38,8 +40,10 @@ export const ServerRawInfoSchema = z.object({
 
 export type ServerStatus = {
 	name: string
-	maxPlayers: number
-	currentPlayers: number
+	maxPlayerCount: number
+	playerCount: number
+	queueLength: number
+	maxQueueLength: number
 	currentLayer: M.PossibleUnknownMiniLayer
 	nextLayer: M.PossibleUnknownMiniLayer | null
 }
@@ -147,39 +151,6 @@ export const AdminListSourceSchema = z.object({
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type SquadAdminPerms = { [key: string]: boolean }
 export type SquadAdmins = Map<bigint, Record<string, boolean>>
-
-export interface ISquadRcon {
-	event$: Observable<SquadEvent>
-	getCurrentMap(ctx: C.Log): Promise<M.MiniLayer>
-
-	getNextLayer(ctx: C.Log): Promise<M.MiniLayer>
-
-	getListPlayers(ctx: C.Log): Promise<Player[]>
-
-	getSquads(ctx: C.Log): Promise<Squad[]>
-
-	broadcast(ctx: C.Log, message: string): Promise<void>
-
-	setFogOfWar(ctx: C.Log, on: boolean): Promise<void>
-
-	warn(ctx: C.Log, anyID: string, message: string): Promise<void>
-
-	ban(ctx: C.Log, anyID: string, banLength: string, message: string): Promise<void>
-
-	switchTeam(ctx: C.Log, anyID: string): Promise<void>
-
-	setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions): Promise<void>
-
-	endGame(_ctx: C.Log): Promise<void>
-
-	leaveSquad(ctx: C.Log, playerId: number): Promise<void>
-
-	getPlayerQueueLength(ctx: C.Log): Promise<number>
-
-	getCurrentLayer(ctx: C.Log): Promise<M.MiniLayer>
-
-	getServerStatus(ctx: C.Log): Promise<ServerStatus>
-}
 
 export const BiomeSchema = z.object({
 	name: z.string(),

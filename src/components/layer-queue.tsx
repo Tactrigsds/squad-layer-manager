@@ -16,7 +16,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge.tsx'
 import { useToast } from '@/hooks/use-toast'
 import * as Helpers from '@/lib/display-helpers'
-import { trpcReact, trpc } from '@/lib/trpc.client.ts'
+import { trpc } from '@/lib/trpc.client.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import * as M from '@/models'
@@ -52,9 +52,11 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { deepClone } from '@/lib/object.ts'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
 import { Parts } from '@/lib/types.ts'
-import { configAtom, useConfig } from '@/systems.client/config.client.ts'
+import { useConfig } from '@/systems.client/config.client.ts'
 import { Subscription } from 'rxjs'
 import { useFeatureFlags } from '@/systems.client/feature-flags.ts'
+import { useLoggedInUser } from '@/hooks/use-logged-in-user.ts'
+import { useAbortVote, useStartVote } from '@/hooks/votes.ts'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -320,12 +322,12 @@ function ServerDashboard() {
 	const serverStateMut = useSDStore().get.serverStateMut()
 	const resetSDStore = useSDStore().set.reset()
 	const sdStore = useSDStore().store()!
-	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
+	const loggedInUserRes = useLoggedInUser()
 
 	React.useEffect(() => {
 		const sub = new Subscription()
 		sub.add(
-			trpc.layerQueue.watchServerState.subscribe(undefined, {
+			trpc.layerQueue.watchLayerQueueState.subscribe(undefined, {
 				onData: (data) => {
 					if (
 						sdStore.get(SDStore.atom.serverState) &&
@@ -548,7 +550,7 @@ export function LayerQueue(
 		handleDragEnd: (evt: DragEndEvent, userDiscordId: bigint) => void
 	} & Parts<M.UserPart>
 ) {
-	const userQuery = trpcReact.getLoggedInUser.useQuery()
+	const userQuery = useLoggedInUser()
 	const allowVotes = props.allowVotes ?? true
 	return (
 		<DndContext onDragEnd={(evt) => userQuery.data && props.handleDragEnd(evt, userQuery.data!.discordId)}>
@@ -575,9 +577,8 @@ export function LayerQueue(
 
 // TODO this is all kinds of fucked up
 function VoteState() {
-	const abortVoteMutation = trpcReact.layerQueue.abortVote.useMutation()
+	const abortVoteMutation = useAbortVote()
 	const serverStateMut = useSDStore().get.serverStateMut()!
-	const serverState = useSDStore().get.serverState()!
 	const parts = useSDStore().get.parts()
 	const toaster = useToast()
 	const voteState = useSDStore().get.voteState()!
@@ -597,7 +598,7 @@ function VoteState() {
 		})
 	}
 
-	const startVoteMutation = trpcReact.layerQueue.startVote.useMutation()
+	const startVoteMutation = useStartVote()
 	const openDialog = useAlertDialog()
 	let body: React.ReactNode
 
@@ -792,14 +793,10 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 		queryFn: () => trpc.filters.getFilters.query(),
 	})
 
-	const preferredLengthRef = React.useRef<HTMLInputElement>(null)
-	const preferredLengthId = React.useId()
-
 	const filterOptions = filtersRes.data?.map?.((f) => ({
 		value: f.id,
 		label: f.name,
 	}))
-	const serverState = useSDStore().get.serverState()
 	const serverStateMut = useSDStore().get.serverStateMut()
 	const changedSettings = useSDStore().get.changedSettings()
 

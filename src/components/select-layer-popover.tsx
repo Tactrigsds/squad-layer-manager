@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import * as Helpers from '@/lib/display-helpers'
 import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders'
-import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
@@ -24,6 +23,7 @@ import { initMutations, tryApplyMutation, WithMutationId } from '@/lib/item-muta
 import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 import { DragEndEvent } from '@dnd-kit/core'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
+import { useLoggedInUser } from '@/hooks/use-logged-in-user.ts'
 
 type SelectMode = 'vote' | 'layers'
 export function SelectLayersPopover(props: {
@@ -75,7 +75,7 @@ export function SelectLayersPopover(props: {
 		}
 		_setSelectMode(newAdditionType)
 	}
-	const loggedInUserRes = trpcReact.getLoggedInUser.useQuery()
+	const loggedInUserRes = useLoggedInUser()
 
 	const canSubmit = selectedLayers.length > 0
 	function submit(e: React.FormEvent) {
@@ -527,7 +527,7 @@ export function EditLayerQueueItemPopover(props: {
 		}
 		props.onOpenChange(open)
 	}
-	const user = trpcReact.getLoggedInUser.useQuery().data
+	const user = useLoggedInUser().data
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	return (

@@ -17,7 +17,7 @@ import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as LayersQuery from '@/server/systems/layers-query.ts'
 
-import { procedure, router } from '../trpc'
+import { procedure, router } from '../trpc.server.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
@@ -487,7 +487,7 @@ function getVoteStateDiscordIds(state: M.VoteState) {
 }
 
 // -------- generic actions & data  --------
-async function* watchServerStateUpdates(args: { ctx: C.Log & C.Db }) {
+async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 	for await (const [update] of toAsyncGenerator(serverStateUpdate$)) {
 		if (update.parts) {
 			yield update
@@ -653,7 +653,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenL
 
 // -------- setup router --------
 export const layerQueueRouter = router({
-	watchServerState: procedure.subscription(watchServerStateUpdates),
+	watchLayerQueueState: procedure.subscription(watchLayerQueueStateUpdates),
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	generateLayerQueueItems: procedure
 		.input(M.GenLayerQueueItemsOptionsSchema)

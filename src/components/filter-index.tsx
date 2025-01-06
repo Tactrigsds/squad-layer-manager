@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 
 import * as AR from '@/app-routes.ts'
-import { trpcReact } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { useFilters } from '@/hooks/filters'
 
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
-	const filtersData = trpcReact.filters.getFilters.useQuery()
+	const filtersData = useFilters()
 	return (
 		<div className="mt-4 w-full">
 			<div className="mx-auto flex w-[500px] flex-col space-y-2">

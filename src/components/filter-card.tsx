@@ -10,7 +10,6 @@ import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
 import { eltToFocusable, Focusable } from '@/lib/react'
-import { trpcReact } from '@/lib/trpc.client.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 
@@ -26,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
+import { useFilter, useFilters } from '@/hooks/filters.ts'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -579,7 +579,7 @@ type ApplyFilterProps = {
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
-	const getFiltersQuery = trpcReact.filters.getFilters.useQuery()
+	const getFiltersQuery = useFilters()
 	let filters = getFiltersQuery.data
 	if (props.editedFilterId) {
 		filters = filters?.filter((f) => f.id !== props.editedFilterId)
