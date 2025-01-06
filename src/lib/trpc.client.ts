@@ -29,6 +29,9 @@ export const links = [
 
 export const trpc = createTRPCClient<AppRouter>({ links })
 
+// @ts-expect-error binding to window for debugging
+window.trpc = trpc
+
 /**
  * @deprecated bad library, phase this out. doesn't handle transports well and a bug in its subscription implementation caused me great pain
  */
