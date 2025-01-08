@@ -14,6 +14,7 @@ import { TooltipProvider } from './ui/tooltip'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useGlobalToast } from '@/hooks/use-global-toast'
 import { configAtom } from '@/systems.client/config.client'
+import { DragContextProvider } from '@/systems.client/dndkit.provider'
 
 export default function Providers(props: { children: ReactNode }) {
 	const [queryClient] = useState(() => new QueryClient())
@@ -25,7 +26,9 @@ export default function Providers(props: { children: ReactNode }) {
 				<ConfigAtomProvider>
 					<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
 						<TooltipProvider>
-							<AlertDialogProvider>{props.children}</AlertDialogProvider>
+							<DragContextProvider>
+								<AlertDialogProvider>{props.children}</AlertDialogProvider>
+							</DragContextProvider>
 						</TooltipProvider>
 						<Toaster />
 					</ThemeProvider>

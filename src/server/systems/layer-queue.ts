@@ -25,15 +25,6 @@ import { Parts } from '@/lib/types'
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart>>, C.Log & C.Db]>
 let voteEndTask: Subscription | null = null
 
-const GENERIC_ERRORS = {
-	outOfSyncError() {
-		return {
-			code: 'err:out-of-sync' as const,
-			msg: 'Out of sync with server. Please retry update.',
-		}
-	},
-}
-
 export async function setupLayerQueueAndServerState() {
 	const log = baseLogger
 	const systemCtx = DB.addPooledDb({ log })
@@ -216,11 +207,17 @@ async function handleCommand(msg: SM.ChatMessage, ctx: C.Log & C.Db) {
 let voteState: M.VoteState | null = null
 const voteUpdate$ = new Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
 
-async function* watchVoteStateUpdates() {
-	yield { code: 'intial-state' as const, state: voteState }
+async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
+	let initialState: (M.VoteState & Parts<M.UserPart>) | null = null
+	if (voteState) {
+		const ids = getVoteStateDiscordIds(voteState)
+		const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
+		initialState = { ...voteState, parts: { users } }
+	}
+	yield { code: 'initial-state' as const, state: initialState } satisfies M.VoteStateUpdateOrInitialWithParts
 	for await (const [ctx, update] of toAsyncGenerator(voteUpdate$)) {
 		const withParts = await includeVoteStateUpdatePart(ctx, update)
-		yield { code: 'update' as const, update: withParts }
+		yield { code: 'update' as const, update: withParts } satisfies M.VoteStateUpdateOrInitialWithParts
 	}
 }
 
@@ -628,7 +625,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenL
 		},
 	}).then((r) => r.layers)
 
-	const res: M.LayerQueueItem[] = []
+	const res: M.LayerListItem[] = []
 	switch (opts.itemType) {
 		case 'layer':
 			for (const layer of layers) {

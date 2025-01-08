@@ -44,7 +44,7 @@ export function useFilter(
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
-	return filter
+	return { data: filter }
 }
 
 export function useFilterCreate() {

@@ -4,6 +4,7 @@ import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
 import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
+import { Parts } from './lib/types'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
@@ -463,7 +464,7 @@ export const LayerQueueItemSchema = z.object({
 export const LayerQueueSchema = z.array(LayerQueueItemSchema)
 
 export type LayerQueue = z.infer<typeof LayerQueueSchema>
-export type LayerQueueItem = z.infer<typeof LayerQueueItemSchema>
+export type LayerListItem = z.infer<typeof LayerQueueItemSchema>
 // doing this because Omit<> sucks to work with
 
 export function preprocessLevel(level: string) {
@@ -676,6 +677,23 @@ export function tallyVotes(currentVote: VoteStateWithVoteData) {
 export type GuiUserId = { discordId: bigint }
 export type ChatUserId = { steamId: string }
 export type GuiOrChatUserId = { discordId?: bigint; steamId?: string }
+export type VoteStateUpdateOrInitialWithParts =
+	| {
+			code: 'initial-state'
+			state: (VoteState & Parts<UserPart>) | null
+	  }
+	| {
+			code: 'update'
+			update: VoteStateUpdate & Parts<UserPart>
+	  }
+
+export type VoteStateUpdateOrInitial =
+	| {
+			code: 'initial-state'
+			state: VoteState | null
+	  }
+	| { code: 'update'; update: VoteStateUpdate }
+
 export type VoteStateUpdate = {
 	state: VoteState | null
 	source:
@@ -770,7 +788,8 @@ export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerQueue) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
-export type UserPart = { users: Schema.User[] }
+export type UserEntity = Schema.User
+export type UserPart = { users: UserEntity[] }
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

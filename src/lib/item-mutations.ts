@@ -14,24 +14,26 @@ export function getDisplayedMutation(mutation: ItemMutationState) {
 	if (mutation.moved) return 'moved'
 	if (mutation.edited) return 'edited'
 }
-export function tryApplyMutation(type: keyof ItemMutations, id: string, mutations: ItemMutations) {
-	if (type === 'added') {
-		mutations.added.add(id)
-	}
-	if (type === 'removed') {
-		if (mutations.added.has(id)) {
-			mutations.added.delete(id)
-			return
+export function tryApplyMutation(type: keyof ItemMutations, ids: string | string[], mutations: ItemMutations) {
+	for (const id of Array.isArray(ids) ? ids : [ids]) {
+		if (type === 'added') {
+			mutations.added.add(id)
 		}
-		mutations.removed.add(id)
-		mutations.edited.delete(id)
-		mutations.moved.delete(id)
-	}
-	if (type === 'moved' && !mutations.added.has(id)) {
-		mutations.moved.add(id)
-	}
-	if (type === 'edited' && !mutations.added.has(id)) {
-		mutations.edited.add(id)
+		if (type === 'removed') {
+			if (mutations.added.has(id)) {
+				mutations.added.delete(id)
+				return
+			}
+			mutations.removed.add(id)
+			mutations.edited.delete(id)
+			mutations.moved.delete(id)
+		}
+		if (type === 'moved' && !mutations.added.has(id)) {
+			mutations.moved.add(id)
+		}
+		if (type === 'edited' && !mutations.added.has(id)) {
+			mutations.edited.add(id)
+		}
 	}
 }
 
@@ -39,6 +41,14 @@ export function getAllMutationIds(mutations: ItemMutations) {
 	return new Set([...mutations.added, ...mutations.removed, ...mutations.moved, ...mutations.edited])
 }
 
+export function initMutationState(): ItemMutationState {
+	return {
+		added: false,
+		removed: false,
+		moved: false,
+		edited: false,
+	}
+}
 export function initMutations(): ItemMutations {
 	return {
 		added: new Set(),

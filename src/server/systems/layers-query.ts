@@ -232,7 +232,7 @@ export async function getWhereFilterConditions(
 			}
 			case 'inrange': {
 				const column = schema[comp.column]
-				res = E.between(column, comp.max, comp.min)!
+				res = E.and(E.gte(column, comp.min), E.lte(column, comp.max))!
 				break
 			}
 			case 'is-true': {

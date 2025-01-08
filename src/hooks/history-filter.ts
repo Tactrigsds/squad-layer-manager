@@ -3,7 +3,7 @@ import superjson from 'superjson'
 import * as M from '@/models'
 import { useQuery } from '@tanstack/react-query'
 
-export function useHistoryFilterNode(props: { historyFilters: M.HistoryFilter[]; layerQueue: M.LayerQueueItem[]; enabled?: boolean }) {
+export function useHistoryFilterNode(props: { historyFilters: M.HistoryFilter[]; layerQueue: M.LayerListItem[]; enabled?: boolean }) {
 	const input = {
 		historyFilters: props.historyFilters,
 		layerQueue: props.layerQueue,
