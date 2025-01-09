@@ -209,6 +209,40 @@ export const COLUMN_TYPE_MAPPINGS = {
 	boolean: ['Z_Pool'] as const,
 } satisfies { [key in ColumnType]: (LayerColumnKey | LayerCompositeKey)[] }
 
+export const COLUMN_LABELS = {
+	id: 'ID',
+	Level: 'Level',
+	Layer: 'Layer',
+	Size: 'Size',
+	Faction_1: 'T1',
+	Faction_2: 'T2',
+	SubFac_1: 'SubFac T1',
+	SubFac_2: 'SubFac T2',
+	Gamemode: 'Gamemode',
+	LayerVersion: 'Version',
+	'Anti-Infantry_1': 'Anti-Inf T1',
+	'Anti-Infantry_2': 'Anti-Inf T2',
+	Armor_1: 'Armor T1',
+	Armor_2: 'Armor T2',
+	ZERO_Score_1: 'ZScore T1',
+	ZERO_Score_2: 'ZScore T2',
+	Logistics_1: 'Logi T1',
+	Logistics_2: 'Logi T2',
+	Transportation_1: 'Trans T1',
+	Transportation_2: 'Trans T2',
+	Balance_Differential: 'Balance',
+	Asymmetry_Score: 'Asymm',
+	Logistics_Diff: 'Logi Diff',
+	Transportation_Diff: 'Trans Diff',
+	'Anti-Infantry_Diff': 'Anti-Inf Diff',
+	Armor_Diff: 'Armor Diff',
+	ZERO_Score_Diff: 'ZScore Diff',
+	Z_Pool: 'Z-Pool',
+	FactionMatchup: 'Faction Matchup',
+	SubFacMatchup: 'Subfac Matchup',
+	FullMatchup: 'Full Matchup',
+} satisfies { [k in LayerColumnKey | LayerCompositeKey]: string }
+
 export function isColType<T extends ColumnType>(col: string, type: T): col is (typeof COLUMN_TYPE_MAPPINGS)[T][number] {
 	return (COLUMN_TYPE_MAPPINGS[type] as string[]).includes(col)
 }

@@ -34,9 +34,8 @@ export const PartsStore = Zus.create<PartsStore>()(
 )
 
 export function stripParts<T extends Partial<Parts<Partial<ClientParts>>>>(withParts: T) {
-	if (!withParts.parts) return withParts
+	if (!withParts.parts) return withParts as Omit<T, 'parts'>
 	upsertParts(withParts.parts)
-	// @ts-expect-error intentional
 	delete withParts.parts
 	return withParts as Omit<T, 'parts'>
 }

@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-table'
 import { ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
+import * as Im from 'immer'
 
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -33,6 +34,7 @@ import { Switch } from './ui/switch'
 import { assertNever } from '@/lib/typeGuards'
 import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import React from 'react'
+import { useRefConstructor } from '@/lib/react'
 
 const columnHelper = createColumnHelper<M.Layer & M.LayerComposite>()
 
@@ -46,9 +48,11 @@ const formatFloat = (value: number) => {
 function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	return columnHelper.accessor(key, {
 		header: ({ column }) => {
+			//@ts-expect-error idc
+			const label = M.COLUMN_LABELS[column.id] ?? column.id
 			return (
 				<Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-					{column.id}
+					{label}
 					<ArrowUpDown className="ml-2 h-4 w-4" />
 				</Button>
 			)
@@ -82,12 +86,18 @@ const columns: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 		header: ({ table }) => (
 			<Checkbox
 				checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
-				onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+				// onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
 				aria-label="Select all"
 			/>
 		),
 		cell: ({ row }) => (
-			<Checkbox checked={row.getIsSelected()} onCheckedChange={(value) => row.toggleSelected(!!value)} aria-label="Select row" />
+			<Checkbox
+				checked={row.getIsSelected()}
+				// onCheckedChange={(value) => {
+				// 	return row.toggleSelected(!!value)
+				// }}
+				aria-label="Select row"
+			/>
 		),
 		enableSorting: false,
 		enableHiding: false,
@@ -110,10 +120,26 @@ const DEFAULT_SORT: LayersQueryInput['sort'] = {
 	sortDirection: 'ASC',
 }
 
-export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: number; setPageIndex: (num: number) => void }) {
+export default function LayerTable(props: {
+	filter?: M.FilterNode
+	pageIndex: number
+	selected: M.LayerId[]
+	setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>>
+	resetSelected?: () => void
+	setPageIndex: (num: number) => void
+	defaultPageSize?: number
+	defaultSortBy?: M.LayerColumnKey | 'random'
+	defaultSortDirection?: 'ASC' | 'DESC'
+	defaultColumns?: (M.LayerColumnKey | M.LayerCompositeKey)[]
+	maxSelected?: number
+}) {
+	const maxSelected = props.maxSelected ?? Infinity
+
 	const { pageIndex, setPageIndex } = props
 	let filter = props.filter
-	const [sortingState, _setSortingState] = useState<SortingState>([])
+	const [sortingState, _setSortingState] = useState<SortingState>([
+		{ id: props.defaultSortBy ?? 'Asymmetry_Score', desc: props.defaultSortDirection === 'DESC' },
+	])
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
 			if (typeof sortingUpdate === 'function') {
@@ -123,8 +149,14 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 		setRandomize(false)
 		setPageIndex(0)
 	}
-	const [randomize, setRandomize] = useState<boolean>()
+	const [randomize, setRandomize] = useState<boolean>(props.defaultSortBy === 'random')
 	const [seed, setSeed] = useState<number>()
+	React.useLayoutEffect(() => {
+		if (randomize) {
+			generateSeed()
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 	function generateSeed() {
 		const seed = Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
 		setSeed(seed)
@@ -138,18 +170,29 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 			return !prev
 		})
 	}
+	const defaultVisibility = useRefConstructor(() => {
+		if (!props.defaultColumns) return DEFAULT_VISIBILITY_STATE
+		return Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, props.defaultColumns!.includes(key)]))
+	})
 
-	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY_STATE)
+	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultVisibility.current)
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
 		_setShowSelectedLayers(value)
 		setPageIndex(0)
 	}
-	const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
 
-	const rowSelection: RowSelectionState = Object.fromEntries(selectedLayerIds.map((id) => [id, true]))
+	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
+	const selectionOrderRef = useRef<M.LayerId[]>([])
+	// React.useLayoutEffect(() => {
+	// 	if (selectedRowFlipFlop.current) {
+	// 		selectedRowFlipFlop.current = false
+	// 		return
+	// 	}
+	// 	selectionOrderRef.current = props.selected
+	// }, [props.selected])
 	const onSetRowSelection: OnChangeFn<RowSelectionState> = (updated) => {
-		setSelectedLayerIds((selectedIds) => {
+		props.setSelected((selectedIds) => {
 			let newValues: RowSelectionState
 			if (typeof updated === 'function') {
 				newValues = updated(Object.fromEntries(selectedIds.map((key) => [key, true])))
@@ -157,8 +200,11 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 				newValues = updated
 			}
 			const newSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
-			if (newSelectedIds.length === 0) {
-				setShowSelectedLayers(false)
+			// if (newSelectedIds.length === 0) {
+			// 	setShowSelectedLayers(false)
+			// }
+			if (newSelectedIds.length > maxSelected) {
+				newSelectedIds.splice(0, newSelectedIds.length - maxSelected)
 			}
 			return newSelectedIds
 		})
@@ -177,7 +223,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 	}
 
 	if (showSelectedLayers) {
-		filter = FB.comp(FB.inValues('id', selectedLayerIds))
+		filter = FB.comp(FB.inValues('id', props.selected))
 	}
 
 	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
@@ -236,7 +282,7 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 	const { toast } = useToast()
 
 	function getChosenRows(row: Row<M.Layer>) {
-		if (!selectedLayerIds.includes(row.original.id)) {
+		if (!props.selected.includes(row.original.id)) {
 			return [row.original]
 		} else {
 			return table
@@ -302,23 +348,26 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 					<div className="flex items-center space-x-1">
 						<Switch
 							checked={showSelectedLayers}
-							disabled={selectedLayerIds.length === 0}
-							onCheckedChange={() => selectedLayerIds.length > 0 && setShowSelectedLayers((show) => !show)}
+							disabled={props.selected.length === 0}
+							onCheckedChange={() => props.selected.length > 0 && setShowSelectedLayers((show) => !show)}
 							id="toggle-show-selected"
 						/>
 						<Label htmlFor="toggle-show-selected">Show Selected</Label>
 					</div>
-					{selectedLayerIds.length > 0 && (
+					{props.selected.length > 0 && (
 						<>
 							<Button
 								variant="outline"
 								onClick={() => {
-									setSelectedLayerIds([])
+									if (props.resetSelected) props.resetSelected()
+									else props.setSelected([])
 								}}
 							>
 								Reset
 							</Button>
-							<p>{selectedLayerIds.length} layers selected</p>
+							<p>
+								{props.selected.length} {props.maxSelected ? ` / ${props.maxSelected}` : ''} layers selected
+							</p>
 						</>
 					)}
 				</span>
@@ -370,25 +419,37 @@ export default function LayerTable(props: { filter?: M.FilterNode; pageIndex: nu
 						))}
 					</TableHeader>
 					<TableBody>
-						{table.getRowModel().rows.map((row) => (
-							<ContextMenu key={row.id}>
-								<ContextMenuTrigger asChild>
-									<TableRow key={row.id}>
-										{row.getVisibleCells().map((cell) => (
-											<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-										))}
-									</TableRow>
-								</ContextMenuTrigger>
-								<ContextMenuContent>
-									<ContextMenuItem onClick={() => onCopySetNextLayerCommand(row)}>
-										Copy AdminSetNextLayer {selectedLayerIds.includes(row.original.id) && 'for selected'}
-									</ContextMenuItem>
-									<ContextMenuItem onClick={() => onCopyIdCommand(row)}>
-										Copy ID {selectedLayerIds.includes(row.original.id) && 'for selected'}
-									</ContextMenuItem>
-								</ContextMenuContent>
-							</ContextMenu>
-						))}
+						{table.getRowModel().rows.map((row) => {
+							const id = row.original.id
+							return (
+								<ContextMenu key={row.id}>
+									<ContextMenuTrigger asChild>
+										<TableRow
+											key={row.id}
+											onClick={() => {
+												onSetRowSelection(
+													Im.produce(rowSelection, (draft) => {
+														draft[id] = !draft[id]
+													})
+												)
+											}}
+										>
+											{row.getVisibleCells().map((cell) => (
+												<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+											))}
+										</TableRow>
+									</ContextMenuTrigger>
+									<ContextMenuContent>
+										<ContextMenuItem onClick={() => onCopySetNextLayerCommand(row)}>
+											Copy AdminSetNextLayer {props.selected.includes(row.original.id) && 'for selected'}
+										</ContextMenuItem>
+										<ContextMenuItem onClick={() => onCopyIdCommand(row)}>
+											Copy ID {props.selected.includes(row.original.id) && 'for selected'}
+										</ContextMenuItem>
+									</ContextMenuContent>
+								</ContextMenu>
+							)
+						})}
 					</TableBody>
 				</Table>
 			</div>

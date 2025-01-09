@@ -10,6 +10,7 @@ import { capitalize } from '@/lib/text'
 import * as M from '@/models.ts'
 import { useFilterCreate } from '@/hooks/filters'
 
+import React from 'react'
 import FilterCard from './filter-card'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
@@ -23,6 +24,7 @@ export default function FilterNew() {
 	const [filter, _setFilter] = useState(defaultFilter)
 	const [validFilter, setValidFilter] = useState(null as M.FilterNode | null)
 	const [pageIndex, setPageIndex] = useState(0)
+	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
 	const setFilter: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
 		_setFilter((filter) => {
 			const newFilter = typeof update === 'function' ? update(filter) : update
@@ -49,7 +51,13 @@ export default function FilterNew() {
 					</CreateFilterPopover>
 				</div>
 			</div>
-			<LayerTable filter={validFilter ?? undefined} pageIndex={pageIndex} setPageIndex={setPageIndex} />
+			<LayerTable
+				selected={selectedLayers}
+				setSelected={setSelectedLayers}
+				filter={validFilter ?? undefined}
+				pageIndex={pageIndex}
+				setPageIndex={setPageIndex}
+			/>
 		</div>
 	)
 }

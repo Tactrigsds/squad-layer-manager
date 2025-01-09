@@ -46,7 +46,7 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { createId } from '@/lib/id.ts'
-import { useFilter } from '@/hooks/filters.ts'
+import { useFilter as useFilterEntity, useFilters } from '@/hooks/filters.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 
@@ -63,6 +63,7 @@ import * as PartsSys from '@/systems.client/parts.ts'
 import { combineLatest, map } from 'rxjs'
 import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
 import { bind } from '@react-rxjs/core'
+import LayerTable from './layer-table.tsx'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -228,8 +229,8 @@ const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 		move: (sourceIndex, targetIndex) => {
 			if (sourceIndex === targetIndex || sourceIndex + 1 === targetIndex) return
 
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
+			itemStore.getState().setItem(
+				Im.produce((draft) => {
 					if (!draft.vote) return
 					const choices = draft.vote.choices
 					const choice = choices[sourceIndex]
@@ -242,8 +243,8 @@ const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 			)
 		},
 		remove: (choiceId) => {
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
+			itemStore.getState().setItem(
+				Im.produce((draft) => {
 					if (!draft.vote) return
 					draft.vote.choices = draft.vote.choices.filter((id) => id !== choiceId)
 				})
@@ -328,9 +329,13 @@ const SDStore = Zus.createStore<SDStore>((set, get) => {
 	}
 })
 
+function selectCurrentPoolFilterId(store: _SDState) {
+	return store.editedServerState.settings.queue.poolFilterId
+}
+
 const LQStore = deriveLLStore(SDStore)
 
-export function selectIsEditing(state: SDStore, serverStateUpdate: M.LQServerStateUpdate | null) {
+function selectIsEditing(state: SDStore, serverStateUpdate: M.LQServerStateUpdate | null) {
 	if (!serverStateUpdate) return false
 	const serverState = serverStateUpdate.state
 	const editedServerState = state.editedServerState
@@ -351,7 +356,7 @@ export default function ServerDashboard() {
 	// ----- notify on pool filter changes -----
 	// TODO cleanup
 	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
-	const { data: basePoolFilterEntity } = useFilter(poolFilterId, {
+	useFilterEntity(poolFilterId, {
 		onUpdate: () => {
 			toaster.toast({ title: 'Pool Filter Updated' })
 		},
@@ -453,7 +458,6 @@ export default function ServerDashboard() {
 								<SelectLayersPopover
 									title="Add to Queue"
 									description="Select layers to add to the queue"
-									baseFilter={basePoolFilterEntity?.filter}
 									selectQueueItems={(items) => LQStore.getState().add(items)}
 									open={appendLayersPopoverOpen}
 									onOpenChange={setAppendLayersPopoverOpen}
@@ -466,7 +470,6 @@ export default function ServerDashboard() {
 								<SelectLayersPopover
 									title="Play Next"
 									description="Select layers to play next"
-									baseFilter={basePoolFilterEntity?.filter}
 									selectQueueItems={(items) => LQStore.getState().add(items, 0)}
 									open={playNextPopoverOpen}
 									onOpenChange={setPlayNextPopoverOpen}
@@ -728,6 +731,42 @@ function VoteState() {
 			</CardHeader>
 			<CardContent className="flex flex-col space-y-2">{body}</CardContent>
 		</Card>
+	)
+}
+
+function FilterEntitySelect(props: {
+	className?: string
+	title: string
+	filterId: string | null
+	onSelect: (filterId: string | null) => void
+}) {
+	const filtersRes = useFilters()
+
+	const filterOptions = filtersRes.data?.map?.((f) => ({
+		value: f.id,
+		label: f.name,
+	}))
+
+	return (
+		<div className={cn('flex space-x-2 items-center', props.className)}>
+			<ComboBox
+				title="Filter"
+				className="flex-grow"
+				options={filterOptions ?? LOADING}
+				allowEmpty={true}
+				value={props.filterId}
+				onSelect={(filter) => props.onSelect(filter ?? null)}
+			/>
+			{props.filterId && (
+				<a
+					className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+					target="_blank"
+					href={AR.link('/filters/:id/edit', props.filterId)}
+				>
+					<Edit />
+				</a>
+			)}
+		</div>
 	)
 }
 
@@ -1115,7 +1154,7 @@ export type QueueItemAction =
 			id?: string
 	  }
 
-export function getIndexFromQueueItemId(items: IdedLLItem[], id: string | null) {
+function getIndexFromQueueItemId(items: IdedLLItem[], id: string | null) {
 	if (id === null) return -1
 	return items.findIndex((item) => item.id === id)
 }
@@ -1362,6 +1401,7 @@ function QueueItemSeparator(props: {
 }
 
 type SelectMode = 'vote' | 'layers'
+
 export function SelectLayersPopover(props: {
 	title: string
 	description: React.ReactNode
@@ -1370,29 +1410,15 @@ export function SelectLayersPopover(props: {
 	selectQueueItems: (queueItems: M.LayerListItem[]) => void
 	defaultSelected?: M.LayerId[]
 	selectingSingleLayerQueueItem?: boolean
-	baseFilter?: M.FilterNode
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 }) {
 	const defaultSelected: M.LayerId[] = props.defaultSelected ?? []
 
-	const [filterItem, setFilterItem] = React.useState<Partial<M.MiniLayer>>({})
-	const [applyBaseFilter, setApplyBaseFilter] = React.useState(!!props.baseFilter)
-	const pickerFilter = React.useMemo(() => {
-		const nodes: M.FilterNode[] = []
-
-		for (const _key in filterItem) {
-			const key = _key as keyof M.MiniLayer
-			if (filterItem[key] === undefined) continue
-			nodes.push(FB.comp(FB.eq(key, filterItem[key])))
-		}
-		if (nodes.length === 0) return undefined
-
-		if (applyBaseFilter && props.baseFilter) {
-			nodes.push(props.baseFilter)
-		}
-		return FB.and(nodes)
-	}, [filterItem, applyBaseFilter, props.baseFilter])
+	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
+	const filterEntity = useFilterEntity(selectedFilterId ?? undefined).data
+	const filterMenuStore = useFilterMenuStore(filterEntity?.filter)
 
 	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -1441,12 +1467,10 @@ export function SelectLayersPopover(props: {
 		}
 		onOpenChange(false)
 	}
-	const applyBaseFilterId = React.useId()
 
 	function onOpenChange(open: boolean) {
 		if (open) {
 			setSelectedLayers(defaultSelected)
-			setFilterItem({})
 		}
 		props.onOpenChange(open)
 	}
@@ -1461,25 +1485,6 @@ export function SelectLayersPopover(props: {
 						<DialogDescription>{props.description}</DialogDescription>
 						<div className="flex items-center w-full space-x-2">
 							<p className={Typography.P}>{selectedLayers.length} layers selected</p>
-							<div className="items-top flex space-x-2">
-								<Checkbox
-									checked={applyBaseFilter}
-									disabled={!props.baseFilter}
-									onCheckedChange={(v) => {
-										if (v === 'indeterminate') return
-										setApplyBaseFilter(v)
-									}}
-									id={applyBaseFilterId}
-								/>
-								<div className="grid gap-1.5 leading-none">
-									<label
-										htmlFor={applyBaseFilterId}
-										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-									>
-										Apply pool filter
-									</label>
-								</div>
-							</div>
 							{!props.pinMode && (
 								<TabsList
 									options={[
@@ -1492,17 +1497,14 @@ export function SelectLayersPopover(props: {
 							)}
 						</div>
 					</DialogHeader>
+					<div>
+						<FilterEntitySelect title="Choose Filter" filterId={selectedFilterId} onSelect={setSelectedFilterId} />
+					</div>
 
 					<div className="flex min-h-0 items-center space-x-2">
-						<LayerFilterMenu
-							filterLayer={filterItem}
-							setFilterLayer={setFilterItem}
-							baseFilter={props.baseFilter}
-							applyBaseFilter={applyBaseFilter}
-							setApplyBaseFilter={setApplyBaseFilter}
-						/>
+						<LayerFilterMenu filterMenuStore={filterMenuStore} />
 						<ListStyleLayerPicker
-							filter={pickerFilter}
+							filter={filterMenuStore.filter}
 							defaultSelected={selectedLayers}
 							select={setSelectedLayers}
 							pickerMode={selectMode === 'vote' ? 'toggle' : 'add'}
@@ -1522,207 +1524,30 @@ export function SelectLayersPopover(props: {
 
 function ListStyleLayerPicker(props: {
 	filter?: M.FilterNode
-	defaultSelected: M.LayerId[]
+	defaultSelected?: M.LayerId[]
 	select: React.Dispatch<React.SetStateAction<M.LayerId[]>>
-	pickerMode: 'toggle' | 'add' | 'single'
+	pickerMode: 'toggle' | 'single'
 }) {
-	const store = React.useMemo(() => {
-		const items = props.defaultSelected.map((layer): IdedLLItem => ({ id: createId(6), layerId: layer, source: 'manual' }))
-		return Zus.createStore<LLStore>((set, get) => createLLStore(set, get, items))
-	}, [props.defaultSelected])
+	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>([])
 
-	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	const layersRes = useLayersGroupedBy(
-		{
-			filter: props.filter,
-			columns: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
-			sort: {
-				type: 'random',
-				seed: seedRef.current,
-			},
-			limit: 25,
-		},
-		{
-			enabled: !!props.filter,
-		}
-	)
-
-	// --------  selected layer mutations ---------
-	const selectedLayersBoxRef = React.useRef<HTMLDivElement>(null)
-	function addLayer(layerId: M.LayerId) {
-		flushSync(() => {
-			store.getState().add([{ layerId: layerId, source: 'manual' }])
-		})
-		selectedLayersBoxRef.current?.scrollTo({
-			top: selectedLayersBoxRef.current.scrollHeight,
-		})
+	const setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>> = (newSelected) => {
+		debugger
+		setSelectedLayers(newSelected)
 	}
-	function toggleLayer(layerId: M.LayerId) {
-		flushSync(() => {
-			const layers = store.getState().layerList.map((item) => item.layerId!)
-			const hasLayer = layers.some((l) => l === layerId)
-			if (hasLayer) {
-				store.getState().remove(layerId)
-			} else {
-				store.getState().add([{ layerId, source: 'manual' }])
-			}
-		})
-		selectedLayersBoxRef.current?.scrollTo({
-			top: selectedLayersBoxRef.current.scrollHeight,
-		})
-	}
-
-	const setLayer = React.useCallback(
-		(layerId: M.LayerId) => {
-			const firstId = store.getState().layerList[0]?.id
-			if (!firstId) return
-			store.getState().setItem(firstId, { id: firstId, layerId, source: 'manual' })
-		},
-		[store]
-	)
-
-	function onLayerSelect(layerId: M.LayerId) {
-		switch (props.pickerMode) {
-			case 'add':
-				addLayer(layerId)
-				break
-			case 'toggle':
-				toggleLayer(layerId)
-				break
-			case 'single':
-				{
-					const firstId = store.getState().layerList[0]?.id
-					if (!firstId) return
-					store.getState().setItem(firstId, { id: firstId, layerId, source: 'manual' })
-				}
-				break
-			default:
-				assertNever(props.pickerMode)
-		}
-	}
-
-	const lastDataRef = React.useRef(layersRes.data)
-	React.useLayoutEffect(() => {
-		if (layersRes.data) {
-			lastDataRef.current = layersRes.data
-		}
-	}, [layersRes.data, layersRes.isError])
-
-	// cringe
-	React.useEffect(() => {
-		if (props.pickerMode !== 'single' || layersRes.data?.length !== 1) return
-		const layer = layersRes.data[0]
-		if (layer.id !== props.defaultSelected[0]) setLayer(layer.id)
-	}, [layersRes.data, props.pickerMode, setLayer, props.defaultSelected])
-
-	const data = layersRes.data ?? lastDataRef.current
-
-	const layersToDisplay = data
-	if (props.pickerMode === 'single') {
-		if (!layersToDisplay) return <div>Loading...</div>
-		if (layersToDisplay?.length === 1) {
-			return (
-				<div className="rounded p-2">
-					Selected <i>{Helpers.toShortLayerName(layersToDisplay[0])}</i>
-				</div>
-			)
-		}
-		if (layersToDisplay?.length === 0) {
-			return <div className="rounded p-2">No Layers Found</div>
-		}
-		if (layersToDisplay && layersToDisplay.length > 1) {
-			return (
-				<div>
-					<h4 className={Typography.H4}>Results</h4>
-					<ScrollArea className="h-full max-h-[500px] min-h-0 space-y-2 text-xs">
-						{layersToDisplay.map((layer, index) => {
-							return (
-								<React.Fragment key={layer.id + index.toString()}>
-									{index > 0 && <Separator />}
-									<button
-										className={cn('w-full p-2 text-left data-[selected=true]:bg-accent', Typography.Small)}
-										type="button"
-										data-selected={props.defaultSelected[0] === layer.id}
-										onClick={() => onLayerSelect(layer.id)}
-									>
-										{Helpers.toShortLayerName(layer)}
-									</button>
-								</React.Fragment>
-							)
-						})}
-					</ScrollArea>
-				</div>
-			)
-		}
-		throw new Error('Unexpected number of layers to display')
-	}
+	const [pageIndex, setPageIndex] = React.useState(0)
 	return (
-		<div className="flex h-full min-w-[300px] space-x-2">
-			{/* ------ filter results ------ */}
-			<div className="flex h-full space-x-2">
-				<div className="flex-flex-col">
-					<h4 className={Typography.H4}>Results</h4>
-					<ScrollArea className="h-full max-h-[500px] w-max min-h-0 space-y-2 text-xs">
-						{!layersRes.isFetchedAfterMount && props.defaultSelected.length === 0 && (
-							<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
-						)}
-						{layersRes.isFetchedAfterMount && layersToDisplay?.length === 0 && (
-							<div className="p-2 text-sm text-gray-500">No results found</div>
-						)}
-						{layersToDisplay &&
-							layersToDisplay?.length > 0 &&
-							layersToDisplay.map((layer, index) => {
-								const layerSelected = props.defaultSelected.includes(layer.id)
-								return (
-									<React.Fragment key={layer.id + index.toString()}>
-										{index > 0 && <Separator />}
-										<button
-											className={cn('w-full p-2 text-left data-[selected=true]:bg-accent', Typography.Small)}
-											data-selected={props.pickerMode === 'toggle' && layerSelected}
-											onClick={() => onLayerSelect(layer.id)}
-											type="button"
-										>
-											{Helpers.toShortLayerName(layer)}
-										</button>
-									</React.Fragment>
-								)
-							})}
-					</ScrollArea>
-				</div>
-
-				{/* ------ selected layers ------ */}
-				<div className="flex flex-col">
-					<h4 className={Typography.H4}>Selected</h4>
-					<ScrollArea className="h-full max-h-[500px] w-max min-h-0 space-y-2 text-xs" ref={selectedLayersBoxRef}>
-						<ol>
-							{props.defaultSelected.map((layerId, index) => {
-								return (
-									<React.Fragment key={layerId + index.toString()}>
-										{index > 0 && <Separator />}
-										<li
-											className={cn(
-												'flex min-w-0 space-x-2 items-center w-full p-2 text-left data-[selected=true]:bg-accent',
-												Typography.Small
-											)}
-										>
-											<span className="whitespace-nowrap grow">{Helpers.toShortLayerNameFromId(layerId)}</span>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={() => {
-													toggleLayer(layerId)
-												}}
-											>
-												<Icons.Minus color="hsl(var(--destructive))" />
-											</Button>
-										</li>
-									</React.Fragment>
-								)
-							})}
-						</ol>
-					</ScrollArea>
-				</div>
-			</div>
+		<div className="flex h-full">
+			<LayerTable
+				// filter={props.filter}
+				pageIndex={pageIndex}
+				setPageIndex={setPageIndex}
+				selected={selectedLayers}
+				setSelected={setSelected}
+				// maxSelected={props.pickerMode === 'single' ? 1 : undefined}
+				// defaultSortBy="random"
+				// defaultColumns={['Level', 'Gamemode', 'LayerVersion', 'FullMatchup', 'Asymmetry_Score', 'Balance_Differential']}
+				// defaultSortDirection="DESC"
+			/>
 		</div>
 	)
 }
@@ -1768,28 +1593,17 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 
 	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
 	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
-	const [selectedBaseFilter, setSelectedBaseFilter] = React.useState<M.FilterEntityId | null>(poolFilterId)
-	const [filterLayer, setFilterLayer] = React.useState<Partial<M.MiniLayer>>(itemToMiniLayer(initialItem))
-	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<LLItemStore>((set, get) => createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState() }))
 	}, [initialItem])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
-	const canSubmit = Zus.useStore(
-		editedItemStore,
-		(s) => !deepEqual(initialItem, s.item) && (!s.item.vote || s.item.vote.choices.length > 0)
-	)
 	const derivedVoteChoiceStore = React.useMemo(() => deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
+
 	const user = useLoggedInUser().data
-	function submit(e: React.FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
-		if (!canSubmit) return
-		props.onOpenChange(false)
-	}
-	function handleDragEnd(event: DragEndEvent) {
+
+	useDragEnd((event) => {
 		const layerQueue = editedItem.vote?.choices.map((id): M.LayerListItem & WithMutationId => ({ id, layerId: id, source: 'manual' })) ?? []
 		if (!editedItem.vote || !event.over) return
 		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
@@ -1797,10 +1611,26 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 
 		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex || !user) return
 		derivedVoteChoiceStore.getState().move(sourceIndex, targetIndex, user.discordId)
-	}
-	useDragEnd(handleDragEnd)
+	})
 
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
+
+	const filtersRes = useFilters()
+	const [selectedBaseFilter, setSelectedBaseFilter] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
+	const baseFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilter)
+	const filterMenuStore = useFilterMenuStore(baseFilterEntity?.filter)
+
+	const canSubmit = Zus.useStore(
+		editedItemStore,
+		(s) => !deepEqual(initialItem, s.item) && (!s.item.vote || s.item.vote.choices.length > 0)
+	)
+	function submit(e: React.FormEvent) {
+		e.preventDefault()
+		e.stopPropagation()
+		if (!canSubmit) return
+		props.onOpenChange(false)
+	}
+
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
@@ -1850,7 +1680,14 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 				</div>
 			</DialogHeader>
 
-			<div className="flex space-x-2 items-center"></div>
+			<div className="flex items-center mb-2">
+				<FilterEntitySelect
+					title="Filter"
+					className="max-w-16"
+					filterId={selectedBaseFilter}
+					onSelect={(id) => setSelectedBaseFilter(id)}
+				/>
+			</div>
 
 			{editedItem.vote ? (
 				<div className="flex flex-col">
@@ -1860,14 +1697,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 			) : (
 				<div className="flex space-x-2 min-h-0">
 					<div>
-						<LayerFilterMenu
-							filterLayer={filterLayer}
-							setFilterLayer={setFilterLayer}
-							applyBaseFilter={applyBaseFilter}
-							setApplyBaseFilter={setApplyBaseFilter}
-						/>
+						<LayerFilterMenu filterMenuStore={filterMenuStore} />
 					</div>
 					<ListStyleLayerPicker
+						filter={filterMenuStore.filter}
 						pickerMode="single"
 						defaultSelected={[editedItem.layerId!]}
 						select={(update) => {
@@ -1922,62 +1755,110 @@ const FILTER_ORDER = [
 	'SubFac_2',
 ] as const satisfies (keyof M.MiniLayer)[]
 
-function LayerFilterMenu(props: {
-	filterLayer: Partial<M.MiniLayer>
-	setFilterLayer: React.Dispatch<React.SetStateAction<Partial<M.MiniLayer>>>
-	applyBaseFilter: boolean
-	setApplyBaseFilter: React.Dispatch<React.SetStateAction<boolean>>
-	baseFilter?: M.FilterNode
-}) {
+type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
+function useFilterMenuStore(baseFilter?: M.FilterNode) {
+	// represents the state of the filter menu
+	const [filterFields, setFilterFields] = React.useState<Partial<M.MiniLayer>>({})
+
+	const filter = React.useMemo(() => {
+		const nodes: M.FilterNode[] = []
+
+		for (const _key in filterFields) {
+			const key = _key as keyof M.MiniLayer
+			if (filterFields[key] === undefined) continue
+			nodes.push(FB.comp(FB.eq(key, filterFields[key])))
+		}
+
+		if (baseFilter) {
+			nodes.push(baseFilter)
+		}
+		if (nodes.length === 0) return undefined
+		return FB.and(nodes)
+	}, [filterFields, baseFilter])
+
+	// get a map of filters for all filterFields for which the predicates involving that field are removed
+	const filtersExcludingField = React.useMemo(() => {
+		//@ts-expect-error idc
+		const filtersExcludingField: { [k in keyof M.MiniLayer]: M.FilterNode | undefined } = {}
+		if (!filter) {
+			return filtersExcludingField
+		}
+		for (const _key in filterFields) {
+			const key = _key as keyof M.MiniLayer
+			const fieldSelectFilter = Im.produce(filter, (draft) => {
+				const idx = draft.children.findIndex((node) => node.type === 'comp' && node.comp.column === key)
+				if (idx !== -1) {
+					draft.children.splice(idx, 1)
+				}
+			})
+			filtersExcludingField[key] = fieldSelectFilter
+		}
+		return filtersExcludingField
+	}, [filterFields, filter])
+
+	return {
+		filter,
+		filterFields,
+		filtersExcludingField,
+		setFilterFields,
+	}
+}
+
+function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
+	const store = props.filterMenuStore
 	// const applyBaseFilterId = React.useId()
 
 	const filterComparisons: [keyof M.MiniLayer, M.EditableComparison][] = []
 	for (const key of FILTER_ORDER) {
-		filterComparisons.push([key, EFB.eq(key, props.filterLayer[key])])
+		filterComparisons.push([key, EFB.eq(key, store.filterFields[key])])
+	}
+
+	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
+		return (update) => {
+			store.setFilterFields(
+				// TODO having this be inline is kinda gross
+				Im.produce((prev) => {
+					const comp = typeof update === 'function' ? update(EFB.eq(name, prev[name])) : update
+					if (comp.column === 'id' && comp.value) {
+						return M.getMiniLayerFromId(comp.value as string)
+					} else if (comp.column === 'Layer' && comp.value) {
+						const parsedLayer = M.parseLayerString(comp.value as string)
+						prev.Level = parsedLayer.level
+						prev.Gamemode = parsedLayer.gamemode
+						prev.LayerVersion = parsedLayer.version
+					} else if (comp.column === 'Layer' && !comp.value) {
+						delete prev.Layer
+						delete prev.Level
+						delete prev.Gamemode
+						delete prev.LayerVersion
+					} else if (comp !== undefined) {
+						// @ts-expect-error null can be valid here
+						prev[name] = comp.value
+						// @ts-expect-error not sure
+					} else if (comp.value === undefined) {
+						delete prev[name]
+					}
+					if (M.LAYER_STRING_PROPERTIES.every((p) => p in prev)) {
+						prev.Layer = M.getLayerString(prev as M.MiniLayer)
+					} else {
+						delete prev.Layer
+					}
+					delete prev.id
+
+					// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
+					// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
+					// 	prev.id = M.getLayerId(prev as M.LayerIdArgs)
+					// }
+				})
+			)
+		}
 	}
 
 	return (
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
 				{filterComparisons.map(([name, comparison], index) => {
-					const setComp: React.Dispatch<React.SetStateAction<M.EditableComparison>> = (update) => {
-						props.setFilterLayer(
-							Im.produce((prev) => {
-								const comp = typeof update === 'function' ? update(EFB.eq(name, prev[name])) : update
-								if (comp.column === 'id' && comp.value) {
-									return M.getMiniLayerFromId(comp.value as string)
-								} else if (comp.column === 'Layer' && comp.value) {
-									const parsedLayer = M.parseLayerString(comp.value as string)
-									prev.Level = parsedLayer.level
-									prev.Gamemode = parsedLayer.gamemode
-									prev.LayerVersion = parsedLayer.version
-								} else if (comp.column === 'Layer' && !comp.value) {
-									delete prev.Layer
-									delete prev.Level
-									delete prev.Gamemode
-									delete prev.LayerVersion
-								} else if (comp !== undefined) {
-									// @ts-expect-error null can be valid here
-									prev[name] = comp.value
-									// @ts-expect-error not sure
-								} else if (comp.value === undefined) {
-									delete prev[name]
-								}
-								if (M.LAYER_STRING_PROPERTIES.every((p) => p in prev)) {
-									prev.Layer = M.getLayerString(prev as M.MiniLayer)
-								} else {
-									delete prev.Layer
-								}
-								delete prev.id
-
-								// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
-								// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
-								// 	prev.id = M.getLayerId(prev as M.LayerIdArgs)
-								// }
-							})
-						)
-					}
-
+					const setComp = applySetFilterFieldComparison(name)
 					function clear() {
 						setComp(
 							Im.produce((prev) => {
@@ -1987,7 +1868,7 @@ function LayerFilterMenu(props: {
 					}
 
 					function swapFactions() {
-						props.setFilterLayer(
+						store.setFilterFields(
 							Im.produce((prev) => {
 								const faction1 = prev.Faction_1
 								const subFac1 = prev.SubFac_1
@@ -1999,18 +1880,6 @@ function LayerFilterMenu(props: {
 						)
 					}
 
-					const appliedFilters: M.FilterNode[] | undefined = []
-					if (props.baseFilter && props.applyBaseFilter) {
-						appliedFilters.push(props.baseFilter)
-					}
-					// skip the first two filters (id and Layer) because of their very high specificity
-					for (let i = 2; i < index; i++) {
-						const comparison = filterComparisons[i][1]
-						if (!M.isValidComparison(comparison)) continue
-						appliedFilters.push(FB.comp(comparison))
-					}
-					const autocompleteFilter = appliedFilters.length > 0 ? FB.and(appliedFilters) : undefined
-
 					return (
 						<React.Fragment key={name}>
 							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
@@ -2018,8 +1887,8 @@ function LayerFilterMenu(props: {
 								<>
 									<Button
 										disabled={
-											!(props.filterLayer.Faction_1 || props.filterLayer.SubFac_1) &&
-											!(props.filterLayer.Faction_2 || props.filterLayer.SubFac_2)
+											!(store.filterFields.Faction_1 || store.filterFields.SubFac_1) &&
+											!(store.filterFields.Faction_2 || store.filterFields.SubFac_2)
 										}
 										onClick={swapFactions}
 										variant="secondary"
@@ -2031,7 +1900,12 @@ function LayerFilterMenu(props: {
 									<span />
 								</>
 							)}
-							<Comparison columnEditable={false} comp={comparison} setComp={setComp} valueAutocompleteFilter={autocompleteFilter} />
+							<Comparison
+								columnEditable={false}
+								comp={comparison}
+								setComp={setComp}
+								valueAutocompleteFilter={store.filtersExcludingField[name]}
+							/>
 							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
 								<Icons.Trash />{' '}
 							</Button>
@@ -2039,7 +1913,7 @@ function LayerFilterMenu(props: {
 					)
 				})}
 			</div>
-			<Button variant="secondary" onClick={() => props.setFilterLayer({})}>
+			<Button variant="secondary" onClick={() => store.setFilterFields({})}>
 				Clear All
 			</Button>
 		</div>

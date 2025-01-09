@@ -96,6 +96,8 @@ export default function FilterEdit() {
 	const deleteFilterMutation = useFilterDelete()
 	const canSaveFilter = editedFilterModified && !!validFilter && !updateFilterMutation.isPending
 
+	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
+
 	if (!editedFilter || !filterEntity) {
 		return <FullPageSpinner />
 	}
@@ -166,7 +168,13 @@ export default function FilterEdit() {
 					</DeleteFilterDialog>
 				</div>
 			</div>
-			<LayerTable filter={validFilter ?? undefined} pageIndex={pageIndex} setPageIndex={setPageIndex} />
+			<LayerTable
+				selected={selectedLayers}
+				setSelected={setSelectedLayers}
+				filter={validFilter ?? undefined}
+				pageIndex={pageIndex}
+				setPageIndex={setPageIndex}
+			/>
 		</div>
 	)
 }
