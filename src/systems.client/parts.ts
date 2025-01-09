@@ -5,7 +5,7 @@ import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
 
 type PartsStore = M.UserPart & { upsert: (key: keyof ClientParts, entity: ClientParts[keyof ClientParts]) => void }
-type ClientParts = M.UserPart
+export type ClientParts = M.UserPart
 export const PartsStore = Zus.create<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set, get) => {
 		return {
@@ -33,11 +33,12 @@ export const PartsStore = Zus.create<PartsStore>()(
 	})
 )
 
-export function stripParts<T extends Parts<ClientParts>>(withParts: T) {
+export function stripParts<T extends Partial<Parts<Partial<ClientParts>>>>(withParts: T) {
+	if (!withParts.parts) return withParts
 	upsertParts(withParts.parts)
-
 	// @ts-expect-error intentional
 	delete withParts.parts
+	return withParts as Omit<T, 'parts'>
 }
 
 export function upsertParts(parts: Partial<ClientParts>) {

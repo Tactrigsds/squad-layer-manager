@@ -7,6 +7,7 @@ import React, { useRef, useState } from 'react'
 import { derive } from 'derive-zustand'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
+import { toStream } from 'zustand-rx'
 
 import * as Icons from 'lucide-react'
 import { flushSync } from 'react-dom'
@@ -59,6 +60,9 @@ import { Getter, Setter } from '@/lib/zustand.ts'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import * as PartsSys from '@/systems.client/parts.ts'
+import { combineLatest, map } from 'rxjs'
+import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
+import { bind } from '@react-rxjs/core'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -134,8 +138,11 @@ const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions
 					const layerList = draft.layerList
 					const item = layerList[sourceIndex]
 					item.lastModifiedBy = modifiedBy
+					if (sourceIndex < targetIndex) {
+						targetIndex--
+					}
 					layerList.splice(sourceIndex, 1)
-					layerList.splice(targetIndex, 0, item)
+					layerList.splice(targetIndex + 1, 0, item)
 					tryApplyMutation('moved', item.id, draft.listMutations)
 				})
 			)
@@ -168,7 +175,6 @@ const deriveLLStore = (store: Zus.StoreApi<SDStore>) => {
 	const actions = createLLActions(setLL, getLL)
 
 	return derive<LLStore>((get) => {
-		console.log({ store: get(store) })
 		return {
 			...selectLLState(get(store)),
 			...actions,
@@ -220,11 +226,16 @@ const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 			)
 		},
 		move: (sourceIndex, targetIndex) => {
+			if (sourceIndex === targetIndex || sourceIndex + 1 === targetIndex) return
+
 			itemStore.getState().setItem((prev) =>
 				Im.produce(prev, (draft) => {
 					if (!draft.vote) return
 					const choices = draft.vote.choices
 					const choice = choices[sourceIndex]
+					if (sourceIndex < targetIndex) {
+						targetIndex--
+					}
 					choices.splice(sourceIndex, 1)
 					choices.splice(targetIndex, 0, choice)
 				})
@@ -267,29 +278,35 @@ const _initialState: _SDState = {
 	queueMutations: initMutations(),
 	serverState: null,
 }
+function getEditableServerState(state: M.LQServerState): MutServerStateWithIds {
+	const layerQueue = state.layerQueue.map((item) => ({ id: createId(6), ...item }))
+	const historyFilters = state.historyFilters.map((filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId)
+	return {
+		//@ts-expect-error idk
+		historyFilters,
+		layerQueue,
+		layerQueueSeqId: state.layerQueueSeqId,
+		settings: state.settings,
+	}
+}
 
 const SDStore = Zus.createStore<SDStore>((set, get) => {
 	return {
 		..._initialState,
 		applyServerUpdate: (update) => {
-			const layerQueue = update.state.layerQueue.map((item) => ({ id: createId(6), ...item }))
-			const historyFilters = update.state.historyFilters.map(
-				(filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId
-			)
 			set({
-				editedServerState: {
-					// @ts-expect-error idk
-					historyFilters,
-					layerQueue,
-					layerQueueSeqId: update.state.layerQueueSeqId,
-					settings: update.state.settings,
-				},
+				editedServerState: getEditableServerState(update.state),
 				queueMutations: initMutations(),
-				voteQueueMutations: {},
 			})
 		},
 		reset: () => {
-			set(_initialState)
+			const serverStateUpdate = lqServerStateUpdate$.getValue()
+			if (!serverStateUpdate) return set(_initialState)
+
+			set({
+				..._initialState,
+				editedServerState: getEditableServerState(serverStateUpdate.state) ?? _initialState.editedServerState,
+			})
 		},
 		setSetting: (handler) => {
 			set((state) =>
@@ -313,10 +330,19 @@ const SDStore = Zus.createStore<SDStore>((set, get) => {
 
 const LQStore = deriveLLStore(SDStore)
 
-export function selectIsEditing(state: SDStore, serverState: M.LQServerState) {
+export function selectIsEditing(state: SDStore, serverStateUpdate: M.LQServerStateUpdate | null) {
+	if (!serverStateUpdate) return false
+	const serverState = serverStateUpdate.state
 	const editedServerState = state.editedServerState
 	return (serverState && hasMutations(state.queueMutations)) || !deepEqual(serverState.settings, editedServerState.settings)
 }
+
+const [useIsEditing] = bind<boolean>(
+	combineLatest([toStream(SDStore, (state) => state, { fireImmediately: true }), lqServerStateUpdate$]).pipe(
+		map(([state, serverStateUpdate]) => selectIsEditing(state, serverStateUpdate))
+	),
+	false
+)
 
 export default function ServerDashboard() {
 	const serverStatus = useSquadServerStatus()
@@ -330,6 +356,14 @@ export default function ServerDashboard() {
 			toaster.toast({ title: 'Pool Filter Updated' })
 		},
 	})
+
+	React.useEffect(() => {
+		const sub = lqServerStateUpdate$.subscribe((update) => {
+			if (!update) return
+			SDStore.getState().applyServerUpdate(update)
+		})
+		return () => sub.unsubscribe()
+	}, [])
 
 	const toaster = useToast()
 	const updateQueueMutation = useMutation({
@@ -369,7 +403,7 @@ export default function ServerDashboard() {
 	const hasVoteState = false
 
 	// TODO implement
-	const editing = false
+	const editing = useIsEditing()
 	const queueHasMutations = Zus.useStore(LQStore, (s) => hasMutations(s.listMutations))
 
 	return (
@@ -483,9 +517,10 @@ export function LayerList(props: { store: Zus.StoreApi<LLStore>; allowVotes?: bo
 		const { layerList: layerQueue, move } = props.store.getState()
 		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
 		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over!.id as string))
-		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex || !userQuery.data) return
+		if (!userQuery.data) return
 		move(sourceIndex, targetIndex, userQuery.data.discordId)
 	})
+
 	return (
 		<ul className="flex w-max flex-col space-y-1">
 			{/* -------- queue items -------- */}
@@ -1230,7 +1265,6 @@ function LayerListItem(props: QueueItemProps) {
 			</>
 		)
 	}
-
 	throw new Error('Unknown layer queue item layout ' + JSON.stringify(item))
 }
 
@@ -1498,7 +1532,7 @@ function ListStyleLayerPicker(props: {
 	}, [props.defaultSelected])
 
 	const seedRef = React.useRef(Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER))
-	const res = useLayersGroupedBy(
+	const layersRes = useLayersGroupedBy(
 		{
 			filter: props.filter,
 			columns: ['id', 'Level', 'Gamemode', 'LayerVersion', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2'],
@@ -1506,6 +1540,7 @@ function ListStyleLayerPicker(props: {
 				type: 'random',
 				seed: seedRef.current,
 			},
+			limit: 25,
 		},
 		{
 			enabled: !!props.filter,
@@ -1566,21 +1601,21 @@ function ListStyleLayerPicker(props: {
 		}
 	}
 
-	const lastDataRef = React.useRef(res.data)
+	const lastDataRef = React.useRef(layersRes.data)
 	React.useLayoutEffect(() => {
-		if (res.data) {
-			lastDataRef.current = res.data
+		if (layersRes.data) {
+			lastDataRef.current = layersRes.data
 		}
-	}, [res.data, res.isError])
+	}, [layersRes.data, layersRes.isError])
 
 	// cringe
 	React.useEffect(() => {
-		if (props.pickerMode !== 'single' || res.data?.length !== 1) return
-		const layer = res.data[0]
+		if (props.pickerMode !== 'single' || layersRes.data?.length !== 1) return
+		const layer = layersRes.data[0]
 		if (layer.id !== props.defaultSelected[0]) setLayer(layer.id)
-	}, [res.data, props.pickerMode, setLayer, props.defaultSelected])
+	}, [layersRes.data, props.pickerMode, setLayer, props.defaultSelected])
 
-	const data = res.data ?? lastDataRef.current
+	const data = layersRes.data ?? lastDataRef.current
 
 	const layersToDisplay = data
 	if (props.pickerMode === 'single') {
@@ -1628,10 +1663,12 @@ function ListStyleLayerPicker(props: {
 				<div className="flex-flex-col">
 					<h4 className={Typography.H4}>Results</h4>
 					<ScrollArea className="h-full max-h-[500px] w-max min-h-0 space-y-2 text-xs">
-						{!res.isFetchedAfterMount && props.defaultSelected.length === 0 && (
+						{!layersRes.isFetchedAfterMount && props.defaultSelected.length === 0 && (
 							<div className="p-2 text-sm text-gray-500">Set filter to see results</div>
 						)}
-						{res.isFetchedAfterMount && layersToDisplay?.length === 0 && <div className="p-2 text-sm text-gray-500">No results found</div>}
+						{layersRes.isFetchedAfterMount && layersToDisplay?.length === 0 && (
+							<div className="p-2 text-sm text-gray-500">No results found</div>
+						)}
 						{layersToDisplay &&
 							layersToDisplay?.length > 0 &&
 							layersToDisplay.map((layer, index) => {
@@ -1717,7 +1754,7 @@ function EditLayerQueueItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent>
+			<DialogContent className="w-auto max-w-full min-w-0">
 				<DragContextProvider>
 					<EditLayerListItemDialog {...props} />
 				</DragContextProvider>
@@ -1730,9 +1767,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 	const allowVotes = props.allowVotes ?? true
 
 	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
+	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
+	const [selectedBaseFilter, setSelectedBaseFilter] = React.useState<M.FilterEntityId | null>(poolFilterId)
 	const [filterLayer, setFilterLayer] = React.useState<Partial<M.MiniLayer>>(itemToMiniLayer(initialItem))
 	const [applyBaseFilter, setApplyBaseFilter] = React.useState(false)
-	const [queueItemMutations, setQueueItemMutations] = React.useState(initMutations())
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<LLItemStore>((set, get) => createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState() }))
@@ -1743,6 +1781,8 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 		editedItemStore,
 		(s) => !deepEqual(initialItem, s.item) && (!s.item.vote || s.item.vote.choices.length > 0)
 	)
+	const derivedVoteChoiceStore = React.useMemo(() => deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
+	const user = useLoggedInUser().data
 	function submit(e: React.FormEvent) {
 		e.preventDefault()
 		e.stopPropagation()
@@ -1755,26 +1795,13 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
 		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over?.id as string))
 
-		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex) return
-		const sourceId = layerQueue[sourceIndex].id
-		editedItemStore.getState().setItem(
-			Im.produce((editedItem) => {
-				let insertIndex = targetIndex - 1
-				if (!editedItem.vote) return
-				const [moved] = editedItem.vote.choices.splice(sourceIndex, 1)
-				if (insertIndex > sourceIndex) insertIndex--
-				editedItem.vote.choices.splice(insertIndex, 0, moved)
-			})
-		)
-		setQueueItemMutations(Im.produce((mutations) => tryApplyMutation('moved', sourceId, mutations)))
+		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex || !user) return
+		derivedVoteChoiceStore.getState().move(sourceIndex, targetIndex, user.discordId)
 	}
 	useDragEnd(handleDragEnd)
 
-	const derivedVoteChoiceStore = React.useMemo(() => deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
-
-	const user = useLoggedInUser().data
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
-	if (props.allowVotes && !editedItem.vote) throw new Error('Invalid queue item')
+	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
 		<form className="w-full h-full" onSubmit={submit}>

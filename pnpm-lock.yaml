@@ -290,6 +290,9 @@ importers:
       zustand:
         specifier: ^5.0.2
         version: 5.0.2(@types/react@18.3.11)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.2.2(react@18.3.1))
+      zustand-rx:
+        specifier: ^2.1.0
+        version: 2.1.0(rxjs@7.8.1)(zustand@5.0.2(@types/react@18.3.11)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.2.2(react@18.3.1)))
     devDependencies:
       '@babel/plugin-proposal-explicit-resource-management':
         specifier: ^7.25.9
@@ -5008,6 +5011,12 @@ packages:
   zod@3.23.8:
     resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
 
+  zustand-rx@2.1.0:
+    resolution: {integrity: sha512-ceszeq1PO9SeJFz8bQs+nRFsXZjjPbjETR6oKHMKUeniYag223H8QN89I++pKlBhDShnrlTowpfD3nFLdDLZyQ==}
+    peerDependencies:
+      rxjs: '*'
+      zustand: '*'
+
   zustand@5.0.2:
     resolution: {integrity: sha512-8qNdnJVJlHlrKXi50LDqqUNmUbuBjoKLrYQBnoChIbVph7vni+sY+YpvdjXG9YLd/Bxr6scMcR+rm5H3aSqPaw==}
     engines: {node: '>=12.20.0'}
@@ -9578,6 +9587,11 @@ snapshots:
       zod: 3.23.8
 
   zod@3.23.8: {}
+
+  zustand-rx@2.1.0(rxjs@7.8.1)(zustand@5.0.2(@types/react@18.3.11)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.2.2(react@18.3.1))):
+    dependencies:
+      rxjs: 7.8.1
+      zustand: 5.0.2(@types/react@18.3.11)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.2.2(react@18.3.1))
 
   zustand@5.0.2(@types/react@18.3.11)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.2.2(react@18.3.1)):
     optionalDependencies:
