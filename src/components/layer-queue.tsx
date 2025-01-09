@@ -64,6 +64,7 @@ import { combineLatest, map } from 'rxjs'
 import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
 import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
+import { useRefConstructor } from '@/lib/react.ts'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -139,11 +140,11 @@ const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions
 					const layerList = draft.layerList
 					const item = layerList[sourceIndex]
 					item.lastModifiedBy = modifiedBy
-					if (sourceIndex < targetIndex) {
-						targetIndex--
+					if (sourceIndex > targetIndex) {
+						targetIndex++
 					}
 					layerList.splice(sourceIndex, 1)
-					layerList.splice(targetIndex + 1, 0, item)
+					layerList.splice(targetIndex, 0, item)
 					tryApplyMutation('moved', item.id, draft.listMutations)
 				})
 			)
@@ -234,8 +235,8 @@ const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 					if (!draft.vote) return
 					const choices = draft.vote.choices
 					const choice = choices[sourceIndex]
-					if (sourceIndex < targetIndex) {
-						targetIndex--
+					if (sourceIndex > targetIndex) {
+						targetIndex++
 					}
 					choices.splice(sourceIndex, 1)
 					choices.splice(targetIndex, 0, choice)
@@ -455,7 +456,7 @@ export default function ServerDashboard() {
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
 							<div className="flex items-center space-x-1">
-								<SelectLayersPopover
+								<SelectLayersDialog
 									title="Add to Queue"
 									description="Select layers to add to the queue"
 									selectQueueItems={(items) => LQStore.getState().add(items)}
@@ -466,8 +467,8 @@ export default function ServerDashboard() {
 										<PlusIcon />
 										<span>Play After</span>
 									</Button>
-								</SelectLayersPopover>
-								<SelectLayersPopover
+								</SelectLayersDialog>
+								<SelectLayersDialog
 									title="Play Next"
 									description="Select layers to play next"
 									selectQueueItems={(items) => LQStore.getState().add(items, 0)}
@@ -478,7 +479,7 @@ export default function ServerDashboard() {
 										<PlusIcon />
 										<span>Play Next</span>
 									</Button>
-								</SelectLayersPopover>
+								</SelectLayersDialog>
 							</div>
 						</CardHeader>
 						<CardContent>
@@ -1331,7 +1332,7 @@ function ItemDropdown(props: {
 		<DropdownMenu open={dropdownOpen || !!subDropdownState} onOpenChange={setDropdownOpen}>
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
-				<EditLayerQueueItemDialogWrapper
+				<EditLayerListItemDialogWrapper
 					allowVotes={allowVotes}
 					open={subDropdownState === 'edit'}
 					onOpenChange={(update) => {
@@ -1341,9 +1342,9 @@ function ItemDropdown(props: {
 					itemStore={props.itemStore}
 				>
 					<DropdownMenuItem>Edit</DropdownMenuItem>
-				</EditLayerQueueItemDialogWrapper>
+				</EditLayerListItemDialogWrapper>
 
-				<SelectLayersPopover
+				<SelectLayersDialog
 					title="Add layers before"
 					description="Select layers to add before"
 					open={subDropdownState === 'add-before'}
@@ -1355,9 +1356,9 @@ function ItemDropdown(props: {
 					}}
 				>
 					<DropdownMenuItem>Add layers before</DropdownMenuItem>
-				</SelectLayersPopover>
+				</SelectLayersDialog>
 
-				<SelectLayersPopover
+				<SelectLayersDialog
 					title="Add layers after"
 					description="Select layers to add after"
 					open={subDropdownState === 'add-after'}
@@ -1368,7 +1369,7 @@ function ItemDropdown(props: {
 					}}
 				>
 					<DropdownMenuItem>Add layers after</DropdownMenuItem>
-				</SelectLayersPopover>
+				</SelectLayersDialog>
 
 				<DropdownMenuItem
 					onClick={() => {
@@ -1402,7 +1403,7 @@ function QueueItemSeparator(props: {
 
 type SelectMode = 'vote' | 'layers'
 
-export function SelectLayersPopover(props: {
+export function SelectLayersDialog(props: {
 	title: string
 	description: React.ReactNode
 	pinMode?: SelectMode
@@ -1440,9 +1441,7 @@ export function SelectLayersPopover(props: {
 	const loggedInUserRes = useLoggedInUser()
 
 	const canSubmit = selectedLayers.length > 0
-	function submit(e: React.FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
+	function submit() {
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
 			const items: M.LayerListItem[] = selectedLayers.map(
@@ -1478,75 +1477,82 @@ export function SelectLayersPopover(props: {
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0">
-				<form className="h-full w-full" onSubmit={submit}>
-					<DialogHeader>
-						<DialogTitle>{props.title}</DialogTitle>
-						<DialogDescription>{props.description}</DialogDescription>
-						<div className="flex items-center w-full space-x-2">
-							<p className={Typography.P}>{selectedLayers.length} layers selected</p>
-							{!props.pinMode && (
-								<TabsList
-									options={[
-										{ label: 'Vote', value: 'vote' },
-										{ label: 'Layers', value: 'layers' },
-									]}
-									active={selectMode}
-									setActive={setAdditionType}
-								/>
-							)}
-						</div>
-					</DialogHeader>
-					<div>
-						<FilterEntitySelect title="Choose Filter" filterId={selectedFilterId} onSelect={setSelectedFilterId} />
+			<DialogContent
+				className="w-auto max-w-full min-w-0"
+				onKeyDown={(e) => {
+					if (e.key === 'Enter') {
+						submit()
+					}
+				}}
+			>
+				<DialogHeader>
+					<DialogTitle>{props.title}</DialogTitle>
+					<DialogDescription>{props.description}</DialogDescription>
+					<div className="flex items-center w-full space-x-2">
+						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
+						{!props.pinMode && (
+							<TabsList
+								options={[
+									{ label: 'Vote', value: 'vote' },
+									{ label: 'Layers', value: 'layers' },
+								]}
+								active={selectMode}
+								setActive={setAdditionType}
+							/>
+						)}
 					</div>
+				</DialogHeader>
+				<div>
+					<FilterEntitySelect title="Choose Filter" filterId={selectedFilterId} onSelect={setSelectedFilterId} />
+				</div>
 
-					<div className="flex min-h-0 items-center space-x-2">
-						<LayerFilterMenu filterMenuStore={filterMenuStore} />
-						<ListStyleLayerPicker
-							filter={filterMenuStore.filter}
-							defaultSelected={selectedLayers}
-							select={setSelectedLayers}
-							pickerMode={selectMode === 'vote' ? 'toggle' : 'add'}
-						/>
-					</div>
+				<div className="flex min-h-0 items-center space-x-2">
+					<LayerFilterMenu filterMenuStore={filterMenuStore} />
+					<TableStyleLayerPicker filter={filterMenuStore.filter} selected={selectedLayers} onSelect={setSelectedLayers} />
+				</div>
 
-					<DialogFooter>
-						<Button disabled={!canSubmit} type="submit">
-							Submit
-						</Button>
-					</DialogFooter>
-				</form>
+				<DialogFooter>
+					<Button disabled={!canSubmit} onClick={submit}>
+						Submit
+					</Button>
+				</DialogFooter>
 			</DialogContent>
 		</Dialog>
 	)
 }
 
-function ListStyleLayerPicker(props: {
+function TableStyleLayerPicker(props: {
 	filter?: M.FilterNode
-	defaultSelected?: M.LayerId[]
-	select: React.Dispatch<React.SetStateAction<M.LayerId[]>>
-	pickerMode: 'toggle' | 'single'
+	selected: M.LayerId[]
+	onSelect: React.Dispatch<React.SetStateAction<M.LayerId[]>>
+	maxSelected?: number
 }) {
-	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>([])
-
-	const setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>> = (newSelected) => {
-		debugger
-		setSelectedLayers(newSelected)
-	}
 	const [pageIndex, setPageIndex] = React.useState(0)
+
 	return (
 		<div className="flex h-full">
 			<LayerTable
-				// filter={props.filter}
+				filter={props.filter}
+				defaultColumns={[
+					'Level',
+					'Gamemode',
+					'LayerVersion',
+					'Faction_1',
+					'SubFac_1',
+					'Faction_2',
+					'SubFac_2',
+					'Balance_Differential',
+					'Asymmetry_Score',
+				]}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
-				selected={selectedLayers}
-				setSelected={setSelected}
-				// maxSelected={props.pickerMode === 'single' ? 1 : undefined}
-				// defaultSortBy="random"
-				// defaultColumns={['Level', 'Gamemode', 'LayerVersion', 'FullMatchup', 'Asymmetry_Score', 'Balance_Differential']}
-				// defaultSortDirection="DESC"
+				selected={props.selected}
+				setSelected={props.onSelect}
+				maxSelected={props.maxSelected}
+				defaultSortBy="Asymmetry_Score"
+				defaultSortDirection="DESC"
+				canChangeRowsPerPage={false}
+				canToggleColumns={false}
 			/>
 		</div>
 	)
@@ -1566,16 +1572,16 @@ function itemToLayers(item: M.LayerListItem): M.MiniLayer[] {
 
 type EditLayerQueueItemDialogProps = {
 	children: React.ReactNode
-} & InnerEditLayerQueueItemDialogProps
+} & InnerEditLayerListItemDialogProps
 
-type InnerEditLayerQueueItemDialogProps = {
+type InnerEditLayerListItemDialogProps = {
 	open: boolean
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	allowVotes?: boolean
 	itemStore: Zus.StoreApi<LLItemStore>
 }
 
-function EditLayerQueueItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
+function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
@@ -1588,7 +1594,7 @@ function EditLayerQueueItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 	)
 }
 
-export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProps) {
+export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	const allowVotes = props.allowVotes ?? true
 
 	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
@@ -1618,15 +1624,17 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 	const filtersRes = useFilters()
 	const [selectedBaseFilter, setSelectedBaseFilter] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const baseFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilter)
-	const filterMenuStore = useFilterMenuStore(baseFilterEntity?.filter)
+
+	const filterMenuStore = useFilterMenuStore(
+		baseFilterEntity?.filter,
+		editedItem.layerId ? M.getMiniLayerFromId(editedItem.layerId) : undefined
+	)
 
 	const canSubmit = Zus.useStore(
 		editedItemStore,
 		(s) => !deepEqual(initialItem, s.item) && (!s.item.vote || s.item.vote.choices.length > 0)
 	)
-	function submit(e: React.FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
+	function submit() {
 		if (!canSubmit) return
 		props.onOpenChange(false)
 	}
@@ -1634,7 +1642,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
-		<form className="w-full h-full" onSubmit={submit}>
+		<div className="w-full h-full" onKeyDown={(e) => e.key === 'Enter' && submit()}>
 			<DialogHeader>
 				<div className="flex justify-between mr-6">
 					<div className="flex flex-col">
@@ -1696,15 +1704,14 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 				</div>
 			) : (
 				<div className="flex space-x-2 min-h-0">
-					<div>
-						<LayerFilterMenu filterMenuStore={filterMenuStore} />
-					</div>
-					<ListStyleLayerPicker
+					<LayerFilterMenu filterMenuStore={filterMenuStore} />
+					<TableStyleLayerPicker
 						filter={filterMenuStore.filter}
-						pickerMode="single"
-						defaultSelected={[editedItem.layerId!]}
-						select={(update) => {
+						maxSelected={1}
+						selected={[editedItem.layerId!]}
+						onSelect={(update) => {
 							const id = (typeof update === 'function' ? update([]) : update)[0]
+							if (!id) return
 							return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
 						}}
 					/>
@@ -1713,7 +1720,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 
 			<DialogFooter>
 				{editedItem.vote && (
-					<SelectLayersPopover
+					<SelectLayersDialog
 						title="Add"
 						description="Select layers to add to the voting pool"
 						open={addLayersOpen}
@@ -1723,13 +1730,13 @@ export function EditLayerListItemDialog(props: InnerEditLayerQueueItemDialogProp
 						}}
 					>
 						<DropdownMenuItem>Add layers</DropdownMenuItem>
-					</SelectLayersPopover>
+					</SelectLayersDialog>
 				)}
-				<Button disabled={!canSubmit} type="submit">
+				<Button disabled={!canSubmit} onClick={submit}>
 					Submit
 				</Button>
 			</DialogFooter>
-		</form>
+		</div>
 	)
 }
 
@@ -1756,9 +1763,9 @@ const FILTER_ORDER = [
 ] as const satisfies (keyof M.MiniLayer)[]
 
 type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
-function useFilterMenuStore(baseFilter?: M.FilterNode) {
+function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.MiniLayer> = {}) {
 	// represents the state of the filter menu
-	const [filterFields, setFilterFields] = React.useState<Partial<M.MiniLayer>>({})
+	const [filterFields, setFilterFields] = React.useState<Partial<M.MiniLayer>>(defaultFields)
 
 	const filter = React.useMemo(() => {
 		const nodes: M.FilterNode[] = []
@@ -1785,10 +1792,21 @@ function useFilterMenuStore(baseFilter?: M.FilterNode) {
 		}
 		for (const _key in filterFields) {
 			const key = _key as keyof M.MiniLayer
+			const colsToRemove: string[] = []
+			colsToRemove.push(key)
+			colsToRemove.push('id')
+			if (key === 'Layer') {
+				colsToRemove.push('Level')
+				colsToRemove.push('Gamemode')
+				colsToRemove.push('LayerVersion')
+			}
+			if (['Level', 'Gamemode', 'LayerVersion'].includes(key)) {
+				colsToRemove.push('Layer')
+			}
 			const fieldSelectFilter = Im.produce(filter, (draft) => {
-				const idx = draft.children.findIndex((node) => node.type === 'comp' && node.comp.column === key)
-				if (idx !== -1) {
-					draft.children.splice(idx, 1)
+				for (const col of colsToRemove) {
+					const index = draft.children.findIndex((node) => node.type === 'comp' && node.comp.column === col)
+					if (index !== -1) draft.children.splice(index, 1)
 				}
 			})
 			filtersExcludingField[key] = fieldSelectFilter

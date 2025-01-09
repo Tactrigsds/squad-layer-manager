@@ -24,7 +24,7 @@ const Checkbox = React.forwardRef<
 			<CheckIcon className="h-4 w-4" />
 		</CheckboxPrimitive.Indicator>
 		{/* hacky way to make sure the size of this component doesn't shift around */}
-		{/* {!props.checked && <CheckIcon data-checked={props.checked} className="h-4 w-4 invisible" />} */}
+		{!props.checked && <CheckIcon data-checked={props.checked} className="h-4 w-4 invisible" />}
 	</CheckboxPrimitive.Root>
 ))
 Checkbox.displayName = CheckboxPrimitive.Root.displayName

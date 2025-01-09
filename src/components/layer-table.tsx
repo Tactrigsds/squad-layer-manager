@@ -12,7 +12,7 @@ import {
 	useReactTable,
 	VisibilityState,
 } from '@tanstack/react-table'
-import { ArrowUpDown, Dices } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import * as Im from 'immer'
 
@@ -50,10 +50,18 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 		header: ({ column }) => {
 			//@ts-expect-error idc
 			const label = M.COLUMN_LABELS[column.id] ?? column.id
+			const sort = column.getIsSorted()
 			return (
-				<Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+				<Button
+					className="data-[sort=true]:text-accent-foreground"
+					data-sort={!!sort}
+					variant="ghost"
+					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+				>
 					{label}
-					<ArrowUpDown className="ml-2 h-4 w-4" />
+					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
+					{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
+					{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
 				</Button>
 			)
 		},
@@ -80,13 +88,13 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	})
 }
 
-const columns: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
+const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 	{
 		id: 'select',
 		header: ({ table }) => (
 			<Checkbox
 				checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
-				// onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+				onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
 				aria-label="Select all"
 			/>
 		),
@@ -104,8 +112,30 @@ const columns: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 	},
 ]
 
-for (const columnKey of M.COLUMN_KEYS_WITH_COMPUTED) {
-	columns.push(buildColumn(columnKey))
+const COLS_ORDER = [
+	'id',
+	'Level',
+	'Layer',
+	'Gamemode',
+	'LayerVersion',
+	'Faction_1',
+	'SubFac_1',
+	'Faction_2',
+	'SubFac_2',
+	'Balance_Differential',
+	'Asymmetry_Score',
+] as (M.LayerColumnKey | M.LayerCompositeKey)[]
+
+{
+	const sortedColKeys = [...M.COLUMN_KEYS_WITH_COMPUTED].sort((a, b) => {
+		const aIndex = COLS_ORDER.indexOf(a)
+		const bIndex = COLS_ORDER.indexOf(b)
+		return aIndex - bIndex
+	})
+
+	for (const columnKey of sortedColKeys) {
+		COL_DEFS.push(buildColumn(columnKey))
+	}
 }
 
 const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2', 'Balance_Differential', 'Asymmetry_Score'] as (
@@ -113,7 +143,6 @@ const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 
 	| M.LayerCompositeKey
 )[]
 
-const DEFAULT_VISIBILITY_STATE = Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 const DEFAULT_SORT: LayersQueryInput['sort'] = {
 	type: 'column',
 	sortBy: 'Asymmetry_Score',
@@ -122,23 +151,35 @@ const DEFAULT_SORT: LayersQueryInput['sort'] = {
 
 export default function LayerTable(props: {
 	filter?: M.FilterNode
-	pageIndex: number
+
 	selected: M.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>>
 	resetSelected?: () => void
+
+	pageIndex: number
 	setPageIndex: (num: number) => void
+
 	defaultPageSize?: number
 	defaultSortBy?: M.LayerColumnKey | 'random'
 	defaultSortDirection?: 'ASC' | 'DESC'
 	defaultColumns?: (M.LayerColumnKey | M.LayerCompositeKey)[]
+
 	maxSelected?: number
+
+	canChangeRowsPerPage?: boolean
+	canToggleColumns?: boolean
 }) {
 	const maxSelected = props.maxSelected ?? Infinity
+	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
+	const canToggleColumns = props.canToggleColumns ?? true
 
 	const { pageIndex, setPageIndex } = props
 	let filter = props.filter
 	const [sortingState, _setSortingState] = useState<SortingState>([
-		{ id: props.defaultSortBy ?? 'Asymmetry_Score', desc: props.defaultSortDirection === 'DESC' },
+		{
+			id: props.defaultSortBy && props.defaultSortBy !== 'random' ? 'Asymmetry_Score' : props.defaultSortBy!,
+			desc: props.defaultSortDirection === 'DESC',
+		},
 	])
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
@@ -171,7 +212,8 @@ export default function LayerTable(props: {
 		})
 	}
 	const defaultVisibility = useRefConstructor(() => {
-		if (!props.defaultColumns) return DEFAULT_VISIBILITY_STATE
+		if (!props.defaultColumns)
+			return Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
 		return Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, props.defaultColumns!.includes(key)]))
 	})
 
@@ -183,14 +225,8 @@ export default function LayerTable(props: {
 	}
 
 	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
-	const selectionOrderRef = useRef<M.LayerId[]>([])
-	// React.useLayoutEffect(() => {
-	// 	if (selectedRowFlipFlop.current) {
-	// 		selectedRowFlipFlop.current = false
-	// 		return
-	// 	}
-	// 	selectionOrderRef.current = props.selected
-	// }, [props.selected])
+	const now = Date.now()
+	const insertionTimes = useRef<Record<M.LayerId, number | undefined>>(Object.fromEntries(props.selected.map((id) => [id, now])))
 	const onSetRowSelection: OnChangeFn<RowSelectionState> = (updated) => {
 		props.setSelected((selectedIds) => {
 			let newValues: RowSelectionState
@@ -199,14 +235,25 @@ export default function LayerTable(props: {
 			} else {
 				newValues = updated
 			}
-			const newSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
-			// if (newSelectedIds.length === 0) {
-			// 	setShowSelectedLayers(false)
-			// }
-			if (newSelectedIds.length > maxSelected) {
-				newSelectedIds.splice(0, newSelectedIds.length - maxSelected)
+			const updatedSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
+			if (updatedSelectedIds.length === 0) {
+				setShowSelectedLayers(false)
 			}
-			return newSelectedIds
+			if (updatedSelectedIds.length > maxSelected) {
+				updatedSelectedIds.splice(0, updatedSelectedIds.length - maxSelected)
+			}
+			const now = Date.now()
+			for (const id of updatedSelectedIds) {
+				if (!(id in insertionTimes.current)) {
+					insertionTimes.current[id] = now
+				}
+			}
+
+			updatedSelectedIds.sort((a, b) => (insertionTimes.current[a] ?? now) - (insertionTimes.current[b] ?? now))
+			if (updatedSelectedIds.length > maxSelected) {
+				updatedSelectedIds.splice(0, updatedSelectedIds.length - maxSelected)
+			}
+			return updatedSelectedIds
 		})
 	}
 
@@ -256,7 +303,7 @@ export default function LayerTable(props: {
 
 	const table = useReactTable({
 		data: data?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
-		columns,
+		columns: COL_DEFS,
 		pageCount: data?.pageCount ?? -1,
 		state: {
 			sorting: sortingState,
@@ -319,30 +366,32 @@ export default function LayerTable(props: {
 			<div className="mb-2 flex items-center justify-between">
 				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button variant="outline">Toggle Columns</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
-							{table.getAllLeafColumns().map((column) => {
-								return (
-									<DropdownMenuCheckboxItem
-										key={column.id}
-										className="capitalize"
-										checked={column.getIsVisible()}
-										onCheckedChange={(value) => {
-											column.toggleVisibility(!!value)
-										}}
-										onSelect={(e) => {
-											e.preventDefault()
-										}}
-									>
-										{column.id}
-									</DropdownMenuCheckboxItem>
-								)
-							})}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					{canToggleColumns && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant="outline">Toggle Columns</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
+								{table.getAllLeafColumns().map((column) => {
+									return (
+										<DropdownMenuCheckboxItem
+											key={column.id}
+											className="capitalize"
+											checked={column.getIsVisible()}
+											onCheckedChange={(value) => {
+												column.toggleVisibility(!!value)
+											}}
+											onSelect={(e) => {
+												e.preventDefault()
+											}}
+										>
+											{column.id}
+										</DropdownMenuCheckboxItem>
+									)
+								})}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
 					<Separator orientation="vertical" className="h-full min-h-0" />
 					{/*--------- show selected ---------*/}
 					<div className="flex items-center space-x-1">
@@ -382,26 +431,28 @@ export default function LayerTable(props: {
 					<Separator orientation="vertical" />
 
 					{/*--------- rows per page ---------*/}
-					<div className="flex items-center space-x-2">
-						<p className="text-sm font-medium">Rows per page</p>
-						<Select
-							value={`${table.getState().pagination.pageSize}`}
-							onValueChange={(value) => {
-								table.setPageSize(Number(value))
-							}}
-						>
-							<SelectTrigger className="h-8 w-[70px]">
-								<SelectValue placeholder={table.getState().pagination.pageSize} />
-							</SelectTrigger>
-							<SelectContent side="top">
-								{[10, 20, 30, 40, 50].map((pageSize) => (
-									<SelectItem key={pageSize} value={`${pageSize}`}>
-										{pageSize}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+					{canChangeRowsPerPage && (
+						<div className="flex items-center space-x-2">
+							<p className="text-sm font-medium">Rows per page</p>
+							<Select
+								value={`${table.getState().pagination.pageSize}`}
+								onValueChange={(value) => {
+									table.setPageSize(Number(value))
+								}}
+							>
+								<SelectTrigger className="h-8 w-[70px]">
+									<SelectValue placeholder={table.getState().pagination.pageSize} />
+								</SelectTrigger>
+								<SelectContent side="top">
+									{[10, 20, 30, 40, 50].map((pageSize) => (
+										<SelectItem key={pageSize} value={`${pageSize}`}>
+											{pageSize}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					)}
 				</span>
 			</div>
 			<div className="rounded-md border">

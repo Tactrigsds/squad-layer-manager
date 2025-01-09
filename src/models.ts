@@ -88,7 +88,7 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 
-	return includeComputedCollections({
+	return {
 		id,
 		Level: level,
 		Layer: layer,
@@ -98,7 +98,7 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		SubFac_1: subfac1,
 		Faction_2: faction2,
 		SubFac_2: subfac2,
-	})
+	}
 }
 
 function validateId(id: string) {
