@@ -278,8 +278,7 @@ export type EditableComparison = {
 	code?: (typeof COMPARISON_TYPES)[number]['code']
 	value?: number | string | null
 	values?: (string | null)[]
-	min?: number
-	max?: number
+	range?: [number | undefined, number | undefined]
 }
 // --------  numeric --------
 export const LessThanComparison = z.object({
@@ -296,12 +295,14 @@ export const GreaterThanComparison = z.object({
 })
 export type GreaterThanComparison = z.infer<typeof GreaterThanComparison>
 
-export const InRangeComparison = z.object({
-	code: z.literal('inrange'),
-	min: z.number(),
-	max: z.number(),
-	column: z.enum(COLUMN_TYPE_MAPPINGS.float),
-})
+export const InRangeComparison = z
+	.object({
+		code: z.literal('inrange'),
+		range: z.tuple([z.number(), z.number()]).describe("smallest value is always the start of the range, even if it's larger"),
+		column: z.enum(COLUMN_TYPE_MAPPINGS.float),
+	})
+	.describe('Inclusive Range')
+
 export type InRangeComparison = z.infer<typeof InRangeComparison>
 
 export type NumericComparison = LessThanComparison | GreaterThanComparison | InRangeComparison

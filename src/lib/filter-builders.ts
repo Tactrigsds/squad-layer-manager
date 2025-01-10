@@ -45,12 +45,11 @@ export const gt = <T extends M.FloatColumn>(column: T, value: number) =>
 		value,
 	}) satisfies M.Comparison
 
-export const inrange = <T extends M.FloatColumn>(column: T, min: number, max: number) =>
+export const inrange = <T extends M.FloatColumn>(column: T, first: number, second: number) =>
 	({
 		code: 'inrange' as const,
 		column,
-		min,
-		max,
+		range: [first, second],
 	}) satisfies M.Comparison
 
 export const inValues = <T extends M.StringColumn>(column: T, values: M.Layer[T][]) =>

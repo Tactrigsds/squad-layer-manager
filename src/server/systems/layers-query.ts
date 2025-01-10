@@ -232,7 +232,8 @@ export async function getWhereFilterConditions(
 			}
 			case 'inrange': {
 				const column = schema[comp.column]
-				res = E.and(E.gte(column, comp.min), E.lte(column, comp.max))!
+				const [min, max] = [...comp.range].sort((a, b) => a - b)
+				res = E.and(E.gte(column, min), E.lte(column, max))!
 				break
 			}
 			case 'is-true': {

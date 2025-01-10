@@ -505,13 +505,12 @@ export function Comparison(props: {
 			valueBox = (
 				<NumericRangeConfig
 					ref={valueBoxRef}
-					min={comp.min}
-					max={comp.max}
-					setMin={(min) => {
-						return setComp((c) => ({ ...c, min }))
-					}}
-					setMax={(max) => {
-						setComp((c) => ({ ...c, max }))
+					range={comp.range ?? [undefined, undefined]}
+					setValues={(update) => {
+						if (typeof update === 'function') {
+							update = update(comp.range ?? [undefined, undefined])
+						}
+						setComp((c) => ({ ...c, range: update }))
 					}}
 				/>
 			)
@@ -807,18 +806,23 @@ const NumericSingleValueConfig = React.forwardRef(
 
 const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	props: {
-		min?: number
-		max?: number
-		setMin: (min?: number) => void
-		setMax: (max?: number) => void
+		range: [number | undefined, number | undefined]
+		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
 	},
 	ref: React.ForwardedRef<Focusable>
 ) {
+	function setFirst(value: number | undefined) {
+		props.setValues((values) => [value, values[1]])
+	}
+	function setSecond(value: number | undefined) {
+		props.setValues((values) => [values[0], value])
+	}
+
 	return (
 		<div className="flex w-[200px] items-center space-x-2">
-			<NumericSingleValueConfig placeholder="min" value={props.min} setValue={props.setMax} />
+			<NumericSingleValueConfig placeholder="min" value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
-			<NumericSingleValueConfig placeholder="max" ref={ref} value={props.max} setValue={props.setMin} />
+			<NumericSingleValueConfig placeholder="max" ref={ref} value={props.range[0]} setValue={setSecond} />
 		</div>
 	)
 })
