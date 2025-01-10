@@ -27,7 +27,7 @@ import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import { initMutations, initMutationState, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
 import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
-import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
+import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
 import { useLoggedInUser } from '@/hooks/use-logged-in-user.ts'
 
 import * as Zus from 'zustand'
@@ -1337,79 +1337,87 @@ function ItemDropdown(props: {
 		<DropdownMenu open={dropdownOpen || !!subDropdownState} onOpenChange={setDropdownOpen}>
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
-				<EditLayerListItemDialogWrapper
-					allowVotes={allowVotes}
-					open={subDropdownState === 'edit'}
-					onOpenChange={(update) => {
-						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
-						return setSubDropdownState(open ? 'edit' : null)
-					}}
-					itemStore={props.itemStore}
-					baseFilter={baseFilter}
-				>
-					<DropdownMenuItem>Edit</DropdownMenuItem>
-				</EditLayerListItemDialogWrapper>
+				<DropdownMenuGroup>
+					<EditLayerListItemDialogWrapper
+						allowVotes={allowVotes}
+						open={subDropdownState === 'edit'}
+						onOpenChange={(update) => {
+							const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
+							return setSubDropdownState(open ? 'edit' : null)
+						}}
+						itemStore={props.itemStore}
+						baseFilter={baseFilter}
+					>
+						<DropdownMenuItem>Edit</DropdownMenuItem>
+					</EditLayerListItemDialogWrapper>
+					<DropdownMenuItem
+						onClick={() => {
+							const id = props.itemStore.getState().item.id
+							props.listStore.getState().remove(id)
+						}}
+						className="bg-destructive text-destructive-foreground focus:bg-red-600"
+					>
+						Delete
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
 
-				<SelectLayersDialog
-					title="Add layers before"
-					description="Select layers to add before"
-					open={subDropdownState === 'add-before'}
-					onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
-					selectingSingleLayerQueueItem={true}
-					selectQueueItems={(items) => {
-						const state = props.listStore.getState()
-						state.add(items, props.index)
-					}}
-					baseFilter={baseFilter}
-				>
-					<DropdownMenuItem>Add layers before</DropdownMenuItem>
-				</SelectLayersDialog>
-				<DropdownMenuItem
-					onClick={() => {
-						if (!user) return
-						const item = props.itemStore.getState().item
-						const itemIdx = props.listStore.getState().layerList.findIndex((i) => i.id === item.id)
-						props.listStore.getState().move(itemIdx, -1, user.discordId)
-					}}
-				>
-					Send to Front
-				</DropdownMenuItem>
-				<DropdownMenuItem
-					onClick={() => {
-						if (!user) return
-						const layerList = props.listStore.getState().layerList
-						const item = props.itemStore.getState().item
-						const itemIdx = layerList.findIndex((i) => i.id === item.id)
-						const lastIdx = layerList.length - 1
-						props.listStore.getState().move(itemIdx, lastIdx, user.discordId)
-					}}
-				>
-					Send to Back
-				</DropdownMenuItem>
+				<DropdownMenuGroup>
+					<SelectLayersDialog
+						title="Add layers before"
+						description="Select layers to add before"
+						open={subDropdownState === 'add-before'}
+						onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
+						selectingSingleLayerQueueItem={true}
+						selectQueueItems={(items) => {
+							const state = props.listStore.getState()
+							state.add(items, props.index)
+						}}
+						baseFilter={baseFilter}
+					>
+						<DropdownMenuItem>Add layers before</DropdownMenuItem>
+					</SelectLayersDialog>
 
-				<SelectLayersDialog
-					title="Add layers after"
-					description="Select layers to add after"
-					open={subDropdownState === 'add-after'}
-					onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
-					selectQueueItems={(items) => {
-						const state = props.listStore.getState()
-						state.add(items, props.index + 1)
-					}}
-					baseFilter={baseFilter}
-				>
-					<DropdownMenuItem>Add layers after</DropdownMenuItem>
-				</SelectLayersDialog>
+					<SelectLayersDialog
+						title="Add layers after"
+						description="Select layers to add after"
+						open={subDropdownState === 'add-after'}
+						onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
+						selectQueueItems={(items) => {
+							const state = props.listStore.getState()
+							state.add(items, props.index + 1)
+						}}
+						baseFilter={baseFilter}
+					>
+						<DropdownMenuItem>Add layers after</DropdownMenuItem>
+					</SelectLayersDialog>
+				</DropdownMenuGroup>
 
-				<DropdownMenuItem
-					onClick={() => {
-						const id = props.itemStore.getState().item.id
-						props.listStore.getState().remove(id)
-					}}
-					className="bg-destructive text-destructive-foreground focus:bg-red-600"
-				>
-					Delete
-				</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
+					<DropdownMenuItem
+						onClick={() => {
+							if (!user) return
+							const item = props.itemStore.getState().item
+							const itemIdx = props.listStore.getState().layerList.findIndex((i) => i.id === item.id)
+							props.listStore.getState().move(itemIdx, -1, user.discordId)
+						}}
+					>
+						Send to Front
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={() => {
+							if (!user) return
+							const layerList = props.listStore.getState().layerList
+							const item = props.itemStore.getState().item
+							const itemIdx = layerList.findIndex((i) => i.id === item.id)
+							const lastIdx = layerList.length - 1
+							props.listStore.getState().move(itemIdx, lastIdx, user.discordId)
+						}}
+					>
+						Send to Back
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)

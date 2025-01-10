@@ -43,11 +43,11 @@ export const gt = (column?: M.FloatColumn, value?: number) =>
 		value,
 	}) satisfies M.EditableComparison
 
-export const inrange = (column?: M.FloatColumn, min?: number, max?: number) =>
+export const inrange = (column?: M.FloatColumn, first?: number, second?: number) =>
 	({
 		code: 'inrange' as const,
 		column,
-		range: [min, max],
+		range: [first, second],
 	}) satisfies M.EditableComparison
 
 export const inValues = <T extends M.StringColumn>(column?: T, values?: M.Layer[T][]) =>
