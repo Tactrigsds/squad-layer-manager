@@ -1816,17 +1816,29 @@ const FILTER_ORDER = [
 ] as const satisfies (keyof M.MiniLayer)[]
 
 type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
+
+function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
+	return [
+		EFB.eq('id', defaultFields['id']),
+		EFB.eq('Layer', defaultFields['Layer']),
+		EFB.eq('Level', defaultFields['Level']),
+		EFB.eq('Gamemode', defaultFields['Gamemode']),
+		EFB.eq('LayerVersion', defaultFields['LayerVersion']),
+		EFB.eq('Faction_1', defaultFields['Faction_1']),
+		EFB.eq('SubFac_1', defaultFields['SubFac_1']),
+		EFB.eq('Faction_2', defaultFields['Faction_2']),
+		EFB.eq('SubFac_2', defaultFields['SubFac_2']),
+	]
+}
+
 function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.MiniLayer> = {}) {
-	// represents the state of the filter menu
-	const [filterFields, setFilterFields] = React.useState<Partial<M.MiniLayer>>(defaultFields)
+	const [items, setItems] = React.useState(getDefaultFilterMenuItemState(defaultFields))
 
 	const filter = React.useMemo(() => {
 		const nodes: M.FilterNode[] = []
-
-		for (const _key in filterFields) {
-			const key = _key as keyof M.MiniLayer
-			if (filterFields[key] === undefined) continue
-			nodes.push(FB.comp(FB.eq(key, filterFields[key])))
+		for (const item of items) {
+			if (!M.isValidComparison(item)) continue
+			nodes.push(FB.comp(item))
 		}
 
 		if (baseFilter) {
@@ -1834,7 +1846,7 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 		}
 		if (nodes.length === 0) return undefined
 		return FB.and(nodes)
-	}, [filterFields, baseFilter])
+	}, [items, baseFilter])
 
 	// get a map of filters for all filterFields for which the predicates involving that field are removed
 	const filtersExcludingField = React.useMemo(() => {
@@ -1843,8 +1855,8 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 		if (!filter) {
 			return filtersExcludingField
 		}
-		for (const _key in filterFields) {
-			const key = _key as keyof M.MiniLayer
+		for (const item of items) {
+			const key = item.column as keyof M.MiniLayer
 			const colsToRemove: string[] = []
 			colsToRemove.push(key)
 			colsToRemove.push('id')
@@ -1865,13 +1877,13 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 			filtersExcludingField[key] = fieldSelectFilter
 		}
 		return filtersExcludingField
-	}, [filterFields, filter])
+	}, [items, filter])
 
 	return {
 		filter,
-		filterFields,
+		menuItems: items,
 		filtersExcludingField,
-		setFilterFields,
+		setMenuItems: setItems,
 	}
 }
 
@@ -1879,42 +1891,45 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 	const store = props.filterMenuStore
 	// const applyBaseFilterId = React.useId()
 
-	const filterComparisons: [keyof M.MiniLayer, M.EditableComparison][] = []
-	for (const key of FILTER_ORDER) {
-		filterComparisons.push([key, EFB.eq(key, store.filterFields[key])])
-	}
-
 	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
 		return (update) => {
-			store.setFilterFields(
+			store.setMenuItems(
 				// TODO having this be inline is kinda gross
-				Im.produce((prev) => {
-					const comp = typeof update === 'function' ? update(EFB.eq(name, prev[name])) : update
+				Im.produce((draft) => {
+					const prevComp = draft.find((item) => item.column === name)!
+					const comp = typeof update === 'function' ? update(prevComp) : update
+					const idxMap: Record<string, number> = {}
+					draft.forEach((item, idx) => {
+						idxMap[item.column!] = idx
+					})
+
 					if (comp.column === 'id' && comp.value) {
-						return M.getMiniLayerFromId(comp.value as string)
+						return getDefaultFilterMenuItemState(M.getMiniLayerFromId(comp.value as string))
 					} else if (comp.column === 'Layer' && comp.value) {
 						const parsedLayer = M.parseLayerString(comp.value as string)
-						prev.Level = parsedLayer.level
-						prev.Gamemode = parsedLayer.gamemode
-						prev.LayerVersion = parsedLayer.version
+						draft[idxMap['Level']].value = parsedLayer.level
+						draft[idxMap['Gamemode']].value = parsedLayer.gamemode
+						draft[idxMap['LayerVersion']].value = parsedLayer.version
 					} else if (comp.column === 'Layer' && !comp.value) {
-						delete prev.Layer
-						delete prev.Level
-						delete prev.Gamemode
-						delete prev.LayerVersion
+						delete draft[idxMap['Layer']].value
+						delete draft[idxMap['Level']].value
+						delete draft[idxMap['Gamemode']].value
+						delete draft[idxMap['LayerVersion']].value
 					} else if (comp !== undefined) {
-						// @ts-expect-error null can be valid here
-						prev[name] = comp.value
-						// @ts-expect-error not sure
-					} else if (comp.value === undefined) {
-						delete prev[name]
+						const idx = draft.findIndex((item) => item.column === name)
+						draft[idx] = comp
 					}
-					if (M.LAYER_STRING_PROPERTIES.every((p) => p in prev)) {
-						prev.Layer = M.getLayerString(prev as M.MiniLayer)
+					const cols = draft.map((item) => item.column)
+					if (M.LAYER_STRING_PROPERTIES.every((p) => p in cols)) {
+						draft[idxMap['Layer']].value = M.getLayerString({
+							Gamemode: draft[idxMap['Gamemode']].value!,
+							Level: draft[idxMap['Level']].value!,
+							LayerVersion: draft[idxMap['LayerVersion']].value!,
+						} as Parameters<typeof M.getLayerString>[0])
 					} else {
-						delete prev.Layer
+						delete draft[idxMap['Layer']].value
 					}
-					delete prev.id
+					delete draft[idxMap['id']].value
 
 					// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
 					// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
@@ -1928,7 +1943,8 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 	return (
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
-				{filterComparisons.map(([name, comparison], index) => {
+				{store.menuItems.map((comparison) => {
+					const name = comparison.column as keyof M.MiniLayer
 					const setComp = applySetFilterFieldComparison(name)
 					function clear() {
 						setComp(
@@ -1939,31 +1955,37 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 					}
 
 					function swapFactions() {
-						store.setFilterFields(
-							Im.produce((prev) => {
-								const faction1 = prev.Faction_1
-								const subFac1 = prev.SubFac_1
-								prev.Faction_1 = prev.Faction_2
-								prev.SubFac_1 = prev.SubFac_2
-								prev.Faction_2 = faction1
-								prev.SubFac_2 = subFac1
+						store.setMenuItems(
+							Im.produce((draft) => {
+								const idxMap: Record<string, number> = {}
+								draft.forEach((item, idx) => {
+									idxMap[item.column!] = idx
+								})
+								const faction1 = draft[idxMap['Faction_1']].value
+								const subFac1 = draft[idxMap['SubFac_1']].value
+								draft[idxMap['Faction_1']].value = draft[idxMap['Faction_2']].value
+								draft[idxMap['SubFac_1']].value = draft[idxMap['SubFac_2']].value
+								draft[idxMap['Faction_2']].value = faction1
+								draft[idxMap['SubFac_2']].value = subFac1
 							})
 						)
 					}
+					const swapFactionsDisabled =
+						!store.menuItems.some(
+							(comp) =>
+								(comp.column === 'Faction_1' && comp.value !== undefined) || (comp.column === 'SubFac_1' && comp.value !== undefined)
+						) &&
+						!store.menuItems.some(
+							(comp) =>
+								(comp.column === 'Faction_2' && comp.value !== undefined) || (comp.column === 'SubFac_2' && comp.value !== undefined)
+						)
 
 					return (
 						<React.Fragment key={name}>
 							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
 							{name === 'Faction_2' && (
 								<>
-									<Button
-										disabled={
-											!(store.filterFields.Faction_1 || store.filterFields.SubFac_1) &&
-											!(store.filterFields.Faction_2 || store.filterFields.SubFac_2)
-										}
-										onClick={swapFactions}
-										variant="secondary"
-									>
+									<Button disabled={swapFactionsDisabled} onClick={swapFactions} variant="secondary">
 										Swap Factions
 									</Button>
 									<span />
@@ -1985,7 +2007,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 				})}
 			</div>
 			<div>
-				<Button variant="secondary" onClick={() => store.setFilterFields({})}>
+				<Button variant="secondary" onClick={() => store.setMenuItems(getDefaultFilterMenuItemState({}))}>
 					Clear All
 				</Button>
 			</div>
