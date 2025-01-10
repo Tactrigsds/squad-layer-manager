@@ -1582,9 +1582,7 @@ function TableStyleLayerPicker(props: {
 }) {
 	const [pageIndex, setPageIndex] = React.useState(0)
 
-	const dimensions = useWindowDimensions()
-
-	let defaultColumns: (M.LayerColumnKey | M.LayerCompositeKey)[] = [
+	const defaultColumns: (M.LayerColumnKey | M.LayerCompositeKey)[] = [
 		'Layer',
 		'Faction_1',
 		'SubFac_1',
@@ -1593,9 +1591,6 @@ function TableStyleLayerPicker(props: {
 		'Asymmetry_Score',
 		'Balance_Differential',
 	]
-	if (dimensions.width < 1000) {
-		defaultColumns = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
-	}
 
 	return (
 		<div className="flex h-full">
