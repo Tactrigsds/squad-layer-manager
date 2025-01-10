@@ -110,10 +110,11 @@ export type SDStore = _SDState & {
 const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions => {
 	return {
 		setItem: (id, update) => {
-			set(
-				Im.produce((draft) => {
-					if (!draft.layerList[id]) return
-					draft.layerList[id] = typeof update === 'function' ? update(draft.layerList[id]) : update
+			set((state) =>
+				Im.produce(state, (draft) => {
+					const index = draft.layerList.findIndex((item) => item.id === id)
+					if (index === -1) return
+					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
 					tryApplyMutation('edited', id, draft.listMutations)
 				})
 			)
@@ -483,9 +484,7 @@ export default function ServerDashboard() {
 							</div>
 						</CardHeader>
 						<CardContent>
-							<ScrollArea>
-								<LayerList store={LQStore} allowVotes={true} />
-							</ScrollArea>
+							<LayerList store={LQStore} allowVotes={true} />
 						</CardContent>
 					</Card>
 				</div>
@@ -518,9 +517,10 @@ export function LayerList(props: { store: Zus.StoreApi<LLStore>; allowVotes?: bo
 	const allowVotes = props.allowVotes ?? true
 	const queueIds = Zus.useStore(props.store).layerList.map((item) => item.id)
 	useDragEnd((event) => {
+		if (!event.over) return
 		const { layerList: layerQueue, move } = props.store.getState()
 		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
-		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over!.id as string))
+		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over.id as string))
 		if (!userQuery.data) return
 		move(sourceIndex, targetIndex, userQuery.data.discordId)
 	})
@@ -740,24 +740,39 @@ function FilterEntitySelect(props: {
 	title: string
 	filterId: string | null
 	onSelect: (filterId: string | null) => void
+	allowToggle?: boolean
+	enabled?: boolean
+	setEnabled?: (enabled: boolean) => void
 }) {
 	const filtersRes = useFilters()
-
 	const filterOptions = filtersRes.data?.map?.((f) => ({
 		value: f.id,
 		label: f.name,
 	}))
-
+	const enableCheckboxId = React.useId()
 	return (
 		<div className={cn('flex space-x-2 items-center', props.className)}>
-			<ComboBox
-				title="Filter"
-				className="flex-grow"
-				options={filterOptions ?? LOADING}
-				allowEmpty={true}
-				value={props.filterId}
-				onSelect={(filter) => props.onSelect(filter ?? null)}
-			/>
+			{props.allowToggle && (
+				<>
+					<Checkbox
+						id={enableCheckboxId}
+						onCheckedChange={(v) => {
+							if (v === 'indeterminate') return
+							props.setEnabled?.(v)
+						}}
+						checked={props.enabled}
+					/>
+					<ComboBox
+						title="Filter"
+						disabled={props.allowToggle && !props.enabled}
+						className="flex-grow"
+						options={filterOptions ?? LOADING}
+						allowEmpty={true}
+						value={props.filterId}
+						onSelect={(filter) => props.onSelect(filter ?? null)}
+					/>
+				</>
+			)}
 			{props.filterId && (
 				<a
 					className={buttonVariants({ variant: 'ghost', size: 'icon' })}
@@ -1419,7 +1434,8 @@ export function SelectLayersDialog(props: {
 	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
 	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const filterEntity = useFilterEntity(selectedFilterId ?? undefined).data
-	const filterMenuStore = useFilterMenuStore(filterEntity?.filter)
+	const [filterEnabled, setFilterEnabled] = React.useState(true)
+	const filterMenuStore = useFilterMenuStore(filterEntity?.filter && filterEnabled ? filterEntity.filter : undefined)
 
 	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -1503,7 +1519,14 @@ export function SelectLayersDialog(props: {
 					</div>
 				</DialogHeader>
 				<div>
-					<FilterEntitySelect title="Choose Filter" filterId={selectedFilterId} onSelect={setSelectedFilterId} />
+					<FilterEntitySelect
+						title="Choose Filter"
+						filterId={selectedFilterId}
+						onSelect={setSelectedFilterId}
+						enabled={filterEnabled}
+						setEnabled={setFilterEnabled}
+						allowToggle={true}
+					/>
 				</div>
 
 				<div className="flex min-h-0 items-center space-x-2">
@@ -1545,11 +1568,12 @@ function TableStyleLayerPicker(props: {
 					'Asymmetry_Score',
 				]}
 				pageIndex={pageIndex}
+				autoSelectIfSingleResult={props.maxSelected === 1}
 				setPageIndex={setPageIndex}
 				selected={props.selected}
 				setSelected={props.onSelect}
 				maxSelected={props.maxSelected}
-				defaultSortBy="Asymmetry_Score"
+				defaultSortBy="random"
 				defaultSortDirection="DESC"
 				canChangeRowsPerPage={false}
 				canToggleColumns={false}
@@ -1598,7 +1622,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const allowVotes = props.allowVotes ?? true
 
 	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
-	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<LLItemStore>((set, get) => createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState() }))
@@ -1622,12 +1645,16 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const filtersRes = useFilters()
-	const [selectedBaseFilter, setSelectedBaseFilter] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
-	const baseFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilter)
+
+	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
+	const [selectedBaseFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
+	const [filterEnabled, setFilterEnabled] = React.useState(true)
+
+	const baseFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilterId)
 
 	const filterMenuStore = useFilterMenuStore(
-		baseFilterEntity?.filter,
-		editedItem.layerId ? M.getMiniLayerFromId(editedItem.layerId) : undefined
+		filterEnabled ? baseFilterEntity?.filter : undefined,
+		editedItem.layerId && filterEnabled ? M.getMiniLayerFromId(editedItem.layerId) : undefined
 	)
 
 	const canSubmit = Zus.useStore(
@@ -1637,6 +1664,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	function submit() {
 		if (!canSubmit) return
 		props.onOpenChange(false)
+		props.itemStore.getState().setItem(editedItem)
 	}
 
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
@@ -1692,8 +1720,11 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				<FilterEntitySelect
 					title="Filter"
 					className="max-w-16"
-					filterId={selectedBaseFilter}
-					onSelect={(id) => setSelectedBaseFilter(id)}
+					filterId={selectedBaseFilterId}
+					onSelect={(id) => setSelectedBaseFilterId(id)}
+					allowToggle={true}
+					enabled={filterEnabled}
+					setEnabled={setFilterEnabled}
 				/>
 			</div>
 
@@ -1931,9 +1962,11 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 					)
 				})}
 			</div>
-			<Button variant="secondary" onClick={() => store.setFilterFields({})}>
-				Clear All
-			</Button>
+			<div>
+				<Button variant="secondary" onClick={() => store.setFilterFields({})}>
+					Clear All
+				</Button>
+			</div>
 		</div>
 	)
 }

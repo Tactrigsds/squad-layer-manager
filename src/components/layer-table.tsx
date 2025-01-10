@@ -12,7 +12,7 @@ import {
 	useReactTable,
 	VisibilityState,
 } from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, ArrowUpDown, Dices } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import * as Im from 'immer'
 
@@ -160,7 +160,7 @@ export default function LayerTable(props: {
 	setPageIndex: (num: number) => void
 
 	defaultPageSize?: number
-	defaultSortBy?: M.LayerColumnKey | 'random'
+	defaultSortBy?: M.LayerColumnKey | M.LayerCompositeKey | 'random'
 	defaultSortDirection?: 'ASC' | 'DESC'
 	defaultColumns?: (M.LayerColumnKey | M.LayerCompositeKey)[]
 
@@ -168,19 +168,25 @@ export default function LayerTable(props: {
 
 	canChangeRowsPerPage?: boolean
 	canToggleColumns?: boolean
+
+	autoSelectIfSingleResult?: boolean
 }) {
 	const maxSelected = props.maxSelected ?? Infinity
 	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
+
 	const canToggleColumns = props.canToggleColumns ?? true
 
-	const { pageIndex, setPageIndex } = props
+	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
+
 	let filter = props.filter
-	const [sortingState, _setSortingState] = useState<SortingState>([
-		{
-			id: props.defaultSortBy && props.defaultSortBy !== 'random' ? 'Asymmetry_Score' : props.defaultSortBy!,
+	const defaultSortingState: SortingState = []
+	if (props.defaultSortBy && props.defaultSortBy !== 'random') {
+		defaultSortingState.push({
+			id: props.defaultSortBy,
 			desc: props.defaultSortDirection === 'DESC',
-		},
-	])
+		})
+	}
+	const [sortingState, _setSortingState] = useState<SortingState>(defaultSortingState)
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
 			if (typeof sortingUpdate === 'function') {
@@ -188,25 +194,18 @@ export default function LayerTable(props: {
 			} else return sortingState
 		})
 		setRandomize(false)
-		setPageIndex(0)
+		props.setPageIndex(0)
 	}
 	const [randomize, setRandomize] = useState<boolean>(props.defaultSortBy === 'random')
-	const [seed, setSeed] = useState<number>()
-	React.useLayoutEffect(() => {
-		if (randomize) {
-			generateSeed()
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [])
+	const [seed, setSeed] = useState<number>(generateSeed())
 	function generateSeed() {
-		const seed = Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
-		setSeed(seed)
+		return Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
 	}
 
 	function toggleRandomize() {
 		setRandomize((prev) => {
 			if (!prev) {
-				generateSeed()
+				setSeed(generateSeed())
 			}
 			return !prev
 		})
@@ -221,7 +220,7 @@ export default function LayerTable(props: {
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
 		_setShowSelectedLayers(value)
-		setPageIndex(0)
+		props.setPageIndex(0)
 	}
 
 	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
@@ -261,11 +260,11 @@ export default function LayerTable(props: {
 	const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
 		let newState: PaginationState
 		if (typeof updater === 'function') {
-			newState = updater({ pageIndex, pageSize })
+			newState = updater({ pageIndex: props.pageIndex, pageSize })
 		} else {
 			newState = updater
 		}
-		setPageIndex(newState.pageIndex)
+		props.setPageIndex(newState.pageIndex)
 		setPageSize(newState.pageSize)
 	}
 
@@ -285,32 +284,34 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const { data: dataRaw } = useLayersQuery({
-		pageIndex,
+	const layersRes = useLayersQuery({
+		pageIndex: props.pageIndex,
 		pageSize,
 		sort,
 		filter: filter ?? undefined,
 	})
 
-	// for some reason I can't use usePreviousData via trpc
-	const lastDataRef = useRef(dataRaw)
-	useLayoutEffect(() => {
-		if (dataRaw) {
-			lastDataRef.current = dataRaw
+	const layersData = layersRes.data
+	React.useLayoutEffect(() => {
+		if (autoSelectIfSingleResult && layersData?.layers.length === 1 && layersData.totalCount === 1) {
+			const layer = layersData.layers[0]
+			if (!props.selected.includes(layer.id)) {
+				props.setSelected([layer.id])
+			}
 		}
-	}, [dataRaw])
-	const data = dataRaw ?? lastDataRef.current
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [layersData])
 
 	const table = useReactTable({
-		data: data?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
+		data: layersData?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
 		columns: COL_DEFS,
-		pageCount: data?.pageCount ?? -1,
+		pageCount: layersData?.pageCount ?? -1,
 		state: {
 			sorting: sortingState,
 			columnVisibility,
 			rowSelection,
 			pagination: {
-				pageIndex: pageIndex,
+				pageIndex: props.pageIndex,
 				pageSize,
 			},
 		},
@@ -323,9 +324,9 @@ export default function LayerTable(props: {
 		getSortedRowModel: getSortedRowModel(),
 		manualPagination: true,
 	})
-	const currentPage = Math.min(pageIndex, data?.pageCount ?? 0)
-	const firstRowInPage = currentPage * (data?.layers.length ?? 0) + 1
-	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, data?.totalCount ?? 0)
+	const currentPage = Math.min(props.pageIndex, layersData?.pageCount ?? 0)
+	const firstRowInPage = currentPage * (layersData?.layers.length ?? 0) + 1
+	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, layersData?.totalCount ?? 0)
 	const { toast } = useToast()
 
 	function getChosenRows(row: Row<M.Layer>) {
@@ -421,7 +422,14 @@ export default function LayerTable(props: {
 					)}
 				</span>
 				<span className="flex h-10 items-center space-x-2">
-					<Button onClick={generateSeed} variant="outline" size="icon" className={randomize ? '' : 'invisible'}>
+					<Button
+						onClick={() => setSeed(generateSeed())}
+						disabled={layersRes.isFetching}
+						variant="outline"
+						size="icon"
+						data-enabled={randomize}
+						className="data-[enabled=true]:visible invisible"
+					>
 						<Dices />
 					</Button>
 					<div className="flex items-center space-x-1">
@@ -506,12 +514,15 @@ export default function LayerTable(props: {
 			</div>
 			{/*--------- pagination controls ---------*/}
 			<div className="flex items-center justify-between space-x-2 py-2">
-				<div className="flex-1 text-sm text-muted-foreground">
-					{showSelectedLayers
-						? `Showing ${firstRowInPage} to ${lastRowInPage} of ${data?.totalCount} selected rows`
-						: randomize
-							? `Showing ${data?.layers?.length} of ${data?.totalCount} randomized rows`
-							: `Showing ${firstRowInPage} to ${lastRowInPage} of ${data?.totalCount} matching rows`}
+				<div className="flex-1  flex items-center space-x-2">
+					<div className="text-sm text-muted-foreground">
+						{showSelectedLayers
+							? `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} selected rows`
+							: randomize
+								? `Showing ${layersData?.layers?.length} of ${layersData?.totalCount} randomized rows`
+								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} matching rows`}
+					</div>
+					<LoaderCircle data-loading={layersRes.isFetching} className="invisible data-[loading=true]:visible h-4 w-4 animate-spin" />
 				</div>
 				<div className={'space-x-2 ' + (randomize ? 'invisible' : '')}>
 					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>

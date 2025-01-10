@@ -20,6 +20,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	value: T | undefined
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: (value: T | undefined) => void
+	disabled?: boolean
 }
 
 export interface ComboBoxOption<T> {
@@ -28,6 +29,7 @@ export interface ComboBoxOption<T> {
 }
 
 function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
+	const disabled = props.disabled ?? false
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
 	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
@@ -61,13 +63,19 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 	} else if (selectedOption) {
 		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
 	} else {
-		selectedOptionDisplay = `Select ${props.title}...`
+		selectedOptionDisplay = props.value ?? `Select ${props.title}...`
 	}
 
 	return (
 		<Popover modal={true} open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button ref={btnRef} variant="outline" role="combobox" className={cn('w-[min] justify-between', props.className)}>
+				<Button
+					disabled={disabled}
+					ref={btnRef}
+					variant="outline"
+					role="combobox"
+					className={cn('w-[min] justify-between', props.className)}
+				>
 					<span>{selectedOptionDisplay}</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
