@@ -75,6 +75,7 @@ type MutServerStateWithIds = M.MutableServerState & {
 type LLState = {
 	layerList: IdedLLItem[]
 	listMutations: ItemMutations
+	allowDuplicates?: boolean
 }
 type LLStore = LLState & LLActions
 
@@ -136,6 +137,7 @@ const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions
 			)
 		},
 		move: (sourceIndex, targetIndex, modifiedBy) => {
+			if (sourceIndex === targetIndex || sourceIndex === targetIndex + 1) return
 			set((state) =>
 				Im.produce(state, (draft) => {
 					const layerList = draft.layerList
@@ -165,13 +167,6 @@ const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions
 }
 
 const selectLLState = (state: _SDState): LLState => ({ layerList: state.editedServerState.layerQueue, listMutations: state.queueMutations })
-const createLLStore = (set: Setter<LLState>, get: Getter<LLState>, initialItems: IdedLLItem[]): LLStore => {
-	return {
-		layerList: initialItems,
-		listMutations: initMutations(),
-		...createLLActions(set, get),
-	}
-}
 const deriveLLStore = (store: Zus.StoreApi<SDStore>) => {
 	const setLL = store.getState().setQueue
 	const getLL = () => selectLLState(store.getState())
@@ -217,60 +212,54 @@ const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) => {
 	}))
 }
 
-const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const actions: LLActions = {
-		add: (choiceItems) => {
-			const voteChoices = choiceItems.map((item) => item.layerId!)
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
-					if (!draft.vote) return
-					draft.vote.choices.push(...voteChoices)
-				})
-			)
-		},
-		move: (sourceIndex, targetIndex) => {
-			if (sourceIndex === targetIndex || sourceIndex + 1 === targetIndex) return
+function selectFilterExcludingLayersFromList(store: LLStore) {
+	if (store.allowDuplicates === undefined || store.allowDuplicates) return undefined
+	const layerIds = new Set<string>()
+	for (const item of store.layerList) {
+		if (item.layerId) layerIds.add(item.layerId)
+		if (item.vote) {
+			for (const id of item.vote.choices) {
+				layerIds.add(id)
+			}
+		}
+	}
+	return FB.comp(FB.inValues('id', Array.from(layerIds)), { neg: true })
+}
 
-			itemStore.getState().setItem(
-				Im.produce((draft) => {
-					if (!draft.vote) return
-					const choices = draft.vote.choices
-					const choice = choices[sourceIndex]
-					if (sourceIndex > targetIndex) {
-						targetIndex++
-					}
-					choices.splice(sourceIndex, 1)
-					choices.splice(targetIndex, 0, choice)
-				})
-			)
-		},
-		remove: (choiceId) => {
-			itemStore.getState().setItem(
-				Im.produce((draft) => {
-					if (!draft.vote) return
-					draft.vote.choices = draft.vote.choices.filter((id) => id !== choiceId)
-				})
-			)
-		},
-		setItem: (id, update) => {
+const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
+	const mutationStore = Zus.createStore<ItemMutations>(() => initMutations())
+	function selectLLState(state: LLItemState, mutState: ItemMutations): LLState {
+		return {
+			listMutations: mutState,
+			allowDuplicates: false,
+			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, source: 'manual' })) ?? [],
+		}
+	}
+	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
+	const llSet: Setter<LLState> = (update) => {
+		const llState = llGet()
+		const updated = typeof update === 'function' ? update(llState) : update
+		if (updated.layerList) {
+			const choices = updated.layerList!.map((item) => item.layerId!)
+			const defaultChoice = choices[0] ?? itemStore.getState().item.vote?.defaultChoice
 			itemStore.getState().setItem((prev) =>
 				Im.produce(prev, (draft) => {
 					if (!draft.vote) return
-					const choiceIndex = draft.vote.choices.findIndex((id) => id === id)
-					if (choiceIndex === -1) return
-					const existing = draft.vote!.choices[choiceIndex]
-					const updatedItem = typeof update === 'function' ? update({ layerId: existing, source: 'manual', id: existing }) : update
-					draft.vote!.choices[choiceIndex] = updatedItem.layerId!
+					draft.vote.choices = choices
+					draft.vote.defaultChoice = defaultChoice
 				})
 			)
-		},
+		}
+		if (updated.listMutations) {
+			mutationStore.setState(updated.listMutations)
+		}
 	}
 
+	const actions = createLLActions(llSet, llGet)
+
 	return derive<LLStore>((get) => {
-		const vote = get(itemStore).item.vote!
 		return {
-			layerList: vote.choices.map((layerId): IdedLLItem => ({ id: layerId, layerId, source: 'manual' })),
-			listMutations: initMutations(),
+			...selectLLState(get(itemStore), get(mutationStore)),
 			...actions,
 		}
 	})
@@ -876,7 +865,6 @@ function QueueGenerationCard() {
 	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(false)
 	const itemTypeId = React.useId()
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
-	const numVoteChoicesRef = React.useRef<HTMLInputElement>(null)
 	const numVoteChoicesId = React.useId()
 
 	const genereateMutation = useMutation({
@@ -1343,6 +1331,8 @@ function ItemDropdown(props: {
 		_setSubDropdownState(state)
 	}
 
+	const baseFilter = selectFilterExcludingLayersFromList(Zus.useStore(props.listStore))
+	const user = useLoggedInUser().data
 	return (
 		<DropdownMenu open={dropdownOpen || !!subDropdownState} onOpenChange={setDropdownOpen}>
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
@@ -1355,6 +1345,7 @@ function ItemDropdown(props: {
 						return setSubDropdownState(open ? 'edit' : null)
 					}}
 					itemStore={props.itemStore}
+					baseFilter={baseFilter}
 				>
 					<DropdownMenuItem>Edit</DropdownMenuItem>
 				</EditLayerListItemDialogWrapper>
@@ -1369,9 +1360,32 @@ function ItemDropdown(props: {
 						const state = props.listStore.getState()
 						state.add(items, props.index)
 					}}
+					baseFilter={baseFilter}
 				>
 					<DropdownMenuItem>Add layers before</DropdownMenuItem>
 				</SelectLayersDialog>
+				<DropdownMenuItem
+					onClick={() => {
+						if (!user) return
+						const item = props.itemStore.getState().item
+						const itemIdx = props.listStore.getState().layerList.findIndex((i) => i.id === item.id)
+						props.listStore.getState().move(itemIdx, -1, user.discordId)
+					}}
+				>
+					Send to Front
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() => {
+						if (!user) return
+						const layerList = props.listStore.getState().layerList
+						const item = props.itemStore.getState().item
+						const itemIdx = layerList.findIndex((i) => i.id === item.id)
+						const lastIdx = layerList.length - 1
+						props.listStore.getState().move(itemIdx, lastIdx, user.discordId)
+					}}
+				>
+					Send to Back
+				</DropdownMenuItem>
 
 				<SelectLayersDialog
 					title="Add layers after"
@@ -1382,6 +1396,7 @@ function ItemDropdown(props: {
 						const state = props.listStore.getState()
 						state.add(items, props.index + 1)
 					}}
+					baseFilter={baseFilter}
 				>
 					<DropdownMenuItem>Add layers after</DropdownMenuItem>
 				</SelectLayersDialog>
@@ -1409,7 +1424,7 @@ function QueueItemSeparator(props: {
 	return (
 		<Separator
 			ref={setNodeRef}
-			className="w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-green-400"
+			className="w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-secondary-foreground"
 			data-is-last={props.isLast && !isOver}
 			data-is-over={isOver}
 		/>
@@ -1426,6 +1441,7 @@ export function SelectLayersDialog(props: {
 	selectQueueItems: (queueItems: M.LayerListItem[]) => void
 	defaultSelected?: M.LayerId[]
 	selectingSingleLayerQueueItem?: boolean
+	baseFilter?: M.FilterNode
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 }) {
@@ -1434,8 +1450,16 @@ export function SelectLayersDialog(props: {
 	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
 	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const filterEntity = useFilterEntity(selectedFilterId ?? undefined).data
-	const [filterEnabled, setFilterEnabled] = React.useState(true)
-	const filterMenuStore = useFilterMenuStore(filterEntity?.filter && filterEnabled ? filterEntity.filter : undefined)
+	const [selectedFilterEnabled, setSelectedFilterEnabled] = React.useState(true)
+	let baseFilter: M.FilterNode | undefined
+	if (props.baseFilter && filterEntity?.filter && selectedFilterEnabled) {
+		baseFilter = FB.and([props.baseFilter, filterEntity.filter])
+	} else if (filterEntity?.filter && selectedFilterEnabled) {
+		baseFilter = filterEntity.filter
+	} else if (props.baseFilter) {
+		baseFilter = props.baseFilter
+	}
+	const filterMenuStore = useFilterMenuStore(baseFilter)
 
 	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -1493,14 +1517,7 @@ export function SelectLayersDialog(props: {
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent
-				className="w-auto max-w-full min-w-0"
-				onKeyDown={(e) => {
-					if (e.key === 'Enter') {
-						submit()
-					}
-				}}
-			>
+			<DialogContent className="w-auto max-w-full min-w-0">
 				<DialogHeader>
 					<DialogTitle>{props.title}</DialogTitle>
 					<DialogDescription>{props.description}</DialogDescription>
@@ -1523,8 +1540,8 @@ export function SelectLayersDialog(props: {
 						title="Choose Filter"
 						filterId={selectedFilterId}
 						onSelect={setSelectedFilterId}
-						enabled={filterEnabled}
-						setEnabled={setFilterEnabled}
+						enabled={selectedFilterEnabled}
+						setEnabled={setSelectedFilterEnabled}
 						allowToggle={true}
 					/>
 				</div>
@@ -1564,8 +1581,8 @@ function TableStyleLayerPicker(props: {
 					'SubFac_1',
 					'Faction_2',
 					'SubFac_2',
-					'Balance_Differential',
 					'Asymmetry_Score',
+					'Balance_Differential',
 				]}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}
@@ -1603,6 +1620,7 @@ type InnerEditLayerListItemDialogProps = {
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	allowVotes?: boolean
 	itemStore: Zus.StoreApi<LLItemStore>
+	baseFilter?: M.FilterNode
 }
 
 function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
@@ -1632,16 +1650,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const user = useLoggedInUser().data
 
-	useDragEnd((event) => {
-		const layerQueue = editedItem.vote?.choices.map((id): M.LayerListItem & WithMutationId => ({ id, layerId: id, source: 'manual' })) ?? []
-		if (!editedItem.vote || !event.over) return
-		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
-		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over?.id as string))
-
-		if (sourceIndex === targetIndex || targetIndex + 1 === sourceIndex || !user) return
-		derivedVoteChoiceStore.getState().move(sourceIndex, targetIndex, user.discordId)
-	})
-
+	const excludeVoteDuplicatesFilter = selectFilterExcludingLayersFromList(Zus.useStore(derivedVoteChoiceStore))
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const filtersRes = useFilters()
@@ -1650,10 +1659,18 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const [selectedBaseFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const [filterEnabled, setFilterEnabled] = React.useState(true)
 
-	const baseFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilterId)
+	const selectedFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilterId)
+	let baseFilter: M.FilterNode | undefined
+	if (selectedFilterEntity?.filter && filterEnabled && props.baseFilter) {
+		baseFilter = FB.and([props.baseFilter, selectedFilterEntity.filter])
+	} else if (selectedFilterEntity?.filter && filterEnabled) {
+		baseFilter = selectedFilterEntity.filter
+	} else if (props.baseFilter) {
+		baseFilter = props.baseFilter
+	}
 
 	const filterMenuStore = useFilterMenuStore(
-		filterEnabled ? baseFilterEntity?.filter : undefined,
+		baseFilter,
 		editedItem.layerId && filterEnabled ? M.getMiniLayerFromId(editedItem.layerId) : undefined
 	)
 
@@ -1670,7 +1687,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
-		<div className="w-full h-full" onKeyDown={(e) => e.key === 'Enter' && submit()}>
+		<div className="w-full h-full">
 			<DialogHeader>
 				<div className="flex justify-between mr-6">
 					<div className="flex flex-col">
@@ -1756,6 +1773,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						description="Select layers to add to the voting pool"
 						open={addLayersOpen}
 						onOpenChange={setAddLayersOpen}
+						baseFilter={excludeVoteDuplicatesFilter}
 						selectQueueItems={(items) => {
 							derivedVoteChoiceStore.getState().add(items)
 						}}

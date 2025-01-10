@@ -5,6 +5,7 @@ import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 
 import { Button } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -56,9 +57,10 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{userRes.data && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon" className="rounded-full overflow-hidden">
-									<img src={avatarUrl} alt="Discord Avatar" />
-								</Button>
+								<Avatar className="hover:cursor-pointer select-none">
+									<AvatarImage src={avatarUrl} />
+									<AvatarFallback>{userRes.data.username}</AvatarFallback>
+								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
 								<DropdownMenuLabel>{userRes.data.username}</DropdownMenuLabel>
