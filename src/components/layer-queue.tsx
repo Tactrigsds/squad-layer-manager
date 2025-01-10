@@ -1449,6 +1449,9 @@ export function SelectLayersDialog(props: {
 
 	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
 	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
+	React.useLayoutEffect(() => {
+		if (poolFilterId) setSelectedFilterId(poolFilterId)
+	}, [poolFilterId])
 	const filterEntity = useFilterEntity(selectedFilterId ?? undefined).data
 	const [selectedFilterEnabled, setSelectedFilterEnabled] = React.useState(true)
 	let baseFilter: M.FilterNode | undefined
@@ -1535,14 +1538,15 @@ export function SelectLayersDialog(props: {
 						)}
 					</div>
 				</DialogHeader>
-				<div>
+				<div className="w-min">
 					<FilterEntitySelect
-						title="Choose Filter"
+						title="Filter"
 						filterId={selectedFilterId}
+						className="max-w-16"
 						onSelect={setSelectedFilterId}
+						allowToggle={true}
 						enabled={selectedFilterEnabled}
 						setEnabled={setSelectedFilterEnabled}
-						allowToggle={true}
 					/>
 				</div>
 
@@ -1655,11 +1659,11 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const filtersRes = useFilters()
 
-	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
-	const [selectedBaseFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
+	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const [selectedFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const [filterEnabled, setFilterEnabled] = React.useState(true)
 
-	const selectedFilterEntity = filtersRes.data?.find((f) => f.id === selectedBaseFilterId)
+	const selectedFilterEntity = filtersRes.data?.find((f) => f.id === selectedFilterId)
 	let baseFilter: M.FilterNode | undefined
 	if (selectedFilterEntity?.filter && filterEnabled && props.baseFilter) {
 		baseFilter = FB.and([props.baseFilter, selectedFilterEntity.filter])
@@ -1737,7 +1741,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				<FilterEntitySelect
 					title="Filter"
 					className="max-w-16"
-					filterId={selectedBaseFilterId}
+					filterId={selectedFilterId}
 					onSelect={(id) => setSelectedBaseFilterId(id)}
 					allowToggle={true}
 					enabled={filterEnabled}
