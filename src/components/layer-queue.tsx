@@ -65,6 +65,7 @@ import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
 import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
 import { useRefConstructor } from '@/lib/react.ts'
+import useWindowDimensions from '@/hooks/use-window-dimensions.ts'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.MutableServerState & {
@@ -1581,21 +1582,26 @@ function TableStyleLayerPicker(props: {
 }) {
 	const [pageIndex, setPageIndex] = React.useState(0)
 
+	const dimensions = useWindowDimensions()
+
+	let defaultColumns: (M.LayerColumnKey | M.LayerCompositeKey)[] = [
+		'Layer',
+		'Faction_1',
+		'SubFac_1',
+		'Faction_2',
+		'SubFac_2',
+		'Asymmetry_Score',
+		'Balance_Differential',
+	]
+	if (dimensions.width < 1000) {
+		defaultColumns = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
+	}
+
 	return (
 		<div className="flex h-full">
 			<LayerTable
 				filter={props.filter}
-				defaultColumns={[
-					'Level',
-					'Gamemode',
-					'LayerVersion',
-					'Faction_1',
-					'SubFac_1',
-					'Faction_2',
-					'SubFac_2',
-					'Asymmetry_Score',
-					'Balance_Differential',
-				]}
+				defaultColumns={defaultColumns}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}
 				setPageIndex={setPageIndex}

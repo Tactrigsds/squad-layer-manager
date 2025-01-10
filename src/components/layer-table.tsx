@@ -115,8 +115,8 @@ const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 
 const COLS_ORDER = [
 	'id',
-	'Level',
 	'Layer',
+	'Level',
 	'Gamemode',
 	'LayerVersion',
 	'Faction_1',
@@ -129,8 +129,10 @@ const COLS_ORDER = [
 
 {
 	const sortedColKeys = [...M.COLUMN_KEYS_WITH_COMPUTED].sort((a, b) => {
-		const aIndex = COLS_ORDER.indexOf(a)
-		const bIndex = COLS_ORDER.indexOf(b)
+		let aIndex = COLS_ORDER.indexOf(a)
+		if (aIndex === -1) aIndex = COLS_ORDER.length
+		let bIndex = COLS_ORDER.indexOf(b)
+		if (bIndex === -1) bIndex = COLS_ORDER.length
 		return aIndex - bIndex
 	})
 
@@ -207,6 +209,7 @@ export default function LayerTable(props: {
 		setRandomize((prev) => {
 			if (!prev) {
 				setSeed(generateSeed())
+				_setSortingState([])
 			}
 			return !prev
 		})
@@ -501,7 +504,9 @@ export default function LayerTable(props: {
 											}}
 										>
 											{row.getVisibleCells().map((cell) => (
-												<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+												<TableCell className="px-4" key={cell.id}>
+													{flexRender(cell.column.columnDef.cell, cell.getContext())}
+												</TableCell>
 											))}
 										</TableRow>
 									</ContextMenuTrigger>
