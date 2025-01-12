@@ -29,8 +29,8 @@ export const BROADCASTS = {
 			return `Vote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
 		},
 		voteReminder(timeLeft: number, choices: M.LayerId[]) {
-			const minutes = Math.floor((timeLeft * 1000) / 60)
-			const seconds = (timeLeft * 1000) % 60
+			const minutes = Math.floor(timeLeft / 1000 / 60)
+			const seconds = (timeLeft / 1000) % 60
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
 			return `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
 		},

@@ -397,7 +397,7 @@ export async function startVote(
 
 	voteState = res.voteStateUpdate.state
 	voteStateUpdate$.next([ctx, res.voteStateUpdate])
-	registerVoteDeadline$(ctx)
+	registerVoteDeadlineAndReminder$(ctx)
 	await SquadServer.rcon.broadcast(
 		ctx,
 		BROADCASTS.vote.started(
@@ -474,7 +474,7 @@ export async function abortVote(ctx: C.Log & C.Db, opts: { aborter: M.GuiOrChatU
 	return { code: 'ok' as const }
 }
 
-function registerVoteDeadline$(ctx: C.Log & C.Db) {
+function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	voteEndTask?.unsubscribe()
 	voteEndTask = new Subscription()
 
