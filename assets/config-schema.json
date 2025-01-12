@@ -83,9 +83,23 @@
           "required": ["strings", "scopes"],
           "additionalProperties": false,
           "description": "Abort the current vote"
+        },
+        "showNext": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "$ref": "#/properties/commands/properties/help/properties/strings"
+            },
+            "scopes": {
+              "$ref": "#/properties/commands/properties/help/properties/scopes"
+            }
+          },
+          "required": ["strings", "scopes"],
+          "additionalProperties": false,
+          "description": "Show the next layer or configured vote"
         }
       },
-      "required": ["help", "startVote", "restartVote", "abortVote"],
+      "required": ["help", "startVote", "restartVote", "abortVote", "showNext"],
       "additionalProperties": false
     },
     "lowQueueWarningThreshold": {

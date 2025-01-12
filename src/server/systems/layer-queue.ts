@@ -348,7 +348,7 @@ export async function startVote(
 	}
 	voteState = updatedVoteState
 	voteUpdate$.next([ctx, update])
-	await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.started(updatedVoteState.choices))
+	await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.started(updatedVoteState.choices, updatedVoteState.defaultChoice))
 
 	return { code: 'ok' as const }
 }
@@ -606,6 +606,10 @@ async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
 	if (lock) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
 	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+}
+export async function peekNext(ctx: C.Db & C.Log) {
+	const serverState = await getServerState({}, ctx)
+	return serverState.layerQueue[0] ?? null
 }
 
 async function includeServerUpdateParts(

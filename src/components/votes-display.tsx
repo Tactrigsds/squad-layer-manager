@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import { assertNever } from '@/lib/typeGuards'
-import { getMiniLayerFromId } from '@/models'
+import * as DH from '@/lib/display-helpers'
 import * as M from '@/models'
 
 type VoteTallyProps = {
@@ -14,13 +14,12 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 	const tally = M.tallyVotes(voteState, playerCount)
 	const options = Array.from(tally.totals)
 		.map(([layerId, voteCount]) => {
-			const layer = getMiniLayerFromId(layerId)
 			const index = voteState.choices.findIndex((choice) => choice === layerId)
 			return {
 				id: layerId,
 				index,
 				percentage: tally.percentages.get(layerId),
-				name: `${layer.Level} ${layer.Gamemode} (${layer.Faction_1} vs ${layer.Faction_2})`,
+				name: DH.toShortLayerNameFromId(layerId),
 				votes: voteCount,
 				isWinner: voteState.code === 'ended:winner' && voteState.winner === layerId,
 			}
@@ -34,6 +33,7 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 	switch (voteState.code) {
 		case 'ended:winner':
 		case 'ended:aborted':
+		case 'ended:insufficient-votes':
 			statusDisplay = 'Vote has ended.'
 			break
 		case 'in-progress':
@@ -48,11 +48,11 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 			<CardHeader>
 				<CardTitle className="">{statusDisplay}</CardTitle>
 			</CardHeader>
-			<CardContent>
+			<CardContent className="space-y-6">
 				{options.map((option) => (
 					<div key={option.id} className="mb-4">
-						<div className="mb-2 flex items-center justify-between space-x-1">
-							<span className={`font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
+						<div className="mb-2 flex flex-col items-start justify-between space-y-1">
+							<span className={`text-nowrap font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
 								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>

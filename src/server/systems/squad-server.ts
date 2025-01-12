@@ -82,6 +82,7 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 		await rcon.warn(ctx, msg.playerId, `Unknown command "${words[0]}". Did you mean ${matched}?`)
 		return
 	}
+	ctx.log.info('Command received: %s', cmd)
 
 	const cmdConfig = CONFIG.commands[cmd]
 	if (!chatInScope(cmdConfig.scopes, msg.chat)) {
@@ -125,6 +126,11 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 				})
 			}
 			await rcon.warn(ctx, msg.playerId, WARNS.commands.help(configsWithDescriptions, CONFIG.commandPrefix))
+			return
+		}
+		case 'showNext': {
+			const nextItem = await LayerQueue.peekNext(ctx)
+			await rcon.warn(ctx, msg.playerId, WARNS.queue.showNext(nextItem))
 			return
 		}
 		default: {

@@ -8,7 +8,7 @@ import { capitalID, iterateIDs, lowerID } from './id-parser'
 import Rcon, { DecodedPacket } from './rcon-core'
 import * as SM from './squad-models'
 
-type WarnOptions = { msg: string; repeat?: number } | string
+type WarnOptions = { msg: string | string[]; repeat?: number } | string | string[]
 
 export default class SquadRcon {
 	event$: Subject<SM.SquadEvent> = new Subject()
@@ -132,16 +132,22 @@ export default class SquadRcon {
 
 	async warn(ctx: C.Log, anyID: string, opts: WarnOptions) {
 		let repeatCount = 1
-		let msg: string
+		let msgArr: string[]
 		if (typeof opts === 'string') {
-			msg = opts
+			msgArr = [opts]
+		} else if (Array.isArray(opts)) {
+			msgArr = opts
 		} else {
-			msg = opts.msg
-			repeatCount = opts.repeat ?? 1
+			msgArr = Array.isArray(opts.msg) ? opts.msg : [opts.msg]
+			repeatCount = opts.repeat || 1
 		}
+
+		ctx.log.info(`Warning player: %s: %s`, anyID, msgArr)
 		for (let i = 0; i < repeatCount; i++) {
-			await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
-			await sleep(4000)
+			for (const msg of msgArr) {
+				await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
+			}
+			await sleep(5000)
 		}
 	}
 
