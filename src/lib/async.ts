@@ -182,7 +182,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 				)
 			}
 		} else {
-			release = releaseStub
+			release = () => {}
 		}
 		try {
 			startUnlockCount?.()
@@ -269,4 +269,21 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 	}
 }
 
-function releaseStub() {}
+export type AsyncTask<T extends any[]> = { params: T; task: (...params: T) => Promise<void> }
+export class AsyncExclusiveTaskRunner {
+	queue: AsyncTask<any>[] = []
+	running = false
+
+	async runExclusiveUntilEmpty() {
+		if (this.running) return
+		this.running = true
+		try {
+			while (this.queue.length > 0) {
+				const task = this.queue.shift()!
+				await task.task(...task.params)
+			}
+		} finally {
+			this.running = false
+		}
+	}
+}

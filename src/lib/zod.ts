@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+export const PercentageSchema = z.number().min(0).max(100)
+
 export const ParsedIntSchema = z
 	.string()
 	.transform((val) => parseInt(val, 10))

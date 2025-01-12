@@ -1,4 +1,3 @@
-import { Observable } from 'rxjs'
 import { z } from 'zod'
 import { ParsedBigIntSchema, ParsedIntSchema } from '@/lib/zod'
 
@@ -72,10 +71,29 @@ export const SquadSchema = z.object({
 
 export type Squad = z.infer<typeof SquadSchema>
 
+export const COMMAND_SCOPES = z.enum(['admin', 'public'])
+export type CommandScope = z.infer<typeof COMMAND_SCOPES>
+
+export const CHAT_CHANNEL = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
+export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
+export const CHAT_SCOPE_MAPPINGS = {
+	[COMMAND_SCOPES.Values.admin]: ['ChatAdmin'],
+	[COMMAND_SCOPES.Values.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
+}
+export function getScopesForChat(chat: ChatChannel): CommandScope[] {
+	const matches: CommandScope[] = []
+	for (const [scope, chats] of Object.entries(CHAT_SCOPE_MAPPINGS)) {
+		if (chats.includes(chat)) {
+			matches.push(scope as CommandScope)
+		}
+	}
+	return matches
+}
+
 export const ChatMessageSchema = z
 	.object({
 		raw: z.string(),
-		chat: z.string(),
+		chat: CHAT_CHANNEL,
 		name: z.string(),
 		message: z.string(),
 		time: z.date(),
@@ -132,8 +150,6 @@ export const SquadCreatedSchema = z
 	})
 	.catchall(z.string())
 
-export const CHAT_CHANNEL = z.enum(['admin', 'team', 'squad'])
-export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
 export const COMMANDS = ['vote', 'rtv', 'setpool'] as const
 
 export const SquadEventSchema = z.discriminatedUnion('type', [

@@ -1,4 +1,5 @@
 import { DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
+import { useForm } from '@tanstack/react-form'
 import { CSS } from '@dnd-kit/utilities'
 import * as Im from 'immer'
 import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
@@ -66,9 +67,10 @@ import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
 import { useRefConstructor } from '@/lib/react.ts'
 import useWindowDimensions from '@/hooks/use-window-dimensions.ts'
+import { zodValidator } from '@tanstack/zod-form-adapter'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
-type MutServerStateWithIds = M.MutableServerState & {
+type MutServerStateWithIds = M.UserModifiableServerState & {
 	layerQueue: IdedLLItem[]
 	historyFilters: EditedHistoryFilterWithId[]
 }
@@ -406,11 +408,7 @@ export default function ServerDashboard() {
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
 			<span className="flex space-x-4">
-				{hasVoteState && (
-					<div>
-						<VoteState />
-					</div>
-				)}
+				<VoteState />
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
@@ -537,6 +535,7 @@ function VoteState() {
 	const abortVoteMutation = useAbortVote()
 	const toaster = useToast()
 	const voteState = useVoteState()
+	const squadServerStatus = useSquadServerStatus()
 
 	async function abortVote() {
 		const serverStateMut = SDStore.getState().editedServerState
@@ -559,50 +558,79 @@ function VoteState() {
 	let body: React.ReactNode
 
 	const slmConfig = useConfig()
-	const [voteConfig, setVoteConfig] = React.useState({
-		duration: slmConfig?.defaults.voteDurationSeconds ?? 30,
+	const startVoteForm = useForm({
+		defaultValues: {
+			durationSeconds: slmConfig?.defaults.voteDurationSeconds ?? 30,
+			minValidVotePercentage: slmConfig?.defaults.minValidVotePercentage ?? 75,
+		},
+		validatorAdapter: zodValidator(),
+		onSubmit: async ({ value, formApi }) => {
+			const res = await startVoteMutation.mutateAsync({
+				durationSeconds: value.durationSeconds,
+				minValidVotePercentage: value.minValidVotePercentage,
+			})
+			if (res.code === 'ok') {
+				toaster.toast({ title: 'Vote started' })
+				return
+			}
+			toaster.toast({
+				title: 'Failed to start vote',
+				description: res.code,
+				variant: 'destructive',
+			})
+		},
 	})
 
-	async function startVote() {
-		const res = await startVoteMutation.mutateAsync({ durationSeconds: voteConfig.duration })
-		if (res.code === 'ok') {
-			toaster.toast({ title: 'Vote started' })
-			return
-		}
-		toaster.toast({
-			title: 'Failed to start vote',
-			description: res.code,
-			variant: 'destructive',
-		})
-	}
+	const voteDurationEltId = React.useId()
+	const minRequiredEltId = React.useId()
 
-	async function rerunVote() {
-		const res = await startVoteMutation.mutateAsync({ durationSeconds: voteConfig.duration, restart: true })
-		if (res.code === 'ok') {
-			toaster.toast({ title: 'Vote restarted' })
-			return
-		}
-		toaster.toast({
-			title: 'Failed to restart vote',
-			description: res.code,
-			variant: 'destructive',
-		})
+	if (!voteState || !squadServerStatus) return null
+	function onSubmit(e: React.FormEvent) {
+		e.preventDefault()
+		e.stopPropagation()
+		startVoteForm.handleSubmit()
 	}
-
-	if (!voteState) return null
 
 	const voteConfigElt = (
-		<div className="flex flex-col space-y-2">
-			<div>
-				<Label>Vote Duration (seconds)</Label>
-				<Input
-					type="number"
-					min="0"
-					defaultValue={voteConfig.duration}
-					onChange={(e) => setVoteConfig((prev) => ({ ...prev, duration: parseInt(e.target.value) }))}
-				/>
-			</div>
-		</div>
+		<form onSubmit={onSubmit} className="flex flex-col space-y-2">
+			<startVoteForm.Field
+				name="durationSeconds"
+				validators={{ onChange: M.StartVoteInputSchema.shape.durationSeconds }}
+				children={(field) => (
+					<>
+						<Label htmlFor={voteDurationEltId}>Vote Duration (seconds)</Label>
+						<Input
+							id={voteDurationEltId}
+							name={field.name}
+							type="number"
+							defaultValue={field.state.value}
+							onChange={(e) => {
+								return field.setValue(e.target.valueAsNumber)
+							}}
+						/>
+						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
+					</>
+				)}
+			/>
+			<startVoteForm.Field
+				name="minValidVotePercentage"
+				validators={{ onChange: M.StartVoteInputSchema.shape.minValidVotePercentage, onChangeAsyncDebounceMs: 250 }}
+				children={(field) => (
+					<>
+						<Label htmlFor={minRequiredEltId}>Min Required Turnout(%)</Label>
+						<Input
+							id={minRequiredEltId}
+							type="number"
+							defaultValue={field.state.value}
+							onChange={(e) => {
+								return field.setValue(e.target.valueAsNumber)
+							}}
+						/>
+						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
+					</>
+				)}
+			/>
+		</form>
 	)
 
 	const rerunVoteBtn = (
@@ -610,10 +638,10 @@ function VoteState() {
 			onClick={async () => {
 				const id = await openDialog({
 					title: 'Rerun Vote',
-					description: 'Are you sure you want to return the vote?',
+					description: 'Are you sure you want to rerun the vote?',
 					buttons: [{ label: 'Rerun Vote', id: 'confirm' }],
 				})
-				if (id === 'confirm') rerunVote()
+				if (id === 'confirm') startVoteForm.handleSubmit()
 			}}
 			variant="secondary"
 		>
@@ -648,7 +676,7 @@ function VoteState() {
 								description: 'Are you sure you want to start the vote?',
 								buttons: [{ label: 'Start Vote', id: 'confirm' }],
 							})
-							if (id === 'confirm') startVote()
+							if (id === 'confirm') startVoteForm.handleSubmit()
 						}}
 					>
 						Start Vote
@@ -662,8 +690,7 @@ function VoteState() {
 				body = (
 					<>
 						<Timer deadline={voteState.deadline} />
-						<VoteTallyDisplay voteState={voteState} />
-						{rerunVoteBtn}
+						<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
 						{cancelBtn}
 					</>
 				)
@@ -672,38 +699,27 @@ function VoteState() {
 		case 'ended:winner':
 			body = (
 				<>
-					<span>winner: {Helpers.toShortLayerNameFromId(voteState.winner)}</span>
-					<VoteTallyDisplay voteState={voteState} />
+					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
 					{rerunVoteBtn}
 					{voteConfigElt}
 				</>
 			)
 			break
+		case 'ended:insufficient-votes':
 		case 'ended:aborted': {
-			const user = voteState.aborter.discordId && PartsSys.findUser(voteState.aborter.discordId)
+			const user = voteState.code === 'ended:aborted' ? voteState.aborter.discordId && PartsSys.findUser(voteState.aborter.discordId) : null
 			body = (
 				<>
-					<Alert>
-						<AlertTitle>Vote Aborted</AlertTitle>
-						{user ? (
-							<AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
-						) : (
-							<AlertDescription>Vote was Aborted</AlertDescription>
-						)}
-					</Alert>
-					<VoteTallyDisplay voteState={voteState} />
-					{rerunVoteBtn}
-					{voteConfigElt}
-				</>
-			)
-			break
-		}
-		case 'ended:insufficient-votes': {
-			body = (
-				<>
+					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
 					<Alert variant="destructive">
 						<AlertTitle>Vote Aborted</AlertTitle>
-						<AlertDescription>Vote was aborted due to insufficient votes</AlertDescription>
+						{voteState.code === 'ended:insufficient-votes' && <AlertDescription>Insufficient votes to determine a winner</AlertDescription>}
+						{voteState.code === 'ended:aborted' &&
+							(user ? (
+								<AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
+							) : (
+								<AlertDescription>Vote was Aborted</AlertDescription>
+							))}
 					</Alert>
 					{rerunVoteBtn}
 					{voteConfigElt}
@@ -716,12 +732,14 @@ function VoteState() {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Vote</CardTitle>
-			</CardHeader>
-			<CardContent className="flex flex-col space-y-2">{body}</CardContent>
-		</Card>
+		<div>
+			<Card>
+				<CardHeader>
+					<CardTitle>Vote</CardTitle>
+				</CardHeader>
+				<CardContent className="flex flex-col space-y-2">{body}</CardContent>
+			</Card>
+		</div>
 	)
 }
 
@@ -863,6 +881,7 @@ function QueueGenerationCard() {
 	const numItemsToGenerateId = React.useId()
 
 	const [itemType, setItemType] = React.useState<'layer' | 'vote'>('layer')
+
 	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(false)
 	const itemTypeId = React.useId()
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)

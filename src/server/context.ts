@@ -21,7 +21,7 @@ export function includeLogProperties<T extends Log>(ctx: T, fields: Record<strin
 }
 
 export type Op = {
-	tasks: Promise<void>[]
+	tasks: Promise<any>[]
 	result?: 'ok' | string
 	endMsgBindings: Record<string, any>
 	[Symbol.asyncDispose]: (err?: any) => Promise<void>

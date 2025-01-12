@@ -462,13 +462,13 @@ const SUBFACTION_ABBREVIATIONS = {
 	Support: 'SP',
 } as Record<string, string>
 
-export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
+const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
 	AlBasrah: 'Basrah',
 	Anvil: 'Anvil',
 	Belaya: 'Belaya',
 	BlackCoast: 'Coast',
 	Chora: 'Chora',
-	Fallujah: 'Fallu',
+	Fallujah: 'Fallujah',
 	FoolsRoad: 'Fools',
 	GooseBay: 'Goose',
 	Gorodok: 'Goro',

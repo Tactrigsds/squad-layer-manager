@@ -26,6 +26,7 @@ import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 import { useFilters } from '@/hooks/filters.ts'
+import { Label } from './ui/label.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -904,12 +905,12 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 						}}
 						id={mirrorCheckboxId}
 					/>
-					<label
+					<Label
 						htmlFor={mirrorCheckboxId}
 						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 					>
 						Mirror
-					</label>
+					</Label>
 				</div>
 			</div>
 		)

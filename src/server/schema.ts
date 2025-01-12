@@ -127,6 +127,8 @@ export const servers = mysqlTable('servers', {
 	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
 	historyFilters: json('historyFilters').notNull().default(superjson.stringify([])),
 	settings: json('settings').default(superjson.stringify({})),
+
+	lastRoll: timestamp('lastRoll', { mode: 'date' }),
 })
 
 export type Server = typeof servers.$inferSelect

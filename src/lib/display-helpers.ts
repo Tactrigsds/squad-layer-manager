@@ -2,34 +2,7 @@ import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
 // TODO use layer-components.json instead
-export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
-	AlBasrah: 'Basrah',
-	Anvil: 'Anvil',
-	Belaya: 'Belaya',
-	BlackCoast: 'Coast',
-	Chora: 'Chora',
-	Fallujah: 'Fallu',
-	FoolsRoad: 'Fools',
-	GooseBay: 'Goose',
-	Gorodok: 'Goro',
-	Harju: 'Harju',
-	Kamdesh: 'Kamdesh',
-	Kohat: 'Kohat',
-	Kokan: 'Kokan',
-	Lashkar: 'Lashkar',
-	Logar: 'Logar',
-	Manicouagan: 'Manic',
-	Mestia: 'Mestia',
-	Mutaha: 'Muta',
-	Narva: 'Narva',
-	PacificProvingGrounds: 'PPG',
-	Sanxian: 'Sanxian',
-	Skorpo: 'Skorpo',
-	Sumari: 'Sumari',
-	Tallil: 'Tallil',
-	Yehorivka: 'Yeho',
-	JensensRange: 'Jensens',
-}
+export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = LayerComponents.levelShortNames
 
 export function toShortLevel(level: M.Layer['Level']) {
 	return LayerComponents.levelShortNames[level as keyof typeof LayerComponents.levelShortNames]

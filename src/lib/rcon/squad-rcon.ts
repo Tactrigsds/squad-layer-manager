@@ -1,5 +1,5 @@
 import { Subject } from 'rxjs'
-import { AsyncResource } from '@/lib/async'
+import { AsyncResource, sleep } from '@/lib/async'
 
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
@@ -7,6 +7,8 @@ import * as C from '@/server/context.ts'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import Rcon, { DecodedPacket } from './rcon-core'
 import * as SM from './squad-models'
+
+type WarnOptions = { msg: string; repeat?: number } | string
 
 export default class SquadRcon {
 	event$: Subject<SM.SquadEvent> = new Subject()
@@ -124,12 +126,23 @@ export default class SquadRcon {
 		await this.rcon.execute(ctx, `AdminBroadcast ${message}`)
 	}
 
-	async setFogOfWar(ctx: C.Log, mode: string) {
+	async setFogOfWar(ctx: C.Log, mode: 'on' | 'off') {
 		await this.rcon.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
-	async warn(ctx: C.Log, anyID: string, message: string) {
-		await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${message}`)
+	async warn(ctx: C.Log, anyID: string, opts: WarnOptions) {
+		let repeatCount = 1
+		let msg: string
+		if (typeof opts === 'string') {
+			msg = opts
+		} else {
+			msg = opts.msg
+			repeatCount = opts.repeat ?? 1
+		}
+		for (let i = 0; i < repeatCount; i++) {
+			await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
+			await sleep(4000)
+		}
 	}
 
 	// 0 = Perm | 1m = 1 minute | 1d = 1 Day | 1M = 1 Month | etc...
@@ -143,7 +156,8 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	async setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
+	async setNextLayer(_ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
+		await using ctx = C.pushOperation(_ctx, 'squad-rcon:setNextLayer', { level: 'debug', startMsgBindings: { layer } })
 		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
 		this.serverStatus.invalidate(ctx)
 	}
@@ -238,7 +252,6 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
 	if (matchChat) {
 		ctx.log.trace(`Matched chat message: %s`, decodedPacket.body)
-
 		const result = {
 			raw: decodedPacket.body,
 			chat: matchChat[1],

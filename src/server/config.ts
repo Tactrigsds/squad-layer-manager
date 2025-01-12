@@ -4,28 +4,33 @@ import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Paths from '@/server/paths.ts'
+import { PercentageSchema } from '@/lib/zod'
 
-const strNoWhitespace = z.string().regex(/^\S+$/, {
+const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
 })
 
 const CommandConfigSchema = z.object({
-	strings: z.array(strNoWhitespace),
-	allowedChats: z.array(SM.CHAT_CHANNEL.default('admin')),
+	strings: z.array(StrNoWhitespace),
+	scopes: z.array(SM.COMMAND_SCOPES),
 })
+export type CommandConfig = z.infer<typeof CommandConfigSchema>
 
 export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
-	commandPrefix: strNoWhitespace,
+	commandPrefix: StrNoWhitespace,
 	defaults: z.object({
 		voteDurationSeconds: z.number().positive().default(60).describe('Duration of a vote in seconds'),
-		minValidVotes: z.number().positive().describe('Minimum threshold for a vote tally to be valid'),
+		minValidVotePercentage: PercentageSchema.describe('Minimum threshold for a vote tally to be valid'),
 	}),
 	commands: z.object({
-		startVote: CommandConfigSchema,
-		showNext: CommandConfigSchema,
+		help: CommandConfigSchema.describe('Show help text'),
+		startVote: CommandConfigSchema.describe('Start a vote for the next layer'),
+		restartVote: CommandConfigSchema.describe('Restart the current vote'),
+		abortVote: CommandConfigSchema.describe('Abort the current vote'),
 	}),
+	lowQueueWarningThreshold: z.number().positive().default(3),
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	authorizedDiscordRoles: z
 		.array(

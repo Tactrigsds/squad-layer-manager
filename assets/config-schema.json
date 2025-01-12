@@ -13,41 +13,85 @@
           "default": 60,
           "description": "Duration of a vote in seconds"
         },
-        "minValidVotes": {
+        "minValidVotePercentage": {
           "type": "number",
-          "exclusiveMinimum": 0,
+          "minimum": 0,
+          "maximum": 100,
           "description": "Minimum threshold for a vote tally to be valid"
         }
       },
-      "required": ["minValidVotes"],
+      "required": ["minValidVotePercentage"],
       "additionalProperties": false
     },
     "commands": {
       "type": "object",
       "properties": {
-        "startVote": {
+        "help": {
           "type": "object",
           "properties": {
             "strings": {
               "type": "array",
               "items": {"$ref": "#/properties/commandPrefix"}
             },
-            "allowedChats": {
+            "scopes": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "enum": ["admin", "team", "squad"],
-                "default": "admin"
-              }
+              "items": {"type": "string", "enum": ["admin", "public"]}
             }
           },
-          "required": ["strings", "allowedChats"],
-          "additionalProperties": false
+          "required": ["strings", "scopes"],
+          "additionalProperties": false,
+          "description": "Show help text"
         },
-        "showNext": {"$ref": "#/properties/commands/properties/startVote"}
+        "startVote": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "$ref": "#/properties/commands/properties/help/properties/strings"
+            },
+            "scopes": {
+              "$ref": "#/properties/commands/properties/help/properties/scopes"
+            }
+          },
+          "required": ["strings", "scopes"],
+          "additionalProperties": false,
+          "description": "Start a vote for the next layer"
+        },
+        "restartVote": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "$ref": "#/properties/commands/properties/help/properties/strings"
+            },
+            "scopes": {
+              "$ref": "#/properties/commands/properties/help/properties/scopes"
+            }
+          },
+          "required": ["strings", "scopes"],
+          "additionalProperties": false,
+          "description": "Restart the current vote"
+        },
+        "abortVote": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "$ref": "#/properties/commands/properties/help/properties/strings"
+            },
+            "scopes": {
+              "$ref": "#/properties/commands/properties/help/properties/scopes"
+            }
+          },
+          "required": ["strings", "scopes"],
+          "additionalProperties": false,
+          "description": "Abort the current vote"
+        }
       },
-      "required": ["startVote", "showNext"],
+      "required": ["help", "startVote", "restartVote", "abortVote"],
       "additionalProperties": false
+    },
+    "lowQueueWarningThreshold": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 3
     },
     "adminListSources": {
       "type": "array",
@@ -69,7 +113,7 @@
           "serverId": {"type": "string", "pattern": "^\\d+$"},
           "roleId": {"type": "string", "pattern": "^\\d+$"}
         },
-        "required": ["serverId", "roleId"],
+        "required": ["serverId"],
         "additionalProperties": false
       },
       "minItems": 1

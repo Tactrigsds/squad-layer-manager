@@ -5,6 +5,7 @@ import * as C from './lib/constants'
 import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
+import { PercentageSchema } from './lib/zod'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
@@ -645,7 +646,8 @@ export const GenLayerQueueItemsOptionsSchema = z.object({
 export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
 export const StartVoteInputSchema = z.object({
 	restart: z.boolean().default(false),
-	durationSeconds: z.number().positive().optional(),
+	durationSeconds: z.number().positive(),
+	minValidVotePercentage: PercentageSchema,
 })
 
 type TallyProperties = {
@@ -676,22 +678,28 @@ export type VoteState =
 	  } & TallyProperties &
 			LayerVote)
 
-export function tallyVotes(currentVote: VoteStateWithVoteData) {
+export type Tally = ReturnType<typeof tallyVotes>
+export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: number) {
 	if (Object.values(currentVote.choices).length == 0) {
-		throw new Error('No chlices listsed')
+		throw new Error('No choices listed')
 	}
 	const tally = new Map<string, number>()
-	let maxVotes: string | null = null
+	let leaders: string[] = []
 	for (const choice of currentVote.choices) {
 		tally.set(choice, 0)
 	}
 
 	for (const choice of Object.values(currentVote.votes)) {
-		tally.set(choice, tally.get(choice)! + 1)
+		const newVotesForChoice = tally.get(choice)! + 1
 
-		if (maxVotes === null || tally.get(choice)! > tally.get(maxVotes)!) {
-			maxVotes = choice
+		if (leaders.length === 0) {
+			leaders = [choice]
+		} else if (tally.get(leaders[0]!) === newVotesForChoice) {
+			leaders.push(choice)
+		} else if (tally.get(leaders[0]!)! < newVotesForChoice) {
+			leaders = [choice]
 		}
+		tally.set(choice, newVotesForChoice)
 	}
 	const totalVotes = Object.values(currentVote.votes).length
 	const percentages = new Map<string, number>()
@@ -703,9 +711,9 @@ export function tallyVotes(currentVote: VoteStateWithVoteData) {
 	return {
 		totals: tally,
 		totalVotes,
+		turnoutPercentage: (totalVotes / numPlayers) * 100,
 		percentages,
-		choice: maxVotes,
-		votes: tally.get(maxVotes!)!,
+		leaders: leaders,
 	}
 }
 
@@ -734,7 +742,7 @@ export type VoteStateUpdate = {
 	source:
 		| {
 				type: 'system'
-				event: 'vote-timeout' | 'queue-change' | 'next-layer-set' | 'app-startup'
+				event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup'
 		  }
 		| {
 				type: 'manual'
@@ -743,7 +751,10 @@ export type VoteStateUpdate = {
 		  }
 }
 
-export type VoteStateWithVoteData = Extract<VoteState, { code: 'in-progress' | 'ended:winner' | 'ended:aborted' }>
+export type VoteStateWithVoteData = Extract<
+	VoteState,
+	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
+>
 export const ServerSettingsSchema = z
 	.object({
 		queue: z
@@ -788,20 +799,20 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 	return result
 }
 
-export const MutableServerStateSchema = z.object({
+export const UserModifiableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
 	layerQueue: LayerQueueSchema,
 	historyFilters: z.array(HistoryFilterSchema),
 	settings: ServerSettingsSchema,
 })
 
-export type MutableServerState = z.infer<typeof MutableServerStateSchema>
+export type UserModifiableServerState = z.infer<typeof UserModifiableServerStateSchema>
 export type LQServerStateUpdate = {
 	state: LQServerState
 	source:
 		| {
 				type: 'system'
-				event: 'map-roll' | 'app-startup' | 'vote-timeout'
+				event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override'
 		  }
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
@@ -813,10 +824,11 @@ export type LQServerStateUpdate = {
 
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>
-export const ServerStateSchema = MutableServerStateSchema.extend({
+export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	online: z.boolean(),
+	lastRoll: z.date().nullable(),
 })
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
@@ -843,7 +855,7 @@ export type LayerSyncState =
 			value: string
 	  }
 
-export const GenericServerStateUpdateSchema = MutableServerStateSchema
+export const GenericServerStateUpdateSchema = UserModifiableServerStateSchema
 
 // represents a user's edit or deletion of an entity
 export type UserEntityMutation<K> = {

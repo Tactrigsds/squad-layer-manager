@@ -1,14 +1,17 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
+import { assertNever } from '@/lib/typeGuards'
 import { getMiniLayerFromId } from '@/models'
 import * as M from '@/models'
 
 type VoteTallyProps = {
 	voteState: M.VoteStateWithVoteData
+	playerCount: number
 }
 
-export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
-	const tally = M.tallyVotes(voteState)
+export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyProps) {
+	const tally = M.tallyVotes(voteState, playerCount)
 	const options = Array.from(tally.totals)
 		.map(([layerId, voteCount]) => {
 			const layer = getMiniLayerFromId(layerId)
@@ -24,10 +27,26 @@ export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
 		})
 		.sort((a, b) => a.index - b.index)
 
+	const status = useSquadServerStatus()
+	const totalVotePercentage = status?.playerCount !== undefined ? (tally.totalVotes / status.playerCount) * 100 : null
+	const totalVoteDisplay = totalVotePercentage !== null ? ` (${totalVotePercentage}%)` : null
+	let statusDisplay: string
+	switch (voteState.code) {
+		case 'ended:winner':
+		case 'ended:aborted':
+			statusDisplay = 'Vote has ended.'
+			break
+		case 'in-progress':
+			statusDisplay = 'Vote in progress...'
+			break
+		default:
+			assertNever(voteState)
+	}
+
 	return (
 		<Card className="mx-auto w-full max-w-md">
 			<CardHeader>
-				<CardTitle className="">{voteState.code}</CardTitle>
+				<CardTitle className="">{statusDisplay}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{options.map((option) => (
@@ -41,10 +60,12 @@ export default function VoteTallyDisplay({ voteState }: VoteTallyProps) {
 								{option.votes} vote{option.votes !== 1 ? 's' : ''} ({option.percentage?.toFixed(1) ?? 0}%)
 							</span>
 						</div>
-						<Progress value={option.percentage ?? 0} className={`h-2 ${option.isWinner ? 'bg-green-100' : ''}`} />
+						<Progress value={option.percentage ?? 0} className="h-2 data-[winner]bg-green-100" data-winner={option.isWinner} />
 					</div>
 				))}
-				<div className="mt-4 text-center text-sm text-gray-500">Total Votes: {tally.totalVotes}</div>
+				<div className="mt-4 text-center text-sm text-gray-500">
+					Received: {tally.totalVotes} of {status?.playerCount} votes{totalVoteDisplay}
+				</div>
 			</CardContent>
 		</Card>
 	)
