@@ -1,12 +1,15 @@
 import * as M from '@/models'
 import * as DH from '@/lib/display-helpers'
 import { CommandConfig } from './server/config'
+import { WarnOptions } from './lib/rcon/squad-rcon'
+import { formatDuration } from 'date-fns'
 
 export const BROADCASTS = {
 	vote: {
-		started(choices: M.LayerId[], defaultLayer: M.LayerId, durationSeconds: number) {
-			const durationStr = durationSeconds > 120 ? `${Math.round(durationSeconds / 60)} minutes` : `${durationSeconds} seconds`
-			return `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${durationStr} to vote`
+		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
+			const minutes = Math.floor(duration / 1000 / 60)
+			const seconds = Math.round((duration / 1000) % 60)
+			return `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration({ seconds, minutes })} to vote`
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {
 			const resultsText = Array.from(tally.totals.entries())
@@ -25,13 +28,14 @@ export const BROADCASTS = {
 		aborted(defaultLayer: M.LayerId) {
 			return `Vote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
 		},
-		voteReminder(timeLeftSeconds: number, choices: M.LayerId[]) {
+		voteReminder(timeLeft: number, choices: M.LayerId[]) {
+			const minutes = Math.floor((timeLeft * 1000) / 60)
+			const seconds = (timeLeft * 1000) % 60
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			const durationStr = timeLeftSeconds > 120 ? `${Math.round(timeLeftSeconds / 60)} minutes` : `${timeLeftSeconds} seconds`
-			return `${durationStr} to cast your vote! Choices:\n${choicesText}\n`
+			return `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
 		},
 	},
-} satisfies StringTemplateNode
+} satisfies MessageNode
 
 export const WARNS = {
 	vote: {
@@ -91,13 +95,12 @@ export const WARNS = {
 	},
 } satisfies WarnNode
 
-type WarnOutput = string | string[] | { msg: string | string[]; repeat: number }
 type WarnNode = {
-	[key: string]: WarnNode | WarnOutput | ((...args: any[]) => WarnOutput)
+	[key: string]: WarnNode | WarnOptions | ((...args: any[]) => WarnOptions)
 }
 
-type StringTemplateNode = {
-	[key: string]: StringTemplateNode | string | ((...args: any[]) => string)
+type MessageNode = {
+	[key: string]: MessageNode | string | ((...args: any[]) => string)
 }
 
 function voteChoicesLines(choices: M.LayerId[], defaultLayer: M.LayerId) {

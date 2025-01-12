@@ -56,20 +56,6 @@
           "additionalProperties": false,
           "description": "Start a vote for the next layer"
         },
-        "restartVote": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "$ref": "#/properties/commands/properties/help/properties/strings"
-            },
-            "scopes": {
-              "$ref": "#/properties/commands/properties/help/properties/scopes"
-            }
-          },
-          "required": ["strings", "scopes"],
-          "additionalProperties": false,
-          "description": "Restart the current vote"
-        },
         "abortVote": {
           "type": "object",
           "properties": {
@@ -99,13 +85,18 @@
           "description": "Show the next layer or configured vote"
         }
       },
-      "required": ["help", "startVote", "restartVote", "abortVote", "showNext"],
+      "required": ["help", "startVote", "abortVote", "showNext"],
       "additionalProperties": false
     },
     "lowQueueWarningThreshold": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 3
+    },
+    "remindVoteThresholdSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 15
     },
     "adminListSources": {
       "type": "array",

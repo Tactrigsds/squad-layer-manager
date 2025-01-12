@@ -402,8 +402,8 @@ export async function startVote(
 		ctx,
 		BROADCASTS.vote.started(
 			res.voteStateUpdate.state.choices,
-			res.voteStateUpdate.state?.defaultChoice,
-			res.voteStateUpdate.state?.deadline
+			res.voteStateUpdate.state.defaultChoice,
+			res.voteStateUpdate.state.deadline - Date.now()
 		)
 	)
 
@@ -485,8 +485,8 @@ function registerVoteDeadline$(ctx: C.Log & C.Db) {
 		voteEndTask.add(
 			from(sleep(waitTime)).subscribe(async () => {
 				if (!voteState || voteState.code !== 'in-progress') return
-				const timeLeftSeconds = Math.round((voteState.deadline - Date.now()) / 1000)
-				await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeftSeconds, voteState.choices))
+				const timeLeft = voteState.deadline - Date.now()
+				await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
 			})
 		)
 	}

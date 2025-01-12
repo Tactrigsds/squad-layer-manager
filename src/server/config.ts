@@ -27,7 +27,6 @@ export const ConfigSchema = z.object({
 	commands: z.object({
 		help: CommandConfigSchema.describe('Show help text'),
 		startVote: CommandConfigSchema.describe('Start a vote for the next layer'),
-		restartVote: CommandConfigSchema.describe('Restart the current vote'),
 		abortVote: CommandConfigSchema.describe('Abort the current vote'),
 		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
 	}),

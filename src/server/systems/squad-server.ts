@@ -94,8 +94,7 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 
 	const user: M.GuiOrChatUserId = { steamId: msg.steamID }
 	switch (cmd) {
-		case 'startVote':
-		case 'restartVote': {
+		case 'startVote': {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
 			if (res.code !== 'ok') {
 				await rcon.warn(ctx, msg.playerId, res.msg)
