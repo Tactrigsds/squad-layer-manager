@@ -4,21 +4,20 @@ import { CommandConfig } from './server/config'
 
 export const BROADCASTS = {
 	vote: {
-		started(choices: M.LayerId[], defaultLayer: M.LayerId) {
-			return `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}`
+		started(choices: M.LayerId[], defaultLayer: M.LayerId, durationSeconds: number) {
+			const durationStr = durationSeconds > 120 ? `${Math.round(durationSeconds / 60)} minutes` : `${durationSeconds} seconds`
+			return `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${durationStr} to vote`
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {
-			const leaderText = tally.leaders.length > 1 ? `\nWinner was randomly selected from ${tally.leaders.length} tied choices` : ''
-
 			const resultsText = Array.from(tally.totals.entries())
+				.sort((a, b) => b[1] - a[1])
 				.map(([choice, votes]) => {
 					const isWinner = choice === winner
 					const layerName = DH.toShortLayerNameFromId(choice)
-					return `${isWinner ? '**' : ''}${layerName}: ${votes} vote${votes === 1 ? '' : 's'}${isWinner ? '**' : ''}`
+					return `${votes} votes - (${tally.percentages.get(choice)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
-				.join('\n')
-
-			return `Vote has ended. Winner: ${DH.toShortLayerNameFromId(winner)}.${leaderText}\nResults:\n${resultsText}`
+			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie)` : ''
+			return `Vote has ended:\n${resultsText.join('\n')}${randomChoiceExplanation}`
 		},
 		insufficientVotes: (defaultChoice: M.LayerId) => {
 			return `Vote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
@@ -28,7 +27,8 @@ export const BROADCASTS = {
 		},
 		voteReminder(timeLeftSeconds: number, choices: M.LayerId[]) {
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			return `Vote for the next layer:\n${choicesText}\nTime remaining: ${timeLeftSeconds} seconds`
+			const durationStr = timeLeftSeconds > 120 ? `${Math.round(timeLeftSeconds / 60)} minutes` : `${timeLeftSeconds} seconds`
+			return `${durationStr} to cast your vote! Choices:\n${choicesText}\n`
 		},
 	},
 } satisfies StringTemplateNode

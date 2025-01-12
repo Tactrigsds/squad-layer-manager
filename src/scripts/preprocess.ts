@@ -203,44 +203,52 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 
 	const t2 = performance.now()
 	const factionFullNames = getFactionFullNames(pipeline)
-	await ctx.db().transaction(async (tx) => {
+	await DB.runTransaction(ctx, async (ctx) => {
 		// process factions
 		ctx.log.info('truncating factions table')
-		await tx.execute(sql`ALTER TABLE ${Schema.subfactions} DROP FOREIGN KEY subfactions_factionShortName_factions_shortName_fk`)
-		await tx.execute(sql`TRUNCATE TABLE ${Schema.subfactions}`)
-		await tx.execute(sql`TRUNCATE TABLE ${Schema.factions}`)
-		await tx.execute(
-			sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`
-		)
+		await ctx.db().execute(sql`ALTER TABLE ${Schema.subfactions} DROP FOREIGN KEY subfactions_factionShortName_factions_shortName_fk`)
+		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.subfactions}`)
+		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.factions}`)
+		await ctx
+			.db()
+			.execute(
+				sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`
+			)
 		ctx.log.info('inserting factions')
-		await tx.insert(Schema.factions).values(
-			factions.map((faction) => ({
-				shortName: faction.faction,
-				fullName: factionFullNames[faction.faction],
-				alliance: faction.alliance,
-			}))
-		)
-		await tx.insert(Schema.subfactions).values(
-			factions
-				.map((faction) =>
-					objKeys(faction.subfactions).map((subfaction) => {
-						return {
-							fullName: faction.subfactions[subfaction],
-							shortName: subfaction,
-							factionShortName: faction.faction,
-						}
-					})
-				)
-				.flat()
-		)
+		await ctx
+			.db()
+			.insert(Schema.factions)
+			.values(
+				factions.map((faction) => ({
+					shortName: faction.faction,
+					fullName: factionFullNames[faction.faction],
+					alliance: faction.alliance,
+				}))
+			)
+		await ctx
+			.db()
+			.insert(Schema.subfactions)
+			.values(
+				factions
+					.map((faction) =>
+						objKeys(faction.subfactions).map((subfaction) => {
+							return {
+								fullName: faction.subfactions[subfaction],
+								shortName: subfaction,
+								factionShortName: faction.faction,
+							}
+						})
+					)
+					.flat()
+			)
 
 		// process layers
 		ctx.log.info('Truncating layers table')
-		await tx.execute(sql`TRUNCATE TABLE ${Schema.layers} `)
+		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
 		const chunkSize = 2500
 		for (let i = 0; i < processedLayers.length; i += chunkSize) {
 			const chunk = processedLayers.slice(i, i + chunkSize)
-			await tx.insert(Schema.layers).values(chunk)
+			await ctx.db().insert(Schema.layers).values(chunk)
 			ctx.log.info(`Inserted ${i + chunk.length} rows`)
 		}
 	})

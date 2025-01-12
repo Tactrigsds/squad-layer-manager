@@ -40,6 +40,10 @@ export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
 	}
 }
 
+export async function runTransaction<T extends C.Db, V>(ctx: T & { tx?: never }, callback: (ctx: T & C.Tx) => Promise<V>) {
+	return await ctx.db().transaction((tx) => callback({ ...ctx, tx: true, db: () => tx }))
+}
+
 // I hate OOP
 class TracedPool extends EventEmitter implements MySQL.Pool {
 	constructor(

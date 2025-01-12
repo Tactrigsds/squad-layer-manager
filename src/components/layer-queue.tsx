@@ -1,4 +1,4 @@
-import { DragEndEvent, useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { useForm } from '@tanstack/react-form'
 import { CSS } from '@dnd-kit/utilities'
 import * as Im from 'immer'
@@ -11,9 +11,7 @@ import * as FB from '@/lib/filter-builders.ts'
 import { toStream } from 'zustand-rx'
 
 import * as Icons from 'lucide-react'
-import { flushSync } from 'react-dom'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import * as Helpers from '@/lib/display-helpers'
@@ -27,7 +25,6 @@ import TabsList from './ui/tabs-list.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
 import { initMutations, initMutationState, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
-import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
 import { useLoggedInUser } from '@/hooks/use-logged-in-user.ts'
 
@@ -65,8 +62,6 @@ import { combineLatest, map } from 'rxjs'
 import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
 import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
-import { useRefConstructor } from '@/lib/react.ts'
-import useWindowDimensions from '@/hooks/use-window-dimensions.ts'
 import { zodValidator } from '@tanstack/zod-form-adapter'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
@@ -373,33 +368,31 @@ export default function ServerDashboard() {
 		const serverStateMut = SDStore.getState().editedServerState
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
 		const reset = SDStore.getState().reset
-		if (res.code === 'err:next-layer-changed-while-vote-active') {
-			toaster.toast({
-				title: 'Cannot update: active layer vote in progress',
-				variant: 'destructive',
-			})
-			reset()
-		}
-		if (res.code === 'err:out-of-sync') {
-			toaster.toast({
-				title: 'State changed before submission, please try again.',
-				variant: 'destructive',
-			})
-			reset()
-
-			return
-		}
-		if (res.code === 'ok') {
-			reset()
-			toaster.toast({ title: 'Changes applied' })
-			return
+		switch (res.code) {
+			case 'err:out-of-sync':
+				toaster.toast({
+					title: 'State changed before submission, please try again.',
+					variant: 'destructive',
+				})
+				reset()
+				return
+			case 'err:queue-change-during-vote':
+				toaster.toast({
+					title: 'Cannot update: layer vote in progress',
+					variant: 'destructive',
+				})
+				break
+			case 'ok':
+				toaster.toast({ title: 'Changes applied' })
+				reset()
+				break
+			default:
+				assertNever(res)
 		}
 	}
 
 	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
 	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
-
-	const hasVoteState = false
 
 	// TODO implement
 	const editing = useIsEditing()

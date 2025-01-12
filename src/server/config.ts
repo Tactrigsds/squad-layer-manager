@@ -32,6 +32,7 @@ export const ConfigSchema = z.object({
 		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
 	}),
 	lowQueueWarningThreshold: z.number().positive().default(3),
+	remindVoteThresholdSeconds: z.number().positive().default(15),
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	authorizedDiscordRoles: z
 		.array(

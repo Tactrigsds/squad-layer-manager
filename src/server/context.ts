@@ -74,7 +74,10 @@ export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: Opera
 
 export type Db = {
 	db(): DB.Db
-}
+} & Log
+
+// indicates the context is in a db transaction
+export type Tx = { tx: true }
 
 export type Rcon = {
 	rcon: RconCore

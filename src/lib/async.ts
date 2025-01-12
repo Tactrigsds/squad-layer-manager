@@ -287,3 +287,16 @@ export class AsyncExclusiveTaskRunner {
 		}
 	}
 }
+
+export async function acquireInBlock(mutex: Mutex, bypass = false) {
+	let release: (() => void) | undefined
+	if (!bypass) {
+		release = await mutex.acquire()
+	}
+	return {
+		[Symbol.dispose]() {
+			release?.()
+		},
+		mutex,
+	}
+}

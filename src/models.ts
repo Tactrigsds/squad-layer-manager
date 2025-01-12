@@ -6,6 +6,7 @@ import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
 import { PercentageSchema } from './lib/zod'
+import { Tally1 } from 'lucide-react'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
@@ -812,7 +813,7 @@ export type LQServerStateUpdate = {
 	source:
 		| {
 				type: 'system'
-				event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override'
+				event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer'
 		  }
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
@@ -824,6 +825,7 @@ export type LQServerStateUpdate = {
 
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>
+
 export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
