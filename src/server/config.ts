@@ -4,7 +4,9 @@ import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Paths from '@/server/paths.ts'
-import { PercentageSchema } from '@/lib/zod'
+import { ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
+import * as RBAC from './rbac.models'
+import { objKeys } from '@/lib/object'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
@@ -33,21 +35,16 @@ export const ConfigSchema = z.object({
 	lowQueueWarningThreshold: z.number().positive().default(3),
 	remindVoteThresholdSeconds: z.number().positive().default(15),
 	adminListSources: z.array(SM.AdminListSourceSchema),
-	authorizedDiscordRoles: z
-		.array(
-			z.object({
-				serverId: z.string().regex(/^\d+$/, {
-					message: 'Must be a valid Discord server ID',
-				}),
-				roleId: z
-					.string()
-					.regex(/^\d+$/, {
-						message: 'Must be a valid Discord role ID',
-					})
-					.optional(),
-			})
-		)
-		.min(1),
+	homeDiscordGuildId: ParsedBigIntSchema,
+	globalRolePermissions: z
+		.record(RBAC.RoleSchema, z.array(z.union([RBAC.SCOPE_TO_PERMISSION_TYPES.global, z.literal('*').describe('include all permissions')])))
+		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
+	roleAssignments: z.object({
+		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.RoleSchema) })).optional(),
+		'discord-user': z.array(z.object({ userId: z.bigint(), roles: z.array(RBAC.RoleSchema) })).optional(),
+		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.RoleSchema) })).optional(),
+	}),
+	// TODO write refinement to make sure that all roles referenced in role assignments are defined in globalRolePermissions
 })
 
 export let CONFIG!: Config

@@ -14,14 +14,15 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Config from '@/server/config.ts'
+import * as Discord from '@/server/systems/discord.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { ENV } from '@/server/env.ts'
 import { baseLogger, Logger } from '@/server/logger.ts'
 import * as TrpcRouter from '@/server/router'
 import * as Schema from '@/server/schema.ts'
-import * as Discord from '@/server/systems/discord.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
+import * as Rbac from '@/server/systems/rbac.system.ts'
 
 function getFastifyBase() {
 	return fastify({
@@ -116,20 +117,8 @@ export async function setupFastify() {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = DB.addPooledDb({ log: req.log as Logger })
-		const userHasRoleRes = await Discord.checkDiscordUserAuthorization(ctx, discordUser.id)
-		switch (userHasRoleRes.code) {
-			case 'ok':
-				break
-			case 'err:unauthorized':
-				return reply.status(401).send('You have not been granted access to this application.')
-			case 'err:discord':
-				return reply.status(500).send({
-					message: 'Encountered discord API error while performing roles check',
-					code: userHasRoleRes.errCode,
-					err: userHasRoleRes.err,
-				})
-			default:
-				assertNever(userHasRoleRes)
+		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { type: 'all', permits: ['site:authorized'] }))) {
+			return reply.status(401).send('You have not been granted access to this application.')
 		}
 
 		const sessionId = createId(64)

@@ -6,7 +6,6 @@ import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
 import { PercentageSchema } from './lib/zod'
-import { Tally1 } from 'lucide-react'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`

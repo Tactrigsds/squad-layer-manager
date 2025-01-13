@@ -140,6 +140,10 @@ export const users = mysqlTable('users', {
 	avatar: varchar('avatar', { length: 255 }).notNull(),
 })
 
+export const role_permissions = mysqlTable('role_permissions', {
+	role: mysqlEnum,
+})
+
 export type User = typeof users.$inferSelect
 
 export const sessions = mysqlTable(

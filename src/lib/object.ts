@@ -48,3 +48,11 @@ export function getModifiedProperties<T extends object>(original: T, modified: T
 export function objKeys<T extends object>(obj: T) {
 	return Object.keys(obj) as (keyof T)[]
 }
+
+export function objValues<T extends object>(obj: T) {
+	return Object.values(obj) as T[keyof T][]
+}
+
+export function objEntries<T extends object>(obj: T) {
+	return Object.entries(obj) as [keyof T, T[keyof T]][]
+}

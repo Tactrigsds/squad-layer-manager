@@ -26,7 +26,7 @@ let client!: D.Client
 
 export async function setupDiscordSystem() {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', {
+	await using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', {
 		level: 'info',
 	})
 	client = new D.Client({
@@ -43,17 +43,9 @@ export async function setupDiscordSystem() {
 		client.login(ENV.DISCORD_BOT_TOKEN)
 	})
 
-	for (const { roleId, serverId } of CONFIG.authorizedDiscordRoles) {
-		const res = await fetchGuild(ctx, BigInt(serverId))
-		if (res.code !== 'ok') {
-			throw new Error(`Could not find Discord server ${serverId}`)
-		}
-		if (roleId) {
-			const role = await res.guild.roles.fetch(roleId.toString())
-			if (!role) {
-				throw new Error(`Could not find role ${roleId} in Discord server ${serverId}`)
-			}
-		}
+	const res = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+	if (res.code !== 'ok') {
+		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
 }
 
@@ -87,8 +79,8 @@ async function fetchGuild(_ctx: C.Log, guildId: bigint) {
 	}
 }
 
-async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
-	using ctx = C.pushOperation(_ctx, 'discord:fetch-member')
+export async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
+	await using ctx = C.pushOperation(_ctx, 'discord:fetch-member')
 	const { code, guild } = await fetchGuild(ctx, guildId)
 	if (code !== 'ok') return { code }
 
@@ -108,14 +100,25 @@ async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
 	}
 }
 
-export async function checkDiscordUserAuthorization(_ctx: C.Log, discordId: bigint) {
-	using ctx = C.pushOperation(_ctx, 'discord:check-user-authorization')
-	for (const authorized of CONFIG.authorizedDiscordRoles) {
-		const res = await fetchMember(ctx, BigInt(authorized.serverId), discordId)
-		if (res.code != 'ok') return res
-		if (authorized.roleId == undefined || res.member.roles.cache.has(authorized.roleId.toString())) {
-			return { code: 'ok' as const }
-		}
+export async function fetchGuildRoles(baseCtx: C.Log) {
+	await using ctx = C.pushOperation(baseCtx, 'discord:get-guild-roles')
+	const res = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+	if (res.code !== 'ok') {
+		return res
 	}
-	return { code: 'err:unauthorized' as const }
+	const rolesMap = await res.guild.roles.fetch()
+	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
 }
+
+// export async function getDiscordUserRoles(_ctx: C.Log, discordId: bigint) {
+//   await using ctx = C.pushOperation(_ctx, 'discord:get-user-roles')
+//   const roles = new Set<string>()
+//   for (const authorized of CONFIG.authorizedDiscordRoles) {
+//     const res = await fetchMember(ctx, BigInt(authorized.serverId), discordId)
+//     if (res.code !== 'ok') return res
+//     for (const role of res.member.roles.cache.values()) {
+//       roles.add(role.id)
+//     }
+//   }
+//   return { code: 'ok' as const, roles: Array.from(roles) }
+// }

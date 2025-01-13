@@ -4,16 +4,19 @@ export const PercentageSchema = z.number().min(0).max(100)
 
 export const ParsedIntSchema = z
 	.string()
+	.regex(/^-?\d+$/)
 	.transform((val) => parseInt(val, 10))
 	.pipe(z.number().int().finite())
 
 export const ParsedFloatSchema = z
 	.string()
+	.regex(/^\d+(\.\d+)?$/)
 	.transform((val) => parseFloat(val))
 	.pipe(z.number().finite())
 
 export const ParsedBigIntSchema = z
 	.string()
+	.regex(/^-?\d+$/)
 	.transform((val) => BigInt(val))
 	.pipe(z.bigint())
 
