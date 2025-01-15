@@ -3,14 +3,13 @@ import * as M from '@/models'
 import * as C from '@/server/context'
 import * as RBAC from '@/server/rbac.models'
 import * as Discord from '@/server/systems/discord'
-import { RoleAssignment } from '../rbac.models'
 import { objKeys } from '@/lib/object'
 import deepEqual from 'fast-deep-equal'
 
 let roles!: RBAC.Role[]
 let globalRolePermissions!: Record<RBAC.Role, RBAC.Permission[]>
-let roleAssignments!: RoleAssignment[]
-export function setupRbac() {
+let roleAssignments!: RBAC.RoleAssignment[]
+export function setup() {
 	roles = []
 	globalRolePermissions = {}
 	for (const role of objKeys(CONFIG.globalRolePermissions)) {
@@ -62,7 +61,7 @@ export function setupRbac() {
 	// TODO add preflight checks to make sure the remote references in role assignments are valid
 }
 
-// TODO better error visibility
+// TODO error visibility
 export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:get-roles-for-discord-user')
 	const roles: RBAC.Role[] = []
@@ -119,16 +118,36 @@ function dedupePerms(perms: RBAC.Permission[]) {
 	return [...types.values()].flat()
 }
 
-type PermissionReq = { type: 'all'; permits: RBAC.PermissionType[] } | { type: 'any'; permits: RBAC.PermissionType[] }
+type PermissionReq<T extends RBAC.PermissionType = RBAC.PermissionType> =
+	| { check: 'all'; permits: RBAC.Permission<T>[] }
+	| { check: 'any'; permits: RBAC.Permission<T>[] }
 
-// TODO inefficient AI slop, we should probably only check for roles that have the requested permissions
-export async function checkPermissions(baseCtx: C.Log, userId: bigint, req: PermissionReq): Promise<boolean> {
+export async function checkPermissions<T extends RBAC.PermissionType>(
+	baseCtx: C.Log,
+	userId: bigint,
+	req: PermissionReq<T>
+): Promise<boolean> {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
-	const perms = await getAllPermissionsForDiscordUser(ctx, userId)
+	const userPermits = await getAllPermissionsForDiscordUser(ctx, userId)
 
-	if (req.type === 'all') {
-		return req.permits.every((p) => perms.some((perm) => perm.type === p))
-	} else {
-		return req.permits.some((p) => perms.some((perm) => perm.type === p))
+	if (req.check === 'any') {
+		for (const reqPermit of req.permits) {
+			for (const userPermit of userPermits) {
+				if (deepEqual(reqPermit, userPermit)) return true
+			}
+		}
+		return false
 	}
+
+	for (const reqPermit of req.permits) {
+		let hasRequired = false
+		for (const userPermit of userPermits) {
+			if (deepEqual(reqPermit, userPermit)) {
+				hasRequired = true
+				break
+			}
+		}
+		if (!hasRequired) return false
+	}
+	return true
 }

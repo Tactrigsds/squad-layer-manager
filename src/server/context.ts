@@ -128,6 +128,8 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 	}
 }
 
+export type AuthedRequest = Extract<Awaited<ReturnType<typeof createAuthorizedRequestContext>>, { code: 'ok' }>['ctx']
+
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
 export async function createTrpcRequestContext(options: CreateFastifyContextOptions) {
 	const result = await createAuthorizedRequestContext(options.req, options.res)
@@ -146,5 +148,3 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 	}
 	return result.ctx
 }
-
-export type AuthedRequest = Extract<Awaited<ReturnType<typeof createAuthorizedRequestContext>>, { code: 'ok' }>['ctx']

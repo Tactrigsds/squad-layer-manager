@@ -6,7 +6,6 @@ import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Paths from '@/server/paths.ts'
 import { ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
 import * as RBAC from './rbac.models'
-import { objKeys } from '@/lib/object'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',

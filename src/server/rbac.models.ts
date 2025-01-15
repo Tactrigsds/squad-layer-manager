@@ -39,18 +39,27 @@ export type Scope = z.infer<typeof ScopeSchema>
 
 // could do fancy typescript stuff to not have to duplicate this, but it's not worth it imo
 export const PERMISSION_TYPE_TO_SCOPE = {
-	'site:authorized': 'global',
-	'queue:modify': 'global',
-	'settings:write': 'global',
-	'vote:manage': 'global',
-	'filters:write-all': 'global',
-	'filters:write': 'filter',
-}
+	'site:authorized': 'global' as const,
+	'queue:modify': 'global' as const,
+	'settings:write': 'global' as const,
+	'vote:manage': 'global' as const,
+	'filters:write-all': 'global' as const,
+	'filters:write': 'filter' as const,
+} satisfies Record<PermissionType, Scope['type']>
 
 export const SCOPE_TO_PERMISSION_TYPES = {
 	global: z.enum(['site:authorized', 'queue:modify', 'settings:write', 'vote:manage', 'filters:write-all']),
 	filter: z.enum(['filters:write']),
-	source: PERMISSION_SOURCE,
+}
+
+export type GlobalPermissionType = z.infer<typeof SCOPE_TO_PERMISSION_TYPES.global>
+
+export function global<T extends GlobalPermissionType>(type: T): Permission<T> {
+	return {
+		type,
+		scope: { type: 'global' as const },
+		// fuck it
+	} as Permission<T>
 }
 
 export type Permission<T extends PermissionType = PermissionType> = {

@@ -23,6 +23,7 @@ import * as TrpcRouter from '@/server/router'
 import * as Schema from '@/server/schema.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as RBAC from '@/server/rbac.models.ts'
 
 function getFastifyBase() {
 	return fastify({
@@ -117,7 +118,7 @@ export async function setupFastify() {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = DB.addPooledDb({ log: req.log as Logger })
-		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { type: 'all', permits: ['site:authorized'] }))) {
+		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { check: 'all', permits: [RBAC.global('site:authorized')] }))) {
 			return reply.status(401).send('You have not been granted access to this application.')
 		}
 
