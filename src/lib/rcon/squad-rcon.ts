@@ -185,7 +185,7 @@ export default class SquadRcon {
 	}
 
 	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatus> {
-		using ctx = C.pushOperation(_ctx, 'squad-rcon:getServerstatus', { level: 'trace' })
+		await using ctx = C.pushOperation(_ctx, 'squad-rcon:getServerstatus', { level: 'trace' })
 		const rawDataPromise = this.rcon.execute(ctx, `ShowServerInfo`)
 		const currentLayerTask = this.getCurrentLayer(ctx)
 		const nextLayerTask = this.getNextLayer(ctx)

@@ -6,7 +6,7 @@ import * as M from '@/models'
 import * as DB from '@/server/db'
 import * as FB from '@/lib/filter-builders'
 import { test } from 'vitest'
-import { runLayersQuery } from './layers-query'
+import { queryLayers } from './layer-queries'
 
 let ctx!: C.Db & C.Log
 beforeAll(() => {
@@ -18,7 +18,7 @@ beforeAll(() => {
 
 test('can filter results', async () => {
 	const filter = FB.and([FB.comp(FB.eq('Level', 'Lashkar')), FB.comp(FB.eq('Gamemode', 'TC'))])
-	const res = await runLayersQuery({
+	const res = await queryLayers({
 		input: { filter, pageSize: 50, pageIndex: 0 },
 		ctx,
 	})
@@ -31,7 +31,7 @@ test('can filter results', async () => {
 
 test('can filter by faction matchup', async () => {
 	const filter = FB.comp(FB.hasAll('FactionMatchup', ['MEA', 'PLA']))
-	const res = await runLayersQuery({
+	const res = await queryLayers({
 		input: { filter, pageSize: 50, pageIndex: 0 },
 		ctx,
 	})
@@ -44,7 +44,7 @@ test('can filter by faction matchup', async () => {
 
 test('can filter by sub-faction matchup', async () => {
 	const filter = FB.comp(FB.hasAll('SubFacMatchup', ['CombinedArms', 'Armored']))
-	const res = await runLayersQuery({
+	const res = await queryLayers({
 		input: { filter, pageSize: 50, pageIndex: 0 },
 		ctx,
 	})
@@ -58,7 +58,7 @@ test('can filter by sub-faction matchup', async () => {
 test('can filter by full faction matchup', async () => {
 	const matchup = ['USA-CA', 'PLA-CA']
 	const filter = FB.comp(FB.hasAll('FullMatchup', matchup))
-	const res = await runLayersQuery({
+	const res = await queryLayers({
 		input: { filter, pageSize: 50, pageIndex: 0 },
 		ctx,
 	})

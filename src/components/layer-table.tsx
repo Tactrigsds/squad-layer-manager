@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
 import * as M from '@/models'
-import { LayersQueryInput } from '@/server/systems/layers-query.ts'
+import type { LayersQueryInput } from '@/server/systems/layer-queries'
 
 import { Checkbox } from './ui/checkbox'
 import { Label } from './ui/label'

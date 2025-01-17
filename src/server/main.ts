@@ -8,12 +8,14 @@ import * as Fastify from './systems/fastify.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
+import * as Rbac from './systems/rbac.system.ts'
 
 // TODO nice graceful shutdowns
 setupEnv()
 await setupLogger()
 await Config.setupConfig()
 DB.setupDatabase()
+Rbac.setup()
 Sessions.setupSessions()
 await SquadServer.setupSquadServer()
 await LayerQueue.setupLayerQueueAndServerState()

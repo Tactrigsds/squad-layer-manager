@@ -62,7 +62,7 @@ export async function getOauthUser(token: AccessToken) {
 }
 
 async function fetchGuild(_ctx: C.Log, guildId: bigint) {
-	using ctx = C.pushOperation(_ctx, 'discord:fetch-guild')
+	await using ctx = C.pushOperation(_ctx, 'discord:fetch-guild')
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }

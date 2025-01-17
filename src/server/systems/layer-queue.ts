@@ -13,7 +13,7 @@ import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
-import * as LayersQuery from '@/server/systems/layers-query.ts'
+import * as LayersQuery from '@/server/systems/layer-queries.ts'
 
 import { procedure, router } from '../trpc.server.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -684,7 +684,7 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 }
 
 // -------- utility --------
-async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
+export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
 	lock ??= false
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, CONFIG.serverId))
 	let serverRaw: any
@@ -739,7 +739,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenL
 			assertNever(opts.itemType)
 	}
 	const filter = opts.baseFilterId ? FB.applyFilter(opts.baseFilterId) : undefined
-	const layers = await LayersQuery.runLayersQuery({
+	const layers = await LayersQuery.queryLayers({
 		ctx,
 		input: {
 			sort: {

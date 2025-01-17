@@ -14,7 +14,7 @@ import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import * as Helpers from '@/lib/display-helpers'
+import * as DH from '@/lib/display-helpers'
 import * as EFB from '@/lib/editable-filter-builders'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -44,7 +44,7 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { createId } from '@/lib/id.ts'
-import { useFilter as useFilterEntity, useFilters } from '@/hooks/filters.ts'
+import { useFilter, useFilter as useFilterEntity, useFilters } from '@/hooks/filters.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 
@@ -63,6 +63,8 @@ import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
 import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
 import { zodValidator } from '@tanstack/zod-form-adapter'
+import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
+import { Popover } from './ui/popover.tsx'
 
 type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 type MutServerStateWithIds = M.UserModifiableServerState & {
@@ -342,15 +344,6 @@ export default function ServerDashboard() {
 	const serverStatus = useSquadServerStatus()
 	const settingsPanelRef = useRef<ServerSettingsPanelHandle>(null)
 
-	// ----- notify on pool filter changes -----
-	// TODO cleanup
-	const poolFilterId = Zus.useStore(SDStore, (s) => s.editedServerState.settings.queue.poolFilterId)
-	useFilterEntity(poolFilterId, {
-		onUpdate: () => {
-			toaster.toast({ title: 'Pool Filter Updated' })
-		},
-	})
-
 	React.useEffect(() => {
 		const sub = lqServerStateUpdate$.subscribe((update) => {
 			if (!update) return
@@ -410,7 +403,7 @@ export default function ServerDashboard() {
 								<CardHeader>
 									<CardTitle>Now Playing</CardTitle>
 								</CardHeader>
-								<CardContent>{Helpers.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
+								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
 							</>
 						)}
 						{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
@@ -1219,19 +1212,19 @@ function LayerListItem(props: QueueItemProps) {
 			</Button>
 		</ItemDropdown>
 	)
-	let sourceDisplay: React.ReactNode
+	let sourceBadge: React.ReactNode
 	const modifiedBy = item.lastModifiedBy && PartsSys.findUser(item.lastModifiedBy)
 	const modifiedByDisplay = modifiedBy ? `- ${modifiedBy.username}` : ''
 
 	switch (item.source) {
 		case 'gameserver':
-			sourceDisplay = <Badge variant="outline">Game Server</Badge>
+			sourceBadge = <Badge variant="outline">Game Server</Badge>
 			break
 		case 'generated':
-			sourceDisplay = <Badge variant="outline">Generated {modifiedByDisplay}</Badge>
+			sourceBadge = <Badge variant="outline">Generated {modifiedByDisplay}</Badge>
 			break
 		case 'manual': {
-			sourceDisplay = <Badge variant="outline">Manual {modifiedByDisplay}</Badge>
+			sourceBadge = <Badge variant="outline">Manual {modifiedByDisplay}</Badge>
 			break
 		}
 		default:
@@ -1272,19 +1265,16 @@ function LayerListItem(props: QueueItemProps) {
 						<label className={Typography.Muted}>Vote</label>
 						<ol className={'flex flex-col space-y-1 items-start'}>
 							{item.vote.choices.map((choice, index) => {
-								const layer = M.getMiniLayerFromId(choice)
+								const chosenBadge = choice === item.layerId ? <Badge variant="added">chosen</Badge> : null
 								return (
 									<li key={choice} className="flex items-center ">
 										<span className="mr-2">{index + 1}.</span>
-										<span>
-											{Helpers.toShortLayerName(layer)} {choice === item.vote!.defaultChoice && <Badge variant="outline">default</Badge>}
-											{choice === item.layerId && <Badge variant="added">chosen</Badge>}
-										</span>
+										<LayerDisplay layerId={choice} badges={chosenBadge} />
 									</li>
 								)
 							})}
 						</ol>
-						<div>{sourceDisplay}</div>
+						<div>{sourceBadge}</div>
 						{notCurrentNextLayer}
 					</div>
 					{itemDropdown}
@@ -1311,8 +1301,10 @@ function LayerListItem(props: QueueItemProps) {
 						<GripVertical />
 					</Button>
 					<div className="flex flex-col w-max flex-grow">
-						<div className="flex items-center flex-shrink-0">{Helpers.toShortLayerName(layer)}</div>
-						<span>{sourceDisplay}</span>
+						<div className="flex items-center flex-shrink-0">
+							<LayerDisplay layerId={item.layerId} />
+						</div>
+						<span>{sourceBadge}</span>
 						{notCurrentNextLayer}
 					</div>
 					{itemDropdown}
@@ -1433,6 +1425,36 @@ function ItemDropdown(props: {
 				</DropdownMenuGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>
+	)
+}
+
+export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNode }) {
+	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const isLayerInPoolRes = useAreLayersInPool({ layers: [props.layerId], poolFilterId: poolFilterId })
+	console.log('isLayerInPoolRes', isLayerInPoolRes.data)
+	const filterRes = useFilter(poolFilterId)
+	let notInPoolBadge: React.ReactNode = null
+	if (isLayerInPoolRes.data && isLayerInPoolRes.data.code === 'ok' && !isLayerInPoolRes.data.results[0].matchesFilter) {
+		notInPoolBadge = (
+			<Tooltip>
+				<TooltipTrigger>
+					<Icons.ShieldQuestion className="text-orange-400" />
+				</TooltipTrigger>
+				<TooltipContent>
+					Layer not in configured pool <b>{filterRes.data?.name}</b>
+				</TooltipContent>
+			</Tooltip>
+		)
+	}
+
+	return (
+		<div className="flex space-x-2 items-center">
+			<span className="flex-1 text-nowrap">{DH.toShortLayerNameFromId(props.layerId)}</span>
+			<span className="flex items-center space-x-1">
+				{notInPoolBadge}
+				{props.badges}
+			</span>
+		</div>
 	)
 }
 
@@ -1881,6 +1903,10 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 			const colsToRemove: string[] = []
 			colsToRemove.push(key)
 			colsToRemove.push('id')
+			if (key === 'id') {
+				filtersExcludingField[key] = baseFilter
+				continue
+			}
 			if (key === 'Layer') {
 				colsToRemove.push('Level')
 				colsToRemove.push('Gamemode')
@@ -1898,7 +1924,7 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 			filtersExcludingField[key] = fieldSelectFilter
 		}
 		return filtersExcludingField
-	}, [items, filter])
+	}, [items, filter, baseFilter])
 
 	return {
 		filter,

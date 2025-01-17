@@ -9,7 +9,9 @@ import * as M from '@/models.ts'
 import * as C from '@/server/context'
 import * as Schema from '@/server/schema'
 import * as SquadjsSchema from '@/server/schema-squadjs'
+import * as LayerQueue from './layer-queue'
 import { assertNever } from '@/lib/typeGuards'
+import { procedure, router } from '@/server/trpc.server.ts'
 
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
@@ -37,7 +39,7 @@ export const historyFiltersCache = new Map<string, M.FilterNode>()
 
 export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
 
-export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log & C.Db }) {
+export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & C.Db }) {
 	const { ctx: baseCtx, input: input } = args
 	input.pageSize ??= 200
 	input.pageIndex ??= 0
@@ -97,6 +99,34 @@ export async function runLayersQuery(args: { input: LayersQueryInput; ctx: C.Log
 	}
 }
 
+export const AreLayersInPoolInputSchema = z.object({
+	layers: z.array(M.LayerIdSchema),
+	poolFilterId: M.FilterEntityIdSchema.optional(),
+})
+
+export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof AreLayersInPoolInputSchema>; ctx: C.Db & C.Log }) {
+	let poolFilterId = input.poolFilterId
+	if (!poolFilterId) {
+		const serverState = await LayerQueue.getServerState({}, ctx)
+		poolFilterId = serverState.settings.queue.poolFilterId
+		if (!poolFilterId) {
+			return { code: 'err:pool-filter-not-set' as const }
+		}
+	}
+	const [rawFilterEntity] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, poolFilterId!))
+	const filterEntity = M.FilterEntitySchema.parse(rawFilterEntity)
+	const filter = filterEntity.filter
+
+	const whereConditions = await getWhereFilterConditions(filter, [], ctx)
+	const results = await ctx
+		.db()
+		.select({ id: Schema.layers.id, matchesFilter: whereConditions as SQL<number> })
+		.from(Schema.layers)
+		.where(E.inArray(Schema.layers.id, input.layers))
+
+	return { code: 'ok' as const, results: results.map((r) => ({ id: r.id, matchesFilter: r.matchesFilter === 1 })) }
+}
+
 export const LayersQueryGroupedByInputSchema = z.object({
 	columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
 	limit: z.number().positive().max(500).default(500),
@@ -104,7 +134,7 @@ export const LayersQueryGroupedByInputSchema = z.object({
 	sort: LayersQuerySortSchema.optional(),
 })
 export type LayersQueryGroupedByInput = z.infer<typeof LayersQueryGroupedByInputSchema>
-export async function runLayersQueryGroupedBy(ctx: C.Log & C.Db, input: LayersQueryGroupedByInput) {
+export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; input: LayersQueryGroupedByInput }) {
 	type Columns = (typeof input.columns)[number]
 	const selectObj = input.columns.reduce(
 		(acc, column) => {
@@ -452,4 +482,8 @@ export async function getHistoryFilter(_ctx: C.Db & C.Log, historyFilters: M.His
 	return FB.and(comparisons)
 }
 
-export function setupLayersQuerySystem() {}
+export const layersRouter = router({
+	selectLayers: procedure.input(LayersQueryInputSchema).query(queryLayers),
+	selectLayersGroupedBy: procedure.input(LayersQueryGroupedByInputSchema).query(queryLayersGroupedBy),
+	areLayersInPool: procedure.input(AreLayersInPoolInputSchema).query(areLayersInPool),
+})

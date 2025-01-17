@@ -144,7 +144,7 @@ const DEFAULT_LAYER_VALUES = {
 }
 
 async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineModels.Output, factions: FactionDetails[], biomes: Biome[]) {
-	using ctx = C.pushOperation(_ctx, 'update-layers-table')
+	await using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const t0 = performance.now()
 	const seedLayers: M.Layer[] = getSeedingLayers(pipeline, biomes, factions)
 
@@ -315,7 +315,7 @@ async function updateLayerComponentsAndSubfactionFunction(
 	factionDetails: FactionDetails[],
 	pipeline: SquadPipelineModels.Output
 ) {
-	using ctx = C.pushOperation(_ctx, 'update-layer-components')
+	await using ctx = C.pushOperation(_ctx, 'update-layer-components')
 	const factionsPromise = ctx
 		.db()
 		.select({ faction: Schema.layers.Faction_1 })
@@ -510,7 +510,7 @@ const SUBFACTION_SHORT_NAMES = {
 } satisfies Record<M.Subfaction, string>
 
 async function parseBiomes(_ctx: C.Log) {
-	using ctx = C.pushOperation(_ctx, 'parse-biomes')
+	await using ctx = C.pushOperation(_ctx, 'parse-biomes')
 	const rawBiomes = await fsPromise.readFile(path.join(Paths.DATA, 'biomes.csv'), 'utf-8')
 	const biomesRows = parse(rawBiomes, { columns: false }) as string[][]
 	const biomes: Biome[] = []
@@ -596,7 +596,7 @@ function getSeedingMatchupsForLayer(mapName: string, factions: FactionDetails[],
 }
 
 async function generateConfigJsonSchema(_ctx: C.Log) {
-	using ctx = C.pushOperation(_ctx, 'generate-config-schema')
+	await using ctx = C.pushOperation(_ctx, 'generate-config-schema')
 	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
 	const schema = zodToJsonSchema(Config.ConfigSchema.extend({ ['$schema']: z.string() }))
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))

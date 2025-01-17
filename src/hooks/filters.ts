@@ -12,40 +12,10 @@ export function useFilters() {
 	})
 }
 
-export function useFilter(
-	filterId?: string,
-	options?: {
-		onDelete?: () => void
-		onUpdate?: (update: M.UserEntityMutation<M.FilterEntity>) => void
-	}
-) {
-	const [filter, setFilter] = React.useState<M.FilterEntity | undefined>(undefined)
-	const optionsRef = React.useRef(options)
-	optionsRef.current = options
+export function useFilter(filterId?: string) {
+	const filtersRes = useFilters()
 
-	React.useEffect(() => {
-		// if (!filterId) return
-		// const sub = trpc.filters.watchFilter.subscribe(filterId, {
-		// 	onData: (data) => {
-		// 		if (data.code === 'err:not-found') {
-		// 			setFilter(undefined)
-		// 		}
-		// 		if (data.code === 'initial-value') {
-		// 			setFilter(data.entity)
-		// 		} else if (data.code === 'mutation') {
-		// 			if (data.mutation.type === 'delete') {
-		// 				optionsRef.current?.onDelete?.()
-		// 			} else if (data.mutation.type === 'update') {
-		// 				optionsRef.current?.onUpdate?.(data.mutation)
-		// 				setFilter(data.mutation.value)
-		// 			}
-		// 		}
-		// 	},
-		// })
-		// return () => sub.unsubscribe()
-	}, [filterId])
-
-	return { data: filter }
+	return { ...filtersRes, data: filtersRes.data?.find((f) => f.id === filterId) }
 }
 
 export function useFilterCreate() {
