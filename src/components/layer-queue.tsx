@@ -131,8 +131,8 @@ export default function ServerDashboard() {
 							<Alert variant="info">
 								<AlertTitle>
 									{editingUser.discordId === loggedInUser?.discordId
-										? 'You are editing the on another tab'
-										: editingUser.username + 'is editing'}
+										? 'You are editing on another tab'
+										: editingUser.username + ' is editing'}
 								</AlertTitle>
 							</Alert>
 						)}
