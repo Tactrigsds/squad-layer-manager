@@ -850,7 +850,18 @@ export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerQueue) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
+
+// layer status as it relates to the layer pool, other possibly other things later
+export type LayerStatus = {
+	inPool: boolean
+}
+
 export type UserPart = { users: User[] }
+export type LayerStatusPart = { layerInPoolState: Map<string, LayerStatus> }
+export function getLayerStatusId(layerId: LayerId, filterEntityId: FilterEntityId) {
+	return `${layerId}::${filterEntityId}`
+}
+
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

@@ -24,7 +24,7 @@ import { BROADCASTS, WARNS } from '@/messages.ts'
 import { interval } from 'rxjs'
 import { Mutex } from 'async-mutex'
 
-export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart>>, C.Log & C.Db]>
+export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
 let voteEndTask: Subscription | null = null
 let voteState: M.VoteState | null = null
@@ -70,8 +70,9 @@ export async function setupLayerQueueAndServerState() {
 
 		const initialServerState = M.ServerStateSchema.parse(server)
 		const initialStateUpdate: M.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
+		const withParts = await includeLQServerUpdateParts(opCtx, initialStateUpdate)
 		// idk why this cast on ctx is necessary
-		serverStateUpdate$ = new BehaviorSubject([initialStateUpdate, ctx as C.Log & C.Db] as const)
+		serverStateUpdate$ = new BehaviorSubject([withParts, ctx as C.Log & C.Db] as const)
 
 		// -------- initialize vote state --------
 		const update = getVoteStateUpdatesFromQueueUpdate([], initialServerState.layerQueue, voteState)
@@ -766,8 +767,20 @@ export async function peekNext(ctx: C.Db & C.Log) {
 async function includeLQServerUpdateParts(
 	ctx: C.Db & C.Log,
 	_serverStateUpdate: M.LQServerStateUpdate
-): Promise<M.LQServerStateUpdate & Parts<M.UserPart>> {
-	const update = { ...deepClone(_serverStateUpdate), parts: { users: [] } } as M.LQServerStateUpdate & Parts<M.UserPart>
+): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
+	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
+	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
+	return {
+		..._serverStateUpdate,
+		parts: {
+			...(await userPartPromise),
+			...(await layerStatusPartPromise),
+		},
+	}
+}
+
+async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQServerStateUpdate) {
+	const part: M.UserPart = { users: [] as M.User[] }
 	const state = update.state
 	const userIds: bigint[] = []
 	if (update.source.type === 'manual' && update.source.user.discordId) {
@@ -782,9 +795,43 @@ async function includeLQServerUpdateParts(
 		users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, userIds))
 	}
 	for (const user of users) {
-		update.parts.users.push(user)
+		part.users.push(user)
 	}
-	return update
+	return part
+}
+
+async function includeLayerStatusPart(ctx: C.Db & C.Log, update: M.LQServerStateUpdate) {
+	const part: M.LayerStatusPart = { layerInPoolState: new Map() }
+
+	if (!update.state.settings.queue.poolFilterId) return part
+
+	const layerIds: Set<string> = new Set()
+	for (const item of update.state.layerQueue) {
+		if (item.layerId) layerIds.add(item.layerId)
+		if (item.vote) item.vote.choices.forEach((c) => layerIds.add(c))
+	}
+
+	const inPoolRes = await LayersQuery.areLayersInPool({
+		ctx,
+		input: { layers: Array.from(layerIds), poolFilterId: update.state.settings.queue.poolFilterId },
+	})
+
+	switch (inPoolRes.code) {
+		case 'err:pool-filter-not-set':
+			return part
+		case 'ok':
+			break
+		default:
+			assertNever(inPoolRes)
+	}
+
+	for (const result of inPoolRes.results) {
+		part.layerInPoolState.set(M.getLayerStatusId(result.id, update.state.settings.queue.poolFilterId!), {
+			inPool: result.matchesFilter,
+		})
+	}
+
+	return part
 }
 
 async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenLayerQueueItemsOptions) {
