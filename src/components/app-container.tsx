@@ -7,15 +7,14 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 
-import { Button } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
-import { useLoggedInUser } from '@/hooks/use-logged-in-user'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
-	const userRes = useLoggedInUser()
-	const avatarUrl = userRes.data
-		? `https://cdn.discordapp.com/avatars/${userRes.data.discordId}/${userRes.data.avatar}.png`
+	const user = useLoggedInUser()
+	const avatarUrl = user
+		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
 	return (
 		<div className="h-full w-full">
@@ -54,16 +53,16 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 							</div>
 						</>
 					)}
-					{userRes.data && (
+					{user && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Avatar className="hover:cursor-pointer select-none">
 									<AvatarImage src={avatarUrl} />
-									<AvatarFallback>{userRes.data.username}</AvatarFallback>
+									<AvatarFallback>{user.username}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
-								<DropdownMenuLabel>{userRes.data.username}</DropdownMenuLabel>
+								<DropdownMenuLabel>{user.username}</DropdownMenuLabel>
 								<form action={AR.exists('/logout')} method="POST">
 									<DropdownMenuItem asChild>
 										<button className="w-full" type="submit">

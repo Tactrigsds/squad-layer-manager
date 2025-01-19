@@ -14,6 +14,7 @@ import { baseLogger } from '@/server/logger.ts'
 import * as Schema from '@/server/schema.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as LayersQuery from '@/server/systems/layer-queries.ts'
+import * as WSSessionSys from '@/server/systems/ws-session.ts'
 
 import { procedure, router } from '../trpc.server.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -24,9 +25,13 @@ import { interval } from 'rxjs'
 import { Mutex } from 'async-mutex'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart>>, C.Log & C.Db]>
+
 let voteEndTask: Subscription | null = null
 let voteState: M.VoteState | null = null
 const voteStateUpdate$ = new Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
+
+const userPresence: M.UserPresenceState = {}
+const userPresenceUpdate$ = new Subject<M.UserPresenceStateUpdate & Parts<M.UserPart>>()
 
 const voteStateMtx = new Mutex()
 
@@ -280,11 +285,17 @@ export async function setupLayerQueueAndServerState() {
 				LayersQuery.historyFiltersCache.clear()
 			})
 	}
+
+	WSSessionSys.registerDisconnectHook(async (ctx) => {
+		if (userPresence.editState && userPresence.editState.wsClientId === ctx.wsClientId) {
+			delete userPresence.editState
+			userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
+		}
+	})
 }
 
 // -------- voting --------
 //
-
 function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M.LayerQueue, voteState: M.VoteState | null, force = false) {
 	const lastQueueItem = lastQueue[0] as M.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
@@ -613,6 +624,58 @@ function getVoteStateDiscordIds(state: M.VoteState) {
 	return discordIds
 }
 
+// -------- user presence --------
+export function startEditing({ ctx }: { ctx: C.Log & C.User & C.WSSession }) {
+	if (userPresence.editState) {
+		return { code: 'err:already-editing' as const, userPresence }
+	}
+	userPresence.editState = {
+		startTime: Date.now(),
+		userId: ctx.user.discordId,
+		wsClientId: ctx.wsClientId,
+	}
+	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+		event: 'edit-start',
+		state: userPresence,
+		parts: {
+			users: [ctx.user],
+		},
+	}
+
+	userPresenceUpdate$.next(update)
+
+	return { code: 'ok' as const }
+}
+
+export function endEditing({ ctx }: { ctx: C.TrpcRequest }) {
+	if (!userPresence.editState || ctx.wsClientId !== userPresence.editState.wsClientId) {
+		return { code: 'err:not-editing' as const }
+	}
+
+	delete userPresence.editState
+	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+		event: 'edit-end',
+		state: userPresence,
+		parts: {
+			users: [ctx.user],
+		},
+	}
+	userPresenceUpdate$.next(update)
+	return { code: 'ok' as const }
+}
+
+export async function* watchUserPresence({ ctx }: { ctx: C.Log & C.Db }) {
+	const users: M.User[] = []
+	if (userPresence.editState) {
+		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userPresence.editState.userId))
+		users.push(user)
+	}
+	yield { code: 'initial-state' as const, state: userPresence, parts: { users } } satisfies any & Parts<M.UserPart>
+	for await (const update of toAsyncGenerator(userPresenceUpdate$)) {
+		yield { code: 'update' as const, update }
+	}
+}
+
 // -------- generic actions & data  --------
 async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 	for await (const [update] of toAsyncGenerator(serverStateUpdate$)) {
@@ -625,7 +688,7 @@ async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 	}
 }
 
-async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableServerState; ctx: C.Log & C.Db & C.User }) {
+async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableServerState; ctx: C.TrpcRequest }) {
 	input = deepClone(input)
 	await using ctx = C.pushOperation(baseCtx, 'layer-queue:update')
 	const res = await DB.runTransaction(ctx, async (ctx) => {
@@ -664,6 +727,7 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 		}
 
 		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(E.eq(Schema.servers.id, CONFIG.serverId))
+		endEditing({ ctx })
 
 		return { code: 'ok' as const, serverState }
 	})
@@ -692,6 +756,7 @@ export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C
 	else [serverRaw] = await query
 	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
+
 export async function peekNext(ctx: C.Db & C.Log) {
 	const serverState = await getServerState({}, ctx)
 	return serverState.layerQueue[0] ?? null
@@ -778,6 +843,7 @@ async function generateLayerQueueItems(_ctx: C.Log & C.Db & C.User, opts: M.GenL
 // -------- setup router --------
 export const layerQueueRouter = router({
 	watchLayerQueueState: procedure.subscription(watchLayerQueueStateUpdates),
+
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	generateLayerQueueItems: procedure
 		.input(M.GenLayerQueueItemsOptionsSchema)
@@ -788,5 +854,10 @@ export const layerQueueRouter = router({
 	abortVote: procedure.mutation(async ({ ctx }) => {
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
+
+	startEditing: procedure.mutation(startEditing),
+	endEditing: procedure.mutation(endEditing),
+	watchUserPresence: procedure.subscription(watchUserPresence),
+
 	updateQueue: procedure.input(M.GenericServerStateUpdateSchema).mutation(updateQueue),
 })

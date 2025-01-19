@@ -9,8 +9,6 @@ import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
 import { procedure, router } from '@/server/trpc.server.ts'
 
-import * as Sessions from './sessions.ts'
-
 const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
 
 export const filtersRouter = router({
@@ -19,12 +17,11 @@ export const filtersRouter = router({
 	}),
 	createFilter: procedure.input(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
 		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(input))
-		const user = await Sessions.getUser({}, ctx)
 		if (res.code === 'ok') {
 			filterMutation$.next({
 				type: 'add',
 				value: input,
-				username: user.username,
+				username: ctx.user.username,
 			})
 		}
 		return res.code
@@ -48,12 +45,11 @@ export const filtersRouter = router({
 			return { code: 'ok' as const, filter: { ...filter, ...update } }
 		})
 		ctx.log.info(res, 'Updated filter %d', id)
-		const user = await Sessions.getUser({}, ctx)
 		if (res.code === 'ok') {
 			filterMutation$.next({
 				type: 'update',
 				value: res.filter,
-				username: user.username,
+				username: ctx.user.username,
 			})
 		}
 		return res
@@ -71,10 +67,9 @@ export const filtersRouter = router({
 		if (res.code !== 'ok') {
 			return res
 		}
-		const user = await Sessions.getUser({}, ctx)
 		filterMutation$.next({
 			type: 'delete',
-			username: user.username,
+			username: ctx.user.username,
 			value: res.filter,
 		})
 		return { code: 'ok' }

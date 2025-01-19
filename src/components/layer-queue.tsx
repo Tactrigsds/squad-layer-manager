@@ -1,14 +1,13 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useShallow } from 'zustand/react/shallow'
 import { useForm } from '@tanstack/react-form'
 import { CSS } from '@dnd-kit/utilities'
 import * as Im from 'immer'
 import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
 import deepEqual from 'fast-deep-equal'
-import React, { useRef, useState } from 'react'
-import { derive } from 'derive-zustand'
+import React from 'react'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
-import { toStream } from 'zustand-rx'
 
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -24,9 +23,9 @@ import { Comparison } from './filter-card'
 import TabsList from './ui/tabs-list.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { Checkbox } from './ui/checkbox.tsx'
-import { initMutations, initMutationState, tryApplyMutation, WithMutationId } from '@/lib/item-mutations.ts'
+import { initMutationState } from '@/lib/item-mutations.ts'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
-import { useLoggedInUser } from '@/hooks/use-logged-in-user.ts'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 
 import * as Zus from 'zustand'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -43,314 +42,28 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
-import { createId } from '@/lib/id.ts'
 import { useFilter, useFilter as useFilterEntity, useFilters } from '@/hooks/filters.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 
-import { getDisplayedMutation, hasMutations, toItemMutationState } from '@/lib/item-mutations.ts'
+import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { deepClone } from '@/lib/object.ts'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
 import { useConfig } from '@/systems.client/config.client.ts'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
-import { Getter, Setter } from '@/lib/zustand.ts'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import * as PartsSys from '@/systems.client/parts.ts'
-import { combineLatest, map } from 'rxjs'
-import { lqServerStateUpdate$ } from '@/hooks/use-layer-queue-state.ts'
-import { bind } from '@react-rxjs/core'
 import LayerTable from './layer-table.tsx'
 import { zodValidator } from '@tanstack/zod-form-adapter'
 import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
-import { Popover } from './ui/popover.tsx'
-
-type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
-type MutServerStateWithIds = M.UserModifiableServerState & {
-	layerQueue: IdedLLItem[]
-	historyFilters: EditedHistoryFilterWithId[]
-}
-
-type LLState = {
-	layerList: IdedLLItem[]
-	listMutations: ItemMutations
-	allowDuplicates?: boolean
-}
-type LLStore = LLState & LLActions
-
-type LLActions = {
-	move: (sourceIndex: number, targetIndex: number, modifiedBy: bigint) => void
-	add: (items: M.LayerListItem[], index?: number) => void
-	setItem: (id: string, update: React.SetStateAction<IdedLLItem>) => void
-	remove: (id: string) => void
-}
-
-type LLItemState = { item: IdedLLItem; mutationState: ItemMutationState }
-type LLItemStore = LLItemState & LLItemActions
-
-type LLItemActions = {
-	setItem: React.Dispatch<React.SetStateAction<IdedLLItem>>
-	// if not present then removing is disabled
-	remove?: () => void
-}
-
-export type _SDState = {
-	editedServerState: MutServerStateWithIds
-	queueMutations: ItemMutations
-	serverState: M.LQServerState | null
-}
-// computed state
-export type SDStore = _SDState & {
-	applyServerUpdate: (update: M.LQServerStateUpdate) => void
-	reset: () => void
-	setSetting: (updater: (settings: Im.Draft<M.ServerSettings>) => void) => void
-	setQueue: Setter<LLState>
-}
-
-const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions => {
-	return {
-		setItem: (id, update) => {
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const index = draft.layerList.findIndex((item) => item.id === id)
-					if (index === -1) return
-					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
-					tryApplyMutation('edited', id, draft.listMutations)
-				})
-			)
-		},
-		add: (items, index) => {
-			set(
-				Im.produce((state) => {
-					const layerList = state.layerList
-					const idedItems = items.map((item) => ({ id: createId(6), ...item }))
-					if (index === undefined) {
-						layerList.push(...idedItems)
-					} else {
-						layerList.splice(index, 0, ...idedItems)
-					}
-					for (const item of idedItems) {
-						tryApplyMutation('added', item.id, state.listMutations)
-					}
-				})
-			)
-		},
-		move: (sourceIndex, targetIndex, modifiedBy) => {
-			if (sourceIndex === targetIndex || sourceIndex === targetIndex + 1) return
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const layerList = draft.layerList
-					const item = layerList[sourceIndex]
-					item.lastModifiedBy = modifiedBy
-					if (sourceIndex > targetIndex) {
-						targetIndex++
-					}
-					layerList.splice(sourceIndex, 1)
-					layerList.splice(targetIndex, 0, item)
-					tryApplyMutation('moved', item.id, draft.listMutations)
-				})
-			)
-		},
-		remove: (id) => {
-			set((state) =>
-				Im.produce(state, (state) => {
-					const layerList = state.layerList
-					const index = layerList.findIndex((item) => item.id === id)
-					if (index === -1) return
-					layerList.splice(index, 1)
-					tryApplyMutation('removed', id, state.listMutations)
-				})
-			)
-		},
-	}
-}
-
-const selectLLState = (state: _SDState): LLState => ({ layerList: state.editedServerState.layerQueue, listMutations: state.queueMutations })
-const deriveLLStore = (store: Zus.StoreApi<SDStore>) => {
-	const setLL = store.getState().setQueue
-	const getLL = () => selectLLState(store.getState())
-	const actions = createLLActions(setLL, getLL)
-
-	return derive<LLStore>((get) => {
-		return {
-			...selectLLState(get(store)),
-			...actions,
-		}
-	})
-}
-
-const createLLItemStore = (
-	set: Setter<LLItemState>,
-	get: Getter<LLItemState>,
-	initialState: LLItemState,
-	removeItem?: () => void
-): LLItemStore => {
-	return {
-		...initialState,
-		setItem: (update) => {
-			if (typeof update === 'function') {
-				set({ item: update(get().item) })
-			} else {
-				set({ item: update })
-			}
-		},
-		remove: removeItem,
-	}
-}
-
-const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) => {
-	const actions: LLItemActions = {
-		setItem: (update) => store.getState().setItem(itemId, update),
-		remove: () => store.getState().remove(itemId),
-	}
-
-	return derive<LLItemStore>((get) => ({
-		...actions,
-		item: get(store).layerList.find((item) => item.id === itemId)!,
-		mutationState: toItemMutationState(get(store).listMutations, itemId),
-	}))
-}
-
-function selectFilterExcludingLayersFromList(store: LLStore) {
-	if (store.allowDuplicates === undefined || store.allowDuplicates) return undefined
-	const layerIds = new Set<string>()
-	for (const item of store.layerList) {
-		if (item.layerId) layerIds.add(item.layerId)
-		if (item.vote) {
-			for (const id of item.vote.choices) {
-				layerIds.add(id)
-			}
-		}
-	}
-	return FB.comp(FB.inValues('id', Array.from(layerIds)), { neg: true })
-}
-
-const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const mutationStore = Zus.createStore<ItemMutations>(() => initMutations())
-	function selectLLState(state: LLItemState, mutState: ItemMutations): LLState {
-		return {
-			listMutations: mutState,
-			allowDuplicates: false,
-			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, source: 'manual' })) ?? [],
-		}
-	}
-	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
-	const llSet: Setter<LLState> = (update) => {
-		const llState = llGet()
-		const updated = typeof update === 'function' ? update(llState) : update
-		if (updated.layerList) {
-			const choices = updated.layerList!.map((item) => item.layerId!)
-			const defaultChoice = choices[0] ?? itemStore.getState().item.vote?.defaultChoice
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
-					if (!draft.vote) return
-					draft.vote.choices = choices
-					draft.vote.defaultChoice = defaultChoice
-				})
-			)
-		}
-		if (updated.listMutations) {
-			mutationStore.setState(updated.listMutations)
-		}
-	}
-
-	const actions = createLLActions(llSet, llGet)
-
-	return derive<LLStore>((get) => {
-		return {
-			...selectLLState(get(itemStore), get(mutationStore)),
-			...actions,
-		}
-	})
-}
-
-const _initialState: _SDState = {
-	editedServerState: { historyFilters: [], layerQueue: [], layerQueueSeqId: 0, settings: M.ServerSettingsSchema.parse({ queue: {} }) },
-	queueMutations: initMutations(),
-	serverState: null,
-}
-function getEditableServerState(state: M.LQServerState): MutServerStateWithIds {
-	const layerQueue = state.layerQueue.map((item) => ({ id: createId(6), ...item }))
-	const historyFilters = state.historyFilters.map((filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId)
-	return {
-		//@ts-expect-error idk
-		historyFilters,
-		layerQueue,
-		layerQueueSeqId: state.layerQueueSeqId,
-		settings: state.settings,
-	}
-}
-
-const SDStore = Zus.createStore<SDStore>((set, get) => {
-	return {
-		..._initialState,
-		applyServerUpdate: (update) => {
-			set({
-				editedServerState: getEditableServerState(update.state),
-				queueMutations: initMutations(),
-			})
-		},
-		reset: () => {
-			const serverStateUpdate = lqServerStateUpdate$.getValue()
-			if (!serverStateUpdate) return set(_initialState)
-
-			set({
-				..._initialState,
-				editedServerState: getEditableServerState(serverStateUpdate.state) ?? _initialState.editedServerState,
-			})
-		},
-		setSetting: (handler) => {
-			set((state) =>
-				Im.produce(state, (draft) => {
-					handler(draft.editedServerState.settings)
-				})
-			)
-		},
-		setQueue: (handler) => {
-			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
-			set({
-				editedServerState: {
-					...get().editedServerState,
-					layerQueue: updated.layerList!,
-				},
-				queueMutations: updated.listMutations,
-			})
-		},
-	}
-})
-
-function selectCurrentPoolFilterId(store: _SDState) {
-	return store.editedServerState.settings.queue.poolFilterId
-}
-
-const LQStore = deriveLLStore(SDStore)
-
-function selectIsEditing(state: SDStore, serverStateUpdate: M.LQServerStateUpdate | null) {
-	if (!serverStateUpdate) return false
-	const serverState = serverStateUpdate.state
-	const editedServerState = state.editedServerState
-	return (serverState && hasMutations(state.queueMutations)) || !deepEqual(serverState.settings, editedServerState.settings)
-}
-
-const [useIsEditing] = bind<boolean>(
-	combineLatest([toStream(SDStore, (state) => state, { fireImmediately: true }), lqServerStateUpdate$]).pipe(
-		map(([state, serverStateUpdate]) => selectIsEditing(state, serverStateUpdate))
-	),
-	false
-)
+import * as QD from '@/systems.client/queue-dashboard.ts'
+import { useUserPresenceState } from '@/systems.client/presence.ts'
 
 export default function ServerDashboard() {
 	const serverStatus = useSquadServerStatus()
-	const settingsPanelRef = useRef<ServerSettingsPanelHandle>(null)
-
-	React.useEffect(() => {
-		const sub = lqServerStateUpdate$.subscribe((update) => {
-			if (!update) return
-			SDStore.getState().applyServerUpdate(update)
-		})
-		return () => sub.unsubscribe()
-	}, [])
+	const settingsPanelRef = React.useRef<ServerSettingsPanelHandle>(null)
 
 	const toaster = useToast()
 	const updateQueueMutation = useMutation({
@@ -358,9 +71,9 @@ export default function ServerDashboard() {
 	})
 	// const validatedHistoryFilters = M.histo
 	async function saveLqState() {
-		const serverStateMut = SDStore.getState().editedServerState
+		const serverStateMut = QD.QDStore.getState().editedServerState
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
-		const reset = SDStore.getState().reset
+		const reset = QD.QDStore.getState().reset
 		switch (res.code) {
 			case 'err:out-of-sync':
 				toaster.toast({
@@ -374,22 +87,30 @@ export default function ServerDashboard() {
 					title: 'Cannot update: layer vote in progress',
 					variant: 'destructive',
 				})
+				reset()
 				break
 			case 'ok':
 				toaster.toast({ title: 'Changes applied' })
-				reset()
 				break
 			default:
 				assertNever(res)
 		}
 	}
 
-	const [playNextPopoverOpen, setPlayNextPopoverOpen] = useState(false)
-	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = useState(false)
+	const [playNextPopoverOpen, setPlayNextPopoverOpen] = React.useState(false)
+	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = React.useState(false)
 
-	// TODO implement
-	const editing = useIsEditing()
-	const queueHasMutations = Zus.useStore(LQStore, (s) => hasMutations(s.listMutations))
+	const { isEditing, canEdit } = Zus.useStore(
+		QD.QDStore,
+		useShallow((s) => {
+			return { isEditing: s.isEditing, canEdit: s.canEdit }
+		})
+	)
+	const userPresenceState = useUserPresenceState()
+	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
+	const loggedInUser = useLoggedInUser()
+
+	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
@@ -398,7 +119,7 @@ export default function ServerDashboard() {
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
-						{!editing && serverStatus?.currentLayer && (
+						{!isEditing && serverStatus?.currentLayer && !editingUser && (
 							<>
 								<CardHeader>
 									<CardTitle>Now Playing</CardTitle>
@@ -406,8 +127,19 @@ export default function ServerDashboard() {
 								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
 							</>
 						)}
-						{!editing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
-						{editing && (
+						{!isEditing && editingUser && (
+							<div className="flex flex-col space-y-2">
+								<Alert variant="edited">
+									<AlertTitle>
+										{editingUser.discordId === loggedInUser?.discordId
+											? 'You are editing the on the other tab'
+											: editingUser.username + 'is editing'}
+									</AlertTitle>
+								</Alert>
+							</div>
+						)}
+						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
+						{isEditing && (
 							<div className="flex flex-col space-y-2">
 								<Card>
 									<CardHeader>
@@ -418,7 +150,7 @@ export default function ServerDashboard() {
 										<Button onClick={saveLqState} disabled={updateQueueMutation.isPending}>
 											Save Changes
 										</Button>
-										<Button onClick={() => SDStore.getState().reset()} variant="secondary">
+										<Button onClick={() => QD.QDStore.getState().reset()} variant="secondary">
 											Cancel
 										</Button>
 										<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={updateQueueMutation.isPending} />
@@ -434,7 +166,7 @@ export default function ServerDashboard() {
 								<SelectLayersDialog
 									title="Add to Queue"
 									description="Select layers to add to the queue"
-									selectQueueItems={(items) => LQStore.getState().add(items)}
+									selectQueueItems={(items) => QD.LQStore.getState().add(items)}
 									open={appendLayersPopoverOpen}
 									onOpenChange={setAppendLayersPopoverOpen}
 								>
@@ -446,7 +178,7 @@ export default function ServerDashboard() {
 								<SelectLayersDialog
 									title="Play Next"
 									description="Select layers to play next"
-									selectQueueItems={(items) => LQStore.getState().add(items, 0)}
+									selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
 									open={playNextPopoverOpen}
 									onOpenChange={setPlayNextPopoverOpen}
 								>
@@ -458,7 +190,7 @@ export default function ServerDashboard() {
 							</div>
 						</CardHeader>
 						<CardContent>
-							<LayerList store={LQStore} allowVotes={true} />
+							<LayerList store={QD.LQStore} allowVotes={true} />
 						</CardContent>
 					</Card>
 				</div>
@@ -471,7 +203,7 @@ export default function ServerDashboard() {
 }
 
 function EditSummary() {
-	const queueMutations = Zus.useStore(SDStore, (s) => s.queueMutations)
+	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.listMutations)
 	return (
 		<>
 			<h3>Layer Changes pending</h3>
@@ -486,8 +218,8 @@ function EditSummary() {
 }
 
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
-export function LayerList(props: { store: Zus.StoreApi<LLStore>; allowVotes?: boolean }) {
-	const userQuery = useLoggedInUser()
+export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?: boolean }) {
+	const user = useLoggedInUser()
 	const allowVotes = props.allowVotes ?? true
 	const queueIds = Zus.useStore(props.store).layerList.map((item) => item.id)
 	useDragEnd((event) => {
@@ -495,8 +227,8 @@ export function LayerList(props: { store: Zus.StoreApi<LLStore>; allowVotes?: bo
 		const { layerList: layerQueue, move } = props.store.getState()
 		const sourceIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.active.id as string))
 		const targetIndex = getIndexFromQueueItemId(layerQueue, JSON.parse(event.over.id as string))
-		if (!userQuery.data) return
-		move(sourceIndex, targetIndex, userQuery.data.discordId)
+		if (!user) return
+		move(sourceIndex, targetIndex, user.discordId)
 	})
 
 	return (
@@ -524,7 +256,7 @@ function VoteState() {
 	const squadServerStatus = useSquadServerStatus()
 
 	async function abortVote() {
-		const serverStateMut = SDStore.getState().editedServerState
+		const serverStateMut = QD.QDStore.getState().editedServerState
 		if (!serverStateMut?.layerQueueSeqId) return
 		const res = await abortVoteMutation.mutateAsync()
 
@@ -550,7 +282,7 @@ function VoteState() {
 			minValidVotePercentage: slmConfig?.defaults.minValidVotePercentage ?? 75,
 		},
 		validatorAdapter: zodValidator(),
-		onSubmit: async ({ value, formApi }) => {
+		onSubmit: async ({ value }) => {
 			const res = await startVoteMutation.mutateAsync({
 				durationSeconds: value.durationSeconds,
 				minValidVotePercentage: value.minValidVotePercentage,
@@ -781,7 +513,7 @@ function FilterEntitySelect(props: {
 }
 
 function Timer(props: { deadline: number }) {
-	const eltRef = useRef<HTMLDivElement>(null)
+	const eltRef = React.useRef<HTMLDivElement>(null)
 
 	// I don't trust react to do this performantly
 	React.useLayoutEffect(() => {
@@ -815,12 +547,12 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
 	}))
-	const changedSettings = Zus.useStore(SDStore, (s) => {
+	const changedSettings = Zus.useStore(QD.QDStore, (s) => {
 		if (!s.serverState) return null
 		return M.getSettingsChanged(s.serverState.settings, s.editedServerState.settings)
 	})
-	const settings = Zus.useStore(SDStore, (s) => s.editedServerState.settings)
-	const setSetting = Zus.useStore(SDStore, (s) => s.setSetting)
+	const settings = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings)
+	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
 	return (
 		<div className="flex flex-col space-y-4">
 			<Card>
@@ -877,7 +609,7 @@ function QueueGenerationCard() {
 		mutationFn: generateLayerQueueItems,
 	})
 	async function generateLayerQueueItems() {
-		let serverStateMut = SDStore.getState().editedServerState
+		let serverStateMut = QD.QDStore.getState().editedServerState
 		const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
 		const seqIdBefore = serverStateMut.layerQueueSeqId
 		const before = deepClone(serverStateMut.layerQueue)
@@ -888,11 +620,11 @@ function QueueGenerationCard() {
 			baseFilterId: serverStateMut?.settings.queue.poolFilterId,
 		})
 
-		const seqIdAfter = SDStore.getState().editedServerState.layerQueueSeqId
+		const seqIdAfter = QD.QDStore.getState().editedServerState.layerQueueSeqId
 		if (seqIdBefore !== seqIdAfter || !deepEqual(before, serverStateMut.layerQueue)) return
 
 		// this technically should be unnecessary, but just in case
-		serverStateMut = SDStore.getState().editedServerState
+		serverStateMut = QD.QDStore.getState().editedServerState
 
 		if (replaceCurrentGenerated) {
 			// Remove generated items from end of queue
@@ -900,11 +632,11 @@ function QueueGenerationCard() {
 				serverStateMut.layerQueue.length > 0 &&
 				serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].source === 'generated'
 			) {
-				LQStore.getState().remove(serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].id)
+				QD.LQStore.getState().remove(serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].id)
 			}
 		}
 
-		LQStore.getState().add(generated)
+		QD.LQStore.getState().add(generated)
 	}
 
 	return (
@@ -964,186 +696,6 @@ function QueueGenerationCard() {
 	)
 }
 
-// function HistoryFilterPanel(_props: object) {
-// 	const sdStore = useSDStore().store()!
-// 	const serverStateMut = useSDStore().get.serverStateMut()
-// 	const serverState = useSDStore().get.serverState()
-// 	const historyFilters = serverStateMut?.historyFilters as EditedHistoryFilterWithId[] | null
-// 	const historyFilterMutations = useSDStore().get.historyFiltersMutations()
-// 	const useHistoryFiltersCheckboxId = React.useId()
-// 	const historyFilterEnabledChanged =
-// 		serverStateMut?.settings.queue.historyFilterEnabled !== serverState?.settings.queue.historyFilterEnabled
-
-// 	return (
-// 		<Card>
-// 			<CardHeader>
-// 				<CardTitle>History Filters</CardTitle>
-// 				<div
-// 					className="w-min p-1 items-top flex space-x-1 items-center data-[changed=true]:bg-edited rounded"
-// 					data-changed={historyFilterEnabledChanged}
-// 				>
-// 					<Checkbox
-// 						checked={serverStateMut?.settings.queue.historyFilterEnabled}
-// 						onCheckedChange={(checked) => {
-// 							sdStore.set(withImmer(SDStore.atom.serverStateMut), (draft) => {
-// 								if (checked === 'indeterminate') return
-// 								draft!.settings.queue.historyFilterEnabled = checked
-// 							})
-// 						}}
-// 						id={useHistoryFiltersCheckboxId}
-// 					/>
-// 					<label
-// 						htmlFor={useHistoryFiltersCheckboxId}
-// 						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-// 					>
-// 						Enable
-// 					</label>
-// 				</div>
-// 			</CardHeader>
-// 			<CardContent>
-// 				{historyFilters?.map((filter) => {
-// 					const mutationState = toItemMutationState(historyFilterMutations, filter.id)
-// 					return (
-// 						<HistoryFilter
-// 							key={filter.id}
-// 							filter={filter}
-// 							setFilter={(update) => sdStore.set(SDStore.atom.historyFilterActions.edit, filter.id, update)}
-// 							removeFilter={() => sdStore.set(SDStore.atom.historyFilterActions.remove, filter.id)}
-// 							mutationState={mutationState}
-// 						/>
-// 					)
-// 				})}
-// 			</CardContent>
-// 			<CardFooter>
-// 				<Button
-// 					onClick={() =>
-// 						sdStore.set(SDStore.atom.historyFilterActions.add, {
-// 							type: 'dynamic',
-// 							column: 'Layer',
-// 							excludeFor: { matches: 10 },
-// 						})
-// 					}
-// 				>
-// 					Add History Filter
-// 				</Button>
-// 			</CardFooter>
-// 		</Card>
-// 	)
-// }
-
-// function HistoryFilter(props: {
-// 	filter: M.HistoryFilterEdited
-// 	setFilter: React.Dispatch<React.SetStateAction<M.HistoryFilterEdited>>
-// 	removeFilter: () => void
-// 	mutationState: ItemMutationState
-// }) {
-// 	const setStaticValuesCheckboxId = React.useId()
-// 	const usingStaticValues = props.filter.type === 'static'
-// 	let inner: React.ReactNode
-// 	switch (props.filter.type) {
-// 		case 'dynamic': {
-// 			inner = (
-// 				<ComboBox
-// 					title="Column"
-// 					options={M.COLUMN_TYPE_MAPPINGS.string}
-// 					value={props.filter.column}
-// 					onSelect={(column) => {
-// 						props.setFilter(
-// 							Im.produce((_filter) => {
-// 								const filter = _filter as Extract<M.HistoryFilterEdited, { type: 'dynamic' }>
-// 								filter.column = column as M.LayerColumnKey
-// 							})
-// 						)
-// 					}}
-// 				/>
-// 			)
-// 			break
-// 		}
-// 		case 'static': {
-// 			inner = (
-// 				<Comparison
-// 					comp={props.filter.comparison}
-// 					setComp={(compUpdate) => {
-// 						props.setFilter(
-// 							Im.produce((_filter) => {
-// 								const filter = _filter as Extract<M.HistoryFilterEdited, { type: 'static' }>
-// 								filter.comparison = typeof compUpdate === 'function' ? compUpdate(filter.comparison) : compUpdate
-// 							})
-// 						)
-// 					}}
-// 				/>
-// 			)
-// 			break
-// 		}
-// 		default:
-// 			assertNever(props.filter)
-// 	}
-// 	const excludeForId = React.useId()
-// 	return (
-// 		<div
-// 			className="flex flex-col space-y-2 border rounded p-2 data-[edited=true]:border-edited data-[added=true]:border-added"
-// 			data-edited={props.mutationState.edited}
-// 			data-added={props.mutationState.added}
-// 		>
-// 			<div className="items-top flex space-x-1 items-center">
-// 				<Checkbox
-// 					checked={usingStaticValues}
-// 					onCheckedChange={(checked) => {
-// 						props.setFilter((_filter) => {
-// 							if (checked === 'indeterminate') return _filter
-// 							if (checked) {
-// 								const existingFilter = _filter as Extract<M.HistoryFilterEdited, { type: 'dynamic' }>
-// 								return {
-// 									...existingFilter,
-// 									type: 'static',
-// 									comparison: {
-// 										column: existingFilter.column,
-// 									},
-// 								} satisfies M.HistoryFilterEdited
-// 							} else {
-// 								const existingFilter = _filter as Extract<M.HistoryFilterEdited, { type: 'static' }>
-// 								return {
-// 									...existingFilter,
-// 									type: 'dynamic',
-// 									column: existingFilter.comparison.column ?? 'Layer',
-// 								} satisfies M.HistoryFilterEdited
-// 							}
-// 						})
-// 					}}
-// 					id={setStaticValuesCheckboxId}
-// 				/>
-// 				<label
-// 					htmlFor={setStaticValuesCheckboxId}
-// 					className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-// 				>
-// 					Set static values
-// 				</label>
-// 			</div>
-// 			{inner}
-// 			<div className="flex space-x-1">
-// 				<span>
-// 					<Label htmlFor={excludeForId}>Exclude for matches:</Label>
-// 					<Input
-// 						id={excludeForId}
-// 						type="number"
-// 						value={props.filter.excludeFor.matches}
-// 						onChange={(e) => {
-// 							props.setFilter(
-// 								Im.produce((filter) => {
-// 									filter.excludeFor.matches = parseInt(e.target.value)
-// 								})
-// 							)
-// 						}}
-// 					/>
-// 				</span>
-// 			</div>
-// 			<Button onClick={() => props.removeFilter()} size="icon" variant="ghost">
-// 				<Minus color="hsl(var(--destructive))" />
-// 			</Button>
-// 		</div>
-// 	)
-// }
-
 export type QueueItemAction =
 	| {
 			code: 'move'
@@ -1152,7 +704,7 @@ export type QueueItemAction =
 	  }
 	| {
 			code: 'edit'
-			item: IdedLLItem
+			item: QD.IdedLLItem
 	  }
 	| {
 			code: 'delete'
@@ -1164,7 +716,7 @@ export type QueueItemAction =
 			id?: string
 	  }
 
-function getIndexFromQueueItemId(items: IdedLLItem[], id: string | null) {
+function getIndexFromQueueItemId(items: QD.IdedLLItem[], id: string | null) {
 	if (id === null) return -1
 	return items.findIndex((item) => item.id === id)
 }
@@ -1174,40 +726,42 @@ type QueueItemProps = {
 	isLast: boolean
 	allowVotes?: boolean
 	id: string
-	llStore: Zus.StoreApi<LLStore>
+	llStore: Zus.StoreApi<QD.LLStore>
 }
 
 function LayerListItem(props: QueueItemProps) {
-	const itemStore = React.useMemo(() => deriveLLItemStore(props.llStore, props.id), [props.llStore, props.id])
+	const itemStore = React.useMemo(() => QD.deriveLLItemStore(props.llStore, props.id), [props.llStore, props.id])
 	const allowVotes = props.allowVotes ?? true
 	const item = Zus.useStore(itemStore, (s) => s.item)
-	const draggableItemId = toDraggableItemId(item.id)
+	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
+	const draggableItemId = QD.toDraggableItemId(item.id)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: draggableItemId,
 	})
 
-	const [dropdownOpen, setDropdownOpen] = useState(false)
-	// const voteStore = React.useMemo(() => {
-	// 	return derive<LQStore>((get) => {
-	// 		const state = selectVoteLQState(props.id, get(props.store))
-	// 		return {
-	// 			...state,
-	// 			itemActions.
-	// 		}
-	// 	})
-	// }, [props.store, props.id, voteListActions])
+	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
+	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
+		if (!canEdit) _setDropdownOpen(false)
+		_setDropdownOpen(update)
+	}
 
 	const style = { transform: CSS.Translate.toString(transform) }
 	const itemDropdown = (
 		<ItemDropdown
 			allowVotes={allowVotes}
 			index={props.index}
-			open={dropdownOpen}
+			open={dropdownOpen && canEdit}
 			setOpen={setDropdownOpen}
 			listStore={props.llStore}
 			itemStore={itemStore}
 		>
-			<Button className="invisible group-hover:visible" variant="ghost" size="icon">
+			<Button
+				disabled={!canEdit}
+				data-canedit={canEdit}
+				className="invisible data-[canedit=true]:group-hover:visible"
+				variant="ghost"
+				size="icon"
+			>
 				<EllipsisVertical />
 			</Button>
 		</ItemDropdown>
@@ -1243,11 +797,23 @@ function LayerListItem(props: QueueItemProps) {
 		</Tooltip>
 	)
 	const displayedMutation = Zus.useStore(itemStore, (s) => getDisplayedMutation(s.mutationState))
+	const gripElt = (
+		<Button
+			{...listeners}
+			disabled={!canEdit}
+			variant="ghost"
+			size="icon"
+			data-canedit={canEdit}
+			className="invisible cursor-grab data-[canedit=true]:group-hover:visible"
+		>
+			<GripVertical />
+		</Button>
+	)
 
 	if (item.vote) {
 		return (
 			<>
-				{props.index === 0 && <QueueItemSeparator itemId={toDraggableItemId(null)} isLast={false} />}
+				{props.index === 0 && <QueueItemSeparator itemId={QD.toDraggableItemId(null)} isLast={false} />}
 				<li
 					ref={setNodeRef}
 					style={style}
@@ -1256,11 +822,7 @@ function LayerListItem(props: QueueItemProps) {
 					data-mutation={displayedMutation}
 					data-is-dragging={isDragging}
 				>
-					<div className="flex items-center">
-						<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
-							<GripVertical />
-						</Button>
-					</div>
+					<div className="flex items-center">{gripElt}</div>
 					<div className="h-full flex flex-col flex-grow">
 						<label className={Typography.Muted}>Vote</label>
 						<ol className={'flex flex-col space-y-1 items-start'}>
@@ -1285,10 +847,9 @@ function LayerListItem(props: QueueItemProps) {
 	}
 
 	if (item.layerId) {
-		const layer = M.getMiniLayerFromId(item.layerId)
 		return (
 			<>
-				{props.index === 0 && <QueueItemSeparator itemId={toDraggableItemId(null)} isLast={false} />}
+				{props.index === 0 && <QueueItemSeparator itemId={QD.toDraggableItemId(null)} isLast={false} />}
 				<li
 					ref={setNodeRef}
 					style={style}
@@ -1297,9 +858,7 @@ function LayerListItem(props: QueueItemProps) {
 					data-mutation={displayedMutation}
 					data-is-dragging={isDragging}
 				>
-					<Button {...listeners} variant="ghost" size="icon" className="invisible cursor-grab group-hover:visible">
-						<GripVertical />
-					</Button>
+					{gripElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
 							<LayerDisplay layerId={item.layerId} />
@@ -1321,25 +880,24 @@ function ItemDropdown(props: {
 	index: number
 	open: boolean
 	setOpen: React.Dispatch<React.SetStateAction<boolean>>
-	itemStore: Zus.StoreApi<LLItemStore>
-	listStore: Zus.StoreApi<LLStore>
+	itemStore: Zus.StoreApi<QD.LLItemStore>
+	listStore: Zus.StoreApi<QD.LLStore>
 	allowVotes?: boolean
 }) {
 	const allowVotes = props.allowVotes ?? true
-	const [dropdownOpen, setDropdownOpen] = useState(false)
 
 	type SubDropdownState = 'add-before' | 'add-after' | 'edit' | null
-	const [subDropdownState, _setSubDropdownState] = useState(null as SubDropdownState)
+	const [subDropdownState, _setSubDropdownState] = React.useState(null as SubDropdownState)
 
 	function setSubDropdownState(state: SubDropdownState) {
 		if (state === null) props.setOpen(false)
 		_setSubDropdownState(state)
 	}
 
-	const baseFilter = selectFilterExcludingLayersFromList(Zus.useStore(props.listStore))
-	const user = useLoggedInUser().data
+	const baseFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(props.listStore))
+	const user = useLoggedInUser()
 	return (
-		<DropdownMenu open={dropdownOpen || !!subDropdownState} onOpenChange={setDropdownOpen}>
+		<DropdownMenu open={props.open || !!subDropdownState} onOpenChange={props.setOpen}>
 			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<DropdownMenuGroup>
@@ -1429,9 +987,8 @@ function ItemDropdown(props: {
 }
 
 export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNode }) {
-	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
 	const isLayerInPoolRes = useAreLayersInPool({ layers: [props.layerId], poolFilterId: poolFilterId })
-	console.log('isLayerInPoolRes', isLayerInPoolRes.data)
 	const filterRes = useFilter(poolFilterId)
 	let notInPoolBadge: React.ReactNode = null
 	if (isLayerInPoolRes.data && isLayerInPoolRes.data.code === 'ok' && !isLayerInPoolRes.data.results[0].matchesFilter) {
@@ -1490,7 +1047,7 @@ export function SelectLayersDialog(props: {
 }) {
 	const defaultSelected: M.LayerId[] = props.defaultSelected ?? []
 
-	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
 	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	React.useLayoutEffect(() => {
 		if (poolFilterId) setSelectedFilterId(poolFilterId)
@@ -1524,7 +1081,7 @@ export function SelectLayersDialog(props: {
 		}
 		_setSelectMode(newAdditionType)
 	}
-	const loggedInUserRes = useLoggedInUser()
+	const user = useLoggedInUser()
 
 	const canSubmit = selectedLayers.length > 0
 	function submit() {
@@ -1535,7 +1092,7 @@ export function SelectLayersDialog(props: {
 					({
 						layerId: layerId,
 						source: 'manual',
-						lastModifiedBy: loggedInUserRes.data!.discordId,
+						lastModifiedBy: user!.discordId,
 					}) satisfies M.LayerListItem
 			)
 			props.selectQueueItems(items)
@@ -1546,7 +1103,7 @@ export function SelectLayersDialog(props: {
 					defaultChoice: selectedLayers[0],
 				},
 				source: 'manual',
-				lastModifiedBy: loggedInUserRes.data!.discordId,
+				lastModifiedBy: user!.discordId,
 			}
 			props.selectQueueItems([item])
 		}
@@ -1666,7 +1223,7 @@ type InnerEditLayerListItemDialogProps = {
 	open: boolean
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	allowVotes?: boolean
-	itemStore: Zus.StoreApi<LLItemStore>
+	itemStore: Zus.StoreApi<QD.LLItemStore>
 	baseFilter?: M.FilterNode
 }
 
@@ -1689,20 +1246,22 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
 
 	const editedItemStore = React.useMemo(() => {
-		return Zus.create<LLItemStore>((set, get) => createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState() }))
+		return Zus.create<QD.LLItemStore>((set, get) =>
+			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState() })
+		)
 	}, [initialItem])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
-	const derivedVoteChoiceStore = React.useMemo(() => deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
+	const derivedVoteChoiceStore = React.useMemo(() => QD.deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
 
-	const user = useLoggedInUser().data
+	const loggedInUser = useLoggedInUser()
 
-	const excludeVoteDuplicatesFilter = selectFilterExcludingLayersFromList(Zus.useStore(derivedVoteChoiceStore))
+	const excludeVoteDuplicatesFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(derivedVoteChoiceStore))
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const filtersRes = useFilters()
 
-	const poolFilterId = Zus.useStore(SDStore, selectCurrentPoolFilterId)
+	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
 	const [selectedFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const [filterEnabled, setFilterEnabled] = React.useState(true)
 
@@ -1753,7 +1312,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 									const selectedLayers = itemToLayers(prev)
 									const attribution = {
 										source: 'manual' as const,
-										lastModifiedBy: user!.discordId,
+										lastModifiedBy: loggedInUser!.discordId,
 									}
 									if (itemType === 'vote') {
 										return {
@@ -1835,28 +1394,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		</div>
 	)
 }
-
-function itemToMiniLayer(item: M.LayerListItem): M.MiniLayer {
-	if (item.vote) {
-		return M.getMiniLayerFromId(item.vote.defaultChoice)
-	}
-	if (item.layerId) {
-		return M.getMiniLayerFromId(item.layerId)
-	}
-	throw new Error('Invalid LayerQueueItem')
-}
-
-const FILTER_ORDER = [
-	'id',
-	'Layer',
-	'Level',
-	'Gamemode',
-	'LayerVersion',
-	'Faction_1',
-	'SubFac_1',
-	'Faction_2',
-	'SubFac_2',
-] as const satisfies (keyof M.MiniLayer)[]
 
 type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
 
@@ -2061,19 +1598,3 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 		</div>
 	)
 }
-
-// -------- Queue Mutations --------
-type ItemMutations = {
-	added: Set<string>
-	removed: Set<string>
-	moved: Set<string>
-	edited: Set<string>
-}
-
-type ItemMutationState = { [key in keyof ItemMutations]: boolean }
-
-function toDraggableItemId(id: string | null) {
-	return JSON.stringify(id)
-}
-
-type IdedLLItem = M.LayerListItem & WithMutationId

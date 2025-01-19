@@ -34,7 +34,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import React from 'react'
-import { useLoggedInUser } from '@/hooks/use-logged-in-user'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import { useFilterDelete, useFilterUpdate } from '@/hooks/filters'
 
 const defaultFilter: M.EditableFilterNode = EFB.and()
@@ -47,7 +47,7 @@ export default function FilterEdit() {
 	const [filterEntity, setFilterEntity] = useState<M.FilterEntity | undefined>(undefined)
 	const [editedFilter, setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
 	const editedFilterModified = useMemo(() => !deepEqual(filterEntity?.filter, editedFilter), [filterEntity?.filter, editedFilter])
-	const userRes = useLoggedInUser()
+	const user = useLoggedInUser()
 	const navigate = useNavigate()
 	const onWatchFilterData = useCallback(
 		(e: WatchFilterOutput) => {
@@ -65,11 +65,11 @@ export default function FilterEdit() {
 					return
 				}
 				if (e.mutation.type === 'update') {
-					if (!userRes.data?.username || userRes.data.username !== e.mutation.username) {
+					if (!user?.username || user.username !== e.mutation.username) {
 						toast({
 							title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}`,
 						})
-					} else if (userRes.data?.username && userRes.data.username === e.mutation.username) {
+					} else if (user?.username && user.username === e.mutation.username) {
 						toast({ title: `Updated ${e.mutation.value.name}` })
 					}
 
@@ -78,7 +78,7 @@ export default function FilterEdit() {
 				}
 			}
 		},
-		[setFilterEntity, setEditedFilter, toast, userRes.data?.username, navigate]
+		[setFilterEntity, setEditedFilter, toast, user?.username, navigate]
 	)
 
 	React.useEffect(() => {

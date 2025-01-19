@@ -9,6 +9,7 @@ import * as Schema from '@/server/schema.ts'
 import * as C from '@/server/context'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 48
+
 export async function setupSessions() {
 	// --------  cleanup old sessions  --------
 	while (true) {

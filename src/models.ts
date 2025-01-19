@@ -548,6 +548,19 @@ export function isFullMiniLayer(layer: Partial<MiniLayer>): layer is MiniLayer {
 	return MiniLayerSchema.safeParse(layer).success
 }
 
+export type UserPresenceState = {
+	editState?: {
+		userId: bigint
+		wsClientId: string
+		startTime: number
+	}
+}
+export type UserPresenceStateUpdate = {
+	state: UserPresenceState
+	event: 'edit-start' | 'edit-end'
+}
+
+export type User = Schema.User
 export type MiniUser = {
 	username: string
 	discordId: string
@@ -836,8 +849,7 @@ export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerQueue) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
-export type UserEntity = Schema.User
-export type UserPart = { users: UserEntity[] }
+export type UserPart = { users: User[] }
 export type LayerSyncState =
 	| {
 			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated

@@ -2,7 +2,9 @@ import { TRPCError } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import Cookie from 'cookie'
 import { FastifyReply, FastifyRequest } from 'fastify'
+import * as ws from 'ws'
 import Pino from 'pino'
+import * as WsSessionSys from '@/server/systems/ws-session.ts'
 
 import RconCore from '@/lib/rcon/rcon-core.ts'
 
@@ -10,6 +12,7 @@ import * as DB from './db.ts'
 import { baseLogger, Logger } from './logger.ts'
 import * as Schema from './schema.ts'
 import * as Sessions from './systems/sessions.ts'
+import { createId } from '@/lib/id.ts'
 
 // -------- Logging --------
 export type Log = {
@@ -89,6 +92,14 @@ export type User = {
 	user: Schema.User
 }
 
+export type AuthSession = {
+	sessionId: string
+}
+
+export type WSSession = {
+	wsClientId: string
+}
+
 export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {
 	const log = baseLogger.child({ reqId: req.id, path: req.url })
 	const cookie = req.headers.cookie
@@ -146,5 +157,18 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 				})
 		}
 	}
-	return result.ctx
+	const wsClientId = createId(32)
+	const ctx = {
+		user: result.ctx.user,
+		wsClientId,
+		sessionId: result.ctx.sessionId,
+		req: options.req,
+		ws: result.ctx.res as unknown as ws.WebSocket,
+		log: result.ctx.log,
+		db: result.ctx.db,
+	}
+	WsSessionSys.registerClient(ctx)
+	return ctx
 }
+
+export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log

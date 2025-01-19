@@ -1,9 +1,6 @@
 import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { bind } from '@react-rxjs/core'
-import React from 'react'
-import { Observable, Subscription } from 'rxjs'
 
 export function useFilters() {
 	return useQuery({

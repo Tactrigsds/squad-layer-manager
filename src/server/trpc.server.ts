@@ -3,7 +3,7 @@ import superjson from 'superjson'
 
 import * as C from './context.ts'
 
-const t = initTRPC.context<C.AuthedRequest>().create({
+const t = initTRPC.context<C.TrpcRequest>().create({
 	transformer: superjson,
 })
 
