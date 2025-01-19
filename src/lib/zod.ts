@@ -18,11 +18,9 @@ export const ParsedBigIntSchema = z
 	.string()
 	.regex(/^-?\d+$/)
 	.transform((val) => BigInt(val))
-	.pipe(z.bigint())
 
 export const StrFlag = z
 	.string()
 	.toLowerCase()
 	.pipe(z.union([z.literal('true'), z.literal('false')]))
 	.transform((val) => val === 'true')
-	.pipe(z.boolean())

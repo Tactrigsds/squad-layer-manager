@@ -110,18 +110,87 @@
         "additionalProperties": false
       }
     },
-    "authorizedDiscordRoles": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "serverId": {"type": "string", "pattern": "^\\d+$"},
-          "roleId": {"type": "string", "pattern": "^\\d+$"}
-        },
-        "required": ["serverId"],
-        "additionalProperties": false
+    "homeDiscordGuildId": {"type": "string", "pattern": "^-?\\d+$"},
+    "globalRolePermissions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "site:authorized",
+                "queue:modify",
+                "settings:write",
+                "vote:manage",
+                "filters:write-all"
+              ]
+            },
+            {
+              "type": "string",
+              "const": "*",
+              "description": "include all permissions"
+            }
+          ]
+        }
       },
-      "minItems": 1
+      "propertyNames": {"pattern": "^[a-z0-9-]+$"},
+      "description": "Configures what roles have what permissions. (globally scoped permissions only)"
+    },
+    "roleAssignments": {
+      "type": "object",
+      "properties": {
+        "discord-role": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "discordRoleId": {"$ref": "#/properties/homeDiscordGuildId"},
+              "roles": {
+                "type": "array",
+                "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+              }
+            },
+            "required": ["discordRoleId", "roles"],
+            "additionalProperties": false
+          }
+        },
+        "discord-user": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "userId": {"type": "integer", "format": "int64"},
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/roleAssignments/properties/discord-role/items/properties/roles/items"
+                }
+              }
+            },
+            "required": ["userId", "roles"],
+            "additionalProperties": false
+          }
+        },
+        "discord-server-member": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/roleAssignments/properties/discord-role/items/properties/roles/items"
+                }
+              }
+            },
+            "required": ["roles"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "$schema": {"type": "string"}
   },
@@ -132,7 +201,9 @@
     "defaults",
     "commands",
     "adminListSources",
-    "authorizedDiscordRoles",
+    "homeDiscordGuildId",
+    "globalRolePermissions",
+    "roleAssignments",
     "$schema"
   ],
   "additionalProperties": false,
