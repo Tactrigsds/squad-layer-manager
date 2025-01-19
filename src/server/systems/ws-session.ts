@@ -1,7 +1,7 @@
 import * as C from '@/server/context'
-export type WSHook = (ctx: C.TrpcRequest) => void
+import { Subject } from 'rxjs'
 const wsSessions = new Map<string, C.TrpcRequest>()
-const hooks: WSHook[] = []
+export const disconnect$ = new Subject<C.TrpcRequest>()
 
 export function registerClient(ctx: C.TrpcRequest) {
 	if (wsSessions.has(ctx.wsClientId)) {
@@ -11,33 +11,32 @@ export function registerClient(ctx: C.TrpcRequest) {
 
 	wsSessions.set(ctx.wsClientId, ctx)
 	ctx.ws.on('close', () => {
-		for (const hook of hooks) {
-			hook(ctx)
-		}
+		disconnect$.next(ctx)
 		wsSessions.delete(ctx.wsClientId)
 	})
 }
 
-export function registerDisconnectHook(handler: WSHook) {
-	hooks.push(handler)
-}
-
-export async function forceDisconnect(baseCtx: C.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
+export async function forceDisconnect(ctx: C.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
 	if (Object.keys(ids).length === 0) throw new Error('Must provide at least one id')
-	await using ctx = C.pushOperation(baseCtx, 'ws-session:force-disconnect', { startMsgBindings: ids })
 
-	let sessionCtx: C.TrpcRequest | undefined
+	let sessions: C.TrpcRequest[] | undefined
 	if (ids.wsSessionId) {
-		sessionCtx = wsSessions.get(ids.wsSessionId)
+		const session = wsSessions.get(ids.wsSessionId)
+		if (session) {
+			sessions = [session]
+		}
 	} else if (ids.authSessionId) {
-		sessionCtx = Array.from(wsSessions.values()).find((ctx) => ctx.sessionId === ids.authSessionId)
+		sessions = Array.from(wsSessions.values()).filter((ctx) => ctx.sessionId === ids.authSessionId)
 	} else if (ids.userId) {
-		sessionCtx = Array.from(wsSessions.values()).find((ctx) => ctx.user.discordId === ids.userId)
+		sessions = Array.from(wsSessions.values()).filter((ctx) => ctx.user.discordId === ids.userId)
 	}
 
-	if (!sessionCtx) {
-		ctx.log.warn('forceDisconnect: no session found', ids)
+	if (!sessions) {
+		ctx.log.warn('forceDisconnect: no sessions found', ids)
+	} else {
+		for (const session of sessions) {
+			ctx.log.debug('Disconnecting session', ids, session.wsClientId)
+			session.ws.close()
+		}
 	}
-
-	sessionCtx?.ws.close()
 }

@@ -286,7 +286,8 @@ export async function setupLayerQueueAndServerState() {
 			})
 	}
 
-	WSSessionSys.registerDisconnectHook(async (ctx) => {
+	// -------- take editing user out of editing slot on disconnect --------
+	WSSessionSys.disconnect$.subscribe(async (ctx) => {
 		if (userPresence.editState && userPresence.editState.wsClientId === ctx.wsClientId) {
 			delete userPresence.editState
 			userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
