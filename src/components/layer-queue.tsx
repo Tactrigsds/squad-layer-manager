@@ -128,15 +128,13 @@ export default function ServerDashboard() {
 							</>
 						)}
 						{!isEditing && editingUser && (
-							<div className="flex flex-col space-y-2">
-								<Alert variant="edited">
-									<AlertTitle>
-										{editingUser.discordId === loggedInUser?.discordId
-											? 'You are editing the on the other tab'
-											: editingUser.username + 'is editing'}
-									</AlertTitle>
-								</Alert>
-							</div>
+							<Alert variant="info">
+								<AlertTitle>
+									{editingUser.discordId === loggedInUser?.discordId
+										? 'You are editing the on another tab'
+										: editingUser.username + 'is editing'}
+								</AlertTitle>
+							</Alert>
 						)}
 						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
 						{isEditing && (
@@ -170,7 +168,11 @@ export default function ServerDashboard() {
 									open={appendLayersPopoverOpen}
 									onOpenChange={setAppendLayersPopoverOpen}
 								>
-									<Button className="flex w-min items-center space-x-1" variant="default">
+									<Button
+										data-canedit={canEdit}
+										className="flex w-min items-center space-x-1 data-[canedit=false]:invisible"
+										variant="default"
+									>
 										<PlusIcon />
 										<span>Play After</span>
 									</Button>
@@ -182,7 +184,11 @@ export default function ServerDashboard() {
 									open={playNextPopoverOpen}
 									onOpenChange={setPlayNextPopoverOpen}
 								>
-									<Button className="flex w-min items-center space-x-1" variant="default">
+									<Button
+										data-canedit={canEdit}
+										className="flex w-min items-center space-x-1 data-[canedit=false]:invisible"
+										variant="default"
+									>
 										<PlusIcon />
 										<span>Play Next</span>
 									</Button>
@@ -547,6 +553,8 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
 	}))
+	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
+
 	const changedSettings = Zus.useStore(QD.QDStore, (s) => {
 		if (!s.serverState) return null
 		return M.getSettingsChanged(s.serverState.settings, s.editedServerState.settings)
@@ -568,6 +576,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 							title="Pool Filter"
 							className="flex-grow"
 							options={filterOptions ?? LOADING}
+							disabled={!canEdit}
 							value={settings.queue.poolFilterId}
 							onSelect={(filter) =>
 								setSetting((settings) => {
@@ -604,6 +613,7 @@ function QueueGenerationCard() {
 	const itemTypeId = React.useId()
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
 	const numVoteChoicesId = React.useId()
+	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
 
 	const genereateMutation = useMutation({
 		mutationFn: generateLayerQueueItems,
@@ -686,7 +696,7 @@ function QueueGenerationCard() {
 					</div>
 				)}
 				<div className="flex space-x-2">
-					<Button disabled={genereateMutation.isPending} onClick={() => genereateMutation.mutateAsync()}>
+					<Button disabled={genereateMutation.isPending || !canEdit} onClick={() => genereateMutation.mutateAsync()}>
 						Generate
 					</Button>
 					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
@@ -785,7 +795,7 @@ function LayerListItem(props: QueueItemProps) {
 			assertNever(item.source)
 	}
 
-	const queueItemStyles = `bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30`
+	const queueItemStyles = `bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
 	const squadServerNextLayer = useSquadServerStatus()?.nextLayer
 
 	const notCurrentNextLayer = props.index === 0 && squadServerNextLayer?.code === 'unknown' && (
@@ -804,7 +814,7 @@ function LayerListItem(props: QueueItemProps) {
 			variant="ghost"
 			size="icon"
 			data-canedit={canEdit}
-			className="invisible cursor-grab data-[canedit=true]:group-hover:visible"
+			className="invisible data-[canedit=true]:cursor-grab data-[canedit=true]:group-hover:visible"
 		>
 			<GripVertical />
 		</Button>

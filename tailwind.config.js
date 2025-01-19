@@ -41,6 +41,10 @@ export default {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))',
 				},
+				info: {
+					DEFAULT: 'hsl(var(--info))',
+					foreground: 'hsl(var(--info-foreground))',
+				},
 				moved: {
 					DEFAULT: colors.blue[800],
 					foreground: colors.blue[50],
