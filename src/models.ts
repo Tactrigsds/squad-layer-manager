@@ -721,10 +721,11 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 			percentages.set(choice, (votes / totalVotes) * 100)
 		}
 	}
+	const turnoutPercentage = (totalVotes / numPlayers) * 100
 	return {
 		totals: tally,
 		totalVotes,
-		turnoutPercentage: (totalVotes / numPlayers) * 100,
+		turnoutPercentage: isNaN(turnoutPercentage) ? null : turnoutPercentage,
 		percentages,
 		leaders: leaders,
 	}
