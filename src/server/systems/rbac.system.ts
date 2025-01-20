@@ -1,7 +1,6 @@
 import { CONFIG } from '../config'
-import * as M from '@/models'
 import * as C from '@/server/context'
-import * as RBAC from '@/server/rbac.models'
+import * as RBAC from '@/rbac.models'
 import * as Discord from '@/server/systems/discord'
 import { objKeys } from '@/lib/object'
 import deepEqual from 'fast-deep-equal'
@@ -14,19 +13,15 @@ export function setup() {
 	globalRolePermissions = {}
 	for (const role of objKeys(CONFIG.globalRolePermissions)) {
 		roles.push(role as RBAC.Role)
-		let permTypes = CONFIG.globalRolePermissions[role]
+		let permTypes: (RBAC.GlobalPermissionType | '*')[] = CONFIG.globalRolePermissions[role]
 		if (permTypes.includes('*')) {
-			permTypes = RBAC.SCOPE_TO_PERMISSION_TYPES.global.options
+			permTypes = Object.values(RBAC.GLOBAL_PERMISSION_TYPE.Values)
 		}
 		const perms: RBAC.Permission[] = []
-
-		for (const perm of permTypes as RBAC.PermissionType[]) {
-			if (RBAC.PERMISSION_TYPE_TO_SCOPE[perm] === 'global') {
-				perms.push({ type: perm, scope: { type: 'global' } })
-			} else {
-				throw new Error(`unexpected scope for configured permission ${perm}`)
-			}
+		for (const permType of permTypes as RBAC.GlobalPermissionType[]) {
+			perms.push(RBAC.perm(permType))
 		}
+
 		globalRolePermissions[role] = perms
 	}
 
@@ -87,14 +82,14 @@ export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 	return roles
 }
 
-export async function getAllPermissionsForDiscordUser(baseCtx: C.Log, userId: bigint) {
+export async function getAllPermissionsAndRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:get-permissions-for-discord-user')
 	const roles = await getRolesForDiscordUser(ctx, userId)
 	const perms: RBAC.Permission[] = []
 	for (const role of roles) {
 		perms.push(...globalRolePermissions[role])
 	}
-	return dedupePerms(perms)
+	return { perms: dedupePerms(perms), roles }
 }
 
 function dedupePerms(perms: RBAC.Permission[]) {
@@ -118,21 +113,17 @@ function dedupePerms(perms: RBAC.Permission[]) {
 	return [...types.values()].flat()
 }
 
-type PermissionReq<T extends RBAC.PermissionType = RBAC.PermissionType> =
-	| { check: 'all'; permits: RBAC.Permission<T>[] }
-	| { check: 'any'; permits: RBAC.Permission<T>[] }
-
 export async function checkPermissions<T extends RBAC.PermissionType>(
 	baseCtx: C.Log,
 	userId: bigint,
-	req: PermissionReq<T>
+	req: RBAC.PermissionReq<T>
 ): Promise<boolean> {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
-	const userPermits = await getAllPermissionsForDiscordUser(ctx, userId)
+	const userPermits = await getAllPermissionsAndRolesForDiscordUser(ctx, userId)
 
 	if (req.check === 'any') {
 		for (const reqPermit of req.permits) {
-			for (const userPermit of userPermits) {
+			for (const userPermit of userPermits.perms) {
 				if (deepEqual(reqPermit, userPermit)) return true
 			}
 		}
@@ -141,7 +132,7 @@ export async function checkPermissions<T extends RBAC.PermissionType>(
 
 	for (const reqPermit of req.permits) {
 		let hasRequired = false
-		for (const userPermit of userPermits) {
+		for (const userPermit of userPermits.perms) {
 			if (deepEqual(reqPermit, userPermit)) {
 				hasRequired = true
 				break

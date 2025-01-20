@@ -121,7 +121,7 @@
               "type": "string",
               "enum": [
                 "site:authorized",
-                "queue:modify",
+                "queue:write",
                 "settings:write",
                 "vote:manage",
                 "filters:write-all"
@@ -135,7 +135,6 @@
           ]
         }
       },
-      "propertyNames": {"pattern": "^[a-z0-9-]+$"},
       "description": "Configures what roles have what permissions. (globally scoped permissions only)"
     },
     "roleAssignments": {

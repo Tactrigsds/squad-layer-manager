@@ -96,8 +96,20 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 	switch (cmd) {
 		case 'startVote': {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
-			if (res.code !== 'ok') {
-				await rcon.warn(ctx, msg.playerId, res.msg)
+			switch (res.code) {
+				case 'err:permission-denied': {
+					await rcon.warn(ctx, msg.playerId, WARNS.permissionDenied(res))
+					break
+				}
+				case 'err:no-vote-exists':
+				case 'err:vote-in-progress': {
+					await rcon.warn(ctx, msg.playerId, res.msg)
+					break
+				}
+				case 'ok':
+					break
+				default:
+					assertNever(res)
 			}
 			return
 		}

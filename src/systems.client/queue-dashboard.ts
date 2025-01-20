@@ -1,6 +1,7 @@
 import { WithMutationId, ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import { Getter, Setter } from '@/lib/zustand'
 import * as Rx from 'rxjs'
+import * as RBAC from '@/rbac.models'
 import { createId } from '@/lib/id'
 import * as M from '@/models'
 import * as Im from 'immer'
@@ -13,7 +14,7 @@ import { userPresenceState$ } from './presence'
 import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { trpc } from '@/lib/trpc.client'
-import { acquireInBlock } from '@/lib/async'
+import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { Mutex } from 'async-mutex'
 
 // -------- types --------
@@ -53,9 +54,9 @@ export type QDState = {
 	queueMutations: ItemMutations
 	serverState: M.LQServerState | null
 	isEditing: boolean
-	canEdit: boolean
+	canEditQueue: boolean
+	canEditSettings: boolean
 }
-// computed state
 export type QDStore = QDState & {
 	applyServerUpdate: (update: M.LQServerStateUpdate) => void
 	reset: () => void
@@ -241,18 +242,24 @@ export const _initialState: QDState = {
 	queueMutations: ItemMut.initMutations(),
 	serverState: null,
 	isEditing: false,
-	canEdit: false,
+	canEditQueue: false,
+	canEditSettings: false,
 }
 
 export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	const canEdit$ = Rx.combineLatest([loggedInUser$, userPresenceState$]).pipe(
 		Rx.map(([user, state]) => {
-			return !state?.editState || state.editState.wsClientId === user?.wsClientId
+			const canEdit = !state?.editState || state.editState.wsClientId === user?.wsClientId
+			if (!user) return { canEditQueue: false, canEditSettings: false }
+			return {
+				canEditQueue: canEdit && RBAC.userHasPerms(user, { check: 'all', permits: [RBAC.perm('queue:write')] }),
+				canEditSettings: canEdit && RBAC.userHasPerms(user, { check: 'all', permits: [RBAC.perm('settings:write')] }),
+			}
 		}),
-		Rx.distinctUntilChanged()
+		distinctDeepEquals()
 	)
 	canEdit$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((canEdit) => {
-		set({ canEdit })
+		set(canEdit)
 	})
 
 	lqServerStateUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((update) => {
@@ -312,7 +319,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			const serverStateUpdate = lqServerStateUpdate$.getValue()
 			tryEndEditing()
 			if (!serverStateUpdate) {
-				set({ ..._initialState, canEdit: get().canEdit, isEditing: get().isEditing })
+				set({ ..._initialState, canEditQueue: get().canEditQueue, isEditing: get().isEditing })
 				return
 			}
 
@@ -320,7 +327,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 				..._initialState,
 				editedServerState: getEditableServerState(serverStateUpdate.state) ?? _initialState.editedServerState,
 				isEditing: get().isEditing,
-				canEdit: get().canEdit,
+				canEditQueue: get().canEditQueue,
 			})
 		},
 		setSetting: (handler) => {

@@ -8,6 +8,7 @@ import { deepClone } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import { CONFIG } from '@/server/config.ts'
+import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
@@ -344,10 +345,15 @@ async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
 }
 
 export async function startVote(
-	_ctx: C.Log & C.Db & Partial<C.User>,
+	_ctx: C.Log & C.Db & Partial<C.RbacUser>,
 	opts: { durationSeconds?: number; minValidVotePercentage?: number; initiator: M.GuiOrChatUserId }
 ) {
 	await using ctx = C.pushOperation(_ctx, 'layer-queue:vote:start', { startMsgBindings: opts })
+
+	if (ctx.user) {
+		const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		if (denyRes) return denyRes
+	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	using acquired = await acquireInBlock(voteStateMtx)
@@ -627,7 +633,12 @@ function getVoteStateDiscordIds(state: M.VoteState) {
 }
 
 // -------- user presence --------
-export function startEditing({ ctx }: { ctx: C.Log & C.User & C.WSSession }) {
+export function startEditing({ ctx }: { ctx: C.Log & C.RbacUser & C.WSSession }) {
+	const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, {
+		check: 'any',
+		permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
+	})
+	if (denyRes) return denyRes
 	if (userPresence.editState) {
 		return { code: 'err:already-editing' as const, userPresence }
 	}
@@ -691,8 +702,8 @@ async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 }
 
 async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableServerState; ctx: C.TrpcRequest }) {
-	input = deepClone(input)
 	await using ctx = C.pushOperation(baseCtx, 'layer-queue:update')
+	input = deepClone(input)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverStatePrev = await getServerState({ lock: true }, ctx)
 		const serverState = deepClone(serverStatePrev)
@@ -701,6 +712,19 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 				code: 'err:out-of-sync' as const,
 				message: 'Update is out of sync',
 			}
+		}
+
+		if (!deepEqual(serverState.layerQueue, input.layerQueue)) {
+			const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, {
+				check: 'all',
+				permits: [RBAC.perm('queue:write')],
+			})
+			if (denyRes) return denyRes
+		}
+
+		if (!deepEqual(serverState.settings, input.settings)) {
+			const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('settings:write')] })
+			if (denyRes) return denyRes
 		}
 
 		// in case we've voted for a layer that has been shuffled to the back
@@ -900,6 +924,8 @@ export const layerQueueRouter = router({
 		.input(M.StartVoteInputSchema)
 		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),
 	abortVote: procedure.mutation(async ({ ctx }) => {
+		const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
 

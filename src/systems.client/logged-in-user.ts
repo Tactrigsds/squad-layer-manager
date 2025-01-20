@@ -5,11 +5,11 @@ import * as M from '@/models'
 import * as PartSys from '@/systems.client/parts'
 import type * as C from '@/server/context'
 
-const loggedInUserCold$ = new Observable<M.User & C.WSSession>((s) => {
+const loggedInUserCold$ = new Observable<M.UserWithRbac & C.WSSession>((s) => {
 	trpc.getLoggedInUser.query().then((user) => {
 		PartSys.upsertParts({ users: [user] })
 		s.next(user)
 	})
 })
 
-export const [useLoggedInUser, loggedInUser$] = bind<(M.User & C.WSSession) | null>(loggedInUserCold$, null)
+export const [useLoggedInUser, loggedInUser$] = bind<(M.UserWithRbac & C.WSSession) | null>(loggedInUserCold$, null)

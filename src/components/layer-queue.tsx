@@ -9,6 +9,8 @@ import React from 'react'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
 
+import * as RbacClient from '@/systems.client/rbac.client.ts'
+import * as RBAC from '@/rbac.models'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -75,6 +77,10 @@ export default function ServerDashboard() {
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
 		const reset = QD.QDStore.getState().reset
 		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.showPermissionDenied(res)
+				reset()
+				break
 			case 'err:out-of-sync':
 				toaster.toast({
 					title: 'State changed before submission, please try again.',
@@ -103,7 +109,7 @@ export default function ServerDashboard() {
 	const { isEditing, canEdit } = Zus.useStore(
 		QD.QDStore,
 		useShallow((s) => {
-			return { isEditing: s.isEditing, canEdit: s.canEdit }
+			return { isEditing: s.isEditing, canEdit: s.canEditQueue }
 		})
 	)
 	const userPresenceState = useUserPresenceState()
@@ -201,7 +207,7 @@ export default function ServerDashboard() {
 					</Card>
 				</div>
 				<div>
-					<ServerSettingsPanels ref={settingsPanelRef} />
+					<ServerSettingsPanel ref={settingsPanelRef} />
 				</div>
 			</span>
 		</div>
@@ -260,6 +266,7 @@ function VoteState() {
 	const toaster = useToast()
 	const voteState = useVoteState()
 	const squadServerStatus = useSquadServerStatus()
+	const loggedInUser = useLoggedInUser()
 
 	async function abortVote() {
 		const serverStateMut = QD.QDStore.getState().editedServerState
@@ -293,20 +300,30 @@ function VoteState() {
 				durationSeconds: value.durationSeconds,
 				minValidVotePercentage: value.minValidVotePercentage,
 			})
-			if (res.code === 'ok') {
-				toaster.toast({ title: 'Vote started' })
-				return
+			switch (res.code) {
+				case 'ok':
+					toaster.toast({ title: 'Vote started!' })
+					break
+				case 'err:permission-denied':
+					RbacClient.showPermissionDenied(res)
+					break
+				case 'err:no-vote-exists':
+				case 'err:vote-in-progress':
+					toaster.toast({
+						title: 'Failed to start vote',
+						description: res.code,
+						variant: 'destructive',
+					})
+					break
+				default:
+					assertNever(res)
 			}
-			toaster.toast({
-				title: 'Failed to start vote',
-				description: res.code,
-				variant: 'destructive',
-			})
 		},
 	})
 
 	const voteDurationEltId = React.useId()
 	const minRequiredEltId = React.useId()
+	const canManageVote = loggedInUser && RBAC.userHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 
 	if (!voteState || !squadServerStatus) return null
 	function onSubmit(e: React.FormEvent) {
@@ -327,6 +344,7 @@ function VoteState() {
 							id={voteDurationEltId}
 							name={field.name}
 							type="number"
+							disabled={!canManageVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
@@ -345,6 +363,7 @@ function VoteState() {
 						<Input
 							id={minRequiredEltId}
 							type="number"
+							disabled={!canManageVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
@@ -374,6 +393,7 @@ function VoteState() {
 	)
 	const cancelBtn = (
 		<Button
+			disabled={!canManageVote}
 			onClick={() => {
 				openDialog({
 					title: 'Cancel Vote',
@@ -394,6 +414,7 @@ function VoteState() {
 			body = (
 				<>
 					<Button
+						disabled={!canManageVote}
 						onClick={async () => {
 							const id = await openDialog({
 								title: 'Start Vote',
@@ -536,7 +557,7 @@ function Timer(props: { deadline: number }) {
 type ServerSettingsPanelHandle = {
 	reset(settings: M.ServerSettings): void
 }
-const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
+const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	props: object,
 	ref: React.ForwardedRef<ServerSettingsPanelHandle>
 ) {
@@ -553,7 +574,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
 	}))
-	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
+	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
 
 	const changedSettings = Zus.useStore(QD.QDStore, (s) => {
 		if (!s.serverState) return null
@@ -576,7 +597,7 @@ const ServerSettingsPanels = React.forwardRef(function ServerSettingsPanel(
 							title="Pool Filter"
 							className="flex-grow"
 							options={filterOptions ?? LOADING}
-							disabled={!canEdit}
+							disabled={!canEditSettings}
 							value={settings.queue.poolFilterId}
 							onSelect={(filter) =>
 								setSetting((settings) => {
@@ -613,11 +634,12 @@ function QueueGenerationCard() {
 	const itemTypeId = React.useId()
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
 	const numVoteChoicesId = React.useId()
-	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
+	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
 
 	const genereateMutation = useMutation({
 		mutationFn: generateLayerQueueItems,
 	})
+	if (!canEditSettings) return null
 	async function generateLayerQueueItems() {
 		let serverStateMut = QD.QDStore.getState().editedServerState
 		const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
@@ -696,7 +718,7 @@ function QueueGenerationCard() {
 					</div>
 				)}
 				<div className="flex space-x-2">
-					<Button disabled={genereateMutation.isPending || !canEdit} onClick={() => genereateMutation.mutateAsync()}>
+					<Button disabled={genereateMutation.isPending} onClick={() => genereateMutation.mutateAsync()}>
 						Generate
 					</Button>
 					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
@@ -743,7 +765,7 @@ function LayerListItem(props: QueueItemProps) {
 	const itemStore = React.useMemo(() => QD.deriveLLItemStore(props.llStore, props.id), [props.llStore, props.id])
 	const allowVotes = props.allowVotes ?? true
 	const item = Zus.useStore(itemStore, (s) => s.item)
-	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEdit)
+	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
 	const draggableItemId = QD.toDraggableItemId(item.id)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: draggableItemId,

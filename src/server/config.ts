@@ -5,7 +5,7 @@ import { z } from 'zod'
 import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Paths from '@/server/paths.ts'
 import { ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
-import * as RBAC from './rbac.models'
+import * as RBAC from '../rbac.models'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
@@ -36,7 +36,7 @@ export const ConfigSchema = z.object({
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
-		.record(RBAC.RoleSchema, z.array(z.union([RBAC.SCOPE_TO_PERMISSION_TYPES.global, z.literal('*').describe('include all permissions')])))
+		.record(z.array(z.union([RBAC.GLOBAL_PERMISSION_TYPE, z.literal('*').describe('include all permissions')])))
 		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.RoleSchema) })).optional(),

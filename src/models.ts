@@ -5,6 +5,7 @@ import * as C from './lib/constants'
 import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
+import * as RBAC from '@/rbac.models'
 import { PercentageSchema } from './lib/zod'
 
 export const getLayerKey = (layer: Layer) =>
@@ -561,6 +562,7 @@ export type UserPresenceStateUpdate = {
 }
 
 export type User = Schema.User
+export type UserWithRbac = User & { perms: RBAC.Permission[]; roles: RBAC.Role[] }
 export type MiniUser = {
 	username: string
 	discordId: string

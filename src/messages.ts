@@ -1,5 +1,6 @@
 import * as M from '@/models'
 import * as DH from '@/lib/display-helpers'
+import * as RBAC from '@/rbac.models'
 import { CommandConfig } from './server/config'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import { formatDuration } from 'date-fns'
@@ -92,6 +93,9 @@ export const WARNS = {
 
 			return { msg: groupsJoined, repeat: 3 }
 		},
+	},
+	permissionDenied(res: RBAC.PermissionDeniedResponse) {
+		return `Permission denied. You ned ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
 	},
 } satisfies WarnNode
 

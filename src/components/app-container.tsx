@@ -6,8 +6,16 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
+import { Dialog, DialogTitle, DialogTrigger, DialogContent, DialogHeader } from '@/components/ui/dialog'
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
+import {
+	DropdownMenu,
+	dropdownMenuItemClassesBase,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
@@ -70,6 +78,47 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										</button>
 									</DropdownMenuItem>
 								</form>
+								<Dialog>
+									<DialogTrigger asChild>
+										<button className={cn(dropdownMenuItemClassesBase, 'w-full')}>Permissions</button>
+									</DialogTrigger>
+									<DialogContent>
+										<DialogHeader>
+											<DialogTitle>{user.username}</DialogTitle>
+										</DialogHeader>
+										<div className="flex space-x-4">
+											<div>
+												<h3 className={Typography.Large}>Permissions</h3>
+												<ul>
+													{user.perms.map((perm) => {
+														let scopeDisplay = perm.scope as string
+														if (perm.scope === 'filter') {
+															scopeDisplay = `${perm.scope} ${perm.args!.filterId}`
+														}
+														return (
+															<li key={perm.type}>
+																-{' '}
+																<code>
+																	{perm.type} ({scopeDisplay})
+																</code>
+															</li>
+														)
+													})}
+												</ul>
+											</div>
+											<div>
+												<h3 className={Typography.Large}>Roles</h3>
+												<ul>
+													{user.roles.map((role) => (
+														<li key={role}>
+															- <code>{role}</code>
+														</li>
+													))}
+												</ul>
+											</div>
+										</div>
+									</DialogContent>
+								</Dialog>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}

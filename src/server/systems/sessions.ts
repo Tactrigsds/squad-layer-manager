@@ -4,7 +4,9 @@ import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger'
+import * as RbacSys from '@/server/systems/rbac.system'
 import * as Schema from '@/server/schema.ts'
+import * as M from '@/models'
 
 import * as C from '@/server/context'
 
@@ -39,7 +41,8 @@ export async function validateSession(sessionId: string, ctx: C.Log & C.Db) {
 		await opCtx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id))
 		return { code: 'err:expired' as const }
 	}
-	return { code: 'ok' as const, sessionId: row.session.id, user: row.user }
+	const withRbac: M.UserWithRbac = { ...row.user, ...(await RbacSys.getAllPermissionsAndRolesForDiscordUser(opCtx, row.user.discordId)) }
+	return { code: 'ok' as const, sessionId: row.session.id, user: withRbac }
 }
 
 export async function logout(ctx: C.AuthedRequest) {
@@ -48,7 +51,7 @@ export async function logout(ctx: C.AuthedRequest) {
 	return clearInvalidSession(ctx)
 }
 
-export function clearInvalidSession(ctx: C.AnyRequest) {
+export function clearInvalidSession(ctx: C.HttpRequest) {
 	return ctx.res.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect(AR.exists('/login'))
 }
 

@@ -1,9 +1,12 @@
 import fastifyCookie from '@fastify/cookie'
+import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import fastifyFormBody from '@fastify/formbody'
 
 import oauthPlugin from '@fastify/oauth2'
+import Cookie from 'cookie'
 import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
+import { WebSocket } from 'ws'
 import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
@@ -13,7 +16,6 @@ import * as Paths from '@/server/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
-import * as Config from '@/server/config.ts'
 import * as Discord from '@/server/systems/discord.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -23,7 +25,9 @@ import * as TrpcRouter from '@/server/router'
 import * as Schema from '@/server/schema.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
-import * as RBAC from '@/server/rbac.models.ts'
+import * as RBAC from '@/rbac.models'
+import { TRPCError } from '@trpc/server'
+import * as WsSessionSys from '@/server/systems/ws-session.ts'
 
 function getFastifyBase() {
 	return fastify({
@@ -118,7 +122,7 @@ export async function setupFastify() {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = DB.addPooledDb({ log: req.log as Logger })
-		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { check: 'all', permits: [RBAC.global('site:authorized')] }))) {
+		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { check: 'all', permits: [RBAC.perm('site:authorized')] }))) {
 			return reply.status(401).send('You have not been granted access to this application.')
 		}
 
@@ -150,7 +154,7 @@ export async function setupFastify() {
 	})
 
 	server.post(AR.exists('/logout'), async function (req, res) {
-		const authRes = await C.createAuthorizedRequestContext(req, res)
+		const authRes = await createAuthorizedRequestContext(req, res)
 		if (authRes.code !== 'ok') {
 			return Sessions.clearInvalidSession({ req, res })
 		}
@@ -169,7 +173,7 @@ export async function setupFastify() {
 		},
 		trpcOptions: {
 			router: TrpcRouter.appRouter,
-			createContext: C.createTrpcRequestContext,
+			createContext: createTrpcRequestContext,
 			onError({ path, error, ctx }) {
 				;(ctx ?? server).log.error(error, `Error in tRPC handler on path '${path ?? 'unknown'}':`)
 			},
@@ -178,7 +182,7 @@ export async function setupFastify() {
 
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'unsafe-none')
-		const authRes = await C.createAuthorizedRequestContext(req, res)
+		const authRes = await createAuthorizedRequestContext(req, res)
 		switch (authRes.code) {
 			case 'ok':
 				break
@@ -224,4 +228,66 @@ export async function setupFastify() {
 		server.log.error(err)
 		process.exit(1)
 	}
+}
+
+export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {
+	const log = baseLogger.child({ reqId: req.id, path: req.url })
+	const cookie = req.headers.cookie
+	if (!cookie) {
+		return {
+			code: 'unauthorized:no-cookie' as const,
+			message: 'No cookie provided',
+		}
+	}
+	const sessionId = Cookie.parse(cookie).sessionId
+	if (!sessionId) {
+		return {
+			code: 'unauthorized:no-session' as const,
+			message: 'No session provided',
+		}
+	}
+
+	const ctx = DB.addPooledDb({ log })
+	const validSession = await Sessions.validateSession(sessionId, ctx)
+	if (validSession.code !== 'ok') {
+		return {
+			code: 'unauthorized:invalid-session' as const,
+			message: 'Invalid session',
+		}
+	}
+	const authedCtx: C.AuthedRequest = { ...ctx, sessionId, user: validSession.user, req, res }
+
+	return {
+		code: 'ok' as const,
+		ctx: authedCtx,
+	}
+}
+
+// with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
+export async function createTrpcRequestContext(options: CreateFastifyContextOptions): Promise<C.TrpcRequest> {
+	const result = await createAuthorizedRequestContext(options.req, options.res)
+	if (result.code !== 'ok') {
+		switch (result.code) {
+			case 'unauthorized:no-cookie':
+			case 'unauthorized:no-session':
+			case 'unauthorized:invalid-session':
+				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
+			default:
+				throw new TRPCError({
+					code: 'INTERNAL_SERVER_ERROR',
+					message: 'Unknown error occurred',
+				})
+		}
+	}
+	const ctx: C.TrpcRequest = {
+		wsClientId: createId(32),
+		user: result.ctx.user,
+		sessionId: result.ctx.sessionId,
+		req: options.req,
+		ws: result.ctx.res as unknown as WebSocket,
+		log: result.ctx.log,
+		db: result.ctx.db,
+	}
+	WsSessionSys.registerClient(ctx)
+	return ctx
 }
