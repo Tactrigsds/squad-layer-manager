@@ -74,14 +74,42 @@ export function permissionDenied<T extends PermissionType>(req: PermissionReq<T>
 export type PermissionDeniedResponse<T extends PermissionType = PermissionType> = ReturnType<typeof permissionDenied<T>>
 export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: Permission<T>[] }
 
-export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac, req: PermissionReq<T>): boolean {
+export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac, perms: Permission<T>): boolean
+export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac, perms: Permission<T>[]): boolean
+export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac, req: PermissionReq<T>): boolean
+export function rbacUserHasPerms<T extends PermissionType>(
+	user: M.UserWithRbac,
+	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>
+): boolean {
+	if ('check' in reqOrPerms) {
+		return userHasPerms(user.discordId, user.perms, reqOrPerms)
+	}
+	const req: PermissionReq<T> = {
+		check: 'all',
+		permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+	}
 	return userHasPerms(user.discordId, user.perms, req)
 }
 
 // TODO technically incorrect when it comes to filters:write-all
-export function userHasPerms<T extends PermissionType>(userId: bigint, perms: Permission[], req: PermissionReq<T>): boolean {
+export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perm: Permission<T>): boolean
+export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], perms: Permission<T>[]): boolean
+export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms: Permission[], req: PermissionReq<T>): boolean
+export function userHasPerms<T extends PermissionType>(
+	userId: bigint,
+	userPerms: Permission[],
+	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>
+): boolean {
+	const req: PermissionReq<T> =
+		'check' in reqOrPerms
+			? reqOrPerms
+			: {
+					check: 'all',
+					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+				}
+
 	for (const perm of req.permits) {
-		const hasPerm = perms.find(
+		const hasPerm = userPerms.find(
 			(userPerm) => deepEqual(userPerm, perm) || (userPerm.type === 'filters:write' && perm.type === 'filters:write-all')
 		)
 		if (req.check === 'all' && !hasPerm) return false

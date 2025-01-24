@@ -4,6 +4,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as Messages from '@/messages'
 import { useState } from 'react'
 import * as Icons from 'lucide-react'
+import * as RBAC from '@/rbac.models'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import * as Users from '@/systems.client/users.client'
@@ -227,6 +228,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	}
 
 	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
+		if (loggedInUser && !RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('filters:write', { filterId: props.entity.id }))) return 'none'
 		if (loggedInUser?.discordId === props.owner.discordId) return 'owner'
 		if (props.contributors.users.some((u) => u.discordId === loggedInUser?.discordId)) return 'contributor'
 		if (props.contributors.roles.some((role) => loggedInUser?.roles.includes(role))) return 'contributor'

@@ -13,8 +13,7 @@ import {
 	VisibilityState,
 } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
-import deepEqual from 'fast-deep-equal'
+import { useRef, useState } from 'react'
 import * as Im from 'immer'
 
 import { Button } from '@/components/ui/button'
@@ -182,6 +181,14 @@ export default function LayerTable(props: {
 	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
 
 	let filter = props.filter
+
+	{
+		const setPageIndex = props.setPageIndex
+		React.useEffect(() => {
+			setPageIndex(0)
+		}, [filter, setPageIndex])
+	}
+
 	const defaultSortingState: SortingState = []
 	if (props.defaultSortBy && props.defaultSortBy !== 'random') {
 		defaultSortingState.push({
