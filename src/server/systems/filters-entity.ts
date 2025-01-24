@@ -1,30 +1,156 @@
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { eq, aliasedTable, and } from 'drizzle-orm'
 import { Subject } from 'rxjs'
 import { z } from 'zod'
 
 import { toAsyncGenerator } from '@/lib/async'
+import * as RBAC from '@/rbac.models'
+import * as Rbac from '@/server/systems/rbac.system'
 import { returnInsertErrors } from '@/lib/drizzle'
 import * as M from '@/models.ts'
 import * as Schema from '@/server/schema.ts'
 import { procedure, router } from '@/server/trpc.server.ts'
+import { assertNever } from '@/lib/typeGuards'
+import { Parts } from '@/lib/types'
 
 const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
+const ToggleFilterContributorInputSchema = z
+	.object({ filterId: M.FilterEntityIdSchema, userId: z.bigint().optional(), role: RBAC.RoleSchema.optional() })
+	.refine((input) => input.userId || input.role, { message: 'Either userId or role must be provided' })
+export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
+export const GetFiltersInput = z.object({ parts: z.array(z.literal('users')).optional() }).optional()
 export const filtersRouter = router({
-	getFilters: procedure.query(async ({ ctx }) => {
-		return ctx.db().select().from(Schema.filters) as Promise<M.FilterEntity[]>
+	getFilters: procedure.input(GetFiltersInput).query(async ({ ctx, input }) => {
+		if (input?.parts?.includes('users')) {
+			const rows = await ctx.db().select().from(Schema.filters).leftJoin(Schema.users, eq(Schema.users.discordId, Schema.filters.owner))
+
+			const users = rows.map((row) => row.users).filter((user) => user !== null)
+			const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
+
+			const res = {
+				code: 'ok' as const,
+				filters: filters,
+				parts: {
+					users: users,
+				},
+			}
+			return res satisfies Parts<Partial<M.UserPart>>
+		}
+		const filters = (await ctx.db().select().from(Schema.filters)).map((row) => M.FilterEntitySchema.parse(row))
+		const res = {
+			code: 'ok' as const,
+			filters: filters,
+			parts: {},
+		}
+		return res satisfies Parts<Partial<M.UserPart>>
 	}),
-	createFilter: procedure.input(M.FilterEntitySchema).mutation(async ({ input, ctx }) => {
-		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(input))
+	getFilterContributors: procedure.input(M.FilterEntityIdSchema).query(async ({ input, ctx }) => {
+		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
+		const rows = await ctx
+			.db()
+			.select({
+				user: userContributors,
+				role: Schema.filterRoleContributors.roleId,
+			})
+			.from(Schema.filters)
+			.where(eq(Schema.filters.id, input))
+
+			.leftJoin(Schema.filterUserContributors, eq(Schema.filterUserContributors.filterId, input))
+			.leftJoin(userContributors, eq(userContributors.discordId, Schema.filterUserContributors.userId))
+
+			.leftJoin(Schema.filterRoleContributors, eq(Schema.filterRoleContributors.filterId, input))
+
+		return {
+			users: rows.map((row) => row.user).filter((user) => user !== null),
+			roles: rows.map((row) => row.role).filter((role) => role !== null),
+		}
+	}),
+	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+			check: 'any',
+			permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: input.filterId })],
+		})
+		if (denyRes) {
+			return denyRes
+		}
+
+		if (input.userId) {
+			const res = await returnInsertErrors(
+				ctx.db().insert(Schema.filterUserContributors).values({
+					filterId: input.filterId,
+					userId: input.userId,
+				})
+			)
+			switch (res.code) {
+				case 'already-exists':
+					return { code: 'err:already-exists' as const }
+				case 'ok':
+					return { code: 'ok' as const }
+				default:
+					assertNever(res)
+			}
+		} else {
+			const res = await returnInsertErrors(
+				ctx.db().insert(Schema.filterRoleContributors).values({
+					filterId: input.filterId,
+					roleId: input.role!,
+				})
+			)
+			switch (res.code) {
+				case 'already-exists':
+					return { code: 'err:already-exists' as const }
+				case 'ok':
+					return { code: 'ok' as const }
+				default:
+					assertNever(res)
+			}
+		}
+	}),
+	removeFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+			check: 'any',
+			permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: input.filterId })],
+		})
+		if (denyRes) {
+			return denyRes
+		}
+		let query: any
+		if (input.userId) {
+			query = ctx
+				.db()
+				.delete(Schema.filterUserContributors)
+				.where(and(eq(Schema.filterUserContributors.filterId, input.filterId), eq(Schema.filterUserContributors.userId, input.userId!)))
+		} else {
+			query = ctx
+				.db()
+				.delete(Schema.filterRoleContributors)
+				.where(and(eq(Schema.filterRoleContributors.filterId, input.filterId), eq(Schema.filterRoleContributors.roleId, input.role!)))
+		}
+
+		const [resultSet] = await query
+		if (resultSet.affectedRows === 0) {
+			return { code: 'err:not-found' as const }
+		}
+
+		return { code: 'ok' as const }
+	}),
+	createFilter: procedure.input(M.NewFilterEntitySchema).mutation(async ({ input, ctx }) => {
+		const newFilterEntity: M.FilterEntity = {
+			...input,
+			owner: ctx.user.discordId,
+		}
+		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 		if (res.code === 'ok') {
 			filterMutation$.next({
 				type: 'add',
-				value: input,
+				value: newFilterEntity,
 				username: ctx.user.username,
 			})
 		}
-		return res.code
+		return {
+			code: 'ok' as const,
+		}
 	}),
 	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
 		const [id, update] = input
@@ -32,6 +158,13 @@ export const filtersRouter = router({
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')
 			if (!rawFilter) {
 				return { code: 'err:not-found' as const }
+			}
+			const deniedRes = RBAC.tryDenyPermissionsForRbacUser(ctx.user, {
+				check: 'any',
+				permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: id })],
+			})
+			if (deniedRes) {
+				return deniedRes
 			}
 			const [updateResult] = await tx.update(Schema.filters).set(update).where(eq(Schema.filters.id, id))
 

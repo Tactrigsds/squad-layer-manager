@@ -64,7 +64,7 @@
     "@react-rxjs/core": "^0.10.7",
     "@react-rxjs/utils": "^0.9.7",
     "@t3-oss/env-core": "^0.11.1",
-    "@tanstack/react-form": "^0.33.0",
+    "@tanstack/react-form": "^0.41.3",
     "@tanstack/react-query": "^5.62.11",
     "@tanstack/react-query-devtools": "^5.62.11",
     "@tanstack/react-table": "^8.20.5",
@@ -110,7 +110,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.19.1",
     "typescript": "5.7.2",
-    "zod": "^3.23.8",
+    "zod": "^3.24.1",
     "zod-to-json-schema": "^3.23.5",
     "zustand": "^5.0.3",
     "zustand-rx": "^2.1.0"

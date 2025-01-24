@@ -41,7 +41,7 @@ export async function validateSession(sessionId: string, ctx: C.Log & C.Db) {
 		await opCtx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id))
 		return { code: 'err:expired' as const }
 	}
-	const withRbac: M.UserWithRbac = { ...row.user, ...(await RbacSys.getAllPermissionsAndRolesForDiscordUser(opCtx, row.user.discordId)) }
+	const withRbac: M.UserWithRbac = { ...row.user, ...(await RbacSys.getUserRbac(opCtx, row.user.discordId)) }
 	return { code: 'ok' as const, sessionId: row.session.id, user: withRbac }
 }
 

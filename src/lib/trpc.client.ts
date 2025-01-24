@@ -12,8 +12,7 @@ export const links = [
 	wsLink({
 		client: createWSClient({
 			url: wsUrl,
-			onError: () => {
-				console.log('wtf')
+			onError: (error) => {
 				globalToast$.next({ title: 'An error occured while sending data to the server. Try refreshing the page', variant: 'destructive' })
 			},
 			onClose: () => {

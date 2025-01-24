@@ -252,8 +252,8 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			const canEdit = !state?.editState || state.editState.wsClientId === user?.wsClientId
 			if (!user) return { canEditQueue: false, canEditSettings: false }
 			return {
-				canEditQueue: canEdit && RBAC.userHasPerms(user, { check: 'all', permits: [RBAC.perm('queue:write')] }),
-				canEditSettings: canEdit && RBAC.userHasPerms(user, { check: 'all', permits: [RBAC.perm('settings:write')] }),
+				canEditQueue: canEdit && RBAC.rbacUserHasPerms(user, { check: 'all', permits: [RBAC.perm('queue:write')] }),
+				canEditSettings: canEdit && RBAC.rbacUserHasPerms(user, { check: 'all', permits: [RBAC.perm('settings:write')] }),
 			}
 		}),
 		distinctDeepEquals()

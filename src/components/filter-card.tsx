@@ -43,6 +43,9 @@ export type FilterCardProps = {
 	setNode: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>>
 	resetFilter?: () => void
 	filterId?: string
+
+	// child is the submit button
+	children: React.ReactNode
 }
 
 const triggerClass =
@@ -103,6 +106,7 @@ export default function FilterCard(props: FilterCardProps) {
 						Builder
 					</button>
 				</div>
+				{props.children}
 			</div>
 			<div>
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>

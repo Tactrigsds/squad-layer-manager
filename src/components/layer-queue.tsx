@@ -44,7 +44,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
-import { useFilter, useFilter as useFilterEntity, useFilters } from '@/hooks/filters.ts'
+import { useFilter, useFilters } from '@/hooks/filters.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 
@@ -323,7 +323,7 @@ function VoteState() {
 
 	const voteDurationEltId = React.useId()
 	const minRequiredEltId = React.useId()
-	const canManageVote = loggedInUser && RBAC.userHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+	const canManageVote = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 
 	if (!voteState || !squadServerStatus) return null
 	function onSubmit(e: React.FormEvent) {
@@ -1084,7 +1084,7 @@ export function SelectLayersDialog(props: {
 	React.useLayoutEffect(() => {
 		if (poolFilterId) setSelectedFilterId(poolFilterId)
 	}, [poolFilterId])
-	const filterEntity = useFilterEntity(selectedFilterId ?? undefined).data
+	const filterEntity = useFilter(selectedFilterId ?? undefined).data
 	const [selectedFilterEnabled, setSelectedFilterEnabled] = React.useState(true)
 	let baseFilter: M.FilterNode | undefined
 	if (props.baseFilter && filterEntity?.filter && selectedFilterEnabled) {

@@ -447,11 +447,7 @@ export function isEditableBlockNode(node: EditableFilterNode): node is Extract<E
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
 export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
-	if (!isLocallyValidFilterNode(node)) return false
-	if (node.type === 'and' || node.type === 'or') {
-		return node.children.every((child) => isValidFilterNode(child))
-	}
-	return true
+	return FilterNodeSchema.safeParse(node).success
 }
 
 // excludes children
@@ -481,9 +477,11 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	.refine((node) => node.type !== 'apply-filter' || typeof node.filterId === 'string', {
 		message: 'filterId must be defined for type "apply-filter"',
 	})
-	.refine((node) => !['and', 'or'].includes(node.type) || node.children, {
+	.refine((node) => !(['and', 'or'].includes(node.type) && (!node.children || node.children.length === 0)), {
 		message: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
+
+export const RootFilterNodeSchema = FilterNodeSchema.refine((root) => isBlockNode(root), { message: 'Root node must be a block type' })
 
 export const LayerVoteSchema = z.object({
 	defaultChoice: LayerIdSchema,
@@ -568,9 +566,13 @@ export type MiniUser = {
 	discordId: string
 }
 
+// should eventually replace all user id validation with this
+export const UserIdSchema = z.bigint().positive()
+
+export const FilterDescriptionSchema = z.string().trim().min(3).max(512)
 export const FilterUpdateSchema = z.object({
 	name: z.string().trim().min(3).max(128),
-	description: z.string().trim().min(3).max(512).nullable(),
+	description: FilterDescriptionSchema.nullable(),
 	filter: FilterNodeSchema,
 }) satisfies z.ZodType<Partial<Schema.Filter>>
 
@@ -591,19 +593,25 @@ export const FilterEntityIdSchema = z
 	.min(3)
 	.max(64)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
-
 export const FilterEntitySchema = z
 	.object({
 		id: FilterEntityIdSchema,
 		name: z.string().trim().min(3).max(128),
 		description: z.string().trim().min(3).max(512).nullable(),
 		filter: FilterNodeSchema,
+		owner: z.bigint(),
 	})
 	// this refinement does not deal with mutual recustion
 	.refine((e) => !filterContainsId(e.id, e.filter), {
 		message: 'filter cannot be recursive',
 	}) satisfies z.ZodType<Schema.Filter>
 
+export const NewFilterEntitySchema = z.object({
+	id: FilterEntityIdSchema,
+	name: z.string().trim().min(3).max(128),
+	description: z.string().trim().min(3).max(512).nullable(),
+	filter: FilterNodeSchema,
+})
 export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
@@ -780,6 +788,13 @@ export const ServerSettingsSchema = z
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),
 				historyFilterEnabled: z.boolean().default(false),
+				// lateNightPoolConfig: z.object({
+				// 	time: z
+				// 		.string()
+				// 		.regex(/^([01]\d|2[0-3]):([0-5]\d)$/)
+				// 		.default('22:00'),
+				// 	filterId: FilterEntityIdSchema.optional(),
+				// }),
 			})
 			.default({
 				preferredLength: 12,

@@ -1,4 +1,17 @@
-import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
+import {
+	bigint,
+	boolean,
+	float,
+	index,
+	int,
+	json,
+	mysqlEnum,
+	mysqlTable,
+	primaryKey,
+	timestamp,
+	unique,
+	varchar,
+} from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 
 // aliased imports fail when execing drizzle-kit commands from the docker image for some reason
@@ -115,8 +128,37 @@ export const filters = mysqlTable('filters', {
 	name: varchar('name', { length: 128 }).notNull(),
 	description: varchar('description', { length: 512 }),
 	filter: json('filter').notNull(),
+	owner: bigint('owner', { mode: 'bigint' }).references(() => users.discordId, { onDelete: 'set null' }),
 })
+
+export const filterUserContributors = mysqlTable(
+	'filterUserContributors',
+	{
+		filterId: varchar('filterId', { length: 64 })
+			.notNull()
+			.references(() => filters.id, { onDelete: 'cascade' }),
+		userId: bigint('userId', { mode: 'bigint' })
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.filterId, table.userId] }),
+	})
+)
+
+export const filterRoleContributors = mysqlTable(
+	'filterRoleContributors',
+	{
+		filterId: varchar('filterId', { length: 64 })
+			.notNull()
+			.references(() => filters.id, { onDelete: 'cascade' }),
+		roleId: varchar('roleId', { length: 32 }).notNull(),
+	},
+	(table) => ({ pk: primaryKey({ columns: [table.filterId, table.roleId] }) })
+)
+
 export type Filter = typeof filters.$inferSelect
+export type NewFilter = typeof filters.$inferInsert
 
 export const servers = mysqlTable('servers', {
 	id: varchar('id', { length: 256 }).primaryKey(),

@@ -8,6 +8,8 @@ import * as LayerQueries from './systems/layer-queries.ts'
 import * as SquadServer from './systems/squad-server.ts'
 import { CONFIG } from '@/server/config.ts'
 import { procedure, router } from './trpc.server.ts'
+import * as Rbac from './systems/rbac.system.ts'
+import * as Users from './systems/users.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
 export type AppRouter = typeof appRouter
@@ -45,6 +47,8 @@ export function setupTrpcRouter() {
 		config: procedure.query(async () => {
 			return CONFIG
 		}),
+		users: Users.usersRouter,
+		rbac: Rbac.rbacRouter,
 	})
 	appRouter = _appRouter
 	return _appRouter

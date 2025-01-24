@@ -9,6 +9,7 @@ import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import { CONFIG } from '@/server/config.ts'
 import * as RBAC from '@/rbac.models.ts'
+import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
@@ -151,17 +152,14 @@ export async function setupLayerQueueAndServerState() {
 				break
 			case 'layer-set-during-roll:reset':
 			case 'layer-set-during-vote:reset':
+			case 'layer-set:reset':
 			case 'null-layer-set:reset': {
 				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
 				if (!nextLayerId) {
-					ctx.log.warn("Layer was set at an unexpected time, but no next layer is in the queue. this I don't think this can happen")
+					ctx.log.warn("Layer was set at an unexpected time, but no next layer is in the queue. I don't think this can happen")
 					return
 				}
 				await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
-				break
-			}
-			case 'layer-set:override': {
-				await pushOverriddenNextLayerToQueue(ctx)
 				break
 			}
 			default:
@@ -225,36 +223,9 @@ export async function setupLayerQueueAndServerState() {
 		serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'admin-change-layer' } }, ctx])
 	}
 
-	async function pushOverriddenNextLayerToQueue(ctx: C.Log & C.Db) {
-		await using opCtx = C.pushOperation(ctx, 'layer-queue:push-overridden-next-layer')
-		// bring layer queue up-to-date by shifting the overridden next layer to the front
-		const newState = await opCtx.db().transaction(async (tx) => {
-			const ctx = { ...opCtx, db: () => tx }
-			const serverState = await getServerState({ lock: true }, ctx)
-			const { value: status } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 50 })
-			const action = checkForNextLayerChangeActions(status, serverState)
-			// double check we're in the correct state after async
-			if (action.code !== 'layer-set:override' || !action.overrideLayerId) return null
-			const layerQueue = serverState.layerQueue
-			// if the last layer was also set by the gameserver, then we're replacing it
-			if (layerQueue[0]?.source === 'gameserver') layerQueue.shift()
-			layerQueue.unshift({
-				layerId: action.overrideLayerId,
-				source: 'gameserver',
-			})
-			await ctx
-				.db()
-				.update(Schema.servers)
-				.set(superjsonify(Schema.servers, { layerQueue }))
-				.where(E.eq(Schema.servers.id, CONFIG.serverId))
-			return serverState
-		})
-		if (!newState) return
-		serverStateUpdate$.next([{ state: newState, source: { type: 'system', event: 'next-layer-override' } }, opCtx])
-	}
-
 	/**
 	 * Determines how to respond to the next layer potentially having been set on the gameserver, bringing it out of sync with the queue
+	 * This function isn't super necessarry atm as we don't allow AdminSetNextLayer overrides in any case anymore, but leaving here in case we want to change this later.
 	 */
 	function checkForNextLayerChangeActions(status: LayerStatus, serverState: M.LQServerState, voteState: M.VoteState | null = null) {
 		if (status.nextLayer === null) return { code: 'null-layer-set:reset' as const }
@@ -271,7 +242,7 @@ export async function setupLayerQueueAndServerState() {
 			if ((Date.now() - lastRollTs) / 1000 < 60) return { code: 'layer-set-during-roll:reset' as const }
 		}
 		if (voteState?.code === 'in-progress') return { code: 'layer-set-during-vote:reset' as const }
-		return { code: 'layer-set:override' as const, overrideLayerId: serverNextLayerId }
+		return { code: 'layer-set:reset' as const, overrideLayerId: serverNextLayerId }
 	}
 
 	// -------- invalidate history filters cache on roll --------
@@ -303,7 +274,7 @@ function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M
 	const lastQueueItem = lastQueue[0] as M.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
 
-	if (!lastQueueItem?.vote && !newQueueItem.vote) return { code: 'noop' as const }
+	if (!lastQueueItem?.vote && !newQueueItem?.vote) return { code: 'noop' as const }
 
 	if (!deepEqual(lastQueueItem, newQueueItem) && voteState?.code === 'in-progress' && !force) {
 		return { code: 'err:queue-change-during-vote' as const }
@@ -345,13 +316,13 @@ async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
 }
 
 export async function startVote(
-	_ctx: C.Log & C.Db & Partial<C.RbacUser>,
+	_ctx: C.Log & C.Db & Partial<C.User>,
 	opts: { durationSeconds?: number; minValidVotePercentage?: number; initiator: M.GuiOrChatUserId }
 ) {
 	await using ctx = C.pushOperation(_ctx, 'layer-queue:vote:start', { startMsgBindings: opts })
 
 	if (ctx.user) {
-		const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 		if (denyRes) return denyRes
 	}
 
@@ -633,8 +604,8 @@ function getVoteStateDiscordIds(state: M.VoteState) {
 }
 
 // -------- user presence --------
-export function startEditing({ ctx }: { ctx: C.Log & C.RbacUser & C.WSSession }) {
-	const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, {
+export async function startEditing({ ctx }: { ctx: C.TrpcRequest }) {
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 		check: 'any',
 		permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
 	})
@@ -715,7 +686,7 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 		}
 
 		if (!deepEqual(serverState.layerQueue, input.layerQueue)) {
-			const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 				check: 'all',
 				permits: [RBAC.perm('queue:write')],
 			})
@@ -723,7 +694,10 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 		}
 
 		if (!deepEqual(serverState.settings, input.settings)) {
-			const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('settings:write')] })
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+				check: 'all',
+				permits: [RBAC.perm('settings:write')],
+			})
 			if (denyRes) return denyRes
 		}
 
@@ -924,7 +898,7 @@ export const layerQueueRouter = router({
 		.input(M.StartVoteInputSchema)
 		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),
 	abortVote: procedure.mutation(async ({ ctx }) => {
-		const denyRes = RBAC.tryDenyPermissionForUser(ctx.user, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),

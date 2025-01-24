@@ -28,6 +28,7 @@ import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as RBAC from '@/rbac.models'
 import { TRPCError } from '@trpc/server'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
+import { sleep } from '@trpc/server/unstable-core-do-not-import'
 
 function getFastifyBase() {
 	return fastify({
@@ -122,8 +123,14 @@ export async function setupFastify() {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = DB.addPooledDb({ log: req.log as Logger })
-		if (!(await Rbac.checkPermissions(ctx, discordUser.id, { check: 'all', permits: [RBAC.perm('site:authorized')] }))) {
-			return reply.status(401).send('You have not been granted access to this application.')
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, discordUser.id, { check: 'all', permits: [RBAC.perm('site:authorized')] })
+		if (denyRes) {
+			switch (denyRes.code) {
+				case 'err:permission-denied':
+					return reply.status(401).send('You have not been granted access to this application: ')
+				default:
+					assertNever(denyRes.code)
+			}
 		}
 
 		const sessionId = createId(64)
@@ -271,6 +278,7 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
 			case 'unauthorized:invalid-session':
+				// sleep(500).then(() => (options.res as unknown as WebSocket).close())
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
 			default:
 				throw new TRPCError({

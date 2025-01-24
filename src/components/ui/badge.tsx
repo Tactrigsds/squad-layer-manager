@@ -16,6 +16,7 @@ const badgeVariants = cva(
 				moved: 'border-transparent bg-moved text-moved-foreground shadow hover:bg-moved/80',
 				added: 'border-transparent bg-added text-added-foreground shadow hover:bg-added/80',
 				removed: 'border-transparent bg-removed text-removed-foreground shadow hover:bg-removed/80',
+				info: 'border-transparent bg-info text-info-foreground shadow hover:bg-info/80',
 			},
 		},
 		defaultVariants: {

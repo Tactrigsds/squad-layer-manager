@@ -2,7 +2,10 @@ import { CONFIG } from '../config'
 import * as C from '@/server/context'
 import * as RBAC from '@/rbac.models'
 import * as Discord from '@/server/systems/discord'
+import * as Schema from '@/server/schema'
+import * as E from 'drizzle-orm/expressions'
 import { objKeys } from '@/lib/object'
+import { procedure, router } from '@/server/trpc.server'
 import deepEqual from 'fast-deep-equal'
 
 let roles!: RBAC.Role[]
@@ -61,35 +64,64 @@ export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:get-roles-for-discord-user')
 	const roles: RBAC.Role[] = []
 	for (const assignment of roleAssignments) {
-		if (assignment.type !== 'discord-user' || assignment.discordUserId !== userId) continue
-		roles.push(assignment.role)
-	}
-	for (const assignment of roleAssignments) {
-		const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
-		if (assignment.type !== 'discord-server-member') continue
-		if (memberRes.code !== 'ok') continue
-		roles.push(assignment.role)
-	}
-	for (const assignment of roleAssignments) {
-		if (assignment.type !== 'discord-role') continue
-		const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
-		if (memberRes.code !== 'ok') continue
-		const member = memberRes.member
-		if (member.roles.cache.has(assignment.discordRoleId.toString())) {
+		if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
 			roles.push(assignment.role)
 		}
+		ctx.tasks.push(
+			(async () => {
+				if (assignment.type === 'discord-server-member') {
+					const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
+					if (memberRes.code === 'ok') {
+						roles.push(assignment.role)
+					}
+				}
+				if (assignment.type === 'discord-role') {
+					const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
+					if (memberRes.code === 'ok') {
+						const member = memberRes.member
+						if (member.roles.cache.has(assignment.discordRoleId.toString())) {
+							roles.push(assignment.role)
+						}
+					}
+				}
+			})()
+		)
 	}
+	await Promise.all(ctx.tasks)
 	return roles
 }
 
-export async function getAllPermissionsAndRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
+export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:get-permissions-for-discord-user')
+	const ownedFiltersPromise = getOwnedFilters()
+	const contributorFiltersPromise = getContributorFilters()
 	const roles = await getRolesForDiscordUser(ctx, userId)
 	const perms: RBAC.Permission[] = []
 	for (const role of roles) {
 		perms.push(...globalRolePermissions[role])
 	}
+
+	perms.push(
+		...(await ownedFiltersPromise).flatMap((f) => [
+			RBAC.perm('filters:write', { filterId: f.id }),
+			RBAC.perm('filters:manage', { filterId: f.id }),
+		])
+	)
+
+	perms.push(...(await contributorFiltersPromise).map((f) => RBAC.perm('filters:write', { filterId: f.filterId })))
+
 	return { perms: dedupePerms(perms), roles }
+
+	async function getOwnedFilters() {
+		return await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.owner, userId))
+	}
+	async function getContributorFilters() {
+		return await ctx
+			.db()
+			.select({ filterId: Schema.filterUserContributors.filterId })
+			.from(Schema.filterUserContributors)
+			.where(E.eq(Schema.filterUserContributors.userId, userId))
+	}
 }
 
 function dedupePerms(perms: RBAC.Permission[]) {
@@ -113,32 +145,18 @@ function dedupePerms(perms: RBAC.Permission[]) {
 	return [...types.values()].flat()
 }
 
-export async function checkPermissions<T extends RBAC.PermissionType>(
-	baseCtx: C.Log,
+export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
+	baseCtx: C.Log & C.Db,
 	userId: bigint,
 	req: RBAC.PermissionReq<T>
-): Promise<boolean> {
+) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
-	const userPermits = await getAllPermissionsAndRolesForDiscordUser(ctx, userId)
-
-	if (req.check === 'any') {
-		for (const reqPermit of req.permits) {
-			for (const userPermit of userPermits.perms) {
-				if (deepEqual(reqPermit, userPermit)) return true
-			}
-		}
-		return false
-	}
-
-	for (const reqPermit of req.permits) {
-		let hasRequired = false
-		for (const userPermit of userPermits.perms) {
-			if (deepEqual(reqPermit, userPermit)) {
-				hasRequired = true
-				break
-			}
-		}
-		if (!hasRequired) return false
-	}
-	return true
+	const userRbac = await getUserRbac(ctx, userId)
+	return RBAC.tryDenyPermissionForUser(userId, userRbac.perms, req)
 }
+
+export const rbacRouter = router({
+	getRoles: procedure.query(async () => {
+		return roles
+	}),
+})

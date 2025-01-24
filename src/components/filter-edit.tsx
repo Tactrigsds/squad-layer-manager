@@ -1,8 +1,15 @@
-import { useForm } from '@tanstack/react-form'
-import { zodValidator } from '@tanstack/zod-form-adapter'
+import * as Form from '@tanstack/react-form'
 import deepEqual from 'fast-deep-equal'
-import { FormEvent, useCallback, useMemo, useRef, useState } from 'react'
+import * as RbacClient from '@/systems.client/rbac.client'
+import * as Messages from '@/messages'
+import { useMemo, useState } from 'react'
+import * as Icons from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import * as Users from '@/systems.client/users.client'
+import { ToggleFilterContributorInput } from '@/server/systems/filters-entity'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
 
 import * as AR from '@/app-routes.ts'
 import {
@@ -20,153 +27,330 @@ import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
 import * as EFB from '@/lib/editable-filter-builders.ts'
-import { capitalize } from '@/lib/text'
-import { trpc } from '@/lib/trpc.client'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
-import { type WatchFilterOutput } from '@/server/systems/filters-entity'
 
 import FilterCard from './filter-card'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import React from 'react'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { useFilterDelete, useFilterUpdate } from '@/hooks/filters'
+import { assertNever } from '@/lib/typeGuards'
+import {
+	filterUpdate$ as getFilterUpdate$,
+	getFilterEntity$,
+	useFilterUpdate,
+	useFilterDelete,
+	useFilterContributors,
+	getFilterContributorQueryKey,
+} from '@/hooks/filters'
+import { useUser } from '@/systems.client/users.client'
+import { cn } from '@/lib/utils'
+import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Badge } from './ui/badge'
+import { trpc } from '@/lib/trpc.client'
+import { Subscribe, useStateObservable } from '@react-rxjs/core'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { isDirty } from 'zod'
+import { Separator } from '@radix-ui/react-separator'
 
-const defaultFilter: M.EditableFilterNode = EFB.and()
-
-export default function FilterEdit() {
-	const { id } = useAppParams(AR.exists('/filters/:id/edit'))
-	// fix refetches wiping out edited state, probably via fast deep equals or w/e
+// https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
+export default function FilterWrapperWrapper() {
+	const editParams = useAppParams('/filters/:id/edit')
+	return (
+		<Subscribe source$={getFilterEntity$(editParams.id)}>
+			<FilterWrapper />
+		</Subscribe>
+	)
+}
+export function FilterWrapper() {
+	// could also be /filters/new, in which case we're creating a new filter and id is undefined
+	const editParams = useAppParams('/filters/:id/edit')
 	const { toast } = useToast()
-	// the unedited filter entity from the server
-	const [filterEntity, setFilterEntity] = useState<M.FilterEntity | undefined>(undefined)
-	const [editedFilter, setEditedFilter] = useState(defaultFilter as M.EditableFilterNode)
-	const editedFilterModified = useMemo(() => !deepEqual(filterEntity?.filter, editedFilter), [filterEntity?.filter, editedFilter])
-	const user = useLoggedInUser()
+	const loggedInUser = useLoggedInUser()
 	const navigate = useNavigate()
-	const onWatchFilterData = useCallback(
-		(e: WatchFilterOutput) => {
-			if (e.code === 'initial-value') {
-				setFilterEntity(e.entity)
-				setEditedFilter(e.entity.filter as M.EditableFilterNode)
-				return
-			}
-			if (e.code === 'mutation') {
-				if (e.mutation.type === 'delete') {
-					toast({
-						title: `Filter ${e.mutation.value.name} was deleted by ${e.mutation.username}`,
-					})
+	const filterEntity = useStateObservable(getFilterEntity$(editParams.id))
+	React.useEffect(() => {
+		const sub = getFilterUpdate$(editParams.id).subscribe((update) => {
+			if (!update) return
+			switch (update.code) {
+				case 'err:not-found':
+					toast({ title: 'Filter not found' })
 					navigate(AR.exists('/filters'))
 					return
-				}
-				if (e.mutation.type === 'update') {
-					if (!user?.username || user.username !== e.mutation.username) {
-						toast({
-							title: `Filter ${e.mutation.value.name} was updated by ${e.mutation.username}`,
-						})
-					} else if (user?.username && user.username === e.mutation.username) {
-						toast({ title: `Updated ${e.mutation.value.name}` })
-					}
-
-					setFilterEntity(e.mutation.value)
-					setEditedFilter(e.mutation.value.filter as M.EditableFilterNode)
-				}
+				case 'initial-value':
+					return
+				case 'mutation':
+					break
+				default:
+					assertNever(update)
 			}
-		},
-		[setFilterEntity, setEditedFilter, toast, user?.username, navigate]
-	)
-
-	React.useEffect(() => {
-		const sub = trpc.filters.watchFilter.subscribe(id, {
-			onData: onWatchFilterData,
+			const mutation = update.mutation
+			switch (mutation.type) {
+				case 'add':
+					break
+				case 'update': {
+					if (mutation.username === loggedInUser?.username) return
+					toast({
+						title: `Filter ${mutation.value.name} was updated by ${mutation.username}`,
+					})
+					break
+				}
+				case 'delete': {
+					if (mutation.username === loggedInUser?.username) return
+					toast({
+						title: `Filter ${mutation.value.name} was deleted by ${mutation.username}`,
+					})
+					navigate(AR.exists('/filters'))
+					break
+				}
+				default:
+					assertNever(mutation.type)
+			}
+			return () => sub.unsubscribe()
 		})
-		return () => sub.unsubscribe()
-	}, [onWatchFilterData, id])
+	}, [editParams.id, navigate, toast, loggedInUser?.username])
+	const userRes = Users.useUser(filterEntity?.owner)
+	const filterContributorRes = useFilterContributors(editParams.id)
 
-	const [pageIndex, setPageIndex] = useState(0)
-	const validFilter = useMemo(() => {
-		return editedFilter && M.isValidFilterNode(editedFilter) ? editedFilter : null
-	}, [editedFilter])
-	const updateFilterMutation = useFilterUpdate()
-	const deleteFilterMutation = useFilterDelete()
-	const canSaveFilter = editedFilterModified && !!validFilter && !updateFilterMutation.isPending
-
-	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
-
-	if (!editedFilter || !filterEntity) {
+	// TODO handle not found
+	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
 		return <FullPageSpinner />
 	}
+	let owner: M.User
+	switch (userRes.data.code) {
+		case 'err:permission-denied':
+			return <div>{Messages.WARNS.permissionDenied(userRes.data)}</div>
+		case 'err:not-found':
+			return <div>Owner not found</div>
+		case 'ok':
+			owner = userRes.data.user
+			break
+	}
+	return <FilterEdit entity={filterEntity} contributors={filterContributorRes.data} owner={owner} />
+}
 
-	async function saveFilter() {
-		if (!canSaveFilter) return
-		const res = await updateFilterMutation.mutateAsync([
-			filterEntity!.id,
-			{
-				filter: validFilter,
-			},
-		])
-		if (res.code === 'err:not-found') {
-			toast({
-				title: 'Unable to save: Filter Not Found',
-			})
-			return
-		}
-		if (res.code !== 'ok') {
-			toast({ title: 'Unable to save: Unknown Error Occured' })
-			return
-		}
-		toast({
-			title: 'Filter saved',
+export function FilterEdit(props: { entity: M.FilterEntity; contributors: { users: M.User[]; roles: string[] }; owner: M.User }) {
+	// fix refetches wiping out edited state, probably via fast deep equals or w/e
+	const { toast } = useToast()
+
+	const navigate = useNavigate()
+
+	const [editedFilter, _setEditedFilter] = useState<M.EditableFilterNode>(props.entity.filter)
+	const [validFilter, setValidFilter] = useState<M.FilterNode | null>(null)
+	const setEditedFilter: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
+		_setEditedFilter((filter) => {
+			const newFilter = typeof update === 'function' ? update(filter) : update
+			if (!newFilter) return props.entity.filter
+			if (newFilter && M.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
+				setValidFilter(null)
+			} else if (newFilter && M.isValidFilterNode(newFilter)) {
+				setValidFilter(newFilter)
+			} else {
+				setValidFilter(null)
+			}
+			setPageIndex(0)
+			return newFilter
 		})
 	}
 
+	const updateFilterMutation = useFilterUpdate()
+	const deleteFilterMutation = useFilterDelete()
+
+	const [editingDetails, setEditingDetails] = useState(false)
+	const form = Form.useForm({
+		defaultValues: {
+			id: props.entity.id,
+			name: props.entity.name,
+			description: props.entity.description,
+		},
+		onSubmit: async ({ value, formApi }) => {
+			const description = value.description?.trim() || null
+
+			const res = await updateFilterMutation.mutateAsync([value.id, { ...value, description, filter: validFilter }])
+			switch (res.code) {
+				case 'err:permission-denied':
+					RbacClient.showPermissionDenied(res)
+					break
+
+				case 'err:not-found':
+					toast({ title: 'Unable to save: Filter Not Found' })
+					break
+
+				case 'ok':
+					toast({ title: 'Filter saved' })
+					formApi.reset()
+					setEditingDetails(false)
+
+					break
+
+				default:
+					assertNever(res)
+			}
+		},
+	})
+
+	const [pageIndex, setPageIndex] = useState(0)
+	// const canSave = (editedFilterModified || (isDirty && isValid)) && !!validFilter && !updateFilterMutation.isPending
+
+	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
+	const loggedInUser = useLoggedInUser()
+
 	async function onDelete() {
-		if (!filterEntity) {
+		if (!props.entity) {
 			return
 		}
-		const res = await deleteFilterMutation.mutateAsync(filterEntity.id)
+		const res = await deleteFilterMutation.mutateAsync(props.entity.id)
 		if (res.code === 'ok') {
 			toast({
-				title: `Filter "${filterEntity.name}" deleted`,
+				title: `Filter "${props.entity.name}" deleted`,
 			})
 			navigate(AR.link('/filters'))
 		} else {
 			toast({
-				title: `Failed to delete filter "${filterEntity.name}"`,
+				title: `Failed to delete filter "${props.entity.name}"`,
 			})
 		}
 	}
 
-	return (
-		<div className="container mx-auto py-10">
-			<div className="flex w-full items-center justify-center">
-				<h3 className={Typography.H3 + ' m-auto'}>{filterEntity.name}</h3>
-			</div>
-			<div className="flex space-x-2">
-				<FilterCard
-					node={editedFilter}
-					setNode={setEditedFilter as React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>>}
-					filterId={filterEntity.id}
-					resetFilter={() => {
-						setEditedFilter(filterEntity.filter as M.EditableFilterNode)
-					}}
-				/>
-				<div className="flex flex-col space-y-2">
-					<Button disabled={!canSaveFilter} onClick={saveFilter}>
+	const idEltId = React.useId()
+	const ownerEltId = React.useId()
+	const loggedInUserIsContributor =
+		props.contributors.users.some((u) => u.discordId === loggedInUser?.discordId) ||
+		props.contributors.roles.some((role) => loggedInUser?.roles.includes(role))
+
+	const saveBtn = (
+		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
+			{([canSubmit, isDirty]) => {
+				const filterModified = !deepEqual(props.entity.filter, editedFilter)
+				return (
+					<Button onClick={() => form.handleSubmit()} disabled={!canSubmit || (!filterModified && !isDirty) || !validFilter}>
 						Save
 					</Button>
-					<EditFilterDetailsDialog entity={filterEntity}>
-						<Button variant="secondary">Edit Details</Button>
-					</EditFilterDetailsDialog>
-					<DeleteFilterDialog onDelete={onDelete}>
-						<Button variant="destructive">Delete</Button>
-					</DeleteFilterDialog>
-				</div>
+				)
+			}}
+		</form.Subscribe>
+	)
+	const deleteBtn = (
+		<Button variant="destructive" onClick={onDelete}>
+			Delete
+		</Button>
+	)
+
+	return (
+		<div className="container mx-auto pt-2">
+			<div className="flex justify-between">
+				{!editingDetails ? (
+					<div className="flex flex-col space-y-2 w-full">
+						<div className="flex space-x-4 items-center">
+							<h3 className={Typography.H3}>{props.entity.name}</h3>
+							<Icons.Dot />
+							<small className="font-light">Owner: {props.owner.username}</small>
+							<Icons.Dot />
+							<Button onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
+								<Icons.Edit />
+							</Button>
+						</div>
+						<p className={Typography.Blockquote}>{props.entity.description}</p>
+					</div>
+				) : (
+					<div className="flex space-x-2">
+						<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
+							{(field) => {
+								function handleNameChange(name: string) {
+									field.handleChange(name)
+									if (!!form.getFieldValue('id').trim() && form.getFieldMeta('id')!.isDirty) return
+									form.setFieldValue('id', name.toLowerCase().replace(/\s+/g, '-'), { dontUpdateMeta: true })
+									form.setFieldMeta('id', (m) => ({ ...m, errors: [], errorMap: {} }))
+								}
+
+								return (
+									<div className="flex flex-col space-y-2">
+										<Label htmlFor={field.name}>Name</Label>
+										<Input
+											id={field.name}
+											placeholder="Filter name"
+											defaultValue={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(e) => handleNameChange(e.target.value)}
+										/>
+										{field.state.meta.errors.length > 0 && (
+											<Alert variant="destructive">
+												<AlertTitle>Name: </AlertTitle>
+												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+											</Alert>
+										)}
+									</div>
+								)
+							}}
+						</form.Field>
+						<form.Field name="description" validators={{ onChange: M.FilterDescriptionSchema }}>
+							{(field) => (
+								<div className="flex space-x-2 flex-grow">
+									<div className="flex flex-col space-y-1 min-w-[900px] ">
+										<Label htmlFor={field.name}>Description</Label>
+										<Textarea
+											id={field.name}
+											placeholder="Description"
+											defaultValue={field.state.value ?? ''}
+											onBlur={field.handleBlur}
+											onChange={(e) => field.setValue(e.target.value)}
+										/>
+									</div>
+									{field.state.meta.errors.length > 0 && (
+										<span>
+											<Alert variant="destructive">
+												<AlertTitle>Description:</AlertTitle>
+												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+											</Alert>
+										</span>
+									)}
+								</div>
+							)}
+						</form.Field>
+						<div className="flex flex-col space-y-1">
+							<Button
+								className="mt-[16px]"
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									form.reset()
+									return setEditingDetails(false)
+								}}
+							>
+								<Icons.Trash className="text-destructive" />
+							</Button>
+						</div>
+					</div>
+				)}
+				<span className="space-x-2 flex h-min items-center self-end">
+					{loggedInUserIsContributor && (
+						<Badge variant="outline" className="text-nowrap border-info border-2">
+							You are a contributor
+						</Badge>
+					)}
+					<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
+						<Button variant="outline">Show Contributors</Button>
+					</FilterContributors>
+				</span>
+			</div>
+			<div className="flex space-x-2 mt-2">
+				<FilterCard
+					node={editedFilter}
+					setNode={setEditedFilter}
+					filterId={props.entity?.id}
+					resetFilter={() => {
+						setEditedFilter(props.entity.filter)
+					}}
+					children={
+						<>
+							{saveBtn} {deleteBtn}
+						</>
+					}
+				/>
 			</div>
 			<LayerTable
 				selected={selectedLayers}
@@ -179,114 +363,111 @@ export default function FilterEdit() {
 	)
 }
 
-function EditFilterDetailsDialog(props: { children: React.ReactNode; entity: M.FilterEntity }) {
-	const updateFiltersMutation = useFilterUpdate()
-	const [isOpen, _setIsOpen] = useState(false)
-	function setIsOpen(isOpen: boolean) {
-		if (isOpen) {
-			nameRef.current?.focus()
-		} else {
-			form.reset()
-		}
-		_setIsOpen(isOpen)
-	}
-
-	const toast = useToast()
-	const form = useForm({
-		defaultValues: {
-			name: props.entity.name,
-			description: props.entity.description,
+function FilterContributors(props: {
+	filterId: M.FilterEntityId
+	contributors: { users: M.User[]; roles: string[] }
+	children: React.ReactNode
+}) {
+	const { toast } = useToast()
+	const queryClient = useQueryClient()
+	const addMutation = useMutation({
+		mutationFn: async (input: ToggleFilterContributorInput) => {
+			console.log('adding', input)
+			return trpc.filters.addFilterContributor.mutate(input)
 		},
-		validatorAdapter: zodValidator(),
-		onSubmit: async ({ value, formApi }) => {
-			const res = await updateFiltersMutation.mutateAsync([props.entity.id, value])
-			if (res.code === 'ok') {
-				toast.toast({
-					title: 'Filter updated',
-				})
-			} else if (res.code === 'err:not-found') {
-				formApi.setErrorMap({ onSubmit: 'Not Found' })
-				return
+		onSuccess: (res) => {
+			switch (res.code) {
+				case 'err:permission-denied':
+					return RbacClient.showPermissionDenied(res)
+				case 'err:already-exists':
+					return toast({ title: 'Contributor already added' })
+				case 'ok':
+					break
+				default:
+					assertNever(res)
 			}
-			setIsOpen(false)
+			queryClient.invalidateQueries({ queryKey: getFilterContributorQueryKey(props.filterId) })
+		},
+		onError: (err) => {
+			toast({ title: 'Failed to add contributor', description: err.message })
 		},
 	})
-	// useEffect(() => {
-	// 	form.setFieldValue('name', props.entity.name)
-	// 	form.setFieldValue('description', props.entity.description)
-	// }, [props.entity.name, props.entity.description, form])
-
-	function onSubmit(e: FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
-		form.handleSubmit()
+	const removeMutation = useMutation({
+		mutationFn: async (input: ToggleFilterContributorInput) => {
+			return trpc.filters.removeFilterContributor.mutate(input)
+		},
+		onSuccess: (res) => {
+			switch (res.code) {
+				case 'err:permission-denied':
+					return RbacClient.showPermissionDenied(res)
+				case 'err:not-found':
+					return toast({ title: 'Contributor not found' })
+				case 'ok':
+					break
+				default:
+					assertNever(res)
+			}
+			queryClient.invalidateQueries({ queryKey: getFilterContributorQueryKey(props.filterId) })
+		},
+	})
+	function addUser(user: M.User) {
+		addMutation.mutate({ filterId: props.filterId, userId: user.discordId })
 	}
-	const fieldClasses = 'flex flex-col space-y-2'
-	const nameRef = useRef<HTMLInputElement>(null)
 
 	return (
-		<Dialog open={isOpen} onOpenChange={setIsOpen}>
-			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="flex flex-col items-center">
-				<DialogHeader>
-					<DialogTitle>Edit Filter</DialogTitle>
-				</DialogHeader>
-				<form onSubmit={onSubmit} className="flex flex-col space-y-4">
-					<div className="flex items-center space-x-2">
-						<form.Field
-							name="name"
-							validators={{ onChange: M.FilterUpdateSchema.shape.name }}
-							children={(field) => {
-								return (
-									<div className={fieldClasses}>
-										<Label htmlFor={field.name}>{capitalize(field.name)}</Label>
-										<Input
-											ref={nameRef}
-											id={field.name}
-											name={field.name}
-											defaultValue={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.setValue(e.target.value)}
-										/>
-									</div>
-								)
-							}}
-						/>
-						<div className={fieldClasses}>
-							<Label htmlFor="id">Id</Label>
-							<Input disabled value={props.entity.id} />
+		<Popover>
+			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+			<PopoverContent className="p-0">
+				<CardHeader>
+					<CardTitle>Contributors</CardTitle>
+					<CardDescription>Users and Roles that can edit this filter</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div>
+						<div className="flex space-x-2 items-center">
+							<h4 className="leading-none">Users</h4>
+							<SelectUserPopover selectUser={addUser}>
+								<Button variant="outline" size="icon">
+									<Icons.Plus />
+								</Button>
+							</SelectUserPopover>
 						</div>
-					</div>
-					<form.Field
-						name="description"
-						validators={{ onChange: M.FilterUpdateSchema.shape.description }}
-						children={(field) => {
-							return (
-								<div className={fieldClasses}>
-									<Label htmlFor={field.name}>{capitalize(field.name)}</Label>
-									<Textarea
-										id={field.name}
-										name={field.name}
-										defaultValue={field.state.value ?? undefined}
-										onBlur={field.handleBlur}
-										onChange={(e) => field.handleChange(e.target.value)}
+						<ul>
+							{props.contributors.users.map((user) => (
+								<li key={user.discordId} className="flex space-x-1 items-center">
+									<Icons.Minus
+										onClick={(e) => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
-								</div>
-							)
-						}}
-					/>
-					{form.state.errors.length > 0 && (
-						<Alert variant="destructive">
-							<AlertTitle>Errors:</AlertTitle>
-							<AlertDescription>{form.state.errors.join(', ')}</AlertDescription>
-						</Alert>
-					)}
-					<div className="flex items-center justify-end">
-						<Button type="submit">Save</Button>
+									<Badge>{user.username}</Badge>
+								</li>
+							))}
+						</ul>
 					</div>
-				</form>
-			</DialogContent>
-		</Dialog>
+					<div id="roles">
+						<div>
+							<Label htmlFor="roles">Roles</Label>
+							<SelectRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, role })}>
+								<Button variant="outline" size="icon">
+									<Icons.Plus />
+								</Button>
+							</SelectRolePopover>
+						</div>
+						<ul>
+							{props.contributors.roles.map((role) => (
+								<li key={role} className="flex space-x-1 items-center">
+									<Icons.Minus
+										onClick={(e) => removeMutation.mutate({ filterId: props.filterId, role })}
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+									/>
+									<Badge>{role}</Badge>
+								</li>
+							))}
+						</ul>
+					</div>
+				</CardContent>
+			</PopoverContent>
+		</Popover>
 	)
 }
 
@@ -317,5 +498,58 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
+	)
+}
+
+function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user: M.User) => void }) {
+	const usersRes = Users.useUsers()
+	const [isOpen, setIsOpen] = useState(false)
+	function onSelect(user: M.User) {
+		props.selectUser(user)
+		setIsOpen(false)
+	}
+	return (
+		<Popover modal={true} open={isOpen} onOpenChange={setIsOpen}>
+			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+			<PopoverContent>
+				<Command>
+					<CommandInput placeholder="Search for a user..." />
+					<CommandList>
+						{usersRes.data?.code === 'ok' &&
+							usersRes.data.users.map((user) => (
+								<CommandItem key={user.discordId} onSelect={() => onSelect(user)}>
+									{user.username}
+								</CommandItem>
+							))}
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+export function SelectRolePopover(props: { children: React.ReactNode; selectRole: (role: string) => void }) {
+	const rolesRes = RbacClient.useRoles()
+	const [isOpen, setIsOpen] = useState(false)
+	function onSelect(role: string) {
+		props.selectRole(role)
+		setIsOpen(false)
+	}
+	return (
+		<Popover open={isOpen} onOpenChange={setIsOpen} modal={true}>
+			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+			<PopoverContent>
+				<Command>
+					<CommandInput placeholder="Search for a role..." />
+					<CommandList>
+						{rolesRes.data?.map((role) => (
+							<CommandItem key={role} onSelect={() => onSelect(role)}>
+								{role}
+							</CommandItem>
+						))}
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
 	)
 }
