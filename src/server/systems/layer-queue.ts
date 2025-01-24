@@ -280,7 +280,7 @@ function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M
 		return { code: 'err:queue-change-during-vote' as const }
 	}
 
-	if (lastQueueItem?.vote && !newQueueItem.vote) {
+	if (lastQueueItem?.vote && !newQueueItem?.vote) {
 		return { code: 'ok' as const, update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies M.VoteStateUpdate }
 	}
 
