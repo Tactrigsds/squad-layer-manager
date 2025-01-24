@@ -133,7 +133,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	const navigate = useNavigate()
 
 	const [editedFilter, _setEditedFilter] = useState<M.EditableFilterNode>(props.entity.filter)
-	const [validFilter, setValidFilter] = useState<M.FilterNode | null>(null)
+	const [validFilter, setValidFilter] = useState<M.FilterNode | null>(props.entity.filter)
 	const setEditedFilter: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
 		_setEditedFilter((filter) => {
 			const newFilter = typeof update === 'function' ? update(filter) : update
@@ -156,14 +156,13 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	const [editingDetails, setEditingDetails] = useState(false)
 	const form = Form.useForm({
 		defaultValues: {
-			id: props.entity.id,
 			name: props.entity.name,
 			description: props.entity.description,
 		},
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
 
-			const res = await updateFilterMutation.mutateAsync([value.id, { ...value, description, filter: validFilter ?? undefined }])
+			const res = await updateFilterMutation.mutateAsync([props.entity.id, { ...value, description, filter: validFilter ?? undefined }])
 			switch (res.code) {
 				case 'err:permission-denied':
 					RbacClient.showPermissionDenied(res)
@@ -243,7 +242,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || (!filterModified && !isDirty) || !validFilter || loggedInUserRole == 'none'}
+						disabled={!canSubmit || !validFilter || (!filterModified && !isDirty) || loggedInUserRole == 'none'}
 					>
 						Save
 					</Button>
@@ -277,13 +276,6 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 					<div className="flex space-x-2">
 						<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
 							{(field) => {
-								function handleNameChange(name: string) {
-									field.handleChange(name)
-									if (!!form.getFieldValue('id').trim() && form.getFieldMeta('id')!.isDirty) return
-									form.setFieldValue('id', name.toLowerCase().replace(/\s+/g, '-'), { dontUpdateMeta: true })
-									form.setFieldMeta('id', (m) => ({ ...m, errors: [], errorMap: {} }))
-								}
-
 								return (
 									<div className="flex flex-col space-y-2">
 										<Label htmlFor={field.name}>Name</Label>
@@ -292,7 +284,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 											placeholder="Filter name"
 											defaultValue={field.state.value}
 											onBlur={field.handleBlur}
-											onChange={(e) => handleNameChange(e.target.value)}
+											onChange={(e) => field.handleChange(e.target.value)}
 										/>
 										{field.state.meta.errors.length > 0 && (
 											<Alert variant="destructive">
@@ -314,7 +306,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 											placeholder="Description"
 											defaultValue={field.state.value ?? ''}
 											onBlur={field.handleBlur}
-											onChange={(e) => field.setValue(e.target.value)}
+											onChange={(e) => field.handleChange(e.target.value)}
 										/>
 									</div>
 									{field.state.meta.errors.length > 0 && (
@@ -404,7 +396,6 @@ function FilterContributors(props: {
 	const queryClient = useQueryClient()
 	const addMutation = useMutation({
 		mutationFn: async (input: ToggleFilterContributorInput) => {
-			console.log('adding', input)
 			return trpc.filters.addFilterContributor.mutate(input)
 		},
 		onSuccess: (res) => {

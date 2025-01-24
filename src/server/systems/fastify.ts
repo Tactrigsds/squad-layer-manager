@@ -180,8 +180,8 @@ export async function setupFastify() {
 		trpcOptions: {
 			router: TrpcRouter.appRouter,
 			createContext: createTrpcRequestContext,
-			onError({ path, error, ctx }) {
-				;(ctx ?? server).log.error(error, `Error in tRPC handler on path '${path ?? 'unknown'}':`)
+			onError({ path, error, ctx, input, type }) {
+				;(ctx ?? server).log.child({ input }).error(error, `Error in tRPC %s on path %s:`, type, path)
 			},
 		} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 	})
@@ -261,7 +261,14 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 			message: 'Invalid session',
 		}
 	}
-	const authedCtx: C.AuthedRequest = { ...ctx, sessionId, user: validSession.user, req, res }
+	const authedCtx: C.AuthedRequest = {
+		...ctx,
+		sessionId,
+		user: validSession.user,
+		req,
+		res,
+		log: log.child({ username: validSession.user.username }),
+	}
 
 	return {
 		code: 'ok' as const,
@@ -286,13 +293,14 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 				})
 		}
 	}
+	const wsClientId = createId(32)
 	const ctx: C.TrpcRequest = {
-		wsClientId: createId(32),
+		wsClientId,
 		user: result.ctx.user,
 		sessionId: result.ctx.sessionId,
 		req: options.req,
 		ws: result.ctx.res as unknown as WebSocket,
-		log: result.ctx.log,
+		log: result.ctx.log.child({ wsClientId }),
 		db: result.ctx.db,
 	}
 	WsSessionSys.registerClient(ctx)

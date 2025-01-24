@@ -268,6 +268,9 @@ function VoteState() {
 	const squadServerStatus = useSquadServerStatus()
 	const loggedInUser = useLoggedInUser()
 
+	const userPresence = useUserPresenceState()
+	const editInProgress = userPresence?.editState
+
 	async function abortVote() {
 		const serverStateMut = QD.QDStore.getState().editedServerState
 		if (!serverStateMut?.layerQueueSeqId) return
@@ -323,7 +326,8 @@ function VoteState() {
 
 	const voteDurationEltId = React.useId()
 	const minRequiredEltId = React.useId()
-	const canManageVote = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+	const canModifyVote =
+		loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] }) && !editInProgress
 
 	if (!voteState || !squadServerStatus) return null
 	function onSubmit(e: React.FormEvent) {
@@ -344,7 +348,7 @@ function VoteState() {
 							id={voteDurationEltId}
 							name={field.name}
 							type="number"
-							disabled={!canManageVote}
+							disabled={!canModifyVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
@@ -363,7 +367,7 @@ function VoteState() {
 						<Input
 							id={minRequiredEltId}
 							type="number"
-							disabled={!canManageVote}
+							disabled={!canModifyVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
@@ -393,7 +397,7 @@ function VoteState() {
 	)
 	const cancelBtn = (
 		<Button
-			disabled={!canManageVote}
+			disabled={!canModifyVote}
 			onClick={() => {
 				openDialog({
 					title: 'Cancel Vote',
@@ -414,7 +418,7 @@ function VoteState() {
 			body = (
 				<>
 					<Button
-						disabled={!canManageVote}
+						disabled={!canModifyVote}
 						onClick={async () => {
 							const id = await openDialog({
 								title: 'Start Vote',
