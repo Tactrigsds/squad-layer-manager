@@ -3,14 +3,23 @@ import build from 'pino-abstract-transport'
 
 // This transport makes inspecting via Chrome's Node.js DevTools much more pleasant https://blog.logrocket.com/debug-node-js-chrome-devtools-watchers/#running-inspector
 
-const levels = {
+const LEVELS = {
 	10: 'TRACE',
 	20: 'DEBUG',
 	30: 'INFO',
 	40: 'WARN',
 	50: 'ERROR',
 	60: 'FATAL',
-}
+} as const
+
+const LEVELS_R = {
+	TRACE: 10,
+	DEBUG: 20,
+	INFO: 30,
+	WARN: 40,
+	ERROR: 50,
+	FATAL: 60,
+} as const
 
 type OperationNode = {
 	type: string
@@ -75,7 +84,7 @@ function getConsoleArgs(level: number, obj: any) {
 							: level === 60
 								? 'color: purple; font-weight: bold'
 								: 'color: black; font-weight: bold',
-		levels[level as keyof typeof levels] || 'UNKNOWN',
+		LEVELS[level as keyof typeof LEVELS] || 'UNKNOWN',
 		'color: inherit',
 		'color: gray',
 		`[${humanTime}]`,
@@ -98,21 +107,24 @@ function getConsoleArgs(level: number, obj: any) {
 function printLogEntry(level: number, obj: any) {
 	const args = getConsoleArgs(level, obj)
 	switch (level) {
-		case 10:
+		case LEVELS_R.TRACE:
 			console.debug(...args)
 			break
-		case 20:
+		case LEVELS_R.DEBUG:
 			console.debug(...args)
 			break
-		case 30:
+		case LEVELS_R.INFO:
 			console.info(...args)
 			break
-		case 40:
+		case LEVELS_R.WARN:
 			console.warn(...args)
 			break
-		case 50:
-		case 60: {
+		case LEVELS_R.ERROR:
+		case LEVELS_R.FATAL: {
 			console.error(...args)
+			if (obj.err.stack) {
+				console.error(obj.err.stack)
+			}
 			break
 		}
 		default:
@@ -136,7 +148,7 @@ export default async function (opts: { ignore?: string }) {
 				obj = { ...obj }
 
 				// @ts-expect-error fuck you
-				obj.levelStr = levels[level] ?? 'unknown'
+				obj.levelStr = LEVELS[level] ?? 'unknown'
 
 				// Remove ignored fields from the log object
 				for (const field of ignoreFields) {

@@ -478,7 +478,7 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	.refine((node) => node.type !== 'apply-filter' || typeof node.filterId === 'string', {
 		message: 'filterId must be defined for type "apply-filter"',
 	})
-	.refine((node) => !(['and', 'or'].includes(node.type) && (!node.children || node.children.length === 0)), {
+	.refine((node) => !(['and', 'or'].includes(node.type) && !node.children), {
 		message: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
 
