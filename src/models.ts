@@ -7,6 +7,7 @@ import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
 import { PercentageSchema } from './lib/zod'
+import { assertNever } from './lib/typeGuards'
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
@@ -576,12 +577,18 @@ export const FilterUpdateSchema = z.object({
 	filter: FilterNodeSchema,
 }) satisfies z.ZodType<Partial<Schema.Filter>>
 
-function filterContainsId(id: string, node: FilterNode): boolean {
-	if (node.type === 'and' || node.type === 'or') {
-		return node.children.every((n) => filterContainsId(id, n))
+export function filterContainsId(id: string, node: FilterNode): boolean {
+	switch (node.type) {
+		case 'and':
+		case 'or':
+			return node.children.some((n) => filterContainsId(id, n))
+		case 'comp':
+			return false
+		case 'apply-filter':
+			return node.filterId === id
+		default:
+			assertNever(node)
 	}
-	if (node.type === 'comp') return false
-	return node.filterId === id
 }
 
 export const FilterEntityIdSchema = z

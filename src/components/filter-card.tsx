@@ -43,14 +43,11 @@ export type FilterCardProps = {
 	setNode: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>>
 	resetFilter?: () => void
 	filterId?: string
-
-	// child is the submit button
-	children: React.ReactNode
 }
 
 const triggerClass =
 	'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow'
-export default function FilterCard(props: FilterCardProps) {
+export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	const validFilterNode = React.useMemo(() => M.isValidFilterNode(props.node), [props.node])
@@ -584,7 +581,7 @@ type ApplyFilterProps = {
 
 function ApplyFilter(props: ApplyFilterProps) {
 	const getFiltersQuery = useFilters()
-	let filters = getFiltersQuery.data
+	let filters = getFiltersQuery.data?.filters
 	if (props.editedFilterId) {
 		filters = filters?.filter((f) => f.id !== props.editedFilterId)
 	}

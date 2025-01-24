@@ -33,7 +33,6 @@ export function useFilterContributors(filterId: string) {
 }
 
 export const filterUpdate$ = state((filterId: string) => {
-	console.log('getting filter update', { filterId })
 	return new Rx.Observable<WatchFilterOutput>((s) => {
 		const sub = trpc.filters.watchFilter.subscribe(filterId, {
 			onData: (output) => {

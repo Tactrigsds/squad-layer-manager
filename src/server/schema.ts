@@ -179,7 +179,7 @@ export const users = mysqlTable('users', {
 	discordId: bigint('discordId', { mode: 'bigint' }).notNull().primaryKey(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: varchar('username', { length: 32 }).notNull(),
-	avatar: varchar('avatar', { length: 255 }).notNull(),
+	avatar: varchar('avatar', { length: 255 }),
 })
 
 export type User = typeof users.$inferSelect

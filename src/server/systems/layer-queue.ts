@@ -815,6 +815,7 @@ async function includeLayerStatusPart(ctx: C.Db & C.Log, update: M.LQServerState
 	})
 
 	switch (inPoolRes.code) {
+		case 'err:not-found':
 		case 'err:pool-filter-not-set':
 			return part
 		case 'ok':

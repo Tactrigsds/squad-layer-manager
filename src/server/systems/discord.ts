@@ -10,7 +10,7 @@ export const DiscordUserSchema = z.object({
 	username: z.string(),
 	global_name: z.string(),
 	discriminator: z.string(),
-	avatar: z.string(),
+	avatar: z.string().nullable(),
 	locale: z.string(),
 	flags: z.number(),
 	premium_type: z.number(),

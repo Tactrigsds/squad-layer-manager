@@ -21,7 +21,7 @@ import { useLoggedInUser } from '@/systems.client/logged-in-user'
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
 	const user = useLoggedInUser()
-	const avatarUrl = user
+	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
 	return (

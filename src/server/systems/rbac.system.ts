@@ -101,12 +101,7 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 		perms.push(...globalRolePermissions[role])
 	}
 
-	perms.push(
-		...(await ownedFiltersPromise).flatMap((f) => [
-			RBAC.perm('filters:write', { filterId: f.id }),
-			RBAC.perm('filters:manage', { filterId: f.id }),
-		])
-	)
+	perms.push(...(await ownedFiltersPromise).flatMap((f) => [RBAC.perm('filters:write', { filterId: f.id })]))
 
 	perms.push(...(await contributorFiltersPromise).map((f) => RBAC.perm('filters:write', { filterId: f.filterId })))
 
@@ -148,15 +143,15 @@ function dedupePerms(perms: RBAC.Permission[]) {
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	baseCtx: C.Log & C.Db,
 	userId: bigint,
-	req: RBAC.PermissionReq<T>
+	permissionReq: RBAC.PermissionReq<T>
 ) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
 	const userRbac = await getUserRbac(ctx, userId)
-	return RBAC.tryDenyPermissionForUser(userId, userRbac.perms, req)
+	return RBAC.tryDenyPermissionForUser(userId, userRbac.perms, permissionReq)
 }
 
 export const rbacRouter = router({
-	getRoles: procedure.query(async () => {
+	getRoles: procedure.query(() => {
 		return roles
 	}),
 })

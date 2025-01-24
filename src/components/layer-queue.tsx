@@ -498,7 +498,7 @@ function FilterEntitySelect(props: {
 	setEnabled?: (enabled: boolean) => void
 }) {
 	const filtersRes = useFilters()
-	const filterOptions = filtersRes.data?.map?.((f) => ({
+	const filterOptions = filtersRes.data?.filters.map?.((f) => ({
 		value: f.id,
 		label: f.name,
 	}))
@@ -566,7 +566,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 		queryFn: () => trpc.filters.getFilters.query(),
 	})
 
-	const filterOptions = filtersRes.data?.map?.((f) => ({
+	const filterOptions = filtersRes.data?.filters.map?.((f) => ({
 		value: f.id,
 		label: f.name,
 	}))
@@ -1297,7 +1297,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const [selectedFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
 	const [filterEnabled, setFilterEnabled] = React.useState(true)
 
-	const selectedFilterEntity = filtersRes.data?.find((f) => f.id === selectedFilterId)
+	const selectedFilterEntity = filtersRes.data?.filters.find((f) => f.id === selectedFilterId)
 	let baseFilter: M.FilterNode | undefined
 	if (selectedFilterEntity?.filter && filterEnabled && props.baseFilter) {
 		baseFilter = FB.and([props.baseFilter, selectedFilterEntity.filter])

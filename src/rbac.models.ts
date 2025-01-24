@@ -40,8 +40,6 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
 	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
-	...definePermission('filters:manage', { description: 'Delete a filter or add or remove contributors to a filter', scope: 'filter' }),
-	...definePermission('users:get', { description: 'Get user information', scope: 'global' }),
 }
 export type PermissionType = (typeof PERMISSION_DEFINITION)[number]['type']
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
@@ -51,7 +49,6 @@ export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
 	'settings:write',
 	'vote:manage',
 	'filters:write-all',
-	'users:get',
 ])
 
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
@@ -84,7 +81,9 @@ export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac,
 // TODO technically incorrect when it comes to filters:write-all
 export function userHasPerms<T extends PermissionType>(userId: bigint, perms: Permission[], req: PermissionReq<T>): boolean {
 	for (const perm of req.permits) {
-		const hasPerm = perms.find((userPerm) => deepEqual(userPerm, perm))
+		const hasPerm = perms.find(
+			(userPerm) => deepEqual(userPerm, perm) || (userPerm.type === 'filters:write' && perm.type === 'filters:write-all')
+		)
 		if (req.check === 'all' && !hasPerm) return false
 		if (req.check === 'any' && hasPerm) return true
 	}

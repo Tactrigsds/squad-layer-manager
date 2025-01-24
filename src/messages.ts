@@ -95,7 +95,7 @@ export const WARNS = {
 		},
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
-		return `Permission denied. You ned ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
+		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
 	},
 } satisfies WarnNode
 

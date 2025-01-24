@@ -114,6 +114,9 @@ export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof Ar
 		}
 	}
 	const [rawFilterEntity] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, poolFilterId!))
+	if (!rawFilterEntity) {
+		return { code: 'err:not-found' as const }
+	}
 	const filterEntity = M.FilterEntitySchema.parse(rawFilterEntity)
 	const filter = filterEntity.filter
 

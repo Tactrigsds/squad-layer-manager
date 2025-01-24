@@ -27,7 +27,7 @@ export default function FiltersIndex() {
 					return (
 						<li key={filter.id}>
 							<Link to={AR.link('/filters/:id/edit', filter.id)} className="block h-full">
-								<Card className="h-full transition-shadow hover:shadow-md ">
+								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground">
 									<CardHeader>
 										<CardTitle>{filter.name}</CardTitle>
 										<CardDescription>{filter.description}</CardDescription>

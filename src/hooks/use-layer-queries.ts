@@ -49,20 +49,14 @@ export function useAreLayersInPool(input: Parameters<typeof trpc.layers.areLayer
 
 			const res = await trpc.layers.areLayersInPool.query(input)
 
-			switch (res.code) {
-				case 'err:pool-filter-not-set':
-					return { code: 'err:pool-filter-not-set' as const }
-				case 'ok': {
-					for (const item of res.results) {
-						if (!results.find((r) => r.id === item.id)) {
-							results.push(item)
-						}
-					}
-					return { code: 'ok' as const, results }
+			if (res.code !== 'ok') return res
+
+			for (const item of res.results) {
+				if (!results.find((r) => r.id === item.id)) {
+					results.push(item)
 				}
-				default:
-					assertNever(res)
 			}
+			return { code: 'ok' as const, results }
 		},
 	})
 }

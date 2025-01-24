@@ -12,6 +12,7 @@ import * as Schema from '@/server/schema.ts'
 import { procedure, router } from '@/server/trpc.server.ts'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
+import * as LayerQueue from '@/server/systems/layer-queue'
 
 const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
 const ToggleFilterContributorInputSchema = z
@@ -21,30 +22,30 @@ export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributo
 
 export const GetFiltersInput = z.object({ parts: z.array(z.literal('users')).optional() }).optional()
 export const filtersRouter = router({
-	getFilters: procedure.input(GetFiltersInput).query(async ({ ctx, input }) => {
-		if (input?.parts?.includes('users')) {
-			const rows = await ctx.db().select().from(Schema.filters).leftJoin(Schema.users, eq(Schema.users.discordId, Schema.filters.owner))
+	getFilters: procedure
+		.input(GetFiltersInput)
+		.query(async ({ ctx, input }): Promise<{ code: 'ok'; filters: M.FilterEntity[] } & Parts<Partial<M.UserPart>>> => {
+			if (input?.parts?.includes('users')) {
+				const rows = await ctx.db().select().from(Schema.filters).leftJoin(Schema.users, eq(Schema.users.discordId, Schema.filters.owner))
 
-			const users = rows.map((row) => row.users).filter((user) => user !== null)
-			const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
+				const users = rows.map((row) => row.users).filter((user) => user !== null)
+				const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
 
-			const res = {
+				return {
+					code: 'ok' as const,
+					filters: filters,
+					parts: {
+						users: users,
+					},
+				}
+			}
+			const filters = (await ctx.db().select().from(Schema.filters)).map((row) => M.FilterEntitySchema.parse(row))
+			return {
 				code: 'ok' as const,
 				filters: filters,
-				parts: {
-					users: users,
-				},
+				parts: {},
 			}
-			return res satisfies Parts<Partial<M.UserPart>>
-		}
-		const filters = (await ctx.db().select().from(Schema.filters)).map((row) => M.FilterEntitySchema.parse(row))
-		const res = {
-			code: 'ok' as const,
-			filters: filters,
-			parts: {},
-		}
-		return res satisfies Parts<Partial<M.UserPart>>
-	}),
+		}),
 	getFilterContributors: procedure.input(M.FilterEntityIdSchema).query(async ({ input, ctx }) => {
 		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
 		const rows = await ctx
@@ -69,7 +70,7 @@ export const filtersRouter = router({
 	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 			check: 'any',
-			permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: input.filterId })],
+			permits: [RBAC.perm('filters:write', { filterId: input.filterId })],
 		})
 		if (denyRes) {
 			return denyRes
@@ -110,7 +111,7 @@ export const filtersRouter = router({
 	removeFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 			check: 'any',
-			permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: input.filterId })],
+			permits: [RBAC.perm('filters:write', { filterId: input.filterId })],
 		})
 		if (denyRes) {
 			return denyRes
@@ -161,7 +162,7 @@ export const filtersRouter = router({
 			}
 			const deniedRes = RBAC.tryDenyPermissionsForRbacUser(ctx.user, {
 				check: 'any',
-				permits: [RBAC.perm('filters:write-all'), RBAC.perm('filters:write', { filterId: id })],
+				permits: [RBAC.perm('filters:write', { filterId: id })],
 			})
 			if (deniedRes) {
 				return deniedRes
@@ -187,14 +188,32 @@ export const filtersRouter = router({
 		}
 		return res
 	}),
-	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input, ctx }) => {
+	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
+		const serverState = await LayerQueue.getServerState({}, ctx)
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+			check: 'any',
+			permits: [RBAC.perm('filters:write', { filterId: idToDelete })],
+		})
+		if (denyRes) {
+			return denyRes
+		}
+		if (idToDelete === serverState.settings.queue.poolFilterId) {
+			return { code: 'err:cannot-delete-pool-filter' as const }
+		}
+		const allFilters = (await ctx.db().select().from(Schema.filters)).map((row) => M.FilterEntitySchema.parse(row))
+
+		const referencingFilters = allFilters.filter((f) => f.id != idToDelete && M.filterContainsId(idToDelete, f.filter)).map((f) => f.id)
+		if (referencingFilters.length > 0) {
+			return { code: 'err:filter-in-use' as const, referencingFilters }
+		}
+
 		const res = await ctx.db().transaction(async (tx) => {
-			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, input)).for('update')
+			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, idToDelete)).for('update')
 			if (!rawFilter) {
 				return { code: 'err:filter-not-found' as const }
 			}
 			const filter = M.FilterEntitySchema.parse(rawFilter)
-			await tx.delete(Schema.filters).where(eq(Schema.filters.id, input))
+			await tx.delete(Schema.filters).where(eq(Schema.filters.id, idToDelete))
 			return { code: 'ok' as const, filter }
 		})
 		if (res.code !== 'ok') {
@@ -205,7 +224,7 @@ export const filtersRouter = router({
 			username: ctx.user.username,
 			value: res.filter,
 		})
-		return { code: 'ok' }
+		return { code: 'ok' as const }
 	}),
 	watchFilter: procedure.input(M.FilterEntityIdSchema).subscription(async function* watchFilter({
 		input,

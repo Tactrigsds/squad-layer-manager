@@ -2,7 +2,7 @@ import * as Form from '@tanstack/react-form'
 import deepEqual from 'fast-deep-equal'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as Messages from '@/messages'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import * as Icons from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -26,7 +26,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
-import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
 
@@ -47,15 +46,10 @@ import {
 	useFilterContributors,
 	getFilterContributorQueryKey,
 } from '@/hooks/filters'
-import { useUser } from '@/systems.client/users.client'
-import { cn } from '@/lib/utils'
 import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { trpc } from '@/lib/trpc.client'
 import { Subscribe, useStateObservable } from '@react-rxjs/core'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import { isDirty } from 'zod'
-import { Separator } from '@radix-ui/react-separator'
 
 // https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
 export default function FilterWrapperWrapper() {
@@ -122,8 +116,6 @@ export function FilterWrapper() {
 	}
 	let owner: M.User
 	switch (userRes.data.code) {
-		case 'err:permission-denied':
-			return <div>{Messages.WARNS.permissionDenied(userRes.data)}</div>
 		case 'err:not-found':
 			return <div>Owner not found</div>
 		case 'ok':
@@ -170,7 +162,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
 
-			const res = await updateFilterMutation.mutateAsync([value.id, { ...value, description, filter: validFilter }])
+			const res = await updateFilterMutation.mutateAsync([value.id, { ...value, description, filter: validFilter ?? undefined }])
 			switch (res.code) {
 				case 'err:permission-denied':
 					RbacClient.showPermissionDenied(res)
@@ -210,24 +202,47 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 			})
 			navigate(AR.link('/filters'))
 		} else {
+			let blurb: string
+			switch (res.code) {
+				case 'err:permission-denied':
+					blurb = 'You do not have permission to delete this filter'
+					break
+				case 'err:cannot-delete-pool-filter':
+					blurb = 'Cannot delete a filter that is currently in use by the layer pool'
+					break
+				case 'err:filter-in-use':
+					blurb = 'Filter is in use by ' + res.referencingFilters.join(', ')
+					break
+				case 'err:filter-not-found':
+					blurb = 'Filter not found'
+					break
+				default:
+					assertNever(res)
+			}
+
 			toast({
-				title: `Failed to delete filter "${props.entity.name}"`,
+				title: `Failed to delete filter "${props.entity.name} : ${blurb}"`,
 			})
 		}
 	}
 
-	const idEltId = React.useId()
-	const ownerEltId = React.useId()
-	const loggedInUserIsContributor =
-		props.contributors.users.some((u) => u.discordId === loggedInUser?.discordId) ||
-		props.contributors.roles.some((role) => loggedInUser?.roles.includes(role))
+	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
+		if (loggedInUser?.discordId === props.owner.discordId) return 'owner'
+		if (props.contributors.users.some((u) => u.discordId === loggedInUser?.discordId)) return 'contributor'
+		if (props.contributors.roles.some((role) => loggedInUser?.roles.includes(role))) return 'contributor'
+		if (loggedInUser?.perms.find((perm) => perm.type === 'filters:write-all')) return 'write-all'
+		return 'none'
+	})()
 
 	const saveBtn = (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
 			{([canSubmit, isDirty]) => {
 				const filterModified = !deepEqual(props.entity.filter, editedFilter)
 				return (
-					<Button onClick={() => form.handleSubmit()} disabled={!canSubmit || (!filterModified && !isDirty) || !validFilter}>
+					<Button
+						onClick={() => form.handleSubmit()}
+						disabled={!canSubmit || (!filterModified && !isDirty) || !validFilter || loggedInUserRole == 'none'}
+					>
 						Save
 					</Button>
 				)
@@ -235,9 +250,9 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 		</form.Subscribe>
 	)
 	const deleteBtn = (
-		<Button variant="destructive" onClick={onDelete}>
-			Delete
-		</Button>
+		<DeleteFilterDialog onDelete={onDelete}>
+			<Button variant="destructive">Delete</Button>
+		</DeleteFilterDialog>
 	)
 
 	return (
@@ -327,9 +342,24 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 					</div>
 				)}
 				<span className="space-x-2 flex h-min items-center self-end">
-					{loggedInUserIsContributor && (
+					{loggedInUserRole === 'owner' && (
+						<Badge variant="outline" className="text-nowrap border-primary border-2">
+							You are the owner of this filter
+						</Badge>
+					)}
+					{loggedInUserRole === 'contributor' && (
 						<Badge variant="outline" className="text-nowrap border-info border-2">
 							You are a contributor
+						</Badge>
+					)}
+					{loggedInUserRole === 'none' && (
+						<Badge variant="outline" className="text-nowrap border-destructive border-2">
+							You don't have permission to modify this filter
+						</Badge>
+					)}
+					{loggedInUserRole === 'write-all' && (
+						<Badge variant="outline" className="text-nowrap border-success border-2">
+							You have write access to all filters
 						</Badge>
 					)}
 					<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
@@ -436,7 +466,7 @@ function FilterContributors(props: {
 							{props.contributors.users.map((user) => (
 								<li key={user.discordId} className="flex space-x-1 items-center">
 									<Icons.Minus
-										onClick={(e) => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
+										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
 										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{user.username}</Badge>
@@ -457,7 +487,7 @@ function FilterContributors(props: {
 							{props.contributors.roles.map((role) => (
 								<li key={role} className="flex space-x-1 items-center">
 									<Icons.Minus
-										onClick={(e) => removeMutation.mutate({ filterId: props.filterId, role })}
+										onClick={() => removeMutation.mutate({ filterId: props.filterId, role })}
 										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{role}</Badge>
