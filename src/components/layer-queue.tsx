@@ -43,7 +43,7 @@ import { LOADING } from '@/components/combo-box/constants.ts'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
-import { useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
+import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { useFilter, useFilters } from '@/hooks/filters.ts'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
@@ -115,6 +115,7 @@ export default function ServerDashboard() {
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
 	const loggedInUser = useLoggedInUser()
+	const endMatch = useEndMatch()
 
 	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 
@@ -131,6 +132,11 @@ export default function ServerDashboard() {
 									<CardTitle>Now Playing</CardTitle>
 								</CardHeader>
 								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
+								<CardFooter>
+									<Button disabled={loggedInUser && !RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))}>
+										End Match
+									</Button>
+								</CardFooter>
 							</>
 						)}
 						{!isEditing && editingUser && (
@@ -531,11 +537,7 @@ function FilterEntitySelect(props: {
 				</>
 			)}
 			{props.filterId && (
-				<a
-					className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-					target="_blank"
-					href={AR.link('/filters/:id/edit', props.filterId)}
-				>
+				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
 					<Edit />
 				</a>
 			)}
@@ -613,7 +615,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 							<a
 								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
 								target="_blank"
-								href={AR.link('/filters/:id/edit', settings.queue.poolFilterId)}
+								href={AR.link('/filters/:id', settings.queue.poolFilterId)}
 							>
 								<Edit />
 							</a>
@@ -845,6 +847,7 @@ function LayerListItem(props: QueueItemProps) {
 			<GripVertical />
 		</Button>
 	)
+	const indexElt = <span className="mr-2 font-light">{props.index + 1}.</span>
 
 	if (item.vote) {
 		return (
@@ -859,6 +862,7 @@ function LayerListItem(props: QueueItemProps) {
 					data-is-dragging={isDragging}
 				>
 					<div className="flex items-center">{gripElt}</div>
+					{indexElt}
 					<div className="h-full flex flex-col flex-grow">
 						<label className={Typography.Muted}>Vote</label>
 						<ol className={'flex flex-col space-y-1 items-start'}>
@@ -895,6 +899,7 @@ function LayerListItem(props: QueueItemProps) {
 					data-is-dragging={isDragging}
 				>
 					{gripElt}
+					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
 							<LayerDisplay layerId={item.layerId} />

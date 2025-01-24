@@ -142,7 +142,10 @@ export async function setupFastify() {
 					avatar: discordUser.avatar,
 				})
 			} else {
-				await tx.update(Schema.users).set({ username: discordUser.username }).where(eq(Schema.users.discordId, user.discordId))
+				await tx
+					.update(Schema.users)
+					.set({ username: discordUser.username, avatar: discordUser.avatar })
+					.where(eq(Schema.users.discordId, discordUser.id))
 			}
 			await tx.insert(Schema.sessions).values({
 				id: sessionId,

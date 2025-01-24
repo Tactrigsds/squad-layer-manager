@@ -13,7 +13,11 @@ const loggerMiddleware = t.middleware(async (opts) => {
 		startMsgBindings: { input: opts.input },
 	})
 	opts.ctx = ctx
-	const result = await opts.next(opts)
+	const result = (await opts.next(opts)) as any
+	if (!result.ok || result.data.code === 'ok') {
+		ctx.result = result.data?.code ?? 'err'
+		ctx.endMsgBindings = { result: ctx.result }
+	}
 	return result
 })
 

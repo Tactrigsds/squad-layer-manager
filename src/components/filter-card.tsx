@@ -300,7 +300,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 					}}
 				/>
 				<Link
-					to={AR.link('/filters/:id/edit', node.filterId ?? '')}
+					to={AR.link('/filters/:id', node.filterId ?? '')}
 					target="_blank"
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>

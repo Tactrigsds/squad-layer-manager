@@ -11,6 +11,8 @@ import * as DB from '@/server/db.ts'
 import { ENV } from '../env'
 import { baseLogger } from '@/server/logger'
 import { procedure, router } from '../trpc.server.ts'
+import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
 import { CONFIG } from '@/server/config'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
@@ -40,6 +42,17 @@ async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 		yield info
 	}
 }
+
+async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
+	const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+		check: 'all',
+		permits: [RBAC.perm('squad-server:end-game')],
+	})
+	if (deniedRes) return deniedRes
+	await rcon.endMatch(ctx)
+	return { code: 'ok' }
+}
+
 function matchCommandText(cmdText: string) {
 	for (const [cmd, config] of Object.entries(CONFIG.commands)) {
 		if (config.strings.includes(cmdText)) {
@@ -181,4 +194,5 @@ export async function setupSquadServer() {
 
 export const squadServerRouter = router({
 	watchServerStatus: procedure.subscription(watchServerStatus),
+	endMatch: procedure.mutation(endMatch),
 })

@@ -16,6 +16,8 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import { trpc } from '@/lib/trpc.client'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { Mutex } from 'async-mutex'
+import * as Jotai from 'jotai'
+import { configAtom } from './config.client'
 
 // -------- types --------
 export type IdedLLItem = M.LayerListItem & WithMutationId
@@ -340,6 +342,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		},
 		setQueue: (handler) => {
 			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
+			const maxQueueSize = Jotai.getDefaultStore().get(configAtom)?.maxQueueSize ?? 10
+			if (updated.layerList && updated.layerList.length > maxQueueSize) {
+				globalToast$.next({ title: `Too many queue items! Queue size limit is ${maxQueueSize}`, variant: 'destructive' })
+				return
+			}
 			set({
 				editedServerState: {
 					...get().editedServerState,

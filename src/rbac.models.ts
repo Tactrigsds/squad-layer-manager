@@ -30,6 +30,7 @@ function definePermission<T extends string, S extends PermScope>(type: T, args: 
 
 export const PERMISSION_DEFINITION = {
 	...definePermission('site:authorized', { description: 'Access the site', scope: 'global' }),
+
 	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'global' }),
 	// TODO implement
 	...definePermission('queue:force-write', {
@@ -38,8 +39,11 @@ export const PERMISSION_DEFINITION = {
 	}),
 	...definePermission('settings:write', { description: 'Change settings like the configured layer pool filter', scope: 'global' }),
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
+
 	...definePermission('filters:write-all', { description: 'Delete or modify any filter', scope: 'global' }),
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
+
+	...definePermission('squad-server:end-match', { description: 'end the current game on the server', scope: 'global' }),
 }
 export type PermissionType = (typeof PERMISSION_DEFINITION)[number]['type']
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
@@ -49,6 +53,7 @@ export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
 	'settings:write',
 	'vote:manage',
 	'filters:write-all',
+	'squad-server:end-match',
 ])
 
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>

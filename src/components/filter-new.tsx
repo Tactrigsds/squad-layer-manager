@@ -68,7 +68,7 @@ export default function FilterNew() {
 			switch (res.code) {
 				case 'ok':
 					toast({ title: 'Filter created' })
-					navigate(AR.link(`/filters/:id/edit`, value.id))
+					navigate(AR.link(`/filters/:id`, value.id))
 					break
 
 				default:

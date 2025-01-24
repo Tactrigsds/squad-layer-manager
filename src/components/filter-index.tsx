@@ -26,7 +26,7 @@ export default function FiltersIndex() {
 					const user = users?.find((u) => u.discordId === filter.owner)
 					return (
 						<li key={filter.id}>
-							<Link to={AR.link('/filters/:id/edit', filter.id)} className="block h-full">
+							<Link to={AR.link('/filters/:id', filter.id)} className="block h-full">
 								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground">
 									<CardHeader>
 										<CardTitle>{filter.name}</CardTitle>

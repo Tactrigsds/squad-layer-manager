@@ -5,6 +5,7 @@ import type * as SM from '@/lib/rcon/squad-models.ts'
 import React from 'react'
 import { Observable, share } from 'rxjs'
 import { atom, getDefaultStore, useAtomValue } from 'jotai'
+import { useMutation } from '@tanstack/react-query'
 
 const serverStatusAtom = atom<SM.ServerStatus | null>(null)
 const squadServerStatus$ = new Observable<SM.ServerStatus>(() => {
@@ -32,4 +33,12 @@ export function useSquadServerStatus() {
 
 export type FilterMutationHandle = {
 	onUpdate?: (update: M.UserEntityMutation<M.FilterEntity>) => void
+}
+
+export function useEndGame() {
+	return useMutation({
+		mutationFn: async () => {
+			return trpc.squadServer.endMatch.mutate()
+		},
+	})
 }

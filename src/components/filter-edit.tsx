@@ -37,7 +37,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import React from 'react'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { fetchLoggedInUser as refetchLoggedInUser, useLoggedInUser } from '@/systems.client/logged-in-user'
 import { assertNever } from '@/lib/typeGuards'
 import {
 	filterUpdate$ as getFilterUpdate$,
@@ -54,7 +54,7 @@ import { Subscribe, useStateObservable } from '@react-rxjs/core'
 
 // https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
 export default function FilterWrapperWrapper() {
-	const editParams = useAppParams('/filters/:id/edit')
+	const editParams = useAppParams('/filters/:id')
 	return (
 		<Subscribe source$={getFilterEntity$(editParams.id)}>
 			<FilterWrapper />
@@ -63,7 +63,7 @@ export default function FilterWrapperWrapper() {
 }
 export function FilterWrapper() {
 	// could also be /filters/new, in which case we're creating a new filter and id is undefined
-	const editParams = useAppParams('/filters/:id/edit')
+	const editParams = useAppParams('/filters/:id')
 	const { toast } = useToast()
 	const loggedInUser = useLoggedInUser()
 	const navigate = useNavigate()
@@ -176,6 +176,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 					toast({ title: 'Filter saved' })
 					formApi.reset()
 					setEditingDetails(false)
+					refetchLoggedInUser()
 
 					break
 

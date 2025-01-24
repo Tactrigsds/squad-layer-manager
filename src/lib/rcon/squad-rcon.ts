@@ -168,8 +168,8 @@ export default class SquadRcon {
 		this.serverStatus.invalidate(ctx)
 	}
 
-	async endGame(_ctx: C.Log) {
-		throw new Error('Method not implemented.')
+	async endMatch(_ctx: C.Log) {
+		await this.rcon.execute(_ctx, 'AdminEndMatch')
 	}
 
 	async leaveSquad(ctx: C.Log, playerId: number) {

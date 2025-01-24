@@ -34,7 +34,7 @@ const router = createBrowserRouter([
 		),
 	},
 	{
-		path: exists('/filters/:id/edit'),
+		path: exists('/filters/:id'),
 		element: (
 			<AppContainer>
 				<React.Suspense fallback={<FullPageSpinner />}>

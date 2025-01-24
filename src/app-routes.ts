@@ -12,8 +12,8 @@ export const routes = {
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
-	...defRoute('/filters/:id/edit', ['id'], {
-		link: ([id]) => `/filters/${id}/edit`,
+	...defRoute('/filters/:id', ['id'], {
+		link: ([id]) => `/filters/${id}`,
 	}),
 
 	...defRoute('/mock-server', []),

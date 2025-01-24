@@ -708,6 +708,9 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 				delete item.layerId
 			}
 		}
+		if (input.layerQueue.length > CONFIG.maxQueueSize) {
+			return { code: 'err:queue-too-large' as const }
+		}
 		serverState.settings = input.settings
 		serverState.layerQueue = input.layerQueue
 		serverState.historyFilters = input.historyFilters

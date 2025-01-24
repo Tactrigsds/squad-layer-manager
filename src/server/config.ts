@@ -33,6 +33,8 @@ export const ConfigSchema = z.object({
 	}),
 	lowQueueWarningThreshold: z.number().positive().default(3),
 	remindVoteThresholdSeconds: z.number().positive().default(15),
+	maxQueueSize: z.number().int().min(1).max(100).default(10),
+
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
