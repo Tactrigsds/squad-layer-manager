@@ -12,7 +12,6 @@ import * as Rx from 'rxjs'
 import { ENV } from '../env'
 import { baseLogger } from '@/server/logger'
 import { procedure, router } from '../trpc.server.ts'
-import deepEqual from 'fast-deep-equal'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
@@ -112,6 +111,11 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 		const scopes = SM.getScopesForChat(msg.chat)
 		const correctChats = scopes.flatMap((s) => SM.CHAT_SCOPE_MAPPINGS[s])
 		await rcon.warn(ctx, msg.playerId, WARNS.commands.wrongChat(correctChats))
+		return
+	}
+
+	if (cmdConfig.enabled === false) {
+		await rcon.warn(ctx, msg.playerId, `Command "${cmd}" is disabled`)
 		return
 	}
 

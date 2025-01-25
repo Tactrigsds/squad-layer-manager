@@ -3,6 +3,7 @@
   "properties": {
     "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
     "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
+    "commandsEnabled": {"type": "boolean", "default": true},
     "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
     "defaults": {
       "type": "object",
@@ -91,12 +92,28 @@
     "lowQueueWarningThreshold": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "default": 3
+      "default": 3,
+      "description": "Number of layers in the queue to trigger a low queue size warning"
     },
     "remindVoteThresholdSeconds": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "default": 15
+      "default": 15,
+      "description": "Seconds remaining to remind users to vote"
+    },
+    "maxQueueSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20,
+      "description": "Maximum number of layers that can be in the queue"
+    },
+    "maxNumVoteChoices": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 5,
+      "description": "Maximum number of choices allowed in a vote"
     },
     "adminListSources": {
       "type": "array",
@@ -124,7 +141,8 @@
                 "queue:write",
                 "settings:write",
                 "vote:manage",
-                "filters:write-all"
+                "filters:write-all",
+                "squad-server:end-match"
               ]
             },
             {
@@ -148,7 +166,12 @@
               "discordRoleId": {"$ref": "#/properties/homeDiscordGuildId"},
               "roles": {
                 "type": "array",
-                "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]+$",
+                  "minLength": 3,
+                  "maxLength": 32
+                }
               }
             },
             "required": ["discordRoleId", "roles"],

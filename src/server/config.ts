@@ -12,8 +12,9 @@ const StrNoWhitespace = z.string().regex(/^\S+$/, {
 })
 
 const CommandConfigSchema = z.object({
-	strings: z.array(StrNoWhitespace),
-	scopes: z.array(SM.COMMAND_SCOPES),
+	strings: z.array(StrNoWhitespace).describe('Command strings that trigger this command when prefixed with the command prefix'),
+	scopes: z.array(SM.COMMAND_SCOPES).describe('Chats in which this command is available'),
+	enabled: z.boolean().default(true),
 })
 export type CommandConfig = z.infer<typeof CommandConfigSchema>
 
@@ -32,7 +33,11 @@ export const ConfigSchema = z.object({
 		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
 	}),
 
-	lowQueueWarningThreshold: z.number().positive().default(3).describe('Number of layers in the queue to trigger a low queue size warning'),
+	lowQueueWarningThresholdSeconds: z
+		.number()
+		.positive()
+		.default(3)
+		.describe('Number of layers in the queue to trigger a low queue size warning'),
 	remindVoteThresholdSeconds: z.number().positive().default(15).describe('Seconds remaining to remind users to vote'),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),

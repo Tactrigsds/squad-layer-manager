@@ -100,7 +100,7 @@ export async function setupLayerQueueAndServerState() {
 		const serverState = await getServerState({}, opCtx)
 		if (serverState.layerQueue.length === 0) {
 			await SquadServer.warnAllAdmins(opCtx, WARNS.queue.empty)
-		} else if (serverState.layerQueue.length <= CONFIG.lowQueueWarningThreshold) {
+		} else if (serverState.layerQueue.length <= CONFIG.lowQueueWarningThresholdSeconds) {
 			await SquadServer.warnAllAdmins(opCtx, WARNS.queue.lowLayerCount(serverState.layerQueue.length))
 		}
 	})
