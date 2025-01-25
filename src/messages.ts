@@ -10,7 +10,8 @@ export const BROADCASTS = {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
 			const minutes = Math.floor(duration / 1000 / 60)
 			const seconds = Math.round((duration / 1000) % 60)
-			return `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration({ seconds, minutes })} to vote`
+			const fullText = `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration({ seconds, minutes })} to vote`
+			return fullText.split('\n')
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {
 			const resultsText = Array.from(tally.totals.entries())
@@ -21,7 +22,8 @@ export const BROADCASTS = {
 					return `${votes} votes - (${tally.percentages.get(choice)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
 			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie)` : ''
-			return `Vote has ended:\n${resultsText.join('\n')}${randomChoiceExplanation}`
+			const fullText = `Vote has ended:\n${resultsText.join('\n')}${randomChoiceExplanation}`
+			return fullText.split('\n')
 		},
 		insufficientVotes: (defaultChoice: M.LayerId) => {
 			return `Vote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
@@ -33,7 +35,8 @@ export const BROADCASTS = {
 			const minutes = Math.floor(timeLeft / 1000 / 60)
 			const seconds = Math.round((timeLeft / 1000) % 60)
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			return `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
+			const fullText =  `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
+			return fullText.split('\n')
 		},
 	},
 } satisfies MessageNode
@@ -103,8 +106,9 @@ type WarnNode = {
 	[key: string]: WarnNode | WarnOptions | ((...args: any[]) => WarnOptions)
 }
 
+type MessageOutput = string | string[]
 type MessageNode = {
-	[key: string]: MessageNode | string | ((...args: any[]) => string)
+	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }
 
 function voteChoicesLines(choices: M.LayerId[], defaultLayer: M.LayerId) {

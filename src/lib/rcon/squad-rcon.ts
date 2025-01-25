@@ -121,9 +121,12 @@ export default class SquadRcon {
 		return squads
 	}
 
-	async broadcast(ctx: C.Log, message: string) {
-		ctx.log.info(`Broadcasting message: %s`, message)
-		await this.rcon.execute(ctx, `AdminBroadcast ${message}`)
+	async broadcast(ctx: C.Log, message: string | string[]) {
+		const messages = Array.isArray(message) ? message : [message]
+		for (const message of messages) {
+			ctx.log.info(`Broadcasting message: %s`, message)
+			await this.rcon.execute(ctx, `AdminBroadcast ${message}`)
+		}
 	}
 
 	async setFogOfWar(ctx: C.Log, mode: 'on' | 'off') {

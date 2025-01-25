@@ -10,6 +10,8 @@ export type DecodedPacket = {
 	body: string
 }
 
+export const RCON_MAX_BUF_LEN = 4152
+
 export default class Rcon extends EventEmitter {
 	private host: string
 	private port: number
@@ -110,8 +112,8 @@ export default class Rcon extends EventEmitter {
 				return reject(new Error('Unable to write to node:net socket.'))
 			}
 			const length = Buffer.from(body).length
-			if (length > 4152) {
-				ctx.log.error(`Error occurred. Oversize, "${length}" > 4152.`)
+			if (length > RCON_MAX_BUF_LEN) {
+				ctx.log.error(`Error occurred. Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.`)
 			} else {
 				const outputData = (data: any) => {
 					clearTimeout(timeOut)
