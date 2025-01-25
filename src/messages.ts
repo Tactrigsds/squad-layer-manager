@@ -35,7 +35,7 @@ export const BROADCASTS = {
 			const minutes = Math.floor(timeLeft / 1000 / 60)
 			const seconds = Math.round((timeLeft / 1000) % 60)
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			const fullText =  `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
+			const fullText = `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
 			return fullText.split('\n')
 		},
 	},
