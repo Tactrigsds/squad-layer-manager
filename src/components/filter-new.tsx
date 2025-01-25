@@ -149,7 +149,7 @@ export default function FilterNew() {
 					</form.Field>
 				</div>
 
-				<form.Field name="description" validators={{ onChange: M.FilterEntityDescriptionSchema }}>
+				<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
 					{(field) => (
 						<div className="flex space-x-2">
 							<div className="flex flex-col space-y-2  min-w-[800px]">

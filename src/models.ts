@@ -557,7 +557,7 @@ export type UserPresenceState = {
 }
 export type UserPresenceStateUpdate = {
 	state: UserPresenceState
-	event: 'edit-start' | 'edit-end'
+	event: 'edit-start' | 'edit-end' | 'edit-kick'
 }
 
 export type User = Schema.User

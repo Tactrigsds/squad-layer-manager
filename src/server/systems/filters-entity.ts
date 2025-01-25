@@ -153,41 +153,43 @@ export const filtersRouter = router({
 			code: 'ok' as const,
 		}
 	}),
-	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.UpdateFilterEntitySchema.partial()])).mutation(async ({ input, ctx }) => {
-		const [id, update] = input
-		const res = await ctx.db().transaction(async (tx) => {
-			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')
-			if (!rawFilter) {
-				return { code: 'err:not-found' as const }
-			}
-			const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-				check: 'any',
-				permits: [RBAC.perm('filters:write', { filterId: id })],
-			})
-			if (deniedRes) {
-				return deniedRes
-			}
-			const [updateResult] = await tx.update(Schema.filters).set(update).where(eq(Schema.filters.id, id))
+	updateFilter: procedure
+		.input(z.tuple([M.FilterEntityIdSchema, M.UpdateFilterEntitySchema.partial()]))
+		.mutation(async ({ input, ctx }) => {
+			const [id, update] = input
+			const res = await ctx.db().transaction(async (tx) => {
+				const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')
+				if (!rawFilter) {
+					return { code: 'err:not-found' as const }
+				}
+				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+					check: 'any',
+					permits: [RBAC.perm('filters:write', { filterId: id })],
+				})
+				if (deniedRes) {
+					return deniedRes
+				}
+				const [updateResult] = await tx.update(Schema.filters).set(update).where(eq(Schema.filters.id, id))
 
-			if (updateResult.affectedRows === 0) {
-				throw new TRPCError({
-					code: 'INTERNAL_SERVER_ERROR',
-					message: 'Unable to update filter',
+				if (updateResult.affectedRows === 0) {
+					throw new TRPCError({
+						code: 'INTERNAL_SERVER_ERROR',
+						message: 'Unable to update filter',
+					})
+				}
+				const filter = M.FilterEntitySchema.parse(rawFilter)
+				return { code: 'ok' as const, filter: { ...filter, ...update } }
+			})
+			ctx.log.info(res, 'Updated filter %d', id)
+			if (res.code === 'ok') {
+				filterMutation$.next({
+					type: 'update',
+					value: res.filter,
+					username: ctx.user.username,
 				})
 			}
-			const filter = M.FilterEntitySchema.parse(rawFilter)
-			return { code: 'ok' as const, filter: { ...filter, ...update } }
-		})
-		ctx.log.info(res, 'Updated filter %d', id)
-		if (res.code === 'ok') {
-			filterMutation$.next({
-				type: 'update',
-				value: res.filter,
-				username: ctx.user.username,
-			})
-		}
-		return res
-	}),
+			return res
+		}),
 	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
 		const serverState = await LayerQueue.getServerState({}, ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {

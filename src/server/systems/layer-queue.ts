@@ -659,7 +659,7 @@ async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 	}
 	delete userPresence.editState
 	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
-		event: 'edit-end',
+		event: 'edit-kick',
 		state: userPresence,
 		parts: {
 			users: [],

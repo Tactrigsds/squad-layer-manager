@@ -9,7 +9,7 @@ import * as Zus from 'zustand'
 import * as ItemMut from '@/lib/item-mutations'
 import { derive } from 'derive-zustand'
 import * as FB from '@/lib/filter-builders'
-import { userPresenceState$ } from './presence'
+import { userPresenceState$, userPresenceUpdate$ } from './presence'
 import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { trpc } from '@/lib/trpc.client'
@@ -57,6 +57,7 @@ export type QDState = {
 	queueMutations: ItemMutations
 	serverState: M.LQServerState | null
 	isEditing: boolean
+	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
 }
@@ -248,13 +249,14 @@ export function getEditableServerState(state: M.LQServerState): MutServerStateWi
 	}
 }
 
-export const _initialState: QDState = {
+export const initialState: QDState = {
 	editedServerState: { historyFilters: [], layerQueue: [], layerQueueSeqId: 0, settings: M.ServerSettingsSchema.parse({ queue: {} }) },
 	queueMutations: ItemMut.initMutations(),
 	serverState: null,
 	isEditing: false,
 	canEditQueue: false,
 	canEditSettings: false,
+	stopEditingInProgress: false,
 }
 
 export const QDStore = Zus.createStore<QDStore>((set, get) => {
@@ -279,17 +281,27 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		get().applyServerUpdate(update)
 	})
 
-	userPresenceState$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(async (presence) => {
-		if (!presence?.editState) return
+	userPresenceUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(async (update) => {
+		const presence = update.state
+		if (!presence?.editState) {
+			if (get().isEditing && update.event === 'edit-kick') {
+				globalToast$.next({ variant: 'edited', title: 'You have been kicked from your editing session' })
+			}
+			get().reset()
+			return
+		}
 		const loggedInUser = await fetchLoggedInUser()
-		if (presence.editState.userId !== loggedInUser?.discordId) {
+		if (presence.editState.wsClientId !== loggedInUser?.wsClientId) {
+			if (get().isEditing && update.event === 'edit-kick') {
+				globalToast$.next({ title: 'You have been kicked from your editing session' })
+			}
 			get().reset()
 		}
 	})
 
-	const startEditingMtx = new Mutex()
+	const editChangeMtx = new Mutex()
 	async function tryStartEditing() {
-		using _ = await acquireInBlock(startEditingMtx)
+		using _ = await acquireInBlock(editChangeMtx)
 		if (get().isEditing) return
 		set({ isEditing: true })
 		const res = await trpc.layerQueue.startEditing.mutate()
@@ -307,39 +319,45 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	}
 
 	async function tryEndEditing() {
+		using _ = await acquireInBlock(editChangeMtx)
 		if (!get().isEditing) return
-		void trpc.layerQueue.endEditing.mutate()
-		const loggedInUser = await fetchLoggedInUser()
-		await Rx.firstValueFrom(
-			userPresenceState$.pipe(
-				Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),
-				Rx.take(1)
-			)
-		)
+		set({ stopEditingInProgress: true })
 		set({ isEditing: false })
+		void trpc.layerQueue.endEditing.mutate()
+		try {
+			const loggedInUser = await fetchLoggedInUser()
+			await Rx.firstValueFrom(
+				userPresenceState$.pipe(
+					Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),
+					Rx.take(1)
+				)
+			)
+		} finally {
+			set({ stopEditingInProgress: false })
+		}
+	}
+
+	const initialStateToReset: Partial<QDState> = {
+		editedServerState: initialState.editedServerState,
+		queueMutations: initialState.queueMutations,
 	}
 
 	return {
-		..._initialState,
+		...initialState,
 		applyServerUpdate: (update) => {
-			set({
-				editedServerState: getEditableServerState(update.state),
-				queueMutations: ItemMut.initMutations(),
-				isEditing: false,
-			})
-			tryEndEditing()
+			set({ serverState: update.state })
+			get().reset()
 		},
-		reset: () => {
+		reset: async () => {
 			const serverStateUpdate = lqServerStateUpdate$.getValue()
-			tryEndEditing()
+			await tryEndEditing()
 			if (!serverStateUpdate) {
-				set({ ..._initialState, canEditQueue: get().canEditQueue, isEditing: get().isEditing })
+				set({ ...initialStateToReset, canEditQueue: get().canEditQueue, isEditing: get().isEditing })
 				return
 			}
 
 			set({
-				editedServerState: getEditableServerState(serverStateUpdate.state) ?? _initialState.editedServerState,
-				isEditing: false,
+				editedServerState: getEditableServerState(serverStateUpdate.state) ?? initialState.editedServerState,
 			})
 		},
 		setSetting: (handler) => {
@@ -348,7 +366,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 					handler(draft.editedServerState.settings)
 				})
 			)
-			tryStartEditing()
+			void tryStartEditing()
 		},
 		setQueue: (handler) => {
 			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
@@ -364,7 +382,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 				},
 				queueMutations: updated.listMutations,
 			})
-			tryStartEditing()
+			void tryStartEditing()
 		},
 		tryStartEditing,
 		tryEndEditing,

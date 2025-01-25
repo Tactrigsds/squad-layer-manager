@@ -153,6 +153,7 @@ export default function ServerDashboard() {
 	const kickEditorMutation = useMutation({
 		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
 	})
+	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
 			<span className="flex space-x-4">
@@ -160,7 +161,7 @@ export default function ServerDashboard() {
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
-						{!isEditing && serverStatus?.currentLayer && !editingUser && (
+						{!isEditing && serverStatus?.currentLayer && (!editingUser || inEditTransition) && (
 							<>
 								<CardHeader>
 									<span className="flex items-center justify-between">
@@ -171,8 +172,8 @@ export default function ServerDashboard() {
 								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
 							</>
 						)}
-						{!isEditing && editingUser && (
-							<Alert variant="info">
+						{!isEditing && editingUser && !inEditTransition && (
+							<Alert variant="info" className="flex justify-between items-center">
 								<AlertTitle>
 									{editingUser.discordId === loggedInUser?.discordId
 										? 'You are editing on another tab'
@@ -184,7 +185,7 @@ export default function ServerDashboard() {
 							</Alert>
 						)}
 						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
-						{isEditing && (
+						{isEditing && !inEditTransition && (
 							/* ------- editing card ------- */
 							<div className="flex flex-col space-y-2">
 								<Card>
@@ -250,6 +251,7 @@ function QueueControlPanel() {
 					<Button
 						variant="outline"
 						size="icon"
+						disabled={!canEdit}
 						onClick={() => {
 							QD.LQStore.getState().clear()
 						}}
@@ -712,9 +714,9 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	}))
 	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
 
-	const changedSettings = Zus.useStore(QD.QDStore, (s) => {
+	const poolFilterChanged = Zus.useStore(QD.QDStore, (s) => {
 		if (!s.serverState) return null
-		return M.getSettingsChanged(s.serverState.settings, s.editedServerState.settings)
+		return M.getSettingsChanged(s.serverState.settings, s.editedServerState.settings).queue?.poolFilterId
 	})
 	const settings = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings)
 	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
@@ -727,7 +729,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 				<CardContent className="flex flex-col space-y-2">
 					<div
 						className="flex space-x-1 p-1 data-[edited=true]:bg-edited data-[edited=true]:border-edited rounded"
-						data-edited={changedSettings?.queue.poolFilterId}
+						data-edited={poolFilterChanged}
 					>
 						<ComboBox
 							title="Pool Filter"

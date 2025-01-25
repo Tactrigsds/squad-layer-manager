@@ -22,6 +22,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
@@ -295,7 +296,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 								)
 							}}
 						</form.Field>
-						<form.Field name="description" validators={{ onChange: M.FilterEntityDescriptionSchema }}>
+						<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
 							{(field) => (
 								<div className="flex space-x-2 flex-grow">
 									<div className="flex flex-col space-y-1 min-w-[900px] ">
