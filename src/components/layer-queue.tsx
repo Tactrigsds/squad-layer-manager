@@ -108,6 +108,30 @@ export default function ServerDashboard() {
 					variant: 'destructive',
 				})
 				break
+			case 'err:empty-vote':
+				toaster.toast({
+					title: 'Cannot update: vote is empty',
+					variant: 'destructive',
+				})
+				break
+			case 'err:too-many-vote-choices':
+				toaster.toast({
+					title: `Cannot update: at most ${res.max} vote choices allowed`,
+					variant: 'destructive',
+				})
+				break
+			case 'err:default-choice-not-in-choices':
+				toaster.toast({
+					title: 'Cannot update: default choice must be one of the vote choices',
+					variant: 'destructive',
+				})
+				break
+			case 'err:duplicate-vote-choices':
+				toaster.toast({
+					title: `Cannot update: duplicate choice '${res.duplicateChoice}'`,
+					variant: 'destructive',
+				})
+				break
 			case 'ok':
 				toaster.toast({ title: 'Changes applied' })
 				break
@@ -116,12 +140,7 @@ export default function ServerDashboard() {
 		}
 	}
 
-	const { isEditing, canEdit } = Zus.useStore(
-		QD.QDStore,
-		useShallow((s) => {
-			return { isEditing: s.isEditing, canEdit: s.canEditQueue }
-		})
-	)
+	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
 	const loggedInUser = useLoggedInUser()
@@ -140,12 +159,12 @@ export default function ServerDashboard() {
 						{!isEditing && serverStatus?.currentLayer && !editingUser && (
 							<>
 								<CardHeader>
-									<CardTitle>Now Playing</CardTitle>
+									<span className="flex items-center justify-between">
+										<CardTitle>Now Playing</CardTitle>
+										<EndMatchDialog />
+									</span>
 								</CardHeader>
 								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
-								<CardFooter>
-									<EndMatchDialog />
-								</CardFooter>
 							</>
 						)}
 						{!isEditing && editingUser && (
@@ -300,7 +319,9 @@ function EndMatchDialog() {
 				<DialogHeader>
 					<DialogTitle>End Match</DialogTitle>
 				</DialogHeader>
-				<DialogDescription>Are you sure you want to end the match for {serverStatus?.name}?</DialogDescription>
+				<DialogDescription>
+					Are you sure you want to end the match for <b>{serverStatus?.name}</b>?
+				</DialogDescription>
 				<DialogFooter>
 					<Button disabled={!canEndMatch} onClick={endMatch} variant="destructive">
 						End Match

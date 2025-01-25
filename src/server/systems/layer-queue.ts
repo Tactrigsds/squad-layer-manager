@@ -717,6 +717,28 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 		if (input.layerQueue.length > CONFIG.maxQueueSize) {
 			return { code: 'err:queue-too-large' as const }
 		}
+
+		for (const item of input.layerQueue) {
+			if (item.vote && item.vote.choices.length === 0) {
+				return { code: 'err:empty-vote' as const }
+			}
+			if (item.vote && item.vote.choices.length > CONFIG.maxNumVoteChoices) {
+				return { code: 'err:too-many-vote-choices' as const, max: CONFIG.maxNumVoteChoices }
+			}
+			if (item.vote && item.vote.defaultChoice && !item.vote.choices.includes(item.vote.defaultChoice)) {
+				return { code: 'err:default-choice-not-in-choices' as const }
+			}
+			const choiceSet = new Set<string>()
+			if (item.vote) {
+				for (const choice of item.vote.choices) {
+					if (choiceSet.has(choice)) {
+						return { code: 'err:duplicate-vote-choices' as const, duplicateChoice: choice }
+					}
+					choiceSet.add(choice)
+				}
+			}
+		}
+
 		serverState.settings = input.settings
 		serverState.layerQueue = input.layerQueue
 		serverState.historyFilters = input.historyFilters

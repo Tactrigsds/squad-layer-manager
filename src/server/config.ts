@@ -31,9 +31,11 @@ export const ConfigSchema = z.object({
 		abortVote: CommandConfigSchema.describe('Abort the current vote'),
 		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
 	}),
-	lowQueueWarningThreshold: z.number().positive().default(3),
-	remindVoteThresholdSeconds: z.number().positive().default(15),
-	maxQueueSize: z.number().int().min(1).max(100).default(10),
+
+	lowQueueWarningThreshold: z.number().positive().default(3).describe('Number of layers in the queue to trigger a low queue size warning'),
+	remindVoteThresholdSeconds: z.number().positive().default(15).describe('Seconds remaining to remind users to vote'),
+	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
+	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
 
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
