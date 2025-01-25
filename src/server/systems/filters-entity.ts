@@ -153,7 +153,7 @@ export const filtersRouter = router({
 			code: 'ok' as const,
 		}
 	}),
-	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.FilterUpdateSchema.partial()])).mutation(async ({ input, ctx }) => {
+	updateFilter: procedure.input(z.tuple([M.FilterEntityIdSchema, M.UpdateFilterEntitySchema.partial()])).mutation(async ({ input, ctx }) => {
 		const [id, update] = input
 		const res = await ctx.db().transaction(async (tx) => {
 			const [rawFilter] = await tx.select().from(Schema.filters).where(eq(Schema.filters.id, id)).for('update')

@@ -2,7 +2,7 @@ import * as z from 'zod'
 
 import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
-import { deepClone, reverseMapping } from './lib/object'
+import { deepClone, reverseMapping, selectProps } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
@@ -570,13 +570,6 @@ export type MiniUser = {
 // should eventually replace all user id validation with this
 export const UserIdSchema = z.bigint().positive()
 
-export const FilterDescriptionSchema = z.string().trim().min(3).max(512)
-export const FilterUpdateSchema = z.object({
-	name: z.string().trim().min(3).max(128),
-	description: FilterDescriptionSchema.nullable(),
-	filter: FilterNodeSchema,
-}) satisfies z.ZodType<Partial<Schema.Filter>>
-
 export function filterContainsId(id: string, node: FilterNode): boolean {
 	switch (node.type) {
 		case 'and':
@@ -599,27 +592,26 @@ export const FilterEntityIdSchema = z
 	})
 	.min(3)
 	.max(64)
+export const FilterEntityDescriptionSchema = z.string().trim().min(3).max(512)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
-export const FilterEntitySchema = z
-	.object({
-		id: FilterEntityIdSchema,
-		name: z.string().trim().min(3).max(128),
-		description: z.string().trim().min(3).max(512).nullable(),
-		filter: FilterNodeSchema,
-		owner: z.bigint(),
-	})
+export const BaseFilterEntitySchema = z.object({
+	id: FilterEntityIdSchema,
+	name: z.string().trim().min(3).max(128),
+	description: FilterEntityDescriptionSchema.nullable(),
+	filter: FilterNodeSchema,
+	owner: z.bigint(),
+})
+
+export const FilterEntitySchema = BaseFilterEntitySchema
 	// this refinement does not deal with mutual recustion
 	.refine((e) => !filterContainsId(e.id, e.filter), {
 		message: 'filter cannot be recursive',
 	}) satisfies z.ZodType<Schema.Filter>
 
-export const NewFilterEntitySchema = z.object({
-	id: FilterEntityIdSchema,
-	name: z.string().trim().min(3).max(128),
-	description: z.string().trim().min(3).max(512).nullable(),
-	filter: FilterNodeSchema,
-})
-export type FilterEntityUpdate = z.infer<typeof FilterUpdateSchema>
+export const UpdateFilterEntitySchema = BaseFilterEntitySchema.omit({ id: true, owner: true })
+export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true })
+
+export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
 export const HistoryFilterSchema = z.discriminatedUnion(

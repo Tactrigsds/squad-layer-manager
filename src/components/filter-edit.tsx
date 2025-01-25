@@ -1,7 +1,6 @@
 import * as Form from '@tanstack/react-form'
 import deepEqual from 'fast-deep-equal'
 import * as RbacClient from '@/systems.client/rbac.client'
-import * as Messages from '@/messages'
 import { useState } from 'react'
 import * as Icons from 'lucide-react'
 import * as RBAC from '@/rbac.models'
@@ -37,7 +36,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import React from 'react'
-import { fetchLoggedInUser as refetchLoggedInUser, useLoggedInUser } from '@/systems.client/logged-in-user'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import { assertNever } from '@/lib/typeGuards'
 import {
 	filterUpdate$ as getFilterUpdate$,
@@ -296,7 +295,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 								)
 							}}
 						</form.Field>
-						<form.Field name="description" validators={{ onChange: M.FilterDescriptionSchema }}>
+						<form.Field name="description" validators={{ onChange: M.FilterEntityDescriptionSchema }}>
 							{(field) => (
 								<div className="flex space-x-2 flex-grow">
 									<div className="flex flex-col space-y-1 min-w-[900px] ">
