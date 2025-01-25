@@ -102,6 +102,12 @@ export default function ServerDashboard() {
 					variant: 'destructive',
 				})
 				break
+			case 'err:decided-vote-change':
+				toaster.toast({
+					title: 'Cannot update: vote has been decided',
+					variant: 'destructive',
+				})
+				break
 			case 'ok':
 				toaster.toast({ title: 'Changes applied' })
 				break
@@ -153,6 +159,7 @@ export default function ServerDashboard() {
 						)}
 						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
 						{isEditing && (
+							/* ------- editing card ------- */
 							<div className="flex flex-col space-y-2">
 								<Card>
 									<CardHeader>

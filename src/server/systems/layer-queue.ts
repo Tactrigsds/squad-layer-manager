@@ -182,6 +182,7 @@ export async function setupLayerQueueAndServerState() {
 		switch (updateRes.code) {
 			case 'noop':
 			case 'err:queue-change-during-vote':
+			case 'err:decided-vote-change':
 				break
 			case 'ok':
 				voteState = updateRes.update.state
@@ -278,6 +279,11 @@ function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M
 
 	if (!deepEqual(lastQueueItem, newQueueItem) && voteState?.code === 'in-progress' && !force) {
 		return { code: 'err:queue-change-during-vote' as const }
+	}
+
+	if (lastQueueItem?.vote && newQueueItem?.vote && newQueueItem.layerId && !deepEqual(lastQueueItem.vote, newQueueItem.vote)) {
+		// don't allow changing the vote after it's been decided
+		return { code: 'err:decided-vote-change' as const }
 	}
 
 	if (lastQueueItem?.vote && !newQueueItem?.vote) {
@@ -721,6 +727,8 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 		switch (voteUpdateRes.code) {
 			case 'err:queue-change-during-vote':
 				return { code: 'err:queue-change-during-vote' as const }
+			case 'err:decided-vote-change':
+				return voteUpdateRes
 			case 'noop':
 				break
 			case 'ok': {
