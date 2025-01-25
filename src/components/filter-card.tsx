@@ -822,9 +822,9 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 
 	return (
 		<div className="flex w-[200px] items-center space-x-2">
-			<NumericSingleValueConfig placeholder="min" value={props.range[0]} setValue={setFirst} />
+			<NumericSingleValueConfig value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
-			<NumericSingleValueConfig placeholder="max" ref={ref} value={props.range[0]} setValue={setSecond} />
+			<NumericSingleValueConfig ref={ref} value={props.range[1]} setValue={setSecond} />
 		</div>
 	)
 })
