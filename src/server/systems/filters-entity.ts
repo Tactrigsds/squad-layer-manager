@@ -84,7 +84,7 @@ export const filtersRouter = router({
 				})
 			)
 			switch (res.code) {
-				case 'already-exists':
+				case 'err:already-exists':
 					return { code: 'err:already-exists' as const }
 				case 'ok':
 					return { code: 'ok' as const }
@@ -99,7 +99,7 @@ export const filtersRouter = router({
 				})
 			)
 			switch (res.code) {
-				case 'already-exists':
+				case 'err:already-exists':
 					return { code: 'err:already-exists' as const }
 				case 'ok':
 					return { code: 'ok' as const }

@@ -18,6 +18,7 @@ import { Mutex } from 'async-mutex'
 import * as Jotai from 'jotai'
 import { configAtom } from './config.client'
 import { fetchLoggedInUser } from './logged-in-user'
+import { deepClone } from '@/lib/object'
 
 // -------- types --------
 export type IdedLLItem = M.LayerListItem & WithMutationId
@@ -337,9 +338,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		}
 	}
 
-	const initialStateToReset: Partial<QDState> = {
-		editedServerState: initialState.editedServerState,
-		queueMutations: initialState.queueMutations,
+	const getInitialStateToReset = (): Partial<QDState> => {
+		return {
+			editedServerState: deepClone(initialState.editedServerState),
+			queueMutations: ItemMut.initMutations(),
+		}
 	}
 
 	return {
@@ -352,11 +355,12 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			const serverStateUpdate = lqServerStateUpdate$.getValue()
 			await tryEndEditing()
 			if (!serverStateUpdate) {
-				set({ ...initialStateToReset, canEditQueue: get().canEditQueue, isEditing: get().isEditing })
+				set({ ...getInitialStateToReset(), canEditQueue: get().canEditQueue, isEditing: get().isEditing })
 				return
 			}
 
 			set({
+				...getInitialStateToReset(),
 				editedServerState: getEditableServerState(serverStateUpdate.state) ?? initialState.editedServerState,
 			})
 		},

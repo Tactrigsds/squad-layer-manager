@@ -10,9 +10,9 @@ export const ParsedIntSchema = z
 
 export const ParsedFloatSchema = z
 	.string()
-	.regex(/^\d+(\.\d+)?$/)
+	.regex(/^(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[Nn][Aa][Nn])$/)
 	.transform((val) => parseFloat(val))
-	.pipe(z.number().finite())
+	.pipe(z.union([z.nan(), z.number()]))
 
 export const ParsedBigIntSchema = z
 	.string()

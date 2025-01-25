@@ -2,7 +2,7 @@ import * as z from 'zod'
 
 import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
-import { deepClone, reverseMapping, selectProps } from './lib/object'
+import { deepClone, reverseMapping } from './lib/object'
 import type * as Schema from './server/schema'
 import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
@@ -209,7 +209,7 @@ export const COLUMN_TYPE_MAPPINGS = {
 	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
 	integer: [] as const,
 	collection: ['FactionMatchup', 'FullMatchup', 'SubFacMatchup'] as const,
-	boolean: ['Z_Pool'] as const,
+	boolean: ['Z_Pool', 'Scored'] as const,
 } satisfies { [key in ColumnType]: (LayerColumnKey | LayerCompositeKey)[] }
 
 export const COLUMN_LABELS = {
@@ -244,6 +244,7 @@ export const COLUMN_LABELS = {
 	FactionMatchup: 'Faction Matchup',
 	SubFacMatchup: 'Subfac Matchup',
 	FullMatchup: 'Full Matchup',
+	Scored: 'Scored',
 } satisfies { [k in LayerColumnKey | LayerCompositeKey]: string }
 
 export function isColType<T extends ColumnType>(col: string, type: T): col is (typeof COLUMN_TYPE_MAPPINGS)[T][number] {

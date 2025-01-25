@@ -3,7 +3,6 @@
   "properties": {
     "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
     "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
-    "commandsEnabled": {"type": "boolean", "default": true},
     "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
     "defaults": {
       "type": "object",
@@ -32,12 +31,15 @@
           "properties": {
             "strings": {
               "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"}
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
             },
             "scopes": {
               "type": "array",
-              "items": {"type": "string", "enum": ["admin", "public"]}
-            }
+              "items": {"type": "string", "enum": ["admin", "public"]},
+              "description": "Chats in which this command is available"
+            },
+            "enabled": {"type": "boolean", "default": true}
           },
           "required": ["strings", "scopes"],
           "additionalProperties": false,
@@ -51,6 +53,9 @@
             },
             "scopes": {
               "$ref": "#/properties/commands/properties/help/properties/scopes"
+            },
+            "enabled": {
+              "$ref": "#/properties/commands/properties/help/properties/enabled"
             }
           },
           "required": ["strings", "scopes"],
@@ -65,6 +70,9 @@
             },
             "scopes": {
               "$ref": "#/properties/commands/properties/help/properties/scopes"
+            },
+            "enabled": {
+              "$ref": "#/properties/commands/properties/help/properties/enabled"
             }
           },
           "required": ["strings", "scopes"],
@@ -79,6 +87,9 @@
             },
             "scopes": {
               "$ref": "#/properties/commands/properties/help/properties/scopes"
+            },
+            "enabled": {
+              "$ref": "#/properties/commands/properties/help/properties/enabled"
             }
           },
           "required": ["strings", "scopes"],
@@ -89,7 +100,7 @@
       "required": ["help", "startVote", "abortVote", "showNext"],
       "additionalProperties": false
     },
-    "lowQueueWarningThreshold": {
+    "lowQueueWarningThresholdSeconds": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 3,

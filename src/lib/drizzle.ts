@@ -8,14 +8,11 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 	try {
 		return { code: 'ok' as const, data: (await runningQuery)[0] }
 	} catch (_err: unknown) {
-		const err = _err as { code: 'ER_DUP_ENTRY' }
+		const err = _err as { code: 'ER_DUP_ENTRY'; message: string; sql: string; sqlMessage: string; errno: number }
 		if (err.code === 'ER_DUP_ENTRY') {
-			// const pgError = err as Error
 			return {
-				code: 'already-exists' as const,
-				// tableName: pgError.table_name!,
-				// constraintName: pgError.constraint_name!,
-				// err: pgError,
+				code: 'err:already-exists' as const,
+				err,
 			}
 		}
 		throw err

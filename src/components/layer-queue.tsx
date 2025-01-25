@@ -133,6 +133,7 @@ export default function ServerDashboard() {
 				break
 			case 'ok':
 				toaster.toast({ title: 'Changes applied' })
+				QD.QDStore.getState().reset()
 				break
 			default:
 				assertNever(res)
@@ -716,7 +717,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 
 	const poolFilterChanged = Zus.useStore(QD.QDStore, (s) => {
 		if (!s.serverState) return null
-		return M.getSettingsChanged(s.serverState.settings, s.editedServerState.settings).queue?.poolFilterId
+		return s.serverState.settings.queue.poolFilterId !== s.editedServerState.settings.queue.poolFilterId
 	})
 	const settings = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings)
 	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
