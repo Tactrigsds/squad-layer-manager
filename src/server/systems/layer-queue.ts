@@ -611,10 +611,7 @@ function getVoteStateDiscordIds(state: M.VoteState) {
 
 // -------- user presence --------
 export async function startEditing({ ctx }: { ctx: C.TrpcRequest }) {
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-		check: 'any',
-		permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
-	})
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('queue:write'))
 	if (denyRes) return denyRes
 	if (userPresence.editState) {
 		return { code: 'err:already-editing' as const, userPresence }
@@ -648,6 +645,24 @@ export function endEditing({ ctx }: { ctx: C.TrpcRequest }) {
 		state: userPresence,
 		parts: {
 			users: [ctx.user],
+		},
+	}
+	userPresenceUpdate$.next(update)
+	return { code: 'ok' as const }
+}
+
+async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('queue:write'))
+	if (denyRes) return denyRes
+	if (!userPresence.editState) {
+		return { code: 'err:no-editor' as const }
+	}
+	delete userPresence.editState
+	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+		event: 'edit-end',
+		state: userPresence,
+		parts: {
+			users: [],
 		},
 	}
 	userPresenceUpdate$.next(update)
@@ -939,6 +954,8 @@ export const layerQueueRouter = router({
 
 	startEditing: procedure.mutation(startEditing),
 	endEditing: procedure.mutation(endEditing),
+	kickEditor: procedure.mutation(kickEditor),
+
 	watchUserPresence: procedure.subscription(watchUserPresence),
 
 	updateQueue: procedure.input(M.GenericServerStateUpdateSchema).mutation(updateQueue),

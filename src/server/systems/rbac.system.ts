@@ -154,11 +154,35 @@ function dedupePerms(perms: RBAC.Permission[]) {
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	baseCtx: C.Log & C.Db,
 	userId: bigint,
+	perm: RBAC.Permission<T>
+): Promise<RBAC.PermissionDeniedResponse<T> | null>
+export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
+	baseCtx: C.Log & C.Db,
+	userId: bigint,
+	perms: RBAC.Permission<T>[]
+): Promise<RBAC.PermissionDeniedResponse<T> | null>
+export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
+	baseCtx: C.Log & C.Db,
+	userId: bigint,
 	permissionReq: RBAC.PermissionReq<T>
+): Promise<RBAC.PermissionDeniedResponse<T> | null>
+export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
+	baseCtx: C.Log & C.Db,
+	userId: bigint,
+	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>
 ) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
 	const userRbac = await getUserRbac(ctx, userId)
-	return RBAC.tryDenyPermissionForUser(userId, userRbac.perms, permissionReq)
+
+	const req: RBAC.PermissionReq<T> =
+		'check' in reqOrPerms
+			? reqOrPerms
+			: {
+					check: 'all',
+					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+				}
+
+	return RBAC.tryDenyPermissionForUser(userId, userRbac.perms, req)
 }
 
 export const rbacRouter = router({

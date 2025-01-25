@@ -85,7 +85,7 @@ export type Rcon = {
 	rcon: RconCore
 }
 
-export type HttpRequest = { req: FastifyRequest; res: FastifyReply }
+export type HttpRequest = { req: FastifyRequest; res: FastifyReply } & Log & Db
 
 export type User = {
 	user: M.User
@@ -101,6 +101,6 @@ export type WSSession = {
 	wsClientId: string
 }
 
-export type AuthedRequest = User & AuthSession & HttpRequest & Db & Log
+export type AuthedUser = User & AuthSession
 
 export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log

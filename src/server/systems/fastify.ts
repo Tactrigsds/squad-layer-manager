@@ -45,13 +45,16 @@ export async function setupFastify() {
 	server.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
 		if (path.startsWith('/trpc')) return
-		const ctx = C.pushOperation({ log: server.log as Logger }, `http:${path}:${request.method}:${request.id}`, {
+		const ctx = C.pushOperation(DB.addPooledDb({ log: server.log as Logger }), `http:${path}:${request.method}:${request.id}`, {
 			level: 'info',
 		})
 		request.log = ctx.log
 		//@ts-expect-error monkey patching
 		request.ctx = ctx
 	})
+	function getCtx(req: FastifyRequest) {
+		return (req as any).ctx as C.Log & C.Db
+	}
 
 	server.addHook('onError', async (request, reply, error) => {
 		//@ts-expect-error monkey patching
@@ -121,7 +124,7 @@ export async function setupFastify() {
 		if (!discordUser) {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
-		const ctx = DB.addPooledDb({ log: req.log as Logger })
+		const ctx = getCtx(req)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, discordUser.id, { check: 'all', permits: [RBAC.perm('site:authorized')] })
 		if (denyRes) {
 			switch (denyRes.code) {
@@ -163,12 +166,13 @@ export async function setupFastify() {
 	})
 
 	server.post(AR.exists('/logout'), async function (req, res) {
-		const authRes = await createAuthorizedRequestContext(req, res)
+		const ctx = getCtx(req)
+		const authRes = await createAuthorizedRequestContext({ ...ctx, req })
 		if (authRes.code !== 'ok') {
-			return Sessions.clearInvalidSession({ req, res })
+			return Sessions.clearInvalidSession({ ...ctx, req, res })
 		}
 
-		return await Sessions.logout(authRes.ctx)
+		return await Sessions.logout({ ...authRes.ctx, res })
 	})
 
 	await server.register(ws)
@@ -191,14 +195,15 @@ export async function setupFastify() {
 
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'unsafe-none')
-		const authRes = await createAuthorizedRequestContext(req, res)
+		const ctx = getCtx(req)
+		const authRes = await createAuthorizedRequestContext({ ...ctx, req })
 		switch (authRes.code) {
 			case 'ok':
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
 			case 'unauthorized:invalid-session':
-				return Sessions.clearInvalidSession({ req, res })
+				return Sessions.clearInvalidSession({ ...ctx, req, res })
 			default:
 				assertNever(authRes)
 		}
@@ -239,9 +244,8 @@ export async function setupFastify() {
 	}
 }
 
-export async function createAuthorizedRequestContext(req: FastifyRequest, res: FastifyReply) {
-	const log = baseLogger.child({ reqId: req.id, path: req.url })
-	const cookie = req.headers.cookie
+export async function createAuthorizedRequestContext<T extends C.Log & C.Db & { req: FastifyRequest }>(ctx: T) {
+	const cookie = ctx.req.headers.cookie
 	if (!cookie) {
 		return {
 			code: 'unauthorized:no-cookie' as const,
@@ -256,7 +260,6 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 		}
 	}
 
-	const ctx = DB.addPooledDb({ log })
 	const validSession = await Sessions.validateSession(sessionId, ctx)
 	if (validSession.code !== 'ok') {
 		return {
@@ -264,12 +267,10 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 			message: 'Invalid session',
 		}
 	}
-	const authedCtx: C.AuthedRequest = {
+	const authedCtx: T & C.AuthedUser = {
 		...ctx,
 		sessionId,
 		user: validSession.user,
-		req,
-		res,
 		log: ctx.log.child({ username: validSession.user.username }),
 	}
 
@@ -281,7 +282,7 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
 export async function createTrpcRequestContext(options: CreateFastifyContextOptions): Promise<C.TrpcRequest> {
-	const result = await createAuthorizedRequestContext(options.req, options.res)
+	const result = await createAuthorizedRequestContext(DB.addPooledDb({ log: baseLogger, req: options.req }))
 	if (result.code !== 'ok') {
 		switch (result.code) {
 			case 'unauthorized:no-cookie':
@@ -302,7 +303,7 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 		user: result.ctx.user,
 		sessionId: result.ctx.sessionId,
 		req: options.req,
-		ws: result.ctx.res as unknown as WebSocket,
+		ws: options.res as unknown as WebSocket,
 		log: result.ctx.log.child({ wsClientId }),
 		db: result.ctx.db,
 	}

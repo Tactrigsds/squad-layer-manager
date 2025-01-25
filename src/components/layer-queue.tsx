@@ -1,5 +1,4 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { useShallow } from 'zustand/react/shallow'
 import { useForm } from '@tanstack/react-form'
 import { CSS } from '@dnd-kit/utilities'
 import * as Im from 'immer'
@@ -148,7 +147,12 @@ export default function ServerDashboard() {
 	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = useConfig()?.maxQueueSize
+	const hasKickPermission =
+		loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'any', permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')] })
 
+	const kickEditorMutation = useMutation({
+		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
+	})
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
 			<span className="flex space-x-4">
@@ -174,6 +178,9 @@ export default function ServerDashboard() {
 										? 'You are editing on another tab'
 										: editingUser.username + ' is editing'}
 								</AlertTitle>
+								<Button disabled={!hasKickPermission} onClick={() => kickEditorMutation.mutate()} variant="outline">
+									Kick
+								</Button>
 							</Alert>
 						)}
 						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
@@ -693,10 +700,12 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 		queryFn: () => trpc.filters.getFilters.query(),
 	})
 
-	const filterOptions = filtersRes.data?.filters.map?.((f) => ({
-		value: f.id,
-		label: f.name,
-	}))
+	const filterOptions =
+		filtersRes.data?.filters.map?.((f) => ({
+			value: f.id as string | null,
+			label: f.name,
+		})) ?? []
+	filterOptions.push({ value: null, label: '<none>' })
 
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
@@ -1764,7 +1773,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 								valueAutocompleteFilter={store.filtersExcludingField[name]}
 							/>
 							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
-								<Icons.Trash />{' '}
+								<Icons.Trash />
 							</Button>
 						</React.Fragment>
 					)

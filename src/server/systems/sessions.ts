@@ -43,7 +43,7 @@ export async function validateSession(sessionId: string, baseCtx: C.Log & C.Db) 
 	return { code: 'ok' as const, sessionId: row.session.id, user: row.user }
 }
 
-export async function logout(ctx: C.AuthedRequest) {
+export async function logout(ctx: C.AuthedUser & C.HttpRequest) {
 	await using opCtx = C.pushOperation(ctx, 'sessions:logout')
 	await opCtx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, ctx.sessionId))
 	return clearInvalidSession(ctx)
@@ -53,7 +53,7 @@ export function clearInvalidSession(ctx: C.HttpRequest) {
 	return ctx.res.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect(AR.exists('/login'))
 }
 
-export async function getUser(opts: { lock?: boolean }, ctx: C.AuthedRequest) {
+export async function getUser(opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest) {
 	await using opCtx = C.pushOperation(ctx, 'sessions:get-user')
 	opts.lock ??= false
 	const q = opCtx

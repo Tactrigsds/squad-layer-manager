@@ -17,6 +17,9 @@ export function setupDatabase() {
 		user: ENV.DB_USER,
 		password: ENV.DB_PASSWORD,
 		database: ENV.DB_DATABASE,
+
+		// return big numbers as strings to avoid precision loss. without this bigints will return incorrect values
+		supportBigNumbers: true,
 	}
 	pool = MySQL.createPool(env)
 }
