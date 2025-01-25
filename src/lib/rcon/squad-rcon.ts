@@ -77,7 +77,7 @@ export default class SquadRcon {
 			data.playerID = +data.playerID
 			data.isLeader = data.isLeader === 'True'
 			data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
-			data.squadID = data.squadID !== 'N/A' ? +data.squadID : null
+			data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
 			iterateIDs(match[2]).forEach((platform, id) => {
 				data[lowerID(platform)] = id
 			})

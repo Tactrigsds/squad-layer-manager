@@ -266,6 +266,10 @@ function EndMatchDialog() {
 			case 'err:permission-denied':
 				RbacClient.showPermissionDenied(res)
 				break
+			case 'err':
+				console.error(res)
+				globalToast$.next({ title: 'error while ending match', variant: 'destructive' })
+				break
 			default:
 				assertNever(res)
 		}
@@ -285,7 +289,7 @@ function EndMatchDialog() {
 				</DialogHeader>
 				<DialogDescription>Are you sure you want to end the match for {serverStatus?.name}?</DialogDescription>
 				<DialogFooter>
-					<Button disabled={canEndMatch} onClick={endMatch} variant="destructive">
+					<Button disabled={!canEndMatch} onClick={endMatch} variant="destructive">
 						End Match
 					</Button>
 					<Button

@@ -48,14 +48,18 @@ async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 async function endMatch({ ctx: baseCtx }: { ctx: C.TrpcRequest }) {
 	await using ctx = C.pushOperation(baseCtx, 'squad-server:end-match')
 
-	const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-		check: 'all',
-		permits: [RBAC.perm('squad-server:end-match')],
-	})
-	if (deniedRes) return deniedRes
-	const layer = (await rcon.serverStatus.get(ctx, { ttl: 50 }))?.value.currentLayer
-	await rcon.endMatch(ctx)
-	await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
+	try {
+		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+			check: 'all',
+			permits: [RBAC.perm('squad-server:end-match')],
+		})
+		if (deniedRes) return deniedRes
+		await rcon.endMatch(ctx)
+		await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
+	} catch (err) {
+		C.failOperation(ctx, err)
+		return { code: 'err' as const, msg: 'error while ending match', err }
+	}
 	return { code: 'ok' as const }
 }
 

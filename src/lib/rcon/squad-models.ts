@@ -52,10 +52,9 @@ export const PlayerSchema = z.object({
 	steamID: ParsedBigIntSchema,
 	name: z.string().min(1),
 	teamID: z.number(),
-	squadID: z.number().optional(),
+	squadID: z.number().nullable(),
 	isLeader: z.boolean(),
 	role: z.string(),
-	onlineIDs: z.record(z.string(), z.string()),
 })
 
 export type Player = z.infer<typeof PlayerSchema>

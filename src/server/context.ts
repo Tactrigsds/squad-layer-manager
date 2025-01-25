@@ -18,6 +18,7 @@ export function includeLogProperties<T extends Log>(ctx: T, fields: Record<strin
 export type Op = {
 	tasks: Promise<any>[]
 	result?: 'ok' | string
+	error?: any
 	endMsgBindings: Record<string, any>
 	[Symbol.asyncDispose]: (err?: any) => Promise<void>
 	[Symbol.dispose]: (err?: any) => void
@@ -28,6 +29,12 @@ type OperationOptions = {
 	level?: Pino.Level
 	startMsgBindings?: Record<string, any>
 }
+
+export function failOperation(ctx: Op, err?: any, code?: string): void {
+	ctx.result = code ?? 'err'
+	ctx.error = err
+}
+
 export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: OperationOptions): T & Op {
 	const opts: OperationOptions = _opts ?? {}
 	opts.level ??= 'debug'
@@ -37,14 +44,14 @@ export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: Opera
 	const ops = bindings.ops ? [...bindings.ops] : []
 	ops.push({ id: operationId, type })
 
-	const handleResult = async function (this: any, err?: any) {
-		const result = err ? 'error' : (this.result ?? 'ok')
+	const handleResult = async () => {
+		const result = newCtx.result ?? 'ok'
 		if (result && result !== 'ok') {
-			this.log.error(err, 'operation failed', type, operationId)
+			lifeCycleLog.error(newCtx.error, 'operation failed: %s', result)
 			return
 		}
-		if (this.tasks.length > 0) {
-			await Promise.all(this.tasks).catch((err) => {
+		if (newCtx.tasks.length > 0) {
+			await Promise.all(newCtx.tasks).catch((err) => {
 				lifeCycleLog.error(err, 'operation failed', type, operationId)
 				throw err
 			})
@@ -52,7 +59,7 @@ export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: Opera
 		lifeCycleLog[opts.level!]('operation completed', type, operationId)
 	}
 
-	const newCtx = {
+	const newCtx: T & Op = {
 		...includeLogProperties(ctx, { ops }),
 		endMsgBindings: {},
 		tasks: [],
