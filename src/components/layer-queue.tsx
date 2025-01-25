@@ -9,7 +9,6 @@ import React from 'react'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
-import * as SquadServerClientSys from '@/systems.client/squad-server.client.ts'
 
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -185,7 +184,7 @@ export default function ServerDashboard() {
 							<QueueControlPanel />
 						</CardHeader>
 						<CardContent>
-							<LayerList store={QD.LQStore} allowVotes={true} />
+							<LayerList store={QD.LQStore} allowVotes={true} onStartEdit={() => QD.QDStore.getState().tryStartEditing()} />
 						</CardContent>
 					</Card>
 				</div>
@@ -329,7 +328,7 @@ function EditSummary() {
 }
 
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
-export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?: boolean }) {
+export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?: boolean; onStartEdit?: () => void }) {
 	const user = useLoggedInUser()
 	const allowVotes = props.allowVotes ?? true
 	const queueIds = Zus.useStore(props.store).layerList.map((item) => item.id)
@@ -353,6 +352,7 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?:
 					id={id}
 					index={index}
 					isLast={index + 1 === queueIds.length}
+					onStartEdit={props.onStartEdit}
 				/>
 			))}
 		</ul>
@@ -872,6 +872,7 @@ type QueueItemProps = {
 	allowVotes?: boolean
 	id: string
 	llStore: Zus.StoreApi<QD.LLStore>
+	onStartEdit?: () => void
 }
 
 function LayerListItem(props: QueueItemProps) {
@@ -899,6 +900,7 @@ function LayerListItem(props: QueueItemProps) {
 			setOpen={setDropdownOpen}
 			listStore={props.llStore}
 			itemStore={itemStore}
+			onStartEdit={props.onStartEdit}
 		>
 			<Button
 				disabled={!canEdit}
@@ -1031,6 +1033,7 @@ function ItemDropdown(props: {
 	itemStore: Zus.StoreApi<QD.LLItemStore>
 	listStore: Zus.StoreApi<QD.LLStore>
 	allowVotes?: boolean
+	onStartEdit?: () => void
 }) {
 	const allowVotes = props.allowVotes ?? true
 
@@ -1039,6 +1042,7 @@ function ItemDropdown(props: {
 
 	function setSubDropdownState(state: SubDropdownState) {
 		if (state === null) props.setOpen(false)
+		props.onStartEdit?.()
 		_setSubDropdownState(state)
 	}
 
