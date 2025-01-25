@@ -6,7 +6,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { Dialog, DialogTitle, DialogTrigger, DialogContent, DialogHeader } from '@/components/ui/dialog'
+import { Dialog, DialogTitle, DialogTrigger, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog'
 
 import {
 	DropdownMenu,
@@ -85,6 +85,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									<DialogContent>
 										<DialogHeader>
 											<DialogTitle>{user.username}</DialogTitle>
+											<DialogDescription>Level of access</DialogDescription>
 										</DialogHeader>
 										<div className="flex space-x-4">
 											<div>
@@ -96,7 +97,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 															scopeDisplay = `${perm.scope} ${perm.args!.filterId}`
 														}
 														return (
-															<li key={perm.type}>
+															<li key={JSON.stringify(perm)}>
 																-{' '}
 																<code>
 																	{perm.type} ({scopeDisplay})

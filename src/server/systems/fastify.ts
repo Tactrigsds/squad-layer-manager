@@ -270,7 +270,7 @@ export async function createAuthorizedRequestContext(req: FastifyRequest, res: F
 		user: validSession.user,
 		req,
 		res,
-		log: log.child({ username: validSession.user.username }),
+		log: ctx.log.child({ username: validSession.user.username }),
 	}
 
 	return {

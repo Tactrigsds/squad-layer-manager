@@ -9,7 +9,6 @@ import * as Zus from 'zustand'
 import * as ItemMut from '@/lib/item-mutations'
 import { derive } from 'derive-zustand'
 import * as FB from '@/lib/filter-builders'
-import { loggedInUser$ } from './logged-in-user'
 import { userPresenceState$ } from './presence'
 import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
@@ -18,6 +17,7 @@ import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { Mutex } from 'async-mutex'
 import * as Jotai from 'jotai'
 import { configAtom } from './config.client'
+import { fetchLoggedInUser } from './logged-in-user'
 
 // -------- types --------
 export type IdedLLItem = M.LayerListItem & WithMutationId
@@ -39,6 +39,7 @@ export type LLActions = {
 	add: (items: M.LayerListItem[], index?: number) => void
 	setItem: (id: string, update: React.SetStateAction<IdedLLItem>) => void
 	remove: (id: string) => void
+	clear: () => void
 }
 
 export type LLItemState = { item: IdedLLItem; mutationState: ItemMutationState }
@@ -64,10 +65,23 @@ export type QDStore = QDState & {
 	reset: () => void
 	setSetting: (updater: (settings: Im.Draft<M.ServerSettings>) => void) => void
 	setQueue: Setter<LLState>
+	tryStartEditing: () => void
+	tryEndEditing: () => void
 }
 
 // -------- store initialization --------
-export const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LLActions => {
+export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLActions => {
+	const remove = (id: string) => {
+		set((state) =>
+			Im.produce(state, (state) => {
+				const layerList = state.layerList
+				const index = layerList.findIndex((item) => item.id === id)
+				if (index === -1) return
+				layerList.splice(index, 1)
+				ItemMut.tryApplyMutation('removed', id, state.listMutations)
+			})
+		)
+	}
 	return {
 		setItem: (id, update) => {
 			set((state) =>
@@ -111,16 +125,11 @@ export const createLLActions = (set: Setter<LLState>, _get: Getter<LLState>): LL
 				})
 			)
 		},
-		remove: (id) => {
-			set((state) =>
-				Im.produce(state, (state) => {
-					const layerList = state.layerList
-					const index = layerList.findIndex((item) => item.id === id)
-					if (index === -1) return
-					layerList.splice(index, 1)
-					ItemMut.tryApplyMutation('removed', id, state.listMutations)
-				})
-			)
+		remove,
+		clear: () => {
+			for (const item of get().layerList) {
+				remove(item.id)
+			}
 		},
 	}
 }
@@ -249,8 +258,9 @@ export const _initialState: QDState = {
 }
 
 export const QDStore = Zus.createStore<QDStore>((set, get) => {
-	const canEdit$ = Rx.combineLatest([loggedInUser$, userPresenceState$]).pipe(
-		Rx.map(([user, state]) => {
+	const canEdit$ = userPresenceState$.pipe(
+		Rx.mergeMap(async (state) => {
+			const user = await fetchLoggedInUser()
 			const canEdit = !state?.editState || state.editState.wsClientId === user?.wsClientId
 			if (!user) return { canEditQueue: false, canEditSettings: false }
 			return {
@@ -269,9 +279,10 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		get().applyServerUpdate(update)
 	})
 
-	userPresenceState$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((presence) => {
+	userPresenceState$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(async (presence) => {
 		if (!presence?.editState) return
-		if (presence.editState.userId !== loggedInUser$.getValue()?.discordId) {
+		const loggedInUser = await fetchLoggedInUser()
+		if (presence.editState.userId !== loggedInUser?.discordId) {
 			get().reset()
 		}
 	})
@@ -298,9 +309,10 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	async function tryEndEditing() {
 		if (!get().isEditing) return
 		void trpc.layerQueue.endEditing.mutate()
+		const loggedInUser = await fetchLoggedInUser()
 		await Rx.firstValueFrom(
 			userPresenceState$.pipe(
-				Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser$.getValue()?.wsClientId),
+				Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),
 				Rx.take(1)
 			)
 		)
@@ -326,10 +338,8 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			}
 
 			set({
-				..._initialState,
 				editedServerState: getEditableServerState(serverStateUpdate.state) ?? _initialState.editedServerState,
-				isEditing: get().isEditing,
-				canEditQueue: get().canEditQueue,
+				isEditing: false,
 			})
 		},
 		setSetting: (handler) => {
@@ -356,6 +366,8 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			})
 			tryStartEditing()
 		},
+		tryStartEditing,
+		tryEndEditing,
 	}
 })
 // @ts-expect-error expose for debugging

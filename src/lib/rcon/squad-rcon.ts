@@ -169,6 +169,7 @@ export default class SquadRcon {
 	}
 
 	async endMatch(_ctx: C.Log) {
+		_ctx.log.info(`Ending match`)
 		await this.rcon.execute(_ctx, 'AdminEndMatch')
 	}
 

@@ -5,6 +5,7 @@ import superjson from 'superjson'
 
 import * as AR from '@/app-routes'
 import type { AppRouter } from '@/server/router'
+import { QueryClient } from '@tanstack/react-query'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
@@ -25,6 +26,7 @@ export const links = [
 		transformer: superjson,
 	}),
 ]
+export const reactQueryClient = new QueryClient()
 
 export const trpc = createTRPCClient<AppRouter>({ links })
 

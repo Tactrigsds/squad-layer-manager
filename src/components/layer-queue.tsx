@@ -6,8 +6,10 @@ import * as Im from 'immer'
 import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
 import deepEqual from 'fast-deep-equal'
 import React from 'react'
+import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
+import * as SquadServerClientSys from '@/systems.client/squad-server.client.ts'
 
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -95,6 +97,12 @@ export default function ServerDashboard() {
 				})
 				reset()
 				break
+			case 'err:queue-too-large':
+				toaster.toast({
+					title: 'Queue too large',
+					variant: 'destructive',
+				})
+				break
 			case 'ok':
 				toaster.toast({ title: 'Changes applied' })
 				break
@@ -103,8 +111,17 @@ export default function ServerDashboard() {
 		}
 	}
 
-	const [playNextPopoverOpen, setPlayNextPopoverOpen] = React.useState(false)
-	const [appendLayersPopoverOpen, setAppendLayersPopoverOpen] = React.useState(false)
+	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
+	function setPlayNextPopoverOpen(v: boolean) {
+		QD.QDStore.getState().tryStartEditing()
+		_setPlayNextPopoverOpen(v)
+	}
+
+	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = React.useState(false)
+	function setAppendLayersPopoverOpen(v: boolean) {
+		QD.QDStore.getState().tryStartEditing()
+		_setAppendLayersPopoverOpen(v)
+	}
 
 	const { isEditing, canEdit } = Zus.useStore(
 		QD.QDStore,
@@ -115,7 +132,6 @@ export default function ServerDashboard() {
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
 	const loggedInUser = useLoggedInUser()
-	const endMatch = useEndMatch()
 
 	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 
@@ -133,9 +149,7 @@ export default function ServerDashboard() {
 								</CardHeader>
 								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
 								<CardFooter>
-									<Button disabled={loggedInUser && !RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))}>
-										End Match
-									</Button>
+									<EndMatchDialog />
 								</CardFooter>
 							</>
 						)}
@@ -173,6 +187,22 @@ export default function ServerDashboard() {
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
 							<div className="flex items-center space-x-1">
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={() => {
+												QD.LQStore.getState().clear()
+											}}
+										>
+											<Icons.Trash />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>
+										<p>Clear Queue</p>
+									</TooltipContent>
+								</Tooltip>
 								<SelectLayersDialog
 									title="Add to Queue"
 									description="Select layers to add to the queue"
@@ -217,6 +247,58 @@ export default function ServerDashboard() {
 				</div>
 			</span>
 		</div>
+	)
+}
+
+function EndMatchDialog() {
+	const loggedInUser = useLoggedInUser()
+	const endMatchMutation = useEndMatch()
+	const serverStatus = useSquadServerStatus()
+	const [isOpen, setIsOpen] = React.useState(false)
+	async function endMatch() {
+		setIsOpen(false)
+		const res = await endMatchMutation.mutateAsync()
+		console.log(res)
+		switch (res.code) {
+			case 'ok':
+				globalToast$.next({ title: 'Match ended!' })
+				break
+			case 'err:permission-denied':
+				RbacClient.showPermissionDenied(res)
+				break
+			default:
+				assertNever(res)
+		}
+	}
+
+	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
+	return (
+		<Dialog open={isOpen} onOpenChange={setIsOpen}>
+			<DialogTrigger asChild>
+				<Button variant="destructive" disabled={!canEndMatch}>
+					End Match
+				</Button>
+			</DialogTrigger>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>End Match</DialogTitle>
+				</DialogHeader>
+				<DialogDescription>Are you sure you want to end the match for {serverStatus?.name}?</DialogDescription>
+				<DialogFooter>
+					<Button disabled={canEndMatch} onClick={endMatch} variant="destructive">
+						End Match
+					</Button>
+					<Button
+						onClick={() => {
+							setIsOpen(false)
+						}}
+						variant="secondary"
+					>
+						Cancel
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -631,14 +713,15 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 })
 
 function QueueGenerationCard() {
-	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
 	const numItemsToGenerateId = React.useId()
 
 	const [itemType, setItemType] = React.useState<'layer' | 'vote'>('layer')
 
-	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(false)
+	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(true)
+	const replaceCurrentGeneratedId = React.useId()
 	const itemTypeId = React.useId()
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
+	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
 	const numVoteChoicesId = React.useId()
 	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
 
@@ -648,7 +731,6 @@ function QueueGenerationCard() {
 	if (!canEditSettings) return null
 	async function generateLayerQueueItems() {
 		let serverStateMut = QD.QDStore.getState().editedServerState
-		const numVoteChoices = serverStateMut.settings.queue.preferredNumVoteChoices
 		const seqIdBefore = serverStateMut.layerQueueSeqId
 		const before = deepClone(serverStateMut.layerQueue)
 		const generated = await trpc.layerQueue.generateLayerQueueItems.query({
@@ -682,7 +764,7 @@ function QueueGenerationCard() {
 			<CardHeader>
 				<CardTitle>Queue Generation</CardTitle>
 			</CardHeader>
-			<CardContent className="space-y-2">
+			<CardContent className="space-y-4">
 				<div className="flex flex-col items-start space-y-1">
 					<Label htmlFor={itemTypeId}>Item Type</Label>
 					<ToggleGroup
@@ -723,6 +805,17 @@ function QueueGenerationCard() {
 						/>
 					</div>
 				)}
+				<div className="flex space-x-1 items-center">
+					<Checkbox
+						id={replaceCurrentGeneratedId}
+						checked={replaceCurrentGenerated}
+						onCheckedChange={(v) => {
+							if (v === 'indeterminate') return
+							setReplaceCurrentGenerated(v)
+						}}
+					/>
+					<Label htmlFor={replaceCurrentGeneratedId}>Replace current generated</Label>
+				</div>
 				<div className="flex space-x-2">
 					<Button disabled={genereateMutation.isPending} onClick={() => genereateMutation.mutateAsync()}>
 						Generate

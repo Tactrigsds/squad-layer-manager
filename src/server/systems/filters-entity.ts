@@ -160,7 +160,7 @@ export const filtersRouter = router({
 			if (!rawFilter) {
 				return { code: 'err:not-found' as const }
 			}
-			const deniedRes = RBAC.tryDenyPermissionsForRbacUser(ctx.user, {
+			const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 				check: 'any',
 				permits: [RBAC.perm('filters:write', { filterId: id })],
 			})

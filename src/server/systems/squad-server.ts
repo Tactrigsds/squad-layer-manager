@@ -7,10 +7,12 @@ import SquadRcon from '@/lib/rcon/squad-rcon'
 import * as C from '@/server/context.ts'
 import * as M from '@/models.ts'
 import * as DB from '@/server/db.ts'
+import * as Rx from 'rxjs'
 
 import { ENV } from '../env'
 import { baseLogger } from '@/server/logger'
 import { procedure, router } from '../trpc.server.ts'
+import deepEqual from 'fast-deep-equal'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
@@ -43,14 +45,18 @@ async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 	}
 }
 
-async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
+async function endMatch({ ctx: baseCtx }: { ctx: C.TrpcRequest }) {
+	await using ctx = C.pushOperation(baseCtx, 'squad-server:end-match')
+
 	const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 		check: 'all',
-		permits: [RBAC.perm('squad-server:end-game')],
+		permits: [RBAC.perm('squad-server:end-match')],
 	})
 	if (deniedRes) return deniedRes
+	const layer = (await rcon.serverStatus.get(ctx, { ttl: 50 }))?.value.currentLayer
 	await rcon.endMatch(ctx)
-	return { code: 'ok' }
+	await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
+	return { code: 'ok' as const }
 }
 
 function matchCommandText(cmdText: string) {

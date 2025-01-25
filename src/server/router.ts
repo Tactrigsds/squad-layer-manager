@@ -16,9 +16,6 @@ export type AppRouter = typeof appRouter
 
 export function setupTrpcRouter() {
 	const _appRouter = router({
-		getLoggedInUser: procedure.query(async ({ ctx }) => {
-			return { ...ctx.user, wsClientId: ctx.wsClientId }
-		}),
 		getHistoryFilter: procedure
 			.input(
 				z.object({

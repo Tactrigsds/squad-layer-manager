@@ -176,7 +176,6 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 					toast({ title: 'Filter saved' })
 					formApi.reset()
 					setEditingDetails(false)
-					refetchLoggedInUser()
 
 					break
 
@@ -267,7 +266,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 							<Icons.Dot />
 							<small className="font-light">Owner: {props.owner.username}</small>
 							<Icons.Dot />
-							<Button onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
+							<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
 								<Icons.Edit />
 							</Button>
 						</div>
@@ -358,7 +357,9 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 						</Badge>
 					)}
 					<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
-						<Button variant="outline">Show Contributors</Button>
+						<Button disabled={loggedInUserRole === 'none'} variant="outline">
+							Show Contributors
+						</Button>
 					</FilterContributors>
 				</span>
 			</div>

@@ -94,8 +94,9 @@ export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 	await using ctx = C.pushOperation(baseCtx, 'rbac:get-permissions-for-discord-user')
 	const ownedFiltersPromise = getOwnedFilters()
-	const contributorFiltersPromise = getContributorFilters()
 	const roles = await getRolesForDiscordUser(ctx, userId)
+	const userFilterContributorsPromise = getUserContributorFilters()
+	const roleFilterContributorsPromise = getRoleContributorFilters()
 	const perms: RBAC.Permission[] = []
 	for (const role of roles) {
 		perms.push(...globalRolePermissions[role])
@@ -103,19 +104,29 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 
 	perms.push(...(await ownedFiltersPromise).flatMap((f) => [RBAC.perm('filters:write', { filterId: f.id })]))
 
-	perms.push(...(await contributorFiltersPromise).map((f) => RBAC.perm('filters:write', { filterId: f.filterId })))
+	perms.push(...(await userFilterContributorsPromise).map((filterId) => RBAC.perm('filters:write', { filterId: filterId })))
+	perms.push(...(await roleFilterContributorsPromise).map((filterId) => RBAC.perm('filters:write', { filterId: filterId })))
 
 	return { perms: dedupePerms(perms), roles }
 
 	async function getOwnedFilters() {
 		return await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.owner, userId))
 	}
-	async function getContributorFilters() {
-		return await ctx
+	async function getRoleContributorFilters() {
+		const rows = await ctx
+			.db()
+			.select({ filterId: Schema.filterRoleContributors.filterId })
+			.from(Schema.filterRoleContributors)
+			.where(E.inArray(Schema.filterRoleContributors.roleId, roles))
+		return rows.map((r) => r.filterId)
+	}
+	async function getUserContributorFilters() {
+		const rows = await ctx
 			.db()
 			.select({ filterId: Schema.filterUserContributors.filterId })
 			.from(Schema.filterUserContributors)
 			.where(E.eq(Schema.filterUserContributors.userId, userId))
+		return rows.map((r) => r.filterId)
 	}
 }
 

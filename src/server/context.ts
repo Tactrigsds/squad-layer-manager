@@ -94,6 +94,6 @@ export type WSSession = {
 	wsClientId: string
 }
 
-export type AuthedRequest = RbacUser & AuthSession & HttpRequest & Db & Log
+export type AuthedRequest = User & AuthSession & HttpRequest & Db & Log
 
-export type TrpcRequest = RbacUser & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log
+export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log

@@ -1,18 +1,27 @@
-import { bind } from '@react-rxjs/core'
-import { Observable, Subject } from 'rxjs'
-import { trpc } from '@/lib/trpc.client'
+import { trpc, reactQueryClient } from '@/lib/trpc.client'
 import * as M from '@/models'
 import * as PartSys from '@/systems.client/parts'
 import { useQuery } from '@tanstack/react-query'
-import type * as C from '@/server/context'
 
-const loggedInUserSubject$ = new Subject<(M.UserWithRbac & C.WSSession) | null>()
-export async function fetchLoggedInUser() {
-	loggedInUserSubject$.next(null)
-	const user = await trpc.getLoggedInUser.query()
+// const loggedInUserSubject$ = new Subject<(M.UserWithRbac & C.WSSession) | null>()
+async function _fetchLoggedInUser() {
+	const user = await trpc.users.getLoggedInUser.query()
 	PartSys.upsertParts({ users: [user] })
-	loggedInUserSubject$.next(user)
+	return user
 }
-fetchLoggedInUser()
 
-export const [useLoggedInUser, loggedInUser$] = bind<(M.UserWithRbac & C.WSSession) | null>(loggedInUserSubject$, null)
+const options = {
+	queryKey: ['getLoggedInUser'],
+	queryFn: _fetchLoggedInUser,
+}
+export function useLoggedInUser() {
+	return useQuery(options)?.data
+}
+
+export async function fetchLoggedInUser() {
+	return reactQueryClient.getQueryCache().build(reactQueryClient, options).fetch()
+}
+
+export function invalidateLoggedInUser() {
+	reactQueryClient.invalidateQueries({ queryKey: options.queryKey })
+}

@@ -18,6 +18,7 @@ import React from 'react'
 import { assertNever } from '@/lib/typeGuards'
 import { useFilterCreate } from '@/hooks/filters'
 import { Label } from './ui/label'
+import { invalidateLoggedInUser } from '@/systems.client/logged-in-user'
 
 const DEFAULT_FILTER: M.EditableFilterNode = EFB.and()
 
@@ -67,6 +68,7 @@ export default function FilterNew() {
 
 			switch (res.code) {
 				case 'ok':
+					invalidateLoggedInUser()
 					toast({ title: 'Filter created' })
 					navigate(AR.link(`/filters/:id`, value.id))
 					break
