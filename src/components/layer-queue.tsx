@@ -34,7 +34,7 @@ import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as Zus from 'zustand'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge.tsx'
 import { useToast } from '@/hooks/use-toast'
 import { trpc } from '@/lib/trpc.client.ts'
@@ -111,18 +111,6 @@ export default function ServerDashboard() {
 		}
 	}
 
-	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
-	function setPlayNextPopoverOpen(v: boolean) {
-		QD.QDStore.getState().tryStartEditing()
-		_setPlayNextPopoverOpen(v)
-	}
-
-	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = React.useState(false)
-	function setAppendLayersPopoverOpen(v: boolean) {
-		QD.QDStore.getState().tryStartEditing()
-		_setAppendLayersPopoverOpen(v)
-	}
-
 	const { isEditing, canEdit } = Zus.useStore(
 		QD.QDStore,
 		useShallow((s) => {
@@ -134,6 +122,8 @@ export default function ServerDashboard() {
 	const loggedInUser = useLoggedInUser()
 
 	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
+	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
+	const maxQueueSize = useConfig()?.maxQueueSize
 
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
@@ -186,56 +176,13 @@ export default function ServerDashboard() {
 					<Card className="">
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
-							<div className="flex items-center space-x-1">
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											variant="outline"
-											size="icon"
-											onClick={() => {
-												QD.LQStore.getState().clear()
-											}}
-										>
-											<Icons.Trash />
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>Clear Queue</p>
-									</TooltipContent>
-								</Tooltip>
-								<SelectLayersDialog
-									title="Add to Queue"
-									description="Select layers to add to the queue"
-									selectQueueItems={(items) => QD.LQStore.getState().add(items)}
-									open={appendLayersPopoverOpen}
-									onOpenChange={setAppendLayersPopoverOpen}
-								>
-									<Button
-										data-canedit={canEdit}
-										className="flex w-min items-center space-x-1 data-[canedit=false]:invisible"
-										variant="default"
-									>
-										<PlusIcon />
-										<span>Play After</span>
-									</Button>
-								</SelectLayersDialog>
-								<SelectLayersDialog
-									title="Play Next"
-									description="Select layers to play next"
-									selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
-									open={playNextPopoverOpen}
-									onOpenChange={setPlayNextPopoverOpen}
-								>
-									<Button
-										data-canedit={canEdit}
-										className="flex w-min items-center space-x-1 data-[canedit=false]:invisible"
-										variant="default"
-									>
-										<PlusIcon />
-										<span>Play Next</span>
-									</Button>
-								</SelectLayersDialog>
-							</div>
+							<CardDescription
+								data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+								className="data-[limitreached=true]:text-destructive"
+							>
+								{queueLength} / {maxQueueSize}
+							</CardDescription>
+							<QueueControlPanel />
 						</CardHeader>
 						<CardContent>
 							<LayerList store={QD.LQStore} allowVotes={true} />
@@ -246,6 +193,66 @@ export default function ServerDashboard() {
 					<ServerSettingsPanel ref={settingsPanelRef} />
 				</div>
 			</span>
+		</div>
+	)
+}
+
+function QueueControlPanel() {
+	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
+	function setPlayNextPopoverOpen(v: boolean) {
+		QD.QDStore.getState().tryStartEditing()
+		_setPlayNextPopoverOpen(v)
+	}
+
+	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = React.useState(false)
+	function setAppendLayersPopoverOpen(v: boolean) {
+		QD.QDStore.getState().tryStartEditing()
+		_setAppendLayersPopoverOpen(v)
+	}
+	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
+
+	return (
+		<div className="flex items-center space-x-1">
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => {
+							QD.LQStore.getState().clear()
+						}}
+					>
+						<Icons.Trash />
+					</Button>
+				</TooltipTrigger>
+				<TooltipContent>
+					<p>Clear Queue</p>
+				</TooltipContent>
+			</Tooltip>
+			<SelectLayersDialog
+				title="Add to Queue"
+				description="Select layers to add to the queue"
+				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
+				open={appendLayersPopoverOpen}
+				onOpenChange={setAppendLayersPopoverOpen}
+			>
+				<Button data-canedit={canEdit} className="flex w-min items-center space-x-1 data-[canedit=false]:invisible" variant="default">
+					<PlusIcon />
+					<span>Play After</span>
+				</Button>
+			</SelectLayersDialog>
+			<SelectLayersDialog
+				title="Play Next"
+				description="Select layers to play next"
+				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
+				open={playNextPopoverOpen}
+				onOpenChange={setPlayNextPopoverOpen}
+			>
+				<Button data-canedit={canEdit} className="flex w-min items-center space-x-1 data-[canedit=false]:invisible" variant="default">
+					<PlusIcon />
+					<span>Play Next</span>
+				</Button>
+			</SelectLayersDialog>
 		</div>
 	)
 }
@@ -752,15 +759,18 @@ function QueueGenerationCard() {
 
 		if (replaceCurrentGenerated) {
 			// Remove generated items from end of queue
-			while (
-				serverStateMut.layerQueue.length > 0 &&
-				serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].source === 'generated'
-			) {
-				QD.LQStore.getState().remove(serverStateMut.layerQueue[serverStateMut.layerQueue.length - 1].id)
+			while (true) {
+				const state = QD.LQStore.getState()
+				if (state.layerList.length === 0) break
+				if (state.layerList[state.layerList.length - 1].source !== 'generated') break
+				if (!state.listMutations.added.has(state.layerList[state.layerList.length - 1].id)) break
+				const id = state.layerList[state.layerList.length - 1].id
+				state.remove(id)
 			}
 		}
 
-		QD.LQStore.getState().add(generated)
+		const state = QD.LQStore.getState()
+		state.add(generated)
 	}
 
 	return (
