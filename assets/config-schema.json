@@ -196,7 +196,7 @@
           "items": {
             "type": "object",
             "properties": {
-              "userId": {"type": "integer", "format": "int64"},
+              "userId": {"$ref": "#/properties/homeDiscordGuildId"},
               "roles": {
                 "type": "array",
                 "items": {

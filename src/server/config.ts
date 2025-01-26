@@ -50,7 +50,7 @@ export const ConfigSchema = z.object({
 		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.RoleSchema) })).optional(),
-		'discord-user': z.array(z.object({ userId: z.bigint(), roles: z.array(RBAC.RoleSchema) })).optional(),
+		'discord-user': z.array(z.object({ userId: ParsedBigIntSchema, roles: z.array(RBAC.RoleSchema) })).optional(),
 		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.RoleSchema) })).optional(),
 	}),
 	// TODO write refinement to make sure that all roles referenced in role assignments are defined in globalRolePermissions
