@@ -11,7 +11,7 @@
     "check": "tsc -b",
     "format": "prettier --plugin '@babel/plugin-proposal-explicit-resource-management' --write '**/*.{ts,tsx,js}'",
     "build:prod": "vite build",
-    "server:prod": "NODE_ENV=production tsx --tsconfig tsconfig.node.json src/scripts/host.ts",
+    "server:prod": "NODE_ENV=production tsx --tsconfig tsconfig.node.json src/server/main.ts",
     "server:dev": "NODE_ENV=development tsx --watch --tsconfig tsconfig.node.json src/server/main.ts",
     "__server:dev:debug:comment__": "use chrome node devtools with below script",
     "server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/main.ts",
