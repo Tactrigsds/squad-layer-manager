@@ -114,9 +114,7 @@ export function userHasPerms<T extends PermissionType>(
 				}
 
 	for (const reqPerm of req.permits) {
-		const hasPerm = userPerms.find(
-			(userPerm) => deepEqual(userPerm, reqPerm) || (userPerm.type === 'filters:write-all' && reqPerm.type === 'filters:write')
-		)
+		const hasPerm = userPerms.find((userPerm) => deepEqual(userPerm, reqPerm))
 		if (req.check === 'all' && !hasPerm) return false
 		if (req.check === 'any' && hasPerm) return true
 	}

@@ -101,6 +101,13 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 	for (const role of roles) {
 		perms.push(...globalRolePermissions[role])
 	}
+	if (perms.find((p) => p.type === 'filters:write-all')) {
+		const allFilters = await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters)
+		perms.push(...allFilters.map((f) => RBAC.perm('filters:write', { filterId: f.id })))
+	}
+	if (perms.find((p) => p.type === 'queue:force-write')) {
+		perms.push(RBAC.perm('queue:write'))
+	}
 
 	perms.push(...(await ownedFiltersPromise).flatMap((f) => [RBAC.perm('filters:write', { filterId: f.id })]))
 

@@ -644,12 +644,15 @@ function FilterEntitySelect(props: {
 		label: f.name,
 	}))
 	const enableCheckboxId = React.useId()
+	const loggedInUser = useLoggedInUser()
+	const hasForceWrite = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 	return (
 		<div className={cn('flex space-x-2 items-center', props.className)}>
 			{props.allowToggle && (
 				<>
 					<Checkbox
 						id={enableCheckboxId}
+						disabled={!hasForceWrite}
 						onCheckedChange={(v) => {
 							if (v === 'indeterminate') return
 							props.setEnabled?.(v)
@@ -658,7 +661,7 @@ function FilterEntitySelect(props: {
 					/>
 					<ComboBox
 						title="Filter"
-						disabled={props.allowToggle && !props.enabled}
+						disabled={!hasForceWrite}
 						className="flex-grow"
 						options={filterOptions ?? LOADING}
 						allowEmpty={true}
