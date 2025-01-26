@@ -75,7 +75,7 @@ export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: Opera
 // -------- Logging end --------
 
 export type Db = {
-	db(): DB.Db
+	db(opts?: { redactParams?: boolean }): DB.Db
 } & Log
 
 // indicates the context is in a db transaction

@@ -28,12 +28,17 @@ export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
 	if (ctx.db) throw new Error('db already exists')
 	return {
 		...ctx,
-		db() {
+		db(opts?: { redactParams?: boolean }) {
+			const redactParams = opts?.redactParams ?? false
 			const tracedPool = new TracedPool(this, pool) as unknown as MySQL.Pool
 			const db = drizzle(tracedPool, {
 				logger: {
 					logQuery: (query: string, params: unknown[]) => {
-						this.log.debug({ params }, 'DB: %s', query)
+						if (redactParams) {
+							this.log.debug('DB: %s', query)
+						} else {
+							this.log.debug({ params }, 'DB: %s', query)
+						}
 					},
 				},
 			})
