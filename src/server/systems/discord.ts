@@ -8,13 +8,13 @@ import { CONFIG } from '@/server/config'
 export const DiscordUserSchema = z.object({
 	id: z.string().transform(BigInt),
 	username: z.string(),
-	global_name: z.string(),
-	discriminator: z.string(),
+	// global_name: z.string(),
+	// discriminator: z.string(),
 	avatar: z.string().nullable(),
-	locale: z.string(),
-	flags: z.number(),
-	premium_type: z.number(),
-	public_flags: z.number(),
+	// locale: z.string(),
+	// flags: z.number(),
+	// premium_type: z.number(),
+	// public_flags: z.number(),
 })
 
 export type AccessToken = {
