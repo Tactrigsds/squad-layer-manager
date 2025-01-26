@@ -31,7 +31,7 @@ export async function setupSessions() {
 export async function validateSession(sessionId: string, baseCtx: C.Log & C.Db) {
 	await using ctx = C.pushOperation(baseCtx, 'sessions:validate')
 	const [row] = await ctx
-		.db()
+		.db({ redactParams: true })
 		.select({ session: Schema.sessions, user: Schema.users })
 		.from(Schema.sessions)
 		.where(eq(Schema.sessions.id, sessionId))

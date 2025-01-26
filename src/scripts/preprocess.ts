@@ -31,6 +31,28 @@ export const ParsedNanFloatSchema = z
 
 const NullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
+const DEFAULT_LAYER_VALUES = {
+	Logistics_1: null,
+	Transportation_1: null,
+	'Anti-Infantry_1': null,
+	Armor_1: null,
+	ZERO_Score_1: null,
+	Logistics_2: null,
+	Transportation_2: null,
+	'Anti-Infantry_2': null,
+	Armor_2: null,
+	ZERO_Score_2: null,
+	Balance_Differential: null,
+	Asymmetry_Score: null,
+	Logistics_Diff: null,
+	Transportation_Diff: null,
+	'Anti-Infantry_Diff': null,
+	Armor_Diff: null,
+	ZERO_Score_Diff: null,
+	Z_Pool: false,
+	Scored: false,
+}
+
 // layout expected from csv
 export const RawLayerSchema = z
 	.object({
@@ -240,59 +262,11 @@ async function updateLayersTable(_ctx: C.Log & C.Db, pipeline: SquadPipelineMode
 		ctx.log.info('Truncating layers table')
 		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
 
-		//@ts-expect-error idc
-		const extraJensensLayers: M.Layer = [
-			'JensensRange_ADF-PLA',
-			'JensensRange_BAF-IMF',
-			'JensensRange_CAF-INS',
-			'JensensRange_PLANMC-VDV',
-			'JensensRange_USA-RGF',
-			'JensensRange_USA-TLF',
-			'JensensRange_USMC-MEA',
-		].map((layer) => {
-			const { gamemode, version } = M.parseLayerString(layer)
-			const [level, factions] = layer.split('_')
-			const [faction1, faction2] = factions.split('-')
-			const id = M.getLayerId({
-				Level: level,
-				Gamemode: gamemode,
-				LayerVersion: version,
-				Faction_1: faction1,
-				SubFac_1: null,
-				Faction_2: faction2,
-				SubFac_2: null,
-			})
-			return {
-				id,
-				Gamemode: gamemode,
-				LayerVersion: version,
-				Level: level,
-				Layer: layer,
-				Size: 'Medium',
-				Faction_1: faction1,
-				SubFac_1: null,
-				Faction_2: faction2,
-				SubFac_2: null,
-				Logistics_1: null,
-				Transportation_1: null,
-				'Anti-Infantry_1': null,
-				Armor_1: null,
-				ZERO_Score_1: null,
-				Logistics_2: null,
-				Transportation_2: null,
-				'Anti-Infantry_2': null,
-				Armor_2: null,
-				ZERO_Score_2: null,
-				Balance_Differential: null,
-				Asymmetry_Score: null,
-				Logistics_Diff: null,
-				Transportation_Diff: null,
-				'Anti-Infantry_Diff': null,
-				Armor_Diff: null,
-				ZERO_Score_Diff: null,
-			}
-		})
-		await ctx.db().insert(Schema.layers).values(extraJensensLayers)
+		await ctx.db().insert(Schema.layers).values(getJensensLayers())
+		await ctx
+			.db()
+			.insert(Schema.layers)
+			.values(getSeedingLayers(pipeline, biomes, factions))
 
 		const chunkSize = 2500
 		let chunk: M.Layer[] = []
@@ -335,6 +309,112 @@ function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
 	factionFullNames.WPMC = 'Western Private Military Contractors'
 	factionFullNames.PLAAGF = 'PLA Amphibious Ground Forces'
 	return factionFullNames
+}
+
+function getJensensLayers(): M.Layer[] {
+	return [
+		'JensensRange_WPMC-TLF',
+		'JensensRange_USMC-MEA',
+		'JensensRange_USA-RGF',
+		'JensensRange_PLANMC-VDV',
+		'JensensRange_CAF-INS',
+		'JensensRange_BAF-IMF',
+		'JensensRange_ADF-PLA',
+	].map((layer) => {
+		const { gamemode, version } = M.parseLayerString(layer)
+		const [level, factions] = layer.split('_')
+		const [faction1, faction2] = factions.split('-')
+		const id = M.getLayerId({
+			Level: level,
+			Gamemode: gamemode,
+			LayerVersion: version,
+			Faction_1: faction1,
+			SubFac_1: null,
+			Faction_2: faction2,
+			SubFac_2: null,
+		})
+		return {
+			id,
+			Gamemode: gamemode,
+			LayerVersion: version,
+			Level: level,
+			Layer: layer,
+			Size: 'Medium',
+			Faction_1: faction1,
+			SubFac_1: null,
+			Faction_2: faction2,
+			SubFac_2: null,
+			...DEFAULT_LAYER_VALUES,
+		}
+	})
+}
+
+function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[], factions: FactionDetails[]) {
+	const seedLayers: M.Layer[] = []
+	for (const layer of pipeline.Maps) {
+		if (!layer.levelName.toLowerCase().includes('seed')) continue
+		const mapName = M.preprocessLevel(layer.mapId)
+		// gross
+		if (layer.levelName.startsWith('Albasrah')) {
+			layer.levelName = layer.levelName.replace('Albasrah', 'AlBasrah')
+		}
+
+		const matchups = getSeedingMatchupsForLayer(layer.mapName, factions, biomes)
+		for (const [team1, team2] of matchups) {
+			seedLayers.push(
+				M.includeComputedCollections({
+					id: M.getLayerId({
+						Level: mapName,
+						Gamemode: layer.gamemode,
+						LayerVersion: layer.layerVersion.toUpperCase(),
+						Faction_1: team1,
+						SubFac_1: null,
+						Faction_2: team2,
+						SubFac_2: null,
+					}),
+					Level: mapName,
+					Layer: layer.levelName,
+					Size: 'Small',
+					Gamemode: layer.gamemode,
+					LayerVersion: layer.layerVersion.toUpperCase(),
+					Faction_1: team1,
+					SubFac_1: null,
+					Faction_2: team2,
+					SubFac_2: null,
+					...DEFAULT_LAYER_VALUES,
+				})
+			)
+		}
+	}
+	return seedLayers
+}
+
+function normalizeMapName(name: string) {
+	return name.toLowerCase().replace(/[^a-z]/g, '')
+}
+
+function compareMapNames(a: string, b: string) {
+	a = normalizeMapName(a)
+	b = normalizeMapName(b)
+	return a.includes(a) || b.includes(a)
+}
+
+function getSeedingMatchupsForLayer(mapName: string, factions: FactionDetails[], biomes: Biome[]) {
+	const biome = biomes.find((b) => b.maps.some((map) => compareMapNames(map, mapName)))!
+	if (!biome) {
+		throw new Error(`No biome found for map ${mapName}`)
+	}
+	const allBiomeFactions = factions.filter((f) => biome.factions.includes(f.faction))
+	const matchups: [string, string][] = []
+	for (const team1 of allBiomeFactions) {
+		for (const team2 of allBiomeFactions) {
+			if (team1.alliance !== 'INDEPENDENT' && team1.alliance === team2.alliance) {
+				continue
+			}
+			matchups.push([team1.faction, team2.faction])
+		}
+	}
+	return matchups
 }
 
 async function updateLayerComponentsAndSubfactionFunction(

@@ -145,10 +145,13 @@ export type AdminSetNextLayerOptions = {
 
 export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 	function getFactionModifier(faction: string, subFac: string | null) {
-		return `${faction}${subFac ? `+${subFac}` : ''}`
+		return ` ${faction}${subFac ? `+${subFac}` : ''}`
+	}
+	if (layer.Layer.startsWith('JensensRange')) {
+		return `AdminSetNextLayer ${layer.Layer}`
 	}
 
-	return `AdminSetNextLayer ${layer.Layer} ${getFactionModifier(layer.Faction_1, layer.SubFac_1)} ${getFactionModifier(
+	return `AdminSetNextLayer ${layer.Layer}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${getFactionModifier(
 		layer.Faction_2,
 		layer.SubFac_2
 	)}`
