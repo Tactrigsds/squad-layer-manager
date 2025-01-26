@@ -20,8 +20,8 @@ export type Op = {
 	result?: 'ok' | string
 	error?: any
 	endMsgBindings: Record<string, any>
-	[Symbol.asyncDispose]: (err?: any) => Promise<void>
-	[Symbol.dispose]: (err?: any) => void
+	[Symbol.asyncDispose]: () => Promise<void>
+	[Symbol.dispose]: () => void
 }
 
 let opIdx = 0

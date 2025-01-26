@@ -58,7 +58,7 @@ describe('pushOperation', () => {
 		await using opContext = Context.pushOperation(mockContext, 'test-op')
 		const error = new Error('Test error')
 
-		opContext[Symbol.dispose](error)
+		opContext[Symbol.dispose]()
 
 		expect(errorSpy).toHaveBeenCalledWith(
 			{ err: error, result: 'error' },
