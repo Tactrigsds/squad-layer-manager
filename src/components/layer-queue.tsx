@@ -155,6 +155,7 @@ export default function ServerDashboard() {
 		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
 	})
 	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
+	const slmConfig = useConfig()
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
 			<span className="flex space-x-4">
@@ -170,7 +171,14 @@ export default function ServerDashboard() {
 										<EndMatchDialog />
 									</span>
 								</CardHeader>
-								<CardContent>{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}</CardContent>
+								<CardContent className="flex justify-between">
+									{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}
+									{slmConfig?.matchHistoryUrl && (
+										<a className={buttonVariants({ variant: 'ghost' })} target="_blank" href={slmConfig.matchHistoryUrl}>
+											View Match History
+										</a>
+									)}
+								</CardContent>
 							</>
 						)}
 						{!isEditing && editingUser && !inEditTransition && (
