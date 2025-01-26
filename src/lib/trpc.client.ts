@@ -19,7 +19,7 @@ export const links = [
 			onError: (error) => {
 				console.error(error)
 				globalToast$.next({
-					title: 'An error occured while communicating with the server. Try refreshing the page.',
+					title: 'An error occurred while communicating with the server. Try refreshing the page.',
 					variant: 'destructive',
 				})
 			},
