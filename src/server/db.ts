@@ -11,7 +11,7 @@ export type Db = MySql2Database<Record<string, never>>
 let pool: MySQL.Pool
 
 export function setupDatabase() {
-	const env: Parameters<typeof MySQL.createPool>[0] = {
+	pool = MySQL.createPool({
 		host: ENV.DB_HOST,
 		port: ENV.DB_PORT,
 		user: ENV.DB_USER,
@@ -20,8 +20,7 @@ export function setupDatabase() {
 
 		// return big numbers as strings to avoid precision loss. without this bigints will return incorrect values
 		supportBigNumbers: true,
-	}
-	pool = MySQL.createPool(env)
+	})
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date

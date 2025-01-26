@@ -102,6 +102,12 @@ export const WARNS = {
 	},
 } satisfies WarnNode
 
+export const GENERAL = {
+	auth: {
+		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
+	},
+}
+
 type WarnNode = {
 	[key: string]: WarnNode | WarnOptions | ((...args: any[]) => WarnOptions)
 }

@@ -754,6 +754,8 @@ async function updateQueue({ input, ctx: baseCtx }: { input: M.UserModifiableSer
 			}
 		}
 
+		// TODO need to implement queue:force-write via a structural diff on the changed layerIds
+
 		serverState.settings = input.settings
 		serverState.layerQueue = input.layerQueue
 		serverState.historyFilters = input.historyFilters

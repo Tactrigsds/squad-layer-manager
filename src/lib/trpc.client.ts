@@ -12,9 +12,16 @@ const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
 export const links = [
 	wsLink({
 		client: createWSClient({
+			keepAlive: {
+				enabled: true,
+			},
 			url: wsUrl,
 			onError: (error) => {
-				globalToast$.next({ title: 'An error occured while sending data to the server. Try refreshing the page', variant: 'destructive' })
+				console.error(error)
+				globalToast$.next({
+					title: 'An error occured while communicating with the server. Try refreshing the page.',
+					variant: 'destructive',
+				})
 			},
 			onClose: () => {
 				console.log('WebSocket connection closed')

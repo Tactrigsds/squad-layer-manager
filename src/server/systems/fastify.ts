@@ -10,6 +10,7 @@ import { WebSocket } from 'ws'
 import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
+import * as Messages from '@/messages'
 import * as path from 'node:path'
 
 import * as Paths from '@/server/paths'
@@ -125,11 +126,11 @@ export async function setupFastify() {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = getCtx(req)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, discordUser.id, { check: 'all', permits: [RBAC.perm('site:authorized')] })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, discordUser.id, RBAC.perm('site:authorized'))
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':
-					return reply.status(401).send('You have not been granted access to this application: ')
+					return reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 				default:
 					assertNever(denyRes.code)
 			}
@@ -204,6 +205,8 @@ export async function setupFastify() {
 			case 'unauthorized:no-session':
 			case 'unauthorized:invalid-session':
 				return Sessions.clearInvalidSession({ ...ctx, req, res })
+			case 'err:permission-denied':
+				return res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 			default:
 				assertNever(authRes)
 		}
@@ -260,18 +263,27 @@ export async function createAuthorizedRequestContext<T extends C.Log & C.Db & { 
 		}
 	}
 
-	const validSession = await Sessions.validateSession(sessionId, ctx)
-	if (validSession.code !== 'ok') {
-		return {
-			code: 'unauthorized:invalid-session' as const,
-			message: 'Invalid session',
-		}
+	const validSessionRes = await Sessions.validateSession(sessionId, ctx)
+	switch (validSessionRes.code) {
+		case 'err:expired':
+		case 'err:not-found':
+			return {
+				code: 'unauthorized:invalid-session' as const,
+				message: 'Invalid session',
+			}
+		case 'err:permission-denied':
+			return validSessionRes
+		case 'ok':
+			break
+		default:
+			assertNever(validSessionRes)
 	}
+
 	const authedCtx: T & C.AuthedUser = {
 		...ctx,
 		sessionId,
-		user: validSession.user,
-		log: ctx.log.child({ username: validSession.user.username }),
+		user: validSessionRes.user,
+		log: ctx.log.child({ username: validSessionRes.user.username }),
 	}
 
 	return {
@@ -290,11 +302,10 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 			case 'unauthorized:invalid-session':
 				// sleep(500).then(() => (options.res as unknown as WebSocket).close())
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
+			case 'err:permission-denied':
+				throw new TRPCError({ code: 'UNAUTHORIZED', message: Messages.GENERAL.auth.noApplicationAccess })
 			default:
-				throw new TRPCError({
-					code: 'INTERNAL_SERVER_ERROR',
-					message: 'Unknown error occurred',
-				})
+				assertNever(result)
 		}
 	}
 	const wsClientId = createId(32)

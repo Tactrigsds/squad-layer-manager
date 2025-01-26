@@ -50,6 +50,7 @@ export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [Per
 export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
 	'site:authorized',
 	'queue:write',
+	'queue:force-write',
 	'settings:write',
 	'vote:manage',
 	'filters:write-all',

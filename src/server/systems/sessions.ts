@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import * as DB from '@/server/db.ts'
+import * as RBAC from '@/rbac.models'
+import * as Rbac from '@/server/systems/rbac.system'
 import { baseLogger } from '@/server/logger'
 import * as Schema from '@/server/schema.ts'
 
@@ -39,6 +41,8 @@ export async function validateSession(sessionId: string, baseCtx: C.Log & C.Db) 
 		ctx.tasks.push(ctx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id)))
 		return { code: 'err:expired' as const }
 	}
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, row.user.discordId, RBAC.perm('site:authorized'))
+	if (denyRes) return denyRes
 	await Promise.all(ctx.tasks)
 	return { code: 'ok' as const, sessionId: row.session.id, user: row.user }
 }

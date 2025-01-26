@@ -778,6 +778,7 @@ function QueueGenerationCard() {
 	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
 	const numVoteChoicesId = React.useId()
 	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
+	const slmConfig = useConfig()
 
 	const genereateMutation = useMutation({
 		mutationFn: generateLayerQueueItems,
@@ -855,6 +856,7 @@ function QueueGenerationCard() {
 							type="number"
 							id={numVoteChoicesId}
 							min="1"
+							max={slmConfig?.maxNumVoteChoices}
 							defaultValue={numVoteChoices}
 							onChange={(e) => {
 								setNumVoteChoices(parseInt(e.target.value) ?? 0)

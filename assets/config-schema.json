@@ -150,6 +150,7 @@
               "enum": [
                 "site:authorized",
                 "queue:write",
+                "queue:force-write",
                 "settings:write",
                 "vote:manage",
                 "filters:write-all",
