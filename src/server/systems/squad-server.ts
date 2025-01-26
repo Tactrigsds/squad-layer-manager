@@ -24,6 +24,7 @@ export let rcon!: SquadRcon
 export let adminList!: AsyncResource<SM.SquadAdmins>
 
 export async function warnAllAdmins(ctx: C.Log, message: string) {
+	return
 	await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
 	const [{ value: admins }, { value: players }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
 	const ops: Promise<void>[] = []
