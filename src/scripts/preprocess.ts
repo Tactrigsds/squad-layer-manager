@@ -146,7 +146,6 @@ async function downloadPipeline(_ctx: C.Log) {
 function processLayer(record: Record<string, string>): M.Layer {
 	const res = RawLayerSchema.safeParse(record)
 	if (res.error) {
-		console.log(record)
 		throw res.error
 	}
 	const rawLayer = res.data

@@ -308,7 +308,6 @@ function EndMatchDialog() {
 	async function endMatch() {
 		setIsOpen(false)
 		const res = await endMatchMutation.mutateAsync()
-		console.log(res)
 		switch (res.code) {
 			case 'ok':
 				globalToast$.next({ title: 'Match ended!' })
