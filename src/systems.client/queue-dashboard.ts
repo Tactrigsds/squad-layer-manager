@@ -1,4 +1,5 @@
 import { WithMutationId, ItemMutations, ItemMutationState } from '@/lib/item-mutations'
+import * as ReactRouterDOM from 'react-router-dom'
 import { Getter, Setter } from '@/lib/zustand'
 import * as Rx from 'rxjs'
 import * as RBAC from '@/rbac.models'
@@ -19,6 +20,7 @@ import * as Jotai from 'jotai'
 import { configAtom } from './config.client'
 import { fetchLoggedInUser } from './logged-in-user'
 import { deepClone } from '@/lib/object'
+import React from 'react'
 
 // -------- types --------
 export type IdedLLItem = M.LayerListItem & WithMutationId
@@ -394,6 +396,16 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 })
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
+
+/**
+ * Resets the editing state when navigating to a different page
+ */
+export function useResetEditOnNavigate() {
+	const pathname = ReactRouterDOM.useLocation().pathname
+	React.useEffect(() => {
+		QDStore.getState().reset()
+	}, [pathname])
+}
 
 export function selectCurrentPoolFilterId(store: QDState) {
 	return store.editedServerState.settings.queue.poolFilterId

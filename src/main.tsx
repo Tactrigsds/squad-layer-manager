@@ -4,7 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { exists } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
-import Providers from './components/providers.tsx'
+import { Providers, InnerRouterProviders } from './components/providers.tsx'
 import './index.css'
 import { enableMapSet } from 'immer'
 
@@ -26,41 +26,49 @@ const router = createBrowserRouter([
 	{
 		path: exists('/filters'),
 		element: (
-			<AppContainer>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<FilterIndex />
-				</React.Suspense>
-			</AppContainer>
+			<InnerRouterProviders>
+				<AppContainer>
+					<React.Suspense fallback={<FullPageSpinner />}>
+						<FilterIndex />
+					</React.Suspense>
+				</AppContainer>
+			</InnerRouterProviders>
 		),
 	},
 	{
 		path: exists('/filters/:id'),
 		element: (
-			<AppContainer>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<FilterEdit />
-				</React.Suspense>
-			</AppContainer>
+			<InnerRouterProviders>
+				<AppContainer>
+					<React.Suspense fallback={<FullPageSpinner />}>
+						<FilterEdit />
+					</React.Suspense>
+				</AppContainer>
+			</InnerRouterProviders>
 		),
 	},
 	{
 		path: exists('/filters/new'),
 		element: (
-			<AppContainer>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<FilterNew />
-				</React.Suspense>
-			</AppContainer>
+			<InnerRouterProviders>
+				<AppContainer>
+					<React.Suspense fallback={<FullPageSpinner />}>
+						<FilterNew />
+					</React.Suspense>
+				</AppContainer>
+			</InnerRouterProviders>
 		),
 	},
 	{
 		path: exists('/'),
 		element: (
-			<AppContainer>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<LayerQueue />
-				</React.Suspense>
-			</AppContainer>
+			<InnerRouterProviders>
+				<AppContainer>
+					<React.Suspense fallback={<FullPageSpinner />}>
+						<LayerQueue />
+					</React.Suspense>
+				</AppContainer>
+			</InnerRouterProviders>
 		),
 	},
 ])

@@ -8,6 +8,7 @@ import React from 'react'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
+import { useLocation } from 'react-router-dom'
 
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -71,7 +72,6 @@ export default function ServerDashboard() {
 	const updateQueueMutation = useMutation({
 		mutationFn: trpc.layerQueue.updateQueue.mutate,
 	})
-	// const validatedHistoryFilters = M.histo
 	async function saveLqState() {
 		const serverStateMut = QD.QDStore.getState().editedServerState
 		const res = await updateQueueMutation.mutateAsync(serverStateMut)
@@ -279,7 +279,7 @@ function QueueControlPanel() {
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
 			>
-				<Button data-canedit={canEdit} className="flex w-min items-center space-x-1 data-[canedit=false]:invisible" variant="default">
+				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<PlusIcon />
 					<span>Play After</span>
 				</Button>
@@ -291,7 +291,7 @@ function QueueControlPanel() {
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}
 			>
-				<Button data-canedit={canEdit} className="flex w-min items-center space-x-1 data-[canedit=false]:invisible" variant="default">
+				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<PlusIcon />
 					<span>Play Next</span>
 				</Button>
@@ -784,13 +784,13 @@ function QueueGenerationCard() {
 	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
 	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
 	const numVoteChoicesId = React.useId()
-	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
+	const canEditQueue = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
 	const slmConfig = useConfig()
 
 	const genereateMutation = useMutation({
 		mutationFn: generateLayerQueueItems,
 	})
-	if (!canEditSettings) return null
+
 	async function generateLayerQueueItems() {
 		let serverStateMut = QD.QDStore.getState().editedServerState
 		const seqIdBefore = serverStateMut.layerQueueSeqId
@@ -883,7 +883,7 @@ function QueueGenerationCard() {
 					<Label htmlFor={replaceCurrentGeneratedId}>Replace current generated</Label>
 				</div>
 				<div className="flex space-x-2">
-					<Button disabled={genereateMutation.isPending} onClick={() => genereateMutation.mutateAsync()}>
+					<Button disabled={genereateMutation.isPending || !canEditQueue} onClick={() => genereateMutation.mutateAsync()}>
 						Generate
 					</Button>
 					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />

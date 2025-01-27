@@ -14,9 +14,11 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useGlobalToast } from '@/hooks/use-global-toast'
 import { configAtom } from '@/systems.client/config.client'
 import { DragContextProvider } from '@/systems.client/dndkit.provider'
+import * as QD from '@/systems.client/queue-dashboard'
 
-export default function Providers(props: { children: ReactNode }) {
+export function Providers(props: { children: ReactNode }) {
 	useGlobalToast()
+
 	return (
 		<QueryClientProvider client={reactQueryClient}>
 			<ReactQueryDevtools initialIsOpen={true} />
@@ -43,5 +45,11 @@ export function ConfigAtomProvider(props: { children: React.ReactNode }) {
 			store.set(configAtom, value)
 		})
 	}, [])
+	return <>{props.children}</>
+}
+
+// for hooks/providers that need to be used in the context of react router
+export function InnerRouterProviders(props: { children: ReactNode }) {
+	QD.useResetEditOnNavigate()
 	return <>{props.children}</>
 }
