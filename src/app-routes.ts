@@ -44,17 +44,17 @@ function defRoute<T extends string, GetLink extends RouteDefinition['link'], Par
 	}
 }
 
-export function exists<P extends Platform>(route: Route<P>) {
-	if (!routes[route]) {
-		throw new Error(`Route ${route} is not defined in the routes object`)
+export function exists<P extends Platform>(path: Route<P>) {
+	if (!routes[path]) {
+		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
-	return route
+	return path
 }
 
-export function link<R extends Route<'server'>>(routePath: R, ...args: (typeof routes)[R]['params']) {
-	const linkFn = routes[routePath].link
+export function link<R extends Route<'server'>>(path: R, ...args: (typeof routes)[R]['params']) {
+	const linkFn = routes[path].link
 	if (!linkFn) {
-		throw new Error(`Route ${routePath} is not defined in the routes array`)
+		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
 	return linkFn(args)
 }
