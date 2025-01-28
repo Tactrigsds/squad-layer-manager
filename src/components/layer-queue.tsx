@@ -1333,7 +1333,7 @@ export function SelectLayersDialog(props: {
 							<TabsList
 								options={[
 									{ label: 'Vote', value: 'vote' },
-									{ label: 'Layers', value: 'layers' },
+									{ label: 'Set Layer', value: 'layers' },
 								]}
 								active={selectMode}
 								setActive={setAdditionType}
