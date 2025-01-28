@@ -7,6 +7,7 @@ import * as C from '@/server/context.ts'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import Rcon, { DecodedPacket } from './rcon-core'
 import * as SM from './squad-models'
+import { selectProps } from '../object'
 
 export type WarnOptions = { msg: string | string[]; repeat?: number } | string | string[]
 
@@ -166,7 +167,10 @@ export default class SquadRcon {
 	}
 
 	async setNextLayer(_ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
-		await using ctx = C.pushOperation(_ctx, 'squad-rcon:setNextLayer', { level: 'debug', startMsgBindings: { layer } })
+		await using ctx = C.pushOperation(_ctx, 'squad-rcon:setNextLayer', {
+			level: 'debug',
+			startMsgBindings: selectProps(layer, ['Layer', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2']),
+		})
 		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
 		this.serverStatus.invalidate(ctx)
 	}
