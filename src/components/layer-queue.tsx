@@ -8,7 +8,6 @@ import React from 'react'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as AR from '@/app-routes.ts'
 import * as FB from '@/lib/filter-builders.ts'
-import { useLocation } from 'react-router-dom'
 
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -1755,6 +1754,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 								draft[idxMap['SubFac_1']].value = draft[idxMap['SubFac_2']].value
 								draft[idxMap['Faction_2']].value = faction1
 								draft[idxMap['SubFac_2']].value = subFac1
+								delete draft[idxMap['id']].value
 							})
 						)
 					}
