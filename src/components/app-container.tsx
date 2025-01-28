@@ -7,18 +7,10 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import React from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { Dialog, DialogTitle, DialogTrigger, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog'
 
-import {
-	DropdownMenu,
-	dropdownMenuItemClassesBase,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuTrigger,
-} from './ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
@@ -91,46 +83,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										</button>
 									</DropdownMenuItem>
 								</form>
-								<Dialog onOpenChange={onPermissionsOpenChange} open={permissionsOpen}>
+								<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={permissionsOpen}>
 									<DropdownMenuItem onClick={() => setDropdownState('permissions')}>Permissions</DropdownMenuItem>
-									<DialogContent>
-										<DialogHeader>
-											<DialogTitle>{user.username}</DialogTitle>
-											<DialogDescription>Level of access</DialogDescription>
-										</DialogHeader>
-										<div className="flex space-x-4">
-											<div>
-												<h3 className={Typography.Large}>Permissions</h3>
-												<ul>
-													{user.perms.map((perm) => {
-														let scopeDisplay = perm.scope as string
-														if (perm.scope === 'filter') {
-															scopeDisplay = `${perm.scope} ${perm.args!.filterId}`
-														}
-														return (
-															<li key={JSON.stringify(perm)}>
-																-{' '}
-																<code>
-																	{perm.type} ({scopeDisplay})
-																</code>
-															</li>
-														)
-													})}
-												</ul>
-											</div>
-											<div>
-												<h3 className={Typography.Large}>Roles</h3>
-												<ul>
-													{user.roles.map((role) => (
-														<li key={role}>
-															- <code>{role}</code>
-														</li>
-													))}
-												</ul>
-											</div>
-										</div>
-									</DialogContent>
-								</Dialog>
+								</UserPermissionsDialog>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}
@@ -138,5 +93,51 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 			</nav>
 			<div className="flex flex-grow p-4">{props.children}</div>
 		</div>
+	)
+}
+
+function UserPermissionsDialog(props: { children: React.ReactNode; open: boolean; onOpenChange: (newState: boolean) => void }) {
+	const user = useLoggedInUser()
+	return (
+		<Dialog onOpenChange={props.onOpenChange} open={props.open}>
+			{props.children}
+			<DialogContent className="w-max">
+				<DialogHeader>
+					<DialogTitle>{user?.username}</DialogTitle>
+					<DialogDescription>Level of access</DialogDescription>
+				</DialogHeader>
+				<div className="flex space-x-4">
+					<div>
+						<h3 className={Typography.Large}>Permissions</h3>
+						<ul>
+							{user?.perms.map((perm) => {
+								let scopeDisplay = perm.scope as string
+								if (perm.scope === 'filter') {
+									scopeDisplay = `${perm.scope} ${perm.args!.filterId}`
+								}
+								return (
+									<li key={JSON.stringify(perm)}>
+										-{' '}
+										<code>
+											{perm.type} ({scopeDisplay})
+										</code>
+									</li>
+								)
+							})}
+						</ul>
+					</div>
+					<div>
+						<h3 className={Typography.Large}>Roles</h3>
+						<ul>
+							{user?.roles.map((role) => (
+								<li key={role}>
+									- <code>{role}</code>
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
 	)
 }
