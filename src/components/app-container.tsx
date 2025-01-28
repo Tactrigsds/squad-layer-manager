@@ -5,6 +5,7 @@ import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import React from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Dialog, DialogTitle, DialogTrigger, DialogContent, DialogHeader, DialogDescription } from '@/components/ui/dialog'
 
@@ -17,6 +18,7 @@ import {
 	DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { buttonVariants } from './ui/button'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const status = useSquadServerStatus()
@@ -24,6 +26,17 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
+
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | null>(null)
+	const onPrimaryDropdownOpenChange = (newState: boolean) => {
+		if (openState !== 'primary' && openState !== null) return
+		setDropdownState(newState ? 'primary' : null)
+	}
+	const onPermissionsOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'permissions' : null)
+	}
+	const primaryDropdownOpen = openState !== null
+	const permissionsOpen = openState === 'permissions'
 	return (
 		<div className="h-full w-full">
 			<nav className="flex h-16 items-center justify-between border-b px-4">
@@ -62,7 +75,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						</>
 					)}
 					{user && (
-						<DropdownMenu>
+						<DropdownMenu open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar className="hover:cursor-pointer select-none">
 									<AvatarImage src={avatarUrl} />
@@ -78,10 +91,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										</button>
 									</DropdownMenuItem>
 								</form>
-								<Dialog>
-									<DialogTrigger asChild>
-										<button className={cn(dropdownMenuItemClassesBase, 'w-full')}>Permissions</button>
-									</DialogTrigger>
+								<Dialog onOpenChange={onPermissionsOpenChange} open={permissionsOpen}>
+									<DropdownMenuItem onClick={() => setDropdownState('permissions')}>Permissions</DropdownMenuItem>
 									<DialogContent>
 										<DialogHeader>
 											<DialogTitle>{user.username}</DialogTitle>
