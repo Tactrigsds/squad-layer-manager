@@ -16,7 +16,8 @@
     "__server:dev:debug:comment__": "use chrome node devtools with below script",
     "server:dev:debug": "USING_DEVTOOLS=true NODE_ENV=development tsx --watch --inspect  --tsconfig tsconfig.node.json src/server/main.ts",
     "preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts",
-    "test:rcon": "NODE_ENV=development vitest 'src/lib/rcon'"
+    "test:rcon": "NODE_ENV=development vitest 'src/lib/rcon'",
+    "check-layer-compat": "tsx --tsconfig tsconfig.node.json src/scripts/check-layer-compat.ts ./broken-layers.csv"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

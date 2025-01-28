@@ -32,3 +32,5 @@ config.json
 google-credentials.json
 
 /data/layers.csv
+
+broken-layers.csv
