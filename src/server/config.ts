@@ -44,6 +44,7 @@ export const ConfigSchema = z.object({
 
 	matchHistoryUrl: z.string().url().optional(),
 	adminListSources: z.array(SM.AdminListSourceSchema),
+	adminListAdminRole: z.string().describe('The role in the adminlist which identifies an admin'),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
 		.record(z.array(z.union([RBAC.GLOBAL_PERMISSION_TYPE, z.literal('*').describe('include all permissions')])))

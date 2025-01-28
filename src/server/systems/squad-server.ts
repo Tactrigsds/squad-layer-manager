@@ -24,15 +24,14 @@ export let rcon!: SquadRcon
 export let adminList!: AsyncResource<SM.SquadAdmins>
 
 export async function warnAllAdmins(ctx: C.Log, message: string) {
-	return
 	await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
 	const [{ value: admins }, { value: players }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
 	const ops: Promise<void>[] = []
 
 	for (const player of players) {
-		if (admins.has(player.steamID)) {
+		const groups = admins.get(player.steamID)
+		if (groups?.[CONFIG.adminListAdminRole]) {
 			ops.push(rcon.warn(opCtx, player.steamID.toString(), message))
-			break
 		}
 	}
 	await Promise.all(ops)

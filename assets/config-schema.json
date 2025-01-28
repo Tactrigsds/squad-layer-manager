@@ -139,6 +139,10 @@
         "additionalProperties": false
       }
     },
+    "adminListAdminRole": {
+      "type": "string",
+      "description": "The role in the adminlist which identifies an admin"
+    },
     "homeDiscordGuildId": {"type": "string", "pattern": "^-?\\d+$"},
     "globalRolePermissions": {
       "type": "object",
@@ -236,6 +240,7 @@
     "defaults",
     "commands",
     "adminListSources",
+    "adminListAdminRole",
     "homeDiscordGuildId",
     "globalRolePermissions",
     "roleAssignments",
