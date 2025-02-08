@@ -3,7 +3,7 @@ import * as z from 'zod'
 import LayerComponents from '$root/assets/layer-components.json'
 import * as C from './lib/constants'
 import { deepClone, reverseMapping } from './lib/object'
-import type * as Schema from './server/schema'
+import type * as SchemaModels from '$root/drizzle/schema.models'
 import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
 import { PercentageSchema } from './lib/zod'
@@ -13,7 +13,7 @@ export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
-export type Layer = Schema.Layer & MiniLayer
+export type Layer = SchemaModels.Layer & MiniLayer
 export type Subfaction = C.Subfaction
 
 export type LayerIdArgs = {
@@ -564,7 +564,7 @@ export type UserPresenceStateUpdate = {
 	event: 'edit-start' | 'edit-end' | 'edit-kick'
 }
 
-export type User = Schema.User
+export type User = SchemaModels.User
 export type UserWithRbac = User & { perms: RBAC.Permission[]; roles: RBAC.Role[] }
 export type MiniUser = {
 	username: string
@@ -610,7 +610,7 @@ export const FilterEntitySchema = BaseFilterEntitySchema
 	// this refinement does not deal with mutual recustion
 	.refine((e) => !filterContainsId(e.id, e.filter), {
 		message: 'filter cannot be recursive',
-	}) satisfies z.ZodType<Schema.Filter>
+	}) satisfies z.ZodType<SchemaModels.Filter>
 
 export const UpdateFilterEntitySchema = BaseFilterEntitySchema.omit({ id: true, owner: true })
 export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true })

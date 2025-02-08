@@ -1,5 +1,5 @@
 import * as M from '@/models'
-import * as Schema from '@/server/schema'
+import * as Schema from '$root/drizzle/schema.ts'
 import * as E from 'drizzle-orm/expressions'
 import { procedure, router } from '@/server/trpc.server.ts'
 import { z } from 'zod'

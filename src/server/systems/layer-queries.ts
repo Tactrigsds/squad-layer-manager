@@ -7,8 +7,8 @@ import { z } from 'zod'
 import * as FB from '@/lib/filter-builders'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
-import * as Schema from '@/server/schema'
-import * as SquadjsSchema from '@/server/schema-squadjs'
+import * as Schema from '$root/drizzle/schema.ts'
+import * as SquadjsSchema from '$root/drizzle/schema-squadjs.ts'
 import * as LayerQueue from './layer-queue'
 import { assertNever } from '@/lib/typeGuards'
 import { procedure, router } from '@/server/trpc.server.ts'
@@ -83,7 +83,7 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 		query
 			.offset(input.pageIndex * input.pageSize)
 			.limit(input.pageSize)
-			.then((layers) => layers.map(M.includeComputedCollections)),
+			.then((layers) => (layers as M.Layer[]).map(M.includeComputedCollections)),
 		opCtx
 			.db()
 			.select({ count: sql<number>`count(*)` })
@@ -342,147 +342,148 @@ async function getFilterEntity(filterId: string, ctx: C.Db) {
 // }
 
 export async function getHistoryFilter(_ctx: C.Db & C.Log, historyFilters: M.HistoryFilter[], queuedLayerIds: M.LayerId[]) {
-	await using ctx = C.pushOperation(_ctx, 'layers-query:get-history-filter-node')
-	const sortedHistoryFilters = historyFilters.sort((a, b) => a.excludeFor.matches - b.excludeFor.matches)
+	return FB.and([])
+	// await using ctx = C.pushOperation(_ctx, 'layers-query:get-history-filter-node')
+	// const sortedHistoryFilters = historyFilters.sort((a, b) => a.excludeFor.matches - b.excludeFor.matches)
 
-	const comparisons: M.FilterNode[] = []
+	// const comparisons: M.FilterNode[] = []
 
-	for (const filter of sortedHistoryFilters) {
-		if (!comparisons) {
-			throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid filter' })
-		}
-		const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
-		const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
+	// for (const filter of sortedHistoryFilters) {
+	// 	if (!comparisons) {
+	// 		throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid filter' })
+	// 	}
+	// 	const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
+	// 	const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
 
-		const numFromHistory = filter.excludeFor.matches - queuedLayerIds.length
-		const _sqApplicable = ctx
-			.db()
-			//@ts-expect-error this works trust me
-			.select(Schema.layers)
-			.from(SquadjsSchema.dbLogMatches)
-			.leftJoin(subfacteam1, E.eq(subfacteam1.fullName, SquadjsSchema.dbLogMatches.subFactionTeam1))
-			.leftJoin(subfacteam2, E.eq(subfacteam2.fullName, SquadjsSchema.dbLogMatches.subFactionTeam2))
-			.leftJoin(
-				Schema.layers,
-				E.and(
-					E.eq(Schema.layers.Layer, SquadjsSchema.dbLogMatches.layerClassname),
-					E.eq(subfacteam1.shortName, Schema.layers.SubFac_1),
-					E.eq(subfacteam2.shortName, Schema.layers.SubFac_2),
-					E.eq(Schema.layers.Faction_1, SquadjsSchema.dbLogMatches.team1Short),
-					E.eq(Schema.layers.Faction_2, SquadjsSchema.dbLogMatches.team2Short)
-				)
-			)
-			.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
-			.limit(numFromHistory)
-			.as('applicable-matches')
+	// 	const numFromHistory = filter.excludeFor.matches - queuedLayerIds.length
+	// 	const _sqApplicable = ctx
+	// 		.db()
+	// 		//@ts-expect-error this works trust me
+	// 		.select(Schema.layers)
+	// 		.from(SquadjsSchema.dbLogMatches)
+	// 		.leftJoin(subfacteam1, E.eq(subfacteam1.fullName, SquadjsSchema.dbLogMatches.subFactionTeam1))
+	// 		.leftJoin(subfacteam2, E.eq(subfacteam2.fullName, SquadjsSchema.dbLogMatches.subFactionTeam2))
+	// 		.leftJoin(
+	// 			Schema.layers,
+	// 			E.and(
+	// 				E.eq(Schema.layers.Layer, SquadjsSchema.dbLogMatches.layerClassname),
+	// 				E.eq(subfacteam1.shortName, Schema.layers.SubFac_1),
+	// 				E.eq(subfacteam2.shortName, Schema.layers.SubFac_2),
+	// 				E.eq(Schema.layers.Faction_1, SquadjsSchema.dbLogMatches.team1Short),
+	// 				E.eq(Schema.layers.Faction_2, SquadjsSchema.dbLogMatches.team2Short)
+	// 			)
+	// 		)
+	// 		.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
+	// 		.limit(numFromHistory)
+	// 		.as('applicable-matches')
 
-		const applicableHistoryLayerIds = ctx.db().select({ id: _sqApplicable.id }).from(_sqApplicable)
+	// 	const applicableHistoryLayerIds = ctx.db().select({ id: _sqApplicable.id }).from(_sqApplicable)
 
-		const numFromQueue = Math.min(filter.excludeFor.matches, queuedLayerIds.length)
-		queuedLayerIds = queuedLayerIds.slice(0, numFromQueue)
-		const applicableLayers = ctx
-			.db()
-			.select()
-			.from(Schema.layers)
-			.where(E.or(E.inArray(Schema.layers.id, queuedLayerIds), E.inArray(Schema.layers.id, applicableHistoryLayerIds)))
-			.as('applicable-layers')
+	// 	const numFromQueue = Math.min(filter.excludeFor.matches, queuedLayerIds.length)
+	// 	queuedLayerIds = queuedLayerIds.slice(0, numFromQueue)
+	// 	const applicableLayers = ctx
+	// 		.db()
+	// 		.select()
+	// 		.from(Schema.layers)
+	// 		.where(E.or(E.inArray(Schema.layers.id, queuedLayerIds), E.inArray(Schema.layers.id, applicableHistoryLayerIds)))
+	// 		.as('applicable-layers')
 
-		ctx.tasks.push(
-			(async () => {
-				switch (filter.type) {
-					case 'dynamic': {
-						let selectedCols: M.LayerColumnKey[] = []
-						if (filter.column === 'FullMatchup') {
-							selectedCols = ['Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
-						} else if (filter.column === 'FactionMatchup') {
-							selectedCols = ['Faction_1', 'Faction_2']
-						} else if (filter.column === 'SubFacMatchup') {
-							selectedCols = ['SubFac_1', 'SubFac_2']
-						} else {
-							selectedCols = [filter.column]
-						}
-						const selected = Object.fromEntries(selectedCols.map((col) => [col, applicableLayers[col]]))
-						const applicableValues = await ctx.db().select(selected).from(applicableLayers)
-						if (M.isColType(filter.column, 'string')) {
-							comparisons.push(
-								FB.comp(
-									FB.inValues(
-										filter.column,
-										//@ts-expect-error this works trust me
-										[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
-									),
-									{ neg: true }
-								)
-							)
-						} else {
-							throw new Error('not implemented')
-						}
-						break
+	// 	ctx.tasks.push(
+	// 		(async () => {
+	// 			switch (filter.type) {
+	// 				case 'dynamic': {
+	// 					let selectedCols: M.LayerColumnKey[] = []
+	// 					if (filter.column === 'FullMatchup') {
+	// 						selectedCols = ['Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
+	// 					} else if (filter.column === 'FactionMatchup') {
+	// 						selectedCols = ['Faction_1', 'Faction_2']
+	// 					} else if (filter.column === 'SubFacMatchup') {
+	// 						selectedCols = ['SubFac_1', 'SubFac_2']
+	// 					} else {
+	// 						selectedCols = [filter.column]
+	// 					}
+	// 					const selected = Object.fromEntries(selectedCols.map((col) => [col, applicableLayers[col]]))
+	// 					const applicableValues = await ctx.db().select(selected).from(applicableLayers)
+	// 					if (M.isColType(filter.column, 'string')) {
+	// 						comparisons.push(
+	// 							FB.comp(
+	// 								FB.inValues(
+	// 									filter.column,
+	// 									//@ts-expect-error this works trust me
+	// 									[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
+	// 								),
+	// 								{ neg: true }
+	// 							)
+	// 						)
+	// 					} else {
+	// 						throw new Error('not implemented')
+	// 					}
+	// 					break
 
-						// todo match on the column type instead
-						// 	if (filter.comparison.code === 'eq') {
-						// 		if (!M.isColType(filter.column, 'string')) throw new Error('invalid column type for eq filter')
-						// 		comparisons.push(
-						// 			FB.comp(
-						// 				FB.inValues(
-						// 					filter.column,
-						// 					//@ts-expect-error this works trust me
-						// 					[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
-						// 				),
-						// 				{ neg: true }
-						// 			)
-						// 		)
-						// 	} else if (filter.comparison.code === 'has') {
-						// 		let values: string[][]
-						// 		if (filter.substitutedColumn === 'FullMatchup') {
-						// 			values = applicableValues.map((row) => [
-						// 				M.getLayerTeamString(row.Faction_1, row.SubFac_1),
-						// 				M.getLayerTeamString(row.Faction_2, row.SubFac_2),
-						// 			])
-						// 		} else if (filter.substitutedColumn === 'FactionMatchup') {
-						// 			values = applicableValues.map((row) => [row.Faction_1, row.Faction_2])
-						// 		} else if (filter.substitutedColumn === 'SubFacMatchup') {
-						// 			values = applicableValues.map((row) => [row.SubFac_1, row.SubFac_2])
-						// 		} else {
-						// 			throw new Error('Invalid column for has filter')
-						// 		}
+	// 					// todo match on the column type instead
+	// 					// 	if (filter.comparison.code === 'eq') {
+	// 					// 		if (!M.isColType(filter.column, 'string')) throw new Error('invalid column type for eq filter')
+	// 					// 		comparisons.push(
+	// 					// 			FB.comp(
+	// 					// 				FB.inValues(
+	// 					// 					filter.column,
+	// 					// 					//@ts-expect-error this works trust me
+	// 					// 					[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
+	// 					// 				),
+	// 					// 				{ neg: true }
+	// 					// 			)
+	// 					// 		)
+	// 					// 	} else if (filter.comparison.code === 'has') {
+	// 					// 		let values: string[][]
+	// 					// 		if (filter.substitutedColumn === 'FullMatchup') {
+	// 					// 			values = applicableValues.map((row) => [
+	// 					// 				M.getLayerTeamString(row.Faction_1, row.SubFac_1),
+	// 					// 				M.getLayerTeamString(row.Faction_2, row.SubFac_2),
+	// 					// 			])
+	// 					// 		} else if (filter.substitutedColumn === 'FactionMatchup') {
+	// 					// 			values = applicableValues.map((row) => [row.Faction_1, row.Faction_2])
+	// 					// 		} else if (filter.substitutedColumn === 'SubFacMatchup') {
+	// 					// 			values = applicableValues.map((row) => [row.SubFac_1, row.SubFac_2])
+	// 					// 		} else {
+	// 					// 			throw new Error('Invalid column for has filter')
+	// 					// 		}
 
-						// 		for (const value of values) {
-						// 			comparisons.push(FB.comp(FB.hasAll(filter.substitutedColumn, value), { neg: true }))
-						// 		}
-						// 	} else {
-						// 		throw new Error('Unsupported comparison type for substituted column')
-						// 	}
-					}
-					case 'static': {
-						const condition = await getWhereFilterConditions(
-							FB.comp(filter.comparison),
-							[],
-							ctx,
-							applicableLayers as unknown as typeof Schema.layers
-						)
-						const query = ctx
-							.db()
-							.select({ count: sql<number>`count(*)` })
-							.from(applicableLayers)
-							.where(condition)
+	// 					// 		for (const value of values) {
+	// 					// 			comparisons.push(FB.comp(FB.hasAll(filter.substitutedColumn, value), { neg: true }))
+	// 					// 		}
+	// 					// 	} else {
+	// 					// 		throw new Error('Unsupported comparison type for substituted column')
+	// 					// 	}
+	// 				}
+	// 				case 'static': {
+	// 					const condition = await getWhereFilterConditions(
+	// 						FB.comp(filter.comparison),
+	// 						[],
+	// 						ctx,
+	// 						applicableLayers as unknown as typeof Schema.layers
+	// 					)
+	// 					const query = ctx
+	// 						.db()
+	// 						.select({ count: sql<number>`count(*)` })
+	// 						.from(applicableLayers)
+	// 						.where(condition)
 
-						const [{ count }] = await query
+	// 					const [{ count }] = await query
 
-						if (count !== 0) {
-							comparisons.push(FB.comp(filter.comparison, { neg: true }))
-						}
-						break
-					}
-					default:
-						assertNever(filter)
-				}
-			})()
-		)
-	}
+	// 					if (count !== 0) {
+	// 						comparisons.push(FB.comp(filter.comparison, { neg: true }))
+	// 					}
+	// 					break
+	// 				}
+	// 				default:
+	// 					assertNever(filter)
+	// 			}
+	// 		})()
+	// 	)
+	// }
 
-	await Promise.all(ctx.tasks)
-	return FB.and(comparisons)
+	// await Promise.all(ctx.tasks)
+	// return FB.and(comparisons)
 }
 
 export const layersRouter = router({

@@ -1,21 +1,5 @@
-import {
-	bigint,
-	boolean,
-	float,
-	index,
-	int,
-	json,
-	mysqlEnum,
-	mysqlTable,
-	primaryKey,
-	timestamp,
-	unique,
-	varchar,
-} from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
-
-// aliased imports fail when execing drizzle-kit commands from the docker image for some reason
-import { SUBFACTIONS } from '../lib/constants.ts'
 
 export const factions = mysqlTable(
 	'factions',
@@ -56,14 +40,14 @@ export const layers = mysqlTable(
 		Gamemode: varchar('Gamemode', { length: 255 }).notNull(),
 		LayerVersion: varchar('LayerVersion', { length: 255 }),
 		Faction_1: varchar('Faction_1', { length: 255 }).notNull(),
-		SubFac_1: mysqlEnum('SubFac_1', SUBFACTIONS),
+		SubFac_1: varchar('SubFac_1', { length: 255 }),
 		Logistics_1: float('Logistics_1'),
 		Transportation_1: float('Transportation_1'),
 		'Anti-Infantry_1': float('Anti-Infantry_1'),
 		Armor_1: float('Armor_1'),
 		ZERO_Score_1: float('ZERO_Score_1'),
 		Faction_2: varchar('Faction_2', { length: 255 }).notNull(),
-		SubFac_2: mysqlEnum('SubFac_2', SUBFACTIONS),
+		SubFac_2: varchar('SubFac_2', { length: 255 }),
 		Logistics_2: float('Logistics_2'),
 		Transportation_2: float('Transportation_2'),
 		'Anti-Infantry_2': float('Anti-Infantry_2'),
@@ -112,19 +96,6 @@ export const layers = mysqlTable(
 		}
 	}
 )
-export type Layer = typeof layers.$inferSelect
-export const MINI_LAYER_SELECT = {
-	id: layers.id,
-	Level: layers.Level,
-	Layer: layers.Layer,
-	Gamemode: layers.Gamemode,
-	LayerVersion: layers.LayerVersion,
-	Faction_1: layers.Faction_1,
-	SubFac_1: layers.SubFac_1,
-	Faction_2: layers.Faction_2,
-	SubFac_2: layers.SubFac_2,
-}
-
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
 	name: varchar('name', { length: 128 }).notNull(),

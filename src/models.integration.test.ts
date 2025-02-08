@@ -5,7 +5,8 @@ import * as DB from '@/server/db'
 import * as C from '@/server/context'
 import { setupEnv } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
-import * as Schema from '@/server/schema'
+import * as Schema from '$root/drizzle/schema.ts'
+import * as SchemaModels from '$root/drizzle/schema.models'
 
 let ctx!: C.Db & C.Log
 
@@ -17,9 +18,9 @@ beforeAll(async () => {
 })
 
 test('getMiniLayerFromId consistency', async () => {
-	const sampleLayers = ctx.db().select(Schema.MINI_LAYER_SELECT).from(Schema.layers).iterator()
+	const sampleLayers = ctx.db().select(SchemaModels.MINI_LAYER_SELECT).from(Schema.layers).iterator()
 	for await (const _layer of sampleLayers) {
-		const layer = M.includeComputedCollections(_layer)
+		const layer = M.includeComputedCollections(_layer as M.MiniLayer)
 		const fromId = M.getMiniLayerFromId(layer.id)
 		expect(fromId).toEqual(layer)
 	}

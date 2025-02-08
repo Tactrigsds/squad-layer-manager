@@ -5,7 +5,7 @@ import { ENV, setupEnv } from './src/server/env.ts'
 setupEnv()
 
 export default defineConfig({
-	schema: './src/server/schema.ts',
+	schema: './drizzle/schema.ts',
 	out: './drizzle',
 	dialect: 'mysql',
 	dbCredentials: {

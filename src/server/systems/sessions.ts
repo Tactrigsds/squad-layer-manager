@@ -6,7 +6,7 @@ import * as DB from '@/server/db.ts'
 import * as RBAC from '@/rbac.models'
 import * as Rbac from '@/server/systems/rbac.system'
 import { baseLogger } from '@/server/logger'
-import * as Schema from '@/server/schema.ts'
+import * as Schema from '$root/drizzle/schema.ts'
 
 import * as C from '@/server/context'
 
