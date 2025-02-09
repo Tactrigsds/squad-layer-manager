@@ -101,7 +101,7 @@ export const filters = mysqlTable('filters', {
 	name: varchar('name', { length: 128 }).notNull(),
 	description: varchar('description', { length: 512 }),
 	filter: json('filter').notNull(),
-	owner: bigint('owner', { mode: 'bigint' }).references(() => users.discordId, { onDelete: 'set null' }),
+	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(() => users.discordId, { onDelete: 'set null' }),
 })
 
 export const filterUserContributors = mysqlTable(
@@ -110,7 +110,7 @@ export const filterUserContributors = mysqlTable(
 		filterId: varchar('filterId', { length: 64 })
 			.notNull()
 			.references(() => filters.id, { onDelete: 'cascade' }),
-		userId: bigint('userId', { mode: 'bigint' })
+		userId: bigint('userId', { mode: 'bigint', unsigned: true })
 			.notNull()
 			.references(() => users.discordId, { onDelete: 'cascade' }),
 	},
@@ -149,7 +149,7 @@ export const servers = mysqlTable('servers', {
 export type Server = typeof servers.$inferSelect
 
 export const users = mysqlTable('users', {
-	discordId: bigint('discordId', { mode: 'bigint' }).notNull().primaryKey(),
+	discordId: bigint('discordId', { mode: 'bigint', unsigned: true }).notNull().primaryKey(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: varchar('username', { length: 32 }).notNull(),
 	avatar: varchar('avatar', { length: 255 }),
@@ -161,7 +161,7 @@ export const sessions = mysqlTable(
 	'sessions',
 	{
 		id: varchar('session', { length: 255 }).primaryKey(),
-		userId: bigint('userId', { mode: 'bigint' })
+		userId: bigint('userId', { mode: 'bigint', unsigned: true })
 			.notNull()
 			.references(() => users.discordId, { onDelete: 'cascade' }),
 		expiresAt: timestamp('expiresAt').notNull(),

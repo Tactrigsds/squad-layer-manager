@@ -20,6 +20,7 @@ export function setupDatabase() {
 
 		// return big numbers as strings to avoid precision loss. without this bigints will return incorrect values
 		supportBigNumbers: true,
+		bigNumberStrings: true,
 	})
 }
 
