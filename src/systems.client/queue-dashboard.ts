@@ -34,7 +34,9 @@ export type LLState = {
 	layerList: IdedLLItem[]
 	listMutations: ItemMutations
 	allowDuplicates?: boolean
+	allowVotes: boolean
 }
+
 export type LLStore = LLState & LLActions
 
 export type LLActions = {
@@ -141,7 +143,9 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 export const selectLLState = (state: QDState): LLState => ({
 	layerList: state.editedServerState.layerQueue,
 	listMutations: state.queueMutations,
+	allowVotes: true,
 })
+
 export const deriveLLStore = (store: Zus.StoreApi<QDStore>) => {
 	const setLL = store.getState().setQueue
 	const getLL = () => selectLLState(store.getState())
@@ -208,6 +212,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 			listMutations: mutState,
 			allowDuplicates: false,
 			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, source: 'manual' })) ?? [],
+			allowVotes: false,
 		}
 	}
 	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())

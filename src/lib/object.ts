@@ -56,3 +56,12 @@ export function objValues<T extends object>(obj: T) {
 export function objEntries<T extends object>(obj: T) {
 	return Object.entries(obj) as [keyof T, T[keyof T]][]
 }
+
+export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof T]): keyof T {
+	for (const [k, v] of Object.entries(obj)) {
+		if (v === key) {
+			return k
+		}
+	}
+	return undefined as unknown as keyof T
+}

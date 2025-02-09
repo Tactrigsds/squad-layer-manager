@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { aliasedTable, SQL, sql } from 'drizzle-orm'
+import { SQL, sql } from 'drizzle-orm'
 import superjson from 'superjson'
 import * as E from 'drizzle-orm/expressions'
 import { z } from 'zod'
@@ -211,7 +211,7 @@ export async function getWhereFilterConditions(
 					break
 				}
 				if (comp.column === 'FullMatchup') {
-					const factionValues = comp.values.map(M.parseTeamString)
+					const factionValues = comp.values.map((v) => M.parseTeamString(v))
 					const conditions: SQL[] = []
 					for (const { faction, subfac } of factionValues) {
 						conditions.push(hasTeam(faction, subfac as M.Subfaction, schema))

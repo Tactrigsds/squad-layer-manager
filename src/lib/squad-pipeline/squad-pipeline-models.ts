@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // Enum definitions
-const GameModeSchema = z.enum([
+export const GameModeSchema = z.enum([
 	'AAS',
 	'RAAS',
 	'Invasion',

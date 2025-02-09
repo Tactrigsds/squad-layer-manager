@@ -18,18 +18,18 @@ services:
       - ./docker/Rcon.cfg:/home/steam/squad-dedicated/SquadGame/ServerConfig/Rcon.cfg
 
     ports:
-      - 7787:7787/tcp
-      - 7788:7788/tcp
-      - 15000:15000/tcp
-      - 27165:27165/tcp
-      - 27166:27166/tcp
+      # - 7787:7787/tcp
+      # - 7788:7788/tcp
+      # - 15000:15000/tcp
+      # - 27165:27165/tcp
+      # - 27166:27166/tcp
       - 21114:21114/tcp
-      - 7787:7787/udp
-      - 7788:7788/udp
-      - 15000:15000/udp
-      - 27165:27165/udp
-      - 27166:27166/udp
-      - 21114:21114/udp
+      # - 7787:7787/udp
+      # - 7788:7788/udp
+      # - 15000:15000/udp
+      # - 27165:27165/udp
+      # - 27166:27166/udp
+      # - 21114:21114/udp
 volumes:
   squad_data:
   db_data:

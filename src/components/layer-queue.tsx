@@ -1134,6 +1134,7 @@ function ItemDropdown(props: {
 						description="Select layers to add before"
 						open={subDropdownState === 'add-before'}
 						onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
+						pinMode={!allowVotes ? 'layers' : undefined}
 						selectingSingleLayerQueueItem={true}
 						selectQueueItems={(items) => {
 							const state = props.listStore.getState()
@@ -1149,6 +1150,7 @@ function ItemDropdown(props: {
 						description="Select layers to add after"
 						open={subDropdownState === 'add-after'}
 						onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
+						pinMode={!allowVotes ? 'layers' : undefined}
 						selectQueueItems={(items) => {
 							const state = props.listStore.getState()
 							state.add(items, props.index + 1)
@@ -1581,6 +1583,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						title="Add"
 						description="Select layers to add to the voting pool"
 						open={addLayersOpen}
+						pinMode="layers"
 						onOpenChange={setAddLayersOpen}
 						baseFilter={excludeVoteDuplicatesFilter}
 						selectQueueItems={(items) => {

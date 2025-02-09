@@ -1,20 +1,25 @@
 import * as z from 'zod'
 
-import LayerComponents from '$root/assets/layer-components.json'
-import * as C from './lib/constants'
-import { deepClone, reverseMapping } from './lib/object'
+import _StaticLayerComponents from '$root/assets/layer-components.json'
+import { deepClone, revLookup } from './lib/object'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
 import { PercentageSchema } from './lib/zod'
 import { assertNever } from './lib/typeGuards'
 
+const StaticLayerComponents = _StaticLayerComponents as LayerComponents
+
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = SchemaModels.Layer & MiniLayer
-export type Subfaction = C.Subfaction
+
+export type Faction = keyof (typeof _StaticLayerComponents)['factionFullNames']
+export type Subfaction = keyof (typeof _StaticLayerComponents)['subfactionAbbreviations']
+export const SUBFACTION = z.enum(_StaticLayerComponents.subfactions as [Subfaction, ...Subfaction[]])
+export const FACTION = z.enum(_StaticLayerComponents.factions as [Faction, ...Faction[]])
 
 export type LayerIdArgs = {
 	Level: string
@@ -37,6 +42,38 @@ export function parseLayerString(layer: string) {
 		version: version?.toUpperCase() ?? null,
 	}
 }
+
+export type LayerComponents = {
+	levels: string[]
+	levelAbbreviations: Record<string, string>
+	levelShortNames: Record<string, string>
+	layers: string[]
+	layerVersions: string[]
+
+	factions: string[]
+	factionFullNames: Record<string, string>
+
+	subfactions: string[]
+	subfactionAbbreviations: Record<string, string>
+	subfactionShortNames: Record<string, string>
+	subfactionFullNames: Record<
+		string,
+		{
+			AirAssault?: string
+			Armored?: string
+			CombinedArms?: string
+			LightInfantry?: string
+			Mechanized?: string
+			Motorized?: string
+			Support?: string
+			AmphibiousAssault?: string
+		}
+	>
+
+	gamemodes: string[]
+	gamemodeAbbreviations: Record<string, string>
+}
+
 export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | 'LayerVersion'>) {
 	if (details.Level === 'JensensRange') {
 		return `${details.Level}_Training`
@@ -46,8 +83,8 @@ export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | '
 	return layer
 }
 
-export function getLayerId(layer: LayerIdArgs) {
-	let mapLayer = `${LayerComponents.levelAbbreviations[layer.Level as keyof typeof LayerComponents.levelAbbreviations]}-${layer.Gamemode}`
+export function getLayerId(layer: LayerIdArgs, components: LayerComponents = StaticLayerComponents) {
+	let mapLayer = `${components.levelAbbreviations[layer.Level]}-${components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode}`
 	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
 
 	const team1 = getLayerTeamString(layer.Faction_1, layer.SubFac_1)
@@ -55,23 +92,32 @@ export function getLayerId(layer: LayerIdArgs) {
 	return `${mapLayer}:${team1}:${team2}`
 }
 
-export function getLayerTeamString(faction: string, subfac: string | null) {
-	const abbrSubfac = subfac ? LayerComponents.subfactionAbbreviations[subfac as keyof typeof LayerComponents.subfactionAbbreviations] : ''
+export function getLayerTeamString(faction: string, subfac: string | null, components: LayerComponents = StaticLayerComponents) {
+	const abbrSubfac = subfac ? components.subfactionAbbreviations[subfac] : ''
 	return abbrSubfac ? `${faction}-${abbrSubfac}` : faction
 }
-export function parseTeamString(team: string): { faction: string; subfac: string | null } {
+export function parseTeamString(
+	team: string,
+	components: typeof StaticLayerComponents = StaticLayerComponents
+): { faction: string; subfac: string | null } {
 	const [faction, subfac] = team.split('-')
 	return {
 		faction,
-		subfac: subfac ? SUBFAC_ABBREVIATIONS_REVERSE[subfac] : null,
+		subfac: subfac ? revLookup(components.subfactionAbbreviations, subfac) : null,
 	}
 }
 
-export function getMiniLayerFromId(id: string): MiniLayer {
+export function getMiniLayerFromId(id: string, components = StaticLayerComponents): MiniLayer {
 	// console.trace('getMiniLayerFromId', id)
 	const [mapPart, faction1Part, faction2Part] = id.split(':')
-	const [mapAbbr, gamemode, versionPart] = mapPart.split('-')
-	const level = LEVEL_ABBREVIATION_REVERSE[mapAbbr]
+	const [mapAbbr, gamemodeAbbr, versionPart] = mapPart.split('-')
+	let gamemode = revLookup(components.gamemodeAbbreviations, gamemodeAbbr)
+	if (!gamemode) {
+		if (!components.gamemodes.includes(gamemodeAbbr)) throw new Error(`Invalid gamemode abbreviation: ${gamemodeAbbr}`)
+		// for backwards compatibility with old layerids
+		gamemode = gamemodeAbbr
+	}
+	const level = revLookup(components.levelAbbreviations, mapAbbr)
 	if (!level) {
 		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
 	}
@@ -83,7 +129,7 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 	if (level === 'JensensRange') {
 		layer = `${level}_${faction1}-${faction2}`
 	} else {
-		layer = LayerComponents.layers.find(
+		layer = StaticLayerComponents.layers.find(
 			(l) => l.startsWith(`${level}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase()))
 		)
 	}
@@ -97,9 +143,9 @@ export function getMiniLayerFromId(id: string): MiniLayer {
 		Layer: layer,
 		Gamemode: gamemode,
 		LayerVersion: layerVersion,
-		Faction_1: faction1,
+		Faction_1: faction1 as Faction,
 		SubFac_1: subfac1,
-		Faction_2: faction2,
+		Faction_2: faction2 as Faction,
 		SubFac_2: subfac2,
 	}
 }
@@ -118,12 +164,12 @@ export const LayerIdSchema = z.string().refine(validateId, {
 })
 export type LayerId = z.infer<typeof LayerIdSchema>
 
-function parseFactionPart(part: string): [string, C.Subfaction | null] {
+function parseFactionPart(part: string, components = StaticLayerComponents): [string, Subfaction | null] {
 	const [faction, subfacAbbr] = part.split('-')
-	if (!LayerComponents.factions.includes(faction)) {
+	if (!StaticLayerComponents.factions.includes(faction)) {
 		throw new Error(`Invalid faction: ${faction}`)
 	}
-	const subfac = subfacAbbr ? (SUBFAC_ABBREVIATIONS_REVERSE[subfacAbbr] as C.Subfaction) : null
+	const subfac = subfacAbbr ? (revLookup(components.subfactionAbbreviations, subfacAbbr) as Subfaction) : null
 	if (subfacAbbr && !subfac) {
 		throw new Error(`Invalid subfaction abbreviation: ${subfacAbbr}`)
 	}
@@ -160,9 +206,6 @@ export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 export function getSetNextVoteCommand(ids: string[]) {
 	return `!genpool ${ids.join(', ')}`
 }
-
-export const LEVEL_ABBREVIATION_REVERSE = reverseMapping(LayerComponents.levelAbbreviations)
-export const SUBFAC_ABBREVIATIONS_REVERSE = reverseMapping(LayerComponents.subfactionAbbreviations)
 
 export const COLUMN_TYPES = ['float', 'string', 'integer', 'collection', 'boolean'] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
@@ -523,10 +566,10 @@ export const MiniLayerSchema = z.object({
 		.string()
 		.nullable()
 		.transform((v) => (v === null ? v : v.toUpperCase())),
-	Faction_1: z.string(),
-	SubFac_1: z.enum(C.SUBFACTIONS).nullable(),
-	Faction_2: z.string(),
-	SubFac_2: z.enum(C.SUBFACTIONS).nullable(),
+	Faction_1: FACTION,
+	SubFac_1: SUBFACTION.nullable(),
+	Faction_2: FACTION,
+	SubFac_2: SUBFACTION.nullable(),
 })
 
 export const MiniLayersWithCollections = MiniLayerSchema.transform(includeComputedCollections)
