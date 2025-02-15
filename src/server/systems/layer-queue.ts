@@ -1,6 +1,6 @@
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
-import { BehaviorSubject, distinctUntilChanged, from, map, scan, Subject, Subscription } from 'rxjs'
+import { BehaviorSubject, distinctUntilChanged, from, map, scan, Subject, Subscription, filter } from 'rxjs'
 import * as FB from '@/lib/filter-builders.ts'
 
 import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
@@ -83,11 +83,16 @@ export async function setupLayerQueueAndServerState() {
 			voteStateUpdate$.next([ctx, update.update])
 		}
 
-		{
-			// -------- set next layer on server --------
-			const nextLayer = M.getNextLayerId(initialStateUpdate.state.layerQueue)
-			if (nextLayer) await SquadServer.rcon.setNextLayer(opCtx, M.getMiniLayerFromId(nextLayer))
-		}
+		// -------- set next layer on server when rcon is connected--------
+		SquadServer.rcon.core.connected$.subscribe(async (isConnected) => {
+			if (!isConnected) return
+			const serverState = await getServerState({}, ctx)
+			const nextLayerId = M.getNextLayerId(serverState.layerQueue)
+			if (nextLayerId) {
+				ctx.log.info('setting initial next layer')
+				await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
+			}
+		})
 	})
 
 	serverStateUpdate$.subscribe(([state, ctx]) => {
@@ -113,7 +118,8 @@ export async function setupLayerQueueAndServerState() {
 	SquadServer.rcon.serverStatus
 		.observe(systemCtx)
 		.pipe(
-			map((status): LayerStatus => ({ currentLayer: status.currentLayer, nextLayer: status.nextLayer })),
+			filter((statusRes) => statusRes.code === 'ok'),
+			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
 			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev)
 		)
@@ -252,7 +258,8 @@ export async function setupLayerQueueAndServerState() {
 			.observe(systemCtx)
 			.pipe(
 				distinctDeepEquals(),
-				map((status) => status.currentLayer),
+				filter((statusRes) => statusRes.code === 'ok'),
+				map((status) => status.data.currentLayer),
 				distinctUntilChanged()
 			)
 			.subscribe(() => {
@@ -334,7 +341,9 @@ export async function startVote(
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	using acquired = await acquireInBlock(voteStateMtx)
-	const { value: status } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
+	const { value: statusRes } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
+	if (statusRes.code !== 'ok') return statusRes
+	const status = statusRes.data
 
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
@@ -531,7 +540,10 @@ async function handleVoteTimeout(ctx: C.Log & C.Db) {
 				state: newVoteState,
 			}
 		} else {
-			const { value: status } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
+			const { value: statusRes } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
+			if (statusRes.code !== 'ok') return statusRes
+			const status = statusRes.data
+
 			tally = M.tallyVotes(voteState, status.playerCount)
 
 			const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]

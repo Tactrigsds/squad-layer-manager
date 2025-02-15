@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import net from 'node:net'
 
 import * as C from '@/server/context.ts'
+import { BehaviorSubject } from 'rxjs'
 
 export type DecodedPacket = {
 	type: number
@@ -25,7 +26,12 @@ export default class Rcon extends EventEmitter {
 		server: number
 	}
 	private soh: { size: number; id: number; type: number; body: string }
-	public connected: boolean
+
+	public get connected() {
+		return this.connected$.value
+	}
+	public connected$ = new BehaviorSubject<boolean>(false)
+
 	private autoReconnect: boolean
 	private autoReconnectDelay: number
 	private connectionRetry: NodeJS.Timeout | undefined
@@ -44,7 +50,6 @@ export default class Rcon extends EventEmitter {
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
-		this.connected = false
 		this.autoReconnect = false
 		this.autoReconnectDelay = options.autoReconnectDelay || 5000
 		this.connectionRetry = undefined
@@ -54,11 +59,12 @@ export default class Rcon extends EventEmitter {
 
 	processChatPacket(_decodedPacket: any): void {}
 
-	private addLogProps(ctx: C.Log): C.Log {
-		return C.includeLogProperties(ctx, { module: 'rcon' })
+	private addLogProps(ctx: C.Log & { module?: string }): C.Log {
+		if (ctx.module !== 'rcon') return C.includeLogProperties(ctx, { module: 'rcon' })
+		return ctx
 	}
 
-	async connect(ctx: C.Log): Promise<void> {
+	async connect(ctx: C.Log & { module?: string }): Promise<void> {
 		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve, reject) => {
 			if (this.client && this.connected && !this.client.destroyed) {
@@ -69,12 +75,13 @@ export default class Rcon extends EventEmitter {
 			this.once('auth', () => {
 				ctx.log.trace(`Connected to: ${this.host}:${this.port}`)
 				clearTimeout(this.connectionRetry)
-				this.connected = true
+				this.connected$.next(true)
 				resolve()
 			})
 			ctx.log.trace(`Connecting to: ${this.host}:${this.port}`)
 			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
 			this.autoReconnect = true
+			this.client?.destroy()
 			this.client = net
 				.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
 				.on('data', (data) => this.#onData(ctx, data))
@@ -93,35 +100,35 @@ export default class Rcon extends EventEmitter {
 			this.removeAllListeners()
 			this.autoReconnect = false
 			this.client?.end()
-			this.connected = false
+			this.connected$.next(false)
 			resolve()
 		}).catch((error) => {
 			ctx.log.error(`Rcon.disconnect() ${error}`)
 		})
 	}
 
-	async execute(_ctx: C.Log, body: string): Promise<any> {
+	async execute(_ctx: C.Log, body: string) {
 		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute', { level: 'trace' })
 		ctx.log.trace(`Executing %s `, body)
 		if (typeof body !== 'string') {
 			throw new Error('Rcon.execute() body must be a string.')
 		}
-		return new Promise((resolve, reject) => {
-			if (!this.connected) return reject(new Error('Rcon not connected.'))
+		return await new Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }>((resolve, reject) => {
+			if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: 'Rcon not connected.' })
 			if (!this.client?.writable) {
-				return reject(new Error('Unable to write to node:net socket.'))
+				return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
 			}
 			const length = Buffer.from(body).length
 			if (length > RCON_MAX_BUF_LEN) {
-				ctx.log.error(`Error occurred. Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.`)
+				return resolve({ code: 'err:rcon' as const, msg: `Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.` })
 			} else {
 				const outputData = (data: any) => {
 					clearTimeout(timeOut)
-					resolve(data)
+					resolve({ code: 'ok' as const, data })
 				}
 				const timedOut = () => {
 					this.removeListener(listenerId, outputData)
-					return reject(new Error(`Rcon response timed out`))
+					return reject({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
 				}
 				if (this.msgId > 80) this.msgId = 20
 				const listenerId = `response${this.msgId}`
@@ -130,8 +137,9 @@ export default class Rcon extends EventEmitter {
 				this.#send(ctx, body, this.msgId)
 				this.msgId++
 			}
-		}).catch((error) => {
-			ctx.log.error(`Rcon.execute() ${error}`)
+		}).then((res) => {
+			if (res.code === 'err:rcon') ctx.log.error(res.msg)
+			return res
 		})
 	}
 
@@ -247,7 +255,8 @@ export default class Rcon extends EventEmitter {
 
 	#cleanUp(ctx: C.Log): void {
 		ctx = this.addLogProps(ctx)
-		this.connected = false
+		this.connected$.next(false)
+		this.connected$.complete()
 		this.removeAllListeners()
 		clearTimeout(this.connectionRetry)
 		if (this.autoReconnect) {

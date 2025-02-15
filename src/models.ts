@@ -35,11 +35,16 @@ export const LAYER_STRING_PROPERTIES = ['Level', 'Gamemode', 'LayerVersion'] as 
 export function parseLayerString(layer: string) {
 	// eslint-disable-next-line prefer-const
 	let [level, gamemode, version] = layer.split('_')
-	if (level === 'JensensRange') gamemode = 'Training'
+	let jensensFactions: [string, string] | undefined
+	if (level === 'JensensRange') {
+		jensensFactions = gamemode.split('-') as [string, string]
+		gamemode = 'Training'
+	}
 	return {
 		level: level,
 		gamemode: gamemode,
 		version: version?.toUpperCase() ?? null,
+		jensensFactions,
 	}
 }
 
@@ -134,6 +139,7 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		)
 	}
 	if (!layer) {
+		debugger
 		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 

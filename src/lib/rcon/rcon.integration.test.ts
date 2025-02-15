@@ -51,7 +51,10 @@ test('can set next layer', async () => {
 	// make sure currently set next layer is not the same as the one we are going to set
 	await squadRcon.setNextLayer(ctx, layer1Options)
 
-	const nextLayer1 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
+	const status1 = (await squadRcon.serverStatus.get(ctx)).value
+	expect(status1.code).toBe('ok')
+	if (status1.code !== 'ok') throw new Error('Failed to get server status')
+	const nextLayer1 = status1.data.nextLayer
 	expect(nextLayer1).toBeDefined()
 	if (nextLayer1!.code === 'unknown') {
 		throw new Error('nextLayer1 is unknown')
@@ -65,7 +68,10 @@ test('can set next layer', async () => {
 		SubFac_2: 'CombinedArms',
 	}
 	await squadRcon.setNextLayer(ctx, layer2Options)
-	const nextLayer2 = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
+	const status2 = (await squadRcon.serverStatus.get(ctx)).value
+	expect(status2.code).toBe('ok')
+	if (status2.code !== 'ok') throw new Error('Failed to get server status')
+	const nextLayer2 = status2.data.nextLayer
 	expect(nextLayer2).toBeDefined()
 
 	if (nextLayer2!.code === 'unknown') {

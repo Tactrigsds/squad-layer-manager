@@ -14,17 +14,14 @@ export type WarnOptions = { msg: string | string[]; repeat?: number } | string |
 export default class SquadRcon {
 	event$: Subject<SM.SquadEvent> = new Subject()
 
-	serverStatus: AsyncResource<SM.ServerStatus>
-	playerList: AsyncResource<SM.Player[]>
-	squadList: AsyncResource<SM.Squad[]>
+	serverStatus: AsyncResource<SM.ServerStatusRes>
+	playerList: AsyncResource<SM.PlayerListRes>
+	squadList: AsyncResource<SM.SquadListRes>
 
 	constructor(
 		ctx: C.Log,
-		private rcon: Rcon
+		public core: Rcon
 	) {
-		if (!rcon.connected) {
-			throw new Error('Rcon must be connected before creating SquadRcon instance')
-		}
 		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx), { defaultTTL: 5000 })
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
 		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx), { defaultTTL: 5000 })
@@ -34,47 +31,60 @@ export default class SquadRcon {
 			if (message === null) return
 			this.event$.next({ type: 'chat-message', message })
 		}
-		rcon.on('server', onServerMsg)
+		core.on('server', onServerMsg)
+
+		// immediately reset the state of all resources when the connection state changes
+		const sub = core.connected$.subscribe(() => {
+			this.serverStatus.invalidate(ctx)
+			this.playerList.invalidate(ctx)
+			this.squadList.invalidate(ctx)
+		})
+
 		this[Symbol.dispose] = () => {
-			rcon.off('server', onServerMsg)
+			core.off('server', onServerMsg)
+			sub.unsubscribe()
 		}
 	}
 
 	[Symbol.dispose]() {}
 
 	private async getCurrentLayer(ctx: C.Log) {
-		const response = await this.rcon.execute(ctx, 'ShowCurrentMap')
-		const match = response.match(/^Current level is (.*), layer is (.*), factions (.*)/)
+		const response = await this.core.execute(ctx, 'ShowCurrentMap')
+		if (response.code !== 'ok') return response
+		const match = response.data.match(/^Current level is (.*), layer is (.*), factions (.*)/)
+		if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
 		const layer = match[2]
 		const factions = match[3]
-		return parseLayer(layer, factions)
+		return { code: 'ok' as const, layer: parseLayer(layer, factions) }
 	}
 
 	private async getNextLayer(ctx: C.Log) {
-		const response = await this.rcon.execute(ctx, 'ShowNextMap')
-		if (!response) return null
-		const match = response.match(/^Next level is (.*), layer is (.*), factions (.*)/)
-		if (!match) return null
+		const response = await this.core.execute(ctx, 'ShowNextMap')
+		if (response.code !== 'ok') return response
+		if (!response.data) return { code: 'ok' as const, layer: null }
+		const match = response.data.match(/^Next level is (.*), layer is (.*), factions (.*)/)
+		if (!match) return { code: 'ok' as const, layer: null }
 		const layer = match[2]
 		const factions = match[3]
-		if (!layer || !factions) return null
-		return parseLayer(layer, factions)
+		if (!layer || !factions) return { code: 'ok' as const, layer: null }
+		return { code: 'ok' as const, layer: parseLayer(layer, factions) }
 	}
 
 	private async getListPlayers(ctx: C.Log) {
-		const response = await this.rcon.execute(ctx, 'ListPlayers')
+		const res = await this.core.execute(ctx, 'ListPlayers')
+		if (res.code !== 'ok') return res
 
 		const players: SM.Player[] = []
 
-		if (!response || response.length < 1) return players
+		if (!res || res.data.length < 1) return { code: 'ok' as const, players: [] }
 
-		for (const line of response.split('\n')) {
+		for (const line of res.data.split('\n')) {
 			const match = line.match(
 				/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamID>\d|N\/A) \| Squad ID: (?<squadID>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/
 			)
 			if (!match) continue
 
-			const data = match.groups
+			const data: any = match.groups!
 			data.playerID = +data.playerID
 			data.isLeader = data.isLeader === 'True'
 			data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
@@ -85,30 +95,33 @@ export default class SquadRcon {
 			const parsedData = SM.PlayerSchema.parse(data)
 			players.push(parsedData)
 		}
-		return players
+		return { code: 'ok' as const, players }
 	}
 
 	async getSquads(ctx: C.Log) {
-		const responseSquad = await this.rcon.execute(ctx, 'ListSquads')
+		const resSquad = await this.core.execute(ctx, 'ListSquads')
+		if (resSquad.code !== 'ok') return resSquad
 
 		const squads: SM.Squad[] = []
 		let teamName
 		let teamID
 
-		if (!responseSquad || responseSquad.length < 1) return squads
+		if (!resSquad.data || resSquad.data.length === 0) return { code: 'ok' as const, squads }
 
-		for (const line of responseSquad.split('\n')) {
+		for (const line of resSquad.data.split('\n')) {
 			const match = line.match(
 				/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/
 			)
+			if (!match) throw new Error(`Invalid squad data: ${line}`)
 			const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
 			if (matchSide) {
 				teamID = +matchSide[1]
 				teamName = matchSide[2]
 			}
 			if (!match) continue
-			match.groups.squadID = +match.groups.squadID
-			const squad = {
+			const ids = match.groups as any
+			ids.squadID = +match.groups!.squadID
+			const squad: any = {
 				...match.groups,
 				teamID: teamID,
 				teamName: teamName,
@@ -119,19 +132,22 @@ export default class SquadRcon {
 			const parsed = SM.SquadSchema.parse(squad)
 			squads.push(parsed)
 		}
-		return squads
+		return {
+			code: 'ok' as const,
+			squads,
+		}
 	}
 
 	async broadcast(ctx: C.Log, message: string | string[]) {
 		const messages = Array.isArray(message) ? message : [message]
 		for (const message of messages) {
 			ctx.log.info(`Broadcasting message: %s`, message)
-			await this.rcon.execute(ctx, `AdminBroadcast ${message}`)
+			await this.core.execute(ctx, `AdminBroadcast ${message}`)
 		}
 	}
 
 	async setFogOfWar(ctx: C.Log, mode: 'on' | 'off') {
-		await this.rcon.execute(ctx, `AdminSetFogOfWar ${mode}`)
+		await this.core.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
 	async warn(ctx: C.Log, anyID: string, opts: WarnOptions) {
@@ -149,7 +165,7 @@ export default class SquadRcon {
 		ctx.log.info(`Warning player: %s: %s`, anyID, msgArr)
 		for (let i = 0; i < repeatCount; i++) {
 			for (const msg of msgArr) {
-				await this.rcon.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
+				await this.core.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
 			}
 			await sleep(5000)
 		}
@@ -157,11 +173,11 @@ export default class SquadRcon {
 
 	// 0 = Perm | 1m = 1 minute | 1d = 1 Day | 1M = 1 Month | etc...
 	async ban(ctx: C.Log, anyID: string, banLength: string, message: string) {
-		await this.rcon.execute(ctx, `AdminBan "${anyID}" ${banLength} ${message}`)
+		await this.core.execute(ctx, `AdminBan "${anyID}" ${banLength} ${message}`)
 	}
 
 	async switchTeam(ctx: C.Log, anyID: string) {
-		await this.rcon.execute(ctx, `AdminForceTeamChange "${anyID}"`)
+		await this.core.execute(ctx, `AdminForceTeamChange "${anyID}"`)
 		this.playerList.invalidate(ctx)
 		this.squadList.invalidate(ctx)
 	}
@@ -171,50 +187,62 @@ export default class SquadRcon {
 			level: 'debug',
 			startMsgBindings: selectProps(layer, ['Layer', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2']),
 		})
-		await this.rcon.execute(ctx, M.getAdminSetNextLayerCommand(layer))
+		await this.core.execute(ctx, M.getAdminSetNextLayerCommand(layer))
 		this.serverStatus.invalidate(ctx)
 	}
 
 	async endMatch(_ctx: C.Log) {
 		_ctx.log.info(`Ending match`)
-		await this.rcon.execute(_ctx, 'AdminEndMatch')
+		await this.core.execute(_ctx, 'AdminEndMatch')
 	}
 
 	async leaveSquad(ctx: C.Log, playerId: number) {
-		await this.rcon.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)
+		await this.core.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)
 		this.squadList.invalidate(ctx)
 		this.playerList.invalidate(ctx)
 	}
 
-	private async getPlayerQueueLength(ctx: C.Log): Promise<number> {
-		const response = await this.rcon.execute(ctx, 'ListPlayers')
-		const match = response.match(/\[Players in Queue: (\d+)\]/)
-		return match ? parseInt(match[1], 10) : 0
+	private async getPlayerQueueLength(ctx: C.Log) {
+		const response = await this.core.execute(ctx, 'ListPlayers')
+		if (response.code !== 'ok') return response
+		const match = response.data.match(/\[Players in Queue: (\d+)\]/)
+		if (match === null) throw new Error('Failed to parse player queue length')
+		return { code: 'ok' as const, length: match ? parseInt(match[1], 10) : 0 }
 	}
 
-	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatus> {
+	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatusRes> {
 		await using ctx = C.pushOperation(_ctx, 'squad-rcon:getServerstatus', { level: 'trace' })
-		const rawDataPromise = this.rcon.execute(ctx, `ShowServerInfo`)
+		const rawDataPromise = this.core.execute(ctx, `ShowServerInfo`)
 		const currentLayerTask = this.getCurrentLayer(ctx)
 		const nextLayerTask = this.getNextLayer(ctx)
-		const rawData = await rawDataPromise
-		const data = JSON.parse(rawData)
+		const rawDataRes = await rawDataPromise
+		if (rawDataRes.code !== 'ok') return rawDataRes
+		const data = JSON.parse(rawDataRes.data)
 		const res = SM.ServerRawInfoSchema.safeParse(data)
 		if (!res.success) {
-			ctx.log.error(`Failed to parse server info: %O, %O`, res.error, data)
-			throw res.error
+			ctx.log.error(res.error, `Failed to parse server info: %O`, data)
+			return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
 		}
 
 		const rawInfo = res.data
+		const currentLayerRes = await currentLayerTask
+		const nextLayerRes = await nextLayerTask
+		if (currentLayerRes.code !== 'ok') return currentLayerRes
+		if (nextLayerRes.code !== 'ok') return nextLayerRes
 
-		return {
+		const serverStatus: SM.ServerStatus = {
 			name: rawInfo.ServerName_s,
-			currentLayer: await currentLayerTask,
-			nextLayer: await nextLayerTask,
+			currentLayer: currentLayerRes.layer,
+			nextLayer: nextLayerRes.layer,
 			maxPlayerCount: rawInfo.MaxPlayers,
 			playerCount: rawInfo.PlayerCount_I,
 			queueLength: rawInfo.PublicQueue_I,
 			maxQueueLength: rawInfo.PublicQueueLimit_I,
+		}
+
+		return {
+			code: 'ok' as const,
+			data: serverStatus,
 		}
 	}
 }

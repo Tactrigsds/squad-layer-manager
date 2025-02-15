@@ -69,16 +69,6 @@ const RAW_LEVELS = [
 	'Yehorivka',
 ] as const
 
-const JENSENS_LEVELS = [
-	'JensensRange_WPMC-TLF',
-	'JensensRange_USMC-MEA',
-	'JensensRange_USA-RGF',
-	'JensensRange_PLANMC-VDV',
-	'JensensRange_CAF-INS',
-	'JensensRange_BAF-IMF',
-	'JensensRange_ADF-PLA',
-]
-
 const LEVEL_ABBREVIATIONS = {
 	AlBasrah: 'AB',
 	Anvil: 'AN',
@@ -190,7 +180,7 @@ const SUBFACTION_SHORT_NAMES = {
 // layout expected from csv
 export const RawLayerSchema = z
 	.object({
-		Level: z.enum([...RAW_LEVELS, ...JENSENS_LEVELS]),
+		Level: z.string(),
 		Layer: z.string(),
 		Size: z.string(),
 		Faction_1: z.string(),
@@ -365,7 +355,6 @@ function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M
 		Armor_Diff: getDiff('Armor_1', 'Armor_2'),
 		ZERO_Score_Diff: getDiff('ZERO_Score_1', 'ZERO_Score_2'),
 	} as M.Layer
-	M.MiniLayerSchema.parse(layer)
 	return layer
 }
 
@@ -385,32 +374,44 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 		subfactions: new Set(),
 	}
 
-	const parser = fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8').pipe(
-		parse({
-			columns: true,
-			skip_empty_lines: true,
-		})
-	)
+	ctx.log.info('Parsing raw layers')
+	const parser = await new Promise<RawLayer[]>((resolve, reject) => {
+		const rawLayers: RawLayer[] = []
+		fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
+			.pipe(
+				parse({
+					columns: true,
+					skip_empty_lines: true,
+				})
+			)
+			.on('data', (row) => {
+				rawLayers.push(row)
+			})
+			.on('end', () => resolve(rawLayers))
+			.on('error', reject)
+	})
 
 	const rawLayers: RawLayer[] = []
 
-	ctx.log.info('Parsing raw layers')
-	for await (const row of parser) {
+	for (const row of parser) {
 		const layer = RawLayerSchema.parse(row)
+		rawLayers.push(layer)
+	}
+	rawLayers.push(...getJensensLayers(pipeline))
+	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
+
+	for (const layer of rawLayers) {
+		const { gamemode, version } = M.parseLayerString(layer.Layer)
 		baseLayerComponents.levels.add(layer.Level)
 		baseLayerComponents.layers.add(layer.Layer)
-		const { gamemode, version } = M.parseLayerString(layer.Layer)
 		baseLayerComponents.gamemodes.add(gamemode)
 		baseLayerComponents.versions.add(version)
 		baseLayerComponents.factions.add(layer.Faction_1)
 		baseLayerComponents.factions.add(layer.Faction_2)
 		baseLayerComponents.subfactions.add(layer.SubFac_1)
 		baseLayerComponents.subfactions.add(layer.SubFac_2)
-		rawLayers.push(layer)
 	}
 
-	rawLayers.push(...getJensensLayers())
-	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
 	ctx.log.info('Parsed %d raw layers', rawLayers.length)
 
 	return { rawLayers, baseLayerComponents }
@@ -422,7 +423,8 @@ async function updateLayersTable(
 	factions: FactionDetails[],
 	biomes: Biome[],
 	rawLayers: RawLayer[],
-	layerComponents: M.LayerComponents
+	layerComponents: M.LayerComponents,
+	dryRun = false
 ) {
 	await using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const t0 = performance.now()
@@ -477,7 +479,7 @@ async function updateLayersTable(
 		const chunkSize = 2500
 		let chunk: M.Layer[] = []
 		const insertedIds = new Set<string>()
-		for await (const rawLayer of rawLayers) {
+		for (const rawLayer of rawLayers) {
 			const processed = processLayer(rawLayer, layerComponents)
 			if (insertedIds.has(processed.id)) {
 				ctx.log.warn('Skipping duplicate layer %s', processed.id)
@@ -486,9 +488,11 @@ async function updateLayersTable(
 			chunk.push(processed)
 			insertedIds.add(processed.id)
 			if (chunk.length >= chunkSize) {
-				await ctx.db().insert(Schema.layers).values(chunk)
-				rowsInserted += chunk.length
-				ctx.log.info(`Inserted ${rowsInserted} rows`)
+				if (!dryRun) {
+					await ctx.db().insert(Schema.layers).values(chunk)
+					rowsInserted += chunk.length
+					ctx.log.info(`Inserted ${rowsInserted} rows`)
+				}
 				chunk = []
 			}
 		}
@@ -519,38 +523,38 @@ function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
 	return factionFullNames
 }
 
-function getJensensLayers(): RawLayer[] {
-	return JENSENS_LEVELS.map((layer) => {
-		const [level, factions] = layer.split('_')
-		const [faction1, faction2] = factions.split('-')
-		return RawLayerSchema.parse({
-			Level: level,
-			Layer: layer,
-			Size: 'Medium',
-			Faction_1: faction1,
-			SubFac_1: null,
-			Faction_2: faction2,
-			SubFac_2: null,
-		})
-	})
+function getJensensLayers(pipeline: SquadPipelineModels.Output): RawLayer[] {
+	const jensensLayers: RawLayer[] = []
+	for (const layerString of pipeline.mapsavailable) {
+		if (!layerString.toLowerCase().includes('jensens')) continue
+		const { level, jensensFactions } = M.parseLayerString(layerString)
+		jensensLayers.push(
+			RawLayerSchema.parse({
+				Level: level,
+				Layer: layerString,
+				Size: 'Small',
+				Faction_1: jensensFactions![0],
+				SubFac_1: null,
+				Faction_2: jensensFactions![1],
+				SubFac_2: null,
+			})
+		)
+	}
+	return jensensLayers
 }
 
 function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[], factions: FactionDetails[]) {
 	const seedLayers: RawLayer[] = []
-	for (const layer of pipeline.Maps) {
-		if (!layer.levelName.toLowerCase().includes('seed')) continue
-		const mapName = M.preprocessLevel(layer.mapId)
-		// gross
-		if (layer.levelName.startsWith('Albasrah')) {
-			layer.levelName = layer.levelName.replace('Albasrah', 'AlBasrah')
-		}
+	for (const layerString of pipeline.mapsavailable) {
+		if (!layerString.toLowerCase().includes('seed')) continue
+		const { level } = M.parseLayerString(layerString)
 
-		const matchups = getSeedingMatchupsForLayer(layer.mapName, factions, biomes)
+		const matchups = getSeedingMatchupsForLayer(level, factions, biomes)
 		for (const [team1, team2] of matchups) {
 			seedLayers.push(
 				RawLayerSchema.parse({
-					Level: mapName,
-					Layer: layer.levelName,
+					Level: level,
+					Layer: layerString,
 					Size: 'Small',
 					Faction_1: team1,
 					SubFac_1: null,
@@ -657,7 +661,7 @@ function parseLayerComponents(
 		levelAbbreviations: LEVEL_ABBREVIATIONS,
 		levelShortNames: LEVEL_SHORT_NAMES,
 		layers: [...baseLayerComponents.layers],
-		layerVersions: [...baseLayerComponents.layers],
+		layerVersions: [...baseLayerComponents.versions],
 		gamemodes: GAMEMODES as unknown as string[],
 		gamemodeAbbreviations: GAMEMODE_ABBREVIATIONS,
 	}

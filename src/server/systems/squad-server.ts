@@ -7,7 +7,6 @@ import SquadRcon from '@/lib/rcon/squad-rcon'
 import * as C from '@/server/context.ts'
 import * as M from '@/models.ts'
 import * as DB from '@/server/db.ts'
-import * as Rx from 'rxjs'
 
 import { ENV } from '../env'
 import { baseLogger } from '@/server/logger'
@@ -25,10 +24,11 @@ export let adminList!: AsyncResource<SM.SquadAdmins>
 
 export async function warnAllAdmins(ctx: C.Log, message: string) {
 	await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
-	const [{ value: admins }, { value: players }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
+	const [{ value: admins }, { value: playersRes }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
 	const ops: Promise<void>[] = []
 
-	for (const player of players) {
+	if (playersRes.code === 'err:rcon') return
+	for (const player of playersRes.players) {
 		const groups = admins.get(player.steamID)
 		if (groups?.[CONFIG.adminListAdminRole]) {
 			ops.push(rcon.warn(opCtx, player.steamID.toString(), message))
@@ -133,6 +133,9 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 					await rcon.warn(ctx, msg.playerId, res.msg)
 					break
 				}
+				case 'err:rcon': {
+					throw new Error(`RCON error`)
+				}
 				case 'ok':
 					break
 				default:
@@ -192,7 +195,7 @@ export async function setupSquadServer() {
 		port: ENV.RCON_PORT,
 		password: ENV.RCON_PASSWORD,
 	})
-	await coreRcon.connect(opCtx)
+	void coreRcon.connect(opCtx)
 	rcon = new SquadRcon(baseCtx, coreRcon)
 
 	rcon.event$.subscribe(async (event) => {

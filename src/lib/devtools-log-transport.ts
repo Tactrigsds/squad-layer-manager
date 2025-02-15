@@ -169,7 +169,7 @@ export default async function (opts: { ignore?: string }) {
 							if (i === obj.ops.length - 1) {
 								if (msg.endsWith('started')) {
 									if (found) {
-										throw opError('already exists')
+										break
 									}
 									operations.set(key, {
 										...op,
@@ -184,24 +184,24 @@ export default async function (opts: { ignore?: string }) {
 									}
 								} else if (msg.endsWith('completed')) {
 									if (!found) {
-										throw opError('not found')
+										break
 									}
 									found.completed = true
 								} else if (msg.endsWith('failed')) {
 									if (!found) {
-										throw opError('not found')
+										break
 									}
 									found.completed = true
 									found.error = obj.error
 								} else {
-									if (!found) throw opError('not found')
+									if (!found) break
 									const log = { ...obj }
 									delete log.ops
 									found.logs.push(log)
 								}
 							} else {
 								if (!found) {
-									throw opError('not found')
+									break
 								}
 								parentId = key
 							}

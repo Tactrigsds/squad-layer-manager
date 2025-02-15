@@ -26,7 +26,9 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 		})
 		.sort((a, b) => a.index - b.index)
 
-	const status = useSquadServerStatus()
+	const statusRes = useSquadServerStatus()
+	if (statusRes?.code !== 'ok') return null
+	const status = statusRes.data
 	const totalVoteDisplay = tally.turnoutPercentage !== null ? ` (${tally.turnoutPercentage.toFixed(1)}%)` : null
 	let statusDisplay: string
 	switch (voteState.code) {

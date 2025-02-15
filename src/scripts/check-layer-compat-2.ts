@@ -34,11 +34,10 @@ async function main() {
 		)
 
 		await squadRcon.setNextLayer(ctx, layer1)
-		const returned = (await squadRcon.serverStatus.get(ctx)).value.nextLayer
-		if (returned && returned.code === 'unknown') {
-			throw new Error('nextLayer1 is unknown')
-		}
-		const returnedLayer = returned?.layer
+		const returnedRes = (await squadRcon.serverStatus.get(ctx)).value
+		if (returnedRes.code === 'err:rcon') throw new Error('RCON error')
+		const returned = returnedRes.data
+		const returnedLayer = returned?.currentLayer
 
 		ctx.log.info('returned layer: %o', returnedLayer)
 		ctx.log.info('expected layer: %o', layer1)

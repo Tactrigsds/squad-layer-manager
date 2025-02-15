@@ -7,8 +7,8 @@ import { Observable, share } from 'rxjs'
 import { atom, getDefaultStore, useAtomValue } from 'jotai'
 import { useMutation } from '@tanstack/react-query'
 
-const serverStatusAtom = atom<SM.ServerStatus | null>(null)
-const squadServerStatus$ = new Observable<SM.ServerStatus>(() => {
+const serverStatusAtom = atom<SM.ServerStatusRes | null>(null)
+const squadServerStatus$ = new Observable<SM.ServerStatusRes>(() => {
 	const sub = trpc.squadServer.watchServerStatus.subscribe(undefined, {
 		onData: (data) => {
 			getDefaultStore().set(serverStatusAtom, data)

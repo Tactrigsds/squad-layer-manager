@@ -295,6 +295,7 @@ export type Cache = PointWithCords & { name: string }
 
 export const PipelineOutputSchema = z.object({
 	Maps: z.array(MapSchema),
+	mapsavailable: z.array(z.string()),
 })
 
 export type Output = z.infer<typeof PipelineOutputSchema>

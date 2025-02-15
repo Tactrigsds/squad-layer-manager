@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { ParsedBigIntSchema, ParsedIntSchema } from '@/lib/zod'
 
 import * as M from '@/models'
-import * as C from '@/server/context.ts'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
@@ -192,3 +191,8 @@ export const BIOME_FACTIONS = {
 	'North America': [...bluefor, 'WPMC', ...redfor, ...pac],
 	Asia: [...bluefor, 'WPMC', ...pac],
 }
+
+export type RconError = { code: 'err:rcon'; msg: string }
+export type ServerStatusRes = { code: 'ok'; data: ServerStatus } | RconError
+export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
+export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError

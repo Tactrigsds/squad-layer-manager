@@ -62,9 +62,10 @@ import { zodValidator } from '@tanstack/zod-form-adapter'
 import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
+import { ServerUnreachable } from './server-offline-display.tsx'
 
 export default function ServerDashboard() {
-	const serverStatus = useSquadServerStatus()
+	const serverStatusRes = useSquadServerStatus()
 	const settingsPanelRef = React.useRef<ServerSettingsPanelHandle>(null)
 
 	const toaster = useToast()
@@ -162,7 +163,8 @@ export default function ServerDashboard() {
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
-						{!isEditing && serverStatus?.currentLayer && (!editingUser || inEditTransition) && (
+						{!isEditing && serverStatusRes && serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
+						{!isEditing && serverStatusRes && serverStatusRes?.code === 'ok' && (!editingUser || inEditTransition) && (
 							<>
 								<CardHeader>
 									<span className="flex items-center justify-between">
@@ -171,7 +173,7 @@ export default function ServerDashboard() {
 									</span>
 								</CardHeader>
 								<CardContent className="flex justify-between">
-									{DH.displayPossibleUnknownLayer(serverStatus.currentLayer)}
+									{DH.displayPossibleUnknownLayer(serverStatusRes.data.currentLayer)}
 									{slmConfig?.matchHistoryUrl && (
 										<a className={buttonVariants({ variant: 'ghost' })} target="_blank" href={slmConfig.matchHistoryUrl}>
 											View Match History
@@ -192,7 +194,6 @@ export default function ServerDashboard() {
 								</Button>
 							</Alert>
 						)}
-						{!isEditing && !serverStatus?.currentLayer && <p className={Typography.P}>No active layer found</p>}
 						{isEditing && !inEditTransition && (
 							/* ------- editing card ------- */
 							<div className="flex flex-col space-y-2">
@@ -300,10 +301,14 @@ function QueueControlPanel() {
 }
 
 function EndMatchDialog() {
+	const [isOpen, setIsOpen] = React.useState(false)
+
 	const loggedInUser = useLoggedInUser()
 	const endMatchMutation = useEndMatch()
-	const serverStatus = useSquadServerStatus()
-	const [isOpen, setIsOpen] = React.useState(false)
+	const serverStatusRes = useSquadServerStatus()
+	if (!serverStatusRes || serverStatusRes?.code === 'err:rcon') return null
+	const serverStatus = serverStatusRes.data
+
 	async function endMatch() {
 		setIsOpen(false)
 		const res = await endMatchMutation.mutateAsync()
@@ -455,9 +460,10 @@ function VoteState() {
 					break
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress':
+				case 'err:rcon':
 					toaster.toast({
-						title: 'Failed to start vote',
-						description: res.code,
+						title: 'Failed to start vote: ' + res.code,
+						description: res.msg,
 						variant: 'destructive',
 					})
 					break
@@ -472,7 +478,7 @@ function VoteState() {
 	const canModifyVote =
 		loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] }) && !editInProgress
 
-	if (!voteState || !squadServerStatus) return null
+	if (!voteState || !squadServerStatus || squadServerStatus.code !== 'ok') return null
 	function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
 		e.stopPropagation()
@@ -582,7 +588,7 @@ function VoteState() {
 				body = (
 					<>
 						<Timer deadline={voteState.deadline} />
-						<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
+						<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
 						{cancelBtn}
 					</>
 				)
@@ -591,7 +597,7 @@ function VoteState() {
 		case 'ended:winner':
 			body = (
 				<>
-					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
+					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
 					{rerunVoteBtn}
 					{voteConfigElt}
 				</>
@@ -602,7 +608,7 @@ function VoteState() {
 			const user = voteState.code === 'ended:aborted' ? voteState.aborter.discordId && PartsSys.findUser(voteState.aborter.discordId) : null
 			body = (
 				<>
-					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.playerCount} />
+					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
 					<Alert variant="destructive">
 						<AlertTitle>Vote Aborted</AlertTitle>
 						{voteState.code === 'ended:insufficient-votes' && <AlertDescription>Insufficient votes to determine a winner</AlertDescription>}
@@ -984,7 +990,9 @@ function LayerListItem(props: QueueItemProps) {
 	}
 
 	const queueItemStyles = `bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
-	const squadServerNextLayer = useSquadServerStatus()?.nextLayer
+	const serverStatus = useSquadServerStatus()
+	let squadServerNextLayer: M.PossibleUnknownMiniLayer | null = null
+	if (serverStatus!.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
 
 	const notCurrentNextLayer = props.index === 0 && squadServerNextLayer?.code === 'unknown' && (
 		<Tooltip>

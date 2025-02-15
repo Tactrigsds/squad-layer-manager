@@ -11,9 +11,11 @@ import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogDescription } f
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { ServerUnreachable } from './server-offline-display'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
-	const status = useSquadServerStatus()
+	const statusRes = useSquadServerStatus()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
@@ -41,31 +43,32 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
-					{status && (
+					{statusRes?.code === 'ok' && (
 						<>
-							<h3 className={Typography.H4}>{status.name}</h3>
+							<h3 className={Typography.H4}>{statusRes.data.name}</h3>
 							<div className="flex flex-col">
 								<div className={Typography.Small}>
-									<span className="font-bold">{status.playerCount}</span> / <span className="font-bold">{status.maxPlayerCount}</span>{' '}
-									online
+									<span className="font-bold">{statusRes.data.playerCount}</span> /{' '}
+									<span className="font-bold">{statusRes.data.maxPlayerCount}</span> online
 								</div>
 								<div className={Typography.Small}>
-									<span className="font-bold">{status.queueLength}</span> / <span className="font-bold">{status.maxQueueLength}</span> in
-									queue
+									<span className="font-bold">{statusRes.data.queueLength}</span> /{' '}
+									<span className="font-bold">{statusRes.data.maxQueueLength}</span> in queue
 								</div>
 							</div>
 							<div className="grid h-full grid-cols-[auto_auto]">
 								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
 								<span className={cn(Typography.Small, 'font-bold')}>
-									{status.currentLayer && DH.displayPossibleUnknownLayer(status.currentLayer)}
+									{statusRes.data.currentLayer && DH.displayPossibleUnknownLayer(statusRes.data.currentLayer)}
 								</span>
 								<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
 								<span className={cn(Typography.Small, 'font-bold')}>
-									{status.nextLayer && DH.displayPossibleUnknownLayer(status.nextLayer)}
+									{statusRes.data.nextLayer && DH.displayPossibleUnknownLayer(statusRes.data.nextLayer)}
 								</span>
 							</div>
 						</>
 					)}
+					{statusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={statusRes} />}
 					{user && (
 						<DropdownMenu open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
