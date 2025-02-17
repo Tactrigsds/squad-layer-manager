@@ -19,7 +19,7 @@ export function setupDatabase() {
 		database: ENV.DB_DATABASE,
 		connectionLimit: 5,
 
-		// return big numbers as strings to avoid precision loss. without this bigints will return incorrect values
+		// return big numbers as strings to avoid precision loss. without this queries against bigints will return incorrect values
 		supportBigNumbers: true,
 		bigNumberStrings: true,
 	})

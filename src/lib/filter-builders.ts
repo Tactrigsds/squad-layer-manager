@@ -79,3 +79,10 @@ export const hasAll = <T extends M.CollectionColumn>(column: T, values: string[]
 		column,
 		values,
 	}) satisfies M.Comparison
+
+export const isTrue = <T extends M.BooleanColumn>(column: T, options: { neg?: boolean } = {}) =>
+	({
+		code: 'is-true' as const,
+		column,
+		neg: options.neg ?? false,
+	}) satisfies M.Comparison

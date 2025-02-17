@@ -2,11 +2,14 @@ import { beforeAll, expect } from 'vitest'
 import { setupEnv } from '../env'
 import * as Log from '../logger'
 import * as C from '@/server/context'
+import * as E from 'drizzle-orm/expressions'
 import * as M from '@/models'
 import * as DB from '@/server/db'
 import * as FB from '@/lib/filter-builders'
 import { test } from 'vitest'
-import { queryLayers } from './layer-queries'
+import { queryLayers, areLayersInPool } from './layer-queries'
+import * as Schema from '$root/drizzle/schema.ts'
+import { getServerState } from '@/server/systems/layer-queue'
 
 let ctx!: C.Db & C.Log
 beforeAll(() => {
@@ -69,4 +72,30 @@ test('can filter by full faction matchup', async () => {
 		expect([team1, team2]).toContain(matchup[0])
 		expect([team1, team2]).toContain(matchup[1])
 	}
+})
+
+test.only('can check if layer is in pool', async () => {
+	const layer = M.getMiniLayerFromId('GD-AAS-V1:IMF-SP:BAF-SP')
+	const filter = FB.comp(FB.isTrue('Z_Pool'))
+	const [user] = await ctx.db().select().from(Schema.users).limit(1)
+	const filterEntity: M.FilterEntity = {
+		id: 'zpool',
+		name: 'Z Pool',
+		filter,
+		description: 'Z Pool Description',
+		owner: user.discordId,
+	}
+
+	// upsert filter entity (Schema.filters)
+	const [dbRes] = await ctx.db().update(Schema.filters).set(filterEntity).where(E.eq(Schema.filters.id, filterEntity.id))
+
+	if (dbRes.affectedRows === 0) {
+		await ctx.db().insert(Schema.filters).values(filterEntity)
+	}
+
+	const res = await areLayersInPool({ input: { layers: [layer.id], poolFilterId: filterEntity.id }, ctx })
+	if (res.code !== 'ok') {
+		throw new Error(`Failed to check if layer is in pool: ${res.code}`)
+	}
+	expect(res.results[0].matchesFilter).toBe(true)
 })

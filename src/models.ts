@@ -225,6 +225,7 @@ type ComparisonType = {
 export type StringColumn = (typeof COLUMN_TYPE_MAPPINGS)['string'][number]
 export type FloatColumn = (typeof COLUMN_TYPE_MAPPINGS)['float'][number]
 export type CollectionColumn = (typeof COLUMN_TYPE_MAPPINGS)['collection'][number]
+export type BooleanColumn = (typeof COLUMN_TYPE_MAPPINGS)['boolean'][number]
 export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'lt', displayName: 'Less Than' },
 	{ coltype: 'float', code: 'gt', displayName: 'Greater Than' },

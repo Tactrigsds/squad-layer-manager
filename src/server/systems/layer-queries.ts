@@ -127,7 +127,13 @@ export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof Ar
 		.from(Schema.layers)
 		.where(E.inArray(Schema.layers.id, input.layers))
 
-	return { code: 'ok' as const, results: results.map((r) => ({ id: r.id, matchesFilter: r.matchesFilter === 1 })) }
+	return {
+		code: 'ok' as const,
+		results: results.map((r) => {
+			// need to parseInt here because we have bigNumberStrings set to true in the mysql2 config
+			return { id: r.id, matchesFilter: parseInt(r.matchesFilter) === 1 }
+		}),
+	}
 }
 
 export const LayersQueryGroupedByInputSchema = z.object({
