@@ -5,14 +5,14 @@ import * as Context from '@/server/context'
 import * as DB from '@/server/db'
 import { baseLogger, setupLogger } from '@/server/logger'
 
-import { setupEnv } from './env'
+import { ensureEnvSetup } from './env'
 
 describe('pushOperation', () => {
 	let mockContext: Context.Log & Partial<Context.Db>
 	let debugSpy: any
 	let errorSpy: any
 	beforeAll(() => {
-		setupEnv()
+		ensureEnvSetup()
 		setupLogger()
 	})
 

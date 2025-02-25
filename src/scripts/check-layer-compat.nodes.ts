@@ -4,7 +4,7 @@ import SquadRcon from '@/lib/rcon/squad-rcon'
 import { baseLogger, setupLogger } from '@/server/logger'
 import * as M from '@/models'
 import * as C from '@/server/context'
-import { setupEnv } from '@/server/env'
+import { ensureEnvSetup } from '@/server/env'
 import { sleep } from '@/lib/async'
 import Docker, { ContainerInspectInfo } from 'dockerode'
 
@@ -14,7 +14,7 @@ const containers: Docker.Container[] = []
 async function spinUp() {
 	const ports: number[] = []
 
-	setupEnv()
+	ensureEnvSetup()
 	await setupLogger()
 
 	const ctx = { log: baseLogger }

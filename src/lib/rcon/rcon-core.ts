@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
+import * as Otel from '@opentelemetry/api'
 
 import * as C from '@/server/context.ts'
 import { BehaviorSubject } from 'rxjs'
@@ -11,6 +12,7 @@ export type DecodedPacket = {
 	body: string
 }
 
+const tracer = Otel.trace.getTracer('rcon-core')
 export const RCON_MAX_BUF_LEN = 4152
 
 export default class Rcon extends EventEmitter {
@@ -108,39 +110,41 @@ export default class Rcon extends EventEmitter {
 	}
 
 	async execute(_ctx: C.Log, body: string) {
-		await using ctx = C.pushOperation(this.addLogProps(_ctx), 'rcon:execute', { level: 'trace' })
-		ctx.log.trace(`Executing %s `, body)
-		if (typeof body !== 'string') {
-			throw new Error('Rcon.execute() body must be a string.')
-		}
-		return await new Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }>((resolve, reject) => {
-			if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: 'Rcon not connected.' })
-			if (!this.client?.writable) {
-				return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
+		return C.spanOp('rcon:execute', { tracer }, async () => {
+			const ctx = this.addLogProps(_ctx)
+			ctx.log.trace(`Executing %s `, body)
+			if (typeof body !== 'string') {
+				throw new Error('Rcon.execute() body must be a string.')
 			}
-			const length = Buffer.from(body).length
-			if (length > RCON_MAX_BUF_LEN) {
-				return resolve({ code: 'err:rcon' as const, msg: `Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.` })
-			} else {
-				const outputData = (data: any) => {
-					clearTimeout(timeOut)
-					resolve({ code: 'ok' as const, data })
+			return await new Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }>((resolve, reject) => {
+				if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: 'Rcon not connected.' })
+				if (!this.client?.writable) {
+					return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
 				}
-				const timedOut = () => {
-					this.removeListener(listenerId, outputData)
-					return reject({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+				const length = Buffer.from(body).length
+				if (length > RCON_MAX_BUF_LEN) {
+					return resolve({ code: 'err:rcon' as const, msg: `Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.` })
+				} else {
+					const outputData = (data: any) => {
+						clearTimeout(timeOut)
+						resolve({ code: 'ok' as const, data })
+					}
+					const timedOut = () => {
+						this.removeListener(listenerId, outputData)
+						return reject({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+					}
+					if (this.msgId > 80) this.msgId = 20
+					const listenerId = `response${this.msgId}`
+					const timeOut = setTimeout(timedOut, 10000)
+					this.once(listenerId, outputData)
+					this.#send(ctx, body, this.msgId)
+					this.msgId++
 				}
-				if (this.msgId > 80) this.msgId = 20
-				const listenerId = `response${this.msgId}`
-				const timeOut = setTimeout(timedOut, 10000)
-				this.once(listenerId, outputData)
-				this.#send(ctx, body, this.msgId)
-				this.msgId++
-			}
-		}).then((res) => {
-			if (res.code === 'err:rcon') ctx.log.error(res.msg)
-			return res
-		})
+			}).then((res) => {
+				if (res.code === 'err:rcon') ctx.log.error(res.msg)
+				return res
+			})
+		})()
 	}
 
 	#sendAuth(ctx: C.Log): void {

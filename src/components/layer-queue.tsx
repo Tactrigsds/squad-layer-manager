@@ -115,7 +115,7 @@ export default function ServerDashboard() {
 				break
 			case 'err:too-many-vote-choices':
 				toaster.toast({
-					title: `Cannot update: at most ${res.max} vote choices allowed`,
+					title: res.msg,
 					variant: 'destructive',
 				})
 				break
@@ -127,7 +127,7 @@ export default function ServerDashboard() {
 				break
 			case 'err:duplicate-vote-choices':
 				toaster.toast({
-					title: `Cannot update: duplicate choice '${res.duplicateChoice}'`,
+					title: res.msg,
 					variant: 'destructive',
 				})
 				break

@@ -4,6 +4,7 @@ import { baseLogger } from '../logger'
 import { ENV } from '../env'
 import * as D from 'discord.js'
 import { CONFIG } from '@/server/config'
+import * as Otel from '@opentelemetry/api'
 
 export const DiscordUserSchema = z.object({
 	id: z.string().transform(BigInt),
@@ -24,11 +25,9 @@ export type AccessToken = {
 
 let client!: D.Client
 
-export async function setupDiscordSystem() {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	await using ctx = C.pushOperation({ log: baseLogger }, 'discord:setup', {
-		level: 'info',
-	})
+const tracer = Otel.trace.getTracer('discord')
+export const setupDiscordSystem = C.spanOp('discord:setup', { tracer }, async () => {
+	const ctx = { log: baseLogger }
 	client = new D.Client({
 		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],
 	})
@@ -47,7 +46,8 @@ export async function setupDiscordSystem() {
 	if (res.code !== 'ok') {
 		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
-}
+	return res
+})
 
 export async function getOauthUser(token: AccessToken) {
 	const fetchDiscordUserRes = await fetch('https://discord.com/api/users/@me', {
@@ -61,8 +61,7 @@ export async function getOauthUser(token: AccessToken) {
 	return DiscordUserSchema.parse(data)
 }
 
-async function fetchGuild(_ctx: C.Log, guildId: bigint) {
-	await using ctx = C.pushOperation(_ctx, 'discord:fetch-guild')
+const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: C.Log, guildId: bigint) => {
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }
@@ -71,21 +70,22 @@ async function fetchGuild(_ctx: C.Log, guildId: bigint) {
 		if (err instanceof D.DiscordAPIError) {
 			return {
 				code: 'err:discord' as const,
+				msg: err.message,
 				err: err.message,
 				errCode: err.code,
 			}
 		}
 		throw err
 	}
-}
+})
 
-export async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint) {
-	await using ctx = C.pushOperation(_ctx, 'discord:fetch-member')
-	const { code, guild } = await fetchGuild(ctx, guildId)
-	if (code !== 'ok') return { code }
+export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (ctx: C.Log, guildId: bigint, memberId: bigint) => {
+	C.setSpanOpAttrs({ guildId: guildId.toString(), memberId: memberId.toString() })
+	const guildRes = await fetchGuild(ctx, guildId)
+	if (guildRes.code !== 'ok') return guildRes
 
 	try {
-		const member = await guild.members.fetch(memberId.toString())
+		const member = await guildRes.guild.members.fetch(memberId.toString())
 		return { code: 'ok' as const, member }
 	} catch (err) {
 		ctx.log.warn({ err }, 'Failed to fetch member with id %s', memberId)
@@ -98,17 +98,17 @@ export async function fetchMember(_ctx: C.Log, guildId: bigint, memberId: bigint
 		}
 		throw err
 	}
-}
+})
 
-export async function fetchGuildRoles(baseCtx: C.Log) {
-	await using ctx = C.pushOperation(baseCtx, 'discord:get-guild-roles')
-	const res = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, async (baseCtx: C.Log) => {
+	C.setSpanOpAttrs({ guildId: CONFIG.homeDiscordGuildId.toString() })
+	const res = await fetchGuild(baseCtx, CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
 		return res
 	}
 	const rolesMap = await res.guild.roles.fetch()
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
-}
+})
 
 // export async function getDiscordUserRoles(_ctx: C.Log, discordId: bigint) {
 //   await using ctx = C.pushOperation(_ctx, 'discord:get-user-roles')

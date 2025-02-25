@@ -18,35 +18,35 @@ import { CONFIG } from '@/server/config'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import { WARNS } from '@/messages.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
+import * as Otel from '@opentelemetry/api'
+
+const tracer = Otel.trace.getTracer('squad-server')
 
 export let rcon!: SquadRcon
 export let adminList!: AsyncResource<SM.SquadAdmins>
 
-export async function warnAllAdmins(ctx: C.Log, message: string) {
-	await using opCtx = C.pushOperation(ctx, 'squad-server:warn-all-admins')
-	const [{ value: admins }, { value: playersRes }] = await Promise.all([adminList.get(opCtx), rcon.playerList.get(opCtx)])
+export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, message: string) => {
+	C.setSpanOpAttrs({ message })
+	const [{ value: admins }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
 	const ops: Promise<void>[] = []
 
 	if (playersRes.code === 'err:rcon') return
 	for (const player of playersRes.players) {
 		const groups = admins.get(player.steamID)
 		if (groups?.[CONFIG.adminListAdminRole]) {
-			ops.push(rcon.warn(opCtx, player.steamID.toString(), message))
+			ops.push(rcon.warn(ctx, player.steamID.toString(), message))
 		}
 	}
 	await Promise.all(ops)
-}
+})
 
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
-	using opCtx = C.pushOperation(ctx, 'squad-server:watch-status')
-	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(opCtx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
+	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
 		yield info
 	}
 }
 
-async function endMatch({ ctx: baseCtx }: { ctx: C.TrpcRequest }) {
-	await using ctx = C.pushOperation(baseCtx, 'squad-server:end-match')
-
+async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
 	try {
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 			check: 'all',
@@ -56,9 +56,10 @@ async function endMatch({ ctx: baseCtx }: { ctx: C.TrpcRequest }) {
 		await rcon.endMatch(ctx)
 		await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
 	} catch (err) {
-		C.failOperation(ctx, err)
 		return { code: 'err' as const, msg: 'error while ending match', err }
 	}
+	await rcon.endMatch(ctx)
+	await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
 	return { code: 'ok' as const }
 }
 
@@ -79,11 +80,15 @@ function chatInScope(scopes: SM.CommandScope[], msgChat: SM.ChatChannel) {
 	return false
 }
 
-async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
-	await using ctx = C.pushOperation(_ctx, 'squad-server:handle-command')
+const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async (msg: SM.ChatMessage, ctx: C.Log & C.Db) => {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
-		ctx.log.warn('Invalid chat channel', { chatMsg: msg })
+		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid chat channel')
 		return
+	}
+
+	const showError = (errMsg: string) => {
+		C.setSpanStatus(Otel.SpanStatusCode.ERROR, errMsg)
+		return rcon.warn(ctx, msg.playerId, errMsg)
 	}
 
 	const words = msg.message.split(/\s+/)
@@ -97,11 +102,11 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 			.map((s) => CONFIG.commandPrefix + s)
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
 		if (sortedMatches.length === 0) {
-			await rcon.warn(ctx, msg.playerId, `Unknown command "${words[0]}"`)
+			return await showError(`Unknown command "${words[0]}"`)
 			return
 		}
 		const matched = sortedMatches[sortedMatches.length - 1].member
-		await rcon.warn(ctx, msg.playerId, `Unknown command "${words[0]}". Did you mean ${matched}?`)
+		return await showError(`Unknown command "${words[0]}". Did you mean ${matched}?`)
 		return
 	}
 	ctx.log.info('Command received: %s', cmd)
@@ -115,7 +120,7 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 	}
 
 	if (cmdConfig.enabled === false) {
-		await rcon.warn(ctx, msg.playerId, `Command "${cmd}" is disabled`)
+		return await showError(`Command "${cmd}" is disabled`)
 		return
 	}
 
@@ -125,12 +130,11 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
 			switch (res.code) {
 				case 'err:permission-denied': {
-					await rcon.warn(ctx, msg.playerId, WARNS.permissionDenied(res))
-					break
+					return await showError(WARNS.permissionDenied(res))
 				}
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress': {
-					await rcon.warn(ctx, msg.playerId, res.msg)
+					return await showError(res.msg)
 					break
 				}
 				case 'err:rcon': {
@@ -141,6 +145,7 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 				default:
 					assertNever(res)
 			}
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}
 		case 'abortVote': {
@@ -149,12 +154,12 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 				case 'ok':
 					break
 				case 'err:no-vote-in-progress':
-					await rcon.warn(ctx, msg.playerId, WARNS.vote.noVoteInProgress)
-					break
+					return await showError(WARNS.vote.noVoteInProgress)
 				default: {
 					assertNever(res)
 				}
 			}
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}
 		case 'help': {
@@ -167,47 +172,48 @@ async function handleCommand(msg: SM.ChatMessage, _ctx: C.Log & C.Db) {
 				})
 			}
 			await rcon.warn(ctx, msg.playerId, WARNS.commands.help(configsWithDescriptions, CONFIG.commandPrefix))
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}
 		case 'showNext': {
 			const nextItem = await LayerQueue.peekNext(ctx)
 			await rcon.warn(ctx, msg.playerId, WARNS.queue.showNext(nextItem))
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}
 		default: {
 			assertNever(cmd)
 		}
 	}
-}
+})
 
-export async function setupSquadServer() {
+export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async () => {
 	const adminListTTL = 1000 * 60 * 60
-	const baseCtx = DB.addPooledDb({ log: baseLogger })
+	const ctx = DB.addPooledDb({ log: baseLogger })
 
-	await using opCtx = C.pushOperation(baseCtx, 'squad-server:setup', {
-		level: 'info',
-	})
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
-	void adminList.get(opCtx)
+	void adminList.get(ctx)
 
 	const coreRcon = new Rcon({
 		host: ENV.RCON_HOST,
 		port: ENV.RCON_PORT,
 		password: ENV.RCON_PASSWORD,
 	})
-	void coreRcon.connect(opCtx)
-	rcon = new SquadRcon(baseCtx, coreRcon)
+	void coreRcon.connect(ctx)
+	rcon = new SquadRcon(ctx, coreRcon)
 
 	rcon.event$.subscribe(async (event) => {
 		if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-			await handleCommand(event.message, baseCtx)
+			await handleCommand(event.message, ctx)
 		}
 
 		if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-			await LayerQueue.handleVote(event.message, baseCtx)
+			await LayerQueue.handleVote(event.message, ctx)
 		}
 	})
-}
+
+	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
+})
 
 export const squadServerRouter = router({
 	watchServerStatus: procedure.subscription(watchServerStatus),

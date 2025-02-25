@@ -1,5 +1,6 @@
 import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
 import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
+import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 
 import * as C from './context.ts'
@@ -49,8 +50,17 @@ export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
 	}
 }
 
+const tracer = Otel.trace.getTracer('db')
 export async function runTransaction<T extends C.Db, V>(ctx: T & { tx?: never }, callback: (ctx: T & C.Tx) => Promise<V>) {
-	return await ctx.db().transaction((tx) => callback({ ...ctx, tx: true, db: () => tx }))
+	return await tracer.startActiveSpan('db.transaction', async (span) => {
+		try {
+			const res = await ctx.db().transaction((tx) => callback({ ...ctx, tx: true, db: () => tx }))
+			span.setStatus({ code: Otel.SpanStatusCode.OK })
+			return res
+		} finally {
+			span.end()
+		}
+	})
 }
 
 // I hate OOP

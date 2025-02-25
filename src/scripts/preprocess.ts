@@ -14,7 +14,7 @@ import * as M from '@/models'
 import * as Config from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import { setupEnv } from '@/server/env'
+import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Paths from '@/server/paths'
@@ -254,11 +254,11 @@ async function main() {
 	if (args.length === 0) {
 		args.push(...objKeys(Steps.Values))
 	}
-	setupEnv()
+	ensureEnvSetup()
 	await setupLogger()
 	DB.setupDatabase()
 
-	await using ctx = C.pushOperation(DB.addPooledDb({ log: baseLogger }), 'preprocess')
+	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
 
 	if (args.includes('generate-config-schema')) {
 		ctx.tasks.push(generateConfigJsonSchema(ctx))
@@ -312,8 +312,7 @@ async function main() {
 	await Promise.all(ctx.tasks)
 }
 
-async function downloadPipeline(_ctx: C.Log) {
-	await using ctx = C.pushOperation(_ctx, 'download-pipeline')
+async function downloadPipeline(ctx: C.Log) {
 	const res = await fetch(
 		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
 	)

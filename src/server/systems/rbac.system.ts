@@ -7,6 +7,7 @@ import * as E from 'drizzle-orm/expressions'
 import { objKeys } from '@/lib/object'
 import { procedure, router } from '@/server/trpc.server'
 import deepEqual from 'fast-deep-equal'
+import * as Otel from '@opentelemetry/api'
 
 let roles!: RBAC.Role[]
 let globalRolePermissions!: Record<RBAC.Role, RBAC.Permission[]>
@@ -60,23 +61,27 @@ export function setup() {
 }
 
 // TODO error visibility
-export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
-	await using ctx = C.pushOperation(baseCtx, 'rbac:get-roles-for-discord-user')
+
+const tracer = Otel.trace.getTracer('rbac')
+
+export const getRolesForDiscordUser = C.spanOp('rbac:get-roles-for-discord-user', { tracer }, async (baseCtx: C.Log, userId: bigint) => {
+	C.setSpanOpAttrs({ userId })
 	const roles: RBAC.Role[] = []
+	const tasks: Promise<void>[] = []
 	for (const assignment of roleAssignments) {
 		if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
 			roles.push(assignment.role)
 		}
-		ctx.tasks.push(
+		tasks.push(
 			(async () => {
 				if (assignment.type === 'discord-server-member') {
-					const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
+					const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
 					if (memberRes.code === 'ok') {
 						roles.push(assignment.role)
 					}
 				}
 				if (assignment.type === 'discord-role') {
-					const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, userId)
+					const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
 					if (memberRes.code === 'ok') {
 						const member = memberRes.member
 						if (member.roles.cache.has(assignment.discordRoleId.toString())) {
@@ -87,14 +92,14 @@ export async function getRolesForDiscordUser(baseCtx: C.Log, userId: bigint) {
 			})()
 		)
 	}
-	await Promise.all(ctx.tasks)
+	await Promise.all(tasks)
 	return roles
-}
+})
 
-export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
-	await using ctx = C.pushOperation(baseCtx, 'rbac:get-permissions-for-discord-user')
+export const getUserRbac = C.spanOp('rbac:get-permissions-for-discord-user', { tracer }, async (baseCtx: C.Log & C.Db, userId: bigint) => {
+	C.setSpanOpAttrs({ userId })
 	const ownedFiltersPromise = getOwnedFilters()
-	const roles = await getRolesForDiscordUser(ctx, userId)
+	const roles = await getRolesForDiscordUser(baseCtx, userId)
 	const userFilterContributorsPromise = getUserContributorFilters()
 	const roleFilterContributorsPromise = getRoleContributorFilters()
 	const perms: RBAC.Permission[] = []
@@ -102,7 +107,7 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 		perms.push(...globalRolePermissions[role])
 	}
 	if (perms.find((p) => p.type === 'filters:write-all')) {
-		const allFilters = await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters)
+		const allFilters = await baseCtx.db().select({ id: Schema.filters.id }).from(Schema.filters)
 		perms.push(...allFilters.map((f) => RBAC.perm('filters:write', { filterId: f.id })))
 	}
 	if (perms.find((p) => p.type === 'queue:force-write')) {
@@ -117,10 +122,10 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 	return { perms: dedupePerms(perms), roles }
 
 	async function getOwnedFilters() {
-		return await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.owner, userId))
+		return await baseCtx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.owner, userId))
 	}
 	async function getRoleContributorFilters() {
-		const rows = await ctx
+		const rows = await baseCtx
 			.db()
 			.select({ filterId: Schema.filterRoleContributors.filterId })
 			.from(Schema.filterRoleContributors)
@@ -128,14 +133,14 @@ export async function getUserRbac(baseCtx: C.Log & C.Db, userId: bigint) {
 		return rows.map((r) => r.filterId)
 	}
 	async function getUserContributorFilters() {
-		const rows = await ctx
+		const rows = await baseCtx
 			.db()
 			.select({ filterId: Schema.filterUserContributors.filterId })
 			.from(Schema.filterUserContributors)
 			.where(E.eq(Schema.filterUserContributors.userId, userId))
 		return rows.map((r) => r.filterId)
 	}
-}
+})
 
 function dedupePerms(perms: RBAC.Permission[]) {
 	const types = new Map(perms.map((p) => [p.type, []] as const)) as Map<RBAC.PermissionType, RBAC.Permission[]>
@@ -174,11 +179,10 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	permissionReq: RBAC.PermissionReq<T>
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: C.Log & C.Db,
+	ctx: C.Log & C.Db,
 	userId: bigint,
 	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>
 ) {
-	await using ctx = C.pushOperation(baseCtx, 'rbac:check-permissions')
 	const userRbac = await getUserRbac(ctx, userId)
 
 	const req: RBAC.PermissionReq<T> =

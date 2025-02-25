@@ -1,4 +1,5 @@
 import { Client as FTPClient } from 'basic-ftp'
+import * as Otel from '@opentelemetry/api'
 import fs from 'fs'
 import path from 'path'
 import * as Paths from '@/server/paths.ts'
@@ -8,8 +9,8 @@ import * as C from '@/server/context.ts'
 import * as SM from './squad-models.ts'
 import WritableBuffer from './writable-buffer.ts'
 
-export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminListSource[]) {
-	await using ctx = C.pushOperation(_ctx, 'fetch-admin-lists')
+const tracer = Otel.trace.getTracer('fetch-admin-lists')
+export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sources: SM.AdminListSource[]) => {
 	const groups: { [key: string]: string[] } = {}
 	const admins: SM.SquadAdmins = new Map()
 
@@ -90,4 +91,4 @@ export default async function fetchAdminLists(_ctx: C.Log, sources: SM.AdminList
 	}
 	ctx.log.trace(`${Object.keys(admins).length} admins loaded...`)
 	return admins
-}
+})

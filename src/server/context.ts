@@ -5,10 +5,20 @@ import * as M from '@/models.ts'
 import RconCore from '@/lib/rcon/rcon-core.ts'
 import * as DB from './db.ts'
 import { Logger } from './logger.ts'
+import * as Otel from '@opentelemetry/api'
+import { SpanStatusCode } from '@opentelemetry/api'
 
 // -------- Logging --------
 export type Log = {
 	log: Logger
+}
+
+export type OtelCtx = {
+	otelCtx: Otel.Context
+}
+
+export type SpanContext = {
+	span: Otel.Span
 }
 
 export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
@@ -33,6 +43,61 @@ type OperationOptions = {
 export function failOperation(ctx: Op, err?: any, code?: string): void {
 	ctx.result = code ?? 'err'
 	ctx.error = err
+}
+
+export function spanOp<Cb extends (...args: any[]) => Promise<any>>(name: string, opts: { tracer: Otel.Tracer }, cb: Cb): Cb {
+	//@ts-expect-error idk
+	return async (...args) => {
+		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan() }, async (span) => {
+			try {
+				const result = await cb(...args)
+				if (typeof result === 'object' && 'code' in result) {
+					if (result.code === 'ok') {
+						span.setStatus({ code: Otel.SpanStatusCode.OK })
+					} else {
+						const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
+						span.setStatus({ code: Otel.SpanStatusCode.ERROR, message: msg })
+					}
+				}
+				return result as Awaited<ReturnType<Cb>>
+			} catch (error) {
+				let message: string
+				if (error instanceof Error) {
+					span.recordException(error)
+					message = error.message
+				} else {
+					message = typeof error === 'string' ? error : JSON.stringify(error)
+					span.recordException(message)
+				}
+				span.setStatus({ code: SpanStatusCode.ERROR, message })
+				throw error
+			} finally {
+				span.end()
+			}
+		})
+	}
+}
+
+export function setSpanOpAttrs(attrs: Record<string, any>) {
+	const namespaced: Record<string, any> = {}
+	for (const [key, value] of Object.entries(attrs)) {
+		namespaced[`op.${key}`] = value
+	}
+	Otel.default.trace.getActiveSpan()?.setAttributes(namespaced)
+}
+export function setSpanStatus(status: Otel.SpanStatusCode, message?: string) {
+	Otel.default.trace.getActiveSpan()?.setStatus({ code: status, message })
+}
+
+export function pushOtelCtx<Ctx extends object>(ctx: Ctx) {
+	return {
+		...ctx,
+		otelCtx: Otel.default.context.active(),
+	}
+}
+
+export function getSpan() {
+	return Otel.default.trace.getActiveSpan()
 }
 
 export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: OperationOptions): T & Op {

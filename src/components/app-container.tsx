@@ -11,7 +11,6 @@ import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogDescription } f
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { ServerUnreachable } from './server-offline-display'
 
 export default function AppContainer(props: { children: React.ReactNode }) {

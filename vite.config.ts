@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 import * as AR from './src/app-routes.ts'
-import { ENV, setupEnv } from './src/server/env.ts'
+import { ENV, ensureEnvSetup } from './src/server/env.ts'
 
 const prod = process.env.NODE_ENV === 'production'
 
@@ -13,13 +13,14 @@ export default defineConfig({
 	server: {
 		proxy: !prod ? buildProxy() : undefined,
 	},
+	envPrefix: 'PUBLIC_',
 	build: {
 		sourcemap: true,
 	},
 })
 
 function buildProxy() {
-	setupEnv()
+	ensureEnvSetup()
 	return Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
 			const protocol = r.websocket ? 'ws://' : 'http://'

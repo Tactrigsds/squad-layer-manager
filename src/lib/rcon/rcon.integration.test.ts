@@ -2,7 +2,7 @@ import { Mutex } from 'async-mutex'
 import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 
 import * as C from '@/server/context'
-import { ENV, setupEnv } from '@/server/env'
+import { ENV, ensureEnvSetup } from '@/server/env'
 import { baseLogger, setupLogger } from '@/server/logger'
 
 import Rcon from './rcon-core'
@@ -13,7 +13,7 @@ let rcon!: Rcon
 let baseCtx: C.Log
 
 beforeAll(async () => {
-	setupEnv()
+	ensureEnvSetup()
 	await setupLogger()
 	baseCtx = { log: baseLogger }
 	const config = {

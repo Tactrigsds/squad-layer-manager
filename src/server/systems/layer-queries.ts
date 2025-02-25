@@ -10,6 +10,7 @@ import * as C from '@/server/context'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as SquadjsSchema from '$root/drizzle/schema-squadjs.ts'
 import * as LayerQueue from './layer-queue'
+import * as Otel from '@opentelemetry/api'
 import { assertNever } from '@/lib/typeGuards'
 import { procedure, router } from '@/server/trpc.server.ts'
 
@@ -39,11 +40,12 @@ export const historyFiltersCache = new Map<string, M.FilterNode>()
 
 export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
 
-export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & C.Db }) {
-	const { ctx: baseCtx, input: input } = args
+const tracer = Otel.trace.getTracer('layer-queries')
+
+export const queryLayers = C.spanOp('layers-query:run', { tracer }, async (args: { input: LayersQueryInput; ctx: C.Log & C.Db }) => {
+	const { ctx, input: input } = args
 	input.pageSize ??= 200
 	input.pageIndex ??= 0
-	await using opCtx = C.pushOperation(baseCtx, 'layers-query:run')
 
 	let whereCondition = sql`1=1`
 	let filter = input.filter
@@ -53,7 +55,7 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 		if (historyFiltersCache.has(superjson.stringify(input.historyFilters))) {
 			historyFilter = historyFiltersCache.get(superjson.stringify(input.historyFilters))!
 		} else {
-			historyFilter = await getHistoryFilter(opCtx, input.historyFilters, input.queuedLayerIds ?? [])
+			historyFilter = await getHistoryFilter(ctx, input.historyFilters, input.queuedLayerIds ?? [])
 		}
 
 		if (filter) {
@@ -64,10 +66,10 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 	}
 
 	if (filter) {
-		whereCondition = (await getWhereFilterConditions(filter, [], opCtx)) ?? whereCondition
+		whereCondition = (await getWhereFilterConditions(filter, [], ctx)) ?? whereCondition
 	}
 
-	let query = opCtx.db().select().from(Schema.layers).where(whereCondition)
+	let query = ctx.db().select().from(Schema.layers).where(whereCondition)
 
 	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
@@ -84,7 +86,7 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 			.offset(input.pageIndex * input.pageSize)
 			.limit(input.pageSize)
 			.then((layers) => (layers as M.Layer[]).map(M.includeComputedCollections)),
-		opCtx
+		ctx
 			.db()
 			.select({ count: sql<number>`count(*)` })
 			.from(Schema.layers)
@@ -92,12 +94,13 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 	])
 	const totalCount = countResult.count
 
+	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	return {
 		layers,
 		totalCount,
 		pageCount: input.sort?.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
 	}
-}
+})
 
 export const AreLayersInPoolInputSchema = z.object({
 	layers: z.array(M.LayerIdSchema),
@@ -123,7 +126,7 @@ export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof Ar
 	const whereConditions = await getWhereFilterConditions(filter, [], ctx)
 	const results = await ctx
 		.db()
-		.select({ id: Schema.layers.id, matchesFilter: whereConditions as SQL<number> })
+		.select({ id: Schema.layers.id, matchesFilter: whereConditions as SQL<string> })
 		.from(Schema.layers)
 		.where(E.inArray(Schema.layers.id, input.layers))
 

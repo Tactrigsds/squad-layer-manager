@@ -1,5 +1,5 @@
 import { beforeAll, expect } from 'vitest'
-import { setupEnv } from '../env'
+import { ensureEnvSetup } from '../env'
 import * as Log from '../logger'
 import * as C from '@/server/context'
 import * as E from 'drizzle-orm/expressions'
@@ -13,7 +13,7 @@ import { getServerState } from '@/server/systems/layer-queue'
 
 let ctx!: C.Db & C.Log
 beforeAll(() => {
-	setupEnv()
+	ensureEnvSetup()
 	Log.setupLogger()
 	DB.setupDatabase()
 	ctx = DB.addPooledDb({ log: Log.baseLogger })

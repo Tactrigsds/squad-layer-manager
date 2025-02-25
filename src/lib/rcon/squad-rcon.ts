@@ -3,14 +3,16 @@ import { AsyncResource, sleep } from '@/lib/async'
 
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
+import * as Otel from '@opentelemetry/api'
 
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import Rcon, { DecodedPacket } from './rcon-core'
 import * as SM from './squad-models'
-import { selectProps } from '../object'
+import { prefixProps, selectProps } from '../object'
 
 export type WarnOptions = { msg: string | string[]; repeat?: number } | string | string[]
 
+const tracer = Otel.trace.getTracer('squad-rcon')
 export default class SquadRcon {
 	event$: Subject<SM.SquadEvent> = new Subject()
 
@@ -182,13 +184,14 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	async setNextLayer(_ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
-		await using ctx = C.pushOperation(_ctx, 'squad-rcon:setNextLayer', {
-			level: 'debug',
-			startMsgBindings: selectProps(layer, ['Layer', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2']),
-		})
-		await this.core.execute(ctx, M.getAdminSetNextLayerCommand(layer))
-		this.serverStatus.invalidate(ctx)
+	async setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
+		return C.spanOp('squad-rcon:setNextLayer', { tracer }, async () => {
+			const span = Otel.trace.getActiveSpan()!
+			span.setAttributes(prefixProps(selectProps(layer, ['Layer', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2']), 'nextlayer'))
+			await this.core.execute(ctx, M.getAdminSetNextLayerCommand(layer))
+			this.serverStatus.invalidate(ctx)
+			span.setStatus({ code: Otel.SpanStatusCode.OK })
+		})()
 	}
 
 	async endMatch(_ctx: C.Log) {
@@ -211,39 +214,40 @@ export default class SquadRcon {
 	}
 
 	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatusRes> {
-		await using ctx = C.pushOperation(_ctx, 'squad-rcon:getServerstatus', { level: 'trace' })
-		const rawDataPromise = this.core.execute(ctx, `ShowServerInfo`)
-		const currentLayerTask = this.getCurrentLayer(ctx)
-		const nextLayerTask = this.getNextLayer(ctx)
-		const rawDataRes = await rawDataPromise
-		if (rawDataRes.code !== 'ok') return rawDataRes
-		const data = JSON.parse(rawDataRes.data)
-		const res = SM.ServerRawInfoSchema.safeParse(data)
-		if (!res.success) {
-			ctx.log.error(res.error, `Failed to parse server info: %O`, data)
-			return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
-		}
+		return C.spanOp('squad-rcon:getServerstatus', { tracer }, async () => {
+			const rawDataPromise = this.core.execute(_ctx, `ShowServerInfo`)
+			const currentLayerTask = this.getCurrentLayer(_ctx)
+			const nextLayerTask = this.getNextLayer(_ctx)
+			const rawDataRes = await rawDataPromise
+			if (rawDataRes.code !== 'ok') return rawDataRes
+			const data = JSON.parse(rawDataRes.data)
+			const res = SM.ServerRawInfoSchema.safeParse(data)
+			if (!res.success) {
+				_ctx.log.error(res.error, `Failed to parse server info: %O`, data)
+				return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
+			}
 
-		const rawInfo = res.data
-		const currentLayerRes = await currentLayerTask
-		const nextLayerRes = await nextLayerTask
-		if (currentLayerRes.code !== 'ok') return currentLayerRes
-		if (nextLayerRes.code !== 'ok') return nextLayerRes
+			const rawInfo = res.data
+			const currentLayerRes = await currentLayerTask
+			const nextLayerRes = await nextLayerTask
+			if (currentLayerRes.code !== 'ok') return currentLayerRes
+			if (nextLayerRes.code !== 'ok') return nextLayerRes
 
-		const serverStatus: SM.ServerStatus = {
-			name: rawInfo.ServerName_s,
-			currentLayer: currentLayerRes.layer,
-			nextLayer: nextLayerRes.layer,
-			maxPlayerCount: rawInfo.MaxPlayers,
-			playerCount: rawInfo.PlayerCount_I,
-			queueLength: rawInfo.PublicQueue_I,
-			maxQueueLength: rawInfo.PublicQueueLimit_I,
-		}
+			const serverStatus: SM.ServerStatus = {
+				name: rawInfo.ServerName_s,
+				currentLayer: currentLayerRes.layer,
+				nextLayer: nextLayerRes.layer,
+				maxPlayerCount: rawInfo.MaxPlayers,
+				playerCount: rawInfo.PlayerCount_I,
+				queueLength: rawInfo.PublicQueue_I,
+				maxQueueLength: rawInfo.PublicQueueLimit_I,
+			}
 
-		return {
-			code: 'ok' as const,
-			data: serverStatus,
-		}
+			return {
+				code: 'ok' as const,
+				data: serverStatus,
+			}
+		})()
 	}
 }
 

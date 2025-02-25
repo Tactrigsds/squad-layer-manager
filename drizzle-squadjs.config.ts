@@ -1,8 +1,8 @@
 import { defineConfig } from 'drizzle-kit'
 
-import { ENV, setupEnv } from './src/server/env.ts'
+import { ENV, ensureEnvSetup } from './src/server/env.ts'
 
-setupEnv()
+ensureEnvSetup()
 
 export default defineConfig({
 	schema: './drizzle/schema-squadjs.ts',

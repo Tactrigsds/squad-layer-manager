@@ -2,13 +2,13 @@ import Rcon from '@/lib/rcon/rcon-core'
 import SquadRcon from '@/lib/rcon/squad-rcon'
 import { baseLogger, setupLogger } from '@/server/logger'
 import * as M from '@/models'
-import { setupEnv } from '@/server/env'
+import { ensureEnvSetup } from '@/server/env'
 
 const PORTS = process.argv[2].split(',').map((x) => parseInt(x))
 
 await main()
 async function main() {
-	setupEnv()
+	ensureEnvSetup()
 	await setupLogger()
 	const ctx = { log: baseLogger }
 

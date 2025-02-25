@@ -1,11 +1,12 @@
-import pino, { Logger as PinoLogger, LoggerOptions } from 'pino'
+import { Logger as PinoLogger, LoggerOptions } from 'pino'
+import { LoggerProvider } from '@opentelemetry/api-logs'
+import { sdk } from '@/server/instrumentation'
 
-import devtoolsTransport from '@/lib/devtools-log-transport.ts'
-import { createId } from '@/lib/id'
-
+import pino from 'pino'
+import * as Otel from '@opentelemetry/api'
 import { ENV, Env } from './env'
-
-const ignore = 'pid,hostname,req.remotePort,req.remoteAddress,req.host'
+import format from 'quick-format-unescaped'
+import { flattenObjToAttrs } from '@/lib/object'
 
 export type Logger = PinoLogger
 export let baseLogger!: Logger
@@ -14,33 +15,109 @@ const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',
 }
 
+/**
+ * If the source format has only a single severity that matches the meaning of the range
+ * then it is recommended to assign that severity the smallest value of the range.
+ * https://github.com/open-telemetry/opentelemetry-specification/blob/fc8289b8879f3a37e1eba5b4e445c94e74b20359/specification/logs/data-model.md#mapping-of-severitynumber
+ */
+const SEVERITY_NUMBER_MAP = {
+	10: 1, // TRACE
+	20: 5, // DEBUG
+	30: 9, // INFO
+	40: 13, // WARN
+	50: 17, // ERROR
+	60: 21, // FATAL
+}
+
+interface CommonBindings {
+	msg: string
+	level: keyof typeof SEVERITY_NUMBER_MAP
+	time: number
+	hostname?: string
+	pid?: number
+}
+
+type Bindings = Record<string, string | number | object> & CommonBindings
+
+const LEVELS = {
+	10: 'TRACE',
+	20: 'DEBUG',
+	30: 'INFO',
+	40: 'WARN',
+	50: 'ERROR',
+	60: 'FATAL',
+} as const
+
+const logger = ((sdk as any)._loggerProvider as LoggerProvider).getLogger('squad-layer-manager')
+
 export async function setupLogger() {
+	const hooks: pino.LoggerOptions['hooks'] = {
+		logMethod(_inputArgs, method, level) {
+			let inputArgs = [..._inputArgs]
+			const span = Otel.default.trace.getActiveSpan()
+			let attrs = {} as Record<string, unknown>
+			let msg = null
+			for (let i = 0; i < inputArgs.length; i++) {
+				if (typeof inputArgs[i] === 'string') {
+					msg = format(inputArgs[i], inputArgs.slice(i + 1))
+					break
+				}
+			}
+
+			if (inputArgs.length === 0) {
+				inputArgs = ['']
+			} else if (inputArgs[0] instanceof Error) {
+				const obj = inputArgs[0] as Error
+				attrs['error.type'] = obj.name
+				attrs['error.message'] = obj.message
+				attrs['error.stack'] = obj.stack
+				inputArgs = [obj.message]
+				if (msg === null) {
+					msg = obj.message
+				}
+				if (span) {
+					span.recordException(obj)
+				}
+			} else if (typeof inputArgs[0] === 'object' && inputArgs !== null) {
+				const obj = inputArgs[0]
+				attrs = flattenObjToAttrs(obj)
+			}
+
+			if (span) {
+				attrs.span_id = span.spanContext().spanId
+				attrs.trace_id = span.spanContext().traceId
+				if (typeof inputArgs[0] === 'string' || inputArgs[0] instanceof Error) {
+					inputArgs.unshift({ span_id: attrs.span_id, trace_id: attrs.trace_id, span_name: (span as any).name })
+				} else if (typeof inputArgs[0] === 'object') {
+					inputArgs[0] = { ...(inputArgs[0] ?? {}), span_id: attrs.span_id, trace_id: attrs.trace_id }
+				}
+			}
+
+			//@ts-expect-error idk
+			logger.emit({ body: msg, attributes: attrs, severityText: LEVELS[level], severityNumber: SEVERITY_NUMBER_MAP[level] })
+
+			return method.apply(this, _inputArgs)
+		},
+	}
 	const envToLogger = {
 		development: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
 			serializers,
 			base: undefined,
-			transport: {
-				target: 'pino-pretty',
-				options: {
-					translateTime: 'HH:MM:ss Z',
-					ignore,
-				},
-			},
+			hooks,
 		},
 		production: {
-			level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
+			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
 			base: undefined,
 			serializers,
+			hooks,
 		},
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
+
+	// const transport = pino.transport({
+	// 	targets: [{ target: 'pino-pretty', level: 'trace', options: {} }],
+	// })
 	const baseConfig = envToLogger[ENV.NODE_ENV]
-	if (ENV.USING_DEVTOOLS) {
-		// @ts-expect-error don't need it
-		delete baseConfig.transport
-		baseLogger = pino(baseConfig, await devtoolsTransport({ ignore }))
-	} else {
-		baseLogger = pino(baseConfig)
-	}
-	baseLogger = baseLogger.child({ runId: createId(12) })
+
+	baseLogger = pino(baseConfig)
 }

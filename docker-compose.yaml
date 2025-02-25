@@ -1,7 +1,9 @@
+# for development
 services:
   db:
+    container_name: slm-db
     image: mysql
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: dev
     ports:
@@ -9,6 +11,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
   squad_server:
+    container_name: slm-squad-server
     image: cm2network/squad
     stdin_open: true
     tty: true
@@ -16,7 +19,6 @@ services:
     volumes:
       - squad_data:/home/steam/squad-dedicated/
       - ./docker/Rcon.cfg:/home/steam/squad-dedicated/SquadGame/ServerConfig/Rcon.cfg
-
     ports:
       # - 7787:7787/tcp
       # - 7788:7788/tcp
@@ -30,6 +32,17 @@ services:
       # - 27165:27165/udp
       # - 27166:27166/udp
       # - 21114:21114/udp
+  otel:
+    container_name: slm-otel
+    image: grafana/otel-lgtm
+    restart: unless-stopped
+    ports:
+      - 3001:3000
+      - 4317:4317
+      - 4318:4318
+
+
+
 volumes:
   squad_data:
   db_data:

@@ -9,6 +9,7 @@ import './index.css'
 import { enableMapSet } from 'immer'
 
 import FullPageSpinner from './components/full-page-spinner.tsx'
+import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
 // eslint-disable-next-line react-refresh/only-export-components
 const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))
@@ -21,6 +22,7 @@ const LayerQueue = React.lazy(() => import('./components/layer-queue.tsx'))
 
 // Enable Map and Set support in Immer
 enableMapSet()
+console.log(`%cversion ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: lightgreen')
 
 const router = createBrowserRouter([
 	{

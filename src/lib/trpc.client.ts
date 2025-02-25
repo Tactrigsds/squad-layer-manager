@@ -14,6 +14,7 @@ export const links = [
 		client: createWSClient({
 			keepAlive: {
 				enabled: true,
+				intervalMs: 2000,
 			},
 			url: wsUrl,
 			onError: (error) => {

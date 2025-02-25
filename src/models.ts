@@ -139,7 +139,6 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		)
 	}
 	if (!layer) {
-		debugger
 		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 

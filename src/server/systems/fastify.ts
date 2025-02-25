@@ -29,55 +29,34 @@ import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as RBAC from '@/rbac.models'
 import { TRPCError } from '@trpc/server'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
+import * as Otel from '@opentelemetry/api'
 
-function getFastifyBase() {
-	return fastify({
+async function getFastifyBase() {
+	return await fastify({
 		maxParamLength: 5000,
 		logger: false,
 	})
 }
-let server!: ReturnType<typeof getFastifyBase>
+const tracer = Otel.trace.getTracer('fastify')
+let server!: Awaited<ReturnType<typeof getFastifyBase>>
 
-export async function setupFastify() {
-	server = getFastifyBase()
+export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
+	server = await getFastifyBase()
 
 	// --------  logging --------
 	server.log = baseLogger
 	server.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
 		if (path.startsWith('/trpc')) return
-		const ctx = C.pushOperation(DB.addPooledDb({ log: server.log as Logger }), `http:${path}:${request.method}:${request.id}`, {
-			level: 'info',
-		})
+		const ctx = DB.addPooledDb({ log: server.log as Logger })
 		request.log = ctx.log
 		//@ts-expect-error monkey patching
 		request.ctx = ctx
 	})
+
 	function getCtx(req: FastifyRequest) {
 		return (req as any).ctx as C.Log & C.Db
 	}
-
-	server.addHook('onError', async (request, reply, error) => {
-		//@ts-expect-error monkey patching
-		const ctx = request.ctx
-		ctx.log.error(error, 'request error')
-		ctx[Symbol.asyncDispose]()
-	})
-
-	server.addHook('onResponse', async (request, reply) => {
-		// @ts-expect-error lame
-		const ctx = request.ctx
-		ctx.log.info(
-			{
-				reqUrl: request.url,
-				method: request.method,
-				statusCode: reply.statusCode,
-				contentType: reply.getHeader('content-type'),
-			},
-			'request complete'
-		)
-		await ctx[Symbol.asyncDispose]()
-	})
 
 	// --------  static file serving --------
 	switch (ENV.NODE_ENV) {
@@ -168,7 +147,7 @@ export async function setupFastify() {
 
 	server.post(AR.exists('/logout'), async function (req, res) {
 		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({ ...ctx, req })
+		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
 		if (authRes.code !== 'ok') {
 			return Sessions.clearInvalidSession({ ...ctx, req, res })
 		}
@@ -188,16 +167,14 @@ export async function setupFastify() {
 		trpcOptions: {
 			router: TrpcRouter.appRouter,
 			createContext: createTrpcRequestContext,
-			onError({ path, error, ctx, input, type }) {
-				;(ctx ?? server).log.child({ input }).error(error, `Error in tRPC %s on path %s:`, type, path)
-			},
 		} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
 	})
 
+	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'unsafe-none')
 		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({ ...ctx, req })
+		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
 		switch (authRes.code) {
 			case 'ok':
 				break
@@ -238,16 +215,11 @@ export async function setupFastify() {
 	}
 
 	// --------  start server  --------
-	try {
-		server.log.info('Starting server...')
-		await server.listen({ port: ENV.PORT, host: ENV.HOST })
-	} catch (err) {
-		server.log.error(err)
-		process.exit(1)
-	}
-}
+	server.log.info('Starting server...')
+	await server.listen({ port: ENV.PORT, host: ENV.HOST })
+})
 
-export async function createAuthorizedRequestContext<T extends C.Log & C.Db & { req: FastifyRequest }>(ctx: T) {
+export async function createAuthorizedRequestContext<T extends C.Log & C.Db & Partial<C.SpanContext> & { req: FastifyRequest }>(ctx: T) {
 	const cookie = ctx.req.headers.cookie
 	if (!cookie) {
 		return {
@@ -284,6 +256,13 @@ export async function createAuthorizedRequestContext<T extends C.Log & C.Db & { 
 		sessionId,
 		user: validSessionRes.user,
 		log: ctx.log.child({ username: validSessionRes.user.username }),
+	}
+	if (ctx.span) {
+		ctx.span.setAttributes({
+			username: authedCtx.user.username,
+			user_id: authedCtx.user.discordId.toString(),
+			sessionid_prefix: authedCtx.sessionId.slice(0, 8),
+		})
 	}
 
 	return {

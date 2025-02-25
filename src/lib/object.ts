@@ -57,6 +57,14 @@ export function objEntries<T extends object>(obj: T) {
 	return Object.entries(obj) as [keyof T, T[keyof T]][]
 }
 
+export function prefixProps(obj: Record<string, any>, prefix: string) {
+	const result: Record<string, any> = {}
+	for (const key in obj) {
+		result[`${prefix}_${key}`] = obj[key]
+	}
+	return result
+}
+
 export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof T]): keyof T {
 	for (const [k, v] of Object.entries(obj)) {
 		if (v === key) {
@@ -64,4 +72,29 @@ export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof
 		}
 	}
 	return undefined as unknown as keyof T
+}
+
+export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<string, string> {
+	const output: Record<string, string> = {}
+	const stack: Array<[any, string]> = [[obj, '']]
+
+	while (stack.length > 0) {
+		const [current, prefix] = stack.pop()!
+
+		if (current && typeof current === 'object') {
+			if (Array.isArray(current)) {
+				for (let i = current.length - 1; i >= 0; i--) {
+					stack.push([current[i], prefix ? `${prefix}${delimiter}${i}` : String(i)])
+				}
+			} else {
+				for (const key of Object.keys(current)) {
+					stack.push([current[key], prefix ? `${prefix}${delimiter}${key}` : key])
+				}
+			}
+		} else {
+			output[prefix] = String(current)
+		}
+	}
+
+	return output
 }
