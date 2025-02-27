@@ -45,7 +45,11 @@ export function failOperation(ctx: Op, err?: any, code?: string): void {
 	ctx.error = err
 }
 
-export function spanOp<Cb extends (...args: any[]) => Promise<any>>(name: string, opts: { tracer: Otel.Tracer }, cb: Cb): Cb {
+export function spanOp<Cb extends (...args: any[]) => Promise<any>>(
+	name: string,
+	opts: { tracer: Otel.Tracer; onError?: (err: any) => void },
+	cb: Cb
+): Cb {
 	//@ts-expect-error idk
 	return async (...args) => {
 		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan() }, async (span) => {
@@ -98,6 +102,17 @@ export function pushOtelCtx<Ctx extends object>(ctx: Ctx) {
 
 export function getSpan() {
 	return Otel.default.trace.getActiveSpan()
+}
+
+export function recordGenericError(error: unknown, setStatus = true) {
+	const span = Otel.default.trace.getActiveSpan()
+	if (!span) return
+	if (error instanceof Error || typeof error === 'string') {
+		span.recordException(error)
+		if (setStatus) {
+			setSpanStatus(Otel.SpanStatusCode.ERROR, error instanceof Error ? error.message : String(error))
+		}
+	}
 }
 
 export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: OperationOptions): T & Op {

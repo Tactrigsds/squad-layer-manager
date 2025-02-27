@@ -32,8 +32,5 @@ Deployment is generally done through docker. See example script at
 
 ## Logging
 
-Logging is done in jsonl format and output from stdout and stderr. When running
-in prod mode via `pnpm run server:prod`, `PROD_LOG_PATH` specifies the path to
-the log file. When running via the docker image, the logfile is hardcoded to
-`/logs/app.jsonl` and is automatically rotated via logrotate. configuration can
+Logging and traces are managed with the otel-ltm stack, see [docker-compose.yaml](docker-compose.yaml) for details.
 be found in [./docker/logrotate.conf](./docker/logrotate.conf).

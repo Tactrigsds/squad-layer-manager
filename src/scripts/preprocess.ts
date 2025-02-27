@@ -15,7 +15,7 @@ import * as Config from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { ensureEnvSetup } from '@/server/env'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Paths from '@/server/paths'
 import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
@@ -255,7 +255,7 @@ async function main() {
 		args.push(...objKeys(Steps.Values))
 	}
 	ensureEnvSetup()
-	await setupLogger()
+	await ensureLoggerSetup()
 	DB.setupDatabase()
 
 	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })

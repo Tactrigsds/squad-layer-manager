@@ -1,7 +1,7 @@
 import { $ } from 'zx'
 import Rcon from '@/lib/rcon/rcon-core'
 import SquadRcon from '@/lib/rcon/squad-rcon'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as M from '@/models'
 import * as C from '@/server/context'
 import { ensureEnvSetup } from '@/server/env'
@@ -15,7 +15,7 @@ async function spinUp() {
 	const ports: number[] = []
 
 	ensureEnvSetup()
-	await setupLogger()
+	await ensureLoggerSetup()
 
 	const ctx = { log: baseLogger }
 	const docker = new Docker({ socketPath: '/var/run/docker.sock' })

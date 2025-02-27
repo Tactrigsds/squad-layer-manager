@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import { AsyncResource, sleep } from './async'
 import * as C from '@/server/context'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import { ensureEnvSetup } from '@/server/env'
 import { Mutex } from 'async-mutex'
 
@@ -9,7 +9,7 @@ let ctx!: C.Log
 
 beforeAll(() => {
 	ensureEnvSetup()
-	setupLogger()
+	ensureLoggerSetup()
 	ctx = { log: baseLogger }
 })
 

@@ -38,17 +38,17 @@ async function getFastifyBase() {
 	})
 }
 const tracer = Otel.trace.getTracer('fastify')
-let server!: Awaited<ReturnType<typeof getFastifyBase>>
+let instance!: Awaited<ReturnType<typeof getFastifyBase>>
 
 export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
-	server = await getFastifyBase()
+	instance = await getFastifyBase()
 
 	// --------  logging --------
-	server.log = baseLogger
-	server.addHook('onRequest', async (request) => {
+	instance.log = baseLogger
+	instance.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
 		if (path.startsWith('/trpc')) return
-		const ctx = DB.addPooledDb({ log: server.log as Logger })
+		const ctx = DB.addPooledDb({ log: instance.log as Logger })
 		request.log = ctx.log
 		//@ts-expect-error monkey patching
 		request.ctx = ctx
@@ -61,7 +61,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	// --------  static file serving --------
 	switch (ENV.NODE_ENV) {
 		case 'production':
-			server.register(fastifyStatic, {
+			instance.register(fastifyStatic, {
 				root: path.join(Paths.PROJECT_ROOT, 'dist'),
 				// setHeaders: (res) => {
 				// 	res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
@@ -75,10 +75,10 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			assertNever(ENV.NODE_ENV)
 	}
 
-	await server.register(fastifyFormBody)
+	await instance.register(fastifyFormBody)
 
-	await server.register(fastifyCookie)
-	await server.register(oauthPlugin, {
+	await instance.register(fastifyCookie)
+	await instance.register(oauthPlugin, {
 		name: 'discordOauth2',
 		credentials: {
 			client: {
@@ -93,7 +93,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		scope: ['identify'],
 	})
 
-	server.get(AR.exists('/login/callback'), async function (req, reply) {
+	instance.get(AR.exists('/login/callback'), async function (req, reply) {
 		// @ts-expect-error lame
 		const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
@@ -139,13 +139,13 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		reply
 			.cookie('sessionId', sessionId, {
 				path: '/',
-				maxAge: Sessions.SESSION_MAX_AGE,
+				// maxAge: Sessions.SESSION_MAX_AGE,
 				httpOnly: true,
 			})
 			.redirect('/')
 	})
 
-	server.post(AR.exists('/logout'), async function (req, res) {
+	instance.post(AR.exists('/logout'), async function (req, res) {
 		const ctx = getCtx(req)
 		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
 		if (authRes.code !== 'ok') {
@@ -155,8 +155,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		return await Sessions.logout({ ...authRes.ctx, res })
 	})
 
-	await server.register(ws)
-	await server.register(fastifyTRPCPlugin, {
+	await instance.register(ws)
+	await instance.register(fastifyTRPCPlugin, {
 		prefix: AR.exists('/trpc'),
 		useWSS: true,
 		keepAlive: {
@@ -211,12 +211,19 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	for (const route of Object.values(AR.routes)) {
 		if (route.handle !== 'page') continue
-		server.get(route.server, getHtmlResponse)
+		instance.get(route.server, getHtmlResponse)
 	}
 
 	// --------  start server  --------
-	server.log.info('Starting server...')
-	await server.listen({ port: ENV.PORT, host: ENV.HOST })
+	instance.log.info('Starting server...')
+
+	await instance.listen({ port: ENV.PORT, host: ENV.HOST })
+	const serverClosed = new Promise((resolve) => {
+		instance.server.on('closed', () => {
+			resolve('Server closed')
+		})
+	})
+	return { serverClosed }
 })
 
 export async function createAuthorizedRequestContext<T extends C.Log & C.Db & Partial<C.SpanContext> & { req: FastifyRequest }>(ctx: T) {

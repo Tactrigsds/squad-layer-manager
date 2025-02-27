@@ -8,6 +8,7 @@ import { ENV, Env } from './env'
 import format from 'quick-format-unescaped'
 import { flattenObjToAttrs } from '@/lib/object'
 
+import build from 'pino-abstract-transport'
 export type Logger = PinoLogger
 export let baseLogger!: Logger
 
@@ -50,7 +51,8 @@ const LEVELS = {
 
 const logger = ((sdk as any)._loggerProvider as LoggerProvider).getLogger('squad-layer-manager')
 
-export async function setupLogger() {
+export async function ensureLoggerSetup() {
+	if (baseLogger) return
 	const hooks: pino.LoggerOptions['hooks'] = {
 		logMethod(_inputArgs, method, level) {
 			let inputArgs = [..._inputArgs]
@@ -114,10 +116,64 @@ export async function setupLogger() {
 		},
 	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
 
-	// const transport = pino.transport({
-	// 	targets: [{ target: 'pino-pretty', level: 'trace', options: {} }],
-	// })
 	const baseConfig = envToLogger[ENV.NODE_ENV]
 
-	baseLogger = pino(baseConfig)
+	baseLogger = pino(baseConfig, createFormatPrettyPrintTransport())
+}
+
+export function createFormatPrettyPrintTransport() {
+	return build(async function (source) {
+		for await (const obj of source) {
+			// JSON stringifying the object to handle circular refs and bigints
+
+			// Format time with 24h time format (HH:MM:SS)
+			const dateObj = new Date(obj.time)
+			const time = dateObj.toLocaleTimeString([], { hour12: false })
+			const dimColor = '\x1b[2m' // Dim/reduced weight ANSI escape code
+			const resetColor = '\x1b[0m'
+
+			const level = obj.level as number
+			const levelLabel = Object.entries(LEVELS).find(([lvl]) => Number(lvl) === level)?.[1] || 'UNKNOWN'
+
+			// Color coding based on level
+			let levelColor = ''
+
+			switch (levelLabel) {
+				case 'TRACE':
+					levelColor = '\x1b[90m' // grey
+					break
+				case 'DEBUG':
+					levelColor = '\x1b[36m' // cyan
+					break
+				case 'INFO':
+					levelColor = '\x1b[32m' // green
+					break
+				case 'WARN':
+					levelColor = '\x1b[33m' // yellow
+					break
+				case 'ERROR':
+					levelColor = '\x1b[31m' // red
+					break
+				case 'FATAL':
+					levelColor = '\x1b[35m' // magenta
+					break
+			}
+
+			// Format message part
+			const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
+
+			// Extract additional properties
+			const { time: _, level: __, msg: ___, pid, hostname, ...props } = obj
+
+			// Format additional context if any
+			let context = ''
+			if (Object.keys(props).length > 0) {
+				context = `\n  ${Object.entries(props)
+					.map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
+					.join('\n  ')}`
+			}
+
+			console.log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)
+		}
+	})
 }

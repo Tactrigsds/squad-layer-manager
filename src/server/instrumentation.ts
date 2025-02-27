@@ -7,12 +7,20 @@ import { randomBytes } from 'crypto'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
-import { ensureEnvSetup, ENV } from '@/server/env.ts'
+import { ENV } from '@/server/env.ts'
 import { formatVersion } from '@/lib/versioning.ts'
 
-ensureEnvSetup()
+import * as Cli from './systems/cli.ts'
+import * as Config from './config.ts'
+import * as Env from './env.ts'
+
+await Cli.ensureCliParsed()
+Config.ensureConfigSetup()
+Env.ensureEnvSetup()
+
+console.log('setting up instrumentation')
 const getCollectorEndpoint = (path: string) => {
-	const baseUrl = ENV.OLTP_COLLECTOR_ENDPOINT
+	const baseUrl = ENV.OTLP_COLLECTOR_ENDPOINT
 	return `${baseUrl}${path}`
 }
 const traceExporter = new OTLPTraceExporter({ url: getCollectorEndpoint('/v1/traces') })
@@ -33,6 +41,7 @@ export const sdk = new NodeSDK({
 	logRecordProcessors: [new logs.SimpleLogRecordProcessor(logExporter)],
 	instrumentations: [getNodeAutoInstrumentations()],
 })
+console.log('instrumentation setup complete')
 
 process.on('beforeExit', async () => {
 	await sdk.shutdown()

@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import * as Context from '@/server/context'
 import * as DB from '@/server/db'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 
 import { ensureEnvSetup } from './env'
 
@@ -13,7 +13,7 @@ describe('pushOperation', () => {
 	let errorSpy: any
 	beforeAll(() => {
 		ensureEnvSetup()
-		setupLogger()
+		ensureLoggerSetup()
 	})
 
 	beforeEach(() => {

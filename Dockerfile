@@ -18,10 +18,9 @@ COPY . .
 COPY ./docker/logrotate.conf /etc/logrotate.d/app
 ENV GIT_SHA=$GIT_SHA
 ENV GIT_BRANCH=$GIT_BRANCH
+ENV NODE_ENV=production
 RUN pnpm vite build
 
 ENV HOST=0.0.0.0
 ENV PORT=3000
-ENV NODE_ENV=production
-ENV PROD_LOG_PATH=/logs/app.jsonl
 CMD ["pnpm", "run", "server:prod"]

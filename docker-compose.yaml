@@ -7,7 +7,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: dev
     ports:
-      - "3306:3306"
+      - 3306:3306
     volumes:
       - db_data:/var/lib/mysql
   squad_server:
@@ -40,8 +40,8 @@ services:
       - 3001:3000
       - 4317:4317
       - 4318:4318
-
-
+    volumes:
+      - otel_data:/data
 
 volumes:
   squad_data:

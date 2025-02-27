@@ -4,7 +4,7 @@ import * as M from '@/models'
 import * as DB from '@/server/db'
 import * as C from '@/server/context'
 import { ensureEnvSetup } from '@/server/env'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as SchemaModels from '$root/drizzle/schema.models'
 
@@ -12,7 +12,7 @@ let ctx!: C.Db & C.Log
 
 beforeAll(async () => {
 	ensureEnvSetup()
-	await setupLogger()
+	await ensureLoggerSetup()
 	DB.setupDatabase()
 	ctx = DB.addPooledDb({ log: baseLogger })
 })

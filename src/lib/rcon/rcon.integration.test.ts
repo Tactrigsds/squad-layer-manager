@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 
 import * as C from '@/server/context'
 import { ENV, ensureEnvSetup } from '@/server/env'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 
 import Rcon from './rcon-core'
 import SquadRcon from './squad-rcon'
@@ -14,7 +14,7 @@ let baseCtx: C.Log
 
 beforeAll(async () => {
 	ensureEnvSetup()
-	await setupLogger()
+	await ensureLoggerSetup()
 	baseCtx = { log: baseLogger }
 	const config = {
 		host: ENV.RCON_HOST,

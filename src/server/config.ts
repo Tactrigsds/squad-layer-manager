@@ -1,11 +1,10 @@
 import fs from 'node:fs/promises'
-import path from 'node:path'
 import { z } from 'zod'
 
 import * as SM from '@/lib/rcon/squad-models.ts'
-import * as Paths from '@/server/paths.ts'
 import { ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
-import * as RBAC from '../rbac.models'
+import * as RBAC from '@/rbac.models'
+import * as Cli from '@/server/systems/cli.ts'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
@@ -59,8 +58,9 @@ export const ConfigSchema = z.object({
 
 export let CONFIG!: Config
 
-export async function setupConfig() {
-	const raw = await fs.readFile(path.join(Paths.PROJECT_ROOT, 'config.json'), 'utf-8')
+export async function ensureConfigSetup() {
+	if (CONFIG) return
+	const raw = await fs.readFile(Cli.options.config, 'utf-8')
 	const rawObj = JSON.parse(raw)
 	CONFIG = ConfigSchema.parse(rawObj)
 

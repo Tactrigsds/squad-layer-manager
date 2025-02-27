@@ -14,7 +14,7 @@ import { getServerState } from '@/server/systems/layer-queue'
 let ctx!: C.Db & C.Log
 beforeAll(() => {
 	ensureEnvSetup()
-	Log.setupLogger()
+	Log.ensureLoggerSetup()
 	DB.setupDatabase()
 	ctx = DB.addPooledDb({ log: Log.baseLogger })
 })

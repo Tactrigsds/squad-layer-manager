@@ -1,6 +1,7 @@
 import { ParsedIntSchema, StrFlag } from '../lib/zod'
 import { createEnv } from '@t3-oss/env-core'
 import * as dotenv from 'dotenv'
+import * as Cli from './systems/cli.ts'
 import { z } from 'zod'
 
 export let ENV!: ReturnType<typeof setupEnv>
@@ -40,7 +41,7 @@ const EnvSchema = {
 	PORT: ParsedIntSchema.default('3000'),
 	HOST: z.string().default('127.0.0.1'),
 
-	OLTP_COLLECTOR_ENDPOINT: z
+	OTLP_COLLECTOR_ENDPOINT: z
 		.string()
 		.url()
 		.default('http://localhost:4318')
@@ -57,7 +58,7 @@ export function ensureEnvSetup() {
 }
 
 function setupEnv() {
-	dotenv.config()
+	dotenv.config({ path: Cli.options?.envFile })
 	const runtimeEnv = Object.fromEntries(Object.keys(EnvSchema).map((key) => [key, process.env[key]]))
 	const env = createEnv({
 		server: EnvSchema,

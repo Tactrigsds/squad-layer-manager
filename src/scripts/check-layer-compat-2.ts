@@ -1,6 +1,6 @@
 import Rcon from '@/lib/rcon/rcon-core'
 import SquadRcon from '@/lib/rcon/squad-rcon'
-import { baseLogger, setupLogger } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as M from '@/models'
 import { ensureEnvSetup } from '@/server/env'
 
@@ -9,7 +9,7 @@ const PORTS = process.argv[2].split(',').map((x) => parseInt(x))
 await main()
 async function main() {
 	ensureEnvSetup()
-	await setupLogger()
+	await ensureLoggerSetup()
 	const ctx = { log: baseLogger }
 
 	ctx.log.info('Making HTTP requests to containers...')
