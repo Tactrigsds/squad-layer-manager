@@ -314,7 +314,7 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 			result[lowerID(platform)] = id
 		})
 		result.playerId = (result.steamID || result.eosID)!
-		ctx.log.info(result)
+		ctx.log.info({ result }, result.raw)
 		return SM.ChatMessageSchema.parse(result)
 	}
 
