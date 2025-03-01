@@ -33,4 +33,3 @@ Deployment is generally done through docker. See example script at
 ## Logging
 
 Logging and traces are managed with the otel-ltm stack, see [docker-compose.yaml](docker-compose.yaml) for details.
-be found in [./docker/logrotate.conf](./docker/logrotate.conf).
