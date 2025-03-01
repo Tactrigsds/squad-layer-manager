@@ -535,11 +535,12 @@ export default function LayerTable(props: {
 			<div className="flex items-center justify-between space-x-2 py-2">
 				<div className="flex-1  flex items-center space-x-2">
 					<div className="text-sm text-muted-foreground">
-						{showSelectedLayers
-							? `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} selected rows`
-							: randomize
-								? `Showing ${layersData?.layers?.length} of ${layersData?.totalCount} randomized rows`
-								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} matching rows`}
+						{layersData &&
+							(showSelectedLayers
+								? `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} selected rows`
+								: randomize
+									? `Showing ${layersData?.layers?.length} of ${layersData?.totalCount} randomized rows`
+									: `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} matching rows`)}
 					</div>
 					<LoaderCircle data-loading={layersRes.isFetching} className="invisible data-[loading=true]:visible h-4 w-4 animate-spin" />
 				</div>
