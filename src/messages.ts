@@ -5,34 +5,16 @@ import { CommandConfig } from './server/config'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import * as dateFns from 'date-fns'
 
-function formatDuration(durationMs: number) {
-	const seconds = Math.floor(durationMs / 1000)
-	const minutes = Math.floor(seconds / 60)
-	const hours = Math.floor(minutes / 60)
-	const days = Math.floor(hours / 24)
-	const weeks = Math.floor(days / 7)
-	const months = Math.floor(days / 30)
-	const years = Math.floor(days / 365)
-
-	return dateFns.formatDuration(
-		{
-			seconds,
-			minutes,
-			hours,
-			days,
-			weeks,
-			months,
-			years,
-		},
-		{ format: ['minutes', 'seconds'], delimiter: ' and ', zero: false }
-	)
+function formatInterval(interval: number) {
+	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
+	return dateFns.formatDuration(duration).replace(' seconds', 's').replace(' minutes', 'm')
 }
 
 export const BROADCASTS = {
 	vote: {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
-			const fullText = `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration(duration)} to vote`
-			return fullText.split('\n')
+			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${formatInterval(duration)} to vote`
+			return fullText
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {
 			const resultsText = Array.from(tally.totals.entries())
@@ -43,21 +25,21 @@ export const BROADCASTS = {
 					return `${votes} votes - (${tally.percentages.get(choice)?.toFixed(1)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
 			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie)` : ''
-			const fullText = `Vote has ended:\n${resultsText.join('\n')}${randomChoiceExplanation}`
-			return fullText.split('\n')
+			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
+			return fullText
 		},
 		insufficientVotes: (defaultChoice: M.LayerId) => {
-			return `Vote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
+			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
 		},
 		aborted(defaultLayer: M.LayerId) {
-			return `Vote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
+			return `\nVote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
 		},
 		voteReminder(timeLeft: number, choices: M.LayerId[], finalReminder = false) {
-			const durationStr = formatDuration(timeLeft)
+			const durationStr = formatInterval(timeLeft)
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
 			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
-			const fullText = `${prefix} Choices:\n${choicesText}\n`
-			return fullText.split('\n')
+			const fullText = `${prefix}\n${choicesText}`
+			return fullText
 		},
 	},
 } satisfies MessageNode
@@ -113,7 +95,7 @@ export const WARNS = {
 				currentGroup.push(config)
 			}
 			groups[0].unshift(`Available commands:`)
-			const groupsJoined = groups.map((g) => g.join('\n'))
+			const groupsJoined = groups.map((g) => g.join('\n')).join('\n')
 
 			return { msg: groupsJoined, repeat: 3 }
 		},
@@ -133,7 +115,7 @@ type WarnNode = {
 	[key: string]: WarnNode | WarnOptions | ((...args: any[]) => WarnOptions)
 }
 
-type MessageOutput = string | string[]
+type MessageOutput = string
 type MessageNode = {
 	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }

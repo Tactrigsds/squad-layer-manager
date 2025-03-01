@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Otel from '@opentelemetry/api'
-
+import * as SM from './squad-models.ts'
 import * as C from '@/server/context.ts'
 import { BehaviorSubject } from 'rxjs'
 
@@ -12,8 +12,7 @@ export type DecodedPacket = {
 	body: string
 }
 
-const tracer = Otel.trace.getTracer('rcon-core')
-export const RCON_MAX_BUF_LEN = 4152
+const tracer = Otel.trace.getTracer('core-rcon')
 
 export default class Rcon extends EventEmitter {
 	private host: string
@@ -122,8 +121,8 @@ export default class Rcon extends EventEmitter {
 					return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
 				}
 				const length = Buffer.from(body).length
-				if (length > RCON_MAX_BUF_LEN) {
-					return resolve({ code: 'err:rcon' as const, msg: `Oversize, "${length}" > ${RCON_MAX_BUF_LEN}.` })
+				if (length > SM.RCON_MAX_BUF_LEN) {
+					return resolve({ code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` })
 				} else {
 					const outputData = (data: any) => {
 						clearTimeout(timeOut)

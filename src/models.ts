@@ -7,6 +7,7 @@ import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
 import { PercentageSchema } from './lib/zod'
 import { assertNever } from './lib/typeGuards'
+import { createId } from './lib/id'
 
 const StaticLayerComponents = _StaticLayerComponents as LayerComponents
 
@@ -544,6 +545,7 @@ export const LayerVoteSchema = z.object({
 export type LayerVote = z.infer<typeof LayerVoteSchema>
 
 export const LayerQueueItemSchema = z.object({
+	itemId: z.string().regex(/^[a-zA-Z0-9]{6}$/),
 	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
 	source: z.enum(['generated', 'gameserver', 'manual']),
@@ -554,6 +556,15 @@ export const LayerQueueSchema = z.array(LayerQueueItemSchema)
 
 export type LayerQueue = z.infer<typeof LayerQueueSchema>
 export type LayerListItem = z.infer<typeof LayerQueueItemSchema>
+export type NewLayerListItem = Omit<LayerListItem, 'itemId'>
+
+export function createLayerListItem(newItem: NewLayerListItem): LayerListItem {
+	return {
+		...newItem,
+		itemId: createId(6),
+	}
+}
+
 // doing this because Omit<> sucks to work with
 
 export function preprocessLevel(level: string) {

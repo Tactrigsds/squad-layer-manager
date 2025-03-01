@@ -196,3 +196,5 @@ export type RconError = { code: 'err:rcon'; msg: string }
 export type ServerStatusRes = { code: 'ok'; data: ServerStatus } | RconError
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
+
+export const RCON_MAX_BUF_LEN = 4152

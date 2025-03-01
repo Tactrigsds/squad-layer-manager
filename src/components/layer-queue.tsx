@@ -30,6 +30,7 @@ import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -98,12 +99,6 @@ export default function ServerDashboard() {
 			case 'err:queue-too-large':
 				toaster.toast({
 					title: 'Queue too large',
-					variant: 'destructive',
-				})
-				break
-			case 'err:decided-vote-change':
-				toaster.toast({
-					title: 'Cannot update: vote has been decided',
 					variant: 'destructive',
 				})
 				break
@@ -380,7 +375,10 @@ function EditSummary() {
 export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?: boolean; onStartEdit?: () => void }) {
 	const user = useLoggedInUser()
 	const allowVotes = props.allowVotes ?? true
-	const queueIds = Zus.useStore(props.store).layerList.map((item) => item.id)
+	const queueIds = Zus.useStore(
+		props.store,
+		useShallow((store) => store.layerList.map((item) => item.itemId))
+	)
 	useDragEnd((event) => {
 		if (!event.over) return
 		const { layerList: layerQueue, move } = props.store.getState()
@@ -819,8 +817,8 @@ function QueueGenerationCard() {
 				const state = QD.LQStore.getState()
 				if (state.layerList.length === 0) break
 				if (state.layerList[state.layerList.length - 1].source !== 'generated') break
-				if (!state.listMutations.added.has(state.layerList[state.layerList.length - 1].id)) break
-				const id = state.layerList[state.layerList.length - 1].id
+				if (!state.listMutations.added.has(state.layerList[state.layerList.length - 1].itemId)) break
+				const id = state.layerList[state.layerList.length - 1].itemId
 				state.remove(id)
 			}
 		}
@@ -906,7 +904,7 @@ export type QueueItemAction =
 	  }
 	| {
 			code: 'edit'
-			item: QD.IdedLLItem
+			item: M.LayerListItem
 	  }
 	| {
 			code: 'delete'
@@ -918,9 +916,9 @@ export type QueueItemAction =
 			id?: string
 	  }
 
-function getIndexFromQueueItemId(items: QD.IdedLLItem[], id: string | null) {
+function getIndexFromQueueItemId(items: M.LayerListItem[], id: string | null) {
 	if (id === null) return -1
-	return items.findIndex((item) => item.id === id)
+	return items.findIndex((item) => item.itemId === id)
 }
 
 type QueueItemProps = {
@@ -937,7 +935,7 @@ function LayerListItem(props: QueueItemProps) {
 	const allowVotes = props.allowVotes ?? true
 	const item = Zus.useStore(itemStore, (s) => s.item)
 	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
-	const draggableItemId = QD.toDraggableItemId(item.id)
+	const draggableItemId = QD.toDraggableItemId(item.itemId)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: draggableItemId,
 	})
@@ -1126,7 +1124,7 @@ function ItemDropdown(props: {
 					</EditLayerListItemDialogWrapper>
 					<DropdownMenuItem
 						onClick={() => {
-							const id = props.itemStore.getState().item.id
+							const id = props.itemStore.getState().item.itemId
 							props.listStore.getState().remove(id)
 						}}
 						className="bg-destructive text-destructive-foreground focus:bg-red-600"
@@ -1175,7 +1173,7 @@ function ItemDropdown(props: {
 						onClick={() => {
 							if (!user) return
 							const item = props.itemStore.getState().item
-							const itemIdx = props.listStore.getState().layerList.findIndex((i) => i.id === item.id)
+							const itemIdx = props.listStore.getState().layerList.findIndex((i) => i.itemId === item.itemId)
 							props.listStore.getState().move(itemIdx, -1, user.discordId)
 						}}
 					>
@@ -1186,7 +1184,7 @@ function ItemDropdown(props: {
 							if (!user) return
 							const layerList = props.listStore.getState().layerList
 							const item = props.itemStore.getState().item
-							const itemIdx = layerList.findIndex((i) => i.id === item.id)
+							const itemIdx = layerList.findIndex((i) => i.itemId === item.itemId)
 							const lastIdx = layerList.length - 1
 							props.listStore.getState().move(itemIdx, lastIdx, user.discordId)
 						}}
@@ -1251,7 +1249,7 @@ export function SelectLayersDialog(props: {
 	description: React.ReactNode
 	pinMode?: SelectMode
 	children: React.ReactNode
-	selectQueueItems: (queueItems: M.LayerListItem[]) => void
+	selectQueueItems: (queueItems: M.NewLayerListItem[]) => void
 	defaultSelected?: M.LayerId[]
 	selectingSingleLayerQueueItem?: boolean
 	baseFilter?: M.FilterNode
@@ -1300,17 +1298,17 @@ export function SelectLayersDialog(props: {
 	function submit() {
 		if (!canSubmit) return
 		if (selectMode === 'layers') {
-			const items: M.LayerListItem[] = selectedLayers.map(
+			const items = selectedLayers.map(
 				(layerId) =>
 					({
 						layerId: layerId,
 						source: 'manual',
 						lastModifiedBy: user!.discordId,
-					}) satisfies M.LayerListItem
+					}) satisfies M.NewLayerListItem
 			)
 			props.selectQueueItems(items)
 		} else if (selectMode === 'vote') {
-			const item: M.LayerListItem = {
+			const item: M.NewLayerListItem = {
 				vote: {
 					choices: selectedLayers,
 					defaultChoice: selectedLayers[0],
@@ -1529,7 +1527,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 									}
 									if (itemType === 'vote') {
 										return {
-											id: prev.id,
+											itemId: prev.itemId,
 											vote: {
 												choices: selectedLayers.map((l) => l.id),
 												defaultChoice: selectedLayers[0].id,
@@ -1538,7 +1536,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 										}
 									} else if (itemType === 'layer') {
 										return {
-											id: prev.id,
+											itemId: prev.itemId,
 											layerId: selectedLayers[0].id,
 											...attribution,
 										}

@@ -6,7 +6,7 @@ import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 
 import { capitalID, iterateIDs, lowerID } from './id-parser'
-import Rcon, { DecodedPacket } from './rcon-core'
+import Rcon, { DecodedPacket } from './core-rcon'
 import * as SM from './squad-models'
 import { prefixProps, selectProps } from '../object'
 
@@ -140,8 +140,22 @@ export default class SquadRcon {
 		}
 	}
 
-	async broadcast(ctx: C.Log, message: string | string[]) {
-		const messages = Array.isArray(message) ? message : [message]
+	async broadcast(ctx: C.Log, message: string) {
+		let messages = [message]
+		if (message.length > SM.RCON_MAX_BUF_LEN) {
+			messages = []
+			for (const msg of message.split('\n\n')) {
+				if (msg.length > SM.RCON_MAX_BUF_LEN) {
+					for (const line of msg.split('\n')) {
+						if (line.length > SM.RCON_MAX_BUF_LEN) {
+							messages.push(line.slice(0, SM.RCON_MAX_BUF_LEN))
+						}
+					}
+				} else {
+					messages.push(msg)
+				}
+			}
+		}
 		for (const message of messages) {
 			ctx.log.info(`Broadcasting message: %s`, message)
 			await this.core.execute(ctx, `AdminBroadcast ${message}`)

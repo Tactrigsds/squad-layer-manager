@@ -27,7 +27,6 @@ import { Parts } from '@/lib/types'
 import { BROADCASTS, WARNS } from '@/messages.ts'
 import { interval } from 'rxjs'
 import { Mutex } from 'async-mutex'
-import { Config } from 'dockerode'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
@@ -198,7 +197,6 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			switch (updateRes.code) {
 				case 'noop':
 				case 'err:queue-change-during-vote':
-				case 'err:decided-vote-change':
 					break
 				case 'ok':
 					voteState = updateRes.update.state
@@ -303,24 +301,29 @@ function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M
 		return { code: 'err:queue-change-during-vote' as const }
 	}
 
-	if (lastQueueItem?.vote && newQueueItem?.vote && newQueueItem.layerId && !deepEqual(lastQueueItem.vote, newQueueItem.vote)) {
-		// don't allow changing the vote after it's been decided
-		return { code: 'err:decided-vote-change' as const }
-	}
-
 	if (lastQueueItem?.vote && !newQueueItem?.vote) {
 		return { code: 'ok' as const, update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies M.VoteStateUpdate }
 	}
 
 	if (newQueueItem.vote && !deepEqual(lastQueueItem?.vote, newQueueItem.vote)) {
+		let newVoteState: M.VoteState
+		if (lastQueueItem?.itemId === newQueueItem.itemId) {
+			newVoteState = {
+				...(voteState ?? { code: 'ready' }),
+				choices: newQueueItem.vote.choices,
+				defaultChoice: newQueueItem.vote.defaultChoice,
+			}
+		} else {
+			newVoteState = {
+				code: 'ready',
+				choices: newQueueItem.vote.choices,
+				defaultChoice: newQueueItem.vote.defaultChoice,
+			}
+		}
 		return {
 			code: 'ok' as const,
 			update: {
-				state: {
-					code: 'ready',
-					choices: newQueueItem.vote.choices,
-					defaultChoice: newQueueItem.vote.defaultChoice,
-				},
+				state: newVoteState,
 				source: { type: 'system', event: 'queue-change' },
 			} satisfies M.VoteStateUpdate,
 		}
@@ -371,8 +374,8 @@ export const startVote = C.spanOp(
 		}
 		const status = statusRes.data
 
+		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
 		const res = await DB.runTransaction(ctx, async (ctx) => {
-			const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
 			const minValidVotePercentage = opts.minValidVotePercentage ?? CONFIG.defaults.minValidVotePercentage
 			const minValidVotes = Math.ceil((minValidVotePercentage / 100) * Math.max(status.playerCount, 1))
 			if (!voteState) {
@@ -434,11 +437,7 @@ export const startVote = C.spanOp(
 		registerVoteDeadlineAndReminder$(ctx)
 		await SquadServer.rcon.broadcast(
 			ctx,
-			BROADCASTS.vote.started(
-				res.voteStateUpdate.state.choices,
-				res.voteStateUpdate.state.defaultChoice,
-				res.voteStateUpdate.state.deadline - Date.now()
-			)
+			BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000)
 		)
 
 		return res
@@ -518,7 +517,6 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	voteEndTask?.unsubscribe()
 
 	if (!voteState || voteState.code !== 'in-progress') return
-
 	voteEndTask = new Subscription()
 
 	const finalReminderWaitTime = Math.max(0, voteState.deadline - CONFIG.finalVoteReminderSeconds * 1000 - Date.now())
@@ -840,8 +838,6 @@ const updateQueue = C.spanOp(
 			switch (voteUpdateRes.code) {
 				case 'err:queue-change-during-vote':
 					return { code: 'err:queue-change-during-vote' as const }
-				case 'err:decided-vote-change':
-					return voteUpdateRes
 				case 'noop':
 					break
 				case 'ok': {
@@ -994,7 +990,7 @@ const generateLayerQueueItems = C.spanOp(
 			},
 		}).then((r) => r.layers)
 
-		const res: M.LayerListItem[] = []
+		const res: M.NewLayerListItem[] = []
 		switch (opts.itemType) {
 			case 'layer':
 				for (const layer of layers) {

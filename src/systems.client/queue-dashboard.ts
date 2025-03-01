@@ -23,15 +23,14 @@ import { deepClone } from '@/lib/object'
 import React from 'react'
 
 // -------- types --------
-export type IdedLLItem = M.LayerListItem & WithMutationId
 export type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 export type MutServerStateWithIds = M.UserModifiableServerState & {
-	layerQueue: IdedLLItem[]
+	layerQueue: M.LayerListItem[]
 	historyFilters: EditedHistoryFilterWithId[]
 }
 
 export type LLState = {
-	layerList: IdedLLItem[]
+	layerList: M.LayerListItem[]
 	listMutations: ItemMutations
 	allowDuplicates?: boolean
 	allowVotes: boolean
@@ -41,17 +40,17 @@ export type LLStore = LLState & LLActions
 
 export type LLActions = {
 	move: (sourceIndex: number, targetIndex: number, modifiedBy: bigint) => void
-	add: (items: M.LayerListItem[], index?: number) => void
-	setItem: (id: string, update: React.SetStateAction<IdedLLItem>) => void
+	add: (items: M.NewLayerListItem[], index?: number) => void
+	setItem: (id: string, update: React.SetStateAction<M.LayerListItem>) => void
 	remove: (id: string) => void
 	clear: () => void
 }
 
-export type LLItemState = { item: IdedLLItem; mutationState: ItemMutationState }
+export type LLItemState = { item: M.LayerListItem; mutationState: ItemMutationState }
 export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
-	setItem: React.Dispatch<React.SetStateAction<IdedLLItem>>
+	setItem: React.Dispatch<React.SetStateAction<M.LayerListItem>>
 	// if not present then removing is disabled
 	remove?: () => void
 }
@@ -81,7 +80,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 		set((state) =>
 			Im.produce(state, (state) => {
 				const layerList = state.layerList
-				const index = layerList.findIndex((item) => item.id === id)
+				const index = layerList.findIndex((item) => item.itemId === id)
 				if (index === -1) return
 				layerList.splice(index, 1)
 				ItemMut.tryApplyMutation('removed', id, state.listMutations)
@@ -92,25 +91,26 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 		setItem: (id, update) => {
 			set((state) =>
 				Im.produce(state, (draft) => {
-					const index = draft.layerList.findIndex((item) => item.id === id)
+					const index = draft.layerList.findIndex((item) => item.itemId === id)
 					if (index === -1) return
 					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
+					draft.layerList[index].itemId = id
 					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
 				})
 			)
 		},
-		add: (items, index) => {
+		add: (newItems, index) => {
 			set(
 				Im.produce((state) => {
 					const layerList = state.layerList
-					const idedItems = items.map((item) => ({ id: createId(6), ...item }))
+					const items = newItems.map(M.createLayerListItem)
 					if (index === undefined) {
-						layerList.push(...idedItems)
+						layerList.push(...items)
 					} else {
-						layerList.splice(index, 0, ...idedItems)
+						layerList.splice(index, 0, ...items)
 					}
-					for (const item of idedItems) {
-						ItemMut.tryApplyMutation('added', item.id, state.listMutations)
+					for (const item of items) {
+						ItemMut.tryApplyMutation('added', item.itemId, state.listMutations)
 					}
 				})
 			)
@@ -127,14 +127,14 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 					}
 					layerList.splice(sourceIndex, 1)
 					layerList.splice(targetIndex, 0, item)
-					ItemMut.tryApplyMutation('moved', item.id, draft.listMutations)
+					ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
 				})
 			)
 		},
 		remove,
 		clear: () => {
 			for (const item of get().layerList) {
-				remove(item.id)
+				remove(item.itemId)
 			}
 		},
 	}
@@ -186,7 +186,7 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 
 	return derive<LLItemStore>((get) => ({
 		...actions,
-		item: get(store).layerList.find((item) => item.id === itemId)!,
+		item: get(store).layerList.find((item) => item.itemId === itemId)!,
 		mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
 	}))
 }
@@ -211,7 +211,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 		return {
 			listMutations: mutState,
 			allowDuplicates: false,
-			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, source: 'manual' })) ?? [],
+			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, itemId: layerId, source: 'manual' })) ?? [],
 			allowVotes: false,
 		}
 	}
@@ -309,6 +309,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	const editChangeMtx = new Mutex()
 	async function tryStartEditing() {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using _ = await acquireInBlock(editChangeMtx)
 		if (get().isEditing) return
 		set({ isEditing: true })
@@ -327,6 +328,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	}
 
 	async function tryEndEditing() {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using _ = await acquireInBlock(editChangeMtx)
 		if (!get().isEditing) return
 		set({ stopEditingInProgress: true })
