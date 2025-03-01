@@ -309,7 +309,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	const editChangeMtx = new Mutex()
 	async function tryStartEditing() {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		 
 		using _ = await acquireInBlock(editChangeMtx)
 		if (get().isEditing) return
 		set({ isEditing: true })
@@ -328,7 +328,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	}
 
 	async function tryEndEditing() {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		 
 		using _ = await acquireInBlock(editChangeMtx)
 		if (!get().isEditing) return
 		set({ stopEditingInProgress: true })

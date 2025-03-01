@@ -1,4 +1,3 @@
-import type * as Squad from '@/lib/rcon/squad-models'
 import type * as SM from '@/lib/rcon/squad-models.ts'
 import { trpc } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'

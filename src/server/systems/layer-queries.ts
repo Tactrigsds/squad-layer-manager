@@ -1,10 +1,3 @@
-import { TRPCError } from '@trpc/server'
-import { SQL, sql } from 'drizzle-orm'
-import * as E from 'drizzle-orm/expressions'
-import superjson from 'superjson'
-import { z } from 'zod'
-
-import * as SquadjsSchema from '$root/drizzle/schema-squadjs.ts'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/lib/filter-builders'
 import { assertNever } from '@/lib/typeGuards'
@@ -12,6 +5,11 @@ import * as M from '@/models.ts'
 import * as C from '@/server/context'
 import { procedure, router } from '@/server/trpc.server.ts'
 import * as Otel from '@opentelemetry/api'
+import { TRPCError } from '@trpc/server'
+import { SQL, sql } from 'drizzle-orm'
+import * as E from 'drizzle-orm/expressions'
+import superjson from 'superjson'
+import { z } from 'zod'
 import * as LayerQueue from './layer-queue'
 
 export const LayersQuerySortSchema = z
@@ -352,6 +350,7 @@ async function getFilterEntity(filterId: string, ctx: C.Db) {
 
 // }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function getHistoryFilter(_ctx: C.Db & C.Log, historyFilters: M.HistoryFilter[], queuedLayerIds: M.LayerId[]) {
 	return FB.and([])
 	// await using ctx = C.pushOperation(_ctx, 'layers-query:get-history-filter-node')

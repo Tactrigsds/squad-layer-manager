@@ -1,8 +1,6 @@
-import { FastifyReply, FastifyRequest } from 'fastify'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as Context from '@/server/context'
-import * as DB from '@/server/db'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 
 import { ensureEnvSetup } from './env'

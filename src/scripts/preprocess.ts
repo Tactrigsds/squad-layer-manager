@@ -40,35 +40,6 @@ const SUBFACTIONS = [
 	'AmphibiousAssault',
 ] as const
 
-const RAW_LEVELS = [
-	'AlBasrah',
-	'Anvil',
-	'Belaya',
-	'BlackCoast',
-	'Chora',
-	'Fallujah',
-	'FoolsRoad',
-	'GooseBay',
-	'Gorodok',
-	'Harju',
-	'JensensRange',
-	'Kamdesh',
-	'Kohat',
-	'Kokan',
-	'Lashkar',
-	'Logar',
-	'Manicouagan',
-	'Mestia',
-	'Mutaha',
-	'Narva',
-	'PacificProvingGrounds',
-	'Sanxian',
-	'Skorpo',
-	'Sumari',
-	'Tallil',
-	'Yehorivka',
-] as const
-
 const LEVEL_ABBREVIATIONS = {
 	AlBasrah: 'AB',
 	Anvil: 'AN',

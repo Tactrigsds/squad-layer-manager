@@ -30,16 +30,6 @@ const SEVERITY_NUMBER_MAP = {
 	60: 21, // FATAL
 }
 
-interface CommonBindings {
-	msg: string
-	level: keyof typeof SEVERITY_NUMBER_MAP
-	time: number
-	hostname?: string
-	pid?: number
-}
-
-type Bindings = Record<string, string | number | object> & CommonBindings
-
 const LEVELS = {
 	10: 'TRACE',
 	20: 'DEBUG',
@@ -163,6 +153,7 @@ export function createFormatPrettyPrintTransport() {
 			const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
 
 			// Extract additional properties
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { time: _, level: __, msg: ___, pid, hostname, ...props } = obj
 
 			// Format additional context if any

@@ -1,5 +1,4 @@
 import { trpc } from '@/lib/trpc.client'
-import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import { type LayersQueryInput } from '@/server/systems/layer-queries'
 import * as PartsSys from '@/systems.client/parts'

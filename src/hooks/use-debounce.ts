@@ -18,6 +18,7 @@ export function useDebounced<T>(
 		const debounced$ = subRef.current.pipe(debounceTime(delay))
 		subscription.add(debounced$.subscribe(onChangeRef.current))
 		return () => subscription.unsubscribe()
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [delay])
 
 	return {
