@@ -106,11 +106,17 @@
       "default": 3,
       "description": "Number of layers in the queue to trigger a low queue size warning"
     },
-    "remindVoteThresholdSeconds": {
+    "voteReminderIntervalSeconds": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 15,
-      "description": "Seconds remaining to remind users to vote"
+      "description": "How often to remind users to vote"
+    },
+    "finalVoteReminderSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 10,
+      "description": "How far in advance the final vote reminder should be sent"
     },
     "maxQueueSize": {
       "type": "integer",
