@@ -1,18 +1,18 @@
 import { TRPCError } from '@trpc/server'
-import { eq, aliasedTable, and } from 'drizzle-orm'
+import { aliasedTable, and, eq } from 'drizzle-orm'
 import { Subject } from 'rxjs'
 import { z } from 'zod'
 
-import { toAsyncGenerator } from '@/lib/async'
-import * as RBAC from '@/rbac.models'
-import * as Rbac from '@/server/systems/rbac.system'
-import { returnInsertErrors } from '@/lib/drizzle'
-import * as M from '@/models.ts'
 import * as Schema from '$root/drizzle/schema.ts'
-import { procedure, router } from '@/server/trpc.server.ts'
+import { toAsyncGenerator } from '@/lib/async'
+import { returnInsertErrors } from '@/lib/drizzle'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
+import * as M from '@/models.ts'
+import * as RBAC from '@/rbac.models'
 import * as LayerQueue from '@/server/systems/layer-queue'
+import * as Rbac from '@/server/systems/rbac.system'
+import { procedure, router } from '@/server/trpc.server.ts'
 
 const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
 const ToggleFilterContributorInputSchema = z
@@ -26,7 +26,10 @@ export const filtersRouter = router({
 		.input(GetFiltersInput)
 		.query(async ({ ctx, input }): Promise<{ code: 'ok'; filters: M.FilterEntity[] } & Parts<Partial<M.UserPart>>> => {
 			if (input?.parts?.includes('users')) {
-				const rows = await ctx.db().select().from(Schema.filters).leftJoin(Schema.users, eq(Schema.users.discordId, Schema.filters.owner))
+				const rows = await ctx.db().select().from(Schema.filters).leftJoin(
+					Schema.users,
+					eq(Schema.users.discordId, Schema.filters.owner),
+				)
 
 				const users = rows.map((row) => row.users).filter((user) => user !== null)
 				const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
@@ -56,10 +59,8 @@ export const filtersRouter = router({
 			})
 			.from(Schema.filters)
 			.where(eq(Schema.filters.id, input))
-
 			.leftJoin(Schema.filterUserContributors, eq(Schema.filterUserContributors.filterId, input))
 			.leftJoin(userContributors, eq(userContributors.discordId, Schema.filterUserContributors.userId))
-
 			.leftJoin(Schema.filterRoleContributors, eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
@@ -81,7 +82,7 @@ export const filtersRouter = router({
 				ctx.db().insert(Schema.filterUserContributors).values({
 					filterId: input.filterId,
 					userId: input.userId,
-				})
+				}),
 			)
 			switch (res.code) {
 				case 'err:already-exists':
@@ -96,7 +97,7 @@ export const filtersRouter = router({
 				ctx.db().insert(Schema.filterRoleContributors).values({
 					filterId: input.filterId,
 					roleId: input.role!,
-				})
+				}),
 			)
 			switch (res.code) {
 				case 'err:already-exists':
@@ -249,13 +250,13 @@ export const filtersRouter = router({
 
 export type WatchFilterOutput =
 	| {
-			code: 'err:not-found'
-	  }
+		code: 'err:not-found'
+	}
 	| {
-			code: 'initial-value'
-			entity: M.FilterEntity
-	  }
+		code: 'initial-value'
+		entity: M.FilterEntity
+	}
 	| {
-			code: 'mutation'
-			mutation: M.UserEntityMutation<M.FilterEntity>
-	  }
+		code: 'mutation'
+		mutation: M.UserEntityMutation<M.FilterEntity>
+	}

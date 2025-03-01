@@ -1,32 +1,32 @@
+import * as FB from '@/lib/filter-builders.ts'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
-import { BehaviorSubject, distinctUntilChanged, from, map, scan, Subject, Subscription, filter } from 'rxjs'
+import { BehaviorSubject, distinctUntilChanged, filter, from, map, scan, Subject, Subscription } from 'rxjs'
 import * as Rx from 'rxjs'
-import * as FB from '@/lib/filter-builders.ts'
 
+import * as Schema from '$root/drizzle/schema.ts'
 import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import { deepClone } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
-import { CONFIG } from '@/server/config.ts'
 import * as RBAC from '@/rbac.models.ts'
-import * as Rbac from '@/server/systems/rbac.system.ts'
+import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as Schema from '$root/drizzle/schema.ts'
-import * as SquadServer from '@/server/systems/squad-server'
 import * as LayersQuery from '@/server/systems/layer-queries.ts'
+import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
 import * as Otel from '@opentelemetry/api'
 
-import { procedure, router } from '../trpc.server.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
 import { BROADCASTS, WARNS } from '@/messages.ts'
-import { interval } from 'rxjs'
 import { Mutex } from 'async-mutex'
+import { interval } from 'rxjs'
+import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
@@ -108,7 +108,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			} else if (serverState.layerQueue.length <= CONFIG.lowQueueWarningThresholdSeconds) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowLayerCount(serverState.layerQueue.length))
 			}
-		})
+		}),
 	)
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
@@ -122,7 +122,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			filter((statusRes) => statusRes.code === 'ok'),
 			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
-			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev)
+			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
 		)
 		.subscribe(async ([status, prevStatus]) => {
 			if (!status) return
@@ -176,7 +176,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 					assertNever(action)
 			}
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
-		}
+		},
 	)
 
 	const handleServerRoll = C.spanOp(
@@ -217,7 +217,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			}
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'server-roll' } }, baseCtx])
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
-		}
+		},
 	)
 
 	const handleAdminChangeLayer = C.spanOp(
@@ -240,7 +240,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'admin-change-layer' } }, baseCtx])
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
-		}
+		},
 	)
 
 	/**
@@ -273,7 +273,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				distinctDeepEquals(),
 				filter((statusRes) => statusRes.code === 'ok'),
 				map((status) => status.data.currentLayer),
-				distinctUntilChanged()
+				distinctUntilChanged(),
 			)
 			.subscribe(() => {
 				LayersQuery.historyFiltersCache.clear()
@@ -291,7 +291,12 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 // -------- voting --------
 //
-function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M.LayerQueue, voteState: M.VoteState | null, force = false) {
+function getVoteStateUpdatesFromQueueUpdate(
+	lastQueue: M.LayerQueue,
+	newQueue: M.LayerQueue,
+	voteState: M.VoteState | null,
+	force = false,
+) {
 	const lastQueueItem = lastQueue[0] as M.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
 
@@ -302,7 +307,10 @@ function getVoteStateUpdatesFromQueueUpdate(lastQueue: M.LayerQueue, newQueue: M
 	}
 
 	if (lastQueueItem?.vote && !newQueueItem?.vote) {
-		return { code: 'ok' as const, update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies M.VoteStateUpdate }
+		return {
+			code: 'ok' as const,
+			update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies M.VoteStateUpdate,
+		}
 	}
 
 	if (newQueueItem.vote && !deepEqual(lastQueueItem?.vote, newQueueItem.vote)) {
@@ -351,7 +359,7 @@ export const startVote = C.spanOp(
 	{ tracer },
 	async (
 		ctx: C.Log & C.Db & Partial<C.User>,
-		opts: { durationSeconds?: number; minValidVotePercentage?: number; initiator: M.GuiOrChatUserId }
+		opts: { durationSeconds?: number; minValidVotePercentage?: number; initiator: M.GuiOrChatUserId },
 	) => {
 		C.setSpanOpAttrs(opts)
 		if (ctx.user) {
@@ -437,11 +445,11 @@ export const startVote = C.spanOp(
 		registerVoteDeadlineAndReminder$(ctx)
 		await SquadServer.rcon.broadcast(
 			ctx,
-			BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000)
+			BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000),
 		)
 
 		return res
-	}
+	},
 )
 
 export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (msg: SM.ChatMessage, ctx: C.Log & C.Db) => {
@@ -480,38 +488,42 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
-export const abortVote = C.spanOp('layer-queue:vote:abort', { tracer }, async (ctx: C.Log & C.Db, opts: { aborter: M.GuiOrChatUserId }) => {
-	C.setSpanOpAttrs(opts)
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	using acquired = await acquireInBlock(voteStateMtx)
+export const abortVote = C.spanOp(
+	'layer-queue:vote:abort',
+	{ tracer },
+	async (ctx: C.Log & C.Db, opts: { aborter: M.GuiOrChatUserId }) => {
+		C.setSpanOpAttrs(opts)
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		using acquired = await acquireInBlock(voteStateMtx)
 
-	if (!voteState || voteState?.code !== 'in-progress') {
-		return {
-			code: 'err:no-vote-in-progress' as const,
+		if (!voteState || voteState?.code !== 'in-progress') {
+			return {
+				code: 'err:no-vote-in-progress' as const,
+			}
 		}
-	}
 
-	const newVoteState: M.VoteState = {
-		choices: voteState.choices,
-		defaultChoice: voteState.defaultChoice,
-		deadline: voteState.deadline,
-		votes: voteState.votes,
-		code: 'ended:aborted',
-		aborter: opts.aborter,
-	}
+		const newVoteState: M.VoteState = {
+			choices: voteState.choices,
+			defaultChoice: voteState.defaultChoice,
+			deadline: voteState.deadline,
+			votes: voteState.votes,
+			code: 'ended:aborted',
+			aborter: opts.aborter,
+		}
 
-	const update: M.VoteStateUpdate = {
-		state: newVoteState,
-		source: { type: 'manual', user: opts.aborter, event: 'abort-vote' },
-	}
-	voteState = newVoteState
-	voteStateUpdate$.next([ctx, update])
-	voteEndTask?.unsubscribe()
-	voteEndTask = null
-	await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.aborted(voteState.defaultChoice))
+		const update: M.VoteStateUpdate = {
+			state: newVoteState,
+			source: { type: 'manual', user: opts.aborter, event: 'abort-vote' },
+		}
+		voteState = newVoteState
+		voteStateUpdate$.next([ctx, update])
+		voteEndTask?.unsubscribe()
+		voteEndTask = null
+		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.aborted(voteState.defaultChoice))
 
-	return { code: 'ok' as const }
-})
+		return { code: 'ok' as const }
+	},
+)
 
 function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	voteEndTask?.unsubscribe()
@@ -531,7 +543,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 				if (!voteState || voteState.code !== 'in-progress') return
 				const timeLeft = voteState.deadline - Date.now()
 				SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
-			})
+			}),
 	)
 
 	// -------- schedule final reminder --------
@@ -539,8 +551,11 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 		voteEndTask.add(
 			from(sleep(finalReminderWaitTime)).subscribe(async () => {
 				if (!voteState || voteState.code !== 'in-progress') return
-				await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(CONFIG.finalVoteReminderSeconds * 1000, voteState.choices, true))
-			})
+				await SquadServer.rcon.broadcast(
+					ctx,
+					BROADCASTS.vote.voteReminder(CONFIG.finalVoteReminderSeconds * 1000, voteState.choices, true),
+				)
+			}),
 		)
 	}
 
@@ -554,7 +569,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 				ctx.log.info('vote deadline reached')
 				voteEndTask = null
 			},
-		})
+		}),
 	)
 }
 
@@ -611,7 +626,9 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer }
 				state: newVoteState,
 			}
 		}
-		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(E.eq(Schema.servers.id, CONFIG.serverId))
+		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(
+			E.eq(Schema.servers.id, CONFIG.serverId),
+		)
 		return { code: 'ok' as const, serverState, voteUpdate, tally }
 	})
 
@@ -846,7 +863,9 @@ const updateQueue = C.spanOp(
 				}
 			}
 
-			await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(E.eq(Schema.servers.id, CONFIG.serverId))
+			await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(
+				E.eq(Schema.servers.id, CONFIG.serverId),
+			)
 			endEditing({ ctx })
 
 			return { code: 'ok' as const, serverState }
@@ -866,7 +885,7 @@ const updateQueue = C.spanOp(
 		serverStateUpdate$.next([withParts, ctx])
 
 		return { code: 'ok' as const, serverStateUpdate: withParts }
-	}
+	},
 )
 
 // -------- utility --------
@@ -886,7 +905,7 @@ export async function peekNext(ctx: C.Db & C.Log) {
 
 async function includeLQServerUpdateParts(
 	ctx: C.Db & C.Log,
-	_serverStateUpdate: M.LQServerStateUpdate
+	_serverStateUpdate: M.LQServerStateUpdate,
 ): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
 	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
@@ -1013,7 +1032,7 @@ const generateLayerQueueItems = C.spanOp(
 
 		C.setSpanStatus(Otel.SpanStatusCode.OK)
 		return res
-	}
+	},
 )
 
 // -------- setup router --------

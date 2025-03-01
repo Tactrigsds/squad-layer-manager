@@ -1,5 +1,5 @@
-import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
 
 import superjson from 'superjson'
 

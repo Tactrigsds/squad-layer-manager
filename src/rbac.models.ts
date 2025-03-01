@@ -1,6 +1,6 @@
-import { z } from 'zod'
 import * as M from '@/models'
 import deepEqual from 'fast-deep-equal'
+import { z } from 'zod'
 
 export const RoleSchema = z
 	.string()
@@ -85,7 +85,7 @@ export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac,
 export function rbacUserHasPerms<T extends PermissionType>(user: M.UserWithRbac, req: PermissionReq<T>): boolean
 export function rbacUserHasPerms<T extends PermissionType>(
 	user: M.UserWithRbac,
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>
+	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
 ): boolean {
 	if ('check' in reqOrPerms) {
 		return userHasPerms(user.discordId, user.perms, reqOrPerms)
@@ -104,15 +104,14 @@ export function userHasPerms<T extends PermissionType>(userId: bigint, userPerms
 export function userHasPerms<T extends PermissionType>(
 	userId: bigint,
 	userPerms: Permission[],
-	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>
+	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
 ): boolean {
-	const req: PermissionReq<T> =
-		'check' in reqOrPerms
-			? reqOrPerms
-			: {
-					check: 'all',
-					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-				}
+	const req: PermissionReq<T> = 'check' in reqOrPerms
+		? reqOrPerms
+		: {
+			check: 'all',
+			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+		}
 
 	for (const reqPerm of req.permits) {
 		const hasPerm = userPerms.find((userPerm) => deepEqual(userPerm, reqPerm))

@@ -22,7 +22,7 @@ const toggleVariants = cva(
 			variant: 'default',
 			size: 'default',
 		},
-	}
+	},
 )
 
 const Toggle = React.forwardRef<

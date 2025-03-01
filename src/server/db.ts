@@ -1,11 +1,11 @@
+import * as Otel from '@opentelemetry/api'
 import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
 import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
-import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 
+import { Pool } from 'mysql2'
 import * as C from './context.ts'
 import { ENV } from './env.ts'
-import { Pool } from 'mysql2'
 
 export type Db = MySql2Database<Record<string, never>>
 
@@ -67,7 +67,7 @@ export async function runTransaction<T extends C.Db, V>(ctx: T & { tx?: never },
 class TracedPool extends EventEmitter implements MySQL.Pool {
 	constructor(
 		private ctx: C.Log,
-		private basePool: MySQL.Pool
+		private basePool: MySQL.Pool,
 	) {
 		super()
 		Object.assign(this, basePool)
@@ -210,7 +210,7 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 
 	async query<T extends [MySQL.RowDataPacket[], MySQL.ResultSetHeader]>(
 		options: string | MySQL.QueryOptions,
-		values?: any
+		values?: any,
 	): Promise<[T, MySQL.FieldPacket[]]> {
 		try {
 			return await this.basePool.query<T>(options as MySQL.QueryOptions, values)

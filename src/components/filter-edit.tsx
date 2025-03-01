@@ -1,56 +1,40 @@
-import * as Form from '@tanstack/react-form'
-import deepEqual from 'fast-deep-equal'
-import * as RbacClient from '@/systems.client/rbac.client'
-import { useState } from 'react'
-import * as Icons from 'lucide-react'
 import * as RBAC from '@/rbac.models'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import * as Users from '@/systems.client/users.client'
 import { ToggleFilterContributorInput } from '@/server/systems/filters-entity'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import * as RbacClient from '@/systems.client/rbac.client'
+import * as Users from '@/systems.client/users.client'
+import * as Form from '@tanstack/react-form'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import deepEqual from 'fast-deep-equal'
+import * as Icons from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 import * as AR from '@/app-routes.ts'
-import {
-	AlertDialog,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-	AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { z } from 'zod'
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
 import * as Typography from '@/lib/typography'
 import * as M from '@/models.ts'
+import { z } from 'zod'
 
+import { filterUpdate$ as getFilterUpdate$, getFilterContributorQueryKey, getFilterEntity$, useFilterContributors, useFilterDelete, useFilterUpdate } from '@/hooks/filters'
+import { trpc } from '@/lib/trpc.client'
+import { assertNever } from '@/lib/typeGuards'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { Subscribe, useStateObservable } from '@react-rxjs/core'
+import React from 'react'
 import FilterCard from './filter-card'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Badge } from './ui/badge'
+import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import React from 'react'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { assertNever } from '@/lib/typeGuards'
-import {
-	filterUpdate$ as getFilterUpdate$,
-	getFilterEntity$,
-	useFilterUpdate,
-	useFilterDelete,
-	useFilterContributors,
-	getFilterContributorQueryKey,
-} from '@/hooks/filters'
-import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
-import { trpc } from '@/lib/trpc.client'
-import { Subscribe, useStateObservable } from '@react-rxjs/core'
 
 // https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
 export default function FilterWrapperWrapper() {
@@ -252,118 +236,123 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	)
 	const deleteBtn = (
 		<DeleteFilterDialog onDelete={onDelete}>
-			<Button variant="destructive">Delete</Button>
+			<Button variant='destructive'>Delete</Button>
 		</DeleteFilterDialog>
 	)
 
 	return (
-		<div className="container mx-auto pt-2">
-			<div className="flex justify-between">
-				{!editingDetails ? (
-					<div className="flex flex-col space-y-2 w-full">
-						<div className="flex space-x-4 items-center">
-							<h3 className={Typography.H3}>{props.entity.name}</h3>
-							<Icons.Dot />
-							<small className="font-light">Owner: {props.owner.username}</small>
-							<Icons.Dot />
-							<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
-								<Icons.Edit />
-							</Button>
+		<div className='container mx-auto pt-2'>
+			<div className='flex justify-between'>
+				{!editingDetails
+					? (
+						<div className='flex flex-col space-y-2 w-full'>
+							<div className='flex space-x-4 items-center'>
+								<h3 className={Typography.H3}>{props.entity.name}</h3>
+								<Icons.Dot />
+								<small className='font-light'>Owner: {props.owner.username}</small>
+								<Icons.Dot />
+								<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant='ghost' size='icon'>
+									<Icons.Edit />
+								</Button>
+							</div>
+							<p className={Typography.Blockquote}>{props.entity.description}</p>
 						</div>
-						<p className={Typography.Blockquote}>{props.entity.description}</p>
-					</div>
-				) : (
-					<div className="flex space-x-2">
-						<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
-							{(field) => {
-								return (
-									<div className="flex flex-col space-y-2">
-										<Label htmlFor={field.name}>Name</Label>
-										<Input
-											id={field.name}
-											placeholder="Filter name"
-											defaultValue={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value)}
-										/>
+					)
+					: (
+						<div className='flex space-x-2'>
+							<form.Field name='name' validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
+								{(field) => {
+									return (
+										<div className='flex flex-col space-y-2'>
+											<Label htmlFor={field.name}>Name</Label>
+											<Input
+												id={field.name}
+												placeholder='Filter name'
+												defaultValue={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(e) => field.handleChange(e.target.value)}
+											/>
+											{field.state.meta.errors.length > 0 && (
+												<Alert variant='destructive'>
+													<AlertTitle>Name:</AlertTitle>
+													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+												</Alert>
+											)}
+										</div>
+									)
+								}}
+							</form.Field>
+							<form.Field
+								name='description'
+								validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}
+							>
+								{(field) => (
+									<div className='flex space-x-2 flex-grow'>
+										<div className='flex flex-col space-y-1 min-w-[900px] '>
+											<Label htmlFor={field.name}>Description</Label>
+											<Textarea
+												id={field.name}
+												placeholder='Description'
+												defaultValue={field.state.value ?? ''}
+												onBlur={field.handleBlur}
+												onChange={(e) => field.handleChange(e.target.value)}
+											/>
+										</div>
 										{field.state.meta.errors.length > 0 && (
-											<Alert variant="destructive">
-												<AlertTitle>Name: </AlertTitle>
-												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-											</Alert>
+											<span>
+												<Alert variant='destructive'>
+													<AlertTitle>Description:</AlertTitle>
+													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+												</Alert>
+											</span>
 										)}
 									</div>
-								)
-							}}
-						</form.Field>
-						<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
-							{(field) => (
-								<div className="flex space-x-2 flex-grow">
-									<div className="flex flex-col space-y-1 min-w-[900px] ">
-										<Label htmlFor={field.name}>Description</Label>
-										<Textarea
-											id={field.name}
-											placeholder="Description"
-											defaultValue={field.state.value ?? ''}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value)}
-										/>
-									</div>
-									{field.state.meta.errors.length > 0 && (
-										<span>
-											<Alert variant="destructive">
-												<AlertTitle>Description:</AlertTitle>
-												<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-											</Alert>
-										</span>
-									)}
-								</div>
-							)}
-						</form.Field>
-						<div className="flex flex-col space-y-1">
-							<Button
-								className="mt-[16px]"
-								variant="ghost"
-								size="icon"
-								onClick={() => {
-									form.reset()
-									return setEditingDetails(false)
-								}}
-							>
-								<Icons.Trash className="text-destructive" />
-							</Button>
+								)}
+							</form.Field>
+							<div className='flex flex-col space-y-1'>
+								<Button
+									className='mt-[16px]'
+									variant='ghost'
+									size='icon'
+									onClick={() => {
+										form.reset()
+										return setEditingDetails(false)
+									}}
+								>
+									<Icons.Trash className='text-destructive' />
+								</Button>
+							</div>
 						</div>
-					</div>
-				)}
-				<span className="space-x-2 flex h-min items-center self-end">
+					)}
+				<span className='space-x-2 flex h-min items-center self-end'>
 					{loggedInUserRole === 'owner' && (
-						<Badge variant="outline" className="text-nowrap border-primary border-2">
+						<Badge variant='outline' className='text-nowrap border-primary border-2'>
 							You are the owner of this filter
 						</Badge>
 					)}
 					{loggedInUserRole === 'contributor' && (
-						<Badge variant="outline" className="text-nowrap border-info border-2">
+						<Badge variant='outline' className='text-nowrap border-info border-2'>
 							You are a contributor
 						</Badge>
 					)}
 					{loggedInUserRole === 'none' && (
-						<Badge variant="outline" className="text-nowrap border-destructive border-2">
+						<Badge variant='outline' className='text-nowrap border-destructive border-2'>
 							You don't have permission to modify this filter
 						</Badge>
 					)}
 					{loggedInUserRole === 'write-all' && (
-						<Badge variant="outline" className="text-nowrap border-success border-2">
+						<Badge variant='outline' className='text-nowrap border-success border-2'>
 							You have write access to all filters
 						</Badge>
 					)}
 					<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
-						<Button disabled={loggedInUserRole === 'none'} variant="outline">
+						<Button disabled={loggedInUserRole === 'none'} variant='outline'>
 							Show Contributors
 						</Button>
 					</FilterContributors>
 				</span>
 			</div>
-			<div className="flex space-x-2 mt-2">
+			<div className='flex space-x-2 mt-2'>
 				<FilterCard
 					node={editedFilter}
 					setNode={setEditedFilter}
@@ -442,48 +431,48 @@ function FilterContributors(props: {
 	return (
 		<Popover>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent className="p-0">
+			<PopoverContent className='p-0'>
 				<CardHeader>
 					<CardTitle>Contributors</CardTitle>
 					<CardDescription>Users and Roles that can edit this filter</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div>
-						<div className="flex space-x-2 items-center">
-							<h4 className="leading-none">Users</h4>
+						<div className='flex space-x-2 items-center'>
+							<h4 className='leading-none'>Users</h4>
 							<SelectUserPopover selectUser={addUser}>
-								<Button variant="outline" size="icon">
+								<Button variant='outline' size='icon'>
 									<Icons.Plus />
 								</Button>
 							</SelectUserPopover>
 						</div>
 						<ul>
 							{props.contributors.users.map((user) => (
-								<li key={user.discordId} className="flex space-x-1 items-center">
+								<li key={user.discordId} className='flex space-x-1 items-center'>
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+										className='text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 									/>
 									<Badge>{user.username}</Badge>
 								</li>
 							))}
 						</ul>
 					</div>
-					<div id="roles">
+					<div id='roles'>
 						<div>
-							<Label htmlFor="roles">Roles</Label>
+							<Label htmlFor='roles'>Roles</Label>
 							<SelectRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, role })}>
-								<Button variant="outline" size="icon">
+								<Button variant='outline' size='icon'>
 									<Icons.Plus />
 								</Button>
 							</SelectRolePopover>
 						</div>
 						<ul>
 							{props.contributors.roles.map((role) => (
-								<li key={role} className="flex space-x-1 items-center">
+								<li key={role} className='flex space-x-1 items-center'>
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, role })}
-										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+										className='text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 									/>
 									<Badge>{role}</Badge>
 								</li>
@@ -517,7 +506,7 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-					<Button variant="destructive" onClick={onDelete}>
+					<Button variant='destructive' onClick={onDelete}>
 						Delete
 					</Button>
 				</AlertDialogFooter>
@@ -538,10 +527,10 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder="Search for a user..." />
+					<CommandInput placeholder='Search for a user...' />
 					<CommandList>
-						{usersRes.data?.code === 'ok' &&
-							usersRes.data.users.map((user) => (
+						{usersRes.data?.code === 'ok'
+							&& usersRes.data.users.map((user) => (
 								<CommandItem key={user.discordId} onSelect={() => onSelect(user)}>
 									{user.username}
 								</CommandItem>
@@ -565,7 +554,7 @@ export function SelectRolePopover(props: { children: React.ReactNode; selectRole
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder="Search for a role..." />
+					<CommandInput placeholder='Search for a role...' />
 					<CommandList>
 						{rolesRes.data?.map((role) => (
 							<CommandItem key={role} onSelect={() => onSelect(role)}>

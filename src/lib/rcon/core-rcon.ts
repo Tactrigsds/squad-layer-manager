@@ -1,9 +1,9 @@
+import * as C from '@/server/context.ts'
+import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
-import * as Otel from '@opentelemetry/api'
-import * as SM from './squad-models.ts'
-import * as C from '@/server/context.ts'
 import { BehaviorSubject } from 'rxjs'
+import * as SM from './squad-models.ts'
 
 export type DecodedPacket = {
 	type: number
@@ -193,13 +193,13 @@ export default class Rcon extends EventEmitter {
 	#decode(ctx: C.Log): { size: number; id: number; type: number; body: string } | null {
 		ctx = this.addLogProps(ctx)
 		if (
-			this.stream[0] === 0 &&
-			this.stream[1] === 1 &&
-			this.stream[2] === 0 &&
-			this.stream[3] === 0 &&
-			this.stream[4] === 0 &&
-			this.stream[5] === 0 &&
-			this.stream[6] === 0
+			this.stream[0] === 0
+			&& this.stream[1] === 1
+			&& this.stream[2] === 0
+			&& this.stream[3] === 0
+			&& this.stream[4] === 0
+			&& this.stream[5] === 0
+			&& this.stream[6] === 0
 		) {
 			this.stream = this.stream.subarray(7)
 			return this.soh

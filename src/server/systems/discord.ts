@@ -1,10 +1,10 @@
-import { z } from 'zod'
-import * as C from '@/server/context'
-import { baseLogger } from '../logger'
-import { ENV } from '../env'
-import * as D from 'discord.js'
 import { CONFIG } from '@/server/config'
+import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
+import * as D from 'discord.js'
+import { z } from 'zod'
+import { ENV } from '../env'
+import { baseLogger } from '../logger'
 
 export const DiscordUserSchema = z.object({
 	id: z.string().transform(BigInt),

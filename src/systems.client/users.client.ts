@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { trpc } from '@/lib/trpc.client'
+import { useQuery } from '@tanstack/react-query'
 import superjson from 'superjson'
 
 export function useUser(id?: bigint) {

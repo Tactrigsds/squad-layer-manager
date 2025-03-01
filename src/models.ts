@@ -1,13 +1,13 @@
 import * as z from 'zod'
 
 import _StaticLayerComponents from '$root/assets/layer-components.json'
-import { deepClone, revLookup } from './lib/object'
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import { Parts } from './lib/types'
 import * as RBAC from '@/rbac.models'
-import { PercentageSchema } from './lib/zod'
-import { assertNever } from './lib/typeGuards'
 import { createId } from './lib/id'
+import { deepClone, revLookup } from './lib/object'
+import { assertNever } from './lib/typeGuards'
+import { Parts } from './lib/types'
+import { PercentageSchema } from './lib/zod'
 
 const StaticLayerComponents = _StaticLayerComponents as LayerComponents
 
@@ -104,7 +104,7 @@ export function getLayerTeamString(faction: string, subfac: string | null, compo
 }
 export function parseTeamString(
 	team: string,
-	components: typeof StaticLayerComponents = StaticLayerComponents
+	components: typeof StaticLayerComponents = StaticLayerComponents,
 ): { faction: string; subfac: string | null } {
 	const [faction, subfac] = team.split('-')
 	return {
@@ -136,7 +136,7 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		layer = `${level}_${faction1}-${faction2}`
 	} else {
 		layer = StaticLayerComponents.layers.find(
-			(l) => l.startsWith(`${level}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase()))
+			(l) => l.startsWith(`${level}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
 		)
 	}
 	if (!layer) {
@@ -203,10 +203,12 @@ export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 		return `AdminSetNextLayer ${layer.Layer}`
 	}
 
-	return `AdminSetNextLayer ${layer.Layer}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${getFactionModifier(
-		layer.Faction_2,
-		layer.SubFac_2
-	)}`
+	return `AdminSetNextLayer ${layer.Layer}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${
+		getFactionModifier(
+			layer.Faction_2,
+			layer.SubFac_2,
+		)
+	}`
 }
 
 export function getSetNextVoteCommand(ids: string[]) {
@@ -427,7 +429,7 @@ export const ComparisonSchema = z
 			const coltype = COMPARISON_TYPES.find((type) => type.code === comp.code)!.coltype
 			return COLUMN_KEY_TO_TYPE[comp.column] === coltype
 		},
-		{ message: 'Invalid column type for comparison type' }
+		{ message: 'Invalid column type for comparison type' },
 	)
 
 export type LayerColumnKey = keyof Layer
@@ -444,47 +446,47 @@ export const BaseFilterNodeSchema = z.object({
 
 export type FilterNode =
 	| {
-			type: 'and'
-			neg: boolean
-			children: FilterNode[]
-	  }
+		type: 'and'
+		neg: boolean
+		children: FilterNode[]
+	}
 	| {
-			type: 'or'
-			neg: boolean
-			children: FilterNode[]
-	  }
+		type: 'or'
+		neg: boolean
+		children: FilterNode[]
+	}
 	| {
-			type: 'comp'
-			neg: boolean
-			comp: Comparison
-	  }
+		type: 'comp'
+		neg: boolean
+		comp: Comparison
+	}
 	| {
-			type: 'apply-filter'
-			neg: boolean
-			filterId: string
-	  }
+		type: 'apply-filter'
+		neg: boolean
+		filterId: string
+	}
 
 export type EditableFilterNode =
 	| {
-			type: 'and'
-			neg: boolean
-			children: EditableFilterNode[]
-	  }
+		type: 'and'
+		neg: boolean
+		children: EditableFilterNode[]
+	}
 	| {
-			type: 'or'
-			neg: boolean
-			children: EditableFilterNode[]
-	  }
+		type: 'or'
+		neg: boolean
+		children: EditableFilterNode[]
+	}
 	| {
-			type: 'comp'
-			neg: boolean
-			comp: EditableComparison
-	  }
+		type: 'comp'
+		neg: boolean
+		comp: EditableComparison
+	}
 	| {
-			type: 'apply-filter'
-			neg: boolean
-			filterId?: string
-	  }
+		type: 'apply-filter'
+		neg: boolean
+		filterId?: string
+	}
 
 export type BlockTypeEditableFilterNode = Extract<EditableFilterNode, { type: BlockType }>
 
@@ -516,7 +518,9 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 export function isValidComparison(comp: EditableComparison): comp is Comparison {
 	return ComparisonSchema.safeParse(comp).success
 }
-export function isValidApplyFilterNode(node: EditableFilterNode & { type: 'apply-filter' }): node is FilterNode & { type: 'apply-filter' } {
+export function isValidApplyFilterNode(
+	node: EditableFilterNode & { type: 'apply-filter' },
+): node is FilterNode & { type: 'apply-filter' } {
 	return !!node.filterId
 }
 
@@ -701,26 +705,26 @@ export const HistoryFilterSchema = z.discriminatedUnion(
 			}),
 		}),
 	],
-	{ description: 'exclude layers based on the match history' }
+	{ description: 'exclude layers based on the match history' },
 )
 
 export type HistoryFilter = z.infer<typeof HistoryFilterSchema>
 
 export type HistoryFilterEdited =
 	| {
-			type: 'dynamic'
-			column: (typeof COLUMN_KEYS_WITH_COMPUTED)[number]
-			excludeFor: {
-				matches: number
-			}
-	  }
+		type: 'dynamic'
+		column: (typeof COLUMN_KEYS_WITH_COMPUTED)[number]
+		excludeFor: {
+			matches: number
+		}
+	}
 	| {
-			type: 'static'
-			comparison: EditableComparison
-			excludeFor: {
-				matches: number
-			}
-	  }
+		type: 'static'
+		comparison: EditableComparison
+		excludeFor: {
+			matches: number
+		}
+	}
 
 export const GenLayerQueueItemsOptionsSchema = z.object({
 	numToAdd: z.number().positive(),
@@ -743,26 +747,38 @@ type TallyProperties = {
 
 export type VoteState =
 	| ({ code: 'ready' } & LayerVote)
-	| ({
+	| (
+		& {
 			code: 'in-progress'
 			initiator: GuiOrChatUserId
 			minValidVotes: number
-	  } & TallyProperties &
-			LayerVote)
-	| ({
+		}
+		& TallyProperties
+		& LayerVote
+	)
+	| (
+		& {
 			code: 'ended:winner'
 			winner: LayerId
-	  } & TallyProperties &
-			LayerVote)
-	| ({
+		}
+		& TallyProperties
+		& LayerVote
+	)
+	| (
+		& {
 			code: 'ended:aborted'
 			aborter: GuiOrChatUserId
-	  } & TallyProperties &
-			LayerVote)
-	| ({
+		}
+		& TallyProperties
+		& LayerVote
+	)
+	| (
+		& {
 			code: 'ended:insufficient-votes'
-	  } & TallyProperties &
-			LayerVote)
+		}
+		& TallyProperties
+		& LayerVote
+	)
 
 export type Tally = ReturnType<typeof tallyVotes>
 export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: number) {
@@ -809,33 +825,33 @@ export type ChatUserId = { steamId: string }
 export type GuiOrChatUserId = { discordId?: bigint; steamId?: string }
 export type VoteStateUpdateOrInitialWithParts =
 	| {
-			code: 'initial-state'
-			state: (VoteState & Parts<UserPart>) | null
-	  }
+		code: 'initial-state'
+		state: (VoteState & Parts<UserPart>) | null
+	}
 	| {
-			code: 'update'
-			update: VoteStateUpdate & Parts<UserPart>
-	  }
+		code: 'update'
+		update: VoteStateUpdate & Parts<UserPart>
+	}
 
 export type VoteStateUpdateOrInitial =
 	| {
-			code: 'initial-state'
-			state: VoteState | null
-	  }
+		code: 'initial-state'
+		state: VoteState | null
+	}
 	| { code: 'update'; update: VoteStateUpdate }
 
 export type VoteStateUpdate = {
 	state: VoteState | null
 	source:
 		| {
-				type: 'system'
-				event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup'
-		  }
+			type: 'system'
+			event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup'
+		}
 		| {
-				type: 'manual'
-				event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change'
-				user: GuiOrChatUserId
-		  }
+			type: 'manual'
+			event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change'
+			user: GuiOrChatUserId
+		}
 }
 
 export type VoteStateWithVoteData = Extract<
@@ -905,15 +921,15 @@ export type LQServerStateUpdate = {
 	state: LQServerState
 	source:
 		| {
-				type: 'system'
-				event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer'
-		  }
+			type: 'system'
+			event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer'
+		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
-				type: 'manual'
-				event: 'edit'
-				user: GuiOrChatUserId
-		  }
+			type: 'manual'
+			event: 'edit'
+			user: GuiOrChatUserId
+		}
 }
 
 export const ServerIdSchema = z.string().min(1).max(256)
@@ -944,21 +960,21 @@ export function getLayerStatusId(layerId: LayerId, filterEntityId: FilterEntityI
 
 export type LayerSyncState =
 	| {
-			// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated
-			status: 'desynced'
-			// local in this case meaning our application server
-			expected: string
-			current: string
-	  }
+		// for when the expected layer in the app's backend memory is not what's currently on the server, aka we're waiting for the squad server to tell us that its current layer has been updated
+		status: 'desynced'
+		// local in this case meaning our application server
+		expected: string
+		current: string
+	}
 	| {
-			// server offline
-			status: 'offline'
-	  }
+		// server offline
+		status: 'offline'
+	}
 	| {
-			// expected layer is on the server
-			status: 'synced'
-			value: string
-	  }
+		// expected layer is on the server
+		status: 'synced'
+		value: string
+	}
 
 export const GenericServerStateUpdateSchema = UserModifiableServerStateSchema
 

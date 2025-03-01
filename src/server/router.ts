@@ -2,14 +2,14 @@ import { z } from 'zod'
 
 import * as M from '@/models.ts'
 
-import { filtersRouter } from './systems/filters-entity.ts'
-import * as LayerQueue from './systems/layer-queue.ts'
-import * as LayerQueries from './systems/layer-queries.ts'
-import * as SquadServer from './systems/squad-server.ts'
 import { CONFIG } from '@/server/config.ts'
-import { procedure, router } from './trpc.server.ts'
+import { filtersRouter } from './systems/filters-entity.ts'
+import * as LayerQueries from './systems/layer-queries.ts'
+import * as LayerQueue from './systems/layer-queue.ts'
 import * as Rbac from './systems/rbac.system.ts'
+import * as SquadServer from './systems/squad-server.ts'
 import * as Users from './systems/users.ts'
+import { procedure, router } from './trpc.server.ts'
 
 export let appRouter: ReturnType<typeof setupTrpcRouter>
 export type AppRouter = typeof appRouter
@@ -21,7 +21,7 @@ export function setupTrpcRouter() {
 				z.object({
 					historyFilters: z.array(M.HistoryFilterSchema),
 					layerQueue: z.array(M.LayerQueueItemSchema),
-				})
+				}),
 			)
 			.query(async ({ input, ctx }) => {
 				const queuedLayerIds = new Set<M.LayerId>()

@@ -1,12 +1,12 @@
-import { FastifyReply, FastifyRequest } from 'fastify'
-import * as ws from 'ws'
-import Pino from 'pino'
+import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as M from '@/models.ts'
-import RconCore from '@/lib/rcon/rcon-core.ts'
-import * as DB from './db.ts'
-import { Logger } from './logger.ts'
 import * as Otel from '@opentelemetry/api'
 import { SpanStatusCode } from '@opentelemetry/api'
+import { FastifyReply, FastifyRequest } from 'fastify'
+import Pino from 'pino'
+import * as ws from 'ws'
+import * as DB from './db.ts'
+import { Logger } from './logger.ts'
 
 // -------- Logging --------
 export type Log = {
@@ -48,9 +48,9 @@ export function failOperation(ctx: Op, err?: any, code?: string): void {
 export function spanOp<Cb extends (...args: any[]) => Promise<any>>(
 	name: string,
 	opts: { tracer: Otel.Tracer; onError?: (err: any) => void },
-	cb: Cb
+	cb: Cb,
 ): Cb {
-	//@ts-expect-error idk
+	// @ts-expect-error idk
 	return async (...args) => {
 		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan() }, async (span) => {
 			try {

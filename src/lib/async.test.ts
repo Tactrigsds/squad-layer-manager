@@ -1,9 +1,9 @@
+import * as C from '@/server/context'
+import { ensureEnvSetup } from '@/server/env'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
+import { Mutex } from 'async-mutex'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { AsyncResource, sleep } from './async'
-import * as C from '@/server/context'
-import { baseLogger, ensureLoggerSetup } from '@/server/logger'
-import { ensureEnvSetup } from '@/server/env'
-import { Mutex } from 'async-mutex'
 
 let ctx!: C.Log
 
@@ -77,7 +77,7 @@ describe('AsyncResource', () => {
 				count++
 				return count
 			},
-			{ defaultTTL: 10_000 }
+			{ defaultTTL: 10_000 },
 		)
 
 		const values: number[] = []

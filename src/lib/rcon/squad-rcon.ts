@@ -1,14 +1,14 @@
-import { Subject } from 'rxjs'
 import { AsyncResource, sleep } from '@/lib/async'
+import { Subject } from 'rxjs'
 
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 
-import { capitalID, iterateIDs, lowerID } from './id-parser'
-import Rcon, { DecodedPacket } from './core-rcon'
-import * as SM from './squad-models'
 import { prefixProps, selectProps } from '../object'
+import Rcon, { DecodedPacket } from './core-rcon'
+import { capitalID, iterateIDs, lowerID } from './id-parser'
+import * as SM from './squad-models'
 
 export type WarnOptions = { msg: string | string[]; repeat?: number } | string | string[]
 
@@ -22,7 +22,7 @@ export default class SquadRcon {
 
 	constructor(
 		ctx: C.Log,
-		public core: Rcon
+		public core: Rcon,
 	) {
 		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx), { defaultTTL: 5000 })
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
@@ -82,7 +82,7 @@ export default class SquadRcon {
 
 		for (const line of res.data.split('\n')) {
 			const match = line.match(
-				/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamID>\d|N\/A) \| Squad ID: (?<squadID>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/
+				/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamID>\d|N\/A) \| Squad ID: (?<squadID>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/,
 			)
 			if (!match) continue
 
@@ -112,7 +112,7 @@ export default class SquadRcon {
 
 		for (const line of resSquad.data.split('\n')) {
 			const match = line.match(
-				/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/
+				/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
 			)
 			if (!match) throw new Error(`Invalid squad data: ${line}`)
 			const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
@@ -324,7 +324,7 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 		}
 
 		iterateIDs(matchChat[2]).forEach((platform, id) => {
-			//@ts-expect-error not typesafe
+			// @ts-expect-error not typesafe
 			result[lowerID(platform)] = id
 		})
 		result.playerId = (result.steamID || result.eosID)!

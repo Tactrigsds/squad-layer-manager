@@ -74,24 +74,24 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" role="combobox" aria-expanded={open} className="max-w-[400px] justify-between font-mono">
+				<Button variant='outline' role='combobox' aria-expanded={open} className='max-w-[400px] justify-between font-mono'>
 					{valuesDisplay}
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+					<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="max-[200px] p-0">
+			<PopoverContent className='max-[200px] p-0'>
 				<Command shouldFilter={!props.setInputValue}>
-					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search framework..." />
+					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder='Search framework...' />
 					<CommandList>
 						<CommandEmpty>No results found.</CommandEmpty>
 						<CommandGroup>
 							{options === LOADING && (
 								<CommandItem>
-									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+									<LoaderCircle className='mr-2 h-4 w-4 animate-spin' />
 								</CommandItem>
 							)}
-							{options !== LOADING &&
-								options.map((option) => (
+							{options !== LOADING
+								&& options.map((option) => (
 									<CommandItem
 										key={option.value}
 										value={option.value === null ? NULL.current : option.value}

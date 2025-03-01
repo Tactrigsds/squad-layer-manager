@@ -63,7 +63,7 @@ describe('pushOperation', () => {
 		expect(errorSpy).toHaveBeenCalledWith(
 			{ err: error, result: 'error' },
 			expect.stringContaining('Operation test-op::'),
-			expect.stringMatching(/failed$/)
+			expect.stringMatching(/failed$/),
 		)
 	})
 

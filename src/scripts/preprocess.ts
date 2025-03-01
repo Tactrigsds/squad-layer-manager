@@ -1,25 +1,25 @@
 import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
+import { parse } from 'csv-parse'
 import { sql } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
-import { parse } from 'csv-parse'
-import * as fsPromise from 'fs/promises'
 import * as fs from 'fs'
-import path from 'path'
+import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
+import path from 'path'
 import { z } from 'zod'
 
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
+import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
+import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
 import * as M from '@/models'
 import * as Config from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
-import * as Schema from '$root/drizzle/schema.ts'
 import * as Paths from '@/server/paths'
-import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
-import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 
 export const ParsedNanFloatSchema = z
 	.string()
@@ -221,7 +221,7 @@ export const RawLayerSchema = z
 			if (layer.Scored) return scoreCols.every((n) => n !== null)
 			return true
 		},
-		{ message: 'Scored layers must not have any NaNs in value columns' }
+		{ message: 'Scored layers must not have any NaNs in value columns' },
 	)
 	.refine(
 		(layer) => {
@@ -242,7 +242,7 @@ export const RawLayerSchema = z
 			if (!layer.Scored) return scoreCols.every((n) => n === null)
 			return true
 		},
-		{ message: 'un-scored layers must have all value columns as null' }
+		{ message: 'un-scored layers must have all value columns as null' },
 	)
 
 type RawLayer = z.infer<typeof RawLayerSchema>
@@ -282,14 +282,14 @@ async function main() {
 		baseLayerComponents = res.baseLayerComponents
 		layerComponents = parseLayerComponents(updateComponentsCtx, { factionDetails: factions, baseLayerComponents, pipeline })
 		updateComponentsCtx.tasks.push(
-			fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(layerComponents, null, 2))
+			fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(layerComponents, null, 2)),
 		)
 		updateComponentsCtx.log.info(
 			'Updated layer-components.json with %d factions, %d subfactions, %d levels, %d layers, and %d layer versions',
 			layerComponents.factions.length,
 			layerComponents.subfactions.length,
 			layerComponents.layers.length,
-			layerComponents.layerVersions.length
+			layerComponents.layerVersions.length,
 		)
 	}
 	if (args.includes('update-layers-table')) {
@@ -314,7 +314,7 @@ async function main() {
 
 async function downloadPipeline(ctx: C.Log) {
 	const res = await fetch(
-		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json'
+		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json',
 	)
 	const data = await res.json()
 	await fsPromise.writeFile(path.join(Paths.DATA, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
@@ -334,7 +334,7 @@ function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M
 			Faction_2: rawLayer.Faction_2,
 			SubFac_2: rawLayer.SubFac_2,
 		},
-		layerComponents
+		layerComponents,
 	)
 
 	const getDiff = (key1: keyof RawLayer, key2: keyof RawLayer) => {
@@ -381,7 +381,7 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 				parse({
 					columns: true,
 					skip_empty_lines: true,
-				})
+				}),
 			)
 			.on('data', (row) => {
 				rawLayers.push(row)
@@ -423,7 +423,7 @@ async function updateLayersTable(
 	biomes: Biome[],
 	rawLayers: RawLayer[],
 	layerComponents: M.LayerComponents,
-	dryRun = false
+	dryRun = false,
 ) {
 	await using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const t0 = performance.now()
@@ -438,7 +438,7 @@ async function updateLayersTable(
 		await ctx
 			.db()
 			.execute(
-				sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`
+				sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`,
 			)
 		ctx.log.info('inserting factions')
 		await ctx
@@ -449,7 +449,7 @@ async function updateLayersTable(
 					shortName: faction.faction,
 					fullName: factionFullNames[faction.faction],
 					alliance: faction.alliance,
-				}))
+				})),
 			)
 		await ctx
 			.db()
@@ -465,7 +465,7 @@ async function updateLayersTable(
 							}
 						})
 					)
-					.flat()
+					.flat(),
 			)
 
 		// -------- process layers --------
@@ -515,7 +515,7 @@ function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
 			.map((map) => {
 				return [[map.team1.shortName, map.team1.faction] as const, [map.team2.shortName, map.team2.faction] as const]
 			})
-			.flat()
+			.flat(),
 	)
 	factionFullNames.WPMC = 'Western Private Military Contractors'
 	factionFullNames.PLAAGF = 'PLA Amphibious Ground Forces'
@@ -536,7 +536,7 @@ function getJensensLayers(pipeline: SquadPipelineModels.Output): RawLayer[] {
 				SubFac_1: null,
 				Faction_2: jensensFactions![1],
 				SubFac_2: null,
-			})
+			}),
 		)
 	}
 	return jensensLayers
@@ -559,7 +559,7 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 					SubFac_1: null,
 					Faction_2: team2,
 					SubFac_2: null,
-				})
+				}),
 			)
 		}
 	}
@@ -612,7 +612,7 @@ function parseLayerComponents(
 		baseLayerComponents: BaseLayerComponents
 		factionDetails: FactionDetails[]
 		pipeline: SquadPipelineModels.Output
-	}
+	},
 ) {
 	for (const level of baseLayerComponents.levels) {
 		if (!(level in LEVEL_SHORT_NAMES)) {
@@ -646,7 +646,7 @@ function parseLayerComponents(
 	const subfactionFullNames = Object.fromEntries(
 		factionDetails.map((faction) => {
 			return [faction.faction, faction.subfactions] as const
-		})
+		}),
 	)
 
 	const layerComponents: M.LayerComponents = {
@@ -667,7 +667,7 @@ function parseLayerComponents(
 
 	if (!deepEqual([...SUBFACTIONS].sort(), [...layerComponents.subfactions].sort())) {
 		throw new Error(
-			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS : ${layerComponents.subfactions.join(', ')}`
+			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS : ${layerComponents.subfactions.join(', ')}`,
 		)
 	}
 
@@ -690,7 +690,7 @@ async function parseBiomes(_ctx: C.Log) {
 		biomes.push({
 			name,
 			maps,
-			//@ts-expect-error nodude
+			// @ts-expect-error nodude
 			factions: BIOME_FACTIONS[name],
 		})
 	}
@@ -714,7 +714,7 @@ async function parseFactionDetails(_ctx: C.Log) {
 	for await (const row of parser) {
 		if (row.Alliance) alliance = row.Alliance
 		if (!row.Faction) continue
-		//@ts-expect-error idc
+		// @ts-expect-error idc
 		const subfactions: Record<M.Subfaction, string> = {}
 		if (row['Air Assault']) subfactions['AirAssault'] = row['Air Assault']
 		if (row.Armored) subfactions['Armored'] = row.Armored

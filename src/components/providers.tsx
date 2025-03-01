@@ -1,20 +1,20 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import * as jotai from 'jotai'
-import { ReactNode } from 'react'
 import * as Jotai from 'jotai'
+import { ReactNode } from 'react'
 import React from 'react'
 
 import { Toaster } from '@/components/ui/toaster'
 import { reactQueryClient, trpc } from '@/lib/trpc.client.ts'
 
-import { ThemeProvider } from './theme-provider'
-import { AlertDialogProvider } from './ui/lazy-alert-dialog'
-import { TooltipProvider } from './ui/tooltip'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useGlobalToast } from '@/hooks/use-global-toast'
 import { configAtom } from '@/systems.client/config.client'
 import { DragContextProvider } from '@/systems.client/dndkit.provider'
 import * as QD from '@/systems.client/queue-dashboard'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { ThemeProvider } from './theme-provider'
+import { AlertDialogProvider } from './ui/lazy-alert-dialog'
+import { TooltipProvider } from './ui/tooltip'
 
 export function Providers(props: { children: ReactNode }) {
 	useGlobalToast()
@@ -24,7 +24,7 @@ export function Providers(props: { children: ReactNode }) {
 			<ReactQueryDevtools initialIsOpen={true} />
 			<jotai.Provider>
 				<ConfigAtomProvider>
-					<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+					<ThemeProvider defaultTheme='dark' storageKey='vite-ui-theme'>
 						<TooltipProvider>
 							<DragContextProvider>
 								<AlertDialogProvider>{props.children}</AlertDialogProvider>

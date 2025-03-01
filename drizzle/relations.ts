@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm/relations'
-import { filters, filterRoleContributors, filterUserContributors, users, sessions, factions, subfactions } from './schema'
+import { factions, filterRoleContributors, filters, filterUserContributors, sessions, subfactions, users } from './schema'
 
 export const filterRoleContributorsRelations = relations(filterRoleContributors, ({ one }) => ({
 	filter: one(filters, {

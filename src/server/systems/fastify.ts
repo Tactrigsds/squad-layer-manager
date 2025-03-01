@@ -1,35 +1,35 @@
 import fastifyCookie from '@fastify/cookie'
-import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import fastifyFormBody from '@fastify/formbody'
+import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 
+import * as Messages from '@/messages'
 import oauthPlugin from '@fastify/oauth2'
-import Cookie from 'cookie'
 import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
-import { WebSocket } from 'ws'
 import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
+import Cookie from 'cookie'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import * as Messages from '@/messages'
 import * as path from 'node:path'
+import { WebSocket } from 'ws'
 
-import * as Paths from '@/server/paths'
+import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
-import * as Discord from '@/server/systems/discord.ts'
+import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { ENV } from '@/server/env.ts'
 import { baseLogger, Logger } from '@/server/logger.ts'
+import * as Paths from '@/server/paths'
 import * as TrpcRouter from '@/server/router'
-import * as Schema from '$root/drizzle/schema.ts'
-import * as Sessions from '@/server/systems/sessions.ts'
+import * as Discord from '@/server/systems/discord.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
-import * as RBAC from '@/rbac.models'
-import { TRPCError } from '@trpc/server'
+import * as Sessions from '@/server/systems/sessions.ts'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
 import * as Otel from '@opentelemetry/api'
+import { TRPCError } from '@trpc/server'
 
 async function getFastifyBase() {
 	return await fastify({
@@ -50,7 +50,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		if (path.startsWith('/trpc')) return
 		const ctx = DB.addPooledDb({ log: instance.log as Logger })
 		request.log = ctx.log
-		//@ts-expect-error monkey patching
+		// @ts-expect-error monkey patching
 		request.ctx = ctx
 	})
 
@@ -93,7 +93,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		scope: ['identify'],
 	})
 
-	instance.get(AR.exists('/login/callback'), async function (req, reply) {
+	instance.get(AR.exists('/login/callback'), async function(req, reply) {
 		// @ts-expect-error lame
 		const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
@@ -145,7 +145,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			.redirect('/')
 	})
 
-	instance.post(AR.exists('/logout'), async function (req, res) {
+	instance.post(AR.exists('/logout'), async function(req, res) {
 		const ctx = getCtx(req)
 		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
 		if (authRes.code !== 'ok') {

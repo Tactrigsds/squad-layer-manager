@@ -1,17 +1,6 @@
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
-import {
-	asapScheduler,
-	concat,
-	distinctUntilChanged,
-	EMPTY,
-	Observable,
-	observeOn,
-	OperatorFunction,
-	Subject,
-	Subscription,
-	tap,
-} from 'rxjs'
+import { asapScheduler, concat, distinctUntilChanged, EMPTY, Observable, observeOn, OperatorFunction, Subject, Subscription, tap } from 'rxjs'
 
 import type * as C from '@/server/context.ts'
 import { getNextIntId } from './id'
@@ -95,7 +84,7 @@ export function traceTag<T>(tag: string): OperatorFunction<T, T> {
 				next: function __${tag}__next(t) {s.next(t)},
 				error: function __${tag}__error(e) {s.error(e)},
 				complete: function __${tag}__complete() {s.complete()}
-		}))`
+		}))`,
 	)
 
 	return (o: Observable<T>) => fn(o, Observable)
@@ -136,7 +125,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 	constructor(
 		private name: string,
 		private cb: (ctx: Ctx) => Promise<T>,
-		opts?: Partial<AsyncResourceOpts>
+		opts?: Partial<AsyncResourceOpts>,
 	) {
 		// @ts-expect-error init
 		this.opts = opts ?? {}
@@ -158,7 +147,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 			// locks other calls to get this resource that also invoke the lock
 			lock?: boolean
 			ttl?: number
-		}
+		},
 	) {
 		opts ??= {}
 		opts.lock ??= false
@@ -178,7 +167,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 					cancellableTimeout(this.opts.maxLockTime).subscribe(() => {
 						ctx.log.warn('lock timeout for resource', this.name)
 						return _release()
-					})
+					}),
 				)
 			}
 		} else {
@@ -263,8 +252,8 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 							this.refetchSub = null
 						}
 					},
-				})
-			)
+				}),
+			),
 		)
 	}
 }

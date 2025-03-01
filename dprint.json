@@ -1,0 +1,43 @@
+{
+	"typescript": {
+		"useTabs": true,
+		"semiColons": "asi",
+		"quoteStyle": "preferSingle",
+		"importDeclaration.forceSingleLine": true,
+		"lineWidth": 140
+	},
+	"json": {
+		"useTabs": true,
+		"lineWidth": 140
+	},
+	"markdown": {
+		"lineWidth": 140
+	},
+	"toml": {
+	},
+	"dockerfile": {
+	},
+	"malva": {
+		"useTabs": true,
+		"quotes": "alwaysSingle"
+	},
+	"markup": {
+	},
+	"yaml": {
+	},
+	"excludes": [
+		"data/**",
+		"assets/**",
+		"**/*-lock.json"
+	],
+	"plugins": [
+		"https://plugins.dprint.dev/typescript-0.94.0.wasm",
+		"https://plugins.dprint.dev/json-0.20.0.wasm",
+		"https://plugins.dprint.dev/markdown-0.18.0.wasm",
+		"https://plugins.dprint.dev/toml-0.7.0.wasm",
+		"https://plugins.dprint.dev/dockerfile-0.3.2.wasm",
+		"https://plugins.dprint.dev/g-plane/malva-v0.11.1.wasm",
+		"https://plugins.dprint.dev/g-plane/markup_fmt-v0.19.0.wasm",
+		"https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.0.wasm"
+	]
+}

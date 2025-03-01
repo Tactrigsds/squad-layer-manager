@@ -34,5 +34,5 @@ export const dbLogMatches = mysqlTable(
 				name: 'DBLog_Matches_id',
 			}),
 		}
-	}
+	},
 )

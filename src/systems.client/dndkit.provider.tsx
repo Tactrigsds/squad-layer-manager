@@ -1,6 +1,6 @@
+import { DndContext, DragEndEvent } from '@dnd-kit/core'
 import React from 'react'
 import { DragEndContext, DragEndHandler } from './dndkit'
-import { DndContext, DragEndEvent } from '@dnd-kit/core'
 
 export function DragContextProvider(props: { children: React.ReactNode }) {
 	const hooksRef = React.useRef({} as Record<string, DragEndHandler>)

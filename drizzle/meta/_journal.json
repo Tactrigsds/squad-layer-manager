@@ -1,20 +1,20 @@
 {
-  "version": "7",
-  "dialect": "mysql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "5",
-      "when": 1738048762481,
-      "tag": "0000_sad_tombstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1739058883305,
-      "tag": "0001_fair_virginia_dare",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "mysql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "5",
+			"when": 1738048762481,
+			"tag": "0000_sad_tombstone",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "5",
+			"when": 1739058883305,
+			"tag": "0001_fair_virginia_dare",
+			"breakpoints": true
+		}
+	]
 }

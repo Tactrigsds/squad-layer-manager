@@ -1,9 +1,9 @@
-import * as M from '@/models'
 import * as DH from '@/lib/display-helpers'
+import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
-import { CommandConfig } from './server/config'
-import { WarnOptions } from './lib/rcon/squad-rcon'
 import * as dateFns from 'date-fns'
+import { WarnOptions } from './lib/rcon/squad-rcon'
+import { CommandConfig } from './server/config'
 
 function formatInterval(interval: number) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
@@ -13,7 +13,9 @@ function formatInterval(interval: number) {
 export const BROADCASTS = {
 	vote: {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
-			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${formatInterval(duration)} to vote`
+			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
+				formatInterval(duration)
+			} to vote`
 			return fullText
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {

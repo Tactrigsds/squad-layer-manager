@@ -4,7 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { exists } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
-import { Providers, InnerRouterProviders } from './components/providers.tsx'
+import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
 import { enableMapSet } from 'immer'
 
@@ -80,5 +80,5 @@ createRoot(document.getElementById('root')!).render(
 		<Providers>
 			<RouterProvider router={router} />
 		</Providers>
-	</React.StrictMode>
+	</React.StrictMode>,
 )

@@ -1,10 +1,10 @@
 import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
-import { useMutation } from '@tanstack/react-query'
 import * as PartSys from '@/systems.client/parts'
+import { useMutation } from '@tanstack/react-query'
 
-import { Observable, share, map } from 'rxjs'
 import { bind } from '@react-rxjs/core'
+import { map, Observable, share } from 'rxjs'
 
 const voteStateCold$ = new Observable<M.VoteStateUpdateOrInitial>((s) => {
 	const sub = trpc.layerQueue.watchVoteStateUpdates.subscribe(undefined, {
@@ -28,9 +28,9 @@ export const [useVoteState, voteState$] = bind(
 		map((stateOrUpdate): null | M.VoteState => {
 			if (!stateOrUpdate) return null
 			return stateOrUpdate.code === 'initial-state' ? stateOrUpdate.state : stateOrUpdate.update.state
-		})
+		}),
 	),
-	null
+	null,
 )
 
 export function useStartVote() {

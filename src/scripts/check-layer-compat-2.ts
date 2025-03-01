@@ -1,8 +1,8 @@
-import Rcon from '@/lib/rcon/rcon-core'
-import SquadRcon from '@/lib/rcon/squad-rcon'
-import { baseLogger, ensureLoggerSetup } from '@/server/logger'
+import Rcon from '@/lib/rcon/core-rcon.ts'
+import SquadRcon from '@/lib/rcon/squad-rcon.ts'
 import * as M from '@/models'
 import { ensureEnvSetup } from '@/server/env'
+import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 
 const PORTS = process.argv[2].split(',').map((x) => parseInt(x))
 
@@ -30,7 +30,7 @@ async function main() {
 				Faction_2: 'RGF',
 				SubFac_1: 'CombinedArms',
 				SubFac_2: 'CombinedArms',
-			})
+			}),
 		)
 
 		await squadRcon.setNextLayer(ctx, layer1)

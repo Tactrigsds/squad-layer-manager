@@ -1,8 +1,8 @@
-import { ParsedIntSchema, StrFlag } from '../lib/zod'
 import { createEnv } from '@t3-oss/env-core'
 import * as dotenv from 'dotenv'
-import * as Cli from './systems/cli.ts'
 import { z } from 'zod'
+import { ParsedIntSchema, StrFlag } from '../lib/zod'
+import * as Cli from './systems/cli.ts'
 
 export let ENV!: ReturnType<typeof setupEnv>
 export type Env = typeof ENV

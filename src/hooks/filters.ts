@@ -1,9 +1,9 @@
 import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
+import type { WatchFilterOutput } from '@/server/systems/filters-entity'
 import { state } from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
-import type { WatchFilterOutput } from '@/server/systems/filters-entity'
 
 export function useFilters(opts?: { enabled?: boolean; parts?: 'users'[] }) {
 	return useQuery({
@@ -49,7 +49,7 @@ export const getFilterMutation$ = state((filterId: string) => {
 	if (!filterId) return Rx.of(null)
 	return filterUpdate$(filterId).pipe(
 		Rx.filter((output): output is Extract<WatchFilterOutput, { code: 'mutation' }> => output?.code === 'mutation'),
-		Rx.map((output) => output.mutation)
+		Rx.map((output) => output.mutation),
 	)
 })
 
@@ -66,7 +66,7 @@ export const getFilterEntity$ = state((filterId: string) => {
 			}
 			return null
 		}),
-		Rx.filter((v): v is M.FilterEntity => v !== undefined)
+		Rx.filter((v): v is M.FilterEntity => v !== undefined),
 	)
 })
 

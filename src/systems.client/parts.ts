@@ -1,8 +1,8 @@
-import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
-import * as Zus from 'zustand'
-import * as M from '@/models'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
+import * as M from '@/models'
+import * as Zus from 'zustand'
+import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
 export type ClientParts = M.UserPart & M.LayerStatusPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
@@ -37,7 +37,7 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 				})
 			},
 		}
-	})
+	}),
 )
 
 export function stripParts<T extends Partial<Parts<Partial<ClientParts>>>>(withParts: T) {

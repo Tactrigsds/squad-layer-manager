@@ -1,6 +1,6 @@
 import { defineConfig } from 'drizzle-kit'
 
-import { ENV, ensureEnvSetup } from './src/server/env.ts'
+import { ensureEnvSetup, ENV } from './src/server/env.ts'
 
 ensureEnvSetup()
 

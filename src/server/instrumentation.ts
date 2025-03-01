@@ -1,18 +1,18 @@
-import { NodeSDK, logs, tracing } from '@opentelemetry/sdk-node'
+import { formatVersion } from '@/lib/versioning.ts'
+import { ENV } from '@/server/env.ts'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { Resource } from '@opentelemetry/resources'
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
-import { randomBytes } from 'crypto'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
-import { ENV } from '@/server/env.ts'
-import { formatVersion } from '@/lib/versioning.ts'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
+import { Resource } from '@opentelemetry/resources'
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
+import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import { randomBytes } from 'crypto'
 
-import * as Cli from './systems/cli.ts'
 import * as Config from './config.ts'
 import * as Env from './env.ts'
+import * as Cli from './systems/cli.ts'
 
 await Cli.ensureCliParsed()
 Config.ensureConfigSetup()

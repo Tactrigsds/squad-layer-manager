@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
-import { assertNever } from '@/lib/typeGuards'
 import * as DH from '@/lib/display-helpers'
+import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 
 type VoteTallyProps = {
@@ -45,26 +45,26 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 	}
 
 	return (
-		<Card className="mx-auto w-full max-w-md">
+		<Card className='mx-auto w-full max-w-md'>
 			<CardHeader>
-				<CardTitle className="">{statusDisplay}</CardTitle>
+				<CardTitle className=''>{statusDisplay}</CardTitle>
 			</CardHeader>
-			<CardContent className="space-y-6">
+			<CardContent className='space-y-6'>
 				{options.map((option) => (
-					<div key={option.id} className="mb-4">
-						<div className="mb-2 flex flex-col items-start justify-between space-y-1">
+					<div key={option.id} className='mb-4'>
+						<div className='mb-2 flex flex-col items-start justify-between space-y-1'>
 							<span className={`text-nowrap font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
 								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>
-							<span className="text-sm text-gray-500">
+							<span className='text-sm text-gray-500'>
 								{option.votes} vote{option.votes !== 1 ? 's' : ''} ({option.percentage?.toFixed(1) ?? 0}%)
 							</span>
 						</div>
-						<Progress value={option.percentage ?? 0} className="h-2 data-[winner]bg-green-100" data-winner={option.isWinner} />
+						<Progress value={option.percentage ?? 0} className='h-2 data-[winner]bg-green-100' data-winner={option.isWinner} />
 					</div>
 				))}
-				<div className="mt-4 text-center text-sm text-gray-500">
+				<div className='mt-4 text-center text-sm text-gray-500'>
 					Received: {tally.totalVotes} of {status?.playerCount} votes{totalVoteDisplay}
 				</div>
 			</CardContent>

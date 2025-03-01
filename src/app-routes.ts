@@ -30,7 +30,7 @@ export type Route<P extends Platform> = (typeof routes)[number][P]
 function defRoute<T extends string, GetLink extends RouteDefinition['link'], Params extends string[]>(
 	str: T,
 	params: Params,
-	options?: { handle?: 'page' | 'custom'; websocket?: boolean; link?: GetLink }
+	options?: { handle?: 'page' | 'custom'; websocket?: boolean; link?: GetLink },
 ) {
 	return {
 		[str]: {

@@ -1,12 +1,12 @@
-import { Logger as PinoLogger, LoggerOptions } from 'pino'
-import { LoggerProvider } from '@opentelemetry/api-logs'
 import { sdk } from '@/server/instrumentation'
+import { LoggerProvider } from '@opentelemetry/api-logs'
+import { Logger as PinoLogger, LoggerOptions } from 'pino'
 
-import pino from 'pino'
-import * as Otel from '@opentelemetry/api'
-import { ENV, Env } from './env'
-import format from 'quick-format-unescaped'
 import { flattenObjToAttrs } from '@/lib/object'
+import * as Otel from '@opentelemetry/api'
+import pino from 'pino'
+import format from 'quick-format-unescaped'
+import { ENV, Env } from './env'
 
 import build from 'pino-abstract-transport'
 export type Logger = PinoLogger
@@ -95,7 +95,7 @@ export async function ensureLoggerSetup() {
 				}
 			}
 
-			//@ts-expect-error idk
+			// @ts-expect-error idk
 			logger.emit({ body: msg, attributes: attrs, severityText: LEVELS[level], severityNumber: SEVERITY_NUMBER_MAP[level] })
 
 			return method.apply(this, _inputArgs)
@@ -122,7 +122,7 @@ export async function ensureLoggerSetup() {
 }
 
 export function createFormatPrettyPrintTransport() {
-	return build(async function (source) {
+	return build(async function(source) {
 		for await (const obj of source) {
 			// JSON stringifying the object to handle circular refs and bigints
 
@@ -168,9 +168,11 @@ export function createFormatPrettyPrintTransport() {
 			// Format additional context if any
 			let context = ''
 			if (Object.keys(props).length > 0) {
-				context = `\n  ${Object.entries(props)
-					.map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
-					.join('\n  ')}`
+				context = `\n  ${
+					Object.entries(props)
+						.map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
+						.join('\n  ')
+				}`
 			}
 
 			console.log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)

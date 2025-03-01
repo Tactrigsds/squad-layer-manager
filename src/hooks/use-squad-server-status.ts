@@ -1,11 +1,11 @@
 import type * as Squad from '@/lib/rcon/squad-models'
+import type * as SM from '@/lib/rcon/squad-models.ts'
 import { trpc } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'
-import type * as SM from '@/lib/rcon/squad-models.ts'
+import { useMutation } from '@tanstack/react-query'
+import { atom, getDefaultStore, useAtomValue } from 'jotai'
 import React from 'react'
 import { Observable, share } from 'rxjs'
-import { atom, getDefaultStore, useAtomValue } from 'jotai'
-import { useMutation } from '@tanstack/react-query'
 
 const serverStatusAtom = atom<SM.ServerStatusRes | null>(null)
 const squadServerStatus$ = new Observable<SM.ServerStatusRes>(() => {
@@ -19,7 +19,7 @@ const squadServerStatus$ = new Observable<SM.ServerStatusRes>(() => {
 	}
 }).pipe(
 	// calling share() effectively makes this subscription ref counted
-	share()
+	share(),
 )
 
 // cringe way of doing this,  but trpc-jotai is weird. should write my own at some point maybe tanstack query can handle this usecase as well idk

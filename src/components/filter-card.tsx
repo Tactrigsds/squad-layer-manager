@@ -13,20 +13,20 @@ import { eltToFocusable, Focusable } from '@/lib/react'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 
+import { useFilters } from '@/hooks/filters.ts'
+import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
+import { assertNever } from '@/lib/typeGuards.ts'
 import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
 import { Button, buttonVariants } from './ui/button'
+import { Checkbox } from './ui/checkbox.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
+import { Label } from './ui/label.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
-import { assertNever } from '@/lib/typeGuards.ts'
-import { Checkbox } from './ui/checkbox.tsx'
-import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
-import { useFilters } from '@/hooks/filters.ts'
-import { Label } from './ui/label.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
@@ -52,17 +52,17 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	const validFilterNode = React.useMemo(() => M.isValidFilterNode(props.node), [props.node])
 	return (
-		<div defaultValue="builder" className="w-full space-y-2">
-			<div className="flex w-full justify-end space-x-2">
+		<div defaultValue='builder' className='w-full space-y-2'>
+			<div className='flex w-full justify-end space-x-2'>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							onClick={() => editorRef.current?.format()}
-							variant="ghost"
-							size="icon"
+							variant='ghost'
+							size='icon'
 							className={activeTab === 'text' ? '' : 'invisible'}
 						>
-							<Braces color="hsl(var(--muted-foreground))" />
+							<Braces color='hsl(var(--muted-foreground))' />
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
@@ -72,8 +72,8 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 				{props.resetFilter && (
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button onClick={() => props.resetFilter?.()} variant="ghost" size="icon">
-								<Undo2 color="hsl(var(--muted-foreground))" />
+							<Button onClick={() => props.resetFilter?.()} variant='ghost' size='icon'>
+								<Undo2 color='hsl(var(--muted-foreground))' />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
@@ -81,9 +81,9 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						</TooltipContent>
 					</Tooltip>
 				)}
-				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+				<div className='inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground'>
 					<button
-						type="button"
+						type='button'
 						disabled={!validFilterNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
@@ -95,7 +95,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						Text
 					</button>
 					<button
-						type="button"
+						type='button'
 						data-state={activeTab === 'builder' && 'active'}
 						onClick={() => setActiveTab('builder')}
 						className={triggerClass}
@@ -119,13 +119,13 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPressedChange: (pressed: boolean) => void }) {
 	return (
 		<Toggle
-			aria-label="negate"
+			aria-label='negate'
 			pressed={pressed}
 			onPressedChange={onPressedChange}
-			variant="default"
-			className="h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground"
+			variant='default'
+			className='h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground'
 		>
-			<EqualNot className="w-4" />
+			<EqualNot className='w-4' />
 		</Toggle>
 	)
 }
@@ -163,9 +163,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						if (draft) {
 							draft.neg = neg
 						}
-					})
-				)
-			}
+					}),
+				)}
 		/>
 	)
 
@@ -185,7 +184,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						const newValue = typeof update === 'function' ? update(draft.children[i]) : update
 						if (newValue) draft.children[i] = newValue
 						else draft.children.splice(i, 1)
-					})
+					}),
 				)
 			}
 
@@ -213,7 +212,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 					if (M.isBlockType(type)) {
 						draft.children.push(EFB.createBlock(type)())
 					}
-				})
+				}),
 			)
 		}
 		function changeBlockNodeType(type: M.BlockType) {
@@ -221,24 +220,24 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				produce((draft) => {
 					if (!draft || !M.isEditableBlockNode(draft)) return
 					draft.type = type
-				})
+				}),
 			)
 		}
 
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'relative flex flex-col space-y-2')}>
-				<div className="flex items-center space-x-1">
+				<div className='flex items-center space-x-1'>
 					{negationToggle}
 					<ComboBox
-						className="w-min"
+						className='w-min'
 						title={'Block Type'}
 						value={node.type}
 						options={['and', 'or']}
 						onSelect={(v) => changeBlockNodeType(v as M.BlockType)}
 					/>
 					{props.depth > 0 && (
-						<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
-							<Minus color="hsl(var(--destructive))" />
+						<Button size='icon' variant='ghost' onClick={() => deleteNode()}>
+							<Minus color='hsl(var(--destructive))' />
 						</Button>
 					)}
 				</div>
@@ -246,7 +245,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				<span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button className="min-h-0" size="icon" variant="outline">
+							<Button className='min-h-0' size='icon' variant='outline'>
 								<Plus />
 							</Button>
 						</DropdownMenuTrigger>
@@ -269,7 +268,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				if (!draft) return
 				if (draft.type !== 'comp') return
 				draft.comp = typeof update === 'function' ? update(draft.comp) : update
-			})
+			}),
 		)
 	}
 
@@ -278,8 +277,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
-				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus color="hsl(var(--destructive))" />
+				<Button size='icon' variant='ghost' onClick={() => setNode(() => undefined)}>
+					<Minus color='hsl(var(--destructive))' />
 				</Button>
 			</div>
 		)
@@ -301,13 +300,13 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				/>
 				<Link
 					to={AR.link('/filters/:id', node.filterId ?? '')}
-					target="_blank"
+					target='_blank'
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
-					<ExternalLink color="hsl(var(--primary))" />
+					<ExternalLink color='hsl(var(--primary))' />
 				</Link>
-				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus color="hsl(var(--destructive))" />
+				<Button size='icon' variant='ghost' onClick={() => setNode(() => undefined)}>
+					<Minus color='hsl(var(--destructive))' />
 				</Button>
 			</div>
 		)
@@ -350,60 +349,60 @@ export function Comparison(props: {
 		codeOptions = codeOptions.filter((c) => props.allowedComparisonCodes!.includes(c.value))
 	}
 
-	const columnBox = columnEditable ? (
-		<ComboBox
-			title="Column"
-			allowEmpty={true}
-			value={comp.column}
-			options={columnOptions}
-			ref={columnBoxRef}
-			onSelect={(_column) => {
-				if (!_column) return setComp(() => ({ column: undefined }))
-				const column = _column as M.LayerColumnKey
-				if (M.isColType(column, 'string')) {
-					setComp((c) => {
-						const code = c.code ?? 'eq'
-						return { column, code }
-					})
-					sleepUntil(() => valueBoxRef.current).then((handle) => {
-						return handle?.focus()
-					})
-					return
-				}
-				if (M.isColType(column, 'float')) {
-					setComp((c) => {
-						return { column, code: c.code ?? 'lt' }
-					})
-					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
-					return
-				}
-				if (M.isColType(column, 'collection')) {
-					setComp((c) => {
-						return { column, code: c.code ?? 'has', values: [] }
-					})
-					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
-					return
-				}
-				if (M.isColType(column, 'integer')) {
-					throw new Error('integer columns are not supported')
-				}
-				if (M.isColType(column, 'boolean')) {
-					setComp(() => ({ column, code: 'is-true' }))
-					sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
-					return
-				}
-				assertNever(column)
-			}}
-		/>
-	) : (
-		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
-	)
+	const columnBox = columnEditable
+		? (
+			<ComboBox
+				title='Column'
+				allowEmpty={true}
+				value={comp.column}
+				options={columnOptions}
+				ref={columnBoxRef}
+				onSelect={(_column) => {
+					if (!_column) return setComp(() => ({ column: undefined }))
+					const column = _column as M.LayerColumnKey
+					if (M.isColType(column, 'string')) {
+						setComp((c) => {
+							const code = c.code ?? 'eq'
+							return { column, code }
+						})
+						sleepUntil(() => valueBoxRef.current).then((handle) => {
+							return handle?.focus()
+						})
+						return
+					}
+					if (M.isColType(column, 'float')) {
+						setComp((c) => {
+							return { column, code: c.code ?? 'lt' }
+						})
+						sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
+						return
+					}
+					if (M.isColType(column, 'collection')) {
+						setComp((c) => {
+							return { column, code: c.code ?? 'has', values: [] }
+						})
+						sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
+						return
+					}
+					if (M.isColType(column, 'integer')) {
+						throw new Error('integer columns are not supported')
+					}
+					if (M.isColType(column, 'boolean')) {
+						setComp(() => ({ column, code: 'is-true' }))
+						sleepUntil(() => codeBoxRef.current).then((handle) => handle?.focus())
+						return
+					}
+					assertNever(column)
+				}}
+			/>
+		)
+		: <span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
 	if (!comp.column) return columnBox
 
 	const codeBox = (
 		<ComboBox
 			allowEmpty={true}
-			title=""
+			title=''
 			value={comp.code}
 			options={codeOptions}
 			ref={codeBoxRef}
@@ -469,7 +468,7 @@ export function Comparison(props: {
 								produce((c) => {
 									const values = typeof action === 'function' ? action(c.values ?? []) : action
 									c.values = values.length === 0 ? undefined : values
-								})
+								}),
 							)
 						}}
 					/>
@@ -493,7 +492,7 @@ export function Comparison(props: {
 			valueBox = (
 				<NumericSingleValueConfig
 					ref={valueBoxRef}
-					className="w-[200px]"
+					className='w-[200px]'
 					value={comp.value as number | undefined}
 					setValue={(value) => {
 						return setComp((c) => ({ ...c, value }))
@@ -526,7 +525,7 @@ export function Comparison(props: {
 					column={comp.column as M.CollectionColumn}
 					values={comp.values as string[]}
 					setValues={(updater) => {
-						//@ts-expect-error idk
+						// @ts-expect-error idk
 						const values = typeof updater === 'function' ? updater(comp.values ?? []) : updater
 						return setComp((c) => ({
 							...c,
@@ -550,7 +549,7 @@ export function Comparison(props: {
 						setComp(
 							produce((c) => {
 								c.value = newValue
-							})
+							}),
 						)
 					}}
 					value={(comp.value as string)!}
@@ -597,7 +596,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 		<>
 			<span>Apply</span>
 			<ComboBox
-				title="Filter"
+				title='Filter'
 				options={options}
 				allowEmpty={true}
 				value={props.filterId}
@@ -616,7 +615,7 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		setValue: (value: T | undefined) => void
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const valuesRes = useLayersGroupedBy({ columns: [props.column], filter: props.autocompleteFilter })
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
@@ -639,7 +638,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 		setValue: (value: T | undefined) => void
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
 	return (
@@ -658,7 +657,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 
 const StringLikeConfig = React.forwardRef(function StringLikeConfig(
 	props: { value: string; setValue: (value: string) => void },
-	ref: React.ForwardedRef<Focusable>
+	ref: React.ForwardedRef<Focusable>,
 ) {
 	const debouncer = useDebounced({
 		defaultValue: () => props.value,
@@ -710,7 +709,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 		},
 		{
 			enabled: debouncedInput !== '',
-		}
+		},
 	)
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
@@ -736,7 +735,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const valuesRes = useLayersGroupedBy({
 		columns: [props.column],
@@ -760,7 +759,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
 	return (
@@ -784,7 +783,7 @@ const NumericSingleValueConfig = React.forwardRef(
 			value?: number
 			setValue: (value?: number) => void
 		},
-		forwardedRef: React.ForwardedRef<Focusable>
+		forwardedRef: React.ForwardedRef<Focusable>,
 	) => {
 		const [value, setValue] = useState(props.value?.toString() ?? '')
 		const inputRef = React.useRef<HTMLInputElement>(null)
@@ -803,7 +802,7 @@ const NumericSingleValueConfig = React.forwardRef(
 				}}
 			/>
 		)
-	}
+	},
 )
 
 const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
@@ -811,7 +810,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 		range: [number | undefined, number | undefined]
 		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
 	},
-	ref: React.ForwardedRef<Focusable>
+	ref: React.ForwardedRef<Focusable>,
 ) {
 	function setFirst(value: number | undefined) {
 		props.setValues((values) => [value, values[1]])
@@ -821,7 +820,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	}
 
 	return (
-		<div className="flex w-[200px] items-center space-x-2">
+		<div className='flex w-[200px] items-center space-x-2'>
 			<NumericSingleValueConfig value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
 			<NumericSingleValueConfig ref={ref} value={props.range[1]} setValue={setSecond} />
@@ -836,7 +835,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 		setValues: React.Dispatch<React.SetStateAction<string[]>>
 		autocompleteFilter?: M.FilterNode
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>
+	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const factions1Res = useLayersGroupedBy({
 		columns: ['Faction_1', 'SubFac_1'],
@@ -882,7 +881,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 			})
 		}
 		return (
-			<div className="flex space-x-2">
+			<div className='flex space-x-2'>
 				<ComboBoxMulti
 					title={props.column}
 					ref={ref}
@@ -891,7 +890,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 					onSelect={onSelect}
 					selectionLimit={mirror ? undefined : 2}
 				/>
-				<div className="items-top flex space-x-1 items-center">
+				<div className='items-top flex space-x-1 items-center'>
 					<Checkbox
 						checked={mirror}
 						disabled={!canMirror(props.values)}
@@ -908,7 +907,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 					/>
 					<Label
 						htmlFor={mirrorCheckboxId}
-						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+						className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
 					>
 						Mirror
 					</Label>

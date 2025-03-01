@@ -21,7 +21,7 @@ export async function returnInsertErrors<T>(runningQuery: Promise<T[]>) {
 
 export function superjsonify<C extends TableConfig, T extends Partial<MySqlTableWithColumns<TableConfig>['$inferInsert']>>(
 	schema: MySqlTableWithColumns<C>,
-	obj: T
+	obj: T,
 ) {
 	const out = {} as typeof obj
 	const config = getTableConfig(schema)
@@ -31,10 +31,10 @@ export function superjsonify<C extends TableConfig, T extends Partial<MySqlTable
 			throw new Error(`Column ${name} not found in table ${config.baseName}`)
 		}
 		if (column.dataType === 'json') {
-			//@ts-expect-error idk
+			// @ts-expect-error idk
 			out[name] = superjson.serialize(obj[name])
 		} else {
-			//@ts-expect-error idk
+			// @ts-expect-error idk
 			out[name] = obj[name]
 		}
 	}
@@ -69,13 +69,13 @@ export async function returnUpdateErrors<T = never>(runningQuery: Promise<T[]>) 
 
 export async function selectKeys<C extends TableConfig>(
 	schema: MySqlTableWithColumns<C>,
-	keys: (keyof MySqlTableWithColumns<C>['$inferSelect'])[]
+	keys: (keyof MySqlTableWithColumns<C>['$inferSelect'])[],
 ) {
 	type Schema = MySqlTableWithColumns<C>
 	const out: { [K in keyof Schema['$inferSelect']]: Schema['$inferSelect'][K] } = {} as any
 
 	for (const key of keys) {
-		//@ts-expect-error it works
+		// @ts-expect-error it works
 		out[key] = schema[key]
 	}
 	return out

@@ -11,7 +11,7 @@ export const factions = mysqlTable(
 	(factions) => ({
 		fullNameIndex: index('fullNameIndex').on(factions.fullName),
 		allianceIndex: index('allianceIndex').on(factions.alliance),
-	})
+	}),
 )
 
 export const subfactions = mysqlTable(
@@ -27,7 +27,7 @@ export const subfactions = mysqlTable(
 		primaryKey: unique().on(subfactions.shortName, subfactions.factionShortName),
 		fullName: index('fullName').on(subfactions.fullName),
 		factionShortName: index('factionShortName').on(subfactions.factionShortName),
-	})
+	}),
 )
 
 export const layers = mysqlTable(
@@ -94,7 +94,7 @@ export const layers = mysqlTable(
 			Z_PoolIndex: index('Z_PoolIndex').on(layers.Z_Pool),
 			Scored: index('ScoredIndex').on(layers.Scored),
 		}
-	}
+	},
 )
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
@@ -116,7 +116,7 @@ export const filterUserContributors = mysqlTable(
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.filterId, table.userId] }),
-	})
+	}),
 )
 
 export const filterRoleContributors = mysqlTable(
@@ -127,7 +127,7 @@ export const filterRoleContributors = mysqlTable(
 			.references(() => filters.id, { onDelete: 'cascade' }),
 		roleId: varchar('roleId', { length: 32 }).notNull(),
 	},
-	(table) => ({ pk: primaryKey({ columns: [table.filterId, table.roleId] }) })
+	(table) => ({ pk: primaryKey({ columns: [table.filterId, table.roleId] }) }),
 )
 
 export type Filter = typeof filters.$inferSelect
@@ -168,5 +168,5 @@ export const sessions = mysqlTable(
 	},
 	(table) => ({
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
-	})
+	}),
 )

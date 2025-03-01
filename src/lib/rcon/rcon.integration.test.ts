@@ -2,11 +2,11 @@ import { Mutex } from 'async-mutex'
 import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 
 import * as C from '@/server/context'
-import { ENV, ensureEnvSetup } from '@/server/env'
+import { ensureEnvSetup, ENV } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 
-import Rcon from './rcon-core'
-import SquadRcon from './squad-rcon'
+import Rcon from './core-rcon.ts'
+import SquadRcon from './squad-rcon.ts'
 
 let squadRcon!: SquadRcon
 let rcon!: Rcon

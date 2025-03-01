@@ -129,7 +129,7 @@ const PhaseSchema = z.object({
 			minDistanceBetweenSpots: z.number(),
 			numberOfCaches: z.number(),
 			splinePoints: z.array(PointWithCordsSchema),
-		})
+		}),
 	),
 })
 export type Phase = z.infer<typeof PhaseSchema>
@@ -196,9 +196,9 @@ export const MapSchema = z.object({
 						location_y: z.number(),
 						location_z: z.number(),
 						sphereRadius: z.number(),
-					})
+					}),
 				),
-			})
+			}),
 		),
 		stagingZones: z.array(
 			z.object({
@@ -210,9 +210,9 @@ export const MapSchema = z.object({
 						location_y: z.number(),
 						location_z: z.number(),
 						sphereRadius: z.number(),
-					})
+					}),
 				),
-			})
+			}),
 		),
 	}),
 	assets: z.object({
@@ -237,7 +237,7 @@ export const MapSchema = z.object({
 					location_y: z.number(),
 				}),
 			}),
-		])
+		]),
 	),
 	capturePoints: z.object({
 		type: CapturePointsGraphTypeSchema,

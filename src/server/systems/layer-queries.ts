@@ -1,18 +1,18 @@
 import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
-import superjson from 'superjson'
 import * as E from 'drizzle-orm/expressions'
+import superjson from 'superjson'
 import { z } from 'zod'
 
+import * as SquadjsSchema from '$root/drizzle/schema-squadjs.ts'
+import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/lib/filter-builders'
+import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
-import * as Schema from '$root/drizzle/schema.ts'
-import * as SquadjsSchema from '$root/drizzle/schema-squadjs.ts'
-import * as LayerQueue from './layer-queue'
-import * as Otel from '@opentelemetry/api'
-import { assertNever } from '@/lib/typeGuards'
 import { procedure, router } from '@/server/trpc.server.ts'
+import * as Otel from '@opentelemetry/api'
+import * as LayerQueue from './layer-queue'
 
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
@@ -74,7 +74,7 @@ export const queryLayers = C.spanOp('layers-query:run', { tracer }, async (args:
 	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
 		query = query.orderBy(
-			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
+			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
 		)
 	} else if (input.sort && input.sort.type === 'random') {
 		// @ts-expect-error idk
@@ -154,7 +154,7 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 			acc[column] = Schema.layers[column]
 			return acc
 		},
-		{} as { [key in Columns]: (typeof Schema.layers)[key] }
+		{} as { [key in Columns]: (typeof Schema.layers)[key] },
 	)
 
 	let query = ctx
@@ -168,7 +168,7 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 	if (input.sort && input.sort.type === 'column') {
 		// @ts-expect-error idk
 		query = query.orderBy(
-			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy])
+			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
 		)
 	} else if (input.sort && input.sort.type === 'random') {
 		// @ts-expect-error idk
@@ -184,7 +184,7 @@ export async function getWhereFilterConditions(
 	node: M.FilterNode,
 	reentrantFilterIds: string[],
 	ctx: C.Db & C.Log,
-	schema: typeof Schema.layers = Schema.layers
+	schema: typeof Schema.layers = Schema.layers,
 ): Promise<SQL> {
 	let res: SQL | undefined
 	if (node.type === 'comp') {
@@ -308,7 +308,9 @@ export async function getWhereFilterConditions(
 	}
 
 	if (M.isBlockNode(node)) {
-		const childConditions = await Promise.all(node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx, schema)))
+		const childConditions = await Promise.all(
+			node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx, schema)),
+		)
 		if (node.type === 'and') {
 			res = E.and(...childConditions)!
 		} else if (node.type === 'or') {
@@ -323,7 +325,7 @@ export async function getWhereFilterConditions(
 function hasTeam(
 	faction: string | null | typeof Schema.layers.Faction_1 = null,
 	subfaction: M.Subfaction | null | typeof Schema.layers.SubFac_1 = null,
-	schema: typeof Schema.layers
+	schema: typeof Schema.layers,
 ) {
 	if (!faction && !subfaction) {
 		throw new Error('At least one of faction or subfaction must be provided')
@@ -337,7 +339,7 @@ function hasTeam(
 	}
 	return E.or(
 		E.and(E.eq(schema.Faction_1, faction), E.eq(schema.SubFac_1, subfaction)),
-		E.and(E.eq(schema.Faction_2, faction), E.eq(schema.SubFac_2, subfaction))
+		E.and(E.eq(schema.Faction_2, faction), E.eq(schema.SubFac_2, subfaction)),
 	)!
 }
 

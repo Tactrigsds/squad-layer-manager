@@ -3,7 +3,7 @@ import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 import * as AR from './src/app-routes.ts'
-import { ENV, ensureEnvSetup } from './src/server/env.ts'
+import { ensureEnvSetup, ENV } from './src/server/env.ts'
 
 const prod = process.env.NODE_ENV === 'production'
 
@@ -33,6 +33,6 @@ function buildProxy() {
 					ws: r.websocket,
 				},
 			]
-		})
+		}),
 	)
 }

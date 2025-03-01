@@ -1,9 +1,9 @@
-import { bind } from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
 import { trpc } from '@/lib/trpc.client'
-import * as Rx from 'rxjs'
 import * as M from '@/models'
 import * as PartsSys from '@/systems.client/parts'
+import { bind } from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
+import * as Rx from 'rxjs'
 
 export const userPresenceUpdate$ = new Rx.Observable<M.UserPresenceStateUpdate>((s) => {
 	const sub = trpc.layerQueue.watchUserPresence.subscribe(undefined, {

@@ -1,6 +1,6 @@
-import { Subject } from 'rxjs'
-import { useToast, Toast } from './use-toast.ts'
 import React from 'react'
+import { Subject } from 'rxjs'
+import { Toast, useToast } from './use-toast.ts'
 
 // send events to the global toast
 export const globalToast$ = new Subject<Toast>()

@@ -2,7 +2,7 @@ ARG GIT_SHA
 ARG GIT_BRANCH
 
 FROM node:lts AS base
-LABEL org.opencontainers.image.description "Squad Layer Manager. See https://github.com/Tactrigsds/squad-layer-manager"
+LABEL org.opencontainers.image.description="Squad Layer Manager. See https://github.com/Tactrigsds/squad-layer-manager"
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN apt-get update && apt-get install -y logrotate && rm -rf /var/lib/apt/lists/*

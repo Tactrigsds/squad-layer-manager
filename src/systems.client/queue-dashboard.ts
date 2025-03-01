@@ -1,26 +1,26 @@
-import { WithMutationId, ItemMutations, ItemMutationState } from '@/lib/item-mutations'
-import * as ReactRouterDOM from 'react-router-dom'
-import { Getter, Setter } from '@/lib/zustand'
-import * as Rx from 'rxjs'
-import * as RBAC from '@/rbac.models'
-import { createId } from '@/lib/id'
-import * as M from '@/models'
-import * as Im from 'immer'
-import * as Zus from 'zustand'
-import * as ItemMut from '@/lib/item-mutations'
-import { derive } from 'derive-zustand'
-import * as FB from '@/lib/filter-builders'
-import { userPresenceState$, userPresenceUpdate$ } from './presence'
 import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
-import { trpc } from '@/lib/trpc.client'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
+import * as FB from '@/lib/filter-builders'
+import { createId } from '@/lib/id'
+import { ItemMutations, ItemMutationState, WithMutationId } from '@/lib/item-mutations'
+import * as ItemMut from '@/lib/item-mutations'
+import { deepClone } from '@/lib/object'
+import { trpc } from '@/lib/trpc.client'
+import { Getter, Setter } from '@/lib/zustand'
+import * as M from '@/models'
+import * as RBAC from '@/rbac.models'
 import { Mutex } from 'async-mutex'
+import { derive } from 'derive-zustand'
+import * as Im from 'immer'
 import * as Jotai from 'jotai'
+import React from 'react'
+import * as ReactRouterDOM from 'react-router-dom'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
 import { configAtom } from './config.client'
 import { fetchLoggedInUser } from './logged-in-user'
-import { deepClone } from '@/lib/object'
-import React from 'react'
+import { userPresenceState$, userPresenceUpdate$ } from './presence'
 
 // -------- types --------
 export type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
@@ -112,7 +112,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 					for (const item of items) {
 						ItemMut.tryApplyMutation('added', item.itemId, state.listMutations)
 					}
-				})
+				}),
 			)
 		},
 		move: (sourceIndex, targetIndex, modifiedBy) => {
@@ -163,7 +163,7 @@ export const createLLItemStore = (
 	set: Setter<LLItemState>,
 	get: Getter<LLItemState>,
 	initialState: LLItemState,
-	removeItem?: () => void
+	removeItem?: () => void,
 ): LLItemStore => {
 	return {
 		...initialState,
@@ -249,7 +249,7 @@ export function getEditableServerState(state: M.LQServerState): MutServerStateWi
 	const layerQueue = state.layerQueue.map((item) => ({ id: createId(6), ...item }))
 	const historyFilters = state.historyFilters.map((filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId)
 	return {
-		//@ts-expect-error idk
+		// @ts-expect-error idk
 		historyFilters,
 		layerQueue,
 		layerQueueSeqId: state.layerQueueSeqId,
@@ -278,7 +278,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 				canEditSettings: canEdit && RBAC.rbacUserHasPerms(user, { check: 'all', permits: [RBAC.perm('settings:write')] }),
 			}
 		}),
-		distinctDeepEquals()
+		distinctDeepEquals(),
 	)
 	canEdit$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((canEdit) => {
 		set(canEdit)
@@ -339,8 +339,8 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			await Rx.firstValueFrom(
 				userPresenceState$.pipe(
 					Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),
-					Rx.take(1)
-				)
+					Rx.take(1),
+				),
 			)
 		} finally {
 			set({ stopEditingInProgress: false })

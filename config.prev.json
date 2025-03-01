@@ -1,36 +1,36 @@
 {
-  "$schema": "assets/config-schema.json",
-  "serverId": "test-server",
-  "serverDisplayName": "Test Server",
-  "commandPrefix": "/",
-  "defaults": {
-    "voteDurationSeconds": 25,
-    "minValidVotePercentage": 100
-  },
-  "commands": {
-    "help": {
-      "strings": ["help", "h"],
-      "scopes": ["admin"]
-    },
-    "startVote": {
-      "strings": ["sv", "startvote"],
-      "scopes": ["admin"]
-    },
-    "abortVote": {
-      "strings": ["av", "abortvote"],
-      "scopes": ["admin"]
-    },
-    "showNext": {
-      "strings": ["sn", "shownext"],
-      "scopes": ["admin", "public"]
-    }
-  },
-  "adminListSources": [{ "type": "local", "source": "./.zed/adminlist.txt" }],
-  "homeDiscordGuildId": "465971449954304000",
-  "globalRolePermissions": {
-    "gamer": ["*"]
-  },
-  "roleAssignments": {
-    "discord-server-member": [{"roles": ["gamer"]}]
-  }
+	"$schema": "assets/config-schema.json",
+	"serverId": "test-server",
+	"serverDisplayName": "Test Server",
+	"commandPrefix": "/",
+	"defaults": {
+		"voteDurationSeconds": 25,
+		"minValidVotePercentage": 100
+	},
+	"commands": {
+		"help": {
+			"strings": ["help", "h"],
+			"scopes": ["admin"]
+		},
+		"startVote": {
+			"strings": ["sv", "startvote"],
+			"scopes": ["admin"]
+		},
+		"abortVote": {
+			"strings": ["av", "abortvote"],
+			"scopes": ["admin"]
+		},
+		"showNext": {
+			"strings": ["sn", "shownext"],
+			"scopes": ["admin", "public"]
+		}
+	},
+	"adminListSources": [{ "type": "local", "source": "./.zed/adminlist.txt" }],
+	"homeDiscordGuildId": "465971449954304000",
+	"globalRolePermissions": {
+		"gamer": ["*"]
+	},
+	"roleAssignments": {
+		"discord-server-member": [{ "roles": ["gamer"] }]
+	}
 }

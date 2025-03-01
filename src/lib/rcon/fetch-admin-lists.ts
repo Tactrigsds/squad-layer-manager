@@ -1,8 +1,8 @@
-import { Client as FTPClient } from 'basic-ftp'
+import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
+import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
-import * as Paths from '@/server/paths.ts'
 
 import * as C from '@/server/context.ts'
 
@@ -35,14 +35,16 @@ export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sour
 					// ex url: ftp//<user>:<password>@<host>:<port>/<url-path>
 					if (!source.source.startsWith('ftp://')) {
 						throw new Error(
-							`Invalid FTP URI format of ${source.source}. The source must be a FTP URI starting with the protocol. Ex: ftp://username:password@host:21/some/file.txt`
+							`Invalid FTP URI format of ${source.source}. The source must be a FTP URI starting with the protocol. Ex: ftp://username:password@host:21/some/file.txt`,
 						)
 					}
 					const [loginString, hostPathString] = source.source.substring('ftp://'.length).split('@')
 					const [user, password] = loginString.split(':').map((v) => decodeURI(v))
 					const pathStartIndex = hostPathString.indexOf('/')
 					const remoteFilePath = pathStartIndex === -1 ? '/' : hostPathString.substring(pathStartIndex)
-					const [host, port = 21] = hostPathString.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex).split(':')
+					const [host, port = 21] = hostPathString.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex).split(
+						':',
+					)
 
 					const buffer = new WritableBuffer()
 					const ftpClient = new FTPClient()
