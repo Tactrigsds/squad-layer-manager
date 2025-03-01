@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import fs from 'node:fs/promises'
-import path from 'node:path'
 
 export let options!: { envFile?: string; config: string }
 export async function ensureCliParsed() {
@@ -30,7 +29,7 @@ export async function ensureCliParsed() {
 	try {
 		await fs.access(options.config)
 	} catch {
-		console.error(`Configuration file not found at ${configPath}`)
+		console.error(`Configuration file not found at ${options.config}`)
 		process.exit(1)
 	}
 }
