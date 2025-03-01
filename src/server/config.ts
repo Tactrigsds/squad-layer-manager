@@ -37,7 +37,8 @@ export const ConfigSchema = z.object({
 		.positive()
 		.default(3)
 		.describe('Number of layers in the queue to trigger a low queue size warning'),
-	remindVoteThresholdSeconds: z.number().positive().default(15).describe('Seconds remaining to remind users to vote'),
+	voteReminderIntervalSeconds: z.number().positive().default(15).describe('How often to remind users to vote'),
+	finalVoteReminderSeconds: z.number().positive().default(10).describe('How far in advance the final vote reminder should be sent'),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
 

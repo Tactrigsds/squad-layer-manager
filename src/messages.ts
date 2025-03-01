@@ -3,14 +3,35 @@ import * as DH from '@/lib/display-helpers'
 import * as RBAC from '@/rbac.models'
 import { CommandConfig } from './server/config'
 import { WarnOptions } from './lib/rcon/squad-rcon'
-import { formatDuration } from 'date-fns'
+import * as dateFns from 'date-fns'
+
+function formatDuration(durationMs: number) {
+	const seconds = Math.floor(durationMs / 1000)
+	const minutes = Math.floor(seconds / 60)
+	const hours = Math.floor(minutes / 60)
+	const days = Math.floor(hours / 24)
+	const weeks = Math.floor(days / 7)
+	const months = Math.floor(days / 30)
+	const years = Math.floor(days / 365)
+
+	return dateFns.formatDuration(
+		{
+			seconds,
+			minutes,
+			hours,
+			days,
+			weeks,
+			months,
+			years,
+		},
+		{ format: ['minutes', 'seconds'], delimiter: ' and ', zero: false }
+	)
+}
 
 export const BROADCASTS = {
 	vote: {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
-			const minutes = Math.floor(duration / 1000 / 60)
-			const seconds = Math.round((duration / 1000) % 60)
-			const fullText = `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration({ seconds, minutes })} to vote`
+			const fullText = `Vote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\n You have ${formatDuration(duration)} to vote`
 			return fullText.split('\n')
 		},
 		winnerSelected(tally: M.Tally, winner: M.LayerId) {
@@ -31,11 +52,11 @@ export const BROADCASTS = {
 		aborted(defaultLayer: M.LayerId) {
 			return `Vote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
 		},
-		voteReminder(timeLeft: number, choices: M.LayerId[]) {
-			const minutes = Math.floor(timeLeft / 1000 / 60)
-			const seconds = Math.round((timeLeft / 1000) % 60)
+		voteReminder(timeLeft: number, choices: M.LayerId[], finalReminder = false) {
+			const durationStr = formatDuration(timeLeft)
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			const fullText = `${formatDuration({ minutes, seconds })} to cast your vote! Choices:\n${choicesText}\n`
+			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
+			const fullText = `${prefix} Choices:\n${choicesText}\n`
 			return fullText.split('\n')
 		},
 	},

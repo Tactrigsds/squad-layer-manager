@@ -1,6 +1,7 @@
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import { BehaviorSubject, distinctUntilChanged, from, map, scan, Subject, Subscription, filter } from 'rxjs'
+import * as Rx from 'rxjs'
 import * as FB from '@/lib/filter-builders.ts'
 
 import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
@@ -26,6 +27,7 @@ import { Parts } from '@/lib/types'
 import { BROADCASTS, WARNS } from '@/messages.ts'
 import { interval } from 'rxjs'
 import { Mutex } from 'async-mutex'
+import { Config } from 'dockerode'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
@@ -514,22 +516,37 @@ export const abortVote = C.spanOp('layer-queue:vote:abort', { tracer }, async (c
 
 function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	voteEndTask?.unsubscribe()
-	voteEndTask = new Subscription()
 
 	if (!voteState || voteState.code !== 'in-progress') return
 
-	const waitTime = Math.max(0, voteState.deadline - CONFIG.remindVoteThresholdSeconds * 1000 - Date.now())
-	if (waitTime > 0) {
-		voteEndTask.add(
-			from(sleep(waitTime)).subscribe(async () => {
+	voteEndTask = new Subscription()
+
+	const finalReminderWaitTime = Math.max(0, voteState.deadline - CONFIG.finalVoteReminderSeconds * 1000 - Date.now())
+	const finalReminderBuffer = finalReminderWaitTime - 5 * 1000
+	const regularReminderInterval = CONFIG.voteReminderIntervalSeconds * 1000
+
+	// -------- schedule regular reminders --------
+	voteEndTask.add(
+		Rx.interval(regularReminderInterval)
+			.pipe(Rx.takeUntil(Rx.timer(finalReminderBuffer)))
+			.subscribe(() => {
 				if (!voteState || voteState.code !== 'in-progress') return
 				const timeLeft = voteState.deadline - Date.now()
-				await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
+				SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
+			})
+	)
+
+	// -------- schedule final reminder --------
+	if (finalReminderWaitTime > 0) {
+		voteEndTask.add(
+			from(sleep(finalReminderWaitTime)).subscribe(async () => {
+				if (!voteState || voteState.code !== 'in-progress') return
+				await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(CONFIG.finalVoteReminderSeconds * 1000, voteState.choices, true))
 			})
 		)
 	}
 
-	// add timeout handling
+	// -------- schedule timeout handling --------
 	voteEndTask.add(
 		from(sleep(Math.max(voteState.deadline - Date.now(), 0))).subscribe({
 			next: async () => {

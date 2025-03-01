@@ -46,3 +46,4 @@ services:
 volumes:
   squad_data:
   db_data:
+  otel_data:
