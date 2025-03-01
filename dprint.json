@@ -28,7 +28,8 @@
 	"excludes": [
 		"data/**",
 		"assets/**",
-		"**/*-lock.json"
+		"**/*-lock.json",
+		"**/*-lock.yaml"
 	],
 	"plugins": [
 		"https://plugins.dprint.dev/typescript-0.94.0.wasm",
