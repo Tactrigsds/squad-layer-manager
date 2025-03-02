@@ -96,6 +96,12 @@ export const layers = mysqlTable(
 		}
 	},
 )
+
+// export const matchHistory = mysqlTable('matchHistory', {
+// 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
+// 	layerId: varchar('layerId', { length: 64 }).notNull(),
+// })
+
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
 	name: varchar('name', { length: 128 }).notNull(),
