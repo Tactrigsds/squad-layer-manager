@@ -1,3 +1,11 @@
+import * as AR from '@/app-routes.ts'
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import useAppParams from '@/hooks/use-app-params'
+import { useToast } from '@/hooks/use-toast'
+import * as Typography from '@/lib/typography'
+import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filters-entity'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -7,23 +15,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
+import Markdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
+import { z } from 'zod'
 import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-
-import * as AR from '@/app-routes.ts'
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import useAppParams from '@/hooks/use-app-params'
-import { useToast } from '@/hooks/use-toast'
-import * as Typography from '@/lib/typography'
-import * as M from '@/models.ts'
-import { z } from 'zod'
 
 import { filterUpdate$ as getFilterUpdate$, getFilterContributorQueryKey, getFilterEntity$, useFilterContributors, useFilterDelete, useFilterUpdate } from '@/hooks/filters'
 import { trpc } from '@/lib/trpc.client'
 import { assertNever } from '@/lib/typeGuards'
+import { cn } from '@/lib/utils'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import { Subscribe, useStateObservable } from '@react-rxjs/core'
 import React from 'react'
@@ -34,7 +35,10 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Label } from './ui/label'
+import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
+
+// Custom components for react-markdown to integrate with Tailwind
 
 // https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
 export default function FilterWrapperWrapper() {
@@ -246,16 +250,46 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 				{!editingDetails
 					? (
 						<div className='flex flex-col space-y-2 w-full'>
-							<div className='flex space-x-4 items-center'>
-								<h3 className={Typography.H3}>{props.entity.name}</h3>
-								<Icons.Dot />
-								<small className='font-light'>Owner: {props.owner.username}</small>
-								<Icons.Dot />
-								<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant='ghost' size='icon'>
-									<Icons.Edit />
-								</Button>
+							<div className='flex items-center justify-between'>
+								<span className='flex space-x-4 items-center'>
+									<h3 className={Typography.H3}>{props.entity.name}</h3>
+									<Icons.Dot />
+									<small className='font-light'>Owner: {props.owner.username}</small>
+									<Icons.Dot />
+									<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant='ghost' size='icon'>
+										<Icons.Edit />
+									</Button>
+								</span>
+								<span className='space-x-2 flex h-min items-center self-end'>
+									{loggedInUserRole === 'owner' && (
+										<Badge variant='outline' className='text-nowrap border-primary border-2'>
+											You are the owner of this filter
+										</Badge>
+									)}
+									{loggedInUserRole === 'contributor' && (
+										<Badge variant='outline' className='text-nowrap border-info border-2'>
+											You are a contributor
+										</Badge>
+									)}
+									{loggedInUserRole === 'none' && (
+										<Badge variant='outline' className='text-nowrap border-destructive border-2'>
+											You don't have permission to modify this filter
+										</Badge>
+									)}
+									{loggedInUserRole === 'write-all' && (
+										<Badge variant='outline' className='text-nowrap border-success border-2'>
+											You have write access to all filters
+										</Badge>
+									)}
+									<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
+										<Button disabled={loggedInUserRole === 'none'} variant='outline'>
+											Show Contributors
+										</Button>
+									</FilterContributors>
+								</span>
 							</div>
-							<p className={Typography.Blockquote}>{props.entity.description}</p>
+							<Separator orientation='horizontal' />
+							<DescriptionDisplay />
 						</div>
 					)
 					: (
@@ -324,33 +358,6 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 							</div>
 						</div>
 					)}
-				<span className='space-x-2 flex h-min items-center self-end'>
-					{loggedInUserRole === 'owner' && (
-						<Badge variant='outline' className='text-nowrap border-primary border-2'>
-							You are the owner of this filter
-						</Badge>
-					)}
-					{loggedInUserRole === 'contributor' && (
-						<Badge variant='outline' className='text-nowrap border-info border-2'>
-							You are a contributor
-						</Badge>
-					)}
-					{loggedInUserRole === 'none' && (
-						<Badge variant='outline' className='text-nowrap border-destructive border-2'>
-							You don't have permission to modify this filter
-						</Badge>
-					)}
-					{loggedInUserRole === 'write-all' && (
-						<Badge variant='outline' className='text-nowrap border-success border-2'>
-							You have write access to all filters
-						</Badge>
-					)}
-					<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
-						<Button disabled={loggedInUserRole === 'none'} variant='outline'>
-							Show Contributors
-						</Button>
-					</FilterContributors>
-				</span>
 			</div>
 			<div className='flex space-x-2 mt-2'>
 				<FilterCard
@@ -566,4 +573,91 @@ export function SelectRolePopover(props: { children: React.ReactNode; selectRole
 			</PopoverContent>
 		</Popover>
 	)
+}
+
+function DescriptionDisplay({ description }: { description?: string | null }) {
+	const [expanded, setExpanded] = useState(false)
+	const descriptionRef = React.useRef<HTMLDivElement>(null)
+	const [hasMultipleParagraphs, setHasMultipleParagraphs] = useState(false)
+	const truncatedDescription = description.split('\n')[0]?.slice(0, 128)
+
+	if (!description) return null
+
+	const shouldShowExpandButton = hasMultipleParagraphs
+
+	// Parse the content to get the first paragraph when truncated
+	const getDisplayContent = () => {
+		if (expanded) return description
+
+		// Find the first paragraph and return only that
+		const firstParagraphMatch = description.match(/^(.+?)(\n\n|$)/)
+		if (firstParagraphMatch) {
+			return firstParagraphMatch[1]
+		}
+
+		return description
+	}
+
+	return (
+		<div>
+			<div ref={descriptionRef}>
+				<Markdown components={markdownComponents}>
+					{getDisplayContent()}
+				</Markdown>
+			</div>
+			{shouldShowExpandButton && (
+				<Button
+					variant='ghost'
+					className='text-sm mt-1'
+					onClick={() => setExpanded(!expanded)}
+				>
+					{expanded ? 'Show Less' : 'Show More'}
+				</Button>
+			)}
+		</div>
+	)
+}
+
+const markdownComponents = {
+	h1: ({ node, ...props }: React.ComponentPropsWithoutRef<'h1'>) => (
+		<h1 {...props} className={cn('text-xl font-semibold mt-4 mb-2', Typography.H3)} />
+	),
+	h2: ({ node, ...props }: React.ComponentPropsWithoutRef<'h2'>) => (
+		<h2 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
+	),
+	h3: ({ node, ...props }: React.ComponentPropsWithoutRef<'h3'>) => (
+		<h3 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
+	),
+	h4: ({ node, ...props }: React.ComponentPropsWithoutRef<'h4'>) => (
+		<h4 {...props} className={cn('text-base font-medium mt-2 mb-1', Typography.H4)} />
+	),
+	p: ({ node, ...props }: React.ComponentPropsWithoutRef<'p'>) => <p {...props} className='py-2' />,
+	ul: ({ node, ...props }: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className='list-disc pl-6 py-2' />,
+	ol: ({ node, ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className='list-decimal pl-6 py-2' />,
+	li: ({ node, ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className='my-1' />,
+	blockquote: ({ node, ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
+		<blockquote {...props} className={cn('border-l-4 border-gray-300 pl-4 italic py-2', Typography.Blockquote)} />
+	),
+	code: ({ node, inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) => (
+		inline
+			? <code {...props} className='bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded font-mono text-sm' />
+			: <code {...props} className='block bg-gray-100 dark:bg-gray-800 p-3 rounded-md font-mono text-sm overflow-x-auto my-3' />
+	),
+	a: ({ node, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
+		<a {...props} className='text-blue-600 dark:text-blue-400 hover:underline' />
+	),
+	hr: ({ node, ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className='my-6 border-gray-300 dark:border-gray-700' />,
+	img: ({ node, ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className='max-w-full h-auto rounded-md my-4' />,
+	table: ({ node, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
+		<div className='overflow-x-auto my-4'>
+			<table {...props} className='min-w-full divide-y divide-gray-300 dark:divide-gray-700' />
+		</div>
+	),
+	thead: ({ node, ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className='bg-gray-100 dark:bg-gray-800' />,
+	tbody: ({ node, ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
+		<tbody {...props} className='divide-y divide-gray-200 dark:divide-gray-800' />
+	),
+	tr: ({ node, ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className='hover:bg-gray-50 dark:hover:bg-gray-900' />,
+	th: ({ node, ...props }: React.ComponentPropsWithoutRef<'th'>) => <th {...props} className='px-4 py-3 text-left text-sm font-semibold' />,
+	td: ({ node, ...props }: React.ComponentPropsWithoutRef<'td'>) => <td {...props} className='px-4 py-3 text-sm' />,
 }

@@ -1462,11 +1462,11 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	}, [initialItem])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
-	const derivedVoteChoiceStore = React.useMemo(() => QD.deriveVoteChoiceListStore(editedItemStore), [editedItemStore])
+	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore)
 
 	const loggedInUser = useLoggedInUser()
 
-	const excludeVoteDuplicatesFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(derivedVoteChoiceStore))
+	const excludeVoteDuplicatesFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(editedVoteChoiceStore))
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const filtersRes = useFilters()
@@ -1565,7 +1565,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				? (
 					<div className='flex flex-col'>
 						<div className='flex w-min'></div>
-						<LayerList store={derivedVoteChoiceStore} allowVotes={false} />
+						<LayerList store={editedVoteChoiceStore} allowVotes={false} />
 					</div>
 				)
 				: (
@@ -1594,7 +1594,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						onOpenChange={setAddLayersOpen}
 						baseFilter={excludeVoteDuplicatesFilter}
 						selectQueueItems={(items) => {
-							derivedVoteChoiceStore.getState().add(items)
+							editedVoteChoiceStore.getState().add(items)
 						}}
 					>
 						<DropdownMenuItem>Add layers</DropdownMenuItem>
