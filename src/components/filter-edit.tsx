@@ -577,7 +577,8 @@ function DescriptionDisplay({ description }: { description?: string | null }) {
 	const [expanded, setExpanded] = useState(false)
 	if (!description) return null
 	description = description.trim()
-	const truncatedDescription = description.split('\n')[0].slice(0, 128)
+	let truncatedDescription = description.split('\n')[0]
+	if (truncatedDescription.length > 128) truncatedDescription = truncatedDescription.slice(0, 128) + '...'
 	const truncated = truncatedDescription !== description
 
 	return (
