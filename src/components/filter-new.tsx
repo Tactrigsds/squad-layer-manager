@@ -92,10 +92,10 @@ export default function FilterNew() {
 		</form.Subscribe>
 	)
 	return (
-		<div className='container mx-auto py-10'>
-			<div className='flex w-full space-x-2'>
-				<div className='flex flex-col space-y-4'>
-					<form.Field name='name' validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
+		<div className="container mx-auto py-10">
+			<div className="flex w-full space-x-2">
+				<div className="flex flex-col space-y-4">
+					<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
 						{(field) => {
 							function handleNameChange(name: string) {
 								field.handleChange(name)
@@ -105,17 +105,17 @@ export default function FilterNew() {
 							}
 
 							return (
-								<div className='flex flex-col space-y-2 max-w-[300px]'>
+								<div className="flex flex-col space-y-2 max-w-[300px]">
 									<Label htmlFor={field.name}>Name</Label>
 									<Input
 										id={field.name}
-										placeholder='Filter name'
+										placeholder="Filter name"
 										defaultValue={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(e) => handleNameChange(e.target.value)}
 									/>
 									{field.state.meta.errors.length > 0 && (
-										<Alert variant='destructive'>
+										<Alert variant="destructive">
 											<AlertTitle>Errors for {field.name}</AlertTitle>
 											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 										</Alert>
@@ -125,20 +125,20 @@ export default function FilterNew() {
 						}}
 					</form.Field>
 
-					<form.Field name='id' validators={{ onChange: M.NewFilterEntitySchema.shape.id }}>
+					<form.Field name="id" validators={{ onChange: M.NewFilterEntitySchema.shape.id }}>
 						{(field) => {
 							return (
-								<div className='flex flex-col space-y-2 max-w-[300px]'>
+								<div className="flex flex-col space-y-2 max-w-[300px]">
 									<Label htmlFor={field.name}>ID</Label>
 									<Input
 										id={field.name}
-										placeholder='Filter ID'
+										placeholder="Filter ID"
 										defaultValue={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(e) => field.handleChange(e.target.value.trim() ?? null)}
 									/>
 									{field.state.meta.errors.length > 0 && (
-										<Alert variant='destructive'>
+										<Alert variant="destructive">
 											<AlertTitle>Errors for {field.name}</AlertTitle>
 											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 										</Alert>
@@ -149,21 +149,22 @@ export default function FilterNew() {
 					</form.Field>
 				</div>
 
-				<form.Field name='description' validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
+				<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
 					{(field) => (
-						<div className='flex space-x-2'>
-							<div className='flex flex-col space-y-2  min-w-[800px]'>
+						<div className="flex space-x-2">
+							<div className="flex flex-col space-y-2  min-w-[800px]">
 								<Label htmlFor={field.name}>Description</Label>
 								<Textarea
 									id={field.name}
-									placeholder='Description'
+									placeholder="Description"
 									defaultValue={field.state.value ?? ''}
 									onBlur={field.handleBlur}
 									onChange={(e) => field.setValue(e.target.value)}
+									rows={15}
 								/>
 							</div>
 							{field.state.meta.errors.length > 0 && (
-								<Alert variant='destructive'>
+								<Alert variant="destructive">
 									<AlertTitle>Errors for {field.name}</AlertTitle>
 									<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 								</Alert>

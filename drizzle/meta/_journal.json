@@ -15,6 +15,13 @@
 			"when": 1739058883305,
 			"tag": "0001_fair_virginia_dare",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "5",
+			"when": 1740879797294,
+			"tag": "0002_curved_sleepwalker",
+			"breakpoints": true
 		}
 	]
 }

@@ -152,25 +152,25 @@ export default function ServerDashboard() {
 	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
 	const slmConfig = useConfig()
 	return (
-		<div className='contianer mx-auto grid place-items-center py-10'>
-			<span className='flex space-x-4'>
+		<div className="contianer mx-auto grid place-items-center py-10">
+			<span className="flex space-x-4">
 				<VoteState />
-				<div className='flex flex-col space-y-4'>
+				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
 						{!isEditing && serverStatusRes && serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
 						{!isEditing && serverStatusRes && serverStatusRes?.code === 'ok' && (!editingUser || inEditTransition) && (
 							<>
 								<CardHeader>
-									<span className='flex items-center justify-between'>
+									<span className="flex items-center justify-between">
 										<CardTitle>Now Playing</CardTitle>
 										<EndMatchDialog />
 									</span>
 								</CardHeader>
-								<CardContent className='flex justify-between'>
+								<CardContent className="flex justify-between">
 									{DH.displayPossibleUnknownLayer(serverStatusRes.data.currentLayer)}
 									{slmConfig?.matchHistoryUrl && (
-										<a className={buttonVariants({ variant: 'ghost' })} target='_blank' href={slmConfig.matchHistoryUrl}>
+										<a className={buttonVariants({ variant: 'ghost' })} target="_blank" href={slmConfig.matchHistoryUrl}>
 											View Match History
 										</a>
 									)}
@@ -178,44 +178,44 @@ export default function ServerDashboard() {
 							</>
 						)}
 						{!isEditing && editingUser && !inEditTransition && (
-							<Alert variant='info' className='flex justify-between items-center'>
+							<Alert variant="info" className="flex justify-between items-center">
 								<AlertTitle>
 									{editingUser.discordId === loggedInUser?.discordId
 										? 'You are editing on another tab'
 										: editingUser.username + ' is editing'}
 								</AlertTitle>
-								<Button disabled={!hasKickPermission} onClick={() => kickEditorMutation.mutate()} variant='outline'>
+								<Button disabled={!hasKickPermission} onClick={() => kickEditorMutation.mutate()} variant="outline">
 									Kick
 								</Button>
 							</Alert>
 						)}
 						{isEditing && !inEditTransition && (
 							/* ------- editing card ------- */
-							<div className='flex flex-col space-y-2'>
+							<div className="flex flex-col space-y-2">
 								<Card>
 									<CardHeader>
 										<CardTitle>Changes Pending</CardTitle>
 									</CardHeader>
 									<CardContent>{queueHasMutations && <EditSummary />}</CardContent>
-									<CardFooter className='space-x-1'>
+									<CardFooter className="space-x-1">
 										<Button onClick={saveLqState} disabled={updateQueueMutation.isPending}>
 											Save Changes
 										</Button>
-										<Button onClick={() => QD.QDStore.getState().reset()} variant='secondary'>
+										<Button onClick={() => QD.QDStore.getState().reset()} variant="secondary">
 											Cancel
 										</Button>
-										<LoaderCircle className='animate-spin data-[pending=false]:invisible' data-pending={updateQueueMutation.isPending} />
+										<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={updateQueueMutation.isPending} />
 									</CardFooter>
 								</Card>
 							</div>
 						)}
 					</Card>
-					<Card className=''>
-						<CardHeader className='flex flex-row items-center justify-between'>
+					<Card className="">
+						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
 							<CardDescription
 								data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-								className='data-[limitreached=true]:text-destructive'
+								className="data-[limitreached=true]:text-destructive"
 							>
 								{queueLength} / {maxQueueSize}
 							</CardDescription>
@@ -249,12 +249,12 @@ function QueueControlPanel() {
 	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
 
 	return (
-		<div className='flex items-center space-x-1'>
+		<div className="flex items-center space-x-1">
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
-						variant='outline'
-						size='icon'
+						variant="outline"
+						size="icon"
 						disabled={!canEdit}
 						onClick={() => {
 							QD.LQStore.getState().clear()
@@ -268,25 +268,25 @@ function QueueControlPanel() {
 				</TooltipContent>
 			</Tooltip>
 			<SelectLayersDialog
-				title='Add to Queue'
-				description='Select layers to add to the queue'
+				title="Add to Queue"
+				description="Select layers to add to the queue"
 				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
 			>
-				<Button disabled={!canEdit} className='flex w-min items-center space-x-1' variant='default'>
+				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<PlusIcon />
 					<span>Play After</span>
 				</Button>
 			</SelectLayersDialog>
 			<SelectLayersDialog
-				title='Play Next'
-				description='Select layers to play next'
+				title="Play Next"
+				description="Select layers to play next"
 				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}
 			>
-				<Button disabled={!canEdit} className='flex w-min items-center space-x-1' variant='default'>
+				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<PlusIcon />
 					<span>Play Next</span>
 				</Button>
@@ -327,7 +327,7 @@ function EndMatchDialog() {
 	return (
 		<Dialog open={isOpen} onOpenChange={setIsOpen}>
 			<DialogTrigger asChild>
-				<Button variant='destructive' disabled={!canEndMatch}>
+				<Button variant="destructive" disabled={!canEndMatch}>
 					End Match
 				</Button>
 			</DialogTrigger>
@@ -339,14 +339,14 @@ function EndMatchDialog() {
 					Are you sure you want to end the match for <b>{serverStatus?.name}</b>?
 				</DialogDescription>
 				<DialogFooter>
-					<Button disabled={!canEndMatch} onClick={endMatch} variant='destructive'>
+					<Button disabled={!canEndMatch} onClick={endMatch} variant="destructive">
 						End Match
 					</Button>
 					<Button
 						onClick={() => {
 							setIsOpen(false)
 						}}
-						variant='secondary'
+						variant="secondary"
 					>
 						Cancel
 					</Button>
@@ -361,11 +361,11 @@ function EditSummary() {
 	return (
 		<>
 			<h3>Layer Changes pending</h3>
-			<span className='flex space-x-1'>
-				{queueMutations.added.size > 0 && <Badge variant='added'>{queueMutations.added.size} added</Badge>}
-				{queueMutations.removed.size > 0 && <Badge variant='removed'>{queueMutations.removed.size} deleted</Badge>}
-				{queueMutations.moved.size > 0 && <Badge variant='moved'>{queueMutations.moved.size} moved</Badge>}
-				{queueMutations.edited.size > 0 && <Badge variant='edited'>{queueMutations.edited.size} edited</Badge>}
+			<span className="flex space-x-1">
+				{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
+				{queueMutations.removed.size > 0 && <Badge variant="removed">{queueMutations.removed.size} deleted</Badge>}
+				{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
+				{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
 			</span>
 		</>
 	)
@@ -389,7 +389,7 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?:
 	})
 
 	return (
-		<ul className='flex w-max flex-col space-y-1'>
+		<ul className="flex w-max flex-col space-y-1">
 			{/* -------- queue items -------- */}
 			{queueIds.map((id, index) => (
 				<LayerListItem
@@ -484,9 +484,9 @@ function VoteState() {
 	}
 
 	const voteConfigElt = (
-		<form onSubmit={onSubmit} className='flex flex-col space-y-2'>
+		<form onSubmit={onSubmit} className="flex flex-col space-y-2">
 			<startVoteForm.Field
-				name='durationSeconds'
+				name="durationSeconds"
 				validators={{ onChange: M.StartVoteInputSchema.shape.durationSeconds }}
 				children={(field) => (
 					<>
@@ -494,33 +494,33 @@ function VoteState() {
 						<Input
 							id={voteDurationEltId}
 							name={field.name}
-							type='number'
+							type="number"
 							disabled={!canModifyVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
 							}}
 						/>
-						{field.state.meta.errors.length > 0 && <Alert variant='destructive'>{field.state.meta.errors.join(', ')}</Alert>}
+						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
 					</>
 				)}
 			/>
 			<startVoteForm.Field
-				name='minValidVotePercentage'
+				name="minValidVotePercentage"
 				validators={{ onChange: M.StartVoteInputSchema.shape.minValidVotePercentage, onChangeAsyncDebounceMs: 250 }}
 				children={(field) => (
 					<>
 						<Label htmlFor={minRequiredEltId}>Min Required Turnout(%)</Label>
 						<Input
 							id={minRequiredEltId}
-							type='number'
+							type="number"
 							disabled={!canModifyVote}
 							defaultValue={field.state.value}
 							onChange={(e) => {
 								return field.setValue(e.target.valueAsNumber)
 							}}
 						/>
-						{field.state.meta.errors.length > 0 && <Alert variant='destructive'>{field.state.meta.errors.join(', ')}</Alert>}
+						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
 					</>
 				)}
 			/>
@@ -537,7 +537,7 @@ function VoteState() {
 				})
 				if (id === 'confirm') startVoteForm.handleSubmit()
 			}}
-			variant='secondary'
+			variant="secondary"
 		>
 			Rerun Vote
 		</Button>
@@ -554,7 +554,7 @@ function VoteState() {
 					if (id === 'confirm') abortVote()
 				})
 			}}
-			variant='secondary'
+			variant="secondary"
 		>
 			Cancel Vote
 		</Button>
@@ -609,7 +609,7 @@ function VoteState() {
 			body = (
 				<>
 					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
-					<Alert variant='destructive'>
+					<Alert variant="destructive">
 						<AlertTitle>Vote Aborted</AlertTitle>
 						{voteState.code === 'ended:insufficient-votes' && <AlertDescription>Insufficient votes to determine a winner</AlertDescription>}
 						{voteState.code === 'ended:aborted'
@@ -633,7 +633,7 @@ function VoteState() {
 				<CardHeader>
 					<CardTitle>Vote</CardTitle>
 				</CardHeader>
-				<CardContent className='flex flex-col space-y-2'>{body}</CardContent>
+				<CardContent className="flex flex-col space-y-2">{body}</CardContent>
 			</Card>
 		</div>
 	)
@@ -670,9 +670,9 @@ function FilterEntitySelect(props: {
 						checked={props.enabled}
 					/>
 					<ComboBox
-						title='Filter'
+						title="Filter"
 						disabled={!hasForceWrite}
-						className='flex-grow'
+						className="flex-grow"
 						options={filterOptions ?? LOADING}
 						allowEmpty={true}
 						value={props.filterId}
@@ -681,7 +681,7 @@ function FilterEntitySelect(props: {
 				</>
 			)}
 			{props.filterId && (
-				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target='_blank' href={AR.link('/filters/:id', props.filterId)}>
+				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
 					<Edit />
 				</a>
 			)}
@@ -734,19 +734,19 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	const settings = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings)
 	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
 	return (
-		<div className='flex flex-col space-y-4'>
+		<div className="flex flex-col space-y-4">
 			<Card>
 				<CardHeader>
 					<CardTitle>Pool Configuration</CardTitle>
 				</CardHeader>
-				<CardContent className='flex flex-col space-y-2'>
+				<CardContent className="flex flex-col space-y-2">
 					<div
-						className='flex space-x-1 p-1 data-[edited=true]:bg-edited data-[edited=true]:border-edited rounded'
+						className="flex space-x-1 p-1 data-[edited=true]:bg-edited data-[edited=true]:border-edited rounded"
 						data-edited={poolFilterChanged}
 					>
 						<ComboBox
-							title='Pool Filter'
-							className='flex-grow'
+							title="Pool Filter"
+							className="flex-grow"
 							options={filterOptions ?? LOADING}
 							disabled={!canEditSettings}
 							value={settings.queue.poolFilterId}
@@ -758,7 +758,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 						{settings.queue.poolFilterId && (
 							<a
 								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-								target='_blank'
+								target="_blank"
 								href={AR.link('/filters/:id', settings.queue.poolFilterId)}
 							>
 								<Edit />
@@ -826,31 +826,31 @@ function QueueGenerationCard() {
 	}
 
 	return (
-		<Card className='flex flex-col space-y-1'>
+		<Card className="flex flex-col space-y-1">
 			<CardHeader>
 				<CardTitle>Queue Generation</CardTitle>
 			</CardHeader>
-			<CardContent className='space-y-4'>
-				<div className='flex flex-col items-start space-y-1'>
+			<CardContent className="space-y-4">
+				<div className="flex flex-col items-start space-y-1">
 					<Label htmlFor={itemTypeId}>Item Type</Label>
 					<ToggleGroup
 						value={itemType}
 						onValueChange={(v) => {
 							setItemType(v as 'layer' | 'vote')
 						}}
-						type='single'
+						type="single"
 						id={itemTypeId}
 					>
-						<ToggleGroupItem value='layer'>Layer</ToggleGroupItem>
-						<ToggleGroupItem value='vote'>Vote</ToggleGroupItem>
+						<ToggleGroupItem value="layer">Layer</ToggleGroupItem>
+						<ToggleGroupItem value="vote">Vote</ToggleGroupItem>
 					</ToggleGroup>
 				</div>
-				<div className='flex flex-col items-start space-y-1'>
+				<div className="flex flex-col items-start space-y-1">
 					<Label htmlFor={numItemsToGenerateId}>Num of items to generate</Label>
 					<Input
-						type='number'
+						type="number"
 						id={numItemsToGenerateId}
-						min='1'
+						min="1"
 						defaultValue={numItemsToGenerate}
 						onChange={(e) => {
 							setNumItemsToGenerate(parseInt(e.target.value) ?? 0)
@@ -861,9 +861,9 @@ function QueueGenerationCard() {
 					<div>
 						<Label htmlFor={numVoteChoicesId}>Num of vote choices</Label>
 						<Input
-							type='number'
+							type="number"
 							id={numVoteChoicesId}
-							min='1'
+							min="1"
 							max={slmConfig?.maxNumVoteChoices}
 							defaultValue={numVoteChoices}
 							onChange={(e) => {
@@ -872,7 +872,7 @@ function QueueGenerationCard() {
 						/>
 					</div>
 				)}
-				<div className='flex space-x-1 items-center'>
+				<div className="flex space-x-1 items-center">
 					<Checkbox
 						id={replaceCurrentGeneratedId}
 						checked={replaceCurrentGenerated}
@@ -883,11 +883,11 @@ function QueueGenerationCard() {
 					/>
 					<Label htmlFor={replaceCurrentGeneratedId}>Replace current generated</Label>
 				</div>
-				<div className='flex space-x-2'>
+				<div className="flex space-x-2">
 					<Button disabled={genereateMutation.isPending || !canEditQueue} onClick={() => genereateMutation.mutateAsync()}>
 						Generate
 					</Button>
-					<LoaderCircle className='animate-spin data-[pending=false]:invisible' data-pending={genereateMutation.isPending} />
+					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
 				</div>
 			</CardContent>
 		</Card>
@@ -958,9 +958,9 @@ function LayerListItem(props: QueueItemProps) {
 			<Button
 				disabled={!canEdit}
 				data-canedit={canEdit}
-				className='invisible data-[canedit=true]:group-hover:visible'
-				variant='ghost'
-				size='icon'
+				className="invisible data-[canedit=true]:group-hover:visible"
+				variant="ghost"
+				size="icon"
 			>
 				<EllipsisVertical />
 			</Button>
@@ -972,13 +972,13 @@ function LayerListItem(props: QueueItemProps) {
 
 	switch (item.source) {
 		case 'gameserver':
-			sourceBadge = <Badge variant='outline'>Game Server</Badge>
+			sourceBadge = <Badge variant="outline">Game Server</Badge>
 			break
 		case 'generated':
-			sourceBadge = <Badge variant='outline'>Generated {modifiedByDisplay}</Badge>
+			sourceBadge = <Badge variant="outline">Generated {modifiedByDisplay}</Badge>
 			break
 		case 'manual': {
-			sourceBadge = <Badge variant='outline'>Manual {modifiedByDisplay}</Badge>
+			sourceBadge = <Badge variant="outline">Manual {modifiedByDisplay}</Badge>
 			break
 		}
 		default:
@@ -994,7 +994,7 @@ function LayerListItem(props: QueueItemProps) {
 	const notCurrentNextLayer = props.index === 0 && squadServerNextLayer?.code === 'unknown' && (
 		<Tooltip>
 			<TooltipTrigger>
-				<Badge variant='destructive'>?</Badge>
+				<Badge variant="destructive">?</Badge>
 			</TooltipTrigger>
 			<TooltipContent>Not current next layer on server, layer set on server is unknown to squad-layer-manager</TooltipContent>
 		</Tooltip>
@@ -1004,15 +1004,15 @@ function LayerListItem(props: QueueItemProps) {
 		<Button
 			{...listeners}
 			disabled={!canEdit}
-			variant='ghost'
-			size='icon'
+			variant="ghost"
+			size="icon"
 			data-canedit={canEdit}
-			className='invisible data-[canedit=true]:cursor-grab data-[canedit=true]:group-hover:visible'
+			className="invisible data-[canedit=true]:cursor-grab data-[canedit=true]:group-hover:visible"
 		>
 			<GripVertical />
 		</Button>
 	)
-	const indexElt = <span className='mr-2 font-light'>{props.index + 1}.</span>
+	const indexElt = <span className="mr-2 font-light">{props.index + 1}.</span>
 
 	if (item.vote) {
 		return (
@@ -1026,16 +1026,16 @@ function LayerListItem(props: QueueItemProps) {
 					data-mutation={displayedMutation}
 					data-is-dragging={isDragging}
 				>
-					<div className='flex items-center'>{gripElt}</div>
+					<div className="flex items-center">{gripElt}</div>
 					{indexElt}
-					<div className='h-full flex flex-col flex-grow'>
+					<div className="h-full flex flex-col flex-grow">
 						<label className={Typography.Muted}>Vote</label>
 						<ol className={'flex flex-col space-y-1 items-start'}>
 							{item.vote.choices.map((choice, index) => {
-								const chosenBadge = choice === item.layerId ? <Badge variant='added'>chosen</Badge> : null
+								const chosenBadge = choice === item.layerId ? <Badge variant="added">chosen</Badge> : null
 								return (
-									<li key={choice} className='flex items-center '>
-										<span className='mr-2'>{index + 1}.</span>
+									<li key={choice} className="flex items-center ">
+										<span className="mr-2">{index + 1}.</span>
 										<LayerDisplay layerId={choice} badges={chosenBadge} />
 									</li>
 								)
@@ -1065,8 +1065,8 @@ function LayerListItem(props: QueueItemProps) {
 				>
 					{gripElt}
 					{indexElt}
-					<div className='flex flex-col w-max flex-grow'>
-						<div className='flex items-center flex-shrink-0'>
+					<div className="flex flex-col w-max flex-grow">
+						<div className="flex items-center flex-shrink-0">
 							<LayerDisplay layerId={item.layerId} />
 						</div>
 						<span>{sourceBadge}</span>
@@ -1126,7 +1126,7 @@ function ItemDropdown(props: {
 							const id = props.itemStore.getState().item.itemId
 							props.listStore.getState().remove(id)
 						}}
-						className='bg-destructive text-destructive-foreground focus:bg-red-600'
+						className="bg-destructive text-destructive-foreground focus:bg-red-600"
 					>
 						Delete
 					</DropdownMenuItem>
@@ -1135,8 +1135,8 @@ function ItemDropdown(props: {
 
 				<DropdownMenuGroup>
 					<SelectLayersDialog
-						title='Add layers before'
-						description='Select layers to add before'
+						title="Add layers before"
+						description="Select layers to add before"
 						open={subDropdownState === 'add-before'}
 						onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
 						pinMode={!allowVotes ? 'layers' : undefined}
@@ -1151,8 +1151,8 @@ function ItemDropdown(props: {
 					</SelectLayersDialog>
 
 					<SelectLayersDialog
-						title='Add layers after'
-						description='Select layers to add after'
+						title="Add layers after"
+						description="Select layers to add after"
 						open={subDropdownState === 'add-after'}
 						onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
 						pinMode={!allowVotes ? 'layers' : undefined}
@@ -1205,7 +1205,7 @@ export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNo
 		notInPoolBadge = (
 			<Tooltip>
 				<TooltipTrigger>
-					<Icons.ShieldQuestion className='text-orange-400' />
+					<Icons.ShieldQuestion className="text-orange-400" />
 				</TooltipTrigger>
 				<TooltipContent>
 					Layer not in configured pool <b>{filterRes.data?.name}</b>
@@ -1215,9 +1215,9 @@ export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNo
 	}
 
 	return (
-		<div className='flex space-x-2 items-center'>
-			<span className='flex-1 text-nowrap'>{DH.toShortLayerNameFromId(props.layerId)}</span>
-			<span className='flex items-center space-x-1'>
+		<div className="flex space-x-2 items-center">
+			<span className="flex-1 text-nowrap">{DH.toShortLayerNameFromId(props.layerId)}</span>
+			<span className="flex items-center space-x-1">
 				{notInPoolBadge}
 				{props.badges}
 			</span>
@@ -1234,7 +1234,7 @@ function QueueItemSeparator(props: {
 	return (
 		<Separator
 			ref={setNodeRef}
-			className='w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-secondary-foreground'
+			className="w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-secondary-foreground"
 			data-is-last={props.isLast && !isOver}
 			data-is-over={isOver}
 		/>
@@ -1330,11 +1330,11 @@ export function SelectLayersDialog(props: {
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className='w-auto max-w-full min-w-0'>
+			<DialogContent className="w-auto max-w-full min-w-0">
 				<DialogHeader>
 					<DialogTitle>{props.title}</DialogTitle>
 					<DialogDescription>{props.description}</DialogDescription>
-					<div className='flex items-center w-full space-x-2'>
+					<div className="flex items-center w-full space-x-2">
 						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
 						{!props.pinMode && (
 							<TabsList
@@ -1348,11 +1348,11 @@ export function SelectLayersDialog(props: {
 						)}
 					</div>
 				</DialogHeader>
-				<div className='w-min'>
+				<div className="w-min">
 					<FilterEntitySelect
-						title='Filter'
+						title="Filter"
 						filterId={selectedFilterId}
-						className='max-w-16'
+						className="max-w-16"
 						onSelect={setSelectedFilterId}
 						allowToggle={true}
 						enabled={selectedFilterEnabled}
@@ -1360,7 +1360,7 @@ export function SelectLayersDialog(props: {
 					/>
 				</div>
 
-				<div className='flex min-h-0 items-center space-x-2'>
+				<div className="flex min-h-0 items-center space-x-2">
 					<LayerFilterMenu filterMenuStore={filterMenuStore} />
 					<TableStyleLayerPicker filter={filterMenuStore.filter} selected={selectedLayers} onSelect={setSelectedLayers} />
 				</div>
@@ -1394,7 +1394,7 @@ function TableStyleLayerPicker(props: {
 	]
 
 	return (
-		<div className='flex h-full'>
+		<div className="flex h-full">
 			<LayerTable
 				filter={props.filter}
 				defaultColumns={defaultColumns}
@@ -1404,8 +1404,8 @@ function TableStyleLayerPicker(props: {
 				selected={props.selected}
 				setSelected={props.onSelect}
 				maxSelected={props.maxSelected}
-				defaultSortBy='random'
-				defaultSortDirection='DESC'
+				defaultSortBy="random"
+				defaultSortDirection="DESC"
 				canChangeRowsPerPage={false}
 				canToggleColumns={false}
 			/>
@@ -1441,7 +1441,7 @@ function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className='w-auto max-w-full min-w-0'>
+			<DialogContent className="w-auto max-w-full min-w-0">
 				<DragContextProvider>
 					<EditLayerListItemDialog {...props} />
 				</DragContextProvider>
@@ -1503,10 +1503,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
-		<div className='w-full h-full'>
+		<div className="w-full h-full">
 			<DialogHeader>
-				<div className='flex justify-between mr-6'>
-					<div className='flex flex-col'>
+				<div className="flex justify-between mr-6">
+					<div className="flex flex-col">
 						<DialogTitle>Edit</DialogTitle>
 						<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
 					</div>
@@ -1549,10 +1549,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				</div>
 			</DialogHeader>
 
-			<div className='flex items-center mb-2'>
+			<div className="flex items-center mb-2">
 				<FilterEntitySelect
-					title='Filter'
-					className='max-w-16'
+					title="Filter"
+					className="max-w-16"
 					filterId={selectedFilterId}
 					onSelect={(id) => setSelectedBaseFilterId(id)}
 					allowToggle={true}
@@ -1563,13 +1563,13 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 			{editedItem.vote
 				? (
-					<div className='flex flex-col'>
-						<div className='flex w-min'></div>
+					<div className="flex flex-col">
+						<div className="flex w-min"></div>
 						<LayerList store={editedVoteChoiceStore} allowVotes={false} />
 					</div>
 				)
 				: (
-					<div className='flex space-x-2 min-h-0'>
+					<div className="flex space-x-2 min-h-0">
 						<LayerFilterMenu filterMenuStore={filterMenuStore} />
 						<TableStyleLayerPicker
 							filter={filterMenuStore.filter}
@@ -1587,10 +1587,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 			<DialogFooter>
 				{editedItem.vote && (
 					<SelectLayersDialog
-						title='Add'
-						description='Select layers to add to the voting pool'
+						title="Add"
+						description="Select layers to add to the voting pool"
 						open={addLayersOpen}
-						pinMode='layers'
+						pinMode="layers"
 						onOpenChange={setAddLayersOpen}
 						baseFilter={excludeVoteDuplicatesFilter}
 						selectQueueItems={(items) => {
@@ -1740,8 +1740,8 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 	}
 
 	return (
-		<div className='flex flex-col space-y-2'>
-			<div className='grid h-full grid-cols-[auto_min-content_auto_auto] gap-2'>
+		<div className="flex flex-col space-y-2">
+			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
 				{store.menuItems.map((comparison) => {
 					const name = comparison.column as keyof M.MiniLayer
 					const setComp = applySetFilterFieldComparison(name)
@@ -1780,10 +1780,10 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 
 					return (
 						<React.Fragment key={name}>
-							{(name === 'Level' || name === 'Faction_1') && <Separator className='col-span-4 my-2' />}
+							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
 							{name === 'Faction_2' && (
 								<>
-									<Button disabled={swapFactionsDisabled} onClick={swapFactions} variant='secondary'>
+									<Button disabled={swapFactionsDisabled} onClick={swapFactions} variant="secondary">
 										Swap Factions
 									</Button>
 									<span />
@@ -1797,7 +1797,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 								setComp={setComp}
 								valueAutocompleteFilter={store.filtersExcludingField[name]}
 							/>
-							<Button disabled={comparison.value === undefined} variant='ghost' size='icon' onClick={clear}>
+							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
 								<Icons.Trash />
 							</Button>
 						</React.Fragment>
@@ -1805,7 +1805,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 				})}
 			</div>
 			<div>
-				<Button variant='secondary' onClick={() => store.setMenuItems(getDefaultFilterMenuItemState({}))}>
+				<Button variant="secondary" onClick={() => store.setMenuItems(getDefaultFilterMenuItemState({}))}>
 					Clear All
 				</Button>
 			</div>

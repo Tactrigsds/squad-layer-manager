@@ -23,7 +23,7 @@ const Alert = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEleme
 	({ className, variant, ...props }, ref) => (
 		<div
 			ref={ref}
-			role='alert'
+			role="alert"
 			className={cn(alertVariants({ variant }), className)}
 			{...props}
 		/>

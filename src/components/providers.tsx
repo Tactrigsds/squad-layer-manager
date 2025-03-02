@@ -24,7 +24,7 @@ export function Providers(props: { children: ReactNode }) {
 			<ReactQueryDevtools initialIsOpen={true} />
 			<jotai.Provider>
 				<ConfigAtomProvider>
-					<ThemeProvider defaultTheme='dark' storageKey='vite-ui-theme'>
+					<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
 						<TooltipProvider>
 							<DragContextProvider>
 								<AlertDialogProvider>{props.children}</AlertDialogProvider>

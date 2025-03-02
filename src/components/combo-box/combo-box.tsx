@@ -72,15 +72,15 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 				<Button
 					disabled={disabled}
 					ref={btnRef}
-					variant='outline'
-					role='combobox'
+					variant="outline"
+					role="combobox"
 					className={cn('w-[min] justify-between', props.className)}
 				>
 					<span>{selectedOptionDisplay}</span>
-					<ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
+					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className='w-[200px] p-0'>
+			<PopoverContent className="w-[200px] p-0">
 				<Command shouldFilter={!props.setInputValue}>
 					<CommandInput ref={inputRef} placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
@@ -88,7 +88,7 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 						<CommandGroup>
 							{options === LOADING && (
 								<CommandItem>
-									<LoaderCircle className='mr-2 h-4 w-4 animate-spin' />
+									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 								</CommandItem>
 							)}
 							{options !== LOADING && props.allowEmpty && (

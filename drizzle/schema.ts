@@ -99,7 +99,7 @@ export const layers = mysqlTable(
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
 	name: varchar('name', { length: 128 }).notNull(),
-	description: varchar('description', { length: 512 }),
+	description: varchar('description', { length: 2048 }),
 	filter: json('filter').notNull(),
 	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(() => users.discordId, { onDelete: 'set null' }),
 })

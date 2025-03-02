@@ -31,9 +31,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const primaryDropdownOpen = openState !== null
 	const permissionsOpen = openState === 'permissions'
 	return (
-		<div className='h-full w-full'>
-			<nav className='flex h-16 items-center justify-between border-b px-4'>
-				<div className='flex items-start space-x-6'>
+		<div className="h-full w-full">
+			<nav className="flex h-16 items-center justify-between border-b px-4">
+				<div className="flex items-start space-x-6">
 					<Link to={AR.link('/')} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
 					</Link>
@@ -41,21 +41,21 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						Filters
 					</Link>
 				</div>
-				<div className='flex h-max min-h-0 flex-row items-center space-x-6'>
+				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
 					{statusRes?.code === 'ok' && (
 						<>
 							<h3 className={Typography.H4}>{statusRes.data.name}</h3>
-							<div className='flex flex-col'>
+							<div className="flex flex-col">
 								<div className={Typography.Small}>
-									<span className='font-bold'>{statusRes.data.playerCount}</span> /{' '}
-									<span className='font-bold'>{statusRes.data.maxPlayerCount}</span> online
+									<span className="font-bold">{statusRes.data.playerCount}</span> /{' '}
+									<span className="font-bold">{statusRes.data.maxPlayerCount}</span> online
 								</div>
 								<div className={Typography.Small}>
-									<span className='font-bold'>{statusRes.data.queueLength}</span> /{' '}
-									<span className='font-bold'>{statusRes.data.maxQueueLength}</span> in queue
+									<span className="font-bold">{statusRes.data.queueLength}</span> /{' '}
+									<span className="font-bold">{statusRes.data.maxQueueLength}</span> in queue
 								</div>
 							</div>
-							<div className='grid h-full grid-cols-[auto_auto]'>
+							<div className="grid h-full grid-cols-[auto_auto]">
 								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
 								<span className={cn(Typography.Small, 'font-bold')}>
 									{statusRes.data.currentLayer && DH.displayPossibleUnknownLayer(statusRes.data.currentLayer)}
@@ -71,16 +71,16 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{user && (
 						<DropdownMenu open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
-								<Avatar className='hover:cursor-pointer select-none'>
+								<Avatar className="hover:cursor-pointer select-none">
 									<AvatarImage src={avatarUrl} />
 									<AvatarFallback>{user.username}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
 								<DropdownMenuLabel>{user.username}</DropdownMenuLabel>
-								<form action={AR.exists('/logout')} method='POST'>
+								<form action={AR.exists('/logout')} method="POST">
 									<DropdownMenuItem asChild>
-										<button className='w-full' type='submit'>
+										<button className="w-full" type="submit">
 											Log Out
 										</button>
 									</DropdownMenuItem>
@@ -93,7 +93,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					)}
 				</div>
 			</nav>
-			<div className='flex flex-grow p-4'>{props.children}</div>
+			<div className="flex flex-grow p-4">{props.children}</div>
 		</div>
 	)
 }
@@ -103,12 +103,12 @@ function UserPermissionsDialog(props: { children: React.ReactNode; open: boolean
 	return (
 		<Dialog onOpenChange={props.onOpenChange} open={props.open}>
 			{props.children}
-			<DialogContent className='w-max'>
+			<DialogContent className="w-max">
 				<DialogHeader>
 					<DialogTitle>{user?.username}</DialogTitle>
 					<DialogDescription>Level of access</DialogDescription>
 				</DialogHeader>
-				<div className='flex space-x-4'>
+				<div className="flex space-x-4">
 					<div>
 						<h3 className={Typography.Large}>Permissions</h3>
 						<ul>

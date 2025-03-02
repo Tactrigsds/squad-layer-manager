@@ -4,6 +4,7 @@
 		"semiColons": "asi",
 		"quoteStyle": "preferSingle",
 		"importDeclaration.forceSingleLine": true,
+		"jsx.quoteStyle": "preferDouble",
 		"lineWidth": 140
 	},
 	"json": {

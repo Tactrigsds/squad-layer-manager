@@ -40,15 +40,15 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 			const sort = column.getIsSorted()
 			return (
 				<Button
-					className='data-[sort=true]:text-accent-foreground'
+					className="data-[sort=true]:text-accent-foreground"
 					data-sort={!!sort}
-					variant='ghost'
+					variant="ghost"
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					{label}
-					{!sort && <ArrowUpDown className='ml-2 h-4 w-4' />}
-					{sort === 'asc' && <ArrowUp className='ml-2 h-4 w-4' />}
-					{sort === 'desc' && <ArrowDown className='ml-2 h-4 w-4' />}
+					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
+					{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
+					{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
 				</Button>
 			)
 		},
@@ -82,7 +82,7 @@ const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 			<Checkbox
 				checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
 				onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-				aria-label='Select all'
+				aria-label="Select all"
 			/>
 		),
 		cell: ({ row }) => (
@@ -91,7 +91,7 @@ const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
 				// onCheckedChange={(value) => {
 				// 	return row.toggleSelected(!!value)
 				// }}
-				aria-label='Select row'
+				aria-label="Select row"
 			/>
 		),
 		enableSorting: false,
@@ -368,21 +368,21 @@ export default function LayerTable(props: {
 	}
 
 	return (
-		<div className='pt-2'>
-			<div className='mb-2 flex items-center justify-between'>
-				<span className='flex h-10 items-center space-x-2'>
+		<div className="pt-2">
+			<div className="mb-2 flex items-center justify-between">
+				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
-								<Button variant='outline'>Toggle Columns</Button>
+								<Button variant="outline">Toggle Columns</Button>
 							</DropdownMenuTrigger>
-							<DropdownMenuContent className='w-56 h-[500px] min-h-0 overflow-y-scroll'>
+							<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
 								{table.getAllLeafColumns().map((column) => {
 									return (
 										<DropdownMenuCheckboxItem
 											key={column.id}
-											className='capitalize'
+											className="capitalize"
 											checked={column.getIsVisible()}
 											onCheckedChange={(value) => {
 												column.toggleVisibility(!!value)
@@ -398,21 +398,21 @@ export default function LayerTable(props: {
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}
-					<Separator orientation='vertical' className='h-full min-h-0' />
+					<Separator orientation="vertical" className="h-full min-h-0" />
 					{/*--------- show selected ---------*/}
-					<div className='flex items-center space-x-1'>
+					<div className="flex items-center space-x-1">
 						<Switch
 							checked={showSelectedLayers}
 							disabled={props.selected.length === 0}
 							onCheckedChange={() => props.selected.length > 0 && setShowSelectedLayers((show) => !show)}
-							id='toggle-show-selected'
+							id="toggle-show-selected"
 						/>
-						<Label htmlFor='toggle-show-selected'>Show Selected</Label>
+						<Label htmlFor="toggle-show-selected">Show Selected</Label>
 					</div>
 					{props.selected.length > 0 && (
 						<>
 							<Button
-								variant='outline'
+								variant="outline"
 								onClick={() => {
 									if (props.resetSelected) props.resetSelected()
 									else props.setSelected([])
@@ -426,37 +426,37 @@ export default function LayerTable(props: {
 						</>
 					)}
 				</span>
-				<span className='flex h-10 items-center space-x-2'>
+				<span className="flex h-10 items-center space-x-2">
 					<Button
 						onClick={() => setSeed(generateSeed())}
 						disabled={layersRes.isFetching}
-						variant='outline'
-						size='icon'
+						variant="outline"
+						size="icon"
 						data-enabled={randomize}
-						className='data-[enabled=true]:visible invisible'
+						className="data-[enabled=true]:visible invisible"
 					>
 						<Dices />
 					</Button>
-					<div className='flex items-center space-x-1'>
-						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id='toggle-randomize' />
-						<Label htmlFor='toggle-randomize'>Randomize</Label>
+					<div className="flex items-center space-x-1">
+						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
+						<Label htmlFor="toggle-randomize">Randomize</Label>
 					</div>
-					<Separator orientation='vertical' />
+					<Separator orientation="vertical" />
 
 					{/*--------- rows per page ---------*/}
 					{canChangeRowsPerPage && (
-						<div className='flex items-center space-x-2'>
-							<p className='text-sm font-medium'>Rows per page</p>
+						<div className="flex items-center space-x-2">
+							<p className="text-sm font-medium">Rows per page</p>
 							<Select
 								value={`${table.getState().pagination.pageSize}`}
 								onValueChange={(value) => {
 									table.setPageSize(Number(value))
 								}}
 							>
-								<SelectTrigger className='h-8 w-[70px]'>
+								<SelectTrigger className="h-8 w-[70px]">
 									<SelectValue placeholder={table.getState().pagination.pageSize} />
 								</SelectTrigger>
-								<SelectContent side='top'>
+								<SelectContent side="top">
 									{[10, 20, 30, 40, 50].map((pageSize) => (
 										<SelectItem key={pageSize} value={`${pageSize}`}>
 											{pageSize}
@@ -468,7 +468,7 @@ export default function LayerTable(props: {
 					)}
 				</span>
 			</div>
-			<div className='rounded-md border'>
+			<div className="rounded-md border">
 				{/*--------- table ---------*/}
 				<Table>
 					<TableHeader>
@@ -499,7 +499,7 @@ export default function LayerTable(props: {
 											}}
 										>
 											{row.getVisibleCells().map((cell) => (
-												<TableCell className='px-4' key={cell.id}>
+												<TableCell className="px-4" key={cell.id}>
 													{flexRender(cell.column.columnDef.cell, cell.getContext())}
 												</TableCell>
 											))}
@@ -520,9 +520,9 @@ export default function LayerTable(props: {
 				</Table>
 			</div>
 			{/*--------- pagination controls ---------*/}
-			<div className='flex items-center justify-between space-x-2 py-2'>
-				<div className='flex-1  flex items-center space-x-2'>
-					<div className='text-sm text-muted-foreground'>
+			<div className="flex items-center justify-between space-x-2 py-2">
+				<div className="flex-1  flex items-center space-x-2">
+					<div className="text-sm text-muted-foreground">
 						{layersData
 							&& (showSelectedLayers
 								? `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} selected rows`
@@ -530,13 +530,13 @@ export default function LayerTable(props: {
 								? `Showing ${layersData?.layers?.length} of ${layersData?.totalCount} randomized rows`
 								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} matching rows`)}
 					</div>
-					<LoaderCircle data-loading={layersRes.isFetching} className='invisible data-[loading=true]:visible h-4 w-4 animate-spin' />
+					<LoaderCircle data-loading={layersRes.isFetching} className="invisible data-[loading=true]:visible h-4 w-4 animate-spin" />
 				</div>
 				<div className={'space-x-2 ' + (randomize ? 'invisible' : '')}>
-					<Button variant='outline' size='sm' onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
+					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
 						Previous
 					</Button>
-					<Button variant='outline' size='sm' onClick={() => table.nextPage()} disabled={!table.getCanNextPage() || randomize}>
+					<Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage() || randomize}>
 						Next
 					</Button>
 				</div>

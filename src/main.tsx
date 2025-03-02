@@ -11,13 +11,12 @@ import { enableMapSet } from 'immer'
 import FullPageSpinner from './components/full-page-spinner.tsx'
 import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
- 
 const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))
- 
+
 const FilterEdit = React.lazy(() => import('./components/filter-edit.tsx'))
- 
+
 const FilterNew = React.lazy(() => import('./components/filter-new.tsx'))
- 
+
 const LayerQueue = React.lazy(() => import('./components/layer-queue.tsx'))
 
 // Enable Map and Set support in Immer

@@ -52,38 +52,55 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	const validFilterNode = React.useMemo(() => M.isValidFilterNode(props.node), [props.node])
 	return (
-		<div defaultValue='builder' className='w-full space-y-2'>
-			<div className='flex w-full justify-end space-x-2'>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							onClick={() => editorRef.current?.format()}
-							variant='ghost'
-							size='icon'
-							className={activeTab === 'text' ? '' : 'invisible'}
-						>
-							<Braces color='hsl(var(--muted-foreground))' />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>
-						<p>Reformat</p>
-					</TooltipContent>
-				</Tooltip>
-				{props.resetFilter && (
+		<div defaultValue="builder" className="w-full space-x-2 flex">
+			<div className="flex-1">
+				<div className={activeTab === 'builder' ? '' : 'hidden'}>
+					<FilterNodeDisplay depth={0} {...props} />
+				</div>
+				<div className={activeTab === 'text' ? '' : 'hidden'}>
+					<FilterTextEditor ref={editorRef} node={props.node} setNode={(node) => props.setNode(() => node as M.EditableFilterNode)} />
+				</div>
+			</div>
+			{/* -------- toolbar -------- */}
+			<div className="flex flex-col space-y-2">
+				<div className="flex items-center space-x-1 justify-end">
+					{/* -------- format -------- */}
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button onClick={() => props.resetFilter?.()} variant='ghost' size='icon'>
-								<Undo2 color='hsl(var(--muted-foreground))' />
+							<Button
+								onClick={() => editorRef.current?.format()}
+								variant="ghost"
+								size="icon"
+								className={activeTab === 'text' ? '' : 'invisible'}
+							>
+								<Braces color="hsl(var(--muted-foreground))" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>Reset Filter</p>
+							<p>Reformat</p>
 						</TooltipContent>
 					</Tooltip>
-				)}
-				<div className='inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground'>
+
+					{/* -------- reset filter -------- */}
+					{props.resetFilter && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button onClick={() => props.resetFilter?.()} variant="ghost" size="icon">
+									<Undo2 color="hsl(var(--muted-foreground))" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Reset Filter</p>
+							</TooltipContent>
+						</Tooltip>
+					)}
+				</div>
+				<div className="flex items-center space-x-1 justify-end">
+					{props.children}
+				</div>
+				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
-						type='button'
+						type="button"
 						disabled={!validFilterNode && M.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
@@ -95,22 +112,13 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						Text
 					</button>
 					<button
-						type='button'
+						type="button"
 						data-state={activeTab === 'builder' && 'active'}
 						onClick={() => setActiveTab('builder')}
 						className={triggerClass}
 					>
 						Builder
 					</button>
-				</div>
-				{props.children}
-			</div>
-			<div>
-				<div className={activeTab === 'builder' ? '' : 'hidden'}>
-					<FilterNodeDisplay depth={0} {...props} />
-				</div>
-				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<FilterTextEditor ref={editorRef} node={props.node} setNode={(node) => props.setNode(() => node as M.EditableFilterNode)} />
 				</div>
 			</div>
 		</div>
@@ -119,13 +127,13 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPressedChange: (pressed: boolean) => void }) {
 	return (
 		<Toggle
-			aria-label='negate'
+			aria-label="negate"
 			pressed={pressed}
 			onPressedChange={onPressedChange}
-			variant='default'
-			className='h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground'
+			variant="default"
+			className="h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground"
 		>
-			<EqualNot className='w-4' />
+			<EqualNot className="w-4" />
 		</Toggle>
 	)
 }
@@ -226,18 +234,18 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'relative flex flex-col space-y-2')}>
-				<div className='flex items-center space-x-1'>
+				<div className="flex items-center space-x-1">
 					{negationToggle}
 					<ComboBox
-						className='w-min'
+						className="w-min"
 						title={'Block Type'}
 						value={node.type}
 						options={['and', 'or']}
 						onSelect={(v) => changeBlockNodeType(v as M.BlockType)}
 					/>
 					{props.depth > 0 && (
-						<Button size='icon' variant='ghost' onClick={() => deleteNode()}>
-							<Minus color='hsl(var(--destructive))' />
+						<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
+							<Minus color="hsl(var(--destructive))" />
 						</Button>
 					)}
 				</div>
@@ -245,7 +253,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				<span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button className='min-h-0' size='icon' variant='outline'>
+							<Button className="min-h-0" size="icon" variant="outline">
 								<Plus />
 							</Button>
 						</DropdownMenuTrigger>
@@ -277,8 +285,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
-				<Button size='icon' variant='ghost' onClick={() => setNode(() => undefined)}>
-					<Minus color='hsl(var(--destructive))' />
+				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
+					<Minus color="hsl(var(--destructive))" />
 				</Button>
 			</div>
 		)
@@ -300,13 +308,13 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				/>
 				<Link
 					to={AR.link('/filters/:id', node.filterId ?? '')}
-					target='_blank'
+					target="_blank"
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
-					<ExternalLink color='hsl(var(--primary))' />
+					<ExternalLink color="hsl(var(--primary))" />
 				</Link>
-				<Button size='icon' variant='ghost' onClick={() => setNode(() => undefined)}>
-					<Minus color='hsl(var(--destructive))' />
+				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
+					<Minus color="hsl(var(--destructive))" />
 				</Button>
 			</div>
 		)
@@ -352,7 +360,7 @@ export function Comparison(props: {
 	const columnBox = columnEditable
 		? (
 			<ComboBox
-				title='Column'
+				title="Column"
 				allowEmpty={true}
 				value={comp.column}
 				options={columnOptions}
@@ -402,7 +410,7 @@ export function Comparison(props: {
 	const codeBox = (
 		<ComboBox
 			allowEmpty={true}
-			title=''
+			title=""
 			value={comp.code}
 			options={codeOptions}
 			ref={codeBoxRef}
@@ -492,7 +500,7 @@ export function Comparison(props: {
 			valueBox = (
 				<NumericSingleValueConfig
 					ref={valueBoxRef}
-					className='w-[200px]'
+					className="w-[200px]"
 					value={comp.value as number | undefined}
 					setValue={(value) => {
 						return setComp((c) => ({ ...c, value }))
@@ -596,7 +604,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 		<>
 			<span>Apply</span>
 			<ComboBox
-				title='Filter'
+				title="Filter"
 				options={options}
 				allowEmpty={true}
 				value={props.filterId}
@@ -820,7 +828,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	}
 
 	return (
-		<div className='flex w-[200px] items-center space-x-2'>
+		<div className="flex w-[200px] items-center space-x-2">
 			<NumericSingleValueConfig value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
 			<NumericSingleValueConfig ref={ref} value={props.range[1]} setValue={setSecond} />
@@ -881,7 +889,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 			})
 		}
 		return (
-			<div className='flex space-x-2'>
+			<div className="flex space-x-2">
 				<ComboBoxMulti
 					title={props.column}
 					ref={ref}
@@ -890,7 +898,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 					onSelect={onSelect}
 					selectionLimit={mirror ? undefined : 2}
 				/>
-				<div className='items-top flex space-x-1 items-center'>
+				<div className="items-top flex space-x-1 items-center">
 					<Checkbox
 						checked={mirror}
 						disabled={!canMirror(props.values)}
@@ -907,7 +915,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 					/>
 					<Label
 						htmlFor={mirrorCheckboxId}
-						className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+						className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 					>
 						Mirror
 					</Label>

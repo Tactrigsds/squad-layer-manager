@@ -660,7 +660,7 @@ export const FilterEntityIdSchema = z
 	})
 	.min(3)
 	.max(64)
-export const FilterEntityDescriptionSchema = z.string().trim().min(3).max(512)
+export const FilterEntityDescriptionSchema = z.string().trim().min(3).max(2048)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
 export const BaseFilterEntitySchema = z.object({
 	id: FilterEntityIdSchema,

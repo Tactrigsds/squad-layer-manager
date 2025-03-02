@@ -240,126 +240,124 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	)
 	const deleteBtn = (
 		<DeleteFilterDialog onDelete={onDelete}>
-			<Button variant='destructive'>Delete</Button>
+			<Button variant="destructive">Delete</Button>
 		</DeleteFilterDialog>
 	)
 
 	return (
-		<div className='container mx-auto pt-2'>
-			<div className='flex justify-between'>
+		<div className="container mx-auto pt-2">
+			<div className="flex justify-between">
 				{!editingDetails
 					? (
-						<div className='flex flex-col space-y-2 w-full'>
-							<div className='flex items-center justify-between'>
-								<span className='flex space-x-4 items-center'>
+						<div className="flex w-full flex-col space-y-2">
+							<div className="flex items-center justify-between">
+								<span className="flex items-center space-x-4">
 									<h3 className={Typography.H3}>{props.entity.name}</h3>
 									<Icons.Dot />
-									<small className='font-light'>Owner: {props.owner.username}</small>
+									<small className="font-light">Owner: {props.owner.username}</small>
 									<Icons.Dot />
-									<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant='ghost' size='icon'>
+									<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
 										<Icons.Edit />
 									</Button>
 								</span>
-								<span className='space-x-2 flex h-min items-center self-end'>
+								<span className="flex h-min items-center space-x-2 self-end">
 									{loggedInUserRole === 'owner' && (
-										<Badge variant='outline' className='text-nowrap border-primary border-2'>
+										<Badge variant="outline" className="text-nowrap border-2 border-primary">
 											You are the owner of this filter
 										</Badge>
 									)}
 									{loggedInUserRole === 'contributor' && (
-										<Badge variant='outline' className='text-nowrap border-info border-2'>
+										<Badge variant="outline" className="text-nowrap border-2 border-info">
 											You are a contributor
 										</Badge>
 									)}
 									{loggedInUserRole === 'none' && (
-										<Badge variant='outline' className='text-nowrap border-destructive border-2'>
+										<Badge variant="outline" className="text-nowrap border-2 border-destructive">
 											You don't have permission to modify this filter
 										</Badge>
 									)}
 									{loggedInUserRole === 'write-all' && (
-										<Badge variant='outline' className='text-nowrap border-success border-2'>
+										<Badge variant="outline" className="border-success text-nowrap border-2">
 											You have write access to all filters
 										</Badge>
 									)}
 									<FilterContributors filterId={props.entity.id} contributors={props.contributors}>
-										<Button disabled={loggedInUserRole === 'none'} variant='outline'>
+										<Button disabled={loggedInUserRole === 'none'} variant="outline">
 											Show Contributors
 										</Button>
 									</FilterContributors>
 								</span>
 							</div>
-							<Separator orientation='horizontal' />
-							<DescriptionDisplay />
+							<Separator orientation="horizontal" />
+							<DescriptionDisplay description={props.entity.description} />
 						</div>
 					)
 					: (
-						<div className='flex space-x-2'>
-							<form.Field name='name' validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
-								{(field) => {
-									return (
-										<div className='flex flex-col space-y-2'>
-											<Label htmlFor={field.name}>Name</Label>
-											<Input
-												id={field.name}
-												placeholder='Filter name'
-												defaultValue={field.state.value}
-												onBlur={field.handleBlur}
-												onChange={(e) => field.handleChange(e.target.value)}
-											/>
+						<div className="flex space-x-2">
+							<div className="flex flex-col space-y-2">
+								<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
+									{(field) => {
+										return (
+											<div className="flex flex-col space-y-2">
+												<Label htmlFor={field.name}>Name</Label>
+												<Input
+													id={field.name}
+													placeholder="Filter name"
+													defaultValue={field.state.value}
+													onBlur={field.handleBlur}
+													onChange={(e) => field.handleChange(e.target.value)}
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertTitle>Name:</AlertTitle>
+														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)
+									}}
+								</form.Field>
+								<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
+									{(field) => (
+										<div className="flex flex-grow space-x-2">
+											<div className="flex min-w-[900px] flex-col space-y-1">
+												<Label htmlFor={field.name}>Description</Label>
+												<Textarea
+													id={field.name}
+													placeholder="Description"
+													defaultValue={field.state.value ?? ''}
+													onBlur={field.handleBlur}
+													onChange={(e) => field.handleChange(e.target.value)}
+													rows={15}
+												/>
+											</div>
 											{field.state.meta.errors.length > 0 && (
-												<Alert variant='destructive'>
-													<AlertTitle>Name:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-												</Alert>
+												<span>
+													<Alert variant="destructive">
+														<AlertTitle>Description:</AlertTitle>
+														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													</Alert>
+												</span>
 											)}
 										</div>
-									)
-								}}
-							</form.Field>
-							<form.Field
-								name='description'
-								validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}
-							>
-								{(field) => (
-									<div className='flex space-x-2 flex-grow'>
-										<div className='flex flex-col space-y-1 min-w-[900px] '>
-											<Label htmlFor={field.name}>Description</Label>
-											<Textarea
-												id={field.name}
-												placeholder='Description'
-												defaultValue={field.state.value ?? ''}
-												onBlur={field.handleBlur}
-												onChange={(e) => field.handleChange(e.target.value)}
-											/>
-										</div>
-										{field.state.meta.errors.length > 0 && (
-											<span>
-												<Alert variant='destructive'>
-													<AlertTitle>Description:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-												</Alert>
-											</span>
-										)}
-									</div>
-								)}
-							</form.Field>
-							<div className='flex flex-col space-y-1'>
-								<Button
-									className='mt-[16px]'
-									variant='ghost'
-									size='icon'
-									onClick={() => {
-										form.reset()
-										return setEditingDetails(false)
-									}}
-								>
-									<Icons.Trash className='text-destructive' />
-								</Button>
+									)}
+								</form.Field>
 							</div>
+							<Button
+								className="ml-4 self-end"
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									form.reset()
+									return setEditingDetails(false)
+								}}
+							>
+								<Icons.Trash className="text-destructive" />
+							</Button>
 						</div>
 					)}
 			</div>
-			<div className='flex space-x-2 mt-2'>
+			<div className="mt-2 flex space-x-2">
 				<FilterCard
 					node={editedFilter}
 					setNode={setEditedFilter}
@@ -438,48 +436,48 @@ function FilterContributors(props: {
 	return (
 		<Popover>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent className='p-0'>
+			<PopoverContent className="p-0">
 				<CardHeader>
 					<CardTitle>Contributors</CardTitle>
 					<CardDescription>Users and Roles that can edit this filter</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div>
-						<div className='flex space-x-2 items-center'>
-							<h4 className='leading-none'>Users</h4>
+						<div className="flex items-center space-x-2">
+							<h4 className="leading-none">Users</h4>
 							<SelectUserPopover selectUser={addUser}>
-								<Button variant='outline' size='icon'>
+								<Button variant="outline" size="icon">
 									<Icons.Plus />
 								</Button>
 							</SelectUserPopover>
 						</div>
 						<ul>
 							{props.contributors.users.map((user) => (
-								<li key={user.discordId} className='flex space-x-1 items-center'>
+								<li key={user.discordId} className="flex items-center space-x-1">
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
-										className='text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{user.username}</Badge>
 								</li>
 							))}
 						</ul>
 					</div>
-					<div id='roles'>
+					<div id="roles">
 						<div>
-							<Label htmlFor='roles'>Roles</Label>
+							<Label htmlFor="roles">Roles</Label>
 							<SelectRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, role })}>
-								<Button variant='outline' size='icon'>
+								<Button variant="outline" size="icon">
 									<Icons.Plus />
 								</Button>
 							</SelectRolePopover>
 						</div>
 						<ul>
 							{props.contributors.roles.map((role) => (
-								<li key={role} className='flex space-x-1 items-center'>
+								<li key={role} className="flex items-center space-x-1">
 									<Icons.Minus
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, role })}
-										className='text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{role}</Badge>
 								</li>
@@ -513,7 +511,7 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-					<Button variant='destructive' onClick={onDelete}>
+					<Button variant="destructive" onClick={onDelete}>
 						Delete
 					</Button>
 				</AlertDialogFooter>
@@ -534,7 +532,7 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder='Search for a user...' />
+					<CommandInput placeholder="Search for a user..." />
 					<CommandList>
 						{usersRes.data?.code === 'ok'
 							&& usersRes.data.users.map((user) => (
@@ -561,7 +559,7 @@ export function SelectRolePopover(props: { children: React.ReactNode; selectRole
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder='Search for a role...' />
+					<CommandInput placeholder="Search for a role..." />
 					<CommandList>
 						{rolesRes.data?.map((role) => (
 							<CommandItem key={role} onSelect={() => onSelect(role)}>
@@ -577,41 +575,19 @@ export function SelectRolePopover(props: { children: React.ReactNode; selectRole
 
 function DescriptionDisplay({ description }: { description?: string | null }) {
 	const [expanded, setExpanded] = useState(false)
-	const descriptionRef = React.useRef<HTMLDivElement>(null)
-	const [hasMultipleParagraphs, setHasMultipleParagraphs] = useState(false)
-	const truncatedDescription = description.split('\n')[0]?.slice(0, 128)
-
 	if (!description) return null
-
-	const shouldShowExpandButton = hasMultipleParagraphs
-
-	// Parse the content to get the first paragraph when truncated
-	const getDisplayContent = () => {
-		if (expanded) return description
-
-		// Find the first paragraph and return only that
-		const firstParagraphMatch = description.match(/^(.+?)(\n\n|$)/)
-		if (firstParagraphMatch) {
-			return firstParagraphMatch[1]
-		}
-
-		return description
-	}
+	description = description.trim()
+	const truncatedDescription = description.split('\n')[0].slice(0, 128)
+	const truncated = truncatedDescription !== description
 
 	return (
 		<div>
-			<div ref={descriptionRef}>
-				<Markdown components={markdownComponents}>
-					{getDisplayContent()}
-				</Markdown>
+			<div>
+				<Markdown components={markdownComponents}>{expanded ? description : truncatedDescription}</Markdown>
 			</div>
-			{shouldShowExpandButton && (
-				<Button
-					variant='ghost'
-					className='text-sm mt-1'
-					onClick={() => setExpanded(!expanded)}
-				>
-					{expanded ? 'Show Less' : 'Show More'}
+			{truncated && (
+				<Button variant="link" className={Typography.Muted} onClick={() => setExpanded(!expanded)}>
+					{expanded ? 'Hide' : ' Show More'}
 				</Button>
 			)}
 		</div>
@@ -619,45 +595,42 @@ function DescriptionDisplay({ description }: { description?: string | null }) {
 }
 
 const markdownComponents = {
-	h1: ({ node, ...props }: React.ComponentPropsWithoutRef<'h1'>) => (
+	h1: ({ ...props }: React.ComponentPropsWithoutRef<'h1'>) => (
 		<h1 {...props} className={cn('text-xl font-semibold mt-4 mb-2', Typography.H3)} />
 	),
-	h2: ({ node, ...props }: React.ComponentPropsWithoutRef<'h2'>) => (
+	h2: ({ ...props }: React.ComponentPropsWithoutRef<'h2'>) => (
 		<h2 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
 	),
-	h3: ({ node, ...props }: React.ComponentPropsWithoutRef<'h3'>) => (
+	h3: ({ ...props }: React.ComponentPropsWithoutRef<'h3'>) => (
 		<h3 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typography.H3)} />
 	),
-	h4: ({ node, ...props }: React.ComponentPropsWithoutRef<'h4'>) => (
+	h4: ({ ...props }: React.ComponentPropsWithoutRef<'h4'>) => (
 		<h4 {...props} className={cn('text-base font-medium mt-2 mb-1', Typography.H4)} />
 	),
-	p: ({ node, ...props }: React.ComponentPropsWithoutRef<'p'>) => <p {...props} className='py-2' />,
-	ul: ({ node, ...props }: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className='list-disc pl-6 py-2' />,
-	ol: ({ node, ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className='list-decimal pl-6 py-2' />,
-	li: ({ node, ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className='my-1' />,
-	blockquote: ({ node, ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
-		<blockquote {...props} className={cn('border-l-4 border-gray-300 pl-4 italic py-2', Typography.Blockquote)} />
+	p: ({ ...props }: React.ComponentPropsWithoutRef<'p'>) => <p {...props} className="py-2" />,
+	ul: ({ ...props }: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className="list-disc pl-6 py-2" />,
+	ol: ({ ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className="list-decimal pl-6 py-2" />,
+	li: ({ ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className="my-1" />,
+	blockquote: ({ ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
+		<blockquote {...props} className={cn('border-l-4 border-gray-300 py-2 pl-4 italic', Typography.Blockquote)} />
 	),
-	code: ({ node, inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) => (
+	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
 		inline
-			? <code {...props} className='bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded font-mono text-sm' />
-			: <code {...props} className='block bg-gray-100 dark:bg-gray-800 p-3 rounded-md font-mono text-sm overflow-x-auto my-3' />
-	),
-	a: ({ node, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
-		<a {...props} className='text-blue-600 dark:text-blue-400 hover:underline' />
-	),
-	hr: ({ node, ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className='my-6 border-gray-300 dark:border-gray-700' />,
-	img: ({ node, ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className='max-w-full h-auto rounded-md my-4' />,
-	table: ({ node, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
-		<div className='overflow-x-auto my-4'>
-			<table {...props} className='min-w-full divide-y divide-gray-300 dark:divide-gray-700' />
+			? <code {...props} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-sm dark:bg-gray-800" />
+			: <code {...props} className="my-3 block overflow-x-auto rounded-md bg-gray-100 p-3 font-mono text-sm dark:bg-gray-800" />,
+	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className="text-blue-600 hover:underline dark:text-blue-400" />,
+	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-gray-300 dark:border-gray-700" />,
+	img: ({ ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className="my-4 h-auto max-w-full rounded-md" />,
+	table: ({ ...props }: React.ComponentPropsWithoutRef<'table'>) => (
+		<div className="my-4 overflow-x-auto">
+			<table {...props} className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" />
 		</div>
 	),
-	thead: ({ node, ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className='bg-gray-100 dark:bg-gray-800' />,
-	tbody: ({ node, ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
-		<tbody {...props} className='divide-y divide-gray-200 dark:divide-gray-800' />
+	thead: ({ ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className="bg-gray-100 dark:bg-gray-800" />,
+	tbody: ({ ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
+		<tbody {...props} className="divide-y divide-gray-200 dark:divide-gray-800" />
 	),
-	tr: ({ node, ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className='hover:bg-gray-50 dark:hover:bg-gray-900' />,
-	th: ({ node, ...props }: React.ComponentPropsWithoutRef<'th'>) => <th {...props} className='px-4 py-3 text-left text-sm font-semibold' />,
-	td: ({ node, ...props }: React.ComponentPropsWithoutRef<'td'>) => <td {...props} className='px-4 py-3 text-sm' />,
+	tr: ({ ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className="hover:bg-gray-50 dark:hover:bg-gray-900" />,
+	th: ({ ...props }: React.ComponentPropsWithoutRef<'th'>) => <th {...props} className="px-4 py-3 text-left text-sm font-semibold" />,
+	td: ({ ...props }: React.ComponentPropsWithoutRef<'td'>) => <td {...props} className="px-4 py-3 text-sm" />,
 }

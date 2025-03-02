@@ -1,0 +1,1 @@
+ALTER TABLE `filters` MODIFY COLUMN `description` varchar(2048);

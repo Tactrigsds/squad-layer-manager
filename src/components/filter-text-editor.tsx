@@ -135,7 +135,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		},
 	}))
 	return (
-		<div className='grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_auto] rounded-md'>
+		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_auto] rounded-md">
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Filter</h3>
 			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Errors</h3>
 			<div ref={editorEltRef}></div>
