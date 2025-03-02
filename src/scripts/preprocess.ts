@@ -19,6 +19,7 @@ import * as DB from '@/server/db'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
+import { setupOtel } from '@/server/systems/otel'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 
 export const ParsedNanFloatSchema = z
@@ -221,11 +222,13 @@ type RawLayer = z.infer<typeof RawLayerSchema>
 const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
 
 async function main() {
+	console.log('args', process.argv)
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
 		args.push(...objKeys(Steps.Values))
 	}
 	ensureEnvSetup()
+	setupOtel()
 	await ensureLoggerSetup()
 	DB.setupDatabase()
 

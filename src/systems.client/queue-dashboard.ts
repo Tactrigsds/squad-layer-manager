@@ -140,6 +140,34 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 	}
 }
 
+const getVoteChoiceStore = (item: M.LayerListItem) => {
+	const initialState: LLState = {
+		listMutations: ItemMut.initMutations(),
+		layerList: item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: item.source })) ?? [],
+		allowDuplicates: false,
+		allowVotes: false,
+	}
+
+	return Zus.createStore<LLStore>((set, get) => ({
+		...createLLActions(set, get),
+		...initialState,
+	}))
+}
+
+export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
+	const [store, setStore] = React.useState<Zus.StoreApi<LLStore>>(getVoteChoiceStore(itemStore.getState().item))
+	React.useEffect(() => {
+		const unsubscribe = store.subscribe((state) => {
+			const choices = state.layerList.map(item => item.layerId!)
+			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
+			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
+		})
+		return unsubscribe
+	}, [itemStore])
+
+	return store
+}
+
 export const selectLLState = (state: QDState): LLState => ({
 	layerList: state.editedServerState.layerQueue,
 	listMutations: state.queueMutations,
@@ -309,7 +337,6 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	const editChangeMtx = new Mutex()
 	async function tryStartEditing() {
-		 
 		using _ = await acquireInBlock(editChangeMtx)
 		if (get().isEditing) return
 		set({ isEditing: true })
@@ -328,7 +355,6 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	}
 
 	async function tryEndEditing() {
-		 
 		using _ = await acquireInBlock(editChangeMtx)
 		if (!get().isEditing) return
 		set({ stopEditingInProgress: true })

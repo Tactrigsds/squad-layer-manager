@@ -1,5 +1,5 @@
-import { sdk } from '@/server/instrumentation'
-import { LoggerProvider } from '@opentelemetry/api-logs'
+import { sdk as otelSdk } from '@/server/systems/otel'
+import { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
 import { Logger as PinoLogger, LoggerOptions } from 'pino'
 
 import { flattenObjToAttrs } from '@/lib/object'
@@ -39,13 +39,17 @@ const LEVELS = {
 	60: 'FATAL',
 } as const
 
-const logger = ((sdk as any)._loggerProvider as LoggerProvider).getLogger('squad-layer-manager')
+let otelLogger: OtelLogger | undefined
 
 export async function ensureLoggerSetup() {
 	if (baseLogger) return
+	otelLogger = ((otelSdk as any)._loggerProvider as LoggerProvider)?.getLogger('squad-layer-manager')
 	const hooks: pino.LoggerOptions['hooks'] = {
 		logMethod(_inputArgs, method, level) {
 			let inputArgs = [..._inputArgs]
+			if (!otelLogger) {
+				return method.apply(this, _inputArgs)
+			}
 			const span = Otel.default.trace.getActiveSpan()
 			let attrs = {} as Record<string, unknown>
 			let msg = null
@@ -86,7 +90,7 @@ export async function ensureLoggerSetup() {
 			}
 
 			// @ts-expect-error idk
-			logger.emit({ body: msg, attributes: attrs, severityText: LEVELS[level], severityNumber: SEVERITY_NUMBER_MAP[level] })
+			otelLogger.emit({ body: msg, attributes: attrs, severityText: LEVELS[level], severityNumber: SEVERITY_NUMBER_MAP[level] })
 
 			return method.apply(this, _inputArgs)
 		},
