@@ -989,7 +989,7 @@ function LayerListItem(props: QueueItemProps) {
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
 	const serverStatus = useSquadServerStatus()
 	let squadServerNextLayer: M.PossibleUnknownMiniLayer | null = null
-	if (serverStatus!.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
+	if (serverStatus?.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
 
 	const notCurrentNextLayer = props.index === 0 && squadServerNextLayer?.code === 'unknown' && (
 		<Tooltip>
