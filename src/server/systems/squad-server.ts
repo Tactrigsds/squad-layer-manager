@@ -16,6 +16,7 @@ import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
 import StringComparison from 'string-comparison'
+import { z } from 'zod'
 import { ENV } from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
@@ -213,6 +214,12 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 
 	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
 })
+
+export const SquadjsEventSchema = z.object({})
+export type SquadjsEvent = z.infer<typeof SquadjsEventSchema>
+
+export function handleSquadjsEvent(event: SquadjsEvent): any {
+}
 
 export const squadServerRouter = router({
 	watchServerStatus: procedure.subscription(watchServerStatus),

@@ -14,7 +14,11 @@ export const links = [
 		client: createWSClient({
 			keepAlive: {
 				enabled: true,
-				intervalMs: 2000,
+				intervalMs: 5000,
+				pongTimeoutMs: 5000,
+			},
+			retryDelayMs: (attempt) => {
+				return Math.min(10_000, 1000 * Math.pow(2, attempt))
 			},
 			url: wsUrl,
 			onError: (error) => {
@@ -33,7 +37,8 @@ export const links = [
 		}),
 		transformer: superjson,
 	}),
-]
+] as const
+
 export const reactQueryClient = new QueryClient()
 
 export const trpc = createTRPCClient<AppRouter>({ links })
