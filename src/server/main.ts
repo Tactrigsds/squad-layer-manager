@@ -15,13 +15,18 @@ import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
 
 const tracer = Otel.trace.getTracer('squad-layer-manager')
-await C.spanOp('main', { tracer, onError: (err) => baseLogger.fatal(err) }, async () => {
+await C.spanOp('main', {
+	tracer,
+	onError: (err) => {
+		if (!baseLogger) console.error(err)
+		else baseLogger.fatal(err)
+	},
+}, async () => {
 	// Use provided env file path if available
 	await Cli.ensureCliParsed()
-	Config.ensureConfigSetup()
 	Env.ensureEnvSetup()
-	await Config.ensureConfigSetup()
 	ensureLoggerSetup()
+	await Config.ensureConfigSetup()
 	DB.setupDatabase()
 	Rbac.setup()
 	Sessions.setupSessions()

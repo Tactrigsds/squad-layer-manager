@@ -2,6 +2,33 @@ import { z } from 'zod'
 
 export const PercentageSchema = z.number().min(0).max(100)
 
+export const HumanTime = z.string().regex(/^[0-9._]+(s|m|h|d|w|ms)$/).transform((val) => {
+	const match = val.match(/^([0-9.]+)(s|m|h|d|w|ms)$/)
+	if (!match) throw new Error('Invalid time format')
+	const [_, numStr, unit] = match
+	const num = parseFloat(numStr)
+	switch (unit) {
+		case 's':
+			return num * 1000
+		case 'm':
+			return num * 60 * 1000
+		case 'h':
+			return num * 60 * 60 * 1000
+		case 'd':
+			return num * 24 * 60 * 60 * 1000
+		case 'w':
+			return num * 7 * 24 * 60 * 60 * 1000
+		case 'ms':
+			return num
+		default:
+			return num * 1000
+	}
+})
+	.pipe(z.number().min(0).max(Number.MAX_SAFE_INTEGER))
+	.describe(
+		'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds',
+	)
+
 export const ParsedIntSchema = z
 	.string()
 	.regex(/^-?\d+$/)

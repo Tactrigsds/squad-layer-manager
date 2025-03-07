@@ -1,69 +1,64 @@
 import * as AR from '@/app-routes.ts'
-import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import * as FB from '@/lib/filter-builders.ts'
-import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { CSS } from '@dnd-kit/utilities'
-import { useForm } from '@tanstack/react-form'
-import deepEqual from 'fast-deep-equal'
-import * as Im from 'immer'
-import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
-import React from 'react'
-
+import ComboBox from '@/components/combo-box/combo-box.tsx'
+import { LOADING } from '@/components/combo-box/constants.ts'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { useFilter, useFilters } from '@/hooks/filters.ts'
+import { globalToast$ } from '@/hooks/use-global-toast.ts'
+import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
+import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
+import { useToast } from '@/hooks/use-toast'
+import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import * as DH from '@/lib/display-helpers'
 import * as EFB from '@/lib/editable-filter-builders'
+import * as FB from '@/lib/filter-builders.ts'
+import { initMutationState } from '@/lib/item-mutations.ts'
+import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
+import { deepClone } from '@/lib/object.ts'
+import { trpc } from '@/lib/trpc.client.ts'
+import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
-import * as RbacClient from '@/systems.client/rbac.client.ts'
-import * as Icons from 'lucide-react'
-
-import { initMutationState } from '@/lib/item-mutations.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { Comparison } from './filter-card'
-import { Checkbox } from './ui/checkbox.tsx'
-import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
-import TabsList from './ui/tabs-list.tsx'
-
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge.tsx'
-import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { useToast } from '@/hooks/use-toast'
-import { trpc } from '@/lib/trpc.client.ts'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
-
-import ComboBox from '@/components/combo-box/combo-box.tsx'
-import { LOADING } from '@/components/combo-box/constants.ts'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
-import { useFilter, useFilters } from '@/hooks/filters.ts'
-import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
-import { Input } from './ui/input.tsx'
-import { Label } from './ui/label.tsx'
-import VoteTallyDisplay from './votes-display.tsx'
-
-import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
-import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
-import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
-import { deepClone } from '@/lib/object.ts'
 import { useConfig } from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
+import * as RbacClient from '@/systems.client/rbac.client.ts'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { zodValidator } from '@tanstack/zod-form-adapter'
+import deepEqual from 'fast-deep-equal'
+import * as Im from 'immer'
+import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
+import * as Icons from 'lucide-react'
+import React from 'react'
+import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
+import { Comparison } from './filter-card'
 import LayerTable from './layer-table.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
+import { Checkbox } from './ui/checkbox.tsx'
+import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
+import { Input } from './ui/input.tsx'
+import { Label } from './ui/label.tsx'
+import TabsList from './ui/tabs-list.tsx'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
+import VoteTallyDisplay from './votes-display.tsx'
 
 export default function ServerDashboard() {
 	const serverStatusRes = useSquadServerStatus()
@@ -164,16 +159,16 @@ export default function ServerDashboard() {
 								<CardHeader>
 									<span className="flex items-center justify-between">
 										<CardTitle>Now Playing</CardTitle>
-										<EndMatchDialog />
+										{DH.displayPossibleUnknownLayer(serverStatusRes.data.currentLayer)}
 									</span>
 								</CardHeader>
 								<CardContent className="flex justify-between">
-									{DH.displayPossibleUnknownLayer(serverStatusRes.data.currentLayer)}
 									{slmConfig?.matchHistoryUrl && (
-										<a className={buttonVariants({ variant: 'ghost' })} target="_blank" href={slmConfig.matchHistoryUrl}>
+										<a className={buttonVariants({ variant: 'link', className: 'pl-0' })} target="_blank" href={slmConfig.matchHistoryUrl}>
 											View Match History
 										</a>
 									)}
+									<EndMatchDialog />
 								</CardContent>
 							</>
 						)}

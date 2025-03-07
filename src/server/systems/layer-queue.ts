@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, durableSub, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as FB from '@/lib/filter-builders.ts'
 import { deepClone } from '@/lib/object'
@@ -22,7 +23,7 @@ import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
-import { BehaviorSubject, distinctUntilChanged, filter, from, interval, map, scan, Subject, Subscription } from 'rxjs'
+import { BehaviorSubject, distinctUntilChanged, filter, from, interval, map, scan, skip, Subject, Subscription } from 'rxjs'
 import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
@@ -81,15 +82,17 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		}
 
 		// -------- set next layer on server when rcon is connected--------
-		SquadServer.rcon.core.connected$.subscribe(async (isConnected) => {
-			if (!isConnected) return
-			const serverState = await getServerState({}, ctx)
-			const nextLayerId = M.getNextLayerId(serverState.layerQueue)
-			if (nextLayerId) {
-				ctx.log.info('setting initial next layer')
-				await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
-			}
-		})
+		SquadServer.rcon.core.connected$.pipe(
+			durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
+				if (!isConnected) return
+				const serverState = await getServerState({}, ctx)
+				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
+				if (nextLayerId) {
+					ctx.log.info('setting initial next layer')
+					await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
+				}
+			}),
+		).subscribe()
 	})
 
 	serverStateUpdate$.subscribe(([state, ctx]) => {
@@ -97,16 +100,34 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	})
 
 	// -------- schedule post-roll reminders --------
-	interval(1000 * 60 * 10).subscribe(
-		C.spanOp('layer-queue:reminders', { tracer }, async () => {
+	interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
+		durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
-			if (serverState.layerQueue.length === 0) {
+			if (
+				serverState.layerQueue[0]?.vote && lastRoll + CONFIG.reminders.voteReminderInterval < Date.now() && voteState?.code === 'ready'
+			) {
+				await SquadServer.warnAllAdmins(ctx, WARNS.queue.votePending)
+			} else if (serverState.layerQueue.length === 0) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.empty)
-			} else if (serverState.layerQueue.length <= CONFIG.lowQueueWarningThresholdSeconds) {
+			} else if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold && i % 2 === 0) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowLayerCount(serverState.layerQueue.length))
 			}
 		}),
-	)
+	).subscribe()
+
+	// -------- track map rolls for reminders--------
+	// note: temporary solution, if we want something more robust we should be integrating squadjs most likely
+	let lastRoll = -1
+	SquadServer.rcon.serverStatus.observe(ctx).pipe(
+		map(res => res.code === 'ok' && res.data.currentLayer ? res.data.currentLayer : null),
+		filter(layer => !!layer),
+		distinctDeepEquals(),
+		skip(1),
+		durableSub('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
+			ctx.log.info('tracking map roll: %s', DH.displayPossibleUnknownLayer(layer))
+			lastRoll = Date.now()
+		}),
+	).subscribe()
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
 
@@ -120,16 +141,19 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
 			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
-		)
-		.subscribe(async ([status, prevStatus]) => {
-			if (!status) return
+			durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
+				if (!status) return
+				ctx.log.info('checking layer status change')
 
-			processLayerStatusRunner.queue[0] = {
-				params: [ctx, status, prevStatus] as const,
-				task: processLayerStatusChange,
-			}
-			await processLayerStatusRunner.runExclusiveUntilEmpty()
-		})
+				processLayerStatusRunner.queue[0] = {
+					params: [ctx, status, prevStatus] as const,
+					task: processLayerStatusChange,
+				}
+				await processLayerStatusRunner.runExclusiveUntilEmpty()
+				C.setSpanStatus(Otel.SpanStatusCode.OK)
+			}),
+		)
+		.subscribe()
 
 	const processLayerStatusChange = C.spanOp(
 		'layer-queue:process-layer-status-change',
@@ -278,12 +302,15 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	}
 
 	// -------- take editing user out of editing slot on disconnect --------
-	WSSessionSys.disconnect$.subscribe(async (ctx) => {
-		if (userPresence.editState && userPresence.editState.wsClientId === ctx.wsClientId) {
-			delete userPresence.editState
-			userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
-		}
-	})
+	WSSessionSys.disconnect$.pipe(
+		durableSub('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
+			if (userPresence.editState && userPresence.editState.wsClientId === disconnectedCtx.wsClientId) {
+				delete userPresence.editState
+				userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
+			}
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
+		}),
+	).subscribe()
 })
 
 // -------- voting --------
@@ -528,31 +555,36 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	if (!voteState || voteState.code !== 'in-progress') return
 	voteEndTask = new Subscription()
 
-	const finalReminderWaitTime = Math.max(0, voteState.deadline - CONFIG.finalVoteReminderSeconds * 1000 - Date.now())
+	const finalReminderWaitTime = Math.max(0, voteState.deadline - CONFIG.reminders.finalVote - Date.now())
 	const finalReminderBuffer = finalReminderWaitTime - 5 * 1000
-	const regularReminderInterval = CONFIG.voteReminderIntervalSeconds * 1000
+	const regularReminderInterval = CONFIG.reminders.voteReminderInterval
 
 	// -------- schedule regular reminders --------
 	voteEndTask.add(
 		Rx.interval(regularReminderInterval)
-			.pipe(Rx.takeUntil(Rx.timer(finalReminderBuffer)))
-			.subscribe(() => {
-				if (!voteState || voteState.code !== 'in-progress') return
-				const timeLeft = voteState.deadline - Date.now()
-				SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
-			}),
+			.pipe(
+				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
+				durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
+					if (!voteState || voteState.code !== 'in-progress') return
+					const timeLeft = voteState.deadline - Date.now()
+					await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
+				}),
+			)
+			.subscribe(),
 	)
 
 	// -------- schedule final reminder --------
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
-			from(sleep(finalReminderWaitTime)).subscribe(async () => {
-				if (!voteState || voteState.code !== 'in-progress') return
-				await SquadServer.rcon.broadcast(
-					ctx,
-					BROADCASTS.vote.voteReminder(CONFIG.finalVoteReminderSeconds * 1000, voteState.choices, true),
-				)
-			}),
+			from(sleep(finalReminderWaitTime)).pipe(
+				durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
+					if (!voteState || voteState.code !== 'in-progress') return
+					await SquadServer.rcon.broadcast(
+						ctx,
+						BROADCASTS.vote.voteReminder(CONFIG.reminders.finalVote, voteState.choices, true),
+					)
+				}),
+			).subscribe(),
 		)
 	}
 

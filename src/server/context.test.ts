@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import * as Context from '@/server/context'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
+import * as Rx from 'rxjs'
 
 import { ensureEnvSetup } from './env'
 

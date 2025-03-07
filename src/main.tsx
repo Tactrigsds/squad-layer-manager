@@ -21,7 +21,7 @@ const LayerQueue = React.lazy(() => import('./components/layer-queue.tsx'))
 
 // Enable Map and Set support in Immer
 enableMapSet()
-console.log(`%cversion ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: lightgreen')
+console.log(`%cversion ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 
 const router = createBrowserRouter([
 	{

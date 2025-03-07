@@ -60,6 +60,7 @@ export const WARNS = {
 		lowLayerCount(count: number) {
 			return `WARNING: only ${count} items in the queue. Consider adding some more`
 		},
+		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
 		showNext(item: M.LayerListItem | null) {
 			if (!item) return `Next layer not configured`

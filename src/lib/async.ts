@@ -1,8 +1,8 @@
+import * as C from '@/server/context.ts'
+import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
-import { asapScheduler, concat, distinctUntilChanged, EMPTY, Observable, observeOn, OperatorFunction, Subject, Subscription, tap } from 'rxjs'
-
-import type * as C from '@/server/context.ts'
+import * as Rx from 'rxjs'
 import { getNextIntId } from './id'
 
 export function sleep(ms: number) {
@@ -10,7 +10,7 @@ export function sleep(ms: number) {
 }
 
 export function distinctDeepEquals<T>() {
-	return (o: Observable<T>) => o.pipe(distinctUntilChanged((a, b) => deepEqual(a, b)))
+	return (o: Rx.Observable<T>) => o.pipe(Rx.distinctUntilChanged((a, b) => deepEqual(a, b)))
 }
 
 /**
@@ -40,9 +40,9 @@ function defer<T>(): Deferred<T> {
 	return Object.assign(promise, properties) as Deferred<T>
 }
 
-export async function* toAsyncGenerator<T>(observable: Observable<T>) {
+export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 	let nextData = defer<T>() as Deferred<T | null> | null
-	const sub = observable.pipe(observeOn(asapScheduler)).subscribe({
+	const sub = observable.pipe(Rx.observeOn(Rx.asapScheduler)).subscribe({
 		next(data) {
 			const n = nextData
 			nextData = defer()
@@ -71,11 +71,11 @@ export async function* toAsyncGenerator<T>(observable: Observable<T>) {
  * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
  * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
  */
-export function traceTag<T>(tag: string): OperatorFunction<T, T> {
+export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 	// surely this prevents all potential RCEs right???
 	if (!/^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(tag)) {
 		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
-		return (o: Observable<T>) => o
+		return (o: Rx.Observable<T>) => o
 	}
 	const fn = new Function(
 		'observable',
@@ -87,11 +87,11 @@ export function traceTag<T>(tag: string): OperatorFunction<T, T> {
 		}))`,
 	)
 
-	return (o: Observable<T>) => fn(o, Observable)
+	return (o: Rx.Observable<T>) => fn(o, Rx.Observable)
 }
 
-export function cancellableTimeout(ms: number): Observable<void> {
-	return new Observable((subscriber) => {
+export function cancellableTimeout(ms: number): Rx.Observable<void> {
+	return new Rx.Observable((subscriber) => {
 		const timeout = setTimeout(() => {
 			subscriber.next()
 		}, ms)
@@ -107,9 +107,19 @@ export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in
 	}
 }
 
+export function withActiveSpan<T>(name: string, opts: { root: boolean; tracer: Otel.Tracer }) {
+	return (o: Rx.Observable<T>) => {
+		return new Rx.Observable<T>(s => {
+			const sub = o.subscribe(value => opts.tracer.startActiveSpan(name, { root: opts.root }, () => s.next(value)))
+			return () => sub.unsubscribe()
+		})
+	}
+}
+
 type AsyncResourceOpts = {
 	maxLockTime: number
 	defaultTTL: number
+	tracer: Otel.Tracer
 }
 
 // TODO add retries
@@ -117,11 +127,12 @@ type AsyncResourceOpts = {
  *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
  */
 export class AsyncResource<T, Ctx extends C.Log = C.Log> {
+	static tracer = Otel.trace.getTracer('async-resource')
 	mutex = new Mutex()
 	opts: AsyncResourceOpts
 	lastResolveTime: number | null = null
 	fetchedValue: Promise<T> | null = null
-	private valueSubject = new Subject<T>()
+	private valueSubject = new Rx.Subject<T>()
 	constructor(
 		private name: string,
 		private cb: (ctx: Ctx) => Promise<T>,
@@ -131,6 +142,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 		this.opts = opts ?? {}
 		this.opts.maxLockTime ??= 2000
 		this.opts.defaultTTL ??= 1000
+		this.opts.tracer ??= AsyncResource.tracer
 	}
 	async fetchValue(ctx: Ctx) {
 		const promise = this.cb(ctx)
@@ -154,40 +166,21 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 		opts.ttl ??= this.opts.defaultTTL
 
 		let startUnlockCount: (() => void) | undefined
-		let release: (() => void) | undefined
-		if (opts.lock) {
-			const unlockSub = new Subscription()
-			const _release = await this.mutex.acquire()
-			release = async () => {
-				if (!unlockSub.closed) unlockSub.unsubscribe()
-				_release()
-			}
-			startUnlockCount = () => {
-				unlockSub.add(
-					cancellableTimeout(this.opts.maxLockTime).subscribe(() => {
-						ctx.log.warn('lock timeout for resource', this.name)
-						return _release()
-					}),
-				)
-			}
-		} else {
-			release = () => {}
-		}
+
 		try {
 			startUnlockCount?.()
 			if (this.lastResolveTime === null && this.fetchedValue) {
-				return { value: await this.fetchedValue, release }
+				return { value: await this.fetchedValue }
 			}
 			if (this.lastResolveTime === null && this.fetchedValue === null) {
-				return { value: await this.fetchValue(ctx), release }
+				return { value: await this.fetchValue(ctx) }
 			}
 			if (this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
-				return { value: await this.fetchedValue!, release }
+				return { value: await this.fetchedValue! }
 			} else {
-				return { value: await this.fetchValue(ctx), release }
+				return { value: await this.fetchValue(ctx) }
 			}
 		} catch (err) {
-			release()
 			this.fetchedValue = null
 			throw err
 		}
@@ -206,16 +199,16 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 	}
 
 	observingTTLs: [number, number][] = []
-	refetchSub: Subscription | null = null
+	refetchSub: Rx.Subscription | null = null
 
 	// listen to all updates to this resource, refreshing at a minumum when the ttl expires
 	observe(ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
-		if (this.disposed) return EMPTY
+		if (this.disposed) return Rx.EMPTY
 
 		const setupRefetches = () => {
-			const refetch$ = new Observable<void>(() => {
+			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
 				;(async () => {
 					while (refetching) {
@@ -233,12 +226,13 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 
 		const refId = getNextIntId(this.observingTTLs.map(([id]) => id))
 		this.observingTTLs.push([refId, opts.ttl!])
-		return concat(
-			this.fetchedValue ?? EMPTY,
+		return Rx.concat(
+			this.fetchedValue ?? Rx.EMPTY,
 			this.valueSubject.pipe(
+				withActiveSpan(`asyncResourceObserve::${this.name}`, { root: true, tracer: this.opts.tracer }),
 				traceTag(`asyncResourceObserve__${this.name}`),
-				observeOn(asapScheduler),
-				tap({
+				Rx.observeOn(Rx.asapScheduler),
+				Rx.tap({
 					subscribe: () => {
 						this.get(ctx, { ttl: opts.ttl })
 						if (this.observingTTLs.length > 0 && this.refetchSub === null) {
@@ -273,6 +267,7 @@ export class AsyncExclusiveTaskRunner {
 			}
 		} finally {
 			this.running = false
+			this.queue = []
 		}
 	}
 }
@@ -287,5 +282,46 @@ export async function acquireInBlock(mutex: Mutex, bypass = false) {
 			release?.()
 		},
 		mutex,
+	}
+}
+
+export function durableSub<T, O>(
+	name: string,
+	opts: { ctx: C.Log; tracer: Otel.Tracer; retryTimeoutMs?: number; numRetries?: number },
+	cb: (value: T) => Promise<O>,
+): (o: Rx.Observable<T>) => Rx.Observable<O> {
+	return (o) => {
+		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
+		const link: Otel.Link = {
+			context: subSpan.spanContext(),
+			attributes: { 'link.reason': 'async-processing' },
+		}
+		let retriesLeft = opts.numRetries ?? 3
+		return o.pipe(
+			Rx.tap({
+				error: error => {
+					const activeSpan = Otel.default.trace.getActiveSpan()
+					activeSpan?.addLink(link)
+					activeSpan?.setStatus({ code: Otel.SpanStatusCode.ERROR })
+
+					const span = activeSpan ?? subSpan
+					span.recordException(error)
+					opts.ctx.log.error(error)
+				},
+			}),
+			Rx.concatMap(C.spanOp(name, { tracer: opts.tracer, links: [link] }, cb)),
+			Rx.tap({
+				next: () => {
+					retriesLeft = opts.numRetries ?? 3
+				},
+				error: (err) => {
+					opts.ctx.log.error(err)
+					opts.ctx.log.error('retries left for %s : %s', name, retriesLeft)
+					retriesLeft--
+				},
+			}),
+			Rx.retry({ resetOnSuccess: true, count: opts.numRetries ?? 3, delay: opts.retryTimeoutMs ?? 250 }),
+			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
+		)
 	}
 }

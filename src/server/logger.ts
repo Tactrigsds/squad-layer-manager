@@ -41,7 +41,7 @@ const LEVELS = {
 
 let otelLogger: OtelLogger | undefined
 
-export async function ensureLoggerSetup() {
+export function ensureLoggerSetup() {
 	if (baseLogger) return
 	otelLogger = ((otelSdk as any)._loggerProvider as LoggerProvider)?.getLogger('squad-layer-manager')
 	const hooks: pino.LoggerOptions['hooks'] = {

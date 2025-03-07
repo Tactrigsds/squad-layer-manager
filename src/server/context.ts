@@ -45,14 +45,22 @@ export function failOperation(ctx: Op, err?: any, code?: string): void {
 	ctx.error = err
 }
 
-export function spanOp<Cb extends (...args: any[]) => Promise<any>>(
+export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
-	opts: { tracer: Otel.Tracer; onError?: (err: any) => void },
+	opts: { tracer: Otel.Tracer; onError?: (err: any) => void; parentSpan?: Otel.Span; links?: Otel.Link[] },
 	cb: Cb,
 ): Cb {
 	// @ts-expect-error idk
 	return async (...args) => {
-		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan() }, async (span) => {
+		const activeSpanContext = Otel.context.active()
+		let context: Otel.Context
+		if (opts.parentSpan) {
+			context = Otel.trace.setSpan(activeSpanContext, opts.parentSpan)
+		} else {
+			context = activeSpanContext
+		}
+
+		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan(), links: opts.links }, context, async (span) => {
 			try {
 				const result = await cb(...args)
 				if (typeof result === 'object' && 'code' in result) {

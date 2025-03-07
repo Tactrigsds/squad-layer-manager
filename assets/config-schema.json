@@ -100,23 +100,41 @@
       "required": ["help", "startVote", "abortVote", "showNext"],
       "additionalProperties": false
     },
-    "lowQueueWarningThresholdSeconds": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "default": 3,
-      "description": "Number of layers in the queue to trigger a low queue size warning"
-    },
-    "voteReminderIntervalSeconds": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "default": 15,
-      "description": "How often to remind users to vote"
-    },
-    "finalVoteReminderSeconds": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "default": 10,
-      "description": "How far in advance the final vote reminder should be sent"
+    "reminders": {
+      "type": "object",
+      "properties": {
+        "lowQueueWarningThreshold": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 2,
+          "description": "Number of layers in the queue to trigger a low queue size warning"
+        },
+        "adminQueueReminderInterval": {
+          "allOf": [
+            {"type": "string", "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"},
+            {"type": "number", "minimum": 0, "maximum": 9007199254740991}
+          ],
+          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often.",
+          "default": "25s"
+        },
+        "voteReminderInterval": {
+          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "default": "15s",
+          "description": "How often to remind users to vote"
+        },
+        "startVoteThreshold": {
+          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "default": "25m",
+          "description": "How far into a match to start reminding admins to start a vote"
+        },
+        "finalVote": {
+          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "default": "10s",
+          "description": "How far in advance the final vote reminder should be sent"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
     },
     "maxQueueSize": {
       "type": "integer",

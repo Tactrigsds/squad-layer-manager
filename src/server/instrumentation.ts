@@ -5,8 +5,9 @@ import * as Env from './env.ts'
 import * as Cli from './systems/cli.ts'
 
 await Cli.ensureCliParsed()
-Config.ensureConfigSetup()
 Env.ensureEnvSetup()
+await Config.ensureConfigSetup()
+
 setupOtel()
 
 process.on('beforeExit', async () => {

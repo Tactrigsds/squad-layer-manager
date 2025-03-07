@@ -311,7 +311,7 @@ function parseLayerFactions(factionsRaw: string) {
 function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
 	if (matchChat) {
-		ctx.log.trace(`Matched chat message: %s`, decodedPacket.body)
+		ctx.log.debug(`Matched chat message: %s`, decodedPacket.body)
 		const result = {
 			raw: decodedPacket.body,
 			chat: matchChat[1],
@@ -334,7 +334,7 @@ function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
 
 	const matchWarn = decodedPacket.body.match(/Remote admin has warned player (.*)\. Message was "(.*)"/)
 	if (matchWarn) {
-		ctx.log.trace(`Matched warn message: %s`, decodedPacket.body)
+		ctx.log.debug(`Matched warn message: %s`, decodedPacket.body)
 	}
 	return null
 }

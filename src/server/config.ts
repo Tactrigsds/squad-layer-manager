@@ -1,10 +1,15 @@
-import fs from 'node:fs/promises'
-import { z } from 'zod'
-
 import * as SM from '@/lib/rcon/squad-models.ts'
-import { ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
+import { HumanTime, ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
 import * as RBAC from '@/rbac.models'
+import * as Paths from '@/server/paths'
 import * as Cli from '@/server/systems/cli.ts'
+import * as fsPromise from 'fs/promises'
+import stringifyCompact from 'json-stringify-pretty-compact'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { z } from 'zod'
+import zodToJsonSchema from 'zod-to-json-schema'
+import { ENV } from './env.ts'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
@@ -31,14 +36,19 @@ export const ConfigSchema = z.object({
 		abortVote: CommandConfigSchema.describe('Abort the current vote'),
 		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
 	}),
-
-	lowQueueWarningThresholdSeconds: z
-		.number()
-		.positive()
-		.default(3)
-		.describe('Number of layers in the queue to trigger a low queue size warning'),
-	voteReminderIntervalSeconds: z.number().positive().default(15).describe('How often to remind users to vote'),
-	finalVoteReminderSeconds: z.number().positive().default(10).describe('How far in advance the final vote reminder should be sent'),
+	reminders: z.object({
+		lowQueueWarningThreshold: z
+			.number()
+			.positive()
+			.default(2)
+			.describe('Number of layers in the queue to trigger a low queue size warning'),
+		adminQueueReminderInterval: HumanTime.default('25s').describe(
+			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
+		),
+		voteReminderInterval: HumanTime.default('15s').describe('How often to remind users to vote'),
+		startVoteThreshold: HumanTime.default('25m').describe('How far into a match to start reminding admins to start a vote'),
+		finalVote: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
+	}).default({}),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
 
@@ -61,6 +71,11 @@ export let CONFIG!: Config
 
 export async function ensureConfigSetup() {
 	if (CONFIG) return
+
+	if (ENV.NODE_ENV === 'development') {
+		await generateConfigJsonSchema()
+	}
+
 	const raw = await fs.readFile(Cli.options.config, 'utf-8')
 	const rawObj = JSON.parse(raw)
 	CONFIG = ConfigSchema.parse(rawObj)
@@ -75,6 +90,13 @@ export async function ensureConfigSetup() {
 			allStrings.add(str)
 		}
 	}
+}
+
+export async function generateConfigJsonSchema() {
+	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
+	const schema = zodToJsonSchema(ConfigSchema.extend({ ['$schema']: z.string() }))
+	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
+	console.log('Wrote generated config schema to %s', schemaPath)
 }
 
 export type Config = z.infer<typeof ConfigSchema>
