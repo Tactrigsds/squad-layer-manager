@@ -1,5 +1,5 @@
-import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models'
+import { trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import superjson from 'superjson'
 

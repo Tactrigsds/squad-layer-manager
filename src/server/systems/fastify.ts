@@ -160,8 +160,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		prefix: AR.exists('/trpc'),
 		useWSS: true,
 		keepAlive: {
-			enabled: true,
-			pingMs: 30_000,
+			enabled: false,
+			pingMs: 5000,
 			pongWaitMs: 5000,
 		},
 		trpcOptions: {

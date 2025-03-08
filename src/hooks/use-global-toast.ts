@@ -15,3 +15,5 @@ export function useGlobalToast() {
 		return () => sub.unsubscribe()
 	}, [toaster])
 }
+
+globalToast$.next({})

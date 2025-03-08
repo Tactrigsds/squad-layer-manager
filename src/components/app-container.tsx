@@ -6,14 +6,18 @@ import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { trpcConnectedAtom } from '@/trpc.client'
 import React from 'react'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { useAtomValue } from 'jotai'
 import { ServerUnreachable } from './server-offline-display'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
+	const trpcConnected = useAtomValue(trpcConnectedAtom)
 	const statusRes = useSquadServerStatus()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
@@ -44,6 +48,11 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
 					{statusRes?.code === 'ok' && (
 						<>
+							{trpcConnected === false && (
+								<Alert variant="destructive" className="flex items-center space-x-2">
+									<AlertTitle>Websocket is Disconnected</AlertTitle>
+								</Alert>
+							)}
 							<h3 className={Typography.H4}>{statusRes.data.name}</h3>
 							<div className="flex flex-col">
 								<div className={Typography.Small}>

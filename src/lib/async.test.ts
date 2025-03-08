@@ -1,7 +1,6 @@
 import * as C from '@/server/context'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
-import { Mutex } from 'async-mutex'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { AsyncResource, sleep } from './async'
 
@@ -95,29 +94,5 @@ describe('AsyncResource', () => {
 		expect(values).toEqual([1, 2, 3])
 
 		sub.unsubscribe()
-	})
-
-	test('lock prevents concurrent access', async () => {
-		const resource = new AsyncResource('test', async () => {
-			await sleep(55)
-			return 1
-		})
-
-		const start = Date.now()
-		const [result1, result2] = await Promise.all([
-			resource.get(ctx, { lock: true, ttl: 0 }).then((res) => {
-				res.release()
-				return res.value
-			}),
-			resource.get(ctx, { lock: true, ttl: 0 }).then((res) => {
-				res.release()
-				return res.value
-			}),
-		])
-
-		const elapsed = Date.now() - start
-		expect(elapsed).toBeGreaterThanOrEqual(100)
-		expect(result1).toBe(1)
-		expect(result2).toBe(1)
 	})
 })

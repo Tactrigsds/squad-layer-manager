@@ -1,6 +1,6 @@
-import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models.ts'
 import type { WatchFilterOutput } from '@/server/systems/filters-entity'
+import { trpc } from '@/trpc.client'
 import { state } from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'

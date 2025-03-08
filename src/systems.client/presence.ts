@@ -1,6 +1,6 @@
-import { trpc } from '@/lib/trpc.client'
 import * as M from '@/models'
 import * as PartsSys from '@/systems.client/parts'
+import { trpc } from '@/trpc.client'
 import { bind } from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import * as Rx from 'rxjs'

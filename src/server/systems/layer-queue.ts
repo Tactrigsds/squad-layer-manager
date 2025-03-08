@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, durableSub, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, durableSub as durableOp, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as FB from '@/lib/filter-builders.ts'
@@ -83,7 +83,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 		// -------- set next layer on server when rcon is connected--------
 		SquadServer.rcon.core.connected$.pipe(
-			durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
+			durableOp('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
 				if (!isConnected) return
 				const serverState = await getServerState({}, ctx)
 				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
@@ -101,7 +101,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 	// -------- schedule post-roll reminders --------
 	interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
-		durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
+		durableOp('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
 			if (
 				serverState.layerQueue[0]?.vote && lastRoll + CONFIG.reminders.voteReminderInterval < Date.now() && voteState?.code === 'ready'
@@ -123,7 +123,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		filter(layer => !!layer),
 		distinctDeepEquals(),
 		skip(1),
-		durableSub('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
+		durableOp('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
 			ctx.log.info('tracking map roll: %s', DH.displayPossibleUnknownLayer(layer))
 			lastRoll = Date.now()
 		}),
@@ -141,7 +141,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
 			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
-			durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
+			durableOp('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
 				if (!status) return
 				ctx.log.info('checking layer status change')
 
@@ -303,7 +303,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 	// -------- take editing user out of editing slot on disconnect --------
 	WSSessionSys.disconnect$.pipe(
-		durableSub('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
+		durableOp('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
 			if (userPresence.editState && userPresence.editState.wsClientId === disconnectedCtx.wsClientId) {
 				delete userPresence.editState
 				userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
@@ -564,7 +564,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
+				durableOp('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
 					await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
@@ -577,7 +577,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
 			from(sleep(finalReminderWaitTime)).pipe(
-				durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
+				durableOp('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					await SquadServer.rcon.broadcast(
 						ctx,

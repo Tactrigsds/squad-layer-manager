@@ -5,7 +5,7 @@ import { ReactNode } from 'react'
 import React from 'react'
 
 import { Toaster } from '@/components/ui/toaster'
-import { reactQueryClient, trpc } from '@/lib/trpc.client.ts'
+import { reactQueryClient, trpc } from '@/trpc.client'
 
 import { useGlobalToast } from '@/hooks/use-global-toast'
 import { configAtom } from '@/systems.client/config.client'

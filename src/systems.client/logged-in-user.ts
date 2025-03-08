@@ -1,5 +1,5 @@
-import { reactQueryClient, trpc } from '@/lib/trpc.client'
 import * as PartSys from '@/systems.client/parts'
+import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 
 // const loggedInUserSubject$ = new Subject<(M.UserWithRbac & C.WSSession) | null>()

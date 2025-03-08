@@ -1,6 +1,6 @@
 import type * as SM from '@/lib/rcon/squad-models.ts'
-import { trpc } from '@/lib/trpc.client.ts'
 import * as M from '@/models.ts'
+import { trpc } from '@/trpc.client'
 import { useMutation } from '@tanstack/react-query'
 import { atom, getDefaultStore, useAtomValue } from 'jotai'
 import React from 'react'
