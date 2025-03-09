@@ -1,4 +1,4 @@
-import { bigint, boolean, float, index, int, json, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 
 export const factions = mysqlTable(
@@ -97,10 +97,16 @@ export const layers = mysqlTable(
 	},
 )
 
-// export const matchHistory = mysqlTable('matchHistory', {
-// 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
-// 	layerId: varchar('layerId', { length: 64 }).notNull(),
-// })
+export const matchHistory = mysqlTable('matchHistory', {
+	id: int('id').primaryKey().autoincrement(),
+	// may not be in layerId table if unknown layers are set
+	layerId: varchar('layerId', { length: 256 }).notNull(),
+	startTime: timestamp('startTime').notNull(),
+	endTime: timestamp('endTime'),
+	winner: mysqlEnum('winner', ['team1', 'team2', 'draw']),
+	team1Tickets: int('team1Tickets'),
+	team2Tickets: int('team2Tickets'),
+})
 
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),

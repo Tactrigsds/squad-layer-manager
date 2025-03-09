@@ -16,11 +16,10 @@ export const routes = {
 		link: ([id]) => `/filters/${id}`,
 	}),
 
-	...defRoute('/mock-server', []),
-
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),
 	...defRoute('/logout', [], { handle: 'custom' }),
+	...defRoute('/squadjs/forward', [], { handle: 'custom' }),
 
 	...defRoute('/trpc', [], { handle: 'custom', websocket: true }),
 } as const satisfies Record<string, RouteDefinition>

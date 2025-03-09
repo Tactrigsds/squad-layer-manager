@@ -32,13 +32,13 @@ export function useAreLayersInPool(input: Parameters<typeof trpc.layers.areLayer
 		queryFn: async () => {
 			let allFound = false
 
-			const results: { id: M.LayerId; matchesFilter: boolean }[] = []
+			const results: { id: M.LayerId; matchesFilter: boolean; exists: boolean }[] = []
 			if (input.poolFilterId) {
 				allFound = true
 				for (const layerId of input.layers) {
 					const status = PartsSys.findLayerState(input.poolFilterId, layerId)
 					if (status) {
-						results.push({ id: layerId, matchesFilter: status.inPool })
+						results.push({ id: layerId, matchesFilter: status.inPool, exists: status.exists })
 					} else {
 						allFound = false
 					}
@@ -56,6 +56,21 @@ export function useAreLayersInPool(input: Parameters<typeof trpc.layers.areLayer
 				}
 			}
 			return { code: 'ok' as const, results }
+		},
+	})
+}
+
+export function useLayerExists(
+	input: Parameters<typeof trpc.layers.layerExists.query>[0],
+	options?: { enabled?: boolean; usePlaceholderData?: boolean },
+) {
+	options ??= {}
+	return useQuery({
+		...options,
+		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
+		queryKey: ['layerExists', superjson.serialize(input)],
+		queryFn: async () => {
+			return await trpc.layers.layerExists.query(input)
 		},
 	})
 }

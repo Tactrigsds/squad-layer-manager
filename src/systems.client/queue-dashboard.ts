@@ -239,7 +239,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 		return {
 			listMutations: mutState,
 			allowDuplicates: false,
-			layerList: state.item.vote?.choices.map((layerId) => ({ id: layerId, layerId, itemId: layerId, source: 'manual' })) ?? [],
+			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: 'manual' })) ?? [],
 			allowVotes: false,
 		}
 	}
@@ -274,7 +274,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 }
 
 export function getEditableServerState(state: M.LQServerState): MutServerStateWithIds {
-	const layerQueue = state.layerQueue.map((item) => ({ id: createId(6), ...item }))
+	const layerQueue = state.layerQueue
 	const historyFilters = state.historyFilters.map((filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId)
 	return {
 		// @ts-expect-error idk

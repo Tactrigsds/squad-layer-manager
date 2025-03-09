@@ -67,11 +67,11 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 							<div className="grid h-full grid-cols-[auto_auto]">
 								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
 								<span className={cn(Typography.Small, 'font-bold')}>
-									{statusRes.data.currentLayer && DH.displayPossibleUnknownLayer(statusRes.data.currentLayer)}
+									{statusRes.data.currentLayer && DH.displayUnvalidatedLayer(statusRes.data.currentLayer)}
 								</span>
 								<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
 								<span className={cn(Typography.Small, 'font-bold')}>
-									{statusRes.data.nextLayer && DH.displayPossibleUnknownLayer(statusRes.data.nextLayer)}
+									{statusRes.data.nextLayer && DH.displayUnvalidatedLayer(statusRes.data.nextLayer)}
 								</span>
 							</div>
 						</>

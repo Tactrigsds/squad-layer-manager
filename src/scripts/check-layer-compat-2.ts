@@ -21,17 +21,15 @@ async function main() {
 		})
 		await rcon.connect(ctx)
 		const squadRcon = new SquadRcon(ctx, rcon)
-		const layer1: M.MiniLayer = M.getMiniLayerFromId(
-			M.getLayerId({
-				Level: 'Yehorivka',
-				LayerVersion: 'V1',
-				Gamemode: 'RAAS',
-				Faction_1: 'USA',
-				Faction_2: 'RGF',
-				SubFac_1: 'CombinedArms',
-				SubFac_2: 'CombinedArms',
-			}),
-		)
+		const layer1 = M.getLayerId({
+			Level: 'Yehorivka',
+			LayerVersion: 'V1',
+			Gamemode: 'RAAS',
+			Faction_1: 'USA',
+			Faction_2: 'RGF',
+			SubFac_1: 'CombinedArms',
+			SubFac_2: 'CombinedArms',
+		})
 
 		await squadRcon.setNextLayer(ctx, layer1)
 		const returnedRes = (await squadRcon.serverStatus.get(ctx)).value

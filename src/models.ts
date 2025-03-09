@@ -17,10 +17,7 @@ export const getLayerKey = (layer: Layer) =>
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = SchemaModels.Layer & MiniLayer
 
-export type Faction = keyof (typeof _StaticLayerComponents)['factionFullNames']
 export type Subfaction = keyof (typeof _StaticLayerComponents)['subfactionAbbreviations']
-export const SUBFACTION = z.enum(_StaticLayerComponents.subfactions as [Subfaction, ...Subfaction[]])
-export const FACTION = z.enum(_StaticLayerComponents.factions as [Faction, ...Faction[]])
 
 export type LayerIdArgs = {
 	Level: string
@@ -32,21 +29,136 @@ export type LayerIdArgs = {
 	SubFac_2: string | null
 }
 
-export const LAYER_STRING_PROPERTIES = ['Level', 'Gamemode', 'LayerVersion'] as const satisfies (keyof MiniLayer)[]
-export function parseLayerString(layer: string) {
-	// eslint-disable-next-line prefer-const
-	let [level, gamemode, version] = layer.split('_')
-	let jensensFactions: [string, string] | undefined
-	if (level === 'JensensRange') {
-		jensensFactions = gamemode.split('-') as [string, string]
-		gamemode = 'Training'
+export type ParsedFaction = {
+	faction: string
+	subFaction: string | null
+}
+
+export function isRawLayerId(id: LayerId) {
+	return id.startsWith('RAW:')
+}
+
+export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
+	try {
+		const layer = getMiniLayerFromId(rawLayerText)
+		return {
+			code: 'parsed',
+			id: layer.id,
+			layer,
+		}
+	} catch {
+		// pass
 	}
+
+	rawLayerText = rawLayerText.replace(/^RAW:/, '')
+	rawLayerText = rawLayerText.replace(/^AdminSetNextLayer /, '')
+	if (rawLayerText.split(/\s/).length > 3) {
+		return {
+			code: 'raw',
+			id: `RAW:${rawLayerText}`,
+		}
+	}
+	const [layerString, faction1String, faction2String] = rawLayerText.split(/\s/)
+	const parsedLayer = parseLayerStringSegment(layerString)
+	const [faction1, faction2] = parseLayerFactions(faction1String, faction2String)
+	if (!parsedLayer || !faction1 || !faction2) {
+		return {
+			code: 'raw',
+			id: `RAW:${rawLayerText}`,
+			partialLayer: {
+				Level: parsedLayer?.level,
+				Layer: layerString,
+				Gamemode: parsedLayer?.gamemode,
+				LayerVersion: parsedLayer?.version ?? null,
+				Faction_1: faction1?.faction,
+				SubFac_1: faction1?.subFaction,
+				Faction_2: faction2?.faction,
+				SubFac_2: faction2?.subFaction,
+			},
+		}
+	}
+	const {
+		level,
+		gamemode,
+		version,
+	} = parsedLayer
+
+	const layerIdArgs: LayerIdArgs = {
+		Level: level,
+		Gamemode: gamemode,
+		LayerVersion: version ?? null,
+		Faction_1: faction1.faction,
+		SubFac_1: faction1.subFaction,
+		Faction_2: faction2.faction,
+		SubFac_2: faction2.subFaction,
+	}
+
+	const miniLayer = {
+		...layerIdArgs,
+		id: getLayerId(layerIdArgs),
+		Layer: layerString,
+	} as MiniLayer
+	const res = MiniLayerSchema.safeParse(miniLayer)
+	if (res.success) return { code: 'parsed', id: res.data.id, layer: res.data }
+	return {
+		code: 'raw',
+		id: `RAW:${rawLayerText}`,
+		partialLayer: {
+			Level: level,
+			Layer: layerString,
+			Gamemode: gamemode,
+			LayerVersion: version ?? null,
+			Faction_1: faction1.faction,
+			SubFac_1: faction1.subFaction,
+			Faction_2: faction2.faction,
+			SubFac_2: faction2.subFaction,
+		},
+	}
+}
+
+export const LAYER_STRING_PROPERTIES = ['Level', 'Gamemode', 'LayerVersion'] as const satisfies (keyof MiniLayer)[]
+export function parseLayerStringSegment(layer: string) {
+	if (layer.startsWith('JensensRange')) {
+		const jensensFactions = layer.slice('JensensRange_'.length).split('-')
+		return {
+			level: 'JensensRange',
+			gamemode: 'Training',
+			version: null,
+			jensensFactions,
+		}
+	}
+	const groups = layer.match(/^([A-Za-z0-9]+)_([A-Za-z0-9]+)?_([A-Za-z0-9]+)$/)
+	if (!groups) return null
+	const [level, gamemode, version] = groups.slice(1)
 	return {
 		level: level,
 		gamemode: gamemode,
 		version: version?.toUpperCase() ?? null,
-		jensensFactions,
 	}
+}
+
+export function factionFullNameToAbbr(fullName: string, components = StaticLayerComponents) {
+	return revLookup(components.factionFullNames, fullName)
+}
+
+export function subfacFullNameToAbbr(fullName: string, components = StaticLayerComponents) {
+	// @ts-expect-error idc
+	return revLookup(components.subfactionFullNames, fullName)!
+}
+
+function parseLayerFactions(faction1String: string, faction2String: string) {
+	const parsedFactions: [ParsedFaction | null, ParsedFaction | null] = [null, null]
+	for (let i = 0; i < 2; i++) {
+		const factionString = i === 0 ? faction1String : faction2String
+		if (!factionString) continue
+		const [faction, subFaction] = factionString.split('+').map(s => s.trim())
+		if (!faction) continue
+		parsedFactions[i] = {
+			faction: faction.trim(),
+			subFaction: subFaction?.trim(),
+		}
+	}
+	return parsedFactions
 }
 
 export type LayerComponents = {
@@ -90,7 +202,9 @@ export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | '
 }
 
 export function getLayerId(layer: LayerIdArgs, components: LayerComponents = StaticLayerComponents) {
-	let mapLayer = `${components.levelAbbreviations[layer.Level]}-${components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode}`
+	const levelPart = components.levelAbbreviations[layer.Level] ?? layer.Level
+	const gamemodePart = components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode
+	let mapLayer = `${levelPart}-${gamemodePart}`
 	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
 
 	const team1 = getLayerTeamString(layer.Faction_1, layer.SubFac_1)
@@ -99,7 +213,7 @@ export function getLayerId(layer: LayerIdArgs, components: LayerComponents = Sta
 }
 
 export function getLayerTeamString(faction: string, subfac: string | null, components: LayerComponents = StaticLayerComponents) {
-	const abbrSubfac = subfac ? components.subfactionAbbreviations[subfac] : ''
+	const abbrSubfac = subfac ? (components.subfactionAbbreviations[subfac] ?? subfac) : ''
 	return abbrSubfac ? `${faction}-${abbrSubfac}` : faction
 }
 export function parseTeamString(
@@ -113,8 +227,21 @@ export function parseTeamString(
 	}
 }
 
+export function getLayerDetailsfromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
+	if (unvalidatedLayer.code === 'raw') return unvalidatedLayer.partialLayer ?? {}
+	const { id: _, ...partial } = unvalidatedLayer.layer
+	return partial
+}
+
+export function getUnvalidatedLayerFromId(id: string, components = StaticLayerComponents): UnvalidatedMiniLayer {
+	if (id.startsWith('RAW:')) {
+		return parseRawLayerText(id.slice('RAW:'.length))
+	}
+	const layer = getMiniLayerFromId(id, components)
+	return { code: 'parsed', layer, id }
+}
+
 export function getMiniLayerFromId(id: string, components = StaticLayerComponents): MiniLayer {
-	// console.trace('getMiniLayerFromId', id)
 	const [mapPart, faction1Part, faction2Part] = id.split(':')
 	const [mapAbbr, gamemodeAbbr, versionPart] = mapPart.split('-')
 	let gamemode = revLookup(components.gamemodeAbbreviations, gamemodeAbbr)
@@ -149,14 +276,15 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		Layer: layer,
 		Gamemode: gamemode,
 		LayerVersion: layerVersion,
-		Faction_1: faction1 as Faction,
+		Faction_1: faction1,
 		SubFac_1: subfac1,
-		Faction_2: faction2 as Faction,
+		Faction_2: faction2,
 		SubFac_2: subfac2,
 	}
 }
 
-function validateId(id: string) {
+function validateLayerId(id: string) {
+	if (id.startsWith('RAW:')) return true
 	try {
 		getMiniLayerFromId(id)
 		return true
@@ -165,7 +293,7 @@ function validateId(id: string) {
 	}
 }
 
-export const LayerIdSchema = z.string().refine(validateId, {
+export const LayerIdSchema = z.string().min(1).max(255).refine(validateLayerId, {
 	message: 'Is valid layer id',
 })
 export type LayerId = z.infer<typeof LayerIdSchema>
@@ -562,6 +690,10 @@ export type LayerQueue = z.infer<typeof LayerQueueSchema>
 export type LayerListItem = z.infer<typeof LayerQueueItemSchema>
 export type NewLayerListItem = Omit<LayerListItem, 'itemId'>
 
+export function getActiveItemLayerId(item: LayerListItem) {
+	return item.layerId ?? item.vote!.choices[0]
+}
+
 export function createLayerListItem(newItem: NewLayerListItem): LayerListItem {
 	return {
 		...newItem,
@@ -587,10 +719,10 @@ export const MiniLayerSchema = z.object({
 		.string()
 		.nullable()
 		.transform((v) => (v === null ? v : v.toUpperCase())),
-	Faction_1: FACTION,
-	SubFac_1: SUBFACTION.nullable(),
-	Faction_2: FACTION,
-	SubFac_2: SUBFACTION.nullable(),
+	Faction_1: z.string(),
+	SubFac_1: z.string().nullable(),
+	Faction_2: z.string(),
+	SubFac_2: z.string().nullable(),
 })
 
 export const MiniLayersWithCollections = MiniLayerSchema.transform(includeComputedCollections)
@@ -610,7 +742,11 @@ export function includeComputedCollections<T extends MiniLayer>(layer: T): T & L
 }
 
 export type MiniLayer = z.infer<typeof MiniLayerSchema>
-export type PossibleUnknownMiniLayer = { code: 'known'; layer: MiniLayer } | { code: 'unknown'; layerString: string; factionString: string }
+export type UnvalidatedMiniLayer = { code: 'parsed'; id: string; layer: MiniLayer } | {
+	code: 'raw'
+	id: string
+	partialLayer?: Partial<MiniLayer>
+}
 
 export function isFullMiniLayer(layer: Partial<MiniLayer>): layer is MiniLayer {
 	return MiniLayerSchema.safeParse(layer).success
@@ -950,6 +1086,7 @@ export function getNextLayerId(layerQueue: LayerQueue) {
 // layer status as it relates to the layer pool, other possibly other things later
 export type LayerStatus = {
 	inPool: boolean
+	exists: boolean
 }
 
 export type UserPart = { users: User[] }

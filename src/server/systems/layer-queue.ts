@@ -89,7 +89,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
 				if (nextLayerId) {
 					ctx.log.info('setting initial next layer')
-					await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
+					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 				}
 			}),
 		).subscribe()
@@ -124,14 +124,14 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		distinctDeepEquals(),
 		skip(1),
 		durableOp('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
-			ctx.log.info('tracking map roll: %s', DH.displayPossibleUnknownLayer(layer))
+			ctx.log.info('tracking map roll: %s', DH.displayUnvalidatedLayer(layer))
 			lastRoll = Date.now()
 		}),
 	).subscribe()
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
 
-	type LayerStatus = { currentLayer: M.PossibleUnknownMiniLayer; nextLayer: M.PossibleUnknownMiniLayer | null }
+	type LayerStatus = { currentLayer: M.UnvalidatedMiniLayer; nextLayer: M.UnvalidatedMiniLayer | null }
 	type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
 	const processLayerStatusRunner = new AsyncExclusiveTaskRunner()
 	SquadServer.rcon.serverStatus
@@ -164,7 +164,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
 				await DB.runTransaction(ctx, async (ctx) => {
 					const serverState = await getServerState({ lock: true }, ctx)
-					if (status.currentLayer.code === 'known' && M.getNextLayerId(serverState.layerQueue) === status.currentLayer.layer.id) {
+					if (status.currentLayer.code === 'parsed' && M.getNextLayerId(serverState.layerQueue) === status.currentLayer.layer.id) {
 						// new current layer was expected, so we just need to roll
 						await handleServerRoll(ctx, serverState)
 					} else {
@@ -190,7 +190,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 						ctx.log.warn("Layer was set at an unexpected time, but no next layer is in the queue. I don't think this can happen")
 						return
 					}
-					await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
+					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 					break
 				}
 				default:
@@ -234,7 +234,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				.where(E.eq(Schema.servers.id, CONFIG.serverId))
 			const nextLayer = M.getNextLayerId(layerQueue)
 			if (nextLayer) {
-				await SquadServer.rcon.setNextLayer(baseCtx, M.getMiniLayerFromId(nextLayer))
+				await SquadServer.rcon.setNextLayer(baseCtx, nextLayer)
 			}
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'server-roll' } }, baseCtx])
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
@@ -250,7 +250,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			const time = new Date()
 			const nextLayer = M.getNextLayerId(serverState.layerQueue)
 			if (nextLayer) {
-				await SquadServer.rcon.setNextLayer(baseCtx, M.getMiniLayerFromId(nextLayer))
+				await SquadServer.rcon.setNextLayer(baseCtx, nextLayer)
 			}
 			serverState.lastRoll = time
 			await baseCtx
@@ -270,12 +270,11 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	 */
 	function checkForNextLayerChangeActions(status: LayerStatus, serverState: M.LQServerState, voteState: M.VoteState | null = null) {
 		if (status.nextLayer === null) return { code: 'null-layer-set:reset' as const }
-		if (!status.nextLayer || status.nextLayer.code === 'unknown') return { code: 'unknown-layer-set:no-action' as const }
+		if (!status.nextLayer) return { code: 'unknown-layer-set:no-action' as const }
 
 		const layerQueue = serverState.layerQueue
-		const nextLayer = status.nextLayer.layer
 		const serverNextLayerId = M.getNextLayerId(layerQueue)
-		if (serverNextLayerId === nextLayer.id) return { code: 'no-layer-set:no-action' as const }
+		if (serverNextLayerId === status.nextLayer.id) return { code: 'no-layer-set:no-action' as const }
 
 		// don't respect the override if the map has rolled recently, as the gameserver probably set it to something random
 		if (serverState.lastRoll !== null) {
@@ -671,7 +670,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer }
 	voteState = res.voteUpdate.state
 	voteStateUpdate$.next([ctx, res.voteUpdate])
 	if (res.voteUpdate.state!.code === 'ended:winner') {
-		await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(res.voteUpdate.state!.winner))
+		await SquadServer.rcon.setNextLayer(ctx, res.voteUpdate.state!.winner)
 		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.winnerSelected(res.tally!, res.voteUpdate.state!.winner))
 	}
 	if (res.voteUpdate!.state!.code === 'ended:insufficient-votes') {
@@ -903,7 +902,7 @@ const updateQueue = C.spanOp(
 
 		const nextLayerId = M.getNextLayerId(res.serverState.layerQueue)
 		if (nextLayerId) {
-			await SquadServer.rcon.setNextLayer(ctx, M.getMiniLayerFromId(nextLayerId))
+			await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 		}
 
 		const update: M.LQServerStateUpdate = {
@@ -997,6 +996,7 @@ async function includeLayerStatusPart(ctx: C.Db & C.Log, update: M.LQServerState
 	for (const result of inPoolRes.results) {
 		part.layerInPoolState.set(M.getLayerStatusId(result.id, update.state.settings.queue.poolFilterId!), {
 			inPool: result.matchesFilter,
+			exists: result.exists,
 		})
 	}
 

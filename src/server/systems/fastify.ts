@@ -2,21 +2,12 @@ import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 
-import * as Messages from '@/messages'
-import oauthPlugin from '@fastify/oauth2'
-import fastifyStatic from '@fastify/static'
-import ws from '@fastify/websocket'
-import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
-import Cookie from 'cookie'
-import { eq } from 'drizzle-orm'
-import fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import * as path from 'node:path'
-import { WebSocket } from 'ws'
-
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
+import * as SM from '@/lib/rcon/squad-models.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
+import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -27,9 +18,19 @@ import * as TrpcRouter from '@/server/router'
 import * as Discord from '@/server/systems/discord.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
+import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
+import oauthPlugin from '@fastify/oauth2'
+import fastifyStatic from '@fastify/static'
+import ws from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
+import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
+import Cookie from 'cookie'
+import { eq } from 'drizzle-orm'
+import fastify, { FastifyReply, FastifyRequest } from 'fastify'
+import * as path from 'node:path'
+import { WebSocket } from 'ws'
 
 async function getFastifyBase() {
 	return await fastify({
@@ -109,7 +110,9 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':
-					return reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+					return reply
+						.status(401)
+						.send(Messages.GENERAL.auth.noApplicationAccess)
 				default:
 					assertNever(denyRes.code)
 			}
@@ -117,7 +120,11 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 
 		const sessionId = createId(64)
 		await ctx.db().transaction(async (tx) => {
-			const [user] = await tx.select().from(Schema.users).where(eq(Schema.users.discordId, discordUser.id)).for('update')
+			const [user] = await tx
+				.select()
+				.from(Schema.users)
+				.where(eq(Schema.users.discordId, discordUser.id))
+				.for('update')
 			if (!user) {
 				await tx.insert(Schema.users).values({
 					discordId: discordUser.id,
@@ -147,12 +154,54 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	instance.post(AR.exists('/logout'), async function(req, res) {
 		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
+		const authRes = await createAuthorizedRequestContext({
+			...ctx,
+			req,
+			span: Otel.trace.getActiveSpan(),
+		})
 		if (authRes.code !== 'ok') {
 			return Sessions.clearInvalidSession({ ...ctx, req, res })
 		}
 
 		return await Sessions.logout({ ...authRes.ctx, res })
+	})
+
+	// receives requests from squadjs containing event information
+	instance.post(AR.exists('/squadjs/forward'), async function(req, res) {
+		const token = req.headers['authorization']?.replace(/[Bb]earer /, '')
+		if (ENV.SQUADJS_HTTP_FORWARDER_TOKEN !== token) {
+			res.status(401).send({ code: 'err:invalid-token' })
+			return
+		}
+
+		if (req.headers['content-type'] !== 'application/json') {
+			res.status(400).send({ code: 'err:invalid-content-type', msg: 'Content-Type must be application/json' })
+			return
+		}
+
+		if (!req.body) {
+			res.status(400).send({ code: 'err:missing-request-body', msg: 'Request body is missing' })
+			return
+		}
+
+		const parseRes = SM.SquadjsEventSchema.safeParse(req.body)
+		if (!parseRes.success) {
+			res
+				.status(400)
+				.send(parseRes.error)
+			return
+		}
+		const ctx = getCtx(req)
+
+		const eventRes = await SquadServer.handleSquadjsEvent(ctx, parseRes.data!)
+		if (eventRes.code !== 'ok') {
+			res
+				.status(500)
+				.send(eventRes)
+			return
+		}
+
+		res.status(200).send(eventRes)
 	})
 
 	await instance.register(ws)
@@ -172,9 +221,15 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		res = res.header('Cross-Origin-Opener-Policy', 'same-origin').header('Cross-Origin-Embedder-Policy', 'unsafe-none')
+		res = res
+			.header('Cross-Origin-Opener-Policy', 'same-origin')
+			.header('Cross-Origin-Embedder-Policy', 'unsafe-none')
 		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({ ...ctx, req, span: Otel.trace.getActiveSpan() })
+		const authRes = await createAuthorizedRequestContext({
+			...ctx,
+			req,
+			span: Otel.trace.getActiveSpan(),
+		})
 		switch (authRes.code) {
 			case 'ok':
 				break
@@ -226,7 +281,9 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	return { serverClosed }
 })
 
-export async function createAuthorizedRequestContext<T extends C.Log & C.Db & Partial<C.SpanContext> & { req: FastifyRequest }>(ctx: T) {
+export async function createAuthorizedRequestContext<
+	T extends C.Log & C.Db & Partial<C.SpanContext> & { req: FastifyRequest },
+>(ctx: T) {
 	const cookie = ctx.req.headers.cookie
 	if (!cookie) {
 		return {
@@ -279,8 +336,12 @@ export async function createAuthorizedRequestContext<T extends C.Log & C.Db & Pa
 }
 
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
-export async function createTrpcRequestContext(options: CreateFastifyContextOptions): Promise<C.TrpcRequest> {
-	const result = await createAuthorizedRequestContext(DB.addPooledDb({ log: baseLogger, req: options.req }))
+export async function createTrpcRequestContext(
+	options: CreateFastifyContextOptions,
+): Promise<C.TrpcRequest> {
+	const result = await createAuthorizedRequestContext(
+		DB.addPooledDb({ log: baseLogger, req: options.req }),
+	)
 	if (result.code !== 'ok') {
 		switch (result.code) {
 			case 'unauthorized:no-cookie':
@@ -289,7 +350,10 @@ export async function createTrpcRequestContext(options: CreateFastifyContextOpti
 				// sleep(500).then(() => (options.res as unknown as WebSocket).close())
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
 			case 'err:permission-denied':
-				throw new TRPCError({ code: 'UNAUTHORIZED', message: Messages.GENERAL.auth.noApplicationAccess })
+				throw new TRPCError({
+					code: 'UNAUTHORIZED',
+					message: Messages.GENERAL.auth.noApplicationAccess,
+				})
 			default:
 				assertNever(result)
 		}

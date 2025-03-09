@@ -12,8 +12,9 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useFilter, useFilters } from '@/hooks/filters.ts'
+import { useDebounced } from '@/hooks/use-debounce.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
+import { useAreLayersInPool, useLayerExists } from '@/hooks/use-layer-queries.ts'
 import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
@@ -22,12 +23,13 @@ import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders.ts'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
-import { deepClone } from '@/lib/object.ts'
+import { deepClone, isPartial } from '@/lib/object.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
+import { areLayersInPool } from '@/server/systems/layer-queries.ts'
 import { useConfig } from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
@@ -44,7 +46,6 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { zodValidator } from '@tanstack/zod-form-adapter'
 import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
-import { Edit, EllipsisVertical, GripVertical, LoaderCircle, PlusIcon } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -159,7 +160,7 @@ export default function ServerDashboard() {
 								<CardHeader>
 									<span className="flex items-center justify-between">
 										<CardTitle>Now Playing</CardTitle>
-										{DH.displayPossibleUnknownLayer(serverStatusRes.data.currentLayer)}
+										{DH.displayUnvalidatedLayer(serverStatusRes.data.currentLayer)}
 									</span>
 								</CardHeader>
 								<CardContent className="flex justify-between">
@@ -199,7 +200,10 @@ export default function ServerDashboard() {
 										<Button onClick={() => QD.QDStore.getState().reset()} variant="secondary">
 											Cancel
 										</Button>
-										<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={updateQueueMutation.isPending} />
+										<Icons.LoaderCircle
+											className="animate-spin data-[pending=false]:invisible"
+											data-pending={updateQueueMutation.isPending}
+										/>
 									</CardFooter>
 								</Card>
 							</div>
@@ -270,7 +274,7 @@ function QueueControlPanel() {
 				onOpenChange={setAppendLayersPopoverOpen}
 			>
 				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
-					<PlusIcon />
+					<Icons.PlusIcon />
 					<span>Play After</span>
 				</Button>
 			</SelectLayersDialog>
@@ -282,7 +286,7 @@ function QueueControlPanel() {
 				onOpenChange={setPlayNextPopoverOpen}
 			>
 				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
-					<PlusIcon />
+					<Icons.PlusIcon />
 					<span>Play Next</span>
 				</Button>
 			</SelectLayersDialog>
@@ -391,7 +395,7 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?:
 					llStore={props.store}
 					allowVotes={allowVotes}
 					key={id}
-					id={id}
+					itemId={id}
 					index={index}
 					isLast={index + 1 === queueIds.length}
 					onStartEdit={props.onStartEdit}
@@ -677,7 +681,7 @@ function FilterEntitySelect(props: {
 			)}
 			{props.filterId && (
 				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
-					<Edit />
+					<Icons.Edit />
 				</a>
 			)}
 		</div>
@@ -756,7 +760,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 								target="_blank"
 								href={AR.link('/filters/:id', settings.queue.poolFilterId)}
 							>
-								<Edit />
+								<Icons.Edit />
 							</a>
 						)}
 					</div>
@@ -882,7 +886,7 @@ function QueueGenerationCard() {
 					<Button disabled={genereateMutation.isPending || !canEditQueue} onClick={() => genereateMutation.mutateAsync()}>
 						Generate
 					</Button>
-					<LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
+					<Icons.LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
 				</div>
 			</CardContent>
 		</Card>
@@ -918,16 +922,16 @@ type QueueItemProps = {
 	index: number
 	isLast: boolean
 	allowVotes?: boolean
-	id: string
+	itemId: string
 	llStore: Zus.StoreApi<QD.LLStore>
 	onStartEdit?: () => void
 }
 
 function LayerListItem(props: QueueItemProps) {
-	const itemStore = React.useMemo(() => QD.deriveLLItemStore(props.llStore, props.id), [props.llStore, props.id])
+	const itemStore = React.useMemo(() => QD.deriveLLItemStore(props.llStore, props.itemId), [props.llStore, props.itemId])
 	const allowVotes = props.allowVotes ?? true
 	const item = Zus.useStore(itemStore, (s) => s.item)
-	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
+	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
 	const draggableItemId = QD.toDraggableItemId(item.itemId)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
 		id: draggableItemId,
@@ -957,23 +961,23 @@ function LayerListItem(props: QueueItemProps) {
 				variant="ghost"
 				size="icon"
 			>
-				<EllipsisVertical />
+				<Icons.EllipsisVertical />
 			</Button>
 		</ItemDropdown>
 	)
-	let sourceBadge: React.ReactNode
 	const modifiedBy = item.lastModifiedBy && PartsSys.findUser(item.lastModifiedBy)
 	const modifiedByDisplay = modifiedBy ? `- ${modifiedBy.username}` : ''
+	const badges: React.ReactNode[] = []
 
 	switch (item.source) {
 		case 'gameserver':
-			sourceBadge = <Badge variant="outline">Game Server</Badge>
+			badges.push((<Badge key="source gameserver" variant="outline">Game Server</Badge>))
 			break
 		case 'generated':
-			sourceBadge = <Badge variant="outline">Generated {modifiedByDisplay}</Badge>
+			badges.push((<Badge key="source generated" variant="outline">Generated {modifiedByDisplay}</Badge>))
 			break
 		case 'manual': {
-			sourceBadge = <Badge variant="outline">Manual {modifiedByDisplay}</Badge>
+			badges.push((<Badge key="source manual" variant="outline">Manual {modifiedByDisplay}</Badge>))
 			break
 		}
 		default:
@@ -983,17 +987,25 @@ function LayerListItem(props: QueueItemProps) {
 	const queueItemStyles =
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
 	const serverStatus = useSquadServerStatus()
-	let squadServerNextLayer: M.PossibleUnknownMiniLayer | null = null
+	let squadServerNextLayer: M.UnvalidatedMiniLayer | null = null
 	if (serverStatus?.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
 
-	const notCurrentNextLayer = props.index === 0 && squadServerNextLayer?.code === 'unknown' && (
-		<Tooltip>
-			<TooltipTrigger>
-				<Badge variant="destructive">?</Badge>
-			</TooltipTrigger>
-			<TooltipContent>Not current next layer on server, layer set on server is unknown to squad-layer-manager</TooltipContent>
-		</Tooltip>
-	)
+	const activeUnvalidatedLayer = M.getUnvalidatedLayerFromId(M.getActiveItemLayerId(item))
+
+	if (
+		!isEditing && squadServerNextLayer && props.index === 0 && activeUnvalidatedLayer.id !== squadServerNextLayer.id
+		&& !isPartial(M.getLayerDetailsfromUnvalidated(activeUnvalidatedLayer), M.getLayerDetailsfromUnvalidated(squadServerNextLayer))
+	) {
+		badges.push(
+			<Tooltip key="not current next">
+				<TooltipTrigger>
+					<Badge variant="destructive">?</Badge>
+				</TooltipTrigger>
+				<TooltipContent>Not current next layer on server</TooltipContent>
+			</Tooltip>,
+		)
+	}
+
 	const displayedMutation = Zus.useStore(itemStore, (s) => getDisplayedMutation(s.mutationState))
 	const gripElt = (
 		<Button
@@ -1004,7 +1016,7 @@ function LayerListItem(props: QueueItemProps) {
 			data-canedit={canEdit}
 			className="invisible data-[canedit=true]:cursor-grab data-[canedit=true]:group-hover:visible"
 		>
-			<GripVertical />
+			<Icons.GripVertical />
 		</Button>
 	)
 	const indexElt = <span className="mr-2 font-light">{props.index + 1}.</span>
@@ -1027,17 +1039,16 @@ function LayerListItem(props: QueueItemProps) {
 						<label className={Typography.Muted}>Vote</label>
 						<ol className={'flex flex-col space-y-1 items-start'}>
 							{item.vote.choices.map((choice, index) => {
-								const chosenBadge = choice === item.layerId ? <Badge variant="added">chosen</Badge> : null
+								const badges = choice === item.layerId ? [<Badge variant="added" key="layer chosen">chosen</Badge>] : []
 								return (
 									<li key={choice} className="flex items-center ">
 										<span className="mr-2">{index + 1}.</span>
-										<LayerDisplay layerId={choice} badges={chosenBadge} />
+										<LayerDisplay layerId={choice} badges={badges} />
 									</li>
 								)
 							})}
 						</ol>
-						<div>{sourceBadge}</div>
-						{notCurrentNextLayer}
+						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
 					{itemDropdown}
 				</li>
@@ -1064,8 +1075,7 @@ function LayerListItem(props: QueueItemProps) {
 						<div className="flex items-center flex-shrink-0">
 							<LayerDisplay layerId={item.layerId} />
 						</div>
-						<span>{sourceBadge}</span>
-						{notCurrentNextLayer}
+						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
 					{itemDropdown}
 				</li>
@@ -1191,21 +1201,55 @@ function ItemDropdown(props: {
 	)
 }
 
-export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNode }) {
+export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNode[] }) {
 	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
-	const isLayerInPoolRes = useAreLayersInPool({ layers: [props.layerId], poolFilterId: poolFilterId })
+	const isLayerInPoolRes = useAreLayersInPool({ layers: [props.layerId], poolFilterId: poolFilterId }, {
+		enabled: !M.isRawLayerId(props.layerId),
+	})
 	const filterRes = useFilter(poolFilterId)
-	let notInPoolBadge: React.ReactNode = null
-	if (isLayerInPoolRes.data && isLayerInPoolRes.data.code === 'ok' && !isLayerInPoolRes.data.results[0].matchesFilter) {
-		notInPoolBadge = (
-			<Tooltip>
+	const badges: React.ReactNode[] = []
+	if (props.badges) badges.push(...props.badges)
+
+	if (isLayerInPoolRes.data && isLayerInPoolRes.data.code === 'ok') {
+		const inPoolRes = isLayerInPoolRes.data.results[0]
+		if (!inPoolRes.exists) {
+			badges.push(
+				<Tooltip key="layer doesn't exist">
+					<TooltipTrigger>
+						<Icons.ShieldQuestion className="text-orange-400" />
+					</TooltipTrigger>
+					<TooltipContent>
+						Layer <b>{filterRes.data?.name} is unknown</b>
+					</TooltipContent>
+				</Tooltip>,
+			)
+		} else if (!inPoolRes.matchesFilter) {
+			badges.push(
+				<Tooltip key="layer not in configured pool">
+					<TooltipTrigger>
+						<Icons.ShieldQuestion className="text-orange-400" />
+					</TooltipTrigger>
+					<TooltipContent>
+						Layer not in configured pool <b>{filterRes.data?.name}</b>
+					</TooltipContent>
+				</Tooltip>,
+			)
+		}
+	}
+
+	console.log(props.layerId)
+	if (M.isRawLayerId(props.layerId)) {
+		badges.push(
+			<Tooltip key="is raw layer">
 				<TooltipTrigger>
-					<Icons.ShieldQuestion className="text-orange-400" />
+					<Icons.ShieldOff className="text-red-500" />
 				</TooltipTrigger>
 				<TooltipContent>
-					Layer not in configured pool <b>{filterRes.data?.name}</b>
+					<p>
+						This layer was created by a raw setnext command (<b>{props.layerId.slice('RAW:'.length)}</b>)
+					</p>
 				</TooltipContent>
-			</Tooltip>
+			</Tooltip>,
 		)
 	}
 
@@ -1213,8 +1257,7 @@ export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNo
 		<div className="flex space-x-2 items-center">
 			<span className="flex-1 text-nowrap">{DH.toShortLayerNameFromId(props.layerId)}</span>
 			<span className="flex items-center space-x-1">
-				{notInPoolBadge}
-				{props.badges}
+				{badges}
 			</span>
 		</div>
 	)
@@ -1326,11 +1369,13 @@ export function SelectLayersDialog(props: {
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="w-auto max-w-full min-w-0">
-				<DialogHeader>
-					<DialogTitle>{props.title}</DialogTitle>
-					<DialogDescription>{props.description}</DialogDescription>
-					<div className="flex items-center w-full space-x-2">
-						<p className={Typography.P}>{selectedLayers.length} layers selected</p>
+				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+					<span className="flex items-center">
+						<DialogTitle>{props.title}</DialogTitle>
+						<span className="mx-8 font-light">-</span>
+						<DialogDescription>{props.description}</DialogDescription>
+					</span>
+					<div className="flex items-center space-x-2">
 						{!props.pinMode && (
 							<TabsList
 								options={[
@@ -1355,7 +1400,7 @@ export function SelectLayersDialog(props: {
 					/>
 				</div>
 
-				<div className="flex min-h-0 items-center space-x-2">
+				<div className="flex min-h-0 items-start space-x-2">
 					<LayerFilterMenu filterMenuStore={filterMenuStore} />
 					<TableStyleLayerPicker filter={filterMenuStore.filter} selected={selectedLayers} onSelect={setSelectedLayers} />
 				</div>
@@ -1399,6 +1444,7 @@ function TableStyleLayerPicker(props: {
 				selected={props.selected}
 				setSelected={props.onSelect}
 				maxSelected={props.maxSelected}
+				enableForceSelect={true}
 				defaultSortBy="random"
 				defaultSortDirection="DESC"
 				canChangeRowsPerPage={false}
@@ -1408,12 +1454,12 @@ function TableStyleLayerPicker(props: {
 	)
 }
 
-function itemToLayers(item: M.LayerListItem): M.MiniLayer[] {
-	let layers: M.MiniLayer[]
+function itemToLayerIds(item: M.LayerListItem): M.LayerId[] {
+	let layers: M.LayerId[]
 	if (item.vote) {
-		layers = item.vote.choices.map((choice) => M.getMiniLayerFromId(choice))
+		layers = item.vote.choices
 	} else if (item.layerId) {
-		layers = [M.getMiniLayerFromId(item.layerId)]
+		layers = [item.layerId]
 	} else {
 		throw new Error('Invalid LayerQueueItem')
 	}
@@ -1480,10 +1526,11 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		baseFilter = props.baseFilter
 	}
 
-	const filterMenuStore = useFilterMenuStore(
-		baseFilter,
-		editedItem.layerId && filterEnabled ? M.getMiniLayerFromId(editedItem.layerId) : undefined,
-	)
+	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
+	const partialLayerItem = (unvalidatedLayer && unvalidatedLayer.code === 'parsed')
+		? unvalidatedLayer.layer
+		: unvalidatedLayer?.partialLayer
+	const filterMenuStore = useFilterMenuStore(baseFilter, partialLayerItem && filterEnabled ? partialLayerItem : undefined)
 
 	const canSubmit = Zus.useStore(
 		editedItemStore,
@@ -1514,7 +1561,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 							active={editedItem.vote ? 'vote' : 'layer'}
 							setActive={(itemType) => {
 								editedItemStore.getState().setItem((prev) => {
-									const selectedLayers = itemToLayers(prev)
+									const selectedLayerIds = itemToLayerIds(prev)
 									const attribution = {
 										source: 'manual' as const,
 										lastModifiedBy: loggedInUser!.discordId,
@@ -1523,15 +1570,15 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 										return {
 											itemId: prev.itemId,
 											vote: {
-												choices: selectedLayers.map((l) => l.id),
-												defaultChoice: selectedLayers[0].id,
+												choices: selectedLayerIds,
+												defaultChoice: selectedLayerIds[0],
 											},
 											...attribution,
 										}
 									} else if (itemType === 'layer') {
 										return {
 											itemId: prev.itemId,
-											layerId: selectedLayers[0].id,
+											layerId: selectedLayerIds[0],
 											...attribution,
 										}
 									} else {
@@ -1564,7 +1611,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 					</div>
 				)
 				: (
-					<div className="flex space-x-2 min-h-0">
+					<div className="flex items-start space-x-2 min-h-0">
 						<LayerFilterMenu filterMenuStore={filterMenuStore} />
 						<TableStyleLayerPicker
 							filter={filterMenuStore.filter}
@@ -1607,7 +1654,6 @@ type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
 
 function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
 	return [
-		EFB.eq('id', defaultFields['id']),
 		EFB.eq('Layer', defaultFields['Layer']),
 		EFB.eq('Level', defaultFields['Level']),
 		EFB.eq('Gamemode', defaultFields['Gamemode']),
@@ -1647,11 +1693,6 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 			const key = item.column as keyof M.MiniLayer
 			const colsToRemove: string[] = []
 			colsToRemove.push(key)
-			colsToRemove.push('id')
-			if (key === 'id') {
-				filtersExcludingField[key] = baseFilter
-				continue
-			}
 			if (key === 'Layer') {
 				colsToRemove.push('Level')
 				colsToRemove.push('Gamemode')
@@ -1681,7 +1722,6 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 
 function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 	const store = props.filterMenuStore
-	// const applyBaseFilterId = React.useId()
 
 	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
 		return (update) => {
@@ -1695,10 +1735,11 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 						idxMap[item.column!] = idx
 					})
 
-					if (comp.column === 'id' && comp.value) {
-						return getDefaultFilterMenuItemState(M.getMiniLayerFromId(comp.value as string))
-					} else if (comp.column === 'Layer' && comp.value) {
-						const parsedLayer = M.parseLayerString(comp.value as string)
+					if (comp.column === 'Layer' && comp.value) {
+						const parsedLayer = M.parseLayerStringSegment(comp.value as string)
+						if (!parsedLayer) {
+							return
+						}
 						draft[idxMap['Level']].value = parsedLayer.level
 						draft[idxMap['Gamemode']].value = parsedLayer.gamemode
 						draft[idxMap['LayerVersion']].value = parsedLayer.version
@@ -1723,12 +1764,6 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 					} else {
 						delete draft[idxMap['Layer']].value
 					}
-					delete draft[idxMap['id']].value
-
-					// do we have all of the fields required to build the id? commented out for now because we don't want to auto populate the id field in most scenarios
-					// if (Object.keys(comp).length >= Object.keys(M.MiniLayerSchema.shape).length - 1) {
-					// 	prev.id = M.getLayerId(prev as M.LayerIdArgs)
-					// }
 				}),
 			)
 		}

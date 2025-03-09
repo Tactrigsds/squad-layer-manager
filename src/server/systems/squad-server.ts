@@ -1,4 +1,5 @@
-import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
+import * as Schema from '$root/drizzle/schema.ts'
+import { AsyncResource, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
@@ -15,6 +16,8 @@ import { baseLogger } from '@/server/logger'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
+import * as E from 'drizzle-orm/expressions'
+import * as Rx from 'rxjs'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 import { ENV } from '../env'
@@ -215,10 +218,56 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
 })
 
-export const SquadjsEventSchema = z.object({})
-export type SquadjsEvent = z.infer<typeof SquadjsEventSchema>
+export async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SM.SquadjsEvent) {
+	switch (event.type) {
+		case 'NEW_GAME': {
+			const [team1, team2] = event.data.layer.teams.map(team => ({
+				faction: M.factionFullNameToAbbr(team.faction),
+				subfaction: team.name ? M.subfacFullNameToAbbr(team.name) : undefined,
+			}))
+			const team1SubfacText = team1.subfaction ? '+' + team1.subfaction : ''
+			const team2SubfacText = team2.subfaction ? '+' + team2.subfaction : ''
+			const unvalidatedLayer = M.parseRawLayerText(
+				`${event.data.layerClassname} ${team1.faction}${team1SubfacText} ${team2.faction}${team2SubfacText}`,
+			)
 
-export function handleSquadjsEvent(event: SquadjsEvent): any {
+			await ctx.db().insert(Schema.matchHistory).values({
+				layerId: unvalidatedLayer.id,
+				startTime: event.data.time,
+			})
+			return { code: 'ok' as const }
+		}
+
+		case 'ROUND_ENDED': {
+			const serverStatusRes = (await rcon.serverStatus.get(ctx)).value
+			if (serverStatusRes.code !== 'ok') return serverStatusRes
+
+			await DB.runTransaction(ctx, async (ctx) => {
+				const [currentMatch] = await ctx.db().select()
+					.from(Schema.matchHistory)
+					.orderBy(E.desc(Schema.matchHistory.startTime))
+					.limit(1)
+					.for('update')
+				if (!currentMatch || currentMatch.layerId !== serverStatusRes.data.currentLayer.id) return
+				const teams: [SM.SquadjsOutcomeTeam | null, SM.SquadjsOutcomeTeam | null] = [event.data.winner, event.data.loser]
+				if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
+				const winner = event.data.winner === null ? 'draw' : event.data.winner.team === 1 ? 'team1' : 'team2'
+
+				await ctx.db().update(Schema.matchHistory)
+					.set({
+						endTime: event.data.time,
+						team1Tickets: teams[0]?.tickets,
+						team2Tickets: teams[1]?.tickets,
+						winner,
+					})
+					.where(E.eq(Schema.matchHistory.id, currentMatch.id))
+			})
+			return { code: 'ok' as const }
+		}
+
+		default:
+			assertNever(event)
+	}
 }
 
 export const squadServerRouter = router({

@@ -1,27 +1,35 @@
-import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
-import * as Im from 'immer'
-import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
-import { useRef, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Toggle } from '@/components/ui/toggle'
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useToast } from '@/hooks/use-toast'
+import { useDebounced } from '@/hooks/use-debounce'
+import { useLayerExists, useLayersQuery } from '@/hooks/use-layer-queries.ts'
+import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
 import * as FB from '@/lib/filter-builders'
-import * as M from '@/models'
-import type { LayersQueryInput } from '@/server/systems/layer-queries'
-
-import { useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/typeGuards'
+import * as M from '@/models'
+import * as RBAC from '@/rbac.models'
+import type { LayersQueryInput } from '@/server/systems/layer-queries'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
+import * as Im from 'immer'
+import * as Icons from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
+import { useRef, useState } from 'react'
 import React from 'react'
+import { flushSync } from 'react-dom'
 import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
+import { Textarea } from './ui/textarea'
 
 const columnHelper = createColumnHelper<M.Layer & M.LayerComposite>()
 
@@ -59,14 +67,17 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 
 			switch (type) {
 				case 'float':
+					if (value === null || value === undefined) return '-'
 					return formatFloat(value as number)
 				case 'string':
-					return value
+					return value ?? '-'
 				case 'collection':
+					if (!Array.isArray(value)) return '-'
 					return (value as string[]).filter((v) => !!v).join(', ')
 				case 'integer':
-					return value.toString()
+					return value?.toString() ?? '-'
 				case 'boolean':
+					if (value === null || value === undefined) return '-'
 					return value ? 'True' : 'False'
 				default:
 					assertNever(type)
@@ -144,6 +155,7 @@ export default function LayerTable(props: {
 	selected: M.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>>
 	resetSelected?: () => void
+	enableForceSelect?: boolean
 
 	pageIndex: number
 	setPageIndex: (num: number) => void
@@ -222,6 +234,15 @@ export default function LayerTable(props: {
 		props.setPageIndex(0)
 	}
 
+	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
+	const rawSetDialogRef = useRef<SetRawDialogHandle>(null)
+	function setRawSetDialogOpen(update: (value: boolean) => boolean) {
+		flushSync(() => {
+			_setRawSetDialogOpen(update)
+		})
+		rawSetDialogRef.current?.focus()
+	}
+
 	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
 	const now = Date.now()
 	const insertionTimes = useRef<Record<M.LayerId, number | undefined>>(Object.fromEntries(props.selected.map((id) => [id, now])))
@@ -274,6 +295,7 @@ export default function LayerTable(props: {
 	}
 
 	if (showSelectedLayers) {
+		console.log(props.selected)
 		filter = FB.comp(FB.inValues('id', props.selected))
 	}
 
@@ -296,21 +318,41 @@ export default function LayerTable(props: {
 		filter: filter ?? undefined,
 	})
 
-	const layersData = layersRes.data
+	let page = layersRes.data
+	if (showSelectedLayers && page) {
+		page = { ...page, layers: [...page.layers] }
+		const returnedIds = new Set(page.layers.map(layer => layer.id))
+		for (const selectedId of props.selected) {
+			if (returnedIds.has(selectedId)) continue
+			const unvalidated = M.getUnvalidatedLayerFromId(selectedId)
+			if (unvalidated.code === 'parsed') {
+				// @ts-expect-error idc
+				page.layers.push(unvalidated.layer)
+			} else {
+				// @ts-expect-error idc
+				page.layers.push({ ...(unvalidated.partialLayer ?? {}), id: unvalidated.id })
+			}
+		}
+		page.layers.sort((a, b) => {
+			const aIndex = props.selected.indexOf(a.id)
+			const bIndex = props.selected.indexOf(b.id)
+			return aIndex - bIndex
+		})
+	}
 	React.useLayoutEffect(() => {
-		if (autoSelectIfSingleResult && layersData?.layers.length === 1 && layersData.totalCount === 1) {
-			const layer = layersData.layers[0]
+		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
+			const layer = page.layers[0]
 			if (!props.selected.includes(layer.id)) {
 				props.setSelected([layer.id])
 			}
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [layersData])
+	}, [page])
 
 	const table = useReactTable({
-		data: layersData?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
+		data: page?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
 		columns: COL_DEFS,
-		pageCount: layersData?.pageCount ?? -1,
+		pageCount: page?.pageCount ?? -1,
 		state: {
 			sorting: sortingState,
 			columnVisibility,
@@ -329,10 +371,13 @@ export default function LayerTable(props: {
 		getSortedRowModel: getSortedRowModel(),
 		manualPagination: true,
 	})
-	const currentPage = Math.min(props.pageIndex, layersData?.pageCount ?? 0)
-	const firstRowInPage = currentPage * (layersData?.layers.length ?? 0) + 1
-	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, layersData?.totalCount ?? 0)
-	const { toast } = useToast()
+
+	const currentPage = Math.min(props.pageIndex, page?.pageCount ?? 0)
+	const firstRowInPage = currentPage * (page?.layers.length ?? 0) + 1
+	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, page?.totalCount ?? 0)
+
+	const loggedInUser = useLoggedInUser()
+	const canForceSelect = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
 	function getChosenRows(row: Row<M.Layer>) {
 		if (!props.selected.includes(row.original.id)) {
@@ -368,8 +413,8 @@ export default function LayerTable(props: {
 	}
 
 	return (
-		<div className="pt-2">
-			<div className="mb-2 flex items-center justify-between">
+		<div className="space-y-2">
+			<div className="flex items-center justify-between">
 				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
@@ -399,6 +444,20 @@ export default function LayerTable(props: {
 						</DropdownMenu>
 					)}
 					<Separator orientation="vertical" className="h-full min-h-0" />
+
+					{props.enableForceSelect && (
+						<Toggle
+							size="sm"
+							title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
+							aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
+							pressed={rawSetDialogOpen}
+							onClick={() => setRawSetDialogOpen(prev => !prev)}
+							disabled={!canForceSelect}
+						>
+							<Icons.TextCursorInput />
+						</Toggle>
+					)}
+
 					{/*--------- show selected ---------*/}
 					<div className="flex items-center space-x-1">
 						<Switch
@@ -468,6 +527,25 @@ export default function LayerTable(props: {
 					)}
 				</span>
 			</div>
+			<div>
+				<SetRawLayerDialog
+					ref={rawSetDialogRef}
+					open={rawSetDialogOpen}
+					setOpen={setRawSetDialogOpen}
+					onSubmit={layers => {
+						props.setSelected(Im.produce(selected => {
+							for (const layer of layers) {
+								if (selected.includes(layer.id)) continue
+								if (props.maxSelected && props.selected.length >= props.maxSelected) {
+									selected.shift()
+								}
+								selected.push(layer.id)
+							}
+						}))
+						setShowSelectedLayers(true)
+					}}
+				/>
+			</div>
 			<div className="rounded-md border">
 				{/*--------- table ---------*/}
 				<Table>
@@ -523,12 +601,12 @@ export default function LayerTable(props: {
 			<div className="flex items-center justify-between space-x-2 py-2">
 				<div className="flex-1  flex items-center space-x-2">
 					<div className="text-sm text-muted-foreground">
-						{layersData
+						{page
 							&& (showSelectedLayers
-								? `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} selected rows`
+								? `Showing ${firstRowInPage} to ${lastRowInPage} of ${page?.totalCount} selected rows`
 								: randomize
-								? `Showing ${layersData?.layers?.length} of ${layersData?.totalCount} randomized rows`
-								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${layersData?.totalCount} matching rows`)}
+								? `Showing ${page?.layers?.length} of ${page?.totalCount} randomized rows`
+								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${page?.totalCount} matching rows`)}
 					</div>
 					<LoaderCircle data-loading={layersRes.isFetching} className="invisible data-[loading=true]:visible h-4 w-4 animate-spin" />
 				</div>
@@ -542,5 +620,157 @@ export default function LayerTable(props: {
 				</div>
 			</div>
 		</div>
+	)
+}
+
+type SetRawDialogHandle = {
+	focus: () => void
+}
+
+const SetRawLayerDialog = React.forwardRef<
+	SetRawDialogHandle,
+	{ open: boolean; setOpen: (update: (value: boolean) => boolean) => void; onSubmit: (layer: M.UnvalidatedMiniLayer[]) => void }
+>(function SetRawLayerDialog(props, ref) {
+	const inputRef = React.useRef<HTMLInputElement>(null)
+	const [validLayer, setValidLayer] = React.useState<M.UnvalidatedMiniLayer | null>(null)
+	const [validLayerDebounced, setValidLayerDebounced] = React.useState<M.UnvalidatedMiniLayer | null>(null)
+	const [multiSetLayerDialogOpen, setMultiSetLayerDialogOpen] = React.useState<boolean>(false)
+	const [layerFound, setLayerFound] = React.useState<boolean>(false)
+	const validLayerDebouncer = useDebounced({
+		defaultValue: () => null as null | M.UnvalidatedMiniLayer,
+		onChange: (v) => setValidLayerDebounced(v),
+		delay: 400,
+	})
+	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
+	const layersKnownRes = useLayerExists(layerIds, { enabled: !!validLayerDebounced })
+
+	React.useImperativeHandle(
+		ref,
+		() => ({
+			focus: () => {
+				inputRef.current?.focus()
+			},
+		}),
+		[],
+	)
+
+	React.useLayoutEffect(() => {
+		if (layersKnownRes.data) {
+			if (layersKnownRes.data.code !== 'ok') {
+				throw new Error('Something went wrong')
+			}
+			setLayerFound(layersKnownRes.data.results[0].exists)
+		}
+	}, [layersKnownRes.data])
+
+	function setInputText(value: string) {
+		value = value.trim()
+		const layerRes = M.parseRawLayerText(value)
+		validLayerDebouncer.setValue(layerRes)
+		setValidLayer(layerRes)
+	}
+
+	return (
+		props.open && (
+			<div
+				className="flex items-center space-x-1 whitespace-nowrap w-full"
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' && e.target === inputRef.current) {
+						e.preventDefault()
+						if (validLayer) {
+							props.onSubmit([validLayer])
+						}
+					}
+				}}
+			>
+				<MultiLayerSetDialog open={multiSetLayerDialogOpen} setOpen={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
+				<Input
+					ref={inputRef}
+					className="flex-1"
+					placeholder="Ex: Narva_RAAS_v1 RGF USMC or a layer id"
+					onChange={(e) => setInputText(e.target.value)}
+					rightElement={
+						<div className="flex space-x-1 items-center">
+							<Label title="Layer exists in the database" className={validLayerDebounced && layerFound ? 'visible' : 'invisible'}>
+								<Icons.CheckSquare className="text-info" />
+							</Label>
+							<Button
+								variant="ghost"
+								className="h-6 w-6"
+								size="icon"
+								onClick={() => {
+									setMultiSetLayerDialogOpen(true)
+								}}
+							>
+								<Icons.Expand className="h-4 w-4" />
+							</Button>
+						</div>
+					}
+				/>
+				<Button
+					disabled={!validLayer}
+					variant="secondary"
+					size="icon"
+					onClick={() => {
+						props.onSubmit([validLayer!])
+						inputRef.current!.value = ''
+						inputRef.current!.focus()
+					}}
+				>
+					<Icons.Plus />
+				</Button>
+			</div>
+		)
+	)
+})
+
+function MultiLayerSetDialog({
+	onSubmit,
+	open,
+	setOpen,
+}: {
+	onSubmit: (value: M.UnvalidatedMiniLayer[]) => void
+	open: boolean
+	setOpen: (open: boolean) => void
+}) {
+	const [possibleLayers, setPossibleLayers] = useState([] as M.UnvalidatedMiniLayer[])
+	function onTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+		const text = e.target.value
+		const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
+		const possibleLayers = lines.map(line => M.parseRawLayerText(line.trim()))
+		setPossibleLayers(possibleLayers)
+	}
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogContent className="max-w-lg min-w-[min(700px,70vw)]">
+				<DialogHeader>
+					<DialogTitle>Add Multiple Layers</DialogTitle>
+				</DialogHeader>
+				<div className="space-y-4">
+					<div className="relative">
+						<Textarea
+							onChange={onTextChange}
+							className=" w-full min-h-[300px] pr-8 min-w overflow-x-auto text-sm font-mono"
+							style={{ 'lineHeight': '1.5rem' }}
+							wrap="off"
+							placeholder="Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)"
+						/>
+					</div>
+					<div className="flex justify-end space-x-2">
+						<Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+						<Button
+							onClick={() => {
+								onSubmit(possibleLayers)
+								setOpen(false)
+							}}
+							disabled={possibleLayers.length === 0}
+						>
+							Add Layers
+						</Button>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
 	)
 }

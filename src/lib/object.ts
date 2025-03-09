@@ -98,3 +98,10 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<str
 
 	return output
 }
+
+export function isPartial(obj: object, target: object) {
+	for (const key of Object.keys(obj)) {
+		if (!(key in target)) return false
+	}
+	return true
+}

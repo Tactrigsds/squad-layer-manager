@@ -51,6 +51,8 @@ const EnvSchema = {
 
 	PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
 	PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
+
+	SQUADJS_HTTP_FORWARDER_TOKEN: z.string().min(1).default('dev-token'),
 }
 
 export function ensureEnvSetup() {

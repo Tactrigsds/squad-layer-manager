@@ -42,8 +42,8 @@ export type ServerStatus = {
 	playerCount: number
 	queueLength: number
 	maxQueueLength: number
-	currentLayer: M.PossibleUnknownMiniLayer
-	nextLayer: M.PossibleUnknownMiniLayer | null
+	currentLayer: M.UnvalidatedMiniLayer
+	nextLayer: M.UnvalidatedMiniLayer | null
 }
 
 export const PlayerSchema = z.object({
@@ -198,3 +198,33 @@ export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
 export const RCON_MAX_BUF_LEN = 4152
+
+const SquadjsTeamSchema = z.object({
+	faction: z.string(),
+	team: z.union([z.literal(1), z.literal(2)]),
+	tickets: z.number().positive(),
+})
+export type SquadjsOutcomeTeam = z.infer<typeof SquadjsTeamSchema>
+
+export const SquadjsEventSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('NEW_GAME'),
+		data: z.object({
+			time: z.coerce.date(),
+			mapClassName: z.string(),
+			layerClassname: z.string(),
+			layer: z.object({
+				teams: z.array(z.object({ faction: z.string(), name: z.string() })),
+			}),
+		}),
+	}),
+	z.object({
+		type: z.literal('ROUND_ENDED'),
+		data: z.object({
+			time: z.coerce.date(),
+			winner: SquadjsTeamSchema.nullable(),
+			loser: SquadjsTeamSchema.nullable(),
+		}),
+	}),
+])
+export type SquadjsEvent = z.infer<typeof SquadjsEventSchema>

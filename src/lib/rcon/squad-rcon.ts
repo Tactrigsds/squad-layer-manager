@@ -1,11 +1,9 @@
 import { AsyncResource, sleep } from '@/lib/async'
-import { Subject } from 'rxjs'
-
 import * as M from '@/models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-
-import { prefixProps, selectProps } from '../object'
+import { Subject } from 'rxjs'
+import { assertNever } from '../typeGuards'
 import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import * as SM from './squad-models'
@@ -57,7 +55,7 @@ export default class SquadRcon {
 		if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
 		const layer = match[2]
 		const factions = match[3]
-		return { code: 'ok' as const, layer: parseLayer(layer, factions) }
+		return { code: 'ok' as const, layer: M.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
 	private async getNextLayer(ctx: C.Log) {
@@ -69,7 +67,7 @@ export default class SquadRcon {
 		const layer = match[2]
 		const factions = match[3]
 		if (!layer || !factions) return { code: 'ok' as const, layer: null }
-		return { code: 'ok' as const, layer: parseLayer(layer, factions) }
+		return { code: 'ok' as const, layer: M.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
 	private async getListPlayers(ctx: C.Log) {
@@ -198,13 +196,32 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	async setNextLayer(ctx: C.Log, layer: M.AdminSetNextLayerOptions) {
+	async setNextLayer(ctx: C.Log, id: M.LayerId) {
 		return C.spanOp('squad-rcon:setNextLayer', { tracer }, async () => {
-			const span = Otel.trace.getActiveSpan()!
-			span.setAttributes(prefixProps(selectProps(layer, ['Layer', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2']), 'nextlayer'))
-			await this.core.execute(ctx, M.getAdminSetNextLayerCommand(layer))
+			const res = M.getUnvalidatedLayerFromId(id)
+			let cmd: string
+			switch (res.code) {
+				case 'raw':
+					cmd = `AdminSetNextLayer ${res.id.slice('RAW:'.length)}`
+					break
+				case 'parsed':
+					cmd = M.getAdminSetNextLayerCommand(res.layer)
+					break
+				default:
+					assertNever(res)
+			}
+			await this.core.execute(ctx, cmd)
 			this.serverStatus.invalidate(ctx)
-			span.setStatus({ code: Otel.SpanStatusCode.OK })
+			const newStatus = (await this.serverStatus.get(ctx)).value
+			if (newStatus.code !== 'ok') return newStatus
+
+			if (newStatus.data.currentLayer.id !== id) {
+				return {
+					code: 'err:unable-to-set-next-layer' as const,
+					msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.currentLayer.id}`,
+				}
+			}
+			return { code: 'ok' as const }
 		})()
 	}
 
@@ -263,49 +280,6 @@ export default class SquadRcon {
 			}
 		})()
 	}
-}
-
-function parseLayer(layer: string, factions: string): M.PossibleUnknownMiniLayer {
-	const { level: level, gamemode, version: version } = M.parseLayerString(layer)
-	const [faction1, faction2] = parseLayerFactions(factions)
-	const layerIdArgs: M.LayerIdArgs = {
-		Level: level,
-		Gamemode: gamemode,
-		LayerVersion: version,
-		Faction_1: faction1.faction,
-		SubFac_1: faction1.subFaction as M.MiniLayer['SubFac_1'],
-		Faction_2: faction2.faction,
-		SubFac_2: faction2.subFaction as M.MiniLayer['SubFac_2'],
-	}
-	const miniLayer = {
-		...layerIdArgs,
-		id: M.getLayerId(layerIdArgs),
-		Layer: layer,
-	} as M.MiniLayer
-	const res = M.MiniLayerSchema.safeParse(miniLayer)
-	if (res.success) return { code: 'known', layer: res.data }
-	return {
-		code: 'unknown',
-		layerString: layer,
-		factionString: factions,
-	}
-}
-
-type ParsedFaction = {
-	faction: string
-	subFaction: string | null
-}
-
-function parseLayerFactions(factionsRaw: string) {
-	const parsedFactions: ParsedFaction[] = []
-	for (const factionRaw of factionsRaw.split(/\s/)) {
-		const [faction, subFaction] = factionRaw.split('+')
-		parsedFactions.push({
-			faction: faction.trim(),
-			subFaction: subFaction?.trim() || null,
-		})
-	}
-	return parsedFactions as [ParsedFaction, ParsedFaction]
 }
 
 function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {

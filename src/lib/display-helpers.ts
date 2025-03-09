@@ -8,20 +8,21 @@ export function toShortLevel(level: M.Layer['Level']) {
 	return LayerComponents.levelShortNames[level as keyof typeof LayerComponents.levelShortNames]
 }
 
-export function toShortSubfaction(unitType: M.Subfaction | null) {
-	if (unitType === null) return ''
-	return LayerComponents.subfactionShortNames[unitType]
+export function toShortSubfaction(subfaction: string | null) {
+	if (subfaction === null) return ''
+	// @ts-expect-error idc
+	return LayerComponents.subfactionShortNames[subfaction] ?? subfaction
 }
 
 export const NULL_DISPLAY = ' <empty> '
 export const MISSING_DISPLAY = ' - '
 
-export function displayPossibleUnknownLayer(possibleUnknown: M.PossibleUnknownMiniLayer) {
+export function displayUnvalidatedLayer(possibleUnknown: M.UnvalidatedMiniLayer) {
 	switch (possibleUnknown.code) {
-		case 'known':
+		case 'parsed':
 			return toShortLayerName(possibleUnknown.layer)
-		case 'unknown':
-			return `${possibleUnknown.layerString} ${possibleUnknown.factionString}`
+		case 'raw':
+			return possibleUnknown.id.slice('RAW:'.length)
 	}
 }
 
@@ -34,8 +35,9 @@ export function toFullLayerName(layer: M.MiniLayer) {
 }
 
 export function toFullLayerNameFromId(id: string) {
-	const layer = M.getMiniLayerFromId(id)
-	return toFullLayerName(layer)
+	const res = M.getUnvalidatedLayerFromId(id)
+	if (res.code === 'parsed') return toFullLayerName(res.layer)
+	return res.id.slice('RAW:'.length)
 }
 
 export function toShortLayerName(layer: M.MiniLayer) {
@@ -51,6 +53,6 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	return txt
 }
 export function toShortLayerNameFromId(id: string) {
-	const layer = M.getMiniLayerFromId(id)
-	return toShortLayerName(layer)
+	const res = M.getUnvalidatedLayerFromId(id)
+	return displayUnvalidatedLayer(res)
 }

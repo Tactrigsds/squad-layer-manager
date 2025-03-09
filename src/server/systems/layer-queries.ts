@@ -128,12 +128,33 @@ export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof Ar
 		.from(Schema.layers)
 		.where(E.inArray(Schema.layers.id, input.layers))
 
+	const idMap = new Map()
+	for (const r of results) {
+		idMap.set(r.id, parseInt(r.matchesFilter) === 1)
+	}
+
 	return {
 		code: 'ok' as const,
-		results: results.map((r) => {
+		results: input.layers.map((id) => {
 			// need to parseInt here because we have bigNumberStrings set to true in the mysql2 config
-			return { id: r.id, matchesFilter: parseInt(r.matchesFilter) === 1 }
+			return { id, matchesFilter: idMap.get(id) || false, exists: idMap.has(id) }
 		}),
+	}
+}
+
+export const LayerExistsInputSchema = z.array(M.LayerIdSchema)
+export type LayerExistsInput = M.LayerId[]
+
+export async function layerExists({ input, ctx }: { input: LayerExistsInput; ctx: C.Log & C.Db }) {
+	const results = await ctx.db().select({ id: Schema.layers.id }).from(Schema.layers).where(E.inArray(Schema.layers.id, input))
+	const existsMap = new Map(results.map(result => [result.id, true]))
+
+	return {
+		code: 'ok' as const,
+		results: input.map(id => ({
+			id,
+			exists: existsMap.has(id),
+		})),
 	}
 }
 
@@ -500,4 +521,5 @@ export const layersRouter = router({
 	selectLayers: procedure.input(LayersQueryInputSchema).query(queryLayers),
 	selectLayersGroupedBy: procedure.input(LayersQueryGroupedByInputSchema).query(queryLayersGroupedBy),
 	areLayersInPool: procedure.input(AreLayersInPoolInputSchema).query(areLayersInPool),
+	layerExists: procedure.input(LayerExistsInputSchema).query(layerExists),
 })

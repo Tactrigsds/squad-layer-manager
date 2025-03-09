@@ -222,7 +222,6 @@ type RawLayer = z.infer<typeof RawLayerSchema>
 const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
 
 async function main() {
-	console.log('args', process.argv)
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
 		args.push(...objKeys(Steps.Values))
@@ -296,7 +295,7 @@ async function downloadPipeline(ctx: C.Log) {
 }
 
 function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M.Layer {
-	const { gamemode, version: version } = M.parseLayerString(rawLayer.Layer)
+	const { gamemode, version: version } = M.parseLayerStringSegment(rawLayer.Layer)!
 	const level = M.preprocessLevel(rawLayer.Level)
 	const id = M.getLayerId(
 		{
@@ -374,11 +373,12 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
 
 	for (const layer of rawLayers) {
-		const { gamemode, version } = M.parseLayerString(layer.Layer)
+		const { gamemode, version, level } = M.parseLayerStringSegment(layer.Layer)!
+		if (level !== layer.Level) throw new Error(`Layer ${layer.Layer} has level ${level} but expected ${layer.Level}`)
 		baseLayerComponents.levels.add(layer.Level)
 		baseLayerComponents.layers.add(layer.Layer)
 		baseLayerComponents.gamemodes.add(gamemode)
-		baseLayerComponents.versions.add(version)
+		baseLayerComponents.versions.add(version!)
 		baseLayerComponents.factions.add(layer.Faction_1)
 		baseLayerComponents.factions.add(layer.Faction_2)
 		baseLayerComponents.subfactions.add(layer.SubFac_1)
@@ -386,6 +386,7 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 	}
 
 	ctx.log.info('Parsed %d raw layers', rawLayers.length)
+	console.log(baseLayerComponents)
 
 	return { rawLayers, baseLayerComponents }
 }
@@ -500,7 +501,7 @@ function getJensensLayers(pipeline: SquadPipelineModels.Output): RawLayer[] {
 	const jensensLayers: RawLayer[] = []
 	for (const layerString of pipeline.mapsavailable) {
 		if (!layerString.toLowerCase().includes('jensens')) continue
-		const { level, jensensFactions } = M.parseLayerString(layerString)
+		const { level, jensensFactions } = M.parseLayerStringSegment(layerString)!
 		jensensLayers.push(
 			RawLayerSchema.parse({
 				Level: level,
@@ -520,7 +521,7 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 	const seedLayers: RawLayer[] = []
 	for (const layerString of pipeline.mapsavailable) {
 		if (!layerString.toLowerCase().includes('seed')) continue
-		const { level } = M.parseLayerString(layerString)
+		const { level } = M.parseLayerStringSegment(layerString)!
 
 		const matchups = getSeedingMatchupsForLayer(level, factions, biomes)
 		for (const [team1, team2] of matchups) {
