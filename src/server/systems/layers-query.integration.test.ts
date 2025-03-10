@@ -11,10 +11,10 @@ import * as Log from '../logger'
 import { areLayersInPool, queryLayers } from './layer-queries'
 
 let ctx!: C.Db & C.Log
-beforeAll(() => {
+beforeAll(async () => {
 	ensureEnvSetup()
 	Log.ensureLoggerSetup()
-	DB.setupDatabase()
+	await DB.setupDatabase()
 	ctx = DB.addPooledDb({ log: Log.baseLogger })
 })
 

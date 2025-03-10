@@ -27,7 +27,7 @@ await C.spanOp('main', {
 	Env.ensureEnvSetup()
 	ensureLoggerSetup()
 	await Config.ensureConfigSetup()
-	DB.setupDatabase()
+	await DB.setupDatabase()
 	Rbac.setup()
 	Sessions.setupSessions()
 	SquadServer.setupSquadServer()

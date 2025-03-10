@@ -12,8 +12,8 @@ let ctx!: C.Db & C.Log
 
 beforeAll(async () => {
 	ensureEnvSetup()
-	await ensureLoggerSetup()
-	DB.setupDatabase()
+	ensureLoggerSetup()
+	await DB.setupDatabase()
 	ctx = DB.addPooledDb({ log: baseLogger })
 })
 

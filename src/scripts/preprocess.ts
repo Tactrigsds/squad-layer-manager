@@ -228,8 +228,8 @@ async function main() {
 	}
 	ensureEnvSetup()
 	setupOtel()
-	await ensureLoggerSetup()
-	DB.setupDatabase()
+	ensureLoggerSetup()
+	await DB.setupDatabase()
 
 	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
 

@@ -1,9 +1,12 @@
+import { baseLogger } from '@/server/logger.ts'
+import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
 import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
+import { migrate } from 'drizzle-orm/mysql2/migrator'
+import { Pool } from 'mysql2'
 import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
 import { EventEmitter } from 'node:events'
-
-import { Pool } from 'mysql2'
+import path from 'node:path'
 import * as C from './context.ts'
 import { ENV } from './env.ts'
 
@@ -11,7 +14,7 @@ export type Db = MySql2Database<Record<string, never>>
 
 let pool: MySQL.Pool
 
-export function setupDatabase() {
+export async function setupDatabase() {
 	pool = MySQL.createPool({
 		host: ENV.DB_HOST,
 		port: ENV.DB_PORT,
@@ -24,6 +27,14 @@ export function setupDatabase() {
 		supportBigNumbers: true,
 		bigNumberStrings: true,
 	})
+
+	// Run migrations automatically when not in development mode
+	if (ENV.NODE_ENV === 'production') {
+		const db = drizzle(pool)
+		baseLogger.info('Running database migrations...')
+		await migrate(db, { migrationsFolder: path.join(Paths.PROJECT_ROOT, 'drizzle') })
+		baseLogger.info('Database migrations completed')
+	}
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date
