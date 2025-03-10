@@ -196,34 +196,32 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	async setNextLayer(ctx: C.Log, id: M.LayerId) {
-		return C.spanOp('squad-rcon:setNextLayer', { tracer }, async () => {
-			const res = M.getUnvalidatedLayerFromId(id)
-			let cmd: string
-			switch (res.code) {
-				case 'raw':
-					cmd = `AdminSetNextLayer ${res.id.slice('RAW:'.length)}`
-					break
-				case 'parsed':
-					cmd = M.getAdminSetNextLayerCommand(res.layer)
-					break
-				default:
-					assertNever(res)
-			}
-			await this.core.execute(ctx, cmd)
-			this.serverStatus.invalidate(ctx)
-			const newStatus = (await this.serverStatus.get(ctx)).value
-			if (newStatus.code !== 'ok') return newStatus
+	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: C.Log, id: M.LayerId) => {
+		const res = M.getUnvalidatedLayerFromId(id)
+		let cmd: string
+		switch (res.code) {
+			case 'raw':
+				cmd = `AdminSetNextLayer ${res.id.slice('RAW:'.length)}`
+				break
+			case 'parsed':
+				cmd = M.getAdminSetNextLayerCommand(res.layer)
+				break
+			default:
+				assertNever(res)
+		}
+		await this.core.execute(ctx, cmd)
+		this.serverStatus.invalidate(ctx)
+		const newStatus = (await this.serverStatus.get(ctx)).value
+		if (newStatus.code !== 'ok') return newStatus
 
-			if (newStatus.data.currentLayer.id !== id) {
-				return {
-					code: 'err:unable-to-set-next-layer' as const,
-					msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.currentLayer.id}`,
-				}
+		if (!M.isLayerIdPartialMatch(id, newStatus.data.currentLayer.id)) {
+			return {
+				code: 'err:unable-to-set-next-layer' as const,
+				msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.currentLayer.id}`,
 			}
-			return { code: 'ok' as const }
-		})()
-	}
+		}
+		return { code: 'ok' as const }
+	})
 
 	async endMatch(_ctx: C.Log) {
 		_ctx.log.info(`Ending match`)
@@ -244,42 +242,40 @@ export default class SquadRcon {
 		return { code: 'ok' as const, length: match ? parseInt(match[1], 10) : 0 }
 	}
 
-	private async getServerStatus(_ctx: C.Log): Promise<SM.ServerStatusRes> {
-		return C.spanOp('squad-rcon:getServerstatus', { tracer }, async () => {
-			const rawDataPromise = this.core.execute(_ctx, `ShowServerInfo`)
-			const currentLayerTask = this.getCurrentLayer(_ctx)
-			const nextLayerTask = this.getNextLayer(_ctx)
-			const rawDataRes = await rawDataPromise
-			if (rawDataRes.code !== 'ok') return rawDataRes
-			const data = JSON.parse(rawDataRes.data)
-			const res = SM.ServerRawInfoSchema.safeParse(data)
-			if (!res.success) {
-				_ctx.log.error(res.error, `Failed to parse server info: %O`, data)
-				return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
-			}
+	private getServerStatus = C.spanOp('squad-rcon:getServerstatus', { tracer }, async (_ctx: C.Log): Promise<SM.ServerStatusRes> => {
+		const rawDataPromise = this.core.execute(_ctx, `ShowServerInfo`)
+		const currentLayerTask = this.getCurrentLayer(_ctx)
+		const nextLayerTask = this.getNextLayer(_ctx)
+		const rawDataRes = await rawDataPromise
+		if (rawDataRes.code !== 'ok') return rawDataRes
+		const data = JSON.parse(rawDataRes.data)
+		const res = SM.ServerRawInfoSchema.safeParse(data)
+		if (!res.success) {
+			_ctx.log.error(res.error, `Failed to parse server info: %O`, data)
+			return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
+		}
 
-			const rawInfo = res.data
-			const currentLayerRes = await currentLayerTask
-			const nextLayerRes = await nextLayerTask
-			if (currentLayerRes.code !== 'ok') return currentLayerRes
-			if (nextLayerRes.code !== 'ok') return nextLayerRes
+		const rawInfo = res.data
+		const currentLayerRes = await currentLayerTask
+		const nextLayerRes = await nextLayerTask
+		if (currentLayerRes.code !== 'ok') return currentLayerRes
+		if (nextLayerRes.code !== 'ok') return nextLayerRes
 
-			const serverStatus: SM.ServerStatus = {
-				name: rawInfo.ServerName_s,
-				currentLayer: currentLayerRes.layer,
-				nextLayer: nextLayerRes.layer,
-				maxPlayerCount: rawInfo.MaxPlayers,
-				playerCount: rawInfo.PlayerCount_I,
-				queueLength: rawInfo.PublicQueue_I,
-				maxQueueLength: rawInfo.PublicQueueLimit_I,
-			}
+		const serverStatus: SM.ServerStatus = {
+			name: rawInfo.ServerName_s,
+			currentLayer: currentLayerRes.layer,
+			nextLayer: nextLayerRes.layer,
+			maxPlayerCount: rawInfo.MaxPlayers,
+			playerCount: rawInfo.PlayerCount_I,
+			queueLength: rawInfo.PublicQueue_I,
+			maxQueueLength: rawInfo.PublicQueueLimit_I,
+		}
 
-			return {
-				code: 'ok' as const,
-				data: serverStatus,
-			}
-		})()
-	}
+		return {
+			code: 'ok' as const,
+			data: serverStatus,
+		}
+	})
 }
 
 function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {

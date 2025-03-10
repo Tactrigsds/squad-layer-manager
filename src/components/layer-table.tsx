@@ -343,11 +343,12 @@ export default function LayerTable(props: {
 		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
 			const layer = page.layers[0]
 			if (!props.selected.includes(layer.id)) {
+				console.log('setting selected')
 				props.setSelected([layer.id])
 			}
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [page])
+	}, [page, autoSelectIfSingleResult])
 
 	const table = useReactTable({
 		data: page?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),

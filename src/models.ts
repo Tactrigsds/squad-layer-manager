@@ -4,7 +4,7 @@ import _StaticLayerComponents from '$root/assets/layer-components.json'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as RBAC from '@/rbac.models'
 import { createId } from './lib/id'
-import { deepClone, revLookup } from './lib/object'
+import { deepClone, isPartial, revLookup } from './lib/object'
 import { assertNever } from './lib/typeGuards'
 import { Parts } from './lib/types'
 import { PercentageSchema } from './lib/zod'
@@ -226,8 +226,19 @@ export function parseTeamString(
 		subfac: subfac ? revLookup(components.subfactionAbbreviations, subfac) : null,
 	}
 }
+/**
+ * Check if the ids are equal, or at least all parts of the layer partials `id` contains are in targetId
+ */
+export function isLayerIdPartialMatch(id: string, targetId: string) {
+	if (id === targetId) return true
 
-export function getLayerDetailsfromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
+	const layerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(id))
+	const targetLayerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(targetId))
+
+	return isPartial(layerRes, targetLayerRes)
+}
+
+export function getLayerDetailsFromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
 	if (unvalidatedLayer.code === 'raw') return unvalidatedLayer.partialLayer ?? {}
 	const { id: _, ...partial } = unvalidatedLayer.layer
 	return partial
@@ -676,18 +687,18 @@ export const LayerVoteSchema = z.object({
 })
 export type LayerVote = z.infer<typeof LayerVoteSchema>
 
-export const LayerQueueItemSchema = z.object({
-	itemId: z.string().regex(/^[a-zA-Z0-9]{6}$/),
+export const LayerListItemSchema = z.object({
+	itemId: z.string().regex(/^[a-zA-Z0-9_-]{6}$/),
 	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
 	source: z.enum(['generated', 'gameserver', 'manual']),
 	lastModifiedBy: z.bigint().optional(),
 })
 
-export const LayerQueueSchema = z.array(LayerQueueItemSchema)
+export const LayerListSchema = z.array(LayerListItemSchema)
 
-export type LayerQueue = z.infer<typeof LayerQueueSchema>
-export type LayerListItem = z.infer<typeof LayerQueueItemSchema>
+export type LayerList = z.infer<typeof LayerListSchema>
+export type LayerListItem = z.infer<typeof LayerListItemSchema>
 export type NewLayerListItem = Omit<LayerListItem, 'itemId'>
 
 export function getActiveItemLayerId(item: LayerListItem) {
@@ -1047,7 +1058,7 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 
 export const UserModifiableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
-	layerQueue: LayerQueueSchema,
+	layerQueue: LayerListSchema,
 	historyFilters: z.array(HistoryFilterSchema),
 	settings: ServerSettingsSchema,
 })
@@ -1079,7 +1090,7 @@ export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 })
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
-export function getNextLayerId(layerQueue: LayerQueue) {
+export function getNextLayerId(layerQueue: LayerList) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
 

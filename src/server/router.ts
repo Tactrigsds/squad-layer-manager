@@ -20,7 +20,7 @@ export function setupTrpcRouter() {
 			.input(
 				z.object({
 					historyFilters: z.array(M.HistoryFilterSchema),
-					layerQueue: z.array(M.LayerQueueItemSchema),
+					layerQueue: z.array(M.LayerListItemSchema),
 				}),
 			)
 			.query(async ({ input, ctx }) => {

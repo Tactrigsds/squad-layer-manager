@@ -1,7 +1,3 @@
-import fastifyCookie from '@fastify/cookie'
-import fastifyFormBody from '@fastify/formbody'
-import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
-
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
@@ -20,15 +16,19 @@ import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
+import fastifyCookie from '@fastify/cookie'
+import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
 import ws from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
+import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import Cookie from 'cookie'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
+import { Session } from 'node:inspector/promises'
 import * as path from 'node:path'
 import { WebSocket } from 'ws'
 
@@ -50,6 +50,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
 		if (path.startsWith('/trpc')) return
 		const ctx = DB.addPooledDb({ log: instance.log as Logger })
+
 		request.log = ctx.log
 		// @ts-expect-error monkey patching
 		request.ctx = ctx
@@ -106,7 +107,11 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		const ctx = getCtx(req)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, discordUser.id, RBAC.perm('site:authorized'))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(
+			ctx,
+			discordUser.id,
+			RBAC.perm('site:authorized'),
+		)
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':
@@ -146,7 +151,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		reply
 			.cookie('sessionId', sessionId, {
 				path: '/',
-				// maxAge: Sessions.SESSION_MAX_AGE,
+				maxAge: Sessions.SESSION_MAX_AGE,
 				httpOnly: true,
 			})
 			.redirect('/')
@@ -175,29 +180,35 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 
 		if (req.headers['content-type'] !== 'application/json') {
-			res.status(400).send({ code: 'err:invalid-content-type', msg: 'Content-Type must be application/json' })
+			res
+				.status(400)
+				.send({
+					code: 'err:invalid-content-type',
+					msg: 'Content-Type must be application/json',
+				})
 			return
 		}
 
 		if (!req.body) {
-			res.status(400).send({ code: 'err:missing-request-body', msg: 'Request body is missing' })
+			res
+				.status(400)
+				.send({
+					code: 'err:missing-request-body',
+					msg: 'Request body is missing',
+				})
 			return
 		}
 
 		const parseRes = SM.SquadjsEventSchema.safeParse(req.body)
 		if (!parseRes.success) {
-			res
-				.status(400)
-				.send(parseRes.error)
+			res.status(400).send(parseRes.error)
 			return
 		}
 		const ctx = getCtx(req)
 
 		const eventRes = await SquadServer.handleSquadjsEvent(ctx, parseRes.data!)
 		if (eventRes.code !== 'ok') {
-			res
-				.status(500)
-				.send(eventRes)
+			res.status(500).send(eventRes)
 			return
 		}
 
@@ -242,6 +253,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			default:
 				assertNever(authRes)
 		}
+
+		res = Sessions.updateSession({ ...authRes.ctx, res })
 
 		switch (ENV.NODE_ENV) {
 			case 'development': {
@@ -299,7 +312,7 @@ export async function createAuthorizedRequestContext<
 		}
 	}
 
-	const validSessionRes = await Sessions.validateSession(sessionId, ctx)
+	const validSessionRes = await Sessions.validateAndUpdate(sessionId, ctx)
 	switch (validSessionRes.code) {
 		case 'err:expired':
 		case 'err:not-found':
@@ -318,9 +331,11 @@ export async function createAuthorizedRequestContext<
 	const authedCtx: T & C.AuthedUser = {
 		...ctx,
 		sessionId,
+		expiresAt: validSessionRes.expiresAt,
 		user: validSessionRes.user,
 		log: ctx.log.child({ username: validSessionRes.user.username }),
 	}
+
 	if (ctx.span) {
 		ctx.span.setAttributes({
 			username: authedCtx.user.username,
@@ -363,6 +378,7 @@ export async function createTrpcRequestContext(
 		wsClientId,
 		user: result.ctx.user,
 		sessionId: result.ctx.sessionId,
+		expiresAt: result.ctx.expiresAt,
 		req: options.req,
 		ws: options.res as unknown as WebSocket,
 		log: result.ctx.log.child({ wsClientId }),

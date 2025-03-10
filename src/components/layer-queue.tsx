@@ -12,9 +12,8 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useFilter, useFilters } from '@/hooks/filters.ts'
-import { useDebounced } from '@/hooks/use-debounce.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import { useAreLayersInPool, useLayerExists } from '@/hooks/use-layer-queries.ts'
+import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
 import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
@@ -23,13 +22,12 @@ import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders.ts'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
-import { deepClone, isPartial } from '@/lib/object.ts'
+import { deepClone } from '@/lib/object.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
-import { areLayersInPool } from '@/server/systems/layer-queries.ts'
 import { useConfig } from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
@@ -149,7 +147,7 @@ export default function ServerDashboard() {
 	const slmConfig = useConfig()
 	return (
 		<div className="contianer mx-auto grid place-items-center py-10">
-			<span className="flex space-x-4">
+			<div className="flex space-x-4">
 				<VoteState />
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
@@ -158,10 +156,10 @@ export default function ServerDashboard() {
 						{!isEditing && serverStatusRes && serverStatusRes?.code === 'ok' && (!editingUser || inEditTransition) && (
 							<>
 								<CardHeader>
-									<span className="flex items-center justify-between">
+									<div className="flex items-center justify-between">
 										<CardTitle>Now Playing</CardTitle>
 										{DH.displayUnvalidatedLayer(serverStatusRes.data.currentLayer)}
-									</span>
+									</div>
 								</CardHeader>
 								<CardContent className="flex justify-between">
 									{slmConfig?.matchHistoryUrl && (
@@ -228,7 +226,7 @@ export default function ServerDashboard() {
 				<div>
 					<ServerSettingsPanel ref={settingsPanelRef} />
 				</div>
-			</span>
+			</div>
 		</div>
 	)
 }
@@ -993,8 +991,7 @@ function LayerListItem(props: QueueItemProps) {
 	const activeUnvalidatedLayer = M.getUnvalidatedLayerFromId(M.getActiveItemLayerId(item))
 
 	if (
-		!isEditing && squadServerNextLayer && props.index === 0 && activeUnvalidatedLayer.id !== squadServerNextLayer.id
-		&& !isPartial(M.getLayerDetailsfromUnvalidated(activeUnvalidatedLayer), M.getLayerDetailsfromUnvalidated(squadServerNextLayer))
+		!isEditing && squadServerNextLayer && props.index === 0 && !M.isLayerIdPartialMatch(activeUnvalidatedLayer.id, squadServerNextLayer.id)
 	) {
 		badges.push(
 			<Tooltip key="not current next">
@@ -1237,7 +1234,6 @@ export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNo
 		}
 	}
 
-	console.log(props.layerId)
 	if (M.isRawLayerId(props.layerId)) {
 		badges.push(
 			<Tooltip key="is raw layer">
@@ -1246,7 +1242,7 @@ export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNo
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						This layer was created by a raw setnext command (<b>{props.layerId.slice('RAW:'.length)}</b>)
+						This layer is unknown and was not able to be fully parsed (<b>{props.layerId.slice('RAW:'.length)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,
@@ -1370,11 +1366,11 @@ export function SelectLayersDialog(props: {
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="w-auto max-w-full min-w-0">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-					<span className="flex items-center">
+					<div className="flex items-center">
 						<DialogTitle>{props.title}</DialogTitle>
-						<span className="mx-8 font-light">-</span>
+						<div className="mx-8 font-light">-</div>
 						<DialogDescription>{props.description}</DialogDescription>
-					</span>
+					</div>
 					<div className="flex items-center space-x-2">
 						{!props.pinMode && (
 							<TabsList
@@ -1527,9 +1523,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	}
 
 	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
-	const partialLayerItem = (unvalidatedLayer && unvalidatedLayer.code === 'parsed')
-		? unvalidatedLayer.layer
-		: unvalidatedLayer?.partialLayer
+	const partialLayerItem = unvalidatedLayer ? M.getLayerDetailsFromUnvalidated(unvalidatedLayer) : undefined
 	const filterMenuStore = useFilterMenuStore(baseFilter, partialLayerItem && filterEnabled ? partialLayerItem : undefined)
 
 	const canSubmit = Zus.useStore(
@@ -1546,12 +1540,13 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	return (
 		<div className="w-full h-full">
-			<DialogHeader>
-				<div className="flex justify-between mr-6">
-					<div className="flex flex-col">
-						<DialogTitle>Edit</DialogTitle>
-						<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
-					</div>
+			<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+				<div className="flex items-center">
+					<DialogTitle>Edit</DialogTitle>
+					<div className="mx-8 font-light">-</div>
+					<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
+				</div>
+				<div className="flex items-center space-x-2">
 					{allowVotes && (
 						<TabsList
 							options={[
@@ -1710,7 +1705,7 @@ function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.
 			filtersExcludingField[key] = fieldSelectFilter
 		}
 		return filtersExcludingField
-	}, [items, filter, baseFilter])
+	}, [items, filter])
 
 	return {
 		filter,
@@ -1796,7 +1791,6 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 								draft[idxMap['SubFac_1']].value = draft[idxMap['SubFac_2']].value
 								draft[idxMap['Faction_2']].value = faction1
 								draft[idxMap['SubFac_2']].value = subFac1
-								delete draft[idxMap['id']].value
 							}),
 						)
 					}
@@ -1813,8 +1807,8 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
 							{name === 'Faction_2' && (
 								<>
-									<Button disabled={swapFactionsDisabled} onClick={swapFactions} variant="secondary">
-										Swap Factions
+									<Button title="Swap Factions" disabled={swapFactionsDisabled} onClick={swapFactions} size="icon" variant="outline">
+										<Icons.FlipVertical2 />
 									</Button>
 									<span />
 									<span />

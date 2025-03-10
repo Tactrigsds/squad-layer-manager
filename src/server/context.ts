@@ -183,6 +183,7 @@ export type RbacUser = { user: M.UserWithRbac }
 
 export type AuthSession = {
 	sessionId: string
+	expiresAt: Date
 }
 
 export type WSSession = {

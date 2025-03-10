@@ -91,6 +91,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 					ctx.log.info('setting initial next layer')
 					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 				}
+				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		).subscribe()
 	})
@@ -164,7 +165,10 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
 				await DB.runTransaction(ctx, async (ctx) => {
 					const serverState = await getServerState({ lock: true }, ctx)
-					if (status.currentLayer.code === 'parsed' && M.getNextLayerId(serverState.layerQueue) === status.currentLayer.layer.id) {
+					const nextLayerId = M.getNextLayerId(serverState.layerQueue)
+					if (!nextLayerId) {
+						// pass
+					} else if (M.isLayerIdPartialMatch(nextLayerId, status.currentLayer.id)) {
 						// new current layer was expected, so we just need to roll
 						await handleServerRoll(ctx, serverState)
 					} else {
@@ -204,6 +208,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		'layer-queue:handle-server-roll',
 		{ tracer },
 		async (baseCtx: C.Log & C.Db & C.Tx, prevServerState: M.LQServerState) => {
+			baseCtx.log.info('Attempting to handle roll to next layer')
 			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			using acquired = await acquireInBlock(voteStateMtx)
@@ -315,8 +320,8 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 // -------- voting --------
 //
 function getVoteStateUpdatesFromQueueUpdate(
-	lastQueue: M.LayerQueue,
-	newQueue: M.LayerQueue,
+	lastQueue: M.LayerList,
+	newQueue: M.LayerList,
 	voteState: M.VoteState | null,
 	force = false,
 ) {

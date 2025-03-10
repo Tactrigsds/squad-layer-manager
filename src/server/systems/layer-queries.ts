@@ -90,7 +90,7 @@ export const queryLayers = C.spanOp('layers-query:run', { tracer }, async (args:
 			.from(Schema.layers)
 			.where(whereCondition),
 	])
-	const totalCount = countResult.count
+	const totalCount = Number(countResult.count)
 
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	return {
