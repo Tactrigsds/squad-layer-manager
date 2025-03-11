@@ -1,26 +1,22 @@
-import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
-import { parse } from 'csv-parse'
-import { sql } from 'drizzle-orm'
-import deepEqual from 'fast-deep-equal'
-import * as fs from 'fs'
-import * as fsPromise from 'fs/promises'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import path from 'path'
-import { z } from 'zod'
-
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
 import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
+import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
 import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
 import * as M from '@/models'
-import * as Config from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
 import { setupOtel } from '@/server/systems/otel'
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import { parse } from 'csv-parse'
+import { sql } from 'drizzle-orm'
+import deepEqual from 'fast-deep-equal'
+import * as fs from 'fs'
+import * as fsPromise from 'fs/promises'
+import path from 'path'
+import { z } from 'zod'
 
 export const ParsedNanFloatSchema = z
 	.string()
@@ -219,7 +215,7 @@ export const RawLayerSchema = z
 
 type RawLayer = z.infer<typeof RawLayerSchema>
 
-const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components', 'generate-config-schema'])
+const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components'])
 
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
@@ -233,9 +229,6 @@ async function main() {
 
 	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
 
-	if (args.includes('generate-config-schema')) {
-		ctx.tasks.push(generateConfigJsonSchema(ctx))
-	}
 	if (args.includes('download-pipeline')) await downloadPipeline(ctx)
 	let pipeline: SquadPipelineModels.Output | null = null
 	let factions: FactionDetails[] | null = null
@@ -710,14 +703,6 @@ async function parseFactionDetails(_ctx: C.Log) {
 		})
 	}
 	return parsed
-}
-
-async function generateConfigJsonSchema(_ctx: C.Log) {
-	await using ctx = C.pushOperation(_ctx, 'generate-config-schema')
-	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
-	const schema = zodToJsonSchema(Config.ConfigSchema.extend({ ['$schema']: z.string() }))
-	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
-	ctx.log.info('Wrote generated config schema to %s', schemaPath)
 }
 
 await main()
