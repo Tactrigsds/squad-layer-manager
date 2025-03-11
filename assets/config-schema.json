@@ -7,11 +7,11 @@
     "defaults": {
       "type": "object",
       "properties": {
-        "voteDurationSeconds": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "default": 60,
-          "description": "Duration of a vote in seconds"
+        "voteDuration": {
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
+          "description": "Duration of a vote",
+          "default": "120s"
         },
         "minValidVotePercentage": {
           "type": "number",
@@ -110,23 +110,22 @@
           "description": "Number of layers in the queue to trigger a low queue size warning"
         },
         "adminQueueReminderInterval": {
-          "type": "string",
-          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
-          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often.",
-          "default": "25s"
+          "$ref": "#/properties/defaults/properties/voteDuration",
+          "default": "25s",
+          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often."
         },
         "voteReminderInterval": {
-          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "$ref": "#/properties/defaults/properties/voteDuration",
           "default": "15s",
           "description": "How often to remind users to vote"
         },
         "startVoteReminderThreshold": {
-          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "$ref": "#/properties/defaults/properties/voteDuration",
           "default": "25m",
           "description": "How far into a match to start reminding admins to start a vote"
         },
         "finalVote": {
-          "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
+          "$ref": "#/properties/defaults/properties/voteDuration",
           "default": "10s",
           "description": "How far in advance the final vote reminder should be sent"
         }

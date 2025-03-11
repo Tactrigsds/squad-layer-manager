@@ -27,7 +27,7 @@ export const ConfigSchema = z.object({
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: StrNoWhitespace,
 	defaults: z.object({
-		voteDurationSeconds: z.number().positive().default(60).describe('Duration of a vote in seconds'),
+		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 		minValidVotePercentage: PercentageSchema.describe('Minimum threshold for a vote tally to be valid'),
 	}),
 	commands: z.object({
