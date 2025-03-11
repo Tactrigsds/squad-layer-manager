@@ -412,7 +412,7 @@ export const startVote = C.spanOp(
 		}
 		const status = statusRes.data
 
-		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDurationSeconds
+		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDuration / 1000
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			const minValidVotePercentage = opts.minValidVotePercentage ?? CONFIG.defaults.minValidVotePercentage
 			const minValidVotes = Math.ceil((minValidVotePercentage / 100) * Math.max(status.playerCount, 1))

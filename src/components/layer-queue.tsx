@@ -437,7 +437,7 @@ function VoteState() {
 	const slmConfig = useConfig()
 	const startVoteForm = useForm({
 		defaultValues: {
-			durationSeconds: slmConfig?.defaults.voteDurationSeconds ?? 30,
+			durationSeconds: (slmConfig?.defaults.voteDuration ?? 3000) / 1000,
 			minValidVotePercentage: slmConfig?.defaults.minValidVotePercentage ?? 75,
 		},
 		validatorAdapter: zodValidator(),
