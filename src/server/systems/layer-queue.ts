@@ -105,7 +105,9 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		durableOp('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
 			if (
-				serverState.layerQueue[0]?.vote && lastRoll + CONFIG.reminders.voteReminderInterval < Date.now() && voteState?.code === 'ready'
+				serverState.layerQueue[0]?.vote
+				&& voteState?.code === 'ready'
+				&& lastRoll + CONFIG.reminders.startVoteReminderThreshold < Date.now()
 			) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.votePending)
 			} else if (serverState.layerQueue.length === 0) {

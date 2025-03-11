@@ -24,7 +24,6 @@ export const HumanTime = z.string().regex(/^[0-9._]+(s|m|h|d|w|ms)$/).transform(
 			return num * 1000
 	}
 })
-	.pipe(z.number().min(0).max(Number.MAX_SAFE_INTEGER))
 	.describe(
 		'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds',
 	)

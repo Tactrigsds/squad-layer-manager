@@ -110,10 +110,8 @@
           "description": "Number of layers in the queue to trigger a low queue size warning"
         },
         "adminQueueReminderInterval": {
-          "allOf": [
-            {"type": "string", "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"},
-            {"type": "number", "minimum": 0, "maximum": 9007199254740991}
-          ],
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
           "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often.",
           "default": "25s"
         },
@@ -122,7 +120,7 @@
           "default": "15s",
           "description": "How often to remind users to vote"
         },
-        "startVoteThreshold": {
+        "startVoteReminderThreshold": {
           "$ref": "#/properties/reminders/properties/adminQueueReminderInterval",
           "default": "25m",
           "description": "How far into a match to start reminding admins to start a vote"

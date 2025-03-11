@@ -46,7 +46,7 @@ export const ConfigSchema = z.object({
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
 		voteReminderInterval: HumanTime.default('15s').describe('How often to remind users to vote'),
-		startVoteThreshold: HumanTime.default('25m').describe('How far into a match to start reminding admins to start a vote'),
+		startVoteReminderThreshold: HumanTime.default('25m').describe('How far into a match to start reminding admins to start a vote'),
 		finalVote: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
 	}).default({}),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
