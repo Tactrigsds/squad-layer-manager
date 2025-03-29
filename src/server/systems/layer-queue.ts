@@ -1041,7 +1041,8 @@ const generateLayerQueueItems = C.spanOp(
 				},
 				pageSize,
 				pageIndex: 0,
-				filter,
+				constraints: filter ? [{ type: 'filter', filter, applyAs: 'where-condition' }] : [],
+				previousLayerIds: [],
 			},
 		}).then((r) => r.layers)
 

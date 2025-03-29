@@ -28,7 +28,6 @@ import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapte
 import Cookie from 'cookie'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import { Session } from 'node:inspector/promises'
 import * as path from 'node:path'
 import { WebSocket } from 'ws'
 
@@ -48,6 +47,17 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
+		request.log.info(
+			{
+				method: request.method,
+				url: request.url,
+				ip: request.ip,
+				userAgent: request.headers['user-agent'],
+			},
+			'incoming request %s %s',
+			request.method,
+			request.url,
+		)
 		if (path.startsWith('/trpc')) return
 		const ctx = DB.addPooledDb({ log: instance.log as Logger })
 
@@ -173,7 +183,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// receives requests from squadjs containing event information
 	instance.post(AR.exists('/squadjs/forward'), async function(req, res) {
-		const token = req.headers['authorization']?.replace(/[Bb]earer /, '')
+		const ctx = getCtx(req)
+		const token = req.headers['authorization']?.replace(/^[Bb]earer\s+/, '')
 		if (ENV.SQUADJS_HTTP_FORWARDER_TOKEN !== token) {
 			res.status(401).send({ code: 'err:invalid-token' })
 			return
@@ -204,8 +215,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			res.status(400).send(parseRes.error)
 			return
 		}
-		const ctx = getCtx(req)
 
+		ctx.log.info('Received squadjs event %s %o', parseRes.data.type, JSON.stringify(parseRes.data.data))
 		const eventRes = await SquadServer.handleSquadjsEvent(ctx, parseRes.data!)
 		if (eventRes.code !== 'ok') {
 			res.status(500).send(eventRes)

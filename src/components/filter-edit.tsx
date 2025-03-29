@@ -2,39 +2,38 @@ import * as AR from '@/app-routes.ts'
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { filterUpdate$ as getFilterUpdate$, getFilterContributorQueryKey, getFilterEntity$, useFilterContributors, useFilterDelete, useFilterUpdate } from '@/hooks/filters'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
+import { assertNever } from '@/lib/typeGuards'
 import * as Typography from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filters-entity'
+import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as Users from '@/systems.client/users.client'
+import { trpc } from '@/trpc.client'
+import { Subscribe, useStateObservable } from '@react-rxjs/core'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
+import React from 'react'
 import Markdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
-import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-
-import { filterUpdate$ as getFilterUpdate$, getFilterContributorQueryKey, getFilterEntity$, useFilterContributors, useFilterDelete, useFilterUpdate } from '@/hooks/filters'
-import { assertNever } from '@/lib/typeGuards'
-import { cn } from '@/lib/utils'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
-import { trpc } from '@/trpc.client'
-import { Subscribe, useStateObservable } from '@react-rxjs/core'
-import React from 'react'
 import FilterCard from './filter-card'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Label } from './ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
@@ -375,7 +374,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				filter={validFilter ?? undefined}
+				queryContext={{ constraints: validFilter ? [{ type: 'filter', filter: validFilter, applyAs: 'where-condition' }] : undefined }}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

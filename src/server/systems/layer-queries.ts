@@ -1,5 +1,4 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import * as FB from '@/lib/filter-builders'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
@@ -8,7 +7,6 @@ import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import superjson from 'superjson'
 import { z } from 'zod'
 import * as LayerQueue from './layer-queue'
 
@@ -30,71 +28,120 @@ export const LayersQueryInputSchema = z.object({
 	pageIndex: z.number().int().min(0).optional(),
 	pageSize: z.number().int().min(1).max(200).optional(),
 	sort: LayersQuerySortSchema.optional(),
-	filter: M.FilterNodeSchema.optional(),
-	historyFilters: z.array(M.HistoryFilterSchema).optional(),
-	queuedLayerIds: z.array(M.LayerIdSchema).optional(),
+	constraints: z.array(M.QueryConstraintSchema).optional(),
+	previousLayerIds: z.array(M.LayerIdSchema).default([]).describe(
+		'Layer Ids to be considered as part of the history for filtering purposes',
+	),
 })
 export const historyFiltersCache = new Map<string, M.FilterNode>()
 
 export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
 
 const tracer = Otel.trace.getTracer('layer-queries')
+export type QueriedLayer = {
+	layers: M.Layer & { constraints: boolean[] }
+	totalCount: number
+}
 
-export const queryLayers = C.spanOp('layers-query:run', { tracer }, async (args: { input: LayersQueryInput; ctx: C.Log & C.Db }) => {
+export const queryLayers = C.spanOp('layer-queries:query', { tracer }, async (args: { input: LayersQueryInput; ctx: C.Log & C.Db }) => {
 	const { ctx, input: input } = args
 	input.pageSize ??= 200
 	input.pageIndex ??= 0
 
-	let whereCondition = sql`1=1`
-	let filter = input.filter
+	const whereConditions: SQL<unknown>[] = []
+	const selectProperties: any = {}
+	const constraintBuildingTasks: Promise<any>[] = []
+	const constraints = input.constraints ?? []
 
-	if (input.historyFilters) {
-		let historyFilter: M.FilterNode
-		if (historyFiltersCache.has(superjson.stringify(input.historyFilters))) {
-			historyFilter = historyFiltersCache.get(superjson.stringify(input.historyFilters))!
-		} else {
-			historyFilter = await getHistoryFilter(ctx, input.historyFilters, input.queuedLayerIds ?? [])
-		}
+	const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
 
-		if (filter) {
-			filter = FB.and([filter, historyFilter])
-		} else {
-			filter = historyFilter
-		}
-	}
-
-	if (filter) {
-		whereCondition = (await getWhereFilterConditions(filter, [], ctx)) ?? whereCondition
-	}
-
-	let query = ctx.db().select().from(Schema.layers).where(whereCondition)
-
-	if (input.sort && input.sort.type === 'column') {
-		// @ts-expect-error idk
-		query = query.orderBy(
-			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
+	for (let i = 0; i < constraints.length; i++) {
+		const constraint = constraints[i]
+		constraintBuildingTasks.push(
+			C.spanOp('layer-queries:build-constraint-sql-condition', { tracer }, async () => {
+				C.setSpanOpAttrs({
+					constraintName: constraint.name,
+					constraintIndex: i,
+					constraintType: constraint.type,
+					constraintApplyAs: constraint.applyAs,
+				})
+				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
+				if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
+				switch (constraint.applyAs) {
+					case 'field':
+						selectProperties[`constraint_${i}`] = condition
+						break
+					case 'where-condition':
+						whereConditions.push(condition)
+						break
+					default:
+						assertNever(constraint.applyAs)
+				}
+				return { code: 'ok' as const }
+			})(),
 		)
-	} else if (input.sort && input.sort.type === 'random') {
-		// @ts-expect-error idk
-		query = query.orderBy(sql`RAND(${input.sort.seed})`)
+	}
+	await Promise.all(constraintBuildingTasks)
+
+	const includeWhere = (query: any) => {
+		if (whereConditions.length > 0) return query.where(E.and(...whereConditions))
+		return query
 	}
 
-	const [layers, [countResult]] = await Promise.all([
-		query
-			.offset(input.pageIndex * input.pageSize)
-			.limit(input.pageSize)
-			.then((layers) => (layers as M.Layer[]).map(M.includeComputedCollections)),
-		ctx
-			.db()
-			.select({ count: sql<number>`count(*)` })
-			.from(Schema.layers)
-			.where(whereCondition),
-	])
+	let query: any = ctx.db().select({ ...Schema.layers, ...selectProperties }).from(Schema.layers)
+	query = includeWhere(query)
+
+	if (input.sort) {
+		switch (input.sort.type) {
+			case 'column':
+				query = query.orderBy(
+					input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
+				)
+				break
+			case 'random':
+				query = query.orderBy(sql`RAND(${input.sort.seed})`)
+				break
+			default:
+				assertNever(input.sort)
+		}
+	}
+	query = query.offset(input.pageIndex * input.pageSize)
+		.limit(input.pageSize)
+
+	let countQuery = ctx
+		.db()
+		.select({ count: sql<string>`count(*)` })
+		.from(Schema.layers)
+	countQuery = includeWhere(countQuery)
+
+	const postprocessLayers = (layers: (M.Layer & Record<string, boolean>)[]): M.QueriedLayer[] => {
+		return layers.map((layer) => {
+			// default to true because missing means the constraint is applied via a where condition
+			const constraintResults: boolean[] = Array(constraints.length).fill(true)
+			for (const key of Object.keys(layer)) {
+				const groups = key.match(/^constraint_(\d+)$/)
+				if (!groups) continue
+				const idx = Number(groups[1])
+				constraintResults[idx] = layer[key as keyof M.Layer] as boolean
+			}
+			return {
+				...M.includeComputedCollections(layer),
+				constraints: constraintResults,
+			}
+		})
+	}
+
+	const [layers, [countResult]] = await Promise.all(
+		[
+			query.then(postprocessLayers) as Promise<M.QueriedLayer[]>,
+			countQuery,
+		] as const,
+	)
 	const totalCount = Number(countResult.count)
 
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	return {
-		layers,
+		code: 'ok' as const,
+		layers: layers,
 		totalCount,
 		pageCount: input.sort?.type === 'random' ? 1 : Math.ceil(totalCount / input.pageSize),
 	}
@@ -121,7 +168,7 @@ export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof Ar
 	const filterEntity = M.FilterEntitySchema.parse(rawFilterEntity)
 	const filter = filterEntity.filter
 
-	const whereConditions = await getWhereFilterConditions(filter, [], ctx)
+	const whereConditions = await getFilterNodeSQLConditions(ctx, filter, [])
 	const results = await ctx
 		.db()
 		.select({ id: Schema.layers.id, matchesFilter: whereConditions as SQL<string> })
@@ -161,49 +208,99 @@ export async function layerExists({ input, ctx }: { input: LayerExistsInput; ctx
 export const LayersQueryGroupedByInputSchema = z.object({
 	columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
 	limit: z.number().positive().max(500).default(500),
-	filter: M.FilterNodeSchema.optional(),
+	constraints: z.array(M.QueryConstraintSchema).optional(),
+	previousLayerIds: z.array(M.LayerIdSchema).default([]),
 	sort: LayersQuerySortSchema.optional(),
 })
 export type LayersQueryGroupedByInput = z.infer<typeof LayersQueryGroupedByInputSchema>
-export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; input: LayersQueryGroupedByInput }) {
-	type Columns = (typeof input.columns)[number]
-	const selectObj = input.columns.reduce(
-		(acc, column) => {
-			// @ts-expect-error no idea
-			acc[column] = Schema.layers[column]
-			return acc
-		},
-		{} as { [key in Columns]: (typeof Schema.layers)[key] },
-	)
+export const queryLayersGroupedBy = C.spanOp(
+	'layer-queries:run-grouped-by',
+	{ tracer },
+	async ({ ctx, input }: { ctx: C.Log & C.Db; input: LayersQueryGroupedByInput }) => {
+		console.log(input)
+		const whereConditions: SQL<unknown>[] = []
+		const constraintBuildingTasks: Promise<any>[] = []
+		const constraints = input.constraints ?? []
+		const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
+		for (let i = 0; i < constraints.length; i++) {
+			const constraint = constraints[i]
+			constraintBuildingTasks.push(
+				C.spanOp('layer-queries:build-constraint-sql-condition-groupby', { tracer }, async () => {
+					C.setSpanOpAttrs({
+						constraintName: constraint.name,
+						constraintIndex: i,
+						constraintType: constraint.type,
+						constraintApplyAs: constraint.applyAs,
+					})
+					const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
+					if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
+					switch (constraint.applyAs) {
+						case 'field':
+							break
+						case 'where-condition':
+							whereConditions.push(condition)
+							break
+						default:
+							assertNever(constraint.applyAs)
+					}
+					return { code: 'ok' as const }
+				})(),
+			)
+		}
+		await Promise.all(constraintBuildingTasks)
+		type Columns = (typeof input.columns)[number]
 
-	let query = ctx
-		.db()
-		.select(selectObj)
-		.from(Schema.layers)
-		// this could be a having clause, but since we're mainly using this for filtering ids, the cardinality is fine before the group-by anyway
-		.where(input.filter ? await getWhereFilterConditions(input.filter, [], ctx) : sql`1=1`)
-		.groupBy(...input.columns.map((column) => Schema.layers[column]))
-
-	if (input.sort && input.sort.type === 'column') {
-		// @ts-expect-error idk
-		query = query.orderBy(
-			input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
+		const selectObj = input.columns.reduce(
+			(acc, column) => {
+				// @ts-expect-error no idea
+				acc[column] = Schema.layers[column]
+				return acc
+			},
+			{} as { [key in Columns]: (typeof Schema.layers)[key] },
 		)
-	} else if (input.sort && input.sort.type === 'random') {
-		// @ts-expect-error idk
-		query = query.orderBy(sql`RAND(${input.sort.seed})`)
-	}
 
-	return await query.limit(input.limit)
+		let query: any = ctx
+			.db()
+			.select(selectObj)
+			.from(Schema.layers)
+
+		if (whereConditions.length > 0) {
+			query = query.where(E.and(...whereConditions))
+		}
+		query = query.groupBy(...input.columns.map((column) => Schema.layers[column]))
+
+		if (input.sort && input.sort.type === 'column') {
+			query = query.orderBy(
+				input.sort.sortDirection === 'ASC' ? E.asc(Schema.layers[input.sort.sortBy]) : E.desc(Schema.layers[input.sort.sortBy]),
+			)
+		} else if (input.sort && input.sort.type === 'random') {
+			query = query.orderBy(sql`RAND(${input.sort.seed})`)
+		}
+
+		const res = await query.limit(input.limit)
+		// TODO fix this type definition
+		return res as Record<M.StringColumn, string>[]
+	},
+)
+
+export async function getConstraintSQLConditions(ctx: C.Log & C.Db, constraint: M.LayerQueryConstraint, previousLayerIds: string[]) {
+	switch (constraint.type) {
+		case 'filter':
+			return await getFilterNodeSQLConditions(ctx, constraint.filter, [])
+		case 'do-not-repeat':
+			return getDoNotRepeatSQLConditions(ctx, constraint.rule, previousLayerIds)
+			break
+		default:
+			assertNever(constraint)
+	}
 }
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
-export async function getWhereFilterConditions(
+export async function getFilterNodeSQLConditions(
+	ctx: C.Db & C.Log,
 	node: M.FilterNode,
 	reentrantFilterIds: string[],
-	ctx: C.Db & C.Log,
-	schema: typeof Schema.layers = Schema.layers,
 ): Promise<SQL> {
 	let res: SQL | undefined
 	if (node.type === 'comp') {
@@ -233,7 +330,7 @@ export async function getWhereFilterConditions(
 					const values = comp.values as string[]
 					const conditions: SQL[] = []
 					for (const faction of values) {
-						conditions.push(hasTeam(faction, null, schema))
+						conditions.push(hasTeam(faction, null))
 					}
 					res = E.and(...conditions)!
 					break
@@ -242,7 +339,7 @@ export async function getWhereFilterConditions(
 					const factionValues = comp.values.map((v) => M.parseTeamString(v))
 					const conditions: SQL[] = []
 					for (const { faction, subfac } of factionValues) {
-						conditions.push(hasTeam(faction, subfac as M.Subfaction, schema))
+						conditions.push(hasTeam(faction, subfac as M.Subfaction))
 					}
 					res = E.and(...conditions)!
 					break
@@ -250,11 +347,11 @@ export async function getWhereFilterConditions(
 				if (comp.column === 'SubFacMatchup') {
 					if (comp.values[0] === comp.values[1]) {
 						const value = comp.values[0] as M.Subfaction
-						return E.and(E.eq(schema.SubFac_1, value), E.eq(schema.SubFac_2, value))!
+						return E.and(E.eq(Schema.layers.SubFac_1, value), E.eq(Schema.layers.SubFac_2, value))!
 					}
 					const conditions: SQL[] = []
 					for (const subfaction of comp.values) {
-						conditions.push(hasTeam(null, subfaction as M.Subfaction, schema))
+						conditions.push(hasTeam(null, subfaction as M.Subfaction))
 					}
 					res = E.and(...conditions)!
 					break
@@ -265,40 +362,40 @@ export async function getWhereFilterConditions(
 				})
 			}
 			case 'eq': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				// @ts-expect-error idc
 				res = E.eq(column, comp.value)!
 				break
 			}
 			case 'in': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				// @ts-expect-error idc
 				res = E.inArray(column, comp.values)!
 				break
 			}
 			case 'like': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				res = E.like(column, comp.value)!
 				break
 			}
 			case 'gt': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				res = E.gt(column, comp.value)!
 				break
 			}
 			case 'lt': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				res = E.lt(column, comp.value)!
 				break
 			}
 			case 'inrange': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				const [min, max] = [...comp.range].sort((a, b) => a - b)
 				res = E.and(E.gte(column, min), E.lte(column, max))!
 				break
 			}
 			case 'is-true': {
-				const column = schema[comp.column]
+				const column = Schema.layers[comp.column]
 				res = E.eq(column, true)!
 				break
 			}
@@ -323,12 +420,12 @@ export async function getWhereFilterConditions(
 			})
 		}
 		const filter = M.FilterNodeSchema.parse(entity.filter)
-		res = await getWhereFilterConditions(filter, [...reentrantFilterIds, node.filterId], ctx, schema)
+		res = await getFilterNodeSQLConditions(ctx, filter, [...reentrantFilterIds, node.filterId])
 	}
 
 	if (M.isBlockNode(node)) {
 		const childConditions = await Promise.all(
-			node.children.map((node) => getWhereFilterConditions(node, reentrantFilterIds, ctx, schema)),
+			node.children.map((node) => getFilterNodeSQLConditions(ctx, node, reentrantFilterIds)),
 		)
 		if (node.type === 'and') {
 			res = E.and(...childConditions)!
@@ -341,180 +438,88 @@ export async function getWhereFilterConditions(
 	return res!
 }
 
+function getDoNotRepeatSQLConditions(
+	ctx: C.Db,
+	rule: M.DoNotRepeatRule,
+	previousLayerIds: string[],
+) {
+	const values = new Set<string>()
+	const layerIds = previousLayerIds.slice(0, rule.within)
+	if (rule.within <= 0) return sql`1=1`
+	for (const layerId of layerIds) {
+		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
+		switch (rule.field) {
+			case 'Level':
+			case 'Layer':
+				if (layer[rule.field]) values.add(layer[rule.field]!)
+				break
+			case 'Faction':
+				if (layer.Faction_1) values.add(layer.Faction_1!)
+				if (layer.Faction_2) values.add(layer.Faction_2!)
+				break
+			case 'SubFac':
+				// SubFac can be null instead of undefined indicating a unitless layer, but we just ignore those here
+				if (layer.SubFac_1) values.add(layer.SubFac_1!)
+				if (layer.SubFac_2) values.add(layer.SubFac_2!)
+				break
+			default:
+				assertNever(rule.field)
+		}
+	}
+	const valuesArr = Array.from(values)
+
+	switch (rule.field) {
+		case 'Level':
+		case 'Layer':
+			return E.notInArray(Schema.layers[rule.field], valuesArr)
+		case 'Faction':
+			return E.and(E.notInArray(Schema.layers.Faction_1, valuesArr), E.notInArray(Schema.layers.Faction_2, valuesArr))
+		case 'SubFac':
+			return E.and(E.notInArray(Schema.layers.SubFac_1, valuesArr), E.notInArray(Schema.layers.SubFac_2, valuesArr))
+	}
+}
+
 function hasTeam(
 	faction: string | null | typeof Schema.layers.Faction_1 = null,
 	subfaction: M.Subfaction | null | typeof Schema.layers.SubFac_1 = null,
-	schema: typeof Schema.layers,
 ) {
 	if (!faction && !subfaction) {
 		throw new Error('At least one of faction or subfaction must be provided')
 	}
 
 	if (subfaction === null) {
-		return E.or(E.eq(schema.Faction_1, faction!), E.eq(schema.Faction_2, faction!))!
+		return E.or(E.eq(Schema.layers.Faction_1, faction!), E.eq(Schema.layers.Faction_2, faction!))!
 	}
 	if (faction === null) {
-		return E.or(E.eq(schema.SubFac_1, subfaction), E.eq(schema.SubFac_2, subfaction))!
+		return E.or(E.eq(Schema.layers.SubFac_1, subfaction), E.eq(Schema.layers.SubFac_2, subfaction))!
 	}
 	return E.or(
-		E.and(E.eq(schema.Faction_1, faction), E.eq(schema.SubFac_1, subfaction)),
-		E.and(E.eq(schema.Faction_2, faction), E.eq(schema.SubFac_2, subfaction)),
+		E.and(E.eq(Schema.layers.Faction_1, faction), E.eq(Schema.layers.SubFac_1, subfaction)),
+		E.and(E.eq(Schema.layers.Faction_2, faction), E.eq(Schema.layers.SubFac_2, subfaction)),
 	)!
+}
+
+/**
+ * @param constraints The constraints to apply
+ * @param previousLayerIds Other IDs which should be considered as being at the front of the history
+ */
+async function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], previousLayerIds: M.LayerId[]) {
+	previousLayerIds = [...previousLayerIds]
+	const maxHistoryLookback = Math.max(...constraints.map(c => c.type === 'do-not-repeat' ? c.rule.within : -1))
+	if (maxHistoryLookback > 0) {
+		const rows = await ctx.db().select({ layerId: Schema.matchHistory.layerId }).from(Schema.matchHistory).orderBy(
+			E.desc(Schema.matchHistory.startTime),
+		).limit(maxHistoryLookback - previousLayerIds.length)
+		for (const row of rows) {
+			previousLayerIds.push(row.layerId)
+		}
+	}
+	return previousLayerIds
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
 	const [filter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	return filter as Schema.Filter | undefined
-}
-
-// function getLast10Layers(ctx: C.Db) {
-
-// }
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function getHistoryFilter(_ctx: C.Db & C.Log, historyFilters: M.HistoryFilter[], queuedLayerIds: M.LayerId[]) {
-	return FB.and([])
-	// await using ctx = C.pushOperation(_ctx, 'layers-query:get-history-filter-node')
-	// const sortedHistoryFilters = historyFilters.sort((a, b) => a.excludeFor.matches - b.excludeFor.matches)
-
-	// const comparisons: M.FilterNode[] = []
-
-	// for (const filter of sortedHistoryFilters) {
-	// 	if (!comparisons) {
-	// 		throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid filter' })
-	// 	}
-	// 	const subfacteam1 = aliasedTable(Schema.subfactions, 'subfacteam1')
-	// 	const subfacteam2 = aliasedTable(Schema.subfactions, 'subfacteam2')
-
-	// 	const numFromHistory = filter.excludeFor.matches - queuedLayerIds.length
-	// 	const _sqApplicable = ctx
-	// 		.db()
-	// 		//@ts-expect-error this works trust me
-	// 		.select(Schema.layers)
-	// 		.from(SquadjsSchema.dbLogMatches)
-	// 		.leftJoin(subfacteam1, E.eq(subfacteam1.fullName, SquadjsSchema.dbLogMatches.subFactionTeam1))
-	// 		.leftJoin(subfacteam2, E.eq(subfacteam2.fullName, SquadjsSchema.dbLogMatches.subFactionTeam2))
-	// 		.leftJoin(
-	// 			Schema.layers,
-	// 			E.and(
-	// 				E.eq(Schema.layers.Layer, SquadjsSchema.dbLogMatches.layerClassname),
-	// 				E.eq(subfacteam1.shortName, Schema.layers.SubFac_1),
-	// 				E.eq(subfacteam2.shortName, Schema.layers.SubFac_2),
-	// 				E.eq(Schema.layers.Faction_1, SquadjsSchema.dbLogMatches.team1Short),
-	// 				E.eq(Schema.layers.Faction_2, SquadjsSchema.dbLogMatches.team2Short)
-	// 			)
-	// 		)
-	// 		.orderBy(E.desc(SquadjsSchema.dbLogMatches.startTime))
-	// 		.limit(numFromHistory)
-	// 		.as('applicable-matches')
-
-	// 	const applicableHistoryLayerIds = ctx.db().select({ id: _sqApplicable.id }).from(_sqApplicable)
-
-	// 	const numFromQueue = Math.min(filter.excludeFor.matches, queuedLayerIds.length)
-	// 	queuedLayerIds = queuedLayerIds.slice(0, numFromQueue)
-	// 	const applicableLayers = ctx
-	// 		.db()
-	// 		.select()
-	// 		.from(Schema.layers)
-	// 		.where(E.or(E.inArray(Schema.layers.id, queuedLayerIds), E.inArray(Schema.layers.id, applicableHistoryLayerIds)))
-	// 		.as('applicable-layers')
-
-	// 	ctx.tasks.push(
-	// 		(async () => {
-	// 			switch (filter.type) {
-	// 				case 'dynamic': {
-	// 					let selectedCols: M.LayerColumnKey[] = []
-	// 					if (filter.column === 'FullMatchup') {
-	// 						selectedCols = ['Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2']
-	// 					} else if (filter.column === 'FactionMatchup') {
-	// 						selectedCols = ['Faction_1', 'Faction_2']
-	// 					} else if (filter.column === 'SubFacMatchup') {
-	// 						selectedCols = ['SubFac_1', 'SubFac_2']
-	// 					} else {
-	// 						selectedCols = [filter.column]
-	// 					}
-	// 					const selected = Object.fromEntries(selectedCols.map((col) => [col, applicableLayers[col]]))
-	// 					const applicableValues = await ctx.db().select(selected).from(applicableLayers)
-	// 					if (M.isColType(filter.column, 'string')) {
-	// 						comparisons.push(
-	// 							FB.comp(
-	// 								FB.inValues(
-	// 									filter.column,
-	// 									//@ts-expect-error this works trust me
-	// 									[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
-	// 								),
-	// 								{ neg: true }
-	// 							)
-	// 						)
-	// 					} else {
-	// 						throw new Error('not implemented')
-	// 					}
-	// 					break
-
-	// 					// todo match on the column type instead
-	// 					// 	if (filter.comparison.code === 'eq') {
-	// 					// 		if (!M.isColType(filter.column, 'string')) throw new Error('invalid column type for eq filter')
-	// 					// 		comparisons.push(
-	// 					// 			FB.comp(
-	// 					// 				FB.inValues(
-	// 					// 					filter.column,
-	// 					// 					//@ts-expect-error this works trust me
-	// 					// 					[...new Set(applicableValues.map((row) => row[filter.substitutedColumn]))]
-	// 					// 				),
-	// 					// 				{ neg: true }
-	// 					// 			)
-	// 					// 		)
-	// 					// 	} else if (filter.comparison.code === 'has') {
-	// 					// 		let values: string[][]
-	// 					// 		if (filter.substitutedColumn === 'FullMatchup') {
-	// 					// 			values = applicableValues.map((row) => [
-	// 					// 				M.getLayerTeamString(row.Faction_1, row.SubFac_1),
-	// 					// 				M.getLayerTeamString(row.Faction_2, row.SubFac_2),
-	// 					// 			])
-	// 					// 		} else if (filter.substitutedColumn === 'FactionMatchup') {
-	// 					// 			values = applicableValues.map((row) => [row.Faction_1, row.Faction_2])
-	// 					// 		} else if (filter.substitutedColumn === 'SubFacMatchup') {
-	// 					// 			values = applicableValues.map((row) => [row.SubFac_1, row.SubFac_2])
-	// 					// 		} else {
-	// 					// 			throw new Error('Invalid column for has filter')
-	// 					// 		}
-
-	// 					// 		for (const value of values) {
-	// 					// 			comparisons.push(FB.comp(FB.hasAll(filter.substitutedColumn, value), { neg: true }))
-	// 					// 		}
-	// 					// 	} else {
-	// 					// 		throw new Error('Unsupported comparison type for substituted column')
-	// 					// 	}
-	// 				}
-	// 				case 'static': {
-	// 					const condition = await getWhereFilterConditions(
-	// 						FB.comp(filter.comparison),
-	// 						[],
-	// 						ctx,
-	// 						applicableLayers as unknown as typeof Schema.layers
-	// 					)
-	// 					const query = ctx
-	// 						.db()
-	// 						.select({ count: sql<number>`count(*)` })
-	// 						.from(applicableLayers)
-	// 						.where(condition)
-
-	// 					const [{ count }] = await query
-
-	// 					if (count !== 0) {
-	// 						comparisons.push(FB.comp(filter.comparison, { neg: true }))
-	// 					}
-	// 					break
-	// 				}
-	// 				default:
-	// 					assertNever(filter)
-	// 			}
-	// 		})()
-	// 	)
-	// }
-
-	// await Promise.all(ctx.tasks)
-	// return FB.and(comparisons)
 }
 
 export const layersRouter = router({

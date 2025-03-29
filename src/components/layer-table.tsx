@@ -2,10 +2,9 @@ import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Toggle } from '@/components/ui/toggle'
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useLayerExists, useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import { toast } from '@/hooks/use-toast'
@@ -31,7 +30,11 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 
-const columnHelper = createColumnHelper<M.Layer & M.LayerComposite>()
+type ConstraintRowDetails = {
+	constraints: M.LayerQueryConstraint[]
+	values: boolean[]
+}
+const columnHelper = createColumnHelper<M.Layer & M.LayerComposite & { 'constraints': ConstraintRowDetails }>()
 
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
@@ -86,7 +89,7 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	})
 }
 
-const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite, any>[] = [
+const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite & 'constraints', any>[] = [
 	{
 		id: 'select',
 		header: ({ table }) => (
@@ -138,6 +141,29 @@ const COLS_ORDER = [
 	}
 }
 
+const constraintsCol = columnHelper.accessor('constraints', {
+	header: '',
+	enableHiding: false,
+	cell: info => {
+		const { values, constraints } = info.getValue() as {
+			constraints: M.LayerQueryConstraint[]
+			values: boolean[]
+		}
+		const nodes: React.ReactNode[] = []
+		for (let i = 0; i < constraints.length; i++) {
+			if (constraints[i].applyAs === 'where-condition' || values[i]) continue
+			nodes.push(
+				<div key={constraints[i].name ?? i}>
+					{constraints[i].name ?? 'Constraint ' + i}
+				</div>,
+			)
+		}
+		return <span className="flex space-x-0.5">nodes</span>
+	},
+})
+
+COL_DEFS.push(constraintsCol)
+
 const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2', 'Balance_Differential', 'Asymmetry_Score'] as (
 	| M.LayerColumnKey
 	| M.LayerCompositeKey
@@ -150,7 +176,7 @@ const DEFAULT_SORT: LayersQueryInput['sort'] = {
 }
 
 export default function LayerTable(props: {
-	filter?: M.FilterNode
+	queryContext?: M.LayerQueryContext
 
 	selected: M.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>>
@@ -176,24 +202,23 @@ export default function LayerTable(props: {
 	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
 
 	const canToggleColumns = props.canToggleColumns ?? true
-
 	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
-
-	let filter = props.filter
 
 	{
 		const setPageIndex = props.setPageIndex
 		React.useEffect(() => {
 			setPageIndex(0)
-		}, [filter, setPageIndex])
+		}, [props.queryContext?.constraints, setPageIndex])
 	}
 
-	const defaultSortingState: SortingState = []
+	let queryConstraints = props.queryContext?.constraints
+
+	let defaultSortingState: SortingState = []
 	if (props.defaultSortBy && props.defaultSortBy !== 'random') {
-		defaultSortingState.push({
+		defaultSortingState = [{
 			id: props.defaultSortBy,
 			desc: props.defaultSortDirection === 'DESC',
-		})
+		}]
 	}
 	const [sortingState, _setSortingState] = useState<SortingState>(defaultSortingState)
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
@@ -232,6 +257,9 @@ export default function LayerTable(props: {
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
 		_setShowSelectedLayers(value)
 		props.setPageIndex(0)
+		if (sortingState.length > 0) {
+			setSorting([])
+		}
 	}
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
@@ -295,8 +323,8 @@ export default function LayerTable(props: {
 	}
 
 	if (showSelectedLayers) {
-		console.log(props.selected)
-		filter = FB.comp(FB.inValues('id', props.selected))
+		const filter = FB.comp(FB.inValues('id', props.selected))
+		queryConstraints = [{ type: 'filter', filter, applyAs: 'where-condition' }]
 	}
 
 	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
@@ -315,14 +343,21 @@ export default function LayerTable(props: {
 		pageIndex: props.pageIndex,
 		pageSize,
 		sort,
-		filter: filter ?? undefined,
+		constraints: queryConstraints,
+		previousLayerIds: props.queryContext?.previousLayerIds ?? [],
 	})
 
 	let page = layersRes.data
 	if (showSelectedLayers && page) {
 		page = { ...page, layers: [...page.layers] }
 		const returnedIds = new Set(page.layers.map(layer => layer.id))
-		for (const selectedId of props.selected) {
+		for (
+			const selectedId of props.selected.slice(
+				props.pageIndex * pageSize,
+				// no need to bounds-check slice in js
+				(props.pageIndex * pageSize) + pageSize,
+			)
+		) {
 			if (returnedIds.has(selectedId)) continue
 			const unvalidated = M.getUnvalidatedLayerFromId(selectedId)
 			if (unvalidated.code === 'parsed') {
@@ -334,16 +369,27 @@ export default function LayerTable(props: {
 			}
 		}
 		page.layers.sort((a, b) => {
-			const aIndex = props.selected.indexOf(a.id)
-			const bIndex = props.selected.indexOf(b.id)
-			return aIndex - bIndex
+			if (sort && sort.type === 'column') {
+				const column = sort.sortBy
+				const direction = sort.sortDirection === 'ASC' ? 1 : -1
+
+				if (a[column] === b[column]) return 0
+				if (a[column] === null || a[column] === undefined) return direction
+				if (b[column] === null || b[column] === undefined) return -direction
+
+				return a[column] < b[column] ? -direction : direction
+			} else if (sort && sort.type === 'random') {
+				// For random sort just shuffle the entries
+				return Math.random() - 0.5
+			}
+			// Default sort by insertion time if no sort specified
+			return (insertionTimes.current[a.id] ?? now) - (insertionTimes.current[b.id] ?? now)
 		})
 	}
 	React.useLayoutEffect(() => {
 		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
 			const layer = page.layers[0]
 			if (!props.selected.includes(layer.id)) {
-				console.log('setting selected')
 				props.setSelected([layer.id])
 			}
 		}
@@ -351,7 +397,10 @@ export default function LayerTable(props: {
 	}, [page, autoSelectIfSingleResult])
 
 	const table = useReactTable({
-		data: page?.layers ?? ([] as (M.Layer & M.LayerComposite)[]),
+		data: page?.layers.map(layer => ({
+			...layer,
+			constraints: { values: layer.constraints, constraints: queryConstraints },
+		})) ?? [],
 		columns: COL_DEFS,
 		pageCount: page?.pageCount ?? -1,
 		state: {

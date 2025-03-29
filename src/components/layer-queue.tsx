@@ -22,10 +22,11 @@ import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders.ts'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
-import { deepClone } from '@/lib/object.ts'
+import { deepClone, selectProps } from '@/lib/object.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
+import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
@@ -130,6 +131,8 @@ export default function ServerDashboard() {
 	}
 
 	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
+	const layerQueryConstraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectQDQueryConstraints)
+	const layerQueryContext: M.LayerQueryContext = { constraints: layerQueryConstraints, previousLayerIds: [] }
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
 	const loggedInUser = useLoggedInUser()
@@ -219,7 +222,11 @@ export default function ServerDashboard() {
 							<QueueControlPanel />
 						</CardHeader>
 						<CardContent>
-							<LayerList store={QD.LQStore} allowVotes={true} onStartEdit={() => QD.QDStore.getState().tryStartEditing()} />
+							<LayerList
+								store={QD.LQStore}
+								onStartEdit={() => QD.QDStore.getState().tryStartEditing()}
+								queryLayerContext={layerQueryContext}
+							/>
 						</CardContent>
 					</Card>
 				</div>
@@ -243,7 +250,14 @@ function QueueControlPanel() {
 		QD.QDStore.getState().tryStartEditing()
 		_setAppendLayersPopoverOpen(v)
 	}
-	const canEdit = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
+	const [canEdit, lqLength] = ZusUtils.useStoreDeep(
+		QD.QDStore,
+		useShallow((s) => [s.canEditQueue, s.editedServerState.layerQueue.length]),
+	)
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectQDQueryConstraints)
+
+	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(lqLength, { constraints }, QD.LQStore)
+	const playNextQueryContext: M.LayerQueryContext = { constraints }
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -270,6 +284,7 @@ function QueueControlPanel() {
 				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
+				layerQueryContext={addToQueueQueryContext}
 			>
 				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<Icons.PlusIcon />
@@ -282,6 +297,7 @@ function QueueControlPanel() {
 				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}
+				layerQueryContext={playNextQueryContext}
 			>
 				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
 					<Icons.PlusIcon />
@@ -369,13 +385,14 @@ function EditSummary() {
 }
 
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
-export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?: boolean; onStartEdit?: () => void }) {
+export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; onStartEdit?: () => void; queryLayerContext: M.LayerQueryContext }) {
 	const user = useLoggedInUser()
-	const allowVotes = props.allowVotes ?? true
 	const queueIds = Zus.useStore(
 		props.store,
 		useShallow((store) => store.layerList.map((item) => item.itemId)),
 	)
+	const isVoteChoice = Zus.useStore(props.store, store => store.isVoteChoice)
+	const allowVotes = !isVoteChoice
 	useDragEnd((event) => {
 		if (!event.over) return
 		const { layerList: layerQueue, move } = props.store.getState()
@@ -387,7 +404,6 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?:
 
 	return (
 		<ul className="flex w-max flex-col space-y-1">
-			{/* -------- queue items -------- */}
 			{queueIds.map((id, index) => (
 				<LayerListItem
 					llStore={props.store}
@@ -397,6 +413,7 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; allowVotes?:
 					index={index}
 					isLast={index + 1 === queueIds.length}
 					onStartEdit={props.onStartEdit}
+					layerQueryContext={props.queryLayerContext}
 				/>
 			))}
 		</ul>
@@ -752,6 +769,20 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 									settings.queue.poolFilterId = filter ?? undefined
 								})}
 						/>
+						{settings.queue.doNotRepeatRules.map((rule, index) => (
+							<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
+								<Label>{rule.field}</Label>
+								<Input
+									type="number"
+									value={rule.within}
+									onChange={(e) => {
+										setSetting((settings) => {
+											settings.queue.doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
+										})
+									}}
+								/>
+							</div>
+						))}
 						{settings.queue.poolFilterId && (
 							<a
 								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
@@ -923,6 +954,7 @@ type QueueItemProps = {
 	itemId: string
 	llStore: Zus.StoreApi<QD.LLStore>
 	onStartEdit?: () => void
+	layerQueryContext: M.LayerQueryContext
 }
 
 function LayerListItem(props: QueueItemProps) {
@@ -941,6 +973,7 @@ function LayerListItem(props: QueueItemProps) {
 		_setDropdownOpen(update)
 	}
 
+	const layerQueryContext = QD.useDerivedQueryContextForLQIndex(props.index, props.layerQueryContext, props.llStore)
 	const style = { transform: CSS.Translate.toString(transform) }
 	const itemDropdown = (
 		<ItemDropdown
@@ -951,6 +984,7 @@ function LayerListItem(props: QueueItemProps) {
 			listStore={props.llStore}
 			itemStore={itemStore}
 			onStartEdit={props.onStartEdit}
+			layerQueryContext={layerQueryContext}
 		>
 			<Button
 				disabled={!canEdit}
@@ -1091,6 +1125,7 @@ function ItemDropdown(props: {
 	itemStore: Zus.StoreApi<QD.LLItemStore>
 	listStore: Zus.StoreApi<QD.LLStore>
 	allowVotes?: boolean
+	layerQueryContext: M.LayerQueryContext
 	onStartEdit?: () => void
 }) {
 	const allowVotes = props.allowVotes ?? true
@@ -1104,7 +1139,6 @@ function ItemDropdown(props: {
 		_setSubDropdownState(state)
 	}
 
-	const baseFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(props.listStore))
 	const user = useLoggedInUser()
 	return (
 		<DropdownMenu open={props.open || !!subDropdownState} onOpenChange={props.setOpen}>
@@ -1112,6 +1146,7 @@ function ItemDropdown(props: {
 			<DropdownMenuContent>
 				<DropdownMenuGroup>
 					<EditLayerListItemDialogWrapper
+						index={props.index}
 						allowVotes={allowVotes}
 						open={subDropdownState === 'edit'}
 						onOpenChange={(update) => {
@@ -1119,7 +1154,7 @@ function ItemDropdown(props: {
 							return setSubDropdownState(open ? 'edit' : null)
 						}}
 						itemStore={props.itemStore}
-						baseFilter={baseFilter}
+						layerQueryContext={props.layerQueryContext}
 					>
 						<DropdownMenuItem>Edit</DropdownMenuItem>
 					</EditLayerListItemDialogWrapper>
@@ -1147,7 +1182,7 @@ function ItemDropdown(props: {
 							const state = props.listStore.getState()
 							state.add(items, props.index)
 						}}
-						baseFilter={baseFilter}
+						layerQueryContext={props.layerQueryContext}
 					>
 						<DropdownMenuItem>Add layers before</DropdownMenuItem>
 					</SelectLayersDialog>
@@ -1162,7 +1197,7 @@ function ItemDropdown(props: {
 							const state = props.listStore.getState()
 							state.add(items, props.index + 1)
 						}}
-						baseFilter={baseFilter}
+						layerQueryContext={props.layerQueryContext}
 					>
 						<DropdownMenuItem>Add layers after</DropdownMenuItem>
 					</SelectLayersDialog>
@@ -1285,28 +1320,13 @@ export function SelectLayersDialog(props: {
 	selectQueueItems: (queueItems: M.NewLayerListItem[]) => void
 	defaultSelected?: M.LayerId[]
 	selectingSingleLayerQueueItem?: boolean
-	baseFilter?: M.FilterNode
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
+	layerQueryContext: M.LayerQueryContext
 }) {
 	const defaultSelected: M.LayerId[] = props.defaultSelected ?? []
 
-	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
-	const [selectedFilterId, setSelectedFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
-	React.useLayoutEffect(() => {
-		if (poolFilterId) setSelectedFilterId(poolFilterId)
-	}, [poolFilterId])
-	const filterEntity = useFilter(selectedFilterId ?? undefined).data
-	const [selectedFilterEnabled, setSelectedFilterEnabled] = React.useState(true)
-	let baseFilter: M.FilterNode | undefined
-	if (props.baseFilter && filterEntity?.filter && selectedFilterEnabled) {
-		baseFilter = FB.and([props.baseFilter, filterEntity.filter])
-	} else if (filterEntity?.filter && selectedFilterEnabled) {
-		baseFilter = filterEntity.filter
-	} else if (props.baseFilter) {
-		baseFilter = props.baseFilter
-	}
-	const filterMenuStore = useFilterMenuStore(baseFilter)
+	const filterMenuStore = useFilterMenuStore()
 
 	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -1330,7 +1350,7 @@ export function SelectLayersDialog(props: {
 	const canSubmit = selectedLayers.length > 0
 	function submit() {
 		if (!canSubmit) return
-		if (selectMode === 'layers') {
+		if (selectMode === 'layers' || selectedLayers.length === 1) {
 			const items = selectedLayers.map(
 				(layerId) =>
 					({
@@ -1361,6 +1381,8 @@ export function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
+	const queryContextWithFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
+
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
@@ -1384,21 +1406,10 @@ export function SelectLayersDialog(props: {
 						)}
 					</div>
 				</DialogHeader>
-				<div className="w-min">
-					<FilterEntitySelect
-						title="Filter"
-						filterId={selectedFilterId}
-						className="max-w-16"
-						onSelect={setSelectedFilterId}
-						allowToggle={true}
-						enabled={selectedFilterEnabled}
-						setEnabled={setSelectedFilterEnabled}
-					/>
-				</div>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu filterMenuStore={filterMenuStore} />
-					<TableStyleLayerPicker filter={filterMenuStore.filter} selected={selectedLayers} onSelect={setSelectedLayers} />
+					<LayerFilterMenu queryContext={props.layerQueryContext} filterMenuStore={filterMenuStore} />
+					<TableStyleLayerPicker queryContext={queryContextWithFilter} selected={selectedLayers} onSelect={setSelectedLayers} />
 				</div>
 
 				<DialogFooter>
@@ -1412,7 +1423,7 @@ export function SelectLayersDialog(props: {
 }
 
 function TableStyleLayerPicker(props: {
-	filter?: M.FilterNode
+	queryContext: M.LayerQueryContext
 	selected: M.LayerId[]
 	onSelect: React.Dispatch<React.SetStateAction<M.LayerId[]>>
 	maxSelected?: number
@@ -1432,7 +1443,7 @@ function TableStyleLayerPicker(props: {
 	return (
 		<div className="flex h-full">
 			<LayerTable
-				filter={props.filter}
+				queryContext={props.queryContext}
 				defaultColumns={defaultColumns}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}
@@ -1468,10 +1479,11 @@ type EditLayerQueueItemDialogProps = {
 
 type InnerEditLayerListItemDialogProps = {
 	open: boolean
+	index: number
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	allowVotes?: boolean
 	itemStore: Zus.StoreApi<QD.LLItemStore>
-	baseFilter?: M.FilterNode
+	layerQueryContext: M.LayerQueryContext
 }
 
 function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
@@ -1503,28 +1515,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const loggedInUser = useLoggedInUser()
 
-	const excludeVoteDuplicatesFilter = QD.selectFilterExcludingLayersFromList(Zus.useStore(editedVoteChoiceStore))
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
-	const filtersRes = useFilters()
-
-	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
-	const [selectedFilterId, setSelectedBaseFilterId] = React.useState<M.FilterEntityId | null>(poolFilterId ?? null)
-	const [filterEnabled, setFilterEnabled] = React.useState(true)
-
-	const selectedFilterEntity = filtersRes.data?.filters.find((f) => f.id === selectedFilterId)
-	let baseFilter: M.FilterNode | undefined
-	if (selectedFilterEntity?.filter && filterEnabled && props.baseFilter) {
-		baseFilter = FB.and([props.baseFilter, selectedFilterEntity.filter])
-	} else if (selectedFilterEntity?.filter && filterEnabled) {
-		baseFilter = selectedFilterEntity.filter
-	} else if (props.baseFilter) {
-		baseFilter = props.baseFilter
-	}
-
 	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
-	const partialLayerItem = unvalidatedLayer ? M.getLayerDetailsFromUnvalidated(unvalidatedLayer) : undefined
-	const filterMenuStore = useFilterMenuStore(baseFilter, partialLayerItem && filterEnabled ? partialLayerItem : undefined)
+	const filterMenuStore = useFilterMenuStore(unvalidatedLayer ? M.getLayerDetailsFromUnvalidated(unvalidatedLayer) : undefined)
 
 	const canSubmit = Zus.useStore(
 		editedItemStore,
@@ -1535,6 +1529,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		props.onOpenChange(false)
 		props.itemStore.getState().setItem(editedItem)
 	}
+	const numChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length)
+
+	const queryContextWithMenuFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
+	const addVoteQueryContext = QD.useDerivedQueryContextForLQIndex(numChoices, props.layerQueryContext, editedVoteChoiceStore)
 
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
@@ -1586,30 +1584,18 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				</div>
 			</DialogHeader>
 
-			<div className="flex items-center mb-2">
-				<FilterEntitySelect
-					title="Filter"
-					className="max-w-16"
-					filterId={selectedFilterId}
-					onSelect={(id) => setSelectedBaseFilterId(id)}
-					allowToggle={true}
-					enabled={filterEnabled}
-					setEnabled={setFilterEnabled}
-				/>
-			</div>
-
 			{editedItem.vote
 				? (
 					<div className="flex flex-col">
 						<div className="flex w-min"></div>
-						<LayerList store={editedVoteChoiceStore} allowVotes={false} />
+						<LayerList store={editedVoteChoiceStore} queryLayerContext={props.layerQueryContext} />
 					</div>
 				)
 				: (
 					<div className="flex items-start space-x-2 min-h-0">
-						<LayerFilterMenu filterMenuStore={filterMenuStore} />
+						<LayerFilterMenu queryContext={props.layerQueryContext} filterMenuStore={filterMenuStore} />
 						<TableStyleLayerPicker
-							filter={filterMenuStore.filter}
+							queryContext={queryContextWithMenuFilter}
 							maxSelected={1}
 							selected={[editedItem.layerId!]}
 							onSelect={(update) => {
@@ -1629,7 +1615,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						open={addLayersOpen}
 						pinMode="layers"
 						onOpenChange={setAddLayersOpen}
-						baseFilter={excludeVoteDuplicatesFilter}
+						layerQueryContext={addVoteQueryContext}
 						selectQueueItems={(items) => {
 							editedVoteChoiceStore.getState().add(items)
 						}}
@@ -1645,8 +1631,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	)
 }
 
-type FilterMenuStore = ReturnType<typeof useFilterMenuStore>
-
 function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
 	return [
 		EFB.eq('Layer', defaultFields['Layer']),
@@ -1660,67 +1644,110 @@ function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.E
 	]
 }
 
-function useFilterMenuStore(baseFilter?: M.FilterNode, defaultFields: Partial<M.MiniLayer> = {}) {
-	const [items, setItems] = React.useState(getDefaultFilterMenuItemState(defaultFields))
+function getFilterFromComparisons(items: M.EditableComparison[]) {
+	const nodes: M.FilterNode[] = []
+	for (const item of items) {
+		if (!M.isValidComparison(item)) continue
+		nodes.push(FB.comp(item))
+	}
 
-	const filter = React.useMemo(() => {
-		const nodes: M.FilterNode[] = []
-		for (const item of items) {
-			if (!M.isValidComparison(item)) continue
-			nodes.push(FB.comp(item))
+	if (nodes.length === 0) return undefined
+	return FB.and(nodes)
+}
+
+type FilterMenuStore = {
+	filter?: M.FilterNode
+	menuItems: M.EditableComparison[]
+	siblingFilters: { [k in keyof M.MiniLayer]: M.FilterNode | undefined }
+	setMenuItems: React.Dispatch<React.SetStateAction<M.EditableComparison[]>>
+}
+
+/**
+ * Derive filter nodes which
+ */
+function getSiblingFiltersForMenuItems(items: M.EditableComparison[]) {
+	// @ts-expect-error idc
+	const filtersExcludingFields: { [k in keyof M.MiniLayer]: M.FilterNode | undefined } = {}
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]
+		if (!item.column) continue
+		const comparisonsToApply: M.FilterNode[] = []
+		for (let j = 0; j < items.length; j++) {
+			if (i === j) continue
+			const cand = items[j]
+			if (!M.isValidComparison(cand)) continue
+
+			// don't filter out the composite columns based on the filter with a combined value, because that would be annoying
+			if (item.column === 'Layer' && ['Level', 'Gamemode', 'LayerVersion'].includes(cand.column)) continue
+			if (['Level', 'Gamemode', 'LayerVersion'].includes(item.column) && cand.column === 'Layer') continue
+			comparisonsToApply.push(FB.comp(cand))
 		}
 
-		if (baseFilter) {
-			nodes.push(baseFilter)
+		if (filtersExcludingFields[item.column as keyof M.MiniLayer]) {
+			console.warn('unexpected duplicate detected when deriving sibling filters', items)
 		}
-		if (nodes.length === 0) return undefined
-		return FB.and(nodes)
-	}, [items, baseFilter])
+		filtersExcludingFields[item.column as keyof M.MiniLayer] = comparisonsToApply.length > 0 ? FB.and(comparisonsToApply) : undefined
+	}
 
-	// get a map of filters for all filterFields for which the predicates involving that field are removed
-	const filtersExcludingField = React.useMemo(() => {
-		// @ts-expect-error idc
-		const filtersExcludingField: { [k in keyof M.MiniLayer]: M.FilterNode | undefined } = {}
-		if (!filter) {
-			return filtersExcludingField
-		}
-		for (const item of items) {
-			const key = item.column as keyof M.MiniLayer
-			const colsToRemove: string[] = []
-			colsToRemove.push(key)
-			if (key === 'Layer') {
-				colsToRemove.push('Level')
-				colsToRemove.push('Gamemode')
-				colsToRemove.push('LayerVersion')
+	return filtersExcludingFields
+}
+
+function useFilterMenuStore(defaultFields: Partial<M.MiniLayer> = {}) {
+	const store = React.useMemo(() => (
+		Zus.createStore<FilterMenuStore>((set, get) => {
+			const items = getDefaultFilterMenuItemState(defaultFields)
+			const filter = getFilterFromComparisons(items)
+			const siblingFilters = getSiblingFiltersForMenuItems(items)
+
+			return {
+				menuItems: items,
+				filter,
+				siblingFilters: siblingFilters,
+				setMenuItems: (update) => {
+					let updated: M.EditableComparison[]
+					const state = get()
+					if (typeof update === 'function') {
+						updated = update(state.menuItems)
+					} else {
+						updated = update
+					}
+
+					const filter = getFilterFromComparisons(updated)
+					const siblingFilters = getSiblingFiltersForMenuItems(updated)
+
+					set({
+						menuItems: updated,
+						filter,
+						siblingFilters,
+					})
+				},
 			}
-			if (['Level', 'Gamemode', 'LayerVersion'].includes(key)) {
-				colsToRemove.push('Layer')
-			}
-			const fieldSelectFilter = Im.produce(filter, (draft) => {
-				for (const col of colsToRemove) {
-					const index = draft.children.findIndex((node) => node.type === 'comp' && node.comp.column === col)
-					if (index !== -1) draft.children.splice(index, 1)
-				}
-			})
-			filtersExcludingField[key] = fieldSelectFilter
-		}
-		return filtersExcludingField
-	}, [items, filter])
+		})
+	), [])
+	return store
+}
 
-	return {
-		filter,
-		menuItems: items,
-		filtersExcludingField,
-		setMenuItems: setItems,
+function useQueryContextWithMenuFilter(queryContext: M.LayerQueryContext, store: Zus.StoreApi<FilterMenuStore>) {
+	const filter = Zus.useStore(store, s => s.filter)
+	if (filter) {
+		return {
+			...queryContext,
+			constraints: [...(queryContext.constraints ?? []), M.filterToConstraint(filter)],
+		}
+	} else {
+		return queryContext
 	}
 }
 
-function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
-	const store = props.filterMenuStore
+function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<FilterMenuStore>; queryContext: M.LayerQueryContext }) {
+	const storeState = Zus.useStore(
+		props.filterMenuStore,
+		useShallow(state => selectProps(state, ['menuItems', 'siblingFilters'])),
+	)
 
 	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
 		return (update) => {
-			store.setMenuItems(
+			props.filterMenuStore.getState().setMenuItems(
 				// TODO having this be inline is kinda gross
 				Im.produce((draft) => {
 					const prevComp = draft.find((item) => item.column === name)!
@@ -1767,7 +1794,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 	return (
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
-				{store.menuItems.map((comparison) => {
+				{storeState.menuItems.map((comparison) => {
 					const name = comparison.column as keyof M.MiniLayer
 					const setComp = applySetFilterFieldComparison(name)
 					function clear() {
@@ -1779,7 +1806,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 					}
 
 					function swapFactions() {
-						store.setMenuItems(
+						props.filterMenuStore.getState().setMenuItems(
 							Im.produce((draft) => {
 								const idxMap: Record<string, number> = {}
 								draft.forEach((item, idx) => {
@@ -1794,13 +1821,20 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 							}),
 						)
 					}
-					const swapFactionsDisabled = !store.menuItems.some(
+					const swapFactionsDisabled = !storeState.menuItems.some(
 						(comp) => (comp.column === 'Faction_1' && comp.value !== undefined) || (comp.column === 'SubFac_1' && comp.value !== undefined),
 					)
-						&& !store.menuItems.some(
+						&& !storeState.menuItems.some(
 							(comp) =>
 								(comp.column === 'Faction_2' && comp.value !== undefined) || (comp.column === 'SubFac_2' && comp.value !== undefined),
 						)
+					let constraints = props.queryContext.constraints ?? []
+					if (storeState.siblingFilters[name]) {
+						constraints = [
+							...constraints,
+							M.filterToConstraint(storeState.siblingFilters[name]),
+						]
+					}
 
 					return (
 						<React.Fragment key={name}>
@@ -1819,7 +1853,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 								columnEditable={false}
 								comp={comparison}
 								setComp={setComp}
-								valueAutocompleteFilter={store.filtersExcludingField[name]}
+								layerQueryContext={{ ...props.queryContext, constraints }}
 							/>
 							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
 								<Icons.Trash />
@@ -1829,7 +1863,7 @@ function LayerFilterMenu(props: { filterMenuStore: FilterMenuStore }) {
 				})}
 			</div>
 			<div>
-				<Button variant="secondary" onClick={() => store.setMenuItems(getDefaultFilterMenuItemState({}))}>
+				<Button variant="secondary" onClick={() => props.filterMenuStore.getState().setMenuItems(getDefaultFilterMenuItemState({}))}>
 					Clear All
 				</Button>
 			</div>

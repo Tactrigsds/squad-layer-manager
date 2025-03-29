@@ -1,8 +1,8 @@
-import * as z from 'zod'
-
 import _StaticLayerComponents from '$root/assets/layer-components.json'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as RBAC from '@/rbac.models'
+import type React from 'react'
+import * as z from 'zod'
 import { createId } from './lib/id'
 import { deepClone, isPartial, revLookup } from './lib/object'
 import { assertNever } from './lib/typeGuards'
@@ -16,6 +16,7 @@ export const getLayerKey = (layer: Layer) =>
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = SchemaModels.Layer & MiniLayer
+export type QueriedLayer = Layer & LayerComposite & { constraints: boolean[] }
 
 export type Subfaction = keyof (typeof _StaticLayerComponents)['subfactionAbbreviations']
 
@@ -829,6 +830,41 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true }
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
+export const DoNotRepeatRuleSchema = z.object({
+	field: z.enum(['Level', 'Layer', 'Faction', 'SubFac']),
+	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
+})
+export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
+
+export const QueryConstraintSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('filter'),
+		filter: FilterNodeSchema,
+		applyAs: z.enum(['field', 'where-condition']),
+		name: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal('do-not-repeat'),
+		rule: DoNotRepeatRuleSchema,
+		applyAs: z.enum(['field', 'where-condition']),
+		name: z.string().optional(),
+	}),
+])
+export type LayerQueryConstraint = z.infer<typeof QueryConstraintSchema>
+export type NamedQueryConstraint = LayerQueryConstraint & { name: string }
+export function filterToConstraint(filter: FilterNode): LayerQueryConstraint {
+	return {
+		type: 'filter',
+		filter,
+		applyAs: 'where-condition',
+	}
+}
+
+export type LayerQueryContext = {
+	constraints?: LayerQueryConstraint[]
+	previousLayerIds?: LayerId[]
+}
+
 export const HistoryFilterSchema = z.discriminatedUnion(
 	'type',
 	[
@@ -1005,11 +1041,20 @@ export type VoteStateWithVoteData = Extract<
 	VoteState,
 	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
 >
+
+const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
+	{ field: 'Level', within: 5 },
+	{ field: 'Layer', within: 7 },
+	{ field: 'Faction', within: 3 },
+	{ field: 'SubFac', within: 0 },
+]
+
 export const ServerSettingsSchema = z
 	.object({
 		queue: z
 			.object({
 				poolFilterId: FilterEntityIdSchema.optional(),
+				doNotRepeatRules: z.array(DoNotRepeatRuleSchema).default(DEFAULT_DNR_RULES),
 				preferredLength: z.number().default(12),
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),
@@ -1026,7 +1071,7 @@ export const ServerSettingsSchema = z
 				preferredLength: 12,
 				generatedItemType: 'layer',
 				preferredNumVoteChoices: 3,
-				historyFilterEnabled: false,
+				doNotRepeatRules: DEFAULT_DNR_RULES,
 			}),
 	})
 	// avoid sharing default queue object
@@ -1092,6 +1137,23 @@ export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerList) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
+}
+export function getAllLayerIdsFromList(layerList: LayerList) {
+	// using list instead of set to preserve ordering
+	const layerIds: string[] = []
+	for (const item of layerList) {
+		if (item.layerId && !layerIds.includes(item.layerId)) {
+			layerIds.push(item.layerId)
+		}
+		if (item.vote) {
+			for (const id of item.vote.choices) {
+				if (!layerIds.includes(id)) {
+					layerIds.push(id)
+				}
+			}
+		}
+	}
+	return layerIds
 }
 
 // layer status as it relates to the layer pool, other possibly other things later

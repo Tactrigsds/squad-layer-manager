@@ -186,7 +186,7 @@ export default function FilterNew() {
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				filter={validFilter ?? undefined}
+				queryContext={{ constraints: validFilter ? [{ type: 'filter', filter: validFilter, applyAs: 'where-condition' }] : undefined }}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

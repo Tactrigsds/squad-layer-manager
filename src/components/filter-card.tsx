@@ -330,7 +330,7 @@ export function Comparison(props: {
 	columnEditable?: boolean
 	allowedColumns?: M.LayerColumnKey[]
 	allowedComparisonCodes?: M.ComparisonCode[]
-	valueAutocompleteFilter?: M.FilterNode
+	layerQueryContext?: M.LayerQueryContext
 	showValueDropdown?: boolean
 	defaultEditing?: boolean
 }) {
@@ -446,7 +446,7 @@ export function Comparison(props: {
 						setValue={(value) => {
 							return setComp((c) => ({ ...c, value }))
 						}}
-						autocompleteFilter={props.valueAutocompleteFilter}
+						queryContext={props.layerQueryContext}
 					/>
 				)
 			} else {
@@ -456,7 +456,7 @@ export function Comparison(props: {
 						column={comp.column as M.StringColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => setComp((c) => ({ ...c, value }))}
-						autocompleteFilter={props.valueAutocompleteFilter}
+						queryContext={props.layerQueryContext}
 					/>
 				)
 			}
@@ -470,7 +470,7 @@ export function Comparison(props: {
 						ref={valueBoxRef}
 						column={comp.column as M.StringColumn}
 						values={(comp.values ?? []) as string[]}
-						autocompleteFilter={props.valueAutocompleteFilter}
+						queryContext={props.layerQueryContext}
 						setValues={(action) => {
 							setComp(
 								produce((c) => {
@@ -488,7 +488,7 @@ export function Comparison(props: {
 						column={comp.column as M.StringColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => setComp((c) => ({ ...c, value }))}
-						autocompleteFilter={props.valueAutocompleteFilter}
+						queryContext={props.layerQueryContext}
 					/>
 				)
 			}
@@ -621,11 +621,14 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		value: T | undefined
 		column: M.StringColumn
 		setValue: (value: T | undefined) => void
-		autocompleteFilter?: M.FilterNode
+		queryContext?: M.LayerQueryContext
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayersGroupedBy({ columns: [props.column], filter: props.autocompleteFilter })
+	const valuesRes = useLayersGroupedBy({
+		columns: [props.column],
+		...(props.queryContext ?? {}),
+	})
 	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
 	return (
 		<ComboBox
@@ -644,11 +647,11 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 		value: T | undefined
 		column: M.StringColumn
 		setValue: (value: T | undefined) => void
-		autocompleteFilter?: M.FilterNode
+		queryContext?: M.LayerQueryContext
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.autocompleteFilter)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.queryContext)
 	return (
 		<ComboBox
 			ref={ref}
@@ -687,7 +690,11 @@ const StringLikeConfig = React.forwardRef(function StringLikeConfig(
 	return <Input ref={inputRef} onChange={(e) => setInputValue(e.target.value)} />
 })
 
-function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringColumn, value: T | undefined, filter?: M.FilterNode) {
+function useDynamicColumnAutocomplete<T extends string | null>(
+	column: M.StringColumn,
+	value: T | undefined,
+	queryContext?: M.LayerQueryContext,
+) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
 	const [inputValue, _setInputValue] = useState<string>(value?.split?.(',')?.[0] ?? '')
 	function setDebouncedInput(value: string) {
@@ -703,17 +710,18 @@ function useDynamicColumnAutocomplete<T extends string | null>(column: M.StringC
 		_setInputValue(value)
 		debouncer.setValue(value)
 	}
+	let constraints = queryContext?.constraints ?? []
 
-	if (filter && debouncedInput !== '') {
-		filter = FB.and([filter, buildLikeFilter(column, debouncedInput)])
-	} else if (debouncedInput !== '') {
-		filter = buildLikeFilter(column, debouncedInput)
+	if (debouncedInput !== '') {
+		const filter = buildLikeFilter(column, debouncedInput)
+		constraints = [...constraints, M.filterToConstraint(filter)]
 	}
 
 	const valuesRes = useLayersGroupedBy(
 		{
 			columns: [column],
-			filter,
+			constraints,
+			previousLayerIds: queryContext?.previousLayerIds,
 		},
 		{
 			enabled: debouncedInput !== '',
@@ -741,13 +749,13 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 		values: (string | null)[]
 		column: M.StringColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		autocompleteFilter?: M.FilterNode
+		queryContext?: M.LayerQueryContext
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const valuesRes = useLayersGroupedBy({
 		columns: [props.column],
-		filter: props.autocompleteFilter,
+		...props.queryContext,
 	})
 	return (
 		<ComboBoxMulti
@@ -765,11 +773,11 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 		values: (string | null)[]
 		column: M.StringColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		autocompleteFilter?: M.FilterNode
+		queryContext: M.LayerQueryContext
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.autocompleteFilter)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.queryContext)
 	return (
 		<ComboBoxMulti
 			title={props.column}
@@ -841,17 +849,17 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 		values: string[]
 		column: M.CollectionColumn
 		setValues: React.Dispatch<React.SetStateAction<string[]>>
-		autocompleteFilter?: M.FilterNode
+		queryContext?: M.FilterNode
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const factions1Res = useLayersGroupedBy({
 		columns: ['Faction_1', 'SubFac_1'],
-		filter: props.autocompleteFilter,
+		...(props.queryContext ?? {}),
 	})
 	const factions2Res = useLayersGroupedBy({
 		columns: ['Faction_2', 'SubFac_2'],
-		filter: props.autocompleteFilter,
+		...(props.queryContext ?? {}),
 	})
 
 	const mirrorCheckboxId = React.useId()
