@@ -20,7 +20,6 @@ const EnvSchema = {
 	DB_USER: z.string().min(1).default('root'),
 	DB_PASSWORD: z.string().min(1).default('dev'),
 	DB_DATABASE: z.string().min(1),
-	DB_DATABASE_SQUADJS: z.string().min(1),
 
 	USING_DEVTOOLS: StrFlag.default('false'),
 
