@@ -23,6 +23,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-rea
 import { useRef, useState } from 'react'
 import React from 'react'
 import { flushSync } from 'react-dom'
+import { ConstraintViolationDisplay } from './constraint-violation-display'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -137,6 +138,7 @@ const COLS_ORDER = [
 	})
 
 	for (const columnKey of sortedColKeys) {
+		// @ts-expect-error idk
 		COL_DEFS.push(buildColumn(columnKey))
 	}
 }
@@ -146,9 +148,10 @@ const constraintsCol = columnHelper.accessor('constraints', {
 	enableHiding: false,
 	cell: info => {
 		const { values, constraints } = info.getValue() as {
-			constraints: M.LayerQueryConstraint[]
-			values: boolean[]
+			constraints?: M.LayerQueryConstraint[]
+			values?: boolean[]
 		}
+		if (!constraints || !values) return null
 		const nodes: React.ReactNode[] = []
 		for (let i = 0; i < constraints.length; i++) {
 			if (constraints[i].applyAs === 'where-condition' || values[i]) continue
@@ -158,10 +161,12 @@ const constraintsCol = columnHelper.accessor('constraints', {
 				</div>,
 			)
 		}
-		return <span className="flex space-x-0.5">nodes</span>
+		const namedConstraints = constraints.filter((c, i) => !!c.name && c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
+		return <ConstraintViolationDisplay violated={namedConstraints} />
 	},
 })
 
+// @ts-expect-error idk
 COL_DEFS.push(constraintsCol)
 
 const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2', 'Balance_Differential', 'Asymmetry_Score'] as (
@@ -324,7 +329,7 @@ export default function LayerTable(props: {
 
 	if (showSelectedLayers) {
 		const filter = FB.comp(FB.inValues('id', props.selected))
-		queryConstraints = [{ type: 'filter', filter, applyAs: 'where-condition' }]
+		queryConstraints = [{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' }]
 	}
 
 	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
@@ -401,6 +406,7 @@ export default function LayerTable(props: {
 			...layer,
 			constraints: { values: layer.constraints, constraints: queryConstraints },
 		})) ?? [],
+		// @ts-expect-error idk
 		columns: COL_DEFS,
 		pageCount: page?.pageCount ?? -1,
 		state: {

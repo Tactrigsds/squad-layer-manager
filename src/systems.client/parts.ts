@@ -4,13 +4,15 @@ import * as M from '@/models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = M.UserPart & M.LayerStatusPart
+export type ClientParts = M.UserPart & M.LayerStatusPart & M.FilterEntityPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
 		return {
 			users: [],
 			layerInPoolState: new Map(),
+			layerStatuses: { blocked: new Map(), present: new Set() },
+			filterEntities: new Map(),
 			upsert(key, entity) {
 				set((draft) => {
 					switch (key) {
@@ -25,10 +27,12 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 							}
 							break
 						}
-						case 'layerInPoolState': {
-							for (const [id, state] of (entity as Map<string, M.LayerStatus>).entries()) {
-								draft.layerInPoolState.set(id, state)
-							}
+						case 'layerStatuses': {
+							draft.layerStatuses = entity as M.LayerStatuses
+							break
+						}
+						case 'filterEntities': {
+							draft.filterEntities = entity as M.FilterEntityPart['filterEntities']
 							break
 						}
 						default:
@@ -58,7 +62,8 @@ export function findUser(id: bigint) {
 	return PartsStore.getState().users.find((u) => u.discordId === id)
 }
 
-export function findLayerState(poolFilterId: M.FilterEntityId, layerId: M.LayerId) {
-	const id = M.getLayerStatusId(layerId, poolFilterId)
-	return PartsStore.getState().layerInPoolState.get(id)
+export function getLayerStatuses() {
+	const statuses = PartsStore.getState().layerStatuses
+	if (statuses.present.size === 0 && statuses.blocked.size === 0) return null
+	return statuses
 }

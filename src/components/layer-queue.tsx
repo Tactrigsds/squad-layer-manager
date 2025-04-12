@@ -11,9 +11,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { useFilter, useFilters } from '@/hooks/filters.ts'
+import { useFilters } from '@/hooks/filters.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import { useAreLayersInPool } from '@/hooks/use-layer-queries.ts'
+import { useLayerStatuses } from '@/hooks/use-layer-queries.ts'
 import { useEndGame as useEndMatch, useSquadServerStatus } from '@/hooks/use-squad-server-status.ts'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
@@ -22,7 +22,7 @@ import * as EFB from '@/lib/editable-filter-builders'
 import * as FB from '@/lib/filter-builders.ts'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation, hasMutations } from '@/lib/item-mutations.ts'
-import { deepClone, selectProps } from '@/lib/object.ts'
+import { selectProps } from '@/lib/object.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -49,6 +49,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import { ConstraintViolationDisplay } from './constraint-violation-display.tsx'
 import { Comparison } from './filter-card'
 import LayerTable from './layer-table.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
@@ -57,7 +58,6 @@ import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 
 export default function ServerDashboard() {
@@ -387,10 +387,7 @@ function EditSummary() {
 // TODO the atoms relevant to LayerQueue should be abstracted into a separate store at some point, for expediency we're just going to call the same atoms under a different store
 export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; onStartEdit?: () => void; queryLayerContext: M.LayerQueryContext }) {
 	const user = useLoggedInUser()
-	const queueIds = Zus.useStore(
-		props.store,
-		useShallow((store) => store.layerList.map((item) => item.itemId)),
-	)
+	const queueIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId))
 	const isVoteChoice = Zus.useStore(props.store, store => store.isVoteChoice)
 	const allowVotes = !isVoteChoice
 	useDragEnd((event) => {
@@ -656,14 +653,19 @@ function VoteState() {
 function FilterEntitySelect(props: {
 	className?: string
 	title: string
+	allowEmpty?: boolean
 	filterId: string | null
 	onSelect: (filterId: string | null) => void
 	allowToggle?: boolean
 	enabled?: boolean
 	setEnabled?: (enabled: boolean) => void
+	excludedFilterIds?: M.FilterEntityId[]
+	children?: React.ReactNode
 }) {
 	const filtersRes = useFilters()
-	const filterOptions = filtersRes.data?.filters.map?.((f) => ({
+	const filterOptions = filtersRes.data?.filters.filter(f => !props.excludedFilterIds || !props.excludedFilterIds.includes(f.id)).map?.((
+		f,
+	) => ({
 		value: f.id,
 		label: f.name,
 	}))
@@ -671,29 +673,29 @@ function FilterEntitySelect(props: {
 	const loggedInUser = useLoggedInUser()
 	const hasForceWrite = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 	return (
-		<div className={cn('flex space-x-2 items-center', props.className)}>
+		<div className={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
 			{props.allowToggle && (
-				<>
-					<Checkbox
-						id={enableCheckboxId}
-						disabled={!hasForceWrite}
-						onCheckedChange={(v) => {
-							if (v === 'indeterminate') return
-							props.setEnabled?.(v)
-						}}
-						checked={props.enabled}
-					/>
-					<ComboBox
-						title="Filter"
-						disabled={!hasForceWrite}
-						className="flex-grow"
-						options={filterOptions ?? LOADING}
-						allowEmpty={true}
-						value={props.filterId}
-						onSelect={(filter) => props.onSelect(filter ?? null)}
-					/>
-				</>
+				<Checkbox
+					id={enableCheckboxId}
+					disabled={!hasForceWrite}
+					onCheckedChange={(v) => {
+						if (v === 'indeterminate') return
+						props.setEnabled?.(v)
+					}}
+					checked={props.enabled}
+				/>
 			)}
+			<ComboBox
+				title="Filter"
+				disabled={!hasForceWrite}
+				className="flex-grow"
+				options={filterOptions ?? LOADING}
+				allowEmpty={props.allowEmpty ?? true}
+				value={props.filterId}
+				onSelect={(filter) => props.onSelect(filter ?? null)}
+			>
+				{props.children}
+			</ComboBox>
 			{props.filterId && (
 				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
 					<Icons.Edit />
@@ -739,14 +741,7 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 	React.useImperativeHandle(ref, () => ({
 		reset: () => {},
 	}))
-	const canEditSettings = Zus.useStore(QD.QDStore, (s) => s.canEditSettings)
 
-	const poolFilterChanged = Zus.useStore(QD.QDStore, (s) => {
-		if (!s.serverState) return null
-		return s.serverState.settings.queue.poolFilterId !== s.editedServerState.settings.queue.poolFilterId
-	})
-	const settings = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings)
-	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
 	return (
 		<div className="flex flex-col space-y-4">
 			<Card>
@@ -754,171 +749,102 @@ const ServerSettingsPanel = React.forwardRef(function ServerSettingsPanel(
 					<CardTitle>Pool Configuration</CardTitle>
 				</CardHeader>
 				<CardContent className="flex flex-col space-y-2">
-					<div
-						className="flex space-x-1 p-1 data-[edited=true]:bg-edited data-[edited=true]:border-edited rounded"
-						data-edited={poolFilterChanged}
-					>
-						<ComboBox
-							title="Pool Filter"
-							className="flex-grow"
-							options={filterOptions ?? LOADING}
-							disabled={!canEditSettings}
-							value={settings.queue.poolFilterId}
-							onSelect={(filter) =>
-								setSetting((settings) => {
-									settings.queue.poolFilterId = filter ?? undefined
-								})}
-						/>
-						{settings.queue.doNotRepeatRules.map((rule, index) => (
-							<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
-								<Label>{rule.field}</Label>
-								<Input
-									type="number"
-									value={rule.within}
-									onChange={(e) => {
-										setSetting((settings) => {
-											settings.queue.doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
-										})
-									}}
-								/>
-							</div>
-						))}
-						{settings.queue.poolFilterId && (
-							<a
-								className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-								target="_blank"
-								href={AR.link('/filters/:id', settings.queue.poolFilterId)}
-							>
-								<Icons.Edit />
-							</a>
-						)}
-					</div>
+					<PoolFiltersConfigurationPanel poolId="mainPool" />
+					<PoolDoNotRepeatRulesConfigurationPanel poolId="mainPool" />
 				</CardContent>
 				<CardFooter></CardFooter>
 			</Card>
-			<QueueGenerationCard />
-			{/* {featureFlags.historyFilters && <HistoryFilterPanel />} */}
 		</div>
 	)
 })
 
-function QueueGenerationCard() {
-	const numItemsToGenerateId = React.useId()
+function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'generationPool' }) {
+	const [filterIds, setSetting] = ZusUtils.useStoreDeep(
+		QD.QDStore,
+		s => [s.editedServerState.settings.queue[poolId].filters, s.setSetting],
+	)
+	const filtersRes = useFilters()
 
-	const [itemType, setItemType] = React.useState<'layer' | 'vote'>('layer')
-
-	const [replaceCurrentGenerated, setReplaceCurrentGenerated] = React.useState(true)
-	const replaceCurrentGeneratedId = React.useId()
-	const itemTypeId = React.useId()
-	const [numVoteChoices, setNumVoteChoices] = React.useState(3)
-	const [numItemsToGenerate, setNumItemsToGenerate] = React.useState(5)
-	const numVoteChoicesId = React.useId()
-	const canEditQueue = Zus.useStore(QD.QDStore, (s) => s.canEditQueue)
-	const slmConfig = useConfig()
-
-	const genereateMutation = useMutation({
-		mutationFn: generateLayerQueueItems,
-	})
-
-	async function generateLayerQueueItems() {
-		let serverStateMut = QD.QDStore.getState().editedServerState
-		const seqIdBefore = serverStateMut.layerQueueSeqId
-		const before = deepClone(serverStateMut.layerQueue)
-		const generated = await trpc.layerQueue.generateLayerQueueItems.query({
-			numToAdd: numItemsToGenerate,
-			numVoteChoices,
-			itemType,
-			baseFilterId: serverStateMut?.settings.queue.poolFilterId,
+	const add = (filterId: M.FilterEntityId | null) => {
+		if (filterId === null) return
+		setSetting(s => {
+			s.queue[poolId].filters.push(filterId)
 		})
-
-		const seqIdAfter = QD.QDStore.getState().editedServerState.layerQueueSeqId
-		if (seqIdBefore !== seqIdAfter || !deepEqual(before, serverStateMut.layerQueue)) return
-
-		// this technically should be unnecessary, but just in case
-		serverStateMut = QD.QDStore.getState().editedServerState
-
-		if (replaceCurrentGenerated) {
-			// Remove generated items from end of queue
-			while (true) {
-				const state = QD.LQStore.getState()
-				if (state.layerList.length === 0) break
-				if (state.layerList[state.layerList.length - 1].source !== 'generated') break
-				if (!state.listMutations.added.has(state.layerList[state.layerList.length - 1].itemId)) break
-				const id = state.layerList[state.layerList.length - 1].itemId
-				state.remove(id)
-			}
-		}
-
-		const state = QD.LQStore.getState()
-		state.add(generated)
 	}
 
 	return (
-		<Card className="flex flex-col space-y-1">
-			<CardHeader>
-				<CardTitle>Queue Generation</CardTitle>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				<div className="flex flex-col items-start space-y-1">
-					<Label htmlFor={itemTypeId}>Item Type</Label>
-					<ToggleGroup
-						value={itemType}
-						onValueChange={(v) => {
-							setItemType(v as 'layer' | 'vote')
-						}}
-						type="single"
-						id={itemTypeId}
-					>
-						<ToggleGroupItem value="layer">Layer</ToggleGroupItem>
-						<ToggleGroupItem value="vote">Vote</ToggleGroupItem>
-					</ToggleGroup>
-				</div>
-				<div className="flex flex-col items-start space-y-1">
-					<Label htmlFor={numItemsToGenerateId}>Num of items to generate</Label>
+		<div>
+			<div>
+				<h4 className={Typography.H4}>Filters</h4>
+			</div>
+			<ul>
+				{filtersRes.data?.code === 'ok' && filterIds.map((filterId, i) => {
+					const onSelect = (newFilterId: string | null) => {
+						if (newFilterId === null) {
+							return
+						}
+						setSetting(s => {
+							s.queue[poolId].filters[i] = newFilterId
+						})
+					}
+					const deleteFilter = () => {
+						setSetting(s => {
+							s.queue[poolId].filters.splice(i, 1)
+						})
+					}
+					const excluded = filterIds.filter((id) => filterId !== id)
+
+					return (
+						<li className="flex space-x-1 items-center" key={filterId}>
+							<FilterEntitySelect
+								className="flex-grow"
+								title="Pool Filter"
+								filterId={filterId}
+								onSelect={onSelect}
+								allowToggle={false}
+								allowEmpty={false}
+								excludedFilterIds={excluded}
+							/>
+							<Button size="icon" variant="ghost" onClick={() => deleteFilter()}>
+								<Icons.Minus />
+							</Button>
+						</li>
+					)
+				})}
+				<FilterEntitySelect title="New Pool Filter" filterId={null} onSelect={add} excludedFilterIds={filterIds} allowEmpty={false}>
+					<Button size="icon" variant="ghost">
+						<Icons.Plus />
+					</Button>
+				</FilterEntitySelect>
+			</ul>
+		</div>
+	)
+}
+
+function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'generationPool' }) {
+	const rules = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings.queue[poolId].doNotRepeatRules)
+	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
+
+	return (
+		<div className="flex flex-col space-y-1 p-1 rounded">
+			<div>
+				<h4 className={Typography.H4}>Do Not Repeat Rules</h4>
+			</div>
+			{rules.map((rule, index) => (
+				<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
+					<Label>{rule.field}</Label>
 					<Input
 						type="number"
-						id={numItemsToGenerateId}
-						min="1"
-						defaultValue={numItemsToGenerate}
+						defaultValue={rule.within}
 						onChange={(e) => {
-							setNumItemsToGenerate(parseInt(e.target.value) ?? 0)
+							setSetting((settings) => {
+								settings.queue[poolId].doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
+							})
 						}}
 					/>
 				</div>
-				{itemType === 'vote' && (
-					<div>
-						<Label htmlFor={numVoteChoicesId}>Num of vote choices</Label>
-						<Input
-							type="number"
-							id={numVoteChoicesId}
-							min="1"
-							max={slmConfig?.maxNumVoteChoices}
-							defaultValue={numVoteChoices}
-							onChange={(e) => {
-								setNumVoteChoices(parseInt(e.target.value) ?? 0)
-							}}
-						/>
-					</div>
-				)}
-				<div className="flex space-x-1 items-center">
-					<Checkbox
-						id={replaceCurrentGeneratedId}
-						checked={replaceCurrentGenerated}
-						onCheckedChange={(v) => {
-							if (v === 'indeterminate') return
-							setReplaceCurrentGenerated(v)
-						}}
-					/>
-					<Label htmlFor={replaceCurrentGeneratedId}>Replace current generated</Label>
-				</div>
-				<div className="flex space-x-2">
-					<Button disabled={genereateMutation.isPending || !canEditQueue} onClick={() => genereateMutation.mutateAsync()}>
-						Generate
-					</Button>
-					<Icons.LoaderCircle className="animate-spin data-[pending=false]:invisible" data-pending={genereateMutation.isPending} />
-				</div>
-			</CardContent>
-		</Card>
+			))}
+		</div>
 	)
 }
 
@@ -1074,7 +1000,7 @@ function LayerListItem(props: QueueItemProps) {
 								return (
 									<li key={choice} className="flex items-center ">
 										<span className="mr-2">{index + 1}.</span>
-										<LayerDisplay layerId={choice} badges={badges} />
+										<LayerDisplay itemId={props.itemId} layerId={choice} isVoteChoice={true} badges={badges} />
 									</li>
 								)
 							})}
@@ -1104,7 +1030,7 @@ function LayerListItem(props: QueueItemProps) {
 					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay layerId={item.layerId} />
+							<LayerDisplay layerId={item.layerId} itemId={item.itemId} />
 						</div>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
@@ -1233,42 +1159,38 @@ function ItemDropdown(props: {
 	)
 }
 
-export function LayerDisplay(props: { layerId: M.LayerId; badges?: React.ReactNode[] }) {
-	const poolFilterId = Zus.useStore(QD.QDStore, QD.selectCurrentPoolFilterId)
-	const isLayerInPoolRes = useAreLayersInPool({ layers: [props.layerId], poolFilterId: poolFilterId }, {
-		enabled: !M.isRawLayerId(props.layerId),
-	})
-	const filterRes = useFilter(poolFilterId)
+export function LayerDisplay(props: { layerId: M.LayerId; itemId: string; isVoteChoice?: boolean; badges?: React.ReactNode[] }) {
+	const layerStatusesRes = useLayerStatuses()
 	const badges: React.ReactNode[] = []
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => M.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
+	console.log({ constraints })
 	if (props.badges) badges.push(...props.badges)
 
-	if (isLayerInPoolRes.data && isLayerInPoolRes.data.code === 'ok') {
-		const inPoolRes = isLayerInPoolRes.data.results[0]
-		if (!inPoolRes.exists) {
+	if (layerStatusesRes.data) {
+		const exists = layerStatusesRes.data.present.has(props.layerId)
+		if (!exists) {
 			badges.push(
 				<Tooltip key="layer doesn't exist">
 					<TooltipTrigger>
 						<Icons.ShieldQuestion className="text-orange-400" />
 					</TooltipTrigger>
 					<TooltipContent>
-						Layer <b>{filterRes.data?.name} is unknown</b>
-					</TooltipContent>
-				</Tooltip>,
-			)
-		} else if (!inPoolRes.matchesFilter) {
-			badges.push(
-				<Tooltip key="layer not in configured pool">
-					<TooltipTrigger>
-						<Icons.ShieldQuestion className="text-orange-400" />
-					</TooltipTrigger>
-					<TooltipContent>
-						Layer not in configured pool <b>{filterRes.data?.name}</b>
+						<b>Layer is unknown</b>
 					</TooltipContent>
 				</Tooltip>,
 			)
 		}
-	}
 
+		const blockingConstraintIds = layerStatusesRes.data?.blocked.get(
+			M.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
+		)
+		console.log({ blockingConstraintIds })
+		if (blockingConstraintIds) {
+			badges.push(
+				<ConstraintViolationDisplay violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)!)} />,
+			)
+		}
+	}
 	if (M.isRawLayerId(props.layerId)) {
 		badges.push(
 			<Tooltip key="is raw layer">
@@ -1631,6 +1553,14 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	)
 }
 
+// function HideOutOfPoolItemsPanel() {
+//    const dnrCheckboxId = React.useId()
+//    const poolFilterCheckboxId = React.useId()
+//    return <div>
+
+//       </div>
+// }
+
 function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
 	return [
 		EFB.eq('Layer', defaultFields['Layer']),
@@ -1732,7 +1662,7 @@ function useQueryContextWithMenuFilter(queryContext: M.LayerQueryContext, store:
 	if (filter) {
 		return {
 			...queryContext,
-			constraints: [...(queryContext.constraints ?? []), M.filterToConstraint(filter)],
+			constraints: [...(queryContext.constraints ?? []), M.filterToNamedConstrant(filter, 'filter-menu', 'Filter Menu')],
 		}
 	} else {
 		return queryContext
@@ -1740,9 +1670,9 @@ function useQueryContextWithMenuFilter(queryContext: M.LayerQueryContext, store:
 }
 
 function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<FilterMenuStore>; queryContext: M.LayerQueryContext }) {
-	const storeState = Zus.useStore(
+	const storeState = ZusUtils.useStoreDeep(
 		props.filterMenuStore,
-		useShallow(state => selectProps(state, ['menuItems', 'siblingFilters'])),
+		state => selectProps(state, ['menuItems', 'siblingFilters']),
 	)
 
 	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
@@ -1832,7 +1762,7 @@ function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<FilterMenuStore>
 					if (storeState.siblingFilters[name]) {
 						constraints = [
 							...constraints,
-							M.filterToConstraint(storeState.siblingFilters[name]),
+							M.filterToConstraint(storeState.siblingFilters[name], 'sibling-' + name),
 						]
 					}
 

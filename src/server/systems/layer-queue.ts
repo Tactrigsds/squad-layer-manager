@@ -14,7 +14,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as LayersQuery from '@/server/systems/layer-queries.ts'
+import * as LayerQueries from '@/server/systems/layer-queries.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
@@ -303,7 +303,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				distinctUntilChanged(),
 			)
 			.subscribe(() => {
-				LayersQuery.historyFiltersCache.clear()
+				LayerQueries.historyFiltersCache.clear()
 			})
 	}
 
@@ -944,11 +944,13 @@ async function includeLQServerUpdateParts(
 ): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
 	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
+	const filterEntityPartPromise = includeFilterEntityPart(ctx, _serverStateUpdate)
 	return {
 		..._serverStateUpdate,
 		parts: {
 			...(await userPartPromise),
 			...(await layerStatusPartPromise),
+			...(await filterEntityPartPromise),
 		},
 	}
 }
@@ -974,101 +976,31 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQS
 	return part
 }
 
-async function includeLayerStatusPart(ctx: C.Db & C.Log, update: M.LQServerStateUpdate) {
-	const part: M.LayerStatusPart = { layerInPoolState: new Map() }
+async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQServerStateUpdate) {
+	const queue = serverStateUpdate.state.layerQueue
+	const constraints = M.getPoolConstraints(serverStateUpdate.state.settings.queue.mainPool)
+	const layerStatuses = await LayerQueries.getLayerStatusesForLayerQueue({ ctx, input: { queue, constraints } })
+	return { layerStatuses }
+}
 
-	if (!update.state.settings.queue.poolFilterId) return part
+async function includeFilterEntityPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQServerStateUpdate) {
+	const filterEntityIds: M.FilterEntityId[] = []
 
-	const layerIds: Set<string> = new Set()
-	for (const item of update.state.layerQueue) {
-		if (item.layerId) layerIds.add(item.layerId)
-		if (item.vote) item.vote.choices.forEach((c) => layerIds.add(c))
+	filterEntityIds.push(...serverStateUpdate.state.settings.queue.mainPool.filters)
+	filterEntityIds.push(...serverStateUpdate.state.settings.queue.generationPool.filters)
+	const rawEntities = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, filterEntityIds))
+	const part: M.FilterEntityPart = { filterEntities: new Map() }
+	for (const row of rawEntities) {
+		part.filterEntities.set(row.id, M.FilterEntitySchema.parse(row))
 	}
-
-	const inPoolRes = await LayersQuery.areLayersInPool({
-		ctx,
-		input: { layers: Array.from(layerIds), poolFilterId: update.state.settings.queue.poolFilterId },
-	})
-
-	switch (inPoolRes.code) {
-		case 'err:not-found':
-		case 'err:pool-filter-not-set':
-			return part
-		case 'ok':
-			break
-		default:
-			assertNever(inPoolRes)
-	}
-
-	for (const result of inPoolRes.results) {
-		part.layerInPoolState.set(M.getLayerStatusId(result.id, update.state.settings.queue.poolFilterId!), {
-			inPool: result.matchesFilter,
-			exists: result.exists,
-		})
-	}
-
 	return part
 }
 
 const generateLayerQueueItems = C.spanOp(
 	'layer-queue:generate-layer-items',
 	{ tracer },
-	async (ctx: C.Log & C.Db & C.User, opts: M.GenLayerQueueItemsOptions) => {
-		C.setSpanOpAttrs({ opts })
-		if (opts.numToAdd <= 0) {
-			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Cannot generate layers with count <= 0')
-			throw new Error('cannot generate layers with count <= 0')
-		}
-
-		let pageSize: number
-		switch (opts.itemType) {
-			case 'layer':
-				pageSize = opts.numToAdd
-				break
-			case 'vote':
-				pageSize = opts.numToAdd * opts.numVoteChoices
-				break
-			default:
-				assertNever(opts.itemType)
-		}
-		const filter = opts.baseFilterId ? FB.applyFilter(opts.baseFilterId) : undefined
-		const layers = await LayersQuery.queryLayers({
-			ctx,
-			input: {
-				sort: {
-					seed: Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER),
-					type: 'random',
-				},
-				pageSize,
-				pageIndex: 0,
-				constraints: filter ? [{ type: 'filter', filter, applyAs: 'where-condition' }] : [],
-				previousLayerIds: [],
-			},
-		}).then((r) => r.layers)
-
-		const res: M.NewLayerListItem[] = []
-		switch (opts.itemType) {
-			case 'layer':
-				for (const layer of layers) {
-					res.push({ layerId: layer.id, source: 'generated' })
-				}
-				break
-			case 'vote':
-				for (let i = 0; i < opts.numToAdd; i++) {
-					const choices = layers.slice(i * opts.numVoteChoices, (i + 1) * opts.numVoteChoices).map((l) => l.id)
-					res.push({
-						vote: { choices, defaultChoice: choices[0] },
-						source: 'generated',
-						lastModifiedBy: ctx.user.discordId,
-					})
-				}
-				break
-			default:
-				assertNever(opts.itemType)
-		}
-
-		C.setSpanStatus(Otel.SpanStatusCode.OK)
-		return res
+	async (_ctx: C.Log & C.Db & C.User, _opts: M.GenLayerQueueItemsOptions) => {
+		throw new Error('implement me')
 	},
 )
 

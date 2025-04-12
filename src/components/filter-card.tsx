@@ -714,7 +714,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 
 	if (debouncedInput !== '') {
 		const filter = buildLikeFilter(column, debouncedInput)
-		constraints = [...constraints, M.filterToConstraint(filter)]
+		constraints = [...constraints, M.filterToConstraint(filter, 'autocomplete-' + column)]
 	}
 
 	const valuesRes = useLayersGroupedBy(

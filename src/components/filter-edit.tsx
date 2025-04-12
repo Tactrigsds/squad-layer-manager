@@ -374,7 +374,11 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				queryContext={{ constraints: validFilter ? [{ type: 'filter', filter: validFilter, applyAs: 'where-condition' }] : undefined }}
+				queryContext={{
+					constraints: validFilter
+						? [{ type: 'filter-anon', id: 'edited-filter', filter: validFilter, applyAs: 'where-condition' }]
+						: undefined,
+				}}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

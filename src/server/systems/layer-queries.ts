@@ -1,14 +1,16 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as FB from '@/lib/filter-builders'
+import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
+import * as LayerQueue from '@/server/systems/layer-queue'
 import { procedure, router } from '@/server/trpc.server.ts'
 import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import { z } from 'zod'
-import * as LayerQueue from './layer-queue'
 
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
@@ -47,41 +49,14 @@ export const queryLayers = C.spanOp('layer-queries:query', { tracer }, async (ar
 	const { ctx, input: input } = args
 	input.pageSize ??= 200
 	input.pageIndex ??= 0
-
-	const whereConditions: SQL<unknown>[] = []
-	const selectProperties: any = {}
-	const constraintBuildingTasks: Promise<any>[] = []
 	const constraints = input.constraints ?? []
 
-	const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
-
-	for (let i = 0; i < constraints.length; i++) {
-		const constraint = constraints[i]
-		constraintBuildingTasks.push(
-			C.spanOp('layer-queries:build-constraint-sql-condition', { tracer }, async () => {
-				C.setSpanOpAttrs({
-					constraintName: constraint.name,
-					constraintIndex: i,
-					constraintType: constraint.type,
-					constraintApplyAs: constraint.applyAs,
-				})
-				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
-				if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
-				switch (constraint.applyAs) {
-					case 'field':
-						selectProperties[`constraint_${i}`] = condition
-						break
-					case 'where-condition':
-						whereConditions.push(condition)
-						break
-					default:
-						assertNever(constraint.applyAs)
-				}
-				return { code: 'ok' as const }
-			})(),
-		)
-	}
-	await Promise.all(constraintBuildingTasks)
+	const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds.length)
+	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
+		ctx,
+		previousLayerIds,
+		input.constraints ?? [],
+	)
 
 	const includeWhere = (query: any) => {
 		if (whereConditions.length > 0) return query.where(E.and(...whereConditions))
@@ -149,45 +124,7 @@ export const queryLayers = C.spanOp('layer-queries:query', { tracer }, async (ar
 
 export const AreLayersInPoolInputSchema = z.object({
 	layers: z.array(M.LayerIdSchema),
-	poolFilterId: M.FilterEntityIdSchema.optional(),
 })
-
-export async function areLayersInPool({ input, ctx }: { input: z.infer<typeof AreLayersInPoolInputSchema>; ctx: C.Db & C.Log }) {
-	let poolFilterId = input.poolFilterId
-	if (!poolFilterId) {
-		const serverState = await LayerQueue.getServerState({}, ctx)
-		poolFilterId = serverState.settings.queue.poolFilterId
-		if (!poolFilterId) {
-			return { code: 'err:pool-filter-not-set' as const }
-		}
-	}
-	const [rawFilterEntity] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, poolFilterId!))
-	if (!rawFilterEntity) {
-		return { code: 'err:not-found' as const }
-	}
-	const filterEntity = M.FilterEntitySchema.parse(rawFilterEntity)
-	const filter = filterEntity.filter
-
-	const whereConditions = await getFilterNodeSQLConditions(ctx, filter, [])
-	const results = await ctx
-		.db()
-		.select({ id: Schema.layers.id, matchesFilter: whereConditions as SQL<string> })
-		.from(Schema.layers)
-		.where(E.inArray(Schema.layers.id, input.layers))
-
-	const idMap = new Map()
-	for (const r of results) {
-		idMap.set(r.id, parseInt(r.matchesFilter) === 1)
-	}
-
-	return {
-		code: 'ok' as const,
-		results: input.layers.map((id) => {
-			// need to parseInt here because we have bigNumberStrings set to true in the mysql2 config
-			return { id, matchesFilter: idMap.get(id) || false, exists: idMap.has(id) }
-		}),
-	}
-}
 
 export const LayerExistsInputSchema = z.array(M.LayerIdSchema)
 export type LayerExistsInput = M.LayerId[]
@@ -212,6 +149,7 @@ export const LayersQueryGroupedByInputSchema = z.object({
 	previousLayerIds: z.array(M.LayerIdSchema).default([]),
 	sort: LayersQuerySortSchema.optional(),
 })
+
 export type LayersQueryGroupedByInput = z.infer<typeof LayersQueryGroupedByInputSchema>
 export const queryLayersGroupedBy = C.spanOp(
 	'layer-queries:run-grouped-by',
@@ -221,7 +159,7 @@ export const queryLayersGroupedBy = C.spanOp(
 		const whereConditions: SQL<unknown>[] = []
 		const constraintBuildingTasks: Promise<any>[] = []
 		const constraints = input.constraints ?? []
-		const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
+		const previousLayerIds = await resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds.length)
 		for (let i = 0; i < constraints.length; i++) {
 			const constraint = constraints[i]
 			constraintBuildingTasks.push(
@@ -285,8 +223,10 @@ export const queryLayersGroupedBy = C.spanOp(
 
 export async function getConstraintSQLConditions(ctx: C.Log & C.Db, constraint: M.LayerQueryConstraint, previousLayerIds: string[]) {
 	switch (constraint.type) {
-		case 'filter':
+		case 'filter-anon':
 			return await getFilterNodeSQLConditions(ctx, constraint.filter, [])
+		case 'filter-entity':
+			return await getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [])
 		case 'do-not-repeat':
 			return getDoNotRepeatSQLConditions(ctx, constraint.rule, previousLayerIds)
 			break
@@ -438,6 +378,134 @@ export async function getFilterNodeSQLConditions(
 	return res!
 }
 
+async function buildConstraintSqlCondition(ctx: C.Log & C.Db, previousLayerIds: M.LayerId[], constraints: M.LayerQueryConstraint[]) {
+	const conditions: SQL<unknown>[] = []
+	const selectProperties: any = {}
+	const constraintBuildingTasks: Promise<any>[] = []
+
+	for (let i = 0; i < constraints.length; i++) {
+		const constraint = constraints[i]
+		constraintBuildingTasks.push(
+			C.spanOp('layer-queries:build-constraint-sql-condition', { tracer }, async () => {
+				C.setSpanOpAttrs({
+					constraintName: constraint.name,
+					constraintIndex: i,
+					constraintType: constraint.type,
+					constraintApplyAs: constraint.applyAs,
+				})
+				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
+				if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
+				switch (constraint.applyAs) {
+					case 'field':
+						selectProperties[`constraint_${i}`] = condition
+						break
+					case 'where-condition':
+						conditions.push(condition)
+						break
+					default:
+						assertNever(constraint.applyAs)
+				}
+				return { code: 'ok' as const }
+			})(),
+		)
+	}
+	await Promise.all(constraintBuildingTasks)
+	return { conditions, selectProperties }
+}
+
+export const LayerStatusesForLayerQueueInputSchema = z.object({
+	queue: M.LayerListSchema,
+	constraints: z.array(M.QueryConstraintSchema).optional(),
+})
+export type LayerStatusesForLayerQueueInput = z.infer<typeof LayerStatusesForLayerQueueInputSchema>
+
+export async function getLayerStatusesForLayerQueue(
+	{ ctx, input: { queue, constraints } }: { ctx: C.Db & C.Log; input: LayerStatusesForLayerQueueInput },
+) {
+	if (!constraints) {
+		const serverState = await LayerQueue.getServerState({}, ctx)
+		constraints = M.getPoolConstraints(serverState.settings.queue.mainPool)
+	}
+
+	const historicLayerIds = await resolveRelevantLayerHistory(ctx, constraints, queue.length)
+	const relevantPreviousLayerIds: M.LayerId[] = [...historicLayerIds]
+	const blockedState: OneToMany.OneToManyMap<M.LayerId, string> = new Map()
+	const filterConditions: Map<string, Promise<SQL<unknown>>> = new Map()
+	for (let i = 0; i < queue.length; i++) {
+		const item = queue[i]
+		for (const [queuedLayerKey, layerId] of M.getAllLayerIdsWithQueueKey(item)) {
+			const blockedByConstraints: string[] = []
+			for (const constraint of constraints) {
+				switch (constraint.type) {
+					case 'do-not-repeat': {
+						const isBlocked = getisBlockedByDoNotRepeatRule(constraint.rule, layerId, relevantPreviousLayerIds)
+						if (isBlocked) blockedByConstraints.push(constraint.id)
+						break
+					}
+					case 'filter-anon':
+						filterConditions.set(constraint.id, getFilterNodeSQLConditions(ctx, constraint.filter, []))
+						break
+					case 'filter-entity': {
+						filterConditions.set(constraint.id, getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), []))
+						break
+					}
+				}
+			}
+			for (const constraintId of blockedByConstraints) OneToMany.set(blockedState, queuedLayerKey, constraintId)
+		}
+		if (item.layerId) relevantPreviousLayerIds.push(item.layerId)
+	}
+
+	const queueLayerIds = M.getAllLayerIdsFromList(queue)
+
+	const selectExpr: any = { _id: Schema.layers.id }
+	for (const [id, task] of filterConditions.entries()) {
+		// we'll fix this if it happens but unlikely
+		if (id === '_id') throw new Error('unexpected id for filter constraint')
+		selectExpr[id] = await task
+	}
+
+	const rows = await ctx.db().select(selectExpr).from(Schema.layers).where(E.inArray(Schema.layers.id, queueLayerIds))
+
+	const present = new Set<M.LayerId>()
+	for (const row of rows) {
+		present.add(row._id)
+		for (const [constraintId, isConstraintBlocked] of Object.entries(row)) {
+			if (constraintId === '_id') continue
+			if (isConstraintBlocked === '0') OneToMany.set(blockedState, row._id, constraintId)
+		}
+	}
+
+	return { blocked: blockedState, present }
+}
+
+function getisBlockedByDoNotRepeatRule(rule: M.DoNotRepeatRule, targetLayerId: M.LayerId, previousLayerIds: M.LayerId[]) {
+	const targetLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(targetLayerId))
+	const layerIds = previousLayerIds.slice(0, rule.within)
+	for (const layerId of layerIds) {
+		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
+		switch (rule.field) {
+			case 'Level':
+			case 'Layer':
+				if (layer[rule.field] && targetLayer[rule.field] === layer[rule.field]) return true
+				break
+			case 'Faction':
+				if (layer.Faction_1 && targetLayer.Faction_1 === layer.Faction_1) return true
+				if (layer.Faction_2 && targetLayer.Faction_2 === layer.Faction_2) return true
+				break
+			case 'SubFac':
+				// SubFac can be null instead of undefined indicating a unitless layer, but we just ignore those here
+				if (layer.SubFac_1 && targetLayer.SubFac_1 === layer.SubFac_1) return true
+				if (layer.SubFac_2 && targetLayer.SubFac_2 === layer.SubFac_1) return true
+
+				break
+			default:
+				assertNever(rule.field)
+		}
+	}
+	return false
+}
+
 function getDoNotRepeatSQLConditions(
 	ctx: C.Db,
 	rule: M.DoNotRepeatRule,
@@ -503,18 +571,18 @@ function hasTeam(
  * @param constraints The constraints to apply
  * @param previousLayerIds Other IDs which should be considered as being at the front of the history
  */
-async function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], previousLayerIds: M.LayerId[]) {
-	previousLayerIds = [...previousLayerIds]
+async function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], queueLength: number) {
+	const layerIds = []
 	const maxHistoryLookback = Math.max(...constraints.map(c => c.type === 'do-not-repeat' ? c.rule.within : -1))
 	if (maxHistoryLookback > 0) {
 		const rows = await ctx.db().select({ layerId: Schema.matchHistory.layerId }).from(Schema.matchHistory).orderBy(
 			E.desc(Schema.matchHistory.startTime),
-		).limit(maxHistoryLookback - previousLayerIds.length)
+		).limit(maxHistoryLookback - queueLength)
 		for (const row of rows) {
-			previousLayerIds.push(row.layerId)
+			layerIds.push(row.layerId)
 		}
 	}
-	return previousLayerIds
+	return layerIds
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
@@ -525,6 +593,6 @@ async function getFilterEntity(filterId: string, ctx: C.Db) {
 export const layersRouter = router({
 	selectLayers: procedure.input(LayersQueryInputSchema).query(queryLayers),
 	selectLayersGroupedBy: procedure.input(LayersQueryGroupedByInputSchema).query(queryLayersGroupedBy),
-	areLayersInPool: procedure.input(AreLayersInPoolInputSchema).query(areLayersInPool),
 	layerExists: procedure.input(LayerExistsInputSchema).query(layerExists),
+	getLayerStatusesForLayerQueue: procedure.input(LayerStatusesForLayerQueueInputSchema).query(getLayerStatusesForLayerQueue),
 })

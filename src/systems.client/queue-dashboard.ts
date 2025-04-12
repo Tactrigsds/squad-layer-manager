@@ -7,10 +7,10 @@ import { ItemMutations, ItemMutationState, WithMutationId } from '@/lib/item-mut
 import * as ItemMut from '@/lib/item-mutations'
 import { deepClone, selectProps } from '@/lib/object'
 import { Getter, Setter } from '@/lib/zustand'
+import * as ZusUtils from '@/lib/zustand'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import { trpc } from '@/trpc.client'
-import { UseBaseQueryResult } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
 import * as Im from 'immer'
@@ -19,7 +19,6 @@ import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import { configAtom } from './config.client'
 import { fetchLoggedInUser } from './logged-in-user'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
@@ -65,13 +64,11 @@ export type QDState = {
 	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
-
-	poolFilterQueryConstraintApplyAs: M.LayerQueryConstraint['applyAs']
-
-	doNotRepeatRulesApplyAs: M.LayerQueryConstraint['applyAs']
-
-	// kinda verbose but whatever we do be coding
-	extraQueryConstraints: M.LayerQueryConstraint[]
+	poolApplyAs: {
+		dnr: M.LayerQueryConstraint['applyAs']
+		filter: M.LayerQueryConstraint['applyAs']
+	}
+	extraQueryFilters: { filterId: M.FilterEntityId; active: boolean }[]
 }
 
 export type QDStore = QDState & {
@@ -82,8 +79,12 @@ export type QDStore = QDState & {
 	tryStartEditing: () => void
 	tryEndEditing: () => void
 
-	// constraints are keyed to their names
-	setQueryConstraint: (name: string, update: React.SetStateAction<M.LayerQueryConstraint>) => void
+	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: M.LayerQueryConstraint['applyAs']) => void
+
+	extraQueryFilterActions: {
+		upsert: (filterId: M.FilterEntityId, active: boolean) => void
+		remove: (filterId: M.FilterEntityId) => void
+	}
 }
 
 // -------- store initialization --------
@@ -174,6 +175,7 @@ export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
 		})
 		return unsubscribe
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [itemStore])
 
 	return store
@@ -288,9 +290,11 @@ export const initialState: QDState = {
 	canEditQueue: false,
 	canEditSettings: false,
 	stopEditingInProgress: false,
-	extraQueryConstraints: [],
-	poolFilterQueryConstraintApplyAs: 'where-condition',
-	doNotRepeatRulesApplyAs: 'field',
+	extraQueryFilters: [],
+	poolApplyAs: {
+		dnr: 'field',
+		filter: 'where-condition',
+	},
 }
 
 export const QDStore = Zus.createStore<QDStore>((set, get) => {
@@ -405,6 +409,13 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			)
 			void tryStartEditing()
 		},
+		setPoolApplyAs(key, value) {
+			set(state =>
+				Im.produce(state, draft => {
+					draft.poolApplyAs[key] = value
+				})
+			)
+		},
 		setQueue: (handler) => {
 			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
 			const maxQueueSize = Jotai.getDefaultStore().get(configAtom)?.maxQueueSize ?? 10
@@ -423,23 +434,28 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		},
 		tryStartEditing,
 		tryEndEditing,
-
-		setQueryConstraint(name, update) {
-			set((state) => ({
-				extraQueryConstraints: Im.produce(state.extraQueryConstraints, (draft) => {
-					for (let i = 0; i < draft.length; i++) {
-						if (draft[i].name === name) {
-							let newValue: M.LayerQueryConstraint
-							if (typeof update === 'function') newValue = update(draft[i])
-							else newValue = update
-							draft[i] = newValue
-							return
+		extraQueryFilterActions: {
+			upsert(filterId, active) {
+				set(state =>
+					Im.produce(state, draft => {
+						const existing = draft.extraQueryFilters.find(f => f.filterId === filterId)
+						if (existing) {
+							existing.active = active
+						} else {
+							draft.extraQueryFilters.push({ filterId, active })
 						}
-					}
-					if (typeof update === 'function') throw new Error(`cannot provide update function for new query constraint ${name}`)
-					draft.push(update)
-				}),
-			}))
+					})
+				)
+			},
+			remove(filterId) {
+				set(state =>
+					Im.produce(state, draft => {
+						const existingIdx = draft.extraQueryFilters.findIndex(f => f.filterId === filterId)
+						if (existingIdx === -1) return
+						draft.extraQueryFilters.splice(existingIdx, 1)
+					})
+				)
+			},
 		},
 	}
 })
@@ -447,40 +463,33 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 window.QDStore = QDStore
 
 export function selectQDQueryConstraints(state: QDStore): M.LayerQueryConstraint[] {
-	const queryConstraints: M.LayerQueryConstraint[] = []
+	const queryConstraints = M.getPoolConstraints(state.editedServerState.settings.queue.mainPool)
 
-	const poolFilterId = state.editedServerState.settings.queue.poolFilterId
-	if (poolFilterId) {
+	for (const { filterId, active } of state.extraQueryFilters) {
+		if (!active) continue
 		queryConstraints.push({
-			type: 'filter',
-			filter: FB.applyFilter(poolFilterId),
-			applyAs: state.poolFilterQueryConstraintApplyAs,
-			name: `Pool Filter (${poolFilterId})`,
+			type: 'filter-entity',
+			id: 'extra-filter:' + filterId,
+			filterEntityId: filterId,
+			applyAs: 'where-condition',
 		})
 	}
-
-	for (const rule of state.editedServerState.settings.queue.doNotRepeatRules) {
-		queryConstraints.push({ type: 'do-not-repeat', rule, applyAs: state.doNotRepeatRulesApplyAs, name: rule.field })
-	}
-
-	queryConstraints.push(...state.extraQueryConstraints)
 
 	return queryConstraints
 }
 
 export function useDerivedQueryContextForLQIndex(index: number, baseContext: M.LayerQueryContext, llStore: Zus.StoreApi<LLStore>) {
-	const { isVoteChoice, layerList } = Zus.useStore(llStore, useShallow((s) => selectProps(s, ['isVoteChoice', 'layerList'])))
-	const layerIds = M.getAllLayerIdsFromList(layerList)
+	const { isVoteChoice, layerList } = ZusUtils.useStoreDeep(llStore, (s) => selectProps(s, ['isVoteChoice', 'layerList']))
+	const queueLayerIds = M.getAllLayerIdsFromList(layerList, { excludeVoteChoices: true })
 
 	let constraints = baseContext.constraints ?? []
-	let previousLayerIds: M.LayerId[]
+	const previousLayerIds = queueLayerIds.slice(0, index)
+
+	// in the case of vote choices we want to enforce that there are no identical choices available
 	if (isVoteChoice) {
-		const filter = FB.comp(FB.inValues('id', Array.from(layerIds)), { neg: true })
-		constraints = [...constraints, M.filterToConstraint(filter)]
+		const filter = FB.comp(FB.inValues('id', Array.from(queueLayerIds)), { neg: true })
+		constraints = [...constraints, M.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + index)]
 		// we don't want to apply the do-not-repeat rules across vote choice siblings
-		previousLayerIds = []
-	} else {
-		previousLayerIds = layerIds.slice(0, index)
 	}
 
 	return {
@@ -498,10 +507,6 @@ export function useResetEditOnNavigate() {
 	React.useEffect(() => {
 		QDStore.getState().reset()
 	}, [pathname])
-}
-
-export function selectCurrentPoolFilterId(store: QDState) {
-	return store.editedServerState.settings.queue.poolFilterId
 }
 
 export const LQStore = deriveLLStore(QDStore)

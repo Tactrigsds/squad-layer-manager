@@ -21,6 +21,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
+	children?: React.ReactNode
 }
 
 export interface ComboBoxOption<T> {
@@ -69,16 +70,20 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 	return (
 		<Popover modal={true} open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button
-					disabled={disabled}
-					ref={btnRef}
-					variant="outline"
-					role="combobox"
-					className={cn('w-[min] justify-between', props.className)}
-				>
-					<span>{selectedOptionDisplay}</span>
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-				</Button>
+				{props.children
+					? props.children
+					: (
+						<Button
+							disabled={disabled}
+							ref={btnRef}
+							variant="outline"
+							role="combobox"
+							className={cn('w-[min] justify-between', props.className)}
+						>
+							<span>{selectedOptionDisplay}</span>
+							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+						</Button>
+					)}
 			</PopoverTrigger>
 			<PopoverContent className="w-[200px] p-0">
 				<Command shouldFilter={!props.setInputValue}>

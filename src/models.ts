@@ -1,10 +1,10 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as RBAC from '@/rbac.models'
-import type React from 'react'
 import * as z from 'zod'
 import { createId } from './lib/id'
 import { deepClone, isPartial, revLookup } from './lib/object'
+import * as OneToMany from './lib/one-to-many-map'
 import { assertNever } from './lib/typeGuards'
 import { Parts } from './lib/types'
 import { PercentageSchema } from './lib/zod'
@@ -705,7 +705,6 @@ export type NewLayerListItem = Omit<LayerListItem, 'itemId'>
 export function getActiveItemLayerId(item: LayerListItem) {
 	return item.layerId ?? item.vote!.choices[0]
 }
-
 export function createLayerListItem(newItem: NewLayerListItem): LayerListItem {
 	return {
 		...newItem,
@@ -838,25 +837,67 @@ export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
 
 export const QueryConstraintSchema = z.discriminatedUnion('type', [
 	z.object({
-		type: z.literal('filter'),
+		type: z.literal('filter-anon'),
 		filter: FilterNodeSchema,
 		applyAs: z.enum(['field', 'where-condition']),
 		name: z.string().optional(),
+		id: z.string(),
+	}),
+	z.object({
+		type: z.literal('filter-entity'),
+		filterEntityId: FilterEntityIdSchema,
+		applyAs: z.enum(['field', 'where-condition']),
+		name: z.string().optional(),
+		id: z.string(),
 	}),
 	z.object({
 		type: z.literal('do-not-repeat'),
 		rule: DoNotRepeatRuleSchema,
 		applyAs: z.enum(['field', 'where-condition']),
 		name: z.string().optional(),
+		id: z.string(),
 	}),
 ])
 export type LayerQueryConstraint = z.infer<typeof QueryConstraintSchema>
 export type NamedQueryConstraint = LayerQueryConstraint & { name: string }
-export function filterToConstraint(filter: FilterNode): LayerQueryConstraint {
+export function filterToNamedConstrant(
+	filter: FilterNode,
+	id: string,
+	name: string,
+	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
+): NamedQueryConstraint {
 	return {
-		type: 'filter',
+		type: 'filter-anon',
 		filter,
-		applyAs: 'where-condition',
+		applyAs,
+		name,
+		id,
+	}
+}
+
+export function filterToConstraint(
+	filter: FilterNode,
+	id: string,
+	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
+): LayerQueryConstraint {
+	return {
+		type: 'filter-anon',
+		filter,
+		applyAs,
+		id,
+	}
+}
+
+export function filterEntityToConstraint(
+	filterEntity: FilterEntity,
+	id: string,
+	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
+): LayerQueryConstraint {
+	return {
+		type: 'filter-entity',
+		filterEntityId: filterEntity.id,
+		id,
+		applyAs,
 	}
 }
 
@@ -1049,38 +1090,56 @@ const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
 	{ field: 'SubFac', within: 0 },
 ]
 
+export const PoolConfigurationSchema = z.object({
+	filters: z.array(FilterEntityIdSchema),
+	doNotRepeatRules: z.array(DoNotRepeatRuleSchema),
+})
+export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
+
 export const ServerSettingsSchema = z
 	.object({
 		queue: z
 			.object({
-				poolFilterId: FilterEntityIdSchema.optional(),
-				doNotRepeatRules: z.array(DoNotRepeatRuleSchema).default(DEFAULT_DNR_RULES),
+				mainPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
+				// extends the main pool during automated generation
+				generationPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
 				preferredLength: z.number().default(12),
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),
-				historyFilterEnabled: z.boolean().default(false),
-				// lateNightPoolConfig: z.object({
-				// 	time: z
-				// 		.string()
-				// 		.regex(/^([01]\d|2[0-3]):([0-5]\d)$/)
-				// 		.default('22:00'),
-				// 	filterId: FilterEntityIdSchema.optional(),
-				// }),
 			})
-			.default({
-				preferredLength: 12,
-				generatedItemType: 'layer',
-				preferredNumVoteChoices: 3,
-				doNotRepeatRules: DEFAULT_DNR_RULES,
-			}),
+			// avoid sharing default queue object - TODO unclear if necessary
+			.default({}).transform((obj) => deepClone(obj)),
 	})
-	// avoid sharing default queue object
-	.transform((obj) => deepClone(obj))
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
 
 export type Changed<T> = {
 	[K in keyof T]: T[K] extends object ? Changed<T[K]> : boolean
+}
+
+// note the QueryConstraint is not perfectly suited to this kind of use-case as we have to arbitrarily specify apply-as
+export function getPoolConstraints(poolConfig: PoolConfiguration, applyAs: LayerQueryConstraint['applyAs'] = 'field') {
+	const constraints: LayerQueryConstraint[] = []
+
+	for (const rule of poolConfig.doNotRepeatRules) {
+		constraints.push({
+			type: 'do-not-repeat',
+			rule,
+			id: 'layer-pool:' + rule.field,
+			name: rule.field,
+			applyAs,
+		})
+	}
+
+	for (const filterId of poolConfig.filters) {
+		constraints.push({
+			type: 'filter-entity',
+			id: 'pool:' + filterId,
+			filterEntityId: filterId,
+			applyAs,
+		})
+	}
+	return constraints
 }
 
 export type SettingsChanged = Changed<ServerSettings>
@@ -1138,34 +1197,63 @@ export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerList) {
 	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
 }
-export function getAllLayerIdsFromList(layerList: LayerList) {
-	// using list instead of set to preserve ordering
-	const layerIds: string[] = []
-	for (const item of layerList) {
-		if (item.layerId && !layerIds.includes(item.layerId)) {
-			layerIds.push(item.layerId)
-		}
-		if (item.vote) {
-			for (const id of item.vote.choices) {
-				if (!layerIds.includes(id)) {
-					layerIds.push(id)
-				}
-			}
-		}
+
+export function getAllItemLayerIds(item: LayerListItem, opts?: { excludeVoteChoices?: boolean }) {
+	const ids = new Set<LayerId>()
+	if (item.layerId) {
+		ids.add(item.layerId)
 	}
-	return layerIds
+
+	if (item.vote && !opts?.excludeVoteChoices) {
+		for (const choice of item.vote.choices) ids.add(choice)
+	}
+	return ids
 }
 
-// layer status as it relates to the layer pool, other possibly other things later
-export type LayerStatus = {
-	inPool: boolean
-	exists: boolean
+export function getAllLayerIdsFromList(layerList: LayerList, opts?: { excludeVoteChoices?: boolean }) {
+	const layerIds = new Set<LayerId>()
+	// using list instead of set to preserve ordering
+	for (const set of layerList.map(item => getAllItemLayerIds(item, { excludeVoteChoices: opts?.excludeVoteChoices }))) {
+		for (const id of set) layerIds.add(id)
+	}
+	return Array.from(layerIds)
 }
 
 export type UserPart = { users: User[] }
-export type LayerStatusPart = { layerInPoolState: Map<string, LayerStatus> }
+export type LayerStatuses = {
+	// keys are (itemId:(choiceLayerId)?)
+	blocked: OneToMany.OneToManyMap<string, string>
+	present: Set<LayerId>
+}
+export function toQueueLayerKey(itemId: string, choice?: string) {
+	let id = itemId
+	if (choice) id += `:${choice}`
+	return id
+}
+
+export function parseQueueLayerKey(key: string) {
+	const [itemId, choice] = key.split(':')
+	return [itemId, choice]
+}
+
+export function getAllLayerIdsWithQueueKey(item: LayerListItem) {
+	const tuples: [string, LayerId][] = []
+	if (item.layerId) tuples.push([toQueueLayerKey(item.itemId), item.layerId])
+	if (item.vote) {
+		for (const choice of item.vote.choices) {
+			tuples.push([item.itemId, choice])
+		}
+	}
+	return tuples
+}
+
+export type LayerStatusPart = { layerStatuses: LayerStatuses }
 export function getLayerStatusId(layerId: LayerId, filterEntityId: FilterEntityId) {
 	return `${layerId}::${filterEntityId}`
+}
+
+export type FilterEntityPart = {
+	filterEntities: Map<FilterEntityId, FilterEntity>
 }
 
 export type LayerSyncState =
