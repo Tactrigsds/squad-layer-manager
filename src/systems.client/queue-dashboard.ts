@@ -134,7 +134,10 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 				Im.produce(state, (draft) => {
 					const layerList = draft.layerList
 					const item = layerList[sourceIndex]
-					item.lastModifiedBy = modifiedBy
+					item.source = {
+						type: 'manual',
+						userId: modifiedBy,
+					}
 					if (sourceIndex > targetIndex) {
 						targetIndex++
 					}
@@ -167,7 +170,7 @@ const getVoteChoiceStore = (item: M.LayerListItem) => {
 }
 
 export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const [store, setStore] = React.useState<Zus.StoreApi<LLStore>>(getVoteChoiceStore(itemStore.getState().item))
+	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(getVoteChoiceStore(itemStore.getState().item))
 	React.useEffect(() => {
 		const unsubscribe = store.subscribe((state) => {
 			const choices = state.layerList.map(item => item.layerId!)
@@ -236,7 +239,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 	function selectLLState(state: LLItemState, mutState: ItemMutations): LLState {
 		return {
 			listMutations: mutState,
-			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: 'manual' })) ?? [],
+			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: { type: 'gameserver' } })) ?? [],
 			isVoteChoice: true,
 		}
 	}

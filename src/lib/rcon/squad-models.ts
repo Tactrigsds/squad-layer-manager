@@ -1,4 +1,4 @@
-import { ParsedBigIntSchema, ParsedIntSchema } from '@/lib/zod'
+import * as zUtils from '@/lib/zod'
 import { z } from 'zod'
 
 import * as M from '@/models'
@@ -6,30 +6,30 @@ import * as M from '@/models'
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
 	MaxPlayers: z.number().int().nonnegative(),
-	PlayerCount_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueue_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueueLimit_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PlayerCount_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueue_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueueLimit_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MapName_s: z.string(),
 	GameMode_s: z.string(),
 	GameVersion_s: z.string(),
 	LICENSEDSERVER_b: z.boolean(),
-	PLAYTIME_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	Flags_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PLAYTIME_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	Flags_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MATCHHOPPER_s: z.string(),
 	MatchTimeout_d: z.number().int().nonnegative(),
 	SESSIONTEMPLATENAME_s: z.string(),
 	Password_b: z.boolean(),
-	CurrentModLoadedCount_I: ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	CurrentModLoadedCount_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	AllModsWhitelisted_b: z.boolean(),
-	'ap-east-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'ap-southeast-2_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'me-central-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'us-east-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'us-west-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-west-2_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-central-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-north-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'ap-southeast-1_I': ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'ap-east-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'ap-southeast-2_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'me-central-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'us-east-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'us-west-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-west-2_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-central-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'eu-north-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	'ap-southeast-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	Region_s: z.string(),
 	NextLayer_s: z.string().optional(),
 	TeamOne_s: z.string().optional(),
@@ -46,9 +46,18 @@ export type ServerStatus = {
 	nextLayer: M.UnvalidatedMiniLayer | null
 }
 
+export type ServerStatusWithCurrentMatchStatus = {
+	currentMatch: {
+		startTime: number
+		endTime?: number
+		sourceType?: M.LayerSource
+		outcome?: 'team1' | 'team2' | 'draw'
+	}
+}
+
 export const PlayerSchema = z.object({
 	playerID: z.number(),
-	steamID: ParsedBigIntSchema,
+	steamID: zUtils.ParsedBigIntSchema,
 	name: z.string().min(1),
 	teamID: z.number(),
 	squadID: z.number().nullable(),
@@ -199,32 +208,13 @@ export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
 export const RCON_MAX_BUF_LEN = 4152
 
-const SquadjsTeamSchema = z.object({
+export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
+
+export const SquadOutcomeTeamSchema = z.object({
 	faction: z.string(),
-	team: z.union([z.literal(1), z.literal(2)]),
+	subfaction: zUtils.StrOrNullIfEmptyOrWhitespace,
+	team: TeamIdSchema,
 	tickets: z.number().positive(),
 })
-export type SquadjsOutcomeTeam = z.infer<typeof SquadjsTeamSchema>
 
-export const SquadjsEventSchema = z.discriminatedUnion('type', [
-	z.object({
-		type: z.literal('NEW_GAME'),
-		data: z.object({
-			time: z.coerce.date(),
-			mapClassName: z.string(),
-			layerClassname: z.string(),
-			layer: z.object({
-				teams: z.array(z.object({ faction: z.string(), name: z.string() })),
-			}),
-		}),
-	}),
-	z.object({
-		type: z.literal('ROUND_ENDED'),
-		data: z.object({
-			time: z.coerce.date(),
-			winner: SquadjsTeamSchema.nullable(),
-			loser: SquadjsTeamSchema.nullable(),
-		}),
-	}),
-])
-export type SquadjsEvent = z.infer<typeof SquadjsEventSchema>
+export type SquadOutcomeTeam = z.infer<typeof SquadOutcomeTeamSchema>

@@ -37,9 +37,9 @@ export async function setupDatabase() {
 	}
 }
 
-// try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date
-export function addPooledDb<T extends C.Log>(ctx: T & { db?: never }) {
-	if (ctx.db) throw new Error('db already exists')
+// try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
+export function addPooledDb<T extends C.Log>(ctx: T) {
+	if ('db' in ctx) return ctx as T & C.Db
 	return {
 		...ctx,
 		db(opts?: { redactParams?: boolean }) {

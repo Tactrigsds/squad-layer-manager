@@ -50,3 +50,5 @@ export const StrFlag = z
 	.toLowerCase()
 	.pipe(z.union([z.literal('true'), z.literal('false')]))
 	.transform((val) => val === 'true')
+
+export const StrOrNullIfEmptyOrWhitespace = z.string().trim().nullable().transform((val) => val || null)

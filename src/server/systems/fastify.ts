@@ -1,7 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
-import * as SM from '@/lib/rcon/squad-models.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
@@ -14,7 +13,6 @@ import * as TrpcRouter from '@/server/router'
 import * as Discord from '@/server/systems/discord.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
-import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -106,8 +104,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	instance.get(AR.exists('/login/callback'), async function(req, reply) {
-		// @ts-expect-error lame
-		const tokenResult = await this.discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
+		const tokenResult = await (this as any).discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
 			access_token: string
 			token_type: string
@@ -179,51 +176,6 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 
 		return await Sessions.logout({ ...authRes.ctx, res })
-	})
-
-	// receives requests from squadjs containing event information
-	instance.post(AR.exists('/squadjs/forward'), async function(req, res) {
-		const ctx = getCtx(req)
-		const token = req.headers['authorization']?.replace(/^[Bb]earer\s+/, '')
-		if (ENV.SQUADJS_HTTP_FORWARDER_TOKEN !== token) {
-			res.status(401).send({ code: 'err:invalid-token' })
-			return
-		}
-
-		if (req.headers['content-type'] !== 'application/json') {
-			res
-				.status(400)
-				.send({
-					code: 'err:invalid-content-type',
-					msg: 'Content-Type must be application/json',
-				})
-			return
-		}
-
-		if (!req.body) {
-			res
-				.status(400)
-				.send({
-					code: 'err:missing-request-body',
-					msg: 'Request body is missing',
-				})
-			return
-		}
-
-		const parseRes = SM.SquadjsEventSchema.safeParse(req.body)
-		if (!parseRes.success) {
-			res.status(400).send(parseRes.error)
-			return
-		}
-
-		ctx.log.info('Received squadjs event %s %o', parseRes.data.type, JSON.stringify(parseRes.data.data))
-		const eventRes = await SquadServer.handleSquadjsEvent(ctx, parseRes.data!)
-		if (eventRes.code !== 'ok') {
-			res.status(500).send(eventRes)
-			return
-		}
-
-		res.status(200).send(eventRes)
 	})
 
 	await instance.register(ws)

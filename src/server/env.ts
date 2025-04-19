@@ -1,7 +1,7 @@
 import { createEnv } from '@t3-oss/env-core'
 import * as dotenv from 'dotenv'
 import { z } from 'zod'
-import { ParsedIntSchema, StrFlag } from '../lib/zod'
+import { HumanTime, ParsedIntSchema, StrFlag } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
 
 export let ENV!: ReturnType<typeof setupEnv>
@@ -15,21 +15,21 @@ const EnvSchema = {
 		// trim trailing whitespace
 		.transform((url) => url.replace(/\/$/, '')),
 
-	DB_HOST: z.string().min(1).default('localhost'),
+	DB_HOST: z.string().nonempty().default('localhost'),
 	DB_PORT: ParsedIntSchema.default('3306'),
-	DB_USER: z.string().min(1).default('root'),
-	DB_PASSWORD: z.string().min(1).default('dev'),
-	DB_DATABASE: z.string().min(1),
+	DB_USER: z.string().nonempty().default('root'),
+	DB_PASSWORD: z.string().nonempty().default('dev'),
+	DB_DATABASE: z.string().nonempty(),
 
 	USING_DEVTOOLS: StrFlag.default('false'),
 
-	DISCORD_CLIENT_ID: z.string().min(1),
-	DISCORD_CLIENT_SECRET: z.string().min(1),
-	DISCORD_BOT_TOKEN: z.string().min(1),
+	DISCORD_CLIENT_ID: z.string().nonempty(),
+	DISCORD_CLIENT_SECRET: z.string().nonempty(),
+	DISCORD_BOT_TOKEN: z.string().nonempty(),
 
 	LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 
-	RCON_HOST: z.string().min(1).default('localhost'),
+	RCON_HOST: z.string().nonempty().default('localhost'),
 	RCON_PORT: z
 		.string()
 		.transform((val) => parseInt(val, 10))
@@ -51,7 +51,12 @@ const EnvSchema = {
 	PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
 	PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
 
-	SQUADJS_HTTP_FORWARDER_TOKEN: z.string().min(1).default('dev-token'),
+	SQUAD_SFTP_HOST: z.string().default('localhost'),
+	SQUAD_SFTP_PORT: ParsedIntSchema.default('22'),
+	SQUAD_SFTP_LOG_FILE: z.string().default('squad-sftp.log'),
+	SQUAD_SFTP_USERNAME: z.string().default('squad'),
+	SQUAD_SFTP_PASSWORD: z.string().default('password'),
+	SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().min(1)),
 }
 
 export function ensureEnvSetup() {

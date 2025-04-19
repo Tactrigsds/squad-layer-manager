@@ -2,7 +2,6 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, durableSub as durableOp, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import * as FB from '@/lib/filter-builders.ts'
 import { deepClone } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards'
@@ -963,7 +962,7 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQS
 		userIds.push(BigInt(update.source.user.discordId))
 	}
 	for (const item of state.layerQueue) {
-		if (item.lastModifiedBy) userIds.push(BigInt(item.lastModifiedBy))
+		if (item.source.type === 'manual') userIds.push(BigInt(item.source.userId))
 	}
 
 	let users: Schema.User[] = []

@@ -688,12 +688,18 @@ export const LayerVoteSchema = z.object({
 })
 export type LayerVote = z.infer<typeof LayerVoteSchema>
 
+export const LayerSourceSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('generated') }),
+	z.object({ type: z.literal('gameserver') }),
+	z.object({ type: z.literal('manual'), userId: z.bigint() }),
+])
+export type LayerSource = z.infer<typeof LayerSourceSchema>
+
 export const LayerListItemSchema = z.object({
 	itemId: z.string().regex(/^[a-zA-Z0-9_-]{6}$/),
 	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
-	source: z.enum(['generated', 'gameserver', 'manual']),
-	lastModifiedBy: z.bigint().optional(),
+	source: LayerSourceSchema,
 })
 
 export const LayerListSchema = z.array(LayerListItemSchema)

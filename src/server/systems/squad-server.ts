@@ -1,9 +1,11 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { AsyncResource, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, durableSub, sleep, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
+import * as SME from '@/lib/rcon/squad-models.events.ts'
 import SquadRcon from '@/lib/rcon/squad-rcon.ts'
+import { SquadLogEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { WARNS } from '@/messages.ts'
 import * as M from '@/models.ts'
@@ -27,6 +29,7 @@ const tracer = Otel.trace.getTracer('squad-server')
 
 export let rcon!: SquadRcon
 export let adminList!: AsyncResource<SM.SquadAdmins>
+export let squadLogEvents!: SquadLogEventEmitter
 
 export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, message: string) => {
 	C.setSpanOpAttrs({ message })
@@ -215,32 +218,38 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 		}
 	})
 
+	squadLogEvents = new SquadLogEventEmitter(ctx, {
+		sftp: {
+			host: ENV.SQUAD_SFTP_HOST,
+			port: ENV.SQUAD_SFTP_PORT,
+			username: ENV.SQUAD_SFTP_USERNAME,
+			password: ENV.SQUAD_SFTP_PASSWORD,
+			filePath: ENV.SQUAD_SFTP_LOG_FILE,
+			pollInterval: ENV.SQUAD_SFTP_POLL_INTERVAL,
+		},
+	})
+	squadLogEvents.event$.pipe(
+		durableSub('squad-server:handle-squadjs-event', { tracer, ctx }, ([ctx, event]) => handleSquadjsEvent(DB.addPooledDb(ctx), event)),
+	).subscribe()
+	await squadLogEvents.connect()
+
 	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
 })
 
-export async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SM.SquadjsEvent) {
+async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			const [team1, team2] = event.data.layer.teams.map(team => ({
-				faction: M.factionFullNameToAbbr(team.faction),
-				subfaction: team.name ? M.subfacFullNameToAbbr(team.name) : undefined,
-			}))
-			const team1SubfacText = team1.subfaction ? '+' + team1.subfaction : ''
-			const team2SubfacText = team2.subfaction ? '+' + team2.subfaction : ''
-			const unvalidatedLayer = M.parseRawLayerText(
-				`${event.data.layerClassname} ${team1.faction}${team1SubfacText} ${team2.faction}${team2SubfacText}`,
-			)
-
+			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: Math.floor(ENV.SQUAD_SFTP_POLL_INTERVAL / 2) })
+			if (statusRes.code !== 'ok') return statusRes
 			await ctx.db().insert(Schema.matchHistory).values({
-				layerId: unvalidatedLayer.id,
-				startTime: event.data.time,
+				layerId: statusRes.data.currentLayer.id,
+				startTime: event.time,
 			})
 			return { code: 'ok' as const }
 		}
-
 		case 'ROUND_ENDED': {
-			const serverStatusRes = (await rcon.serverStatus.get(ctx)).value
-			if (serverStatusRes.code !== 'ok') return serverStatusRes
+			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: Math.floor(ENV.SQUAD_SFTP_POLL_INTERVAL / 2) })
+			if (statusRes.code !== 'ok') return statusRes
 
 			await DB.runTransaction(ctx, async (ctx) => {
 				const [currentMatch] = await ctx.db().select()
@@ -248,14 +257,14 @@ export async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SM.SquadjsEve
 					.orderBy(E.desc(Schema.matchHistory.startTime))
 					.limit(1)
 					.for('update')
-				if (!currentMatch || currentMatch.layerId !== serverStatusRes.data.currentLayer.id) return
-				const teams: [SM.SquadjsOutcomeTeam | null, SM.SquadjsOutcomeTeam | null] = [event.data.winner, event.data.loser]
+				if (!currentMatch || currentMatch.layerId !== statusRes.data.currentLayer.id) return
+				const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [event.winner, event.loser]
 				if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
-				const winner = event.data.winner === null ? 'draw' : event.data.winner.team === 1 ? 'team1' : 'team2'
+				const winner = event.winner === null ? 'draw' : event.winner.team === 1 ? 'team1' : 'team2'
 
 				await ctx.db().update(Schema.matchHistory)
 					.set({
-						endTime: event.data.time,
+						endTime: event.time,
 						team1Tickets: teams[0]?.tickets,
 						team2Tickets: teams[1]?.tickets,
 						winner,
@@ -264,7 +273,6 @@ export async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SM.SquadjsEve
 			})
 			return { code: 'ok' as const }
 		}
-
 		default:
 			assertNever(event)
 	}

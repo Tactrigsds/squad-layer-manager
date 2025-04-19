@@ -923,19 +923,19 @@ function LayerListItem(props: QueueItemProps) {
 			</Button>
 		</ItemDropdown>
 	)
-	const modifiedBy = item.lastModifiedBy && PartsSys.findUser(item.lastModifiedBy)
-	const modifiedByDisplay = modifiedBy ? `- ${modifiedBy.username}` : ''
 	const badges: React.ReactNode[] = []
 
-	switch (item.source) {
+	switch (item.source.type) {
 		case 'gameserver':
 			badges.push((<Badge key="source gameserver" variant="outline">Game Server</Badge>))
 			break
 		case 'generated':
-			badges.push((<Badge key="source generated" variant="outline">Generated {modifiedByDisplay}</Badge>))
+			badges.push((<Badge key="source generated" variant="outline">Generated</Badge>))
 			break
 		case 'manual': {
-			badges.push((<Badge key="source manual" variant="outline">Manual {modifiedByDisplay}</Badge>))
+			badges.push(
+				(<Badge key="source manual" variant="outline">Manual - {PartsSys.findUser(item.source.userId)?.username ?? 'Unknown'}</Badge>),
+			)
 			break
 		}
 		default:
@@ -1277,8 +1277,7 @@ export function SelectLayersDialog(props: {
 				(layerId) =>
 					({
 						layerId: layerId,
-						source: 'manual',
-						lastModifiedBy: user!.discordId,
+						source: { type: 'manual', userId: user!.discordId },
 					}) satisfies M.NewLayerListItem,
 			)
 			props.selectQueueItems(items)
@@ -1288,8 +1287,7 @@ export function SelectLayersDialog(props: {
 					choices: selectedLayers,
 					defaultChoice: selectedLayers[0],
 				},
-				source: 'manual',
-				lastModifiedBy: user!.discordId,
+				source: { type: 'manual', userId: user!.discordId },
 			}
 			props.selectQueueItems([item])
 		}
@@ -1477,10 +1475,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 							setActive={(itemType) => {
 								editedItemStore.getState().setItem((prev) => {
 									const selectedLayerIds = itemToLayerIds(prev)
-									const attribution = {
-										source: 'manual' as const,
-										lastModifiedBy: loggedInUser!.discordId,
-									}
+									const layerSource: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
 									if (itemType === 'vote') {
 										return {
 											itemId: prev.itemId,
@@ -1488,13 +1483,13 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 												choices: selectedLayerIds,
 												defaultChoice: selectedLayerIds[0],
 											},
-											...attribution,
+											source: layerSource,
 										}
 									} else if (itemType === 'layer') {
 										return {
 											itemId: prev.itemId,
 											layerId: selectedLayerIds[0],
-											...attribution,
+											source: layerSource,
 										}
 									} else {
 										assertNever(itemType)
