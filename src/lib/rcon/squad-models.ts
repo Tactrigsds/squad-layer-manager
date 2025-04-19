@@ -1,7 +1,9 @@
+import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as zUtils from '@/lib/zod'
 import { z } from 'zod'
 
 import * as M from '@/models'
+import { assertNever } from '../typeGuards'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
@@ -46,13 +48,91 @@ export type ServerStatus = {
 	nextLayer: M.UnvalidatedMiniLayer | null
 }
 
-export type ServerStatusWithCurrentMatchStatus = {
-	currentMatch: {
-		startTime: number
-		endTime?: number
-		sourceType?: M.LayerSource
-		outcome?: 'team1' | 'team2' | 'draw'
+// Details about current match besides the layer
+export type MatchDetails = {
+	status: 'in-progress'
+	layerSource: M.LayerSource
+	startTime: Date
+} | {
+	status: 'post-game'
+	layerSource: M.LayerSource
+	startTime: Date
+	endTime: Date
+	outcome: {
+		type: 'team1' | 'team2'
+		team1Tickets: number
+		team2Tickets: number
+	} | {
+		type: 'draw'
 	}
+}
+
+/**
+ * Converts a match history entry to current match details and validates the data
+ */
+export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory): MatchDetails {
+	let layerSource: M.LayerSource
+	switch (entry.setByType) {
+		case 'gameserver':
+		case 'generated': {
+			layerSource = { type: entry.setByType }
+			break
+		}
+
+		case 'manual': {
+			if (!entry.setByUserId) throw new Error("Invalid match history: match setByUserId is null but type is 'manual'")
+			layerSource = { type: entry.setByType, userId: BigInt(entry.setByUserId) }
+			break
+		}
+		default: {
+			assertNever(entry.setByType)
+		}
+	}
+	const shared = {
+		layerSource: layerSource,
+		startTime: entry.startTime,
+	}
+
+	if (entry.endTime && entry.outcome === null) throw new Error('Match ended without an outcome')
+	else if (!entry.endTime && entry.outcome !== null) throw new Error('Match not ended but outcome is not null')
+	else if (entry.endTime && entry.outcome === 'draw') {
+		if (entry.team1Tickets !== null || entry.team2Tickets !== null) throw new Error('Match ended in a draw but tickets were not null')
+
+		return {
+			status: 'post-game',
+			...shared,
+			endTime: entry.endTime,
+			outcome: {
+				type: 'draw',
+			},
+		}
+	} else if (entry.endTime && entry.outcome !== 'draw') {
+		if (entry.team1Tickets === null || entry.team2Tickets === null) throw new Error('Match ended in a win but tickets were null')
+
+		return {
+			status: 'post-game',
+			...shared,
+			endTime: entry.endTime,
+			outcome: {
+				type: entry.outcome!,
+				team1Tickets: entry.team1Tickets,
+				team2Tickets: entry.team2Tickets,
+			},
+		}
+	} else if (!entry.endTime && entry.outcome === null) {
+		if (entry.team1Tickets !== null || entry.team2Tickets !== null) throw new Error('Match not ended but tickets were not null')
+
+		return {
+			status: 'in-progress',
+			...shared,
+		}
+	}
+
+	throw new Error('Invalid match state: unknown')
+}
+
+export type ServerStatusWithCurrentMatch = ServerStatus & {
+	currentMatch?: MatchDetails
 }
 
 export const PlayerSchema = z.object({
@@ -203,6 +283,7 @@ export const BIOME_FACTIONS = {
 
 export type RconError = { code: 'err:rcon'; msg: string }
 export type ServerStatusRes = { code: 'ok'; data: ServerStatus } | RconError
+export type ServerStatusResWithCurrentMatch = { code: 'ok'; data: ServerStatusWithCurrentMatch } | RconError
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 

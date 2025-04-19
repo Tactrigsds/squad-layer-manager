@@ -17,6 +17,9 @@ export type FilterRoleContributor = typeof Schema.filterRoleContributors.$inferS
 export type NewFilterRoleContributor = typeof Schema.filterRoleContributors.$inferInsert
 export type NewServer = typeof Schema.servers.$inferInsert
 
+export type MatchHistory = typeof Schema.matchHistory.$inferSelect
+export type NewMatchHistory = typeof Schema.matchHistory.$inferInsert
+
 export const MINI_LAYER_SELECT = {
 	id: Schema.layers.id,
 	Level: Schema.layers.Level,

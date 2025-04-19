@@ -23,7 +23,7 @@ type LogState = {
 /**
  * Consolidates and emits events parsed from squad logs.
  */
-export class SquadLogEventEmitter {
+export class SquadEventEmitter {
 	reader: SftpTail
 	event$: Rx.Subject<[EventCtx, SME.Event]> = new Rx.Subject()
 

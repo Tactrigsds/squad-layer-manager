@@ -1,3 +1,4 @@
+import * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as Schema from '$root/drizzle/schema.ts'
 import { AsyncResource, distinctDeepEquals, durableSub, sleep, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
@@ -5,8 +6,9 @@ import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
 import * as SME from '@/lib/rcon/squad-models.events.ts'
 import SquadRcon from '@/lib/rcon/squad-rcon.ts'
-import { SquadLogEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
+import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
+import { Deferred } from '@/lib/types.ts'
 import { WARNS } from '@/messages.ts'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
@@ -18,18 +20,34 @@ import { baseLogger } from '@/server/logger'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
+import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
+import { getTableConfig } from 'drizzle-orm/mysql-core'
 import * as Rx from 'rxjs'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 import { ENV } from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
+type SquadServerState = {
+	currentMatch?: SM.MatchDetails
+	// stored alongside currentMatch for purposes of reconciliation between rcon and squad events(which are from the server logs), don't use as source of truth generically
+	currentMatchLayerId?: string
+
+	bufferedNewGameLayerSource?: M.LayerSource
+	// the expected entry id for the next game when the layer source was buffered
+	bufferedNewGameEntryId?: number
+}
+
 const tracer = Otel.trace.getTracer('squad-server')
 
 export let rcon!: SquadRcon
+export let squadLogEvents!: SquadEventEmitter
+
 export let adminList!: AsyncResource<SM.SquadAdmins>
-export let squadLogEvents!: SquadLogEventEmitter
+export let serverStatus!: AsyncResource<SM.ServerStatusResWithCurrentMatch>
+
+export let state!: SquadServerState
 
 export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, message: string) => {
 	C.setSpanOpAttrs({ message })
@@ -47,7 +65,7 @@ export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }
 })
 
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
-	for await (const info of toAsyncGenerator(rcon.serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
+	for await (const info of toAsyncGenerator(serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
 		yield info
 	}
 }
@@ -194,12 +212,16 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 })
 
 export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async () => {
+	// -------- set up admin list --------
 	const adminListTTL = 1000 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })
+
+	state = {}
 
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	void adminList.get(ctx)
 
+	// -------- set up rcon --------
 	const coreRcon = new Rcon({
 		host: ENV.RCON_HOST,
 		port: ENV.RCON_PORT,
@@ -218,7 +240,8 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 		}
 	})
 
-	squadLogEvents = new SquadLogEventEmitter(ctx, {
+	// -------- set up squad events (events from logger) --------
+	squadLogEvents = new SquadEventEmitter(ctx, {
 		sftp: {
 			host: ENV.SQUAD_SFTP_HOST,
 			port: ENV.SQUAD_SFTP_PORT,
@@ -228,27 +251,50 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 			pollInterval: ENV.SQUAD_SFTP_POLL_INTERVAL,
 		},
 	})
-	squadLogEvents.event$.pipe(
-		durableSub('squad-server:handle-squadjs-event', { tracer, ctx }, ([ctx, event]) => handleSquadjsEvent(DB.addPooledDb(ctx), event)),
-	).subscribe()
-	await squadLogEvents.connect()
 
+	squadLogEvents.event$.pipe(
+		durableSub('squad-server:handle-squadjs-event', { tracer, ctx }, ([ctx, event]) => handleSquadEvent(DB.addPooledDb(ctx), event)),
+	).subscribe()
+	void squadLogEvents.connect()
+
+	serverStatus = new AsyncResource('serverStatusWithCurrentMatch', async (ctx): Promise<SM.ServerStatusResWithCurrentMatch> => {
+		const { value: statusRes } = await rcon.serverStatus.get(ctx, {
+			ttl: Math.max(ctx.resOpts.ttl, 5000 / 2),
+		})
+		if (statusRes.code !== 'ok') return statusRes
+		const res: SM.ServerStatusResWithCurrentMatch = { code: 'ok' as const, data: { ...statusRes.data } }
+		if (state.currentMatchLayerId && M.areLayerIdsCompatible(statusRes.data.currentLayer.id, state.currentMatchLayerId)) {
+			res.data.currentMatch = state.currentMatch!
+		}
+		return res
+	}, { defaultTTL: 5000 })
+
+	void getCurrentMatchDetailsFromDb(ctx).then(async (res) => {
+		if (!res) return
+		const [currentMatch, layerId] = res
+		state.currentMatch = currentMatch
+		state.currentMatchLayerId = layerId
+		serverStatus.invalidate(ctx)
+	})
 	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
 })
 
-async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SME.Event) {
+async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: Math.floor(ENV.SQUAD_SFTP_POLL_INTERVAL / 2) })
+			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
-			await ctx.db().insert(Schema.matchHistory).values({
+			const entry: SchemaModels.NewMatchHistory = {
 				layerId: statusRes.data.currentLayer.id,
 				startTime: event.time,
-			})
+				setByType: state.bufferedNewGameLayerSource?.type ?? 'unknown',
+				// setByUserId: state.bufferedNewGameLayerSource?.type ==
+			}
+			await ctx.db().insert(Schema.matchHistory).values(entry)
 			return { code: 'ok' as const }
 		}
 		case 'ROUND_ENDED': {
-			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: Math.floor(ENV.SQUAD_SFTP_POLL_INTERVAL / 2) })
+			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
 
 			await DB.runTransaction(ctx, async (ctx) => {
@@ -257,18 +303,20 @@ async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SME.Event) {
 					.orderBy(E.desc(Schema.matchHistory.startTime))
 					.limit(1)
 					.for('update')
-				if (!currentMatch || currentMatch.layerId !== statusRes.data.currentLayer.id) return
+				if (!currentMatch || !M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) return
 				const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [event.winner, event.loser]
 				if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
-				const winner = event.winner === null ? 'draw' : event.winner.team === 1 ? 'team1' : 'team2'
+				const outcome = event.winner === null ? 'draw' : event.winner.team === 1 ? 'team1' : 'team2'
+				const entry: Partial<SchemaModels.NewMatchHistory> = {
+					endTime: event.time,
+					team1Tickets: teams[0]?.tickets,
+					team2Tickets: teams[1]?.tickets,
+					layerId: statusRes.data.currentLayer.id,
+					outcome,
+				}
 
 				await ctx.db().update(Schema.matchHistory)
-					.set({
-						endTime: event.time,
-						team1Tickets: teams[0]?.tickets,
-						team2Tickets: teams[1]?.tickets,
-						winner,
-					})
+					.set(entry)
 					.where(E.eq(Schema.matchHistory.id, currentMatch.id))
 			})
 			return { code: 'ok' as const }
@@ -276,6 +324,38 @@ async function handleSquadjsEvent(ctx: C.Log & C.Db, event: SME.Event) {
 		default:
 			assertNever(event)
 	}
+}
+
+export async function getCurrentMatchDetailsFromDb(ctx: C.Log & C.Db): Promise<[SM.MatchDetails, M.LayerId] | null> {
+	const [entry] = await ctx.db().select()
+		.from(Schema.matchHistory)
+		.orderBy(E.desc(Schema.matchHistory.startTime))
+		.limit(1)
+		.for('update')
+
+	if (!entry || entry.endTime !== null) return null
+
+	try {
+		return [SM.historyEntryToMatchDetails(entry), entry.layerId]
+	} catch (error) {
+		console.error(error, 'Error fetching match details:')
+		return null
+	}
+}
+
+async function getNextMatchHistoryEntryId(ctx: C.Log & C.Db): Promise<number> {
+	// @ts-expect-error idc
+	const [[row]] = await ctx.db().execute(sql<number>`
+      SELECT AUTO_INCREMENT FROM information_schema.tables
+      WHERE TABLE_SCHEMA = ${ENV.DB_DATABASE} AND TABLE_NAME = ${getTableConfig(Schema.matchHistory).name}
+     `)
+
+	return parseInt(row.AUTO_INCREMENT)
+}
+
+// expose setting the current layer source when the next layer starts
+async function setCurrentLayerSource(source: M.LayerSource) {
+	state.bufferedNewGameLayerSource = source
 }
 
 export const squadServerRouter = router({

@@ -1,3 +1,4 @@
+import { AsyncResourceInvocationOpts } from '@/lib/async.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as M from '@/models.ts'
 import * as Otel from '@opentelemetry/api'
@@ -170,7 +171,7 @@ export type Db = {
 } & Log
 
 // indicates the context is in a db transaction
-export type Tx = { tx: true }
+export type Tx = { tx: { rollback: () => void } }
 
 export type Rcon = {
 	rcon: RconCore
@@ -196,3 +197,7 @@ export type WSSession = {
 export type AuthedUser = User & AuthSession
 
 export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log
+
+export type AsyncResourceInvocation = {
+	resOpts: AsyncResourceInvocationOpts
+}

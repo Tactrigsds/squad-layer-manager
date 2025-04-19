@@ -62,12 +62,31 @@ export function addPooledDb<T extends C.Log>(ctx: T) {
 }
 
 const tracer = Otel.trace.getTracer('db')
-export async function runTransaction<T extends C.Db, V>(ctx: T & { tx?: never }, callback: (ctx: T & C.Tx) => Promise<V>) {
+export async function runTransaction<T extends C.Db, V>(
+	ctx: T & { tx?: { rollback: () => void } },
+	callback: (ctx: T & C.Tx) => Promise<V>,
+) {
 	return await tracer.startActiveSpan('db.transaction', async (span) => {
+		let res!: Awaited<V>
+		let shouldRollback = false
 		try {
-			const res = await ctx.db().transaction((tx) => callback({ ...ctx, tx: true, db: () => tx }))
+			await ctx.db().transaction(async (tx) => {
+				res = await callback({
+					...ctx,
+					tx: {
+						rollback: () => {
+							shouldRollback = true
+						},
+					},
+					db: () => tx,
+				})
+				if (shouldRollback) tx.rollback()
+			})
 			span.setStatus({ code: Otel.SpanStatusCode.OK })
 			return res
+		} catch (err) {
+			if (shouldRollback) return res
+			throw err
 		} finally {
 			span.end()
 		}

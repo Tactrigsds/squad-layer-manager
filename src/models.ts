@@ -239,6 +239,10 @@ export function isLayerIdPartialMatch(id: string, targetId: string) {
 	return isPartial(layerRes, targetLayerRes)
 }
 
+export function areLayerIdsCompatible(id1: string, id2: string) {
+	return isLayerIdPartialMatch(id1, id2) || isLayerIdPartialMatch(id2, id1)
+}
+
 export function getLayerDetailsFromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
 	if (unvalidatedLayer.code === 'raw') return unvalidatedLayer.partialLayer ?? {}
 	const { id: _, ...partial } = unvalidatedLayer.layer

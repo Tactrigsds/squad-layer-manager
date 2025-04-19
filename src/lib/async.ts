@@ -128,6 +128,10 @@ type AsyncResourceOpts = {
 	tracer: Otel.Tracer
 }
 
+export type AsyncResourceInvocationOpts = {
+	ttl: number
+}
+
 // TODO add retries
 /**
  *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
@@ -141,7 +145,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 	private valueSubject = new Rx.Subject<T>()
 	constructor(
 		private name: string,
-		private cb: (ctx: Ctx) => Promise<T>,
+		private cb: (ctx: Ctx & C.AsyncResourceInvocation) => Promise<T>,
 		opts?: Partial<AsyncResourceOpts>,
 	) {
 		// @ts-expect-error init
@@ -150,7 +154,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 		this.opts.defaultTTL ??= 1000
 		this.opts.tracer ??= AsyncResource.tracer
 	}
-	async fetchValue(ctx: Ctx) {
+	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation) {
 		const promise = this.cb(ctx)
 		this.fetchedValue = null
 		this.fetchedValue = promise
@@ -160,7 +164,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 		return res
 	}
 	async get(
-		ctx: Ctx,
+		_ctx: Ctx,
 		opts?: {
 			// locks other calls to get this resource that also invoke the lock
 			lock?: boolean
@@ -170,7 +174,7 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 		opts ??= {}
 		opts.lock ??= false
 		opts.ttl ??= this.opts.defaultTTL
-
+		const ctx = { ..._ctx, resOpts: { ttl: opts.ttl } }
 		let startUnlockCount: (() => void) | undefined
 
 		try {
@@ -191,17 +195,20 @@ export class AsyncResource<T, Ctx extends C.Log = C.Log> {
 			throw err
 		}
 	}
+
 	dispose() {
 		this.valueSubject.complete()
 	}
+
 	get disposed() {
 		return this.valueSubject.closed
 	}
+
 	invalidate(ctx: Ctx) {
 		if (!this.lastResolveTime) return
 		this.fetchedValue = null
 		this.lastResolveTime = null
-		if (this.observingTTLs.length > 0) this.fetchValue(ctx)
+		if (this.observingTTLs.length > 0) this.fetchValue({ ...ctx, resOpts: { ttl: 0 } })
 	}
 
 	observingTTLs: [number, number][] = []

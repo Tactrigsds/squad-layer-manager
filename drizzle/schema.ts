@@ -1,6 +1,5 @@
 import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
-import { extendTailwindMerge } from 'tailwind-merge'
 
 export const factions = mysqlTable(
 	'factions',
@@ -104,10 +103,10 @@ export const matchHistory = mysqlTable('matchHistory', {
 	layerId: varchar('layerId', { length: 256 }).notNull(),
 	startTime: timestamp('startTime').notNull(),
 	endTime: timestamp('endTime'),
-	winner: mysqlEnum('winner', ['team1', 'team2', 'draw']),
+	outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
 	team1Tickets: int('team1Tickets'),
 	team2Tickets: int('team2Tickets'),
-	setByType: mysqlEnum('setByType', ['user', 'system', 'unknown']),
+	setByType: mysqlEnum('setByType', ['manual', 'gameserver', 'generated', 'unknown']).notNull(),
 	setByUserId: bigint('setByUserId', { mode: 'bigint', unsigned: true }),
 }, table => ({
 	layerIdIndex: index('layerIdIndex').on(table.layerId),
