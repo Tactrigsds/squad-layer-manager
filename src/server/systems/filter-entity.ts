@@ -1,8 +1,3 @@
-import { TRPCError } from '@trpc/server'
-import { aliasedTable, and, eq } from 'drizzle-orm'
-import { Subject } from 'rxjs'
-import { z } from 'zod'
-
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
@@ -13,8 +8,12 @@ import * as RBAC from '@/rbac.models'
 import * as LayerQueue from '@/server/systems/layer-queue'
 import * as Rbac from '@/server/systems/rbac.system'
 import { procedure, router } from '@/server/trpc.server.ts'
+import { TRPCError } from '@trpc/server'
+import { aliasedTable, and, eq, or } from 'drizzle-orm'
+import { Subject } from 'rxjs'
+import { z } from 'zod'
 
-const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntity>>()
+const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: M.FilterEntityIdSchema, userId: z.bigint().optional(), role: RBAC.RoleSchema.optional() })
 	.refine((input) => input.userId || input.role, { message: 'Either userId or role must be provided' })
@@ -22,33 +21,6 @@ export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributo
 
 export const GetFiltersInput = z.object({ parts: z.array(z.literal('users')).optional() }).optional()
 export const filtersRouter = router({
-	getFilters: procedure
-		.input(GetFiltersInput)
-		.query(async ({ ctx, input }): Promise<{ code: 'ok'; filters: M.FilterEntity[] } & Parts<Partial<M.UserPart>>> => {
-			if (input?.parts?.includes('users')) {
-				const rows = await ctx.db().select().from(Schema.filters).leftJoin(
-					Schema.users,
-					eq(Schema.users.discordId, Schema.filters.owner),
-				)
-
-				const users = rows.map((row) => row.users).filter((user) => user !== null)
-				const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
-
-				return {
-					code: 'ok' as const,
-					filters: filters,
-					parts: {
-						users: users,
-					},
-				}
-			}
-			const filters = (await ctx.db().select().from(Schema.filters)).map((row) => M.FilterEntitySchema.parse(row))
-			return {
-				code: 'ok' as const,
-				filters: filters,
-				parts: {},
-			}
-		}),
 	getFilterContributors: procedure.input(M.FilterEntityIdSchema).query(async ({ input, ctx }) => {
 		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
 		const rows = await ctx
@@ -146,6 +118,7 @@ export const filtersRouter = router({
 		if (res.code === 'ok') {
 			filterMutation$.next({
 				type: 'add',
+				key: newFilterEntity.id,
 				value: newFilterEntity,
 				username: ctx.user.username,
 			})
@@ -185,6 +158,7 @@ export const filtersRouter = router({
 			if (res.code === 'ok') {
 				filterMutation$.next({
 					type: 'update',
+					key: id,
 					value: res.filter,
 					username: ctx.user.username,
 				})
@@ -233,39 +207,57 @@ export const filtersRouter = router({
 		}
 		filterMutation$.next({
 			type: 'delete',
+			key: idToDelete,
 			username: ctx.user.username,
 			value: res.filter,
 		})
 		return { code: 'ok' as const }
 	}),
-	watchFilter: procedure.input(M.FilterEntityIdSchema).subscription(async function* watchFilter({
+	watchFilters: procedure.subscription(async function* watchFilter({
 		input,
 		ctx,
-	}): AsyncGenerator<WatchFilterOutput, void, unknown> {
-		const [filterRaw] = await ctx.db().select().from(Schema.filters).where(eq(Schema.filters.id, input))
-		if (!filterRaw) {
-			yield { code: `err:not-found` as const }
+	}): AsyncGenerator<WatchFiltersOutput & Parts<M.UserPart>, void, unknown> {
+		const rows = await ctx.db().select().from(Schema.filters).leftJoin(
+			Schema.users,
+			eq(Schema.users.discordId, Schema.filters.owner),
+		)
+
+		const users = rows.map((row) => row.users).filter((user) => user !== null)
+		const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
+
+		yield {
+			code: 'initial-value' as const,
+			entities: filters,
+			parts: {
+				users: users,
+			},
 		}
-		const filter = M.FilterEntitySchema.parse(filterRaw)
-		yield { code: 'initial-value' as const, entity: filter }
 		for await (const mutation of toAsyncGenerator(filterMutation$)) {
+			// TODO could cache users
+			const users = await ctx.db().select().from(Schema.users).where(
+				or(eq(Schema.users.discordId, mutation.value.owner), eq(Schema.users.username, mutation.username)),
+			)
+
 			if (mutation.value.id === input) {
-				yield { code: 'mutation' as const, mutation }
+				yield {
+					code: 'mutation' as const,
+					mutation,
+					parts: {
+						users,
+					},
+				}
 			}
 			if (mutation.type === 'delete') break
 		}
 	}),
 })
 
-export type WatchFilterOutput =
-	| {
-		code: 'err:not-found'
-	}
+export type WatchFiltersOutput =
 	| {
 		code: 'initial-value'
-		entity: M.FilterEntity
+		entities: M.FilterEntity[]
 	}
 	| {
 		code: 'mutation'
-		mutation: M.UserEntityMutation<M.FilterEntity>
+		mutation: M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>
 	}

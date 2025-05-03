@@ -40,8 +40,9 @@ function defer<T>(): Deferred<T> {
 	return Object.assign(promise, properties) as Deferred<T>
 }
 
+const DeferredEmpty = Symbol('DeferredEmpty')
 export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
-	let nextData = defer<T>() as Deferred<T | null> | null
+	let nextData = defer<T>() as Deferred<T | symbol> | null
 	const sub = observable.pipe(Rx.observeOn(Rx.asapScheduler)).subscribe({
 		next(data) {
 			const n = nextData
@@ -52,7 +53,7 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 			if (err) nextData?.reject(err)
 		},
 		complete() {
-			nextData?.resolve(null)
+			nextData?.resolve(DeferredEmpty)
 			nextData = null
 		},
 	})
@@ -60,7 +61,8 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 		while (true) {
 			const value = await nextData
 			if (!nextData) break
-			if (value) yield value
+			if (value === DeferredEmpty) continue
+			yield value as T
 		}
 	} finally {
 		sub.unsubscribe()
@@ -295,70 +297,5 @@ export async function acquireInBlock(mutex: Mutex, bypass = false) {
 			release?.()
 		},
 		mutex,
-	}
-}
-
-// TODO could probably move to context.ts
-/**
- * Creates an operator that wraps an observable with retry logic and additional trace context.
- *
- * @param name - Identifier for the subscription used in logs and traces
- * @param opts - Configuration options including:
- *               - ctx: Logging context
- *               - tracer: OpenTelemetry tracer instance
- *               - retryTimeoutMs: Delay between retries (default: 250ms)
- *               - numRetries: Maximum retry attempts (default: 3)
- * @param cb - Async callback function to process each emitted value
- * @returns An RxJS operator that transforms the source observable
- *
- * The returned operator:
- * - Creates spans for tracing execution
- * - Handles errors by logging them and recording in traces
- * - Automatically retries failed operations with configurable delay and retry count
- * - Executes callbacks strictly in sequence (using concatMap)
- */
-export function durableSub<T, O>(
-	name: string,
-	opts: { ctx: C.Log; tracer: Otel.Tracer; retryTimeoutMs?: number; numRetries?: number },
-	cb: (value: T) => Promise<O>,
-): (o: Rx.Observable<T>) => Rx.Observable<O> {
-	return (o) => {
-		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
-		const link: Otel.Link = {
-			context: subSpan.spanContext(),
-			attributes: { 'link.reason': 'async-processing' },
-		}
-		let retriesLeft = opts.numRetries ?? 3
-		return o.pipe(
-			Rx.tap({
-				error: error => {
-					const activeSpan = Otel.default.trace.getActiveSpan()
-					activeSpan?.addLink(link)
-					activeSpan?.setStatus({ code: Otel.SpanStatusCode.ERROR })
-
-					const span = activeSpan ?? subSpan
-					span.recordException(error)
-					opts.ctx.log.error(error)
-				},
-			}),
-			Rx.concatMap((arg) => {
-				const task = () => (C.spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg))
-
-				// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
-				return toCold(task)
-			}),
-			Rx.tap({
-				next: () => {
-					retriesLeft = opts.numRetries ?? 3
-				},
-				error: (err) => {
-					opts.ctx.log.error(err)
-					opts.ctx.log.error('retries left for %s : %s', name, retriesLeft)
-					retriesLeft--
-				},
-			}),
-			Rx.retry({ resetOnSuccess: true, count: opts.numRetries ?? 3, delay: opts.retryTimeoutMs ?? 250 }),
-			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
-		)
 	}
 }

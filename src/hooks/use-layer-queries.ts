@@ -37,9 +37,9 @@ export function useLayerStatuses(
 		...options,
 		queryKey: ['getLayerStatusesForLayerQueue', superjson.serialize({ queue, layerQueue: serverLayerQueue })],
 		queryFn: async () => {
-			if (serverLayerQueue && deepEqual(serverLayerQueue, queue)) {
-				return PartsSys.getLayerStatuses()
-			}
+			// if (serverLayerQueue && deepEqual(serverLayerQueue, queue)) {
+			// 	return PartsSys.getLayerStatuses()
+			// }
 
 			return await trpc.layers.getLayerStatusesForLayerQueue.query({ queue: queue })
 		},

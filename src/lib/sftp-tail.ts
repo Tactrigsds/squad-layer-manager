@@ -51,7 +51,7 @@ export class SftpTail extends EventEmitter {
 		this.options = {
 			ftp: { ...options, encoding: 'utf-8', timeout: 10 * 1000 },
 			fetchInterval: options.pollInterval,
-			tailLastBytes: 10 * 1000,
+			tailLastBytes: 0,
 		}
 
 		// Setup ssh2 client
@@ -98,14 +98,14 @@ export class SftpTail extends EventEmitter {
 				await this.connect()
 
 				// Get the size of the file on the SFTP server.
-				this.ctx.log.debug('Fetching size of file...')
+				this.ctx.log.trace('Fetching size of file...')
 				const stats = await this.getFileStats(this.filePath!)
 				const fileSize = stats.size
-				this.ctx.log.debug({ fileSize }, 'File size retrieved')
+				this.ctx.log.trace({ fileSize }, 'File size retrieved')
 
 				// If the file size has not changed then skip this loop iteration.
 				if (fileSize === this.lastByteReceived) {
-					this.ctx.log.debug('File has not changed.')
+					this.ctx.log.trace('File has not changed.')
 					await this.sleep(this.options.fetchInterval)
 					continue
 				}
@@ -118,21 +118,21 @@ export class SftpTail extends EventEmitter {
 				}
 
 				// Download the data to a temp file overwritting any previous data.
-				this.ctx.log.debug({ offset: this.lastByteReceived }, 'Downloading file...')
+				this.ctx.log.trace({ offset: this.lastByteReceived }, 'Downloading file...')
 				await this.downloadToFile(this.tmpFilePath!, this.filePath!, this.lastByteReceived!)
 
 				// Update the last byte marker - this is so we can get data since this position on the next
 				// SFTP download.
 				const downloadSize = fs.statSync(this.tmpFilePath!).size
 				this.lastByteReceived += downloadSize
-				this.ctx.log.debug({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
+				this.ctx.log.trace({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
 
 				// Get contents of download.
 				const data = await readFile(this.tmpFilePath!, 'utf8')
 
 				// Only continue if something was fetched.
 				if (data.length === 0) {
-					this.ctx.log.debug('No data was fetched.')
+					this.ctx.log.trace('No data was fetched.')
 					await this.sleep(this.options.fetchInterval)
 					continue
 				}
@@ -145,14 +145,14 @@ export class SftpTail extends EventEmitter {
 					// Emit each line.
 					.forEach((line) => {
 						if (!line.trim()) return
-						this.ctx.log.info('Processing line: %s', JSON.stringify(line))
+						this.ctx.log.trace('Processing line: %s', JSON.stringify(line))
 						return this.emit('line', line)
 					})
 
 				// Log the loop runtime.
 				const fetchEndTime = Date.now()
 				const fetchTime = fetchEndTime - fetchStartTime
-				this.ctx.log.debug({ fetchTime }, 'Fetch loop completed')
+				this.ctx.log.trace({ fetchTime }, 'Fetch loop completed')
 
 				await this.sleep(this.options.fetchInterval)
 			} catch (err) {
@@ -256,7 +256,7 @@ export class SftpTail extends EventEmitter {
 	}
 
 	async sleep(ms: number) {
-		this.ctx.log.debug({ ms }, 'Sleeping...')
+		this.ctx.log.trace({ ms }, 'Sleeping...')
 		await new Promise((resolve) => setTimeout(resolve, ms))
 	}
 }

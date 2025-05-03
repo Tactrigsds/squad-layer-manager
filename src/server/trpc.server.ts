@@ -13,7 +13,7 @@ const tracer = Otel.trace.getTracer('trpc-server')
 const loggerMiddleware = t.middleware(async (opts) => {
 	return tracer.startActiveSpan(`trpc:${opts.type}:${opts.path}`, { root: true }, async (span) => {
 		try {
-			opts.ctx.log.info(`processing ${opts.type} ${opts.path}`)
+			opts.ctx.log.info(`trpc:${opts.type}:${opts.path}`)
 			const ctx = opts.ctx
 			span.setAttributes({
 				username: ctx.user.username,

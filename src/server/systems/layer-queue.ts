@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, durableSub as durableOp, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
@@ -29,6 +29,7 @@ export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial
 
 let voteEndTask: Subscription | null = null
 let voteState: M.VoteState | null = null
+
 const voteStateUpdate$ = new Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
 
 const userPresence: M.UserPresenceState = {}
@@ -82,7 +83,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 		// -------- set next layer on server when rcon is connected--------
 		SquadServer.rcon.core.connected$.pipe(
-			durableOp('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
+			C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
 				if (!isConnected) return
 				const serverState = await getServerState({}, ctx)
 				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
@@ -101,7 +102,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 	// -------- schedule post-roll reminders --------
 	interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
-		durableOp('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
+		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
 			if (
 				serverState.layerQueue[0]?.vote
@@ -125,14 +126,13 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		filter(layer => !!layer),
 		distinctDeepEquals(),
 		skip(1),
-		durableOp('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
+		C.durableSub('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
 			ctx.log.info('tracking map roll: %s', DH.displayUnvalidatedLayer(layer))
 			lastRoll = Date.now()
 		}),
 	).subscribe()
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
-
 	type LayerStatus = { currentLayer: M.UnvalidatedMiniLayer; nextLayer: M.UnvalidatedMiniLayer | null }
 	type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
 	const processLayerStatusRunner = new AsyncExclusiveTaskRunner()
@@ -143,15 +143,10 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
 			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
-			durableOp('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
+			C.durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
 				if (!status) return
 				ctx.log.info('checking layer status change')
-
-				processLayerStatusRunner.queue[0] = {
-					params: [ctx, status, prevStatus] as const,
-					task: processLayerStatusChange,
-				}
-				await processLayerStatusRunner.runExclusiveUntilEmpty()
+				await DB.runTransaction(ctx, (ctx) => processLayerStatusChange(ctx, status, prevStatus))
 				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		)
@@ -160,30 +155,30 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	const processLayerStatusChange = C.spanOp(
 		'layer-queue:process-layer-status-change',
 		{ tracer },
-		async (ctx: C.Log & C.Db, status: LayerStatus, prevStatus: LayerStatus | null) => {
+		async (ctx: C.Log & C.Db & C.Tx, status: LayerStatus, prevStatus: LayerStatus | null) => {
 			C.setSpanOpAttrs({ status, prevStatus })
 			ctx.log.debug('status change')
-			if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
-				await DB.runTransaction(ctx, async (ctx) => {
-					const serverState = await getServerState({ lock: true }, ctx)
-					const nextLayerId = M.getNextLayerId(serverState.layerQueue)
-					if (!nextLayerId) {
-						// pass
-					} else if (M.isLayerIdPartialMatch(nextLayerId, status.currentLayer.id)) {
-						// new current layer was expected, so we just need to roll
-						await handleServerRoll(ctx, serverState)
-					} else {
-						await handleAdminChangeLayer(ctx, serverState)
-					}
-				})
-				C.setSpanStatus(Otel.SpanStatusCode.OK)
-				return
-			}
-			const serverState = await getServerState({}, ctx)
-			const action = checkForNextLayerChangeActions(status, serverState)
-			ctx.log.debug('checking for overridden next layer: %s', action.code)
+			const serverState = await getServerState({ lock: true }, ctx)
+			const action = checkforStatusChangeActions(status, prevStatus, serverState)
 			switch (action.code) {
-				case 'no-layer-set:no-action':
+				case 'correct-layer-set:no-action':
+					break
+				case 'expected-new-current-layer:roll':
+					await handleServerRoll(ctx, serverState)
+					break
+				case 'layer-change-with-empty-queue:buffer-next-match-context': {
+					// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
+					const item = M.createLayerListItem({
+						layerId: status.currentLayer.id,
+						source: { type: 'unknown' },
+					})
+					await SquadServer.bufferNextMatchLQItem(ctx, item)
+					break
+				}
+				case 'current-layer-changed:reset':
+					// unclear if this can even be hit at the moment
+					await handleAdminChangeLayer(ctx, serverState)
+					break
 				case 'unknown-layer-set:no-action':
 					break
 				case 'layer-set-during-roll:reset':
@@ -191,10 +186,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				case 'layer-set:reset':
 				case 'null-layer-set:reset': {
 					const nextLayerId = M.getNextLayerId(serverState.layerQueue)
-					if (!nextLayerId) {
-						ctx.log.warn("Layer was set at an unexpected time, but no next layer is in the queue. I don't think this can happen")
-						return
-					}
+					if (!nextLayerId) return
 					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 					break
 				}
@@ -219,7 +211,8 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 				C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No layers in queue to roll to')
 				return
 			}
-			layerQueue.shift()
+			const currentLayerItem = layerQueue.shift()
+			await SquadServer.bufferNextMatchLQItem(ctx, currentLayerItem!)
 			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, layerQueue, voteState, true)
 			switch (updateRes.code) {
 				case 'noop':
@@ -274,13 +267,28 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	 * Determines how to respond to the next layer potentially having been set on the gameserver, bringing it out of sync with the queue
 	 * This function isn't super necessarry atm as we don't allow AdminSetNextLayer overrides in any case anymore, but leaving here in case we want to change this later.
 	 */
-	function checkForNextLayerChangeActions(status: LayerStatus, serverState: M.LQServerState, voteState: M.VoteState | null = null) {
+	function checkforStatusChangeActions(
+		status: LayerStatus,
+		prevStatus: LayerStatus | null,
+		serverState: M.LQServerState,
+		voteState: M.VoteState | null = null,
+	) {
+		const lqNextLayerId = M.getNextLayerId(serverState.layerQueue)
+		if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
+			if (!lqNextLayerId) {
+				return { code: 'layer-change-with-empty-queue:buffer-next-match-context' as const }
+			} else if (M.isLayerIdPartialMatch(lqNextLayerId, status.currentLayer.id)) {
+				// new current layer was expected, so we just need to roll
+				return { code: 'expected-new-current-layer:roll' as const }
+			} else {
+				return { code: 'current-layer-changed:reset' as const }
+			}
+		}
+
 		if (status.nextLayer === null) return { code: 'null-layer-set:reset' as const }
 		if (!status.nextLayer) return { code: 'unknown-layer-set:no-action' as const }
 
-		const layerQueue = serverState.layerQueue
-		const serverNextLayerId = M.getNextLayerId(layerQueue)
-		if (serverNextLayerId === status.nextLayer.id) return { code: 'no-layer-set:no-action' as const }
+		if (lqNextLayerId === status.nextLayer.id) return { code: 'correct-layer-set:no-action' as const }
 
 		// don't respect the override if the map has rolled recently, as the gameserver probably set it to something random
 		if (serverState.lastRoll !== null) {
@@ -288,7 +296,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			if ((Date.now() - lastRollTs) / 1000 < 60) return { code: 'layer-set-during-roll:reset' as const }
 		}
 		if (voteState?.code === 'in-progress') return { code: 'layer-set-during-vote:reset' as const }
-		return { code: 'layer-set:reset' as const, overrideLayerId: serverNextLayerId }
+		return { code: 'layer-set:reset' as const, expectedNextLayerId: lqNextLayerId }
 	}
 
 	// -------- invalidate history filters cache on roll --------
@@ -308,7 +316,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 
 	// -------- take editing user out of editing slot on disconnect --------
 	WSSessionSys.disconnect$.pipe(
-		durableOp('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
+		C.durableSub('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
 			if (userPresence.editState && userPresence.editState.wsClientId === disconnectedCtx.wsClientId) {
 				delete userPresence.editState
 				userPresenceUpdate$.next({ event: 'edit-end', state: userPresence, parts: { users: [] } })
@@ -569,7 +577,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				durableOp('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
+				C.durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
 					await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
@@ -582,7 +590,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
 			from(sleep(finalReminderWaitTime)).pipe(
-				durableOp('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
+				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					await SquadServer.rcon.broadcast(
 						ctx,

@@ -155,7 +155,6 @@ export const queryLayersGroupedBy = C.spanOp(
 	'layer-queries:run-grouped-by',
 	{ tracer },
 	async ({ ctx, input }: { ctx: C.Log & C.Db; input: LayersQueryGroupedByInput }) => {
-		console.log(input)
 		const whereConditions: SQL<unknown>[] = []
 		const constraintBuildingTasks: Promise<any>[] = []
 		const constraints = input.constraints ?? []

@@ -1,10 +1,11 @@
-import { AsyncResourceInvocationOpts } from '@/lib/async.ts'
+import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as M from '@/models.ts'
 import * as Otel from '@opentelemetry/api'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
+import * as Rx from 'rxjs'
 import * as ws from 'ws'
 import * as DB from './db.ts'
 import { Logger } from './logger.ts'
@@ -200,4 +201,68 @@ export type TrpcRequest = User & AuthSession & { wsClientId: string; req: Fastif
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
+}
+
+/**
+ * Creates an operator that wraps an observable with retry logic and additional trace context.
+ *
+ * @param name - Identifier for the subscription used in logs and traces
+ * @param opts - Configuration options including:
+ *               - ctx: Logging context
+ *               - tracer: OpenTelemetry tracer instance
+ *               - retryTimeoutMs: Delay between retries (default: 250ms)
+ *               - numRetries: Maximum retry attempts (default: 3)
+ * @param cb - Async callback function to process each emitted value
+ * @returns An RxJS operator that transforms the source observable
+ *
+ * The returned operator:
+ * - Creates spans for tracing execution
+ * - Handles errors by logging them and recording in traces
+ * - Automatically retries failed operations with configurable delay and retry count
+ * - Executes callbacks strictly in sequence (using concatMap)
+ */
+export function durableSub<T, O>(
+	name: string,
+	opts: { ctx: Log; tracer: Otel.Tracer; retryTimeoutMs?: number; numRetries?: number },
+	cb: (value: T) => Promise<O>,
+): (o: Rx.Observable<T>) => Rx.Observable<O> {
+	return (o) => {
+		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
+		const link: Otel.Link = {
+			context: subSpan.spanContext(),
+			attributes: { 'link.reason': 'async-processing' },
+		}
+		let retriesLeft = opts.numRetries ?? 3
+		return o.pipe(
+			Rx.tap({
+				error: error => {
+					const activeSpan = Otel.default.trace.getActiveSpan()
+					activeSpan?.addLink(link)
+					activeSpan?.setStatus({ code: Otel.SpanStatusCode.ERROR })
+
+					const span = activeSpan ?? subSpan
+					span.recordException(error)
+					opts.ctx.log.error(error)
+				},
+			}),
+			Rx.concatMap((arg) => {
+				const task = () => (spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg))
+
+				// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
+				return toCold(task)
+			}),
+			Rx.tap({
+				next: () => {
+					retriesLeft = opts.numRetries ?? 3
+				},
+				error: (err) => {
+					opts.ctx.log.error(err)
+					opts.ctx.log.error('retries left for %s : %s', name, retriesLeft)
+					retriesLeft--
+				},
+			}),
+			Rx.retry({ resetOnSuccess: true, count: opts.numRetries ?? 3, delay: opts.retryTimeoutMs ?? 250 }),
+			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
+		)
+	}
 }

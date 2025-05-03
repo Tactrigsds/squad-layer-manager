@@ -1,7 +1,7 @@
 import * as M from '@/models'
 import * as PartSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
-import { bind } from '@react-rxjs/core'
+import * as ReactRx from '@react-rxjs/core'
 import { Observable } from 'rxjs'
 
 const lqServerStateUpdateCold$ = new Observable<M.LQServerStateUpdate>((s) => {
@@ -16,7 +16,7 @@ const lqServerStateUpdateCold$ = new Observable<M.LQServerStateUpdate>((s) => {
 	return () => sub.unsubscribe()
 })
 
-export const [useLqServerStateUpdate, lqServerStateUpdate$] = bind<M.LQServerStateUpdate | null>(
+export const [useLqServerStateUpdate, lqServerStateUpdate$] = ReactRx.bind<M.LQServerStateUpdate | null>(
 	lqServerStateUpdateCold$ as Observable<M.LQServerStateUpdate | null>,
 	null,
 )

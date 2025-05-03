@@ -379,7 +379,6 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 	}
 
 	ctx.log.info('Parsed %d raw layers', rawLayers.length)
-	console.log(baseLayerComponents)
 
 	return { rawLayers, baseLayerComponents }
 }

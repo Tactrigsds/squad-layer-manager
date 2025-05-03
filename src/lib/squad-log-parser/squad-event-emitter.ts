@@ -1,7 +1,6 @@
 import * as SME from '@/lib/rcon/squad-models.events'
 import * as SM from '@/lib/rcon/squad-models.ts'
 import * as C from '@/server/context'
-import { ENV } from '@/server/env'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 import { SftpTail, SftpTailOptions } from '../sftp-tail'

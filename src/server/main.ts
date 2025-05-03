@@ -10,6 +10,7 @@ import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
 import * as Fastify from './systems/fastify.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
+import * as MatchHistory from './systems/match-history.ts'
 import * as Rbac from './systems/rbac.system.ts'
 import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
@@ -30,6 +31,7 @@ await C.spanOp('main', {
 	await DB.setupDatabase()
 	Rbac.setup()
 	Sessions.setupSessions()
+	await MatchHistory.setup()
 	SquadServer.setupSquadServer()
 	await Discord.setupDiscordSystem()
 	TrpcRouter.setupTrpcRouter()

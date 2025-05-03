@@ -1,24 +1,22 @@
-import { Link } from 'react-router-dom'
-
 import * as AR from '@/app-routes.ts'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import { trpcConnectedAtom } from '@/trpc.client'
-import React from 'react'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
+import { trpcConnectedAtom } from '@/trpc.client'
 import { useAtomValue } from 'jotai'
+import React from 'react'
+import { Link } from 'react-router-dom'
 import { ServerUnreachable } from './server-offline-display'
+import { Alert, AlertTitle } from './ui/alert'
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useAtomValue(trpcConnectedAtom)
-	const statusRes = useSquadServerStatus()
+	const statusRes = SquadServerClient.useSquadServerStatus()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
@@ -54,26 +52,6 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 								</Alert>
 							)}
 							<h3 className={Typography.H4}>{statusRes.data.name}</h3>
-							<div className="flex flex-col">
-								<div className={Typography.Small}>
-									<span className="font-bold">{statusRes.data.playerCount}</span> /{' '}
-									<span className="font-bold">{statusRes.data.maxPlayerCount}</span> online
-								</div>
-								<div className={Typography.Small}>
-									<span className="font-bold">{statusRes.data.queueLength}</span> /{' '}
-									<span className="font-bold">{statusRes.data.maxQueueLength}</span> in queue
-								</div>
-							</div>
-							<div className="grid h-full grid-cols-[auto_auto]">
-								<span className={cn(Typography.Small, 'mr-2')}>Now playing:</span>
-								<span className={cn(Typography.Small, 'font-bold')}>
-									{statusRes.data.currentLayer && DH.displayUnvalidatedLayer(statusRes.data.currentLayer)}
-								</span>
-								<span className={cn(Typography.Small, 'mr-2')}>Next:</span>
-								<span className={cn(Typography.Small, 'font-bold')}>
-									{statusRes.data.nextLayer && DH.displayUnvalidatedLayer(statusRes.data.nextLayer)}
-								</span>
-							</div>
 						</>
 					)}
 					{statusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={statusRes} />}

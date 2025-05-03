@@ -466,7 +466,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 window.QDStore = QDStore
 
 export function selectQDQueryConstraints(state: QDStore): M.LayerQueryConstraint[] {
-	const queryConstraints = M.getPoolConstraints(state.editedServerState.settings.queue.mainPool)
+	const queryConstraints = M.getPoolConstraints(
+		state.editedServerState.settings.queue.mainPool,
+		state.poolApplyAs.dnr,
+		state.poolApplyAs.filter,
+	)
 
 	for (const { filterId, active } of state.extraQueryFilters) {
 		if (!active) continue

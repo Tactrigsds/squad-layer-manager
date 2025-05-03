@@ -3,7 +3,7 @@ import * as zUtils from '@/lib/zod'
 import { z } from 'zod'
 
 import * as M from '@/models'
-import { assertNever } from '../typeGuards'
+import { assertNever, nullOrUndefined as nullOrUndef } from '../typeGuards'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
@@ -23,15 +23,6 @@ export const ServerRawInfoSchema = z.object({
 	Password_b: z.boolean(),
 	CurrentModLoadedCount_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	AllModsWhitelisted_b: z.boolean(),
-	'ap-east-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'ap-southeast-2_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'me-central-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'us-east-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'us-west-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-west-2_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-central-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'eu-north-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	'ap-southeast-1_I': zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	Region_s: z.string(),
 	NextLayer_s: z.string().optional(),
 	TeamOne_s: z.string().optional(),
@@ -52,10 +43,14 @@ export type ServerStatus = {
 export type MatchDetails = {
 	status: 'in-progress'
 	layerSource: M.LayerSource
+	layerId: M.LayerId
+	historyEntryId: number
 	startTime: Date
 } | {
 	status: 'post-game'
 	layerSource: M.LayerSource
+	layerId: M.LayerId
+	historyEntryId: number
 	startTime: Date
 	endTime: Date
 	outcome: {
@@ -67,13 +62,19 @@ export type MatchDetails = {
 	}
 }
 
+export type MatchHistoryPart = {
+	matchHistory: Map<number, MatchDetails>
+}
+
 /**
  * Converts a match history entry to current match details and validates the data
  */
-export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory): MatchDetails {
+export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory & { id: number }): MatchDetails {
 	let layerSource: M.LayerSource
+
 	switch (entry.setByType) {
 		case 'gameserver':
+		case 'unknown':
 		case 'generated': {
 			layerSource = { type: entry.setByType }
 			break
@@ -90,13 +91,17 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory):
 	}
 	const shared = {
 		layerSource: layerSource,
+		layerId: entry.layerId,
 		startTime: entry.startTime,
+		historyEntryId: entry.id,
 	}
 
-	if (entry.endTime && entry.outcome === null) throw new Error('Match ended without an outcome')
-	else if (!entry.endTime && entry.outcome !== null) throw new Error('Match not ended but outcome is not null')
+	if (entry.endTime && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
+	else if (!entry.endTime && !nullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
 	else if (entry.endTime && entry.outcome === 'draw') {
-		if (entry.team1Tickets !== null || entry.team2Tickets !== null) throw new Error('Match ended in a draw but tickets were not null')
+		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) {
+			throw new Error('Match ended in a draw but tickets were not null')
+		}
 
 		return {
 			status: 'post-game',
@@ -107,7 +112,7 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory):
 			},
 		}
 	} else if (entry.endTime && entry.outcome !== 'draw') {
-		if (entry.team1Tickets === null || entry.team2Tickets === null) throw new Error('Match ended in a win but tickets were null')
+		if (!entry.team1Tickets || !entry.team2Tickets) throw new Error('Match ended in a win but tickets were null or empty')
 
 		return {
 			status: 'post-game',
@@ -119,8 +124,8 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory):
 				team2Tickets: entry.team2Tickets,
 			},
 		}
-	} else if (!entry.endTime && entry.outcome === null) {
-		if (entry.team1Tickets !== null || entry.team2Tickets !== null) throw new Error('Match not ended but tickets were not null')
+	} else if (!entry.endTime && nullOrUndef(entry.outcome)) {
+		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) throw new Error('Match not ended but tickets were not null')
 
 		return {
 			status: 'in-progress',
@@ -131,8 +136,36 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory):
 	throw new Error('Invalid match state: unknown')
 }
 
+export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): SchemaModels.MatchHistory {
+	const entry: SchemaModels.MatchHistory = {
+		id: matchDetails.historyEntryId,
+		layerId: matchDetails.layerId,
+		startTime: matchDetails.startTime,
+		setByType: matchDetails.layerSource.type,
+		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
+		endTime: null,
+		outcome: null,
+		team1Tickets: null,
+		team2Tickets: null,
+	}
+
+	if (matchDetails.status === 'post-game') {
+		entry.endTime = matchDetails.endTime
+
+		if (matchDetails.outcome.type === 'draw') {
+			entry.outcome = 'draw'
+		} else {
+			entry.outcome = matchDetails.outcome.type
+			entry.team1Tickets = matchDetails.outcome.team1Tickets
+			entry.team2Tickets = matchDetails.outcome.team2Tickets
+		}
+	}
+
+	return entry
+}
+
 export type ServerStatusWithCurrentMatch = ServerStatus & {
-	currentMatch?: MatchDetails
+	currentMatchId?: number
 }
 
 export const PlayerSchema = z.object({
@@ -283,7 +316,7 @@ export const BIOME_FACTIONS = {
 
 export type RconError = { code: 'err:rcon'; msg: string }
 export type ServerStatusRes = { code: 'ok'; data: ServerStatus } | RconError
-export type ServerStatusResWithCurrentMatch = { code: 'ok'; data: ServerStatusWithCurrentMatch } | RconError
+export type ServerStatusWithCurrentMatchRes = { code: 'ok'; data: ServerStatusWithCurrentMatch } | RconError
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 

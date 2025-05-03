@@ -1,21 +1,20 @@
+import * as AR from '@/app-routes.ts'
+import { useDebounced } from '@/hooks/use-debounce'
+import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
+import { sleepUntil } from '@/lib/async'
+import * as EFB from '@/lib/editable-filter-builders.ts'
+import * as FB from '@/lib/filter-builders.ts'
+import { eltToFocusable, Focusable } from '@/lib/react'
+import { assertNever } from '@/lib/typeGuards.ts'
+import { cn } from '@/lib/utils.ts'
+import * as M from '@/models.ts'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import * as ReactRxCore from '@react-rxjs/core'
 import { produce } from 'immer'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
 import { Link } from 'react-router-dom'
-
-import * as AR from '@/app-routes.ts'
-import { useDebounced } from '@/hooks/use-debounce'
-import { sleepUntil } from '@/lib/async'
-import * as EFB from '@/lib/editable-filter-builders.ts'
-import * as FB from '@/lib/filter-builders.ts'
-import { eltToFocusable, Focusable } from '@/lib/react'
-import { cn } from '@/lib/utils.ts'
-import * as M from '@/models.ts'
-
-import { useFilters } from '@/hooks/filters.ts'
-import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
 import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
@@ -587,8 +586,7 @@ type ApplyFilterProps = {
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
-	const getFiltersQuery = useFilters()
-	let filters = getFiltersQuery.data?.filters
+	let filters = [...ReactRxCore.useStateObservable(FilterEntityClient.filterEntities$).values()]
 	if (props.editedFilterId) {
 		filters = filters?.filter((f) => f.id !== props.editedFilterId)
 	}

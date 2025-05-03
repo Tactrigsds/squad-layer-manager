@@ -1,18 +1,17 @@
+import * as AR from '@/app-routes.ts'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import * as Typography from '@/lib/typography'
+import * as M from '@/models'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import * as PartsSys from '@/systems.client/parts.ts'
+import * as ReactRx from '@react-rxjs/core'
 import * as Icons from 'lucide-react'
 import { Link } from 'react-router-dom'
-
-import * as AR from '@/app-routes.ts'
-import { useFilters } from '@/hooks/filters'
-import * as M from '@/models'
 
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
-	const filtersRes = useFilters({ parts: ['users'] })
-	const filters = filtersRes.data?.filters
-	const users = filtersRes.data?.parts.users as M.User[] | undefined
+	const filters = ReactRx.useStateObservable(FilterEntityClient.filterEntities$)
 	return (
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
@@ -22,8 +21,8 @@ export default function FiltersIndex() {
 				</Link>
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{filters?.map((filter) => {
-					const user = users?.find((u) => u.discordId === filter.owner)
+				{[...filters.values()]?.map((filter) => {
+					const user = PartsSys.findUser(filter.owner)
 					return (
 						<li key={filter.id}>
 							<Link to={AR.link('/filters/:id', filter.id)} className="block h-full">

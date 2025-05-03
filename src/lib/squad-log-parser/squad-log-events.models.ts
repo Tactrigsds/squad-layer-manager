@@ -123,9 +123,9 @@ export const EventMatchers = [NewGameEventMatcher, RoundWinnerEventMatcher, Roun
 
 function parseTimestamp(raw: string) {
 	const date = dateFns.parse(
-		raw,
-		'yyyy.MM.dd-HH.mm.ss:SSS',
-		(new Date()).toUTCString(),
+		raw + 'Z',
+		'yyyy.MM.dd-HH.mm.ss:SSSX',
+		new Date(),
 	)
-	return dateFnsTz.toZonedTime(date, 'UTC')
+	return date
 }

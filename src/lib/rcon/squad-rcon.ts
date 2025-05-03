@@ -197,18 +197,7 @@ export default class SquadRcon {
 	}
 
 	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: C.Log, id: M.LayerId) => {
-		const res = M.getUnvalidatedLayerFromId(id)
-		let cmd: string
-		switch (res.code) {
-			case 'raw':
-				cmd = `AdminSetNextLayer ${res.id.slice('RAW:'.length)}`
-				break
-			case 'parsed':
-				cmd = M.getAdminSetNextLayerCommand(res.layer)
-				break
-			default:
-				assertNever(res)
-		}
+		const cmd = M.getSetNextLayerCommandFromId(id)
 		await this.core.execute(ctx, cmd)
 		this.serverStatus.invalidate(ctx)
 		const newStatus = (await this.serverStatus.get(ctx)).value

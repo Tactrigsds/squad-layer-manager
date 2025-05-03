@@ -3,9 +3,10 @@ import { z } from 'zod'
 import * as M from '@/models.ts'
 
 import { CONFIG } from '@/server/config.ts'
-import { filtersRouter } from './systems/filters-entity.ts'
+import { filtersRouter } from './systems/filter-entity.ts'
 import * as LayerQueries from './systems/layer-queries.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
+import * as MatchHistory from './systems/match-history.ts'
 import * as Rbac from './systems/rbac.system.ts'
 import * as SquadServer from './systems/squad-server.ts'
 import * as Users from './systems/users.ts'
@@ -25,6 +26,7 @@ export function setupTrpcRouter() {
 		}),
 		users: Users.usersRouter,
 		rbac: Rbac.rbacRouter,
+		matchHistory: MatchHistory.matchHistoryRouter,
 	})
 	appRouter = _appRouter
 	return _appRouter

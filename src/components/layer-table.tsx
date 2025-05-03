@@ -202,6 +202,8 @@ export default function LayerTable(props: {
 	canToggleColumns?: boolean
 
 	autoSelectIfSingleResult?: boolean
+
+	extraPanelItems?: React.ReactNode
 }) {
 	const maxSelected = props.maxSelected ?? Infinity
 	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
@@ -542,6 +544,7 @@ export default function LayerTable(props: {
 					)}
 				</span>
 				<span className="flex h-10 items-center space-x-2">
+					{props.extraPanelItems}
 					<Button
 						onClick={() => setSeed(generateSeed())}
 						disabled={layersRes.isFetching}

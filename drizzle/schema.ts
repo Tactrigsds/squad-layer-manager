@@ -101,6 +101,8 @@ export const matchHistory = mysqlTable('matchHistory', {
 	id: int('id').primaryKey().autoincrement(),
 	// may not be in layerId table if unknown layers are set
 	layerId: varchar('layerId', { length: 256 }).notNull(),
+	// vote details of the same structure as serverState.layerQueue[].vote
+	// vote: json('vote'),
 	startTime: timestamp('startTime').notNull(),
 	endTime: timestamp('endTime'),
 	outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),

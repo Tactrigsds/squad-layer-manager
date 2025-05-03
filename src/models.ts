@@ -249,6 +249,22 @@ export function getLayerDetailsFromUnvalidated(unvalidatedLayer: UnvalidatedMini
 	return partial
 }
 
+export function getSetNextLayerCommandFromId(id: string) {
+	const res = getUnvalidatedLayerFromId(id)
+	let cmd: string
+	switch (res.code) {
+		case 'raw':
+			cmd = `AdminSetNextLayer ${res.id.slice('RAW:'.length)}`
+			break
+		case 'parsed':
+			cmd = getAdminSetNextLayerCommand(res.layer)
+			break
+		default:
+			assertNever(res)
+	}
+	return cmd
+}
+
 export function getUnvalidatedLayerFromId(id: string, components = StaticLayerComponents): UnvalidatedMiniLayer {
 	if (id.startsWith('RAW:')) {
 		return parseRawLayerText(id.slice('RAW:'.length))
@@ -695,6 +711,7 @@ export type LayerVote = z.infer<typeof LayerVoteSchema>
 export const LayerSourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('generated') }),
 	z.object({ type: z.literal('gameserver') }),
+	z.object({ type: z.literal('unknown') }),
 	z.object({ type: z.literal('manual'), userId: z.bigint() }),
 ])
 export type LayerSource = z.infer<typeof LayerSourceSchema>
@@ -1128,7 +1145,11 @@ export type Changed<T> = {
 }
 
 // note the QueryConstraint is not perfectly suited to this kind of use-case as we have to arbitrarily specify apply-as
-export function getPoolConstraints(poolConfig: PoolConfiguration, applyAs: LayerQueryConstraint['applyAs'] = 'field') {
+export function getPoolConstraints(
+	poolConfig: PoolConfiguration,
+	applyAsDnr: LayerQueryConstraint['applyAs'] = 'field',
+	applyAsFilterEntiry: LayerQueryConstraint['applyAs'] = 'field',
+) {
 	const constraints: LayerQueryConstraint[] = []
 
 	for (const rule of poolConfig.doNotRepeatRules) {
@@ -1137,7 +1158,7 @@ export function getPoolConstraints(poolConfig: PoolConfiguration, applyAs: Layer
 			rule,
 			id: 'layer-pool:' + rule.field,
 			name: rule.field,
-			applyAs,
+			applyAs: applyAsDnr,
 		})
 	}
 
@@ -1146,7 +1167,7 @@ export function getPoolConstraints(poolConfig: PoolConfiguration, applyAs: Layer
 			type: 'filter-entity',
 			id: 'pool:' + filterId,
 			filterEntityId: filterId,
-			applyAs,
+			applyAs: applyAsFilterEntiry,
 		})
 	}
 	return constraints
@@ -1287,8 +1308,9 @@ export type LayerSyncState =
 export const GenericServerStateUpdateSchema = UserModifiableServerStateSchema
 
 // represents a user's edit or deletion of an entity
-export type UserEntityMutation<K> = {
+export type UserEntityMutation<K extends string | number, V> = {
 	username: string
-	value: K
+	key: K
+	value: V
 	type: 'add' | 'update' | 'delete'
 }

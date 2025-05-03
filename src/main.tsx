@@ -1,23 +1,21 @@
+import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-
-import React from 'react'
 import { exists } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
 import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { enableMapSet } from 'immer'
-
 import FullPageSpinner from './components/full-page-spinner.tsx'
 import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
 const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))
-
 const FilterEdit = React.lazy(() => import('./components/filter-edit.tsx'))
-
 const FilterNew = React.lazy(() => import('./components/filter-new.tsx'))
-
-const LayerQueue = React.lazy(() => import('./components/layer-queue.tsx'))
+const LayerQueue = React.lazy(() => import('./components/layer-queue-dashboard.tsx'))
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -73,6 +71,12 @@ const router = createBrowserRouter([
 		),
 	},
 ])
+
+// -------- global server state setup --------
+FilterEntityClient.setup()
+MatchHistoryClient.recentMatchHistory$.subscribe()
+MatchHistoryClient.currentMatchDetails$().subscribe()
+SquadServerClient.squadServerStatus$.subscribe()
 
 createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

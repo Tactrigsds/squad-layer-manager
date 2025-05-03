@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { useSquadServerStatus } from '@/hooks/use-squad-server-status'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
+import { useEndMatch, useSquadServerStatus } from '@/systems.client/squad-server.client'
 
 type VoteTallyProps = {
 	voteState: M.VoteStateWithVoteData

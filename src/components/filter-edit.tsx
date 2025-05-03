@@ -2,7 +2,6 @@ import * as AR from '@/app-routes.ts'
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { filterUpdate$ as getFilterUpdate$, getFilterContributorQueryKey, getFilterEntity$, useFilterContributors, useFilterDelete, useFilterUpdate } from '@/hooks/filters'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/typeGuards'
@@ -10,12 +9,13 @@ import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
-import { ToggleFilterContributorInput } from '@/server/systems/filters-entity'
+import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as Users from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
-import { Subscribe, useStateObservable } from '@react-rxjs/core'
+import * as ReactRx from '@react-rxjs/core'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
@@ -37,40 +37,16 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
-// Custom components for react-markdown to integrate with Tailwind
-
-// https://4.bp.blogspot.com/_7G6ciJUMuAk/TGOJCxnXBYI/AAAAAAAABY8/drhyu0NLBdY/w1200-h630-p-k-no-nu/yo+dawg+1.jpg
-export default function FilterWrapperWrapper() {
-	const editParams = useAppParams('/filters/:id')
-	return (
-		<Subscribe source$={getFilterEntity$(editParams.id)}>
-			<FilterWrapper />
-		</Subscribe>
-	)
-}
-export function FilterWrapper() {
+export default function FilterWrapper() {
 	// could also be /filters/new, in which case we're creating a new filter and id is undefined
 	const editParams = useAppParams('/filters/:id')
 	const { toast } = useToast()
 	const loggedInUser = useLoggedInUser()
 	const navigate = useNavigate()
-	const filterEntity = useStateObservable(getFilterEntity$(editParams.id))
+	const filterEntity = ReactRx.useStateObservable(FilterEntityClient.filterEntities$).get(editParams.id)
 	React.useEffect(() => {
-		const sub = getFilterUpdate$(editParams.id).subscribe((update) => {
-			if (!update) return
-			switch (update.code) {
-				case 'err:not-found':
-					toast({ title: 'Filter not found' })
-					navigate(AR.exists('/filters'))
-					return
-				case 'initial-value':
-					return
-				case 'mutation':
-					break
-				default:
-					assertNever(update)
-			}
-			const mutation = update.mutation
+		const sub = FilterEntityClient.filterMutation$.subscribe((mutation) => {
+			if (!mutation || mutation.key !== editParams.id) return
 			switch (mutation.type) {
 				case 'add':
 					break
@@ -96,7 +72,7 @@ export function FilterWrapper() {
 		})
 	}, [editParams.id, navigate, toast, loggedInUser?.username])
 	const userRes = Users.useUser(filterEntity?.owner)
-	const filterContributorRes = useFilterContributors(editParams.id)
+	const filterContributorRes = FilterEntityClient.useFilterContributors(editParams.id)
 
 	// TODO handle not found
 	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
@@ -137,8 +113,8 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 		})
 	}
 
-	const updateFilterMutation = useFilterUpdate()
-	const deleteFilterMutation = useFilterDelete()
+	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
+	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
 
 	const [editingDetails, setEditingDetails] = useState(false)
 	const form = Form.useForm({
@@ -408,7 +384,7 @@ function FilterContributors(props: {
 				default:
 					assertNever(res)
 			}
-			queryClient.invalidateQueries({ queryKey: getFilterContributorQueryKey(props.filterId) })
+			queryClient.invalidateQueries({ queryKey: FilterEntityClient.getFilterContributorQueryKey(props.filterId) })
 		},
 		onError: (err) => {
 			toast({ title: 'Failed to add contributor', description: err.message })
@@ -429,7 +405,7 @@ function FilterContributors(props: {
 				default:
 					assertNever(res)
 			}
-			queryClient.invalidateQueries({ queryKey: getFilterContributorQueryKey(props.filterId) })
+			queryClient.invalidateQueries({ queryKey: FilterEntityClient.getFilterContributorQueryKey(props.filterId) })
 		},
 	})
 	function addUser(user: M.User) {

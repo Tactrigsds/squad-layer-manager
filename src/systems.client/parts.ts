@@ -1,10 +1,11 @@
+import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
 import * as M from '@/models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = M.UserPart & M.LayerStatusPart & M.FilterEntityPart
+export type ClientParts = M.UserPart & M.LayerStatusPart & M.FilterEntityPart & SM.MatchHistoryPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
@@ -13,6 +14,7 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 			layerInPoolState: new Map(),
 			layerStatuses: { blocked: new Map(), present: new Set() },
 			filterEntities: new Map(),
+			matchHistory: new Map(),
 			upsert(key, entity) {
 				set((draft) => {
 					switch (key) {
@@ -33,6 +35,13 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 						}
 						case 'filterEntities': {
 							draft.filterEntities = entity as M.FilterEntityPart['filterEntities']
+							break
+						}
+						case 'matchHistory': {
+							const matchHistory = entity as SM.MatchHistoryPart['matchHistory']
+							for (const entry of matchHistory.values()) {
+								draft.matchHistory.set(entry.historyEntryId, entry)
+							}
 							break
 						}
 						default:
@@ -66,4 +75,8 @@ export function getLayerStatuses() {
 	const statuses = PartsStore.getState().layerStatuses
 	if (statuses.present.size === 0 && statuses.blocked.size === 0) return null
 	return statuses
+}
+
+export function findMatchHistoryEntry(id: number) {
+	return PartsStore.getState().matchHistory.get(id)
 }
