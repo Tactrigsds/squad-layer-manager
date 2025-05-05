@@ -7,6 +7,7 @@ import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import LayerFilterMenu, { useFilterMenuStore, useQueryContextWithMenuFilter } from './layer-filter-menu.tsx'
+import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
@@ -96,7 +97,7 @@ export default function SelectLayersDialog(props: {
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="w-auto max-w-full min-w-0">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-					<div className="flex items-center">
+					<div className="flex items-center space-x-2">
 						<DialogTitle>{props.title}</DialogTitle>
 						<div className="mx-8 font-light">-</div>
 						<DialogDescription>{props.description}</DialogDescription>
@@ -121,19 +122,7 @@ export default function SelectLayersDialog(props: {
 						queryContext={queryContextWithFilter}
 						selected={selectedLayers}
 						onSelect={setSelectedLayers}
-						extraPanelItems={
-							<>
-								<Label htmlFor={hideFilteredId}>Hide Constrained</Label>
-								<Checkbox
-									id={hideFilteredId}
-									onCheckedChange={v => {
-										if (v === 'indeterminate') return
-										setHideFiltered(v)
-									}}
-									checked={hideFiltered}
-								/>
-							</>
-						}
+						extraPanelItems={<PoolCheckboxes />}
 					/>
 				</div>
 

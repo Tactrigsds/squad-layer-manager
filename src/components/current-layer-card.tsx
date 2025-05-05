@@ -1,7 +1,8 @@
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as DH from '@/lib/display-helpers'
@@ -12,31 +13,35 @@ import * as RBAC from '@/rbac.models'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
-import * as ReactRx from '@react-rxjs/core'
+import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import LayerSourceDisplay from './layer-source-display.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
 export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusWithCurrentMatch }) {
 	const historyEntry = MatchHistoryClient.useCurrentMatchDetails()
 
-	type DropdownState = 'end-match' | null
-	const [dropdownState, setDropdownState] = React.useState<DropdownState>(null)
 	const layerDetails = M.getLayerDetailsFromUnvalidated(props.serverStatus.currentLayer)
-	const team1DisplayName = layerDetails.Faction_1 ? `${layerDetails.Faction_1} ${layerDetails.SubFac_1}` : 'Team 1'
-	const team2DisplayName = layerDetails.Faction_2 ? `${layerDetails.Faction_2} ${layerDetails.SubFac_2}` : 'Team 2'
+	const team1DisplayName = layerDetails.Faction_1 ? `${layerDetails.Faction_1} ${layerDetails.SubFac_1 ?? ''}` : 'Team 1'
+	const team2DisplayName = layerDetails.Faction_2 ? `${layerDetails.Faction_2} ${layerDetails.SubFac_2 ?? ''}` : 'Team 2'
 	const loggedInUser = useLoggedInUser()
 	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
 
 	const isEmpty = props.serverStatus.playerCount === 0
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>
-					Current Layer: <span className="mx-2">:</span> {DH.displayUnvalidatedLayer(props.serverStatus.currentLayer)}
-				</CardTitle>
+			<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
+				<span className="flex space-x-2 items-center">
+					<CardTitle>
+						Current Layer:
+					</CardTitle>
+					<div>
+						{DH.displayUnvalidatedLayer(props.serverStatus.currentLayer)}
+					</div>
+				</span>
+				{historyEntry && <LayerSourceDisplay source={historyEntry.layerSource} />}
 			</CardHeader>
 			<CardContent className="flex justify-between">
 				<div className="flex items-center space-x-2">
@@ -83,6 +88,8 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 								)}
 							</div>
 						)}
+					</div>
+					<div>
 					</div>
 				</div>
 				<EndMatchDialog>

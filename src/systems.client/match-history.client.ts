@@ -1,5 +1,6 @@
 import { distinctDeepEquals } from '@/lib/async'
 import * as SM from '@/lib/rcon/squad-models'
+import * as PartsSys from '@/systems.client/parts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
@@ -9,7 +10,8 @@ export const [useRecentMatchHistory, recentMatchHistory$] = ReactRx.bind(
 	new Rx.Observable<SM.MatchDetails[]>(s => {
 		const sub = trpc.matchHistory.watchRecentMatchHistory.subscribe(undefined, {
 			onData: output => {
-				s.next(output)
+				PartsSys.upsertParts(output.parts)
+				s.next(output.recentMatches)
 			},
 			onComplete: () => {
 				console.trace('match history completed')

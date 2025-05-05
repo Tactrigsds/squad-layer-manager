@@ -12,6 +12,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import LayerSourceDisplay from './layer-source-display'
 
 export default function MatchHistoryPanel() {
 	const serverStatus = SquadServerClient.useSquadServerStatus()
@@ -50,6 +51,7 @@ export default function MatchHistoryPanel() {
 							<TableHead className="font-medium">Layer</TableHead>
 							<TableHead className="font-medium">Team 1</TableHead>
 							<TableHead className="font-medium">Team 2</TableHead>
+							<TableHead className="font-medium">Set By</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -123,6 +125,9 @@ export default function MatchHistoryPanel() {
 												{entry.outcome.type === 'draw' ? <span className="font-medium text-amber-600">(D)</span> : ''}
 												{layer.Faction_2} <span className="text-sm text-secondary-foreground">{subfaction2}</span>
 												<span className="text-sm">{team2TicketDisp}</span>
+											</TableCell>
+											<TableCell>
+												<LayerSourceDisplay source={entry.layerSource} />
 											</TableCell>
 										</TableRow>
 									</ContextMenuTrigger>

@@ -20,15 +20,17 @@ import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as PartsSys from '@/systems.client/parts.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import * as DndKit from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import { ConstraintViolationDisplay } from './constraint-violation-display.tsx'
+import LayerDisplay from './layer-display.tsx'
 import LayerFilterMenu, { useFilterMenuStore, useQueryContextWithMenuFilter } from './layer-filter-menu.tsx'
+import LayerSourceDisplay from './layer-source-display.tsx'
+import PoolCheckboxes from './pool-checkboxes.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
@@ -65,6 +67,33 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; onStartEdit?
 				/>
 			))}
 		</ul>
+	)
+}
+
+type EditLayerQueueItemDialogProps = {
+	children: React.ReactNode
+} & InnerEditLayerListItemDialogProps
+
+// index
+// itemStore
+type InnerEditLayerListItemDialogProps = {
+	open: boolean
+	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
+	allowVotes?: boolean
+	itemStore: Zus.StoreApi<QD.LLItemStore>
+	layerQueryContext: M.LayerQueryContext
+}
+
+function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
+	return (
+		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogTrigger asChild>{props.children}</DialogTrigger>
+			<DialogContent className="w-auto max-w-full min-w-0">
+				<DragContextProvider>
+					<EditLayerListItemDialog {...props} />
+				</DragContextProvider>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -177,19 +206,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 								if (!id) return
 								return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
 							}}
-							extraPanelItems={
-								<>
-									<Label htmlFor={hideFilteredId}>Hide Constrained</Label>
-									<Checkbox
-										id={hideFilteredId}
-										onCheckedChange={v => {
-											if (v === 'indeterminate') return
-											setHideFiltered(v)
-										}}
-										checked={hideFiltered}
-									/>
-								</>
-							}
+							extraPanelItems={<PoolCheckboxes />}
 						/>
 					</div>
 				)}
@@ -259,7 +276,7 @@ function LayerListItem(props: QueueItemProps) {
 	const item = Zus.useStore(itemStore, (s) => s.item)
 	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
 	const draggableItemId = QD.toDraggableItemId(item.itemId)
-	const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable({
 		id: draggableItemId,
 	})
 
@@ -295,23 +312,7 @@ function LayerListItem(props: QueueItemProps) {
 	)
 	const badges: React.ReactNode[] = []
 
-	switch (item.source.type) {
-		case 'gameserver':
-			badges.push(<Badge key="source gameserver" variant="outline">Game Server</Badge>)
-			break
-		case 'unknown':
-		case 'generated':
-			badges.push(<Badge key="source generated" variant="outline">{Text.capitalize(item.source.type)}</Badge>)
-			break
-		case 'manual': {
-			badges.push(
-				<Badge key="source manual" variant="outline">Manual - {PartsSys.findUser(item.source.userId)?.username ?? 'Unknown'}</Badge>,
-			)
-			break
-		}
-		default:
-			assertNever(item.source)
-	}
+	badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
 
 	const queueItemStyles =
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
@@ -443,7 +444,6 @@ function ItemDropdown(props: {
 			<DropdownMenuContent>
 				<DropdownMenuGroup>
 					<EditLayerListItemDialogWrapper
-						index={props.index}
 						allowVotes={allowVotes}
 						open={subDropdownState === 'edit'}
 						onOpenChange={(update) => {
@@ -530,71 +530,12 @@ function ItemDropdown(props: {
 	)
 }
 
-export function LayerDisplay(props: { layerId: M.LayerId; itemId: string; isVoteChoice?: boolean; badges?: React.ReactNode[] }) {
-	const layerStatusesRes = useLayerStatuses()
-	const badges: React.ReactNode[] = []
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => M.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
-	if (props.badges) badges.push(...props.badges)
-
-	if (layerStatusesRes.data) {
-		const exists = layerStatusesRes.data.present.has(props.layerId)
-		if (!exists) {
-			badges.push(
-				<Tooltip key="layer doesn't exist">
-					<TooltipTrigger>
-						<Icons.ShieldQuestion className="text-orange-400" />
-					</TooltipTrigger>
-					<TooltipContent>
-						<b>Layer is unknown</b>
-					</TooltipContent>
-				</Tooltip>,
-			)
-		}
-
-		const blockingConstraintIds = layerStatusesRes.data?.blocked.get(
-			M.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
-		)
-		console.log({ blockingConstraintIds })
-		if (blockingConstraintIds) {
-			badges.push(
-				<ConstraintViolationDisplay
-					key="constraint violation display"
-					violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)!)}
-				/>,
-			)
-		}
-	}
-	if (M.isRawLayerId(props.layerId)) {
-		badges.push(
-			<Tooltip key="is raw layer">
-				<TooltipTrigger>
-					<Icons.ShieldOff className="text-red-500" />
-				</TooltipTrigger>
-				<TooltipContent>
-					<p>
-						This layer is unknown and was not able to be fully parsed (<b>{props.layerId.slice('RAW:'.length)}</b>)
-					</p>
-				</TooltipContent>
-			</Tooltip>,
-		)
-	}
-
-	return (
-		<div className="flex space-x-2 items-center">
-			<span className="flex-1 text-nowrap">{DH.toShortLayerNameFromId(props.layerId)}</span>
-			<span className="flex items-center space-x-1">
-				{badges}
-			</span>
-		</div>
-	)
-}
-
 function QueueItemSeparator(props: {
 	// null means we're before the first item in the list
 	itemId: string
 	isLast: boolean
 }) {
-	const { isOver, setNodeRef } = useDroppable({ id: props.itemId })
+	const { isOver, setNodeRef } = DndKit.useDroppable({ id: props.itemId })
 	return (
 		<Separator
 			ref={setNodeRef}
@@ -615,30 +556,4 @@ function itemToLayerIds(item: M.LayerListItem): M.LayerId[] {
 		throw new Error('Invalid LayerQueueItem')
 	}
 	return layers
-}
-
-type EditLayerQueueItemDialogProps = {
-	children: React.ReactNode
-} & InnerEditLayerListItemDialogProps
-
-type InnerEditLayerListItemDialogProps = {
-	open: boolean
-	index: number
-	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
-	allowVotes?: boolean
-	itemStore: Zus.StoreApi<QD.LLItemStore>
-	layerQueryContext: M.LayerQueryContext
-}
-
-function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
-	return (
-		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0">
-				<DragContextProvider>
-					<EditLayerListItemDialog {...props} />
-				</DragContextProvider>
-			</DialogContent>
-		</Dialog>
-	)
 }

@@ -1,5 +1,6 @@
 import * as M from '@/models'
 import { type LayersQueryInput } from '@/server/systems/layer-queries'
+import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
 import { trpc } from '@/trpc.client'
@@ -35,11 +36,14 @@ export function useLayerStatuses(
 	const serverLayerQueue = Zus.useStore(QD.QDStore, s => s.serverState?.layerQueue)
 	return useQuery({
 		...options,
-		queryKey: ['getLayerStatusesForLayerQueue', superjson.serialize({ queue, layerQueue: serverLayerQueue })],
+		queryKey: [
+			'getLayerStatusesForLayerQueue',
+			superjson.serialize({ queue, layerQueue: serverLayerQueue }),
+		],
 		queryFn: async () => {
-			// if (serverLayerQueue && deepEqual(serverLayerQueue, queue)) {
-			// 	return PartsSys.getLayerStatuses()
-			// }
+			if (serverLayerQueue && deepEqual(serverLayerQueue, queue)) {
+				return PartsSys.getLayerStatuses()
+			}
 
 			return await trpc.layers.getLayerStatusesForLayerQueue.query({ queue: queue })
 		},

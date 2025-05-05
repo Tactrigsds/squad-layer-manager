@@ -9,6 +9,7 @@ import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import ExtraFiltersPanel from './extra-filters-panel'
 import { Comparison } from './filter-card'
 
 function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
@@ -247,6 +248,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					Clear All
 				</Button>
 			</div>
+			<ExtraFiltersPanel />
 		</div>
 	)
 }

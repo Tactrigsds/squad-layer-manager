@@ -3,7 +3,7 @@ import * as M from '@/models.ts'
 import { type WatchFiltersOutput } from '@/server/systems/filter-entity'
 import * as PartsSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
-import { state, useStateObservable } from '@react-rxjs/core'
+import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
@@ -64,7 +64,7 @@ export function setup() {
 	filterEntities$.subscribe()
 }
 
-export const filterEntities$ = state(
+export const [useFilterEntities, filterEntities$] = ReactRx.bind(
 	filterMutation$.pipe(
 		Rx.map(() => filterEntities),
 	),

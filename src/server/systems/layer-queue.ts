@@ -167,7 +167,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 					await handleServerRoll(ctx, serverState)
 					break
 				case 'layer-change-with-empty-queue:buffer-next-match-context': {
-					// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
+					// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to so we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
 					const item = M.createLayerListItem({
 						layerId: status.currentLayer.id,
 						source: { type: 'unknown' },

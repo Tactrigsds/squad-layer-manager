@@ -1255,7 +1255,9 @@ export type LayerStatuses = {
 	// keys are (itemId:(choiceLayerId)?)
 	blocked: OneToMany.OneToManyMap<string, string>
 	present: Set<LayerId>
+	violationDescriptors: Map<string, Record<string, string[] | undefined>>
 }
+
 export function toQueueLayerKey(itemId: string, choice?: string) {
 	let id = itemId
 	if (choice) id += `:${choice}`
@@ -1276,6 +1278,21 @@ export function getAllLayerIdsWithQueueKey(item: LayerListItem) {
 		}
 	}
 	return tuples
+}
+
+export function getAllLayerQueueKeysWithLayerId(layerId: LayerId, queue: LayerList) {
+	const keys = new Set<string>()
+	for (const item of queue) {
+		if (item.layerId === layerId) {
+			keys.add(toQueueLayerKey(item.itemId))
+		}
+		if (item.vote) {
+			for (const choice of item.vote.choices) {
+				keys.add(toQueueLayerKey(item.itemId, choice))
+			}
+		}
+	}
+	return keys
 }
 
 export type LayerStatusPart = { layerStatuses: LayerStatuses }

@@ -13,6 +13,7 @@ import * as RBAC from '@/rbac.models'
 import { trpc } from '@/trpc.client'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Jotai from 'jotai'
 import React from 'react'
@@ -55,6 +56,11 @@ export type LLItemActions = {
 	remove?: () => void
 }
 
+export type ExtraQueryFilter = {
+	filterId: M.FilterEntityId
+	active: boolean
+}
+
 // Queue Dashboard state
 export type QDState = {
 	editedServerState: MutServerStateWithIds
@@ -68,7 +74,7 @@ export type QDState = {
 		dnr: M.LayerQueryConstraint['applyAs']
 		filter: M.LayerQueryConstraint['applyAs']
 	}
-	extraQueryFilters: { filterId: M.FilterEntityId; active: boolean }[]
+	extraQueryFilters: ExtraQueryFilter[]
 }
 
 export type QDStore = QDState & {
@@ -82,7 +88,9 @@ export type QDStore = QDState & {
 	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: M.LayerQueryConstraint['applyAs']) => void
 
 	extraQueryFilterActions: {
-		upsert: (filterId: M.FilterEntityId, active: boolean) => void
+		setActive: (filterId: M.FilterEntityId, active: boolean) => void
+		select: (newFilterId: M.FilterEntityId, oldFilterId: M.FilterEntityId) => void
+		add: (newFilterId: M.FilterEntityId, active: boolean) => void
 		remove: (filterId: M.FilterEntityId) => void
 	}
 }
@@ -296,11 +304,11 @@ export const initialState: QDState = {
 	extraQueryFilters: [],
 	poolApplyAs: {
 		dnr: 'field',
-		filter: 'where-condition',
+		filter: 'field',
 	},
 }
 
-export const QDStore = Zus.createStore<QDStore>((set, get) => {
+export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 	const canEdit$ = userPresenceState$.pipe(
 		Rx.mergeMap(async (state) => {
 			const user = await fetchLoggedInUser()
@@ -385,8 +393,14 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		}
 	}
 
+	const extraQueryFilters = JSON.parse(localStorage.getItem('extraQueryFilters:v1') ?? '[]') as ExtraQueryFilter[]
+	function writeExtraQueryFilters() {
+		localStorage.setItem('extraQueryFilters:v1', JSON.stringify(get().extraQueryFilters))
+	}
+
 	return {
 		...initialState,
+		extraQueryFilters,
 		applyServerUpdate: (update) => {
 			set({ serverState: update.state })
 			get().reset()
@@ -438,7 +452,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		tryStartEditing,
 		tryEndEditing,
 		extraQueryFilterActions: {
-			upsert(filterId, active) {
+			setActive(filterId, active) {
 				set(state =>
 					Im.produce(state, draft => {
 						const existing = draft.extraQueryFilters.find(f => f.filterId === filterId)
@@ -449,6 +463,31 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 						}
 					})
 				)
+				writeExtraQueryFilters()
+			},
+			select(newFilterId, oldFilterId) {
+				set(state =>
+					Im.produce(state, draft => {
+						const existing = draft.extraQueryFilters.find(f => f.filterId === oldFilterId)
+						if (existing) {
+							existing.filterId = newFilterId
+						} else {
+							console.warn(`Filter ${oldFilterId} not found`)
+						}
+					})
+				)
+				writeExtraQueryFilters()
+			},
+			add(filterId) {
+				set(state =>
+					Im.produce(state, draft => {
+						const existing = draft.extraQueryFilters.find(f => f.filterId === filterId)
+						if (!existing) {
+							draft.extraQueryFilters.push({ filterId, active: true })
+						}
+					})
+				)
+				writeExtraQueryFilters()
 			},
 			remove(filterId) {
 				set(state =>
@@ -458,6 +497,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 						draft.extraQueryFilters.splice(existingIdx, 1)
 					})
 				)
+				writeExtraQueryFilters()
 			},
 		},
 	}

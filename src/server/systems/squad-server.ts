@@ -280,7 +280,7 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			return await DB.runTransaction(ctx, async (ctx) => {
+			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes
 				let newEntry: SchemaModels.NewMatchHistory = {
@@ -311,6 +311,13 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 
 				return { code: 'ok' as const }
 			})
+
+			if (res.code !== 'ok') return res
+
+			// Kind of a hack -- we need to refresh the server state to recalculate the relevant parts
+			const prevUpdate = LayerQueue.serverStateUpdate$.value
+			LayerQueue.serverStateUpdate$.next(prevUpdate)
+			return res
 		}
 
 		case 'ROUND_ENDED': {

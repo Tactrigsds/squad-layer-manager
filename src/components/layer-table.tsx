@@ -17,6 +17,7 @@ import * as RBAC from '@/rbac.models'
 import type { LayersQueryInput } from '@/server/systems/layer-queries'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
@@ -161,8 +162,9 @@ const constraintsCol = columnHelper.accessor('constraints', {
 				</div>,
 			)
 		}
-		const namedConstraints = constraints.filter((c, i) => !!c.name && c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
-		return <ConstraintViolationDisplay violated={namedConstraints} />
+		const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
+		console.log({ id: info.row.id, constraints, namedConstraints, values })
+		return <ConstraintViolationDisplay violated={namedConstraints} layerId={info.row.id} />
 	},
 })
 
@@ -346,6 +348,13 @@ export default function LayerTable(props: {
 		}
 	}
 
+	const prevConstraints = React.useRef<any>(null)
+	React.useEffect(() => {
+		if (!deepEqual(prevConstraints.current, queryConstraints)) {
+			prevConstraints.current = queryConstraints
+			console.log({ queryConstraints })
+		}
+	}, [queryConstraints])
 	const layersRes = useLayersQuery({
 		pageIndex: props.pageIndex,
 		pageSize,

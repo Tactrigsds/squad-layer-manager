@@ -1,11 +1,7 @@
-import * as AR from '@/app-routes.ts'
-import ComboBox from '@/components/combo-box/combo-box.tsx'
-import { LOADING } from '@/components/combo-box/constants.ts'
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -15,7 +11,6 @@ import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
-import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
@@ -37,11 +32,11 @@ import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import CurrentLayerCard from './current-layer-card.tsx'
+import FilterEntitySelect from './filter-entity-select.tsx'
 import { LayerList } from './layer-list.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
 import { Timer } from './timer.tsx'
-import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
@@ -537,64 +532,6 @@ function VoteState() {
 	)
 }
 
-function FilterEntitySelect(props: {
-	className?: string
-	title: string
-	allowEmpty?: boolean
-	filterId: string | null
-	onSelect: (filterId: string | null) => void
-	allowToggle?: boolean
-	enabled?: boolean
-	setEnabled?: (enabled: boolean) => void
-	excludedFilterIds?: M.FilterEntityId[]
-	children?: React.ReactNode
-}) {
-	const filters = ReactRx.useStateObservable(FilterEntityClient.filterEntities$)
-	const filterOptions = []
-	for (const f of filters.values()) {
-		if (!props.excludedFilterIds || !props.excludedFilterIds.includes(f.id)) {
-			filterOptions.push({
-				value: f.id,
-				label: f.name,
-			})
-		}
-	}
-	const enableCheckboxId = React.useId()
-	const loggedInUser = useLoggedInUser()
-	const hasForceWrite = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
-	return (
-		<div className={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
-			{props.allowToggle && (
-				<Checkbox
-					id={enableCheckboxId}
-					disabled={!hasForceWrite}
-					onCheckedChange={(v) => {
-						if (v === 'indeterminate') return
-						props.setEnabled?.(v)
-					}}
-					checked={props.enabled}
-				/>
-			)}
-			<ComboBox
-				title="Filter"
-				disabled={!hasForceWrite}
-				className="flex-grow"
-				options={filterOptions ?? LOADING}
-				allowEmpty={props.allowEmpty ?? true}
-				value={props.filterId}
-				onSelect={(filter) => props.onSelect(filter ?? null)}
-			>
-				{props.children}
-			</ComboBox>
-			{props.filterId && (
-				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
-					<Icons.Edit />
-				</a>
-			)}
-		</div>
-	)
-}
-
 type PoolConfigurationPopoverHandle = {
 	reset(settings: M.ServerSettings): void
 }
@@ -719,11 +656,3 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 		</div>
 	)
 }
-
-// function HideOutOfPoolItemsPanel() {
-//    const dnrCheckboxId = React.useId()
-//    const poolFilterCheckboxId = React.useId()
-//    return <div>
-
-//       </div>
-// }

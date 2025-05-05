@@ -1,20 +1,25 @@
+import * as AR from '@/app-routes'
+import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import * as Icons from 'lucide-react'
 import React from 'react'
-// import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Link } from 'react-router-dom'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export type ConstraintViolatioDisplayProps = {
 	violated: M.LayerQueryConstraint[]
+	violationDescriptors?: Record<string, string[] | undefined>
 	children?: React.ReactNode
+	layerId: string
 }
 
 export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps) {
 	if (props.violated.length == 0) return null
 	const dnrViolations = props.violated.filter(v => v.type === 'do-not-repeat')
 	const filterViolations = props.violated.filter(v => v.type !== 'do-not-repeat')
+	const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(props.layerId))
 	return (
-		<>
+		<div className="flex space-x-0.5 items-center">
 			{dnrViolations.length > 0 && (
 				<Tooltip delayDuration={0}>
 					{props.children
@@ -27,7 +32,15 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 					<TooltipContent>
 						<div className="font-semibold">DNR:</div>
 						<ul className="flex flex-col">
-							{props.violated.map(v => <li key={v.id}>{v.name ?? v.id}</li>)}
+							{dnrViolations.map(v => (
+								<li key={v.id}>
+									{v.name ?? v.id}
+									{props.violationDescriptors?.[v.id]
+										&& props.violationDescriptors[v.id]?.map((descriptor, index) => (
+											<div key={index}>{`- ${(layer as any)?.[descriptor] ?? descriptor}`}</div>
+										))}
+								</li>
+							))}
 						</ul>
 					</TooltipContent>
 				</Tooltip>
@@ -42,12 +55,42 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 							</TooltipTrigger>
 						)}
 					<TooltipContent>
+						<div className="font-semibold">Filters:</div>
 						<ul className="flex flex-col">
-							{props.violated.map(v => <li key={v.id}>{v.name ?? v.id}</li>)}
+							{filterViolations.map(v => {
+								let id: string
+								let displayName: string
+								switch (v.type) {
+									case 'filter-anon':
+										id = v.id
+										displayName = v.name ?? v.id
+										break
+									case 'filter-entity':
+										id = v.filterEntityId
+										displayName = v.filterEntityId
+										break
+									default:
+										assertNever(v)
+								}
+
+								return (
+									<li key={v.id}>
+										<Link
+											className="underline"
+											target="_blank"
+											to={AR.link('/filters/:id', id)}
+										>
+											{displayName}
+											{props.violationDescriptors?.[v.id]
+												&& props.violationDescriptors[v.id]?.map((descriptor, index) => <div key={index}>{`: ${descriptor}`}</div>)}
+										</Link>
+									</li>
+								)
+							})}
 						</ul>
 					</TooltipContent>
 				</Tooltip>
 			)}
-		</>
+		</div>
 	)
 }
