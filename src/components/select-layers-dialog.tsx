@@ -82,15 +82,8 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
+	console.log({ lqContext: props.layerQueryContext })
 	const queryContextWithFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
-	const [poolApplyAs, setPoolApplyAs] = Zus.useStore(QD.QDStore, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
-	const hideFiltered = poolApplyAs.filter === 'where-condition'
-	const setHideFiltered = React.useCallback((hideFiltered: boolean) => {
-		const applyAs = hideFiltered ? 'where-condition' : 'field'
-		setPoolApplyAs('filter', applyAs)
-		setPoolApplyAs('dnr', applyAs)
-	}, [setPoolApplyAs])
-	const hideFilteredId = React.useId()
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>

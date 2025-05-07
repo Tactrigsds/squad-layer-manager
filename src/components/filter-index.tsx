@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom'
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
-	const filters = ReactRx.useStateObservable(FilterEntityClient.filterEntities$)
+	const filters = FilterEntityClient.useFilterEntities()
 	return (
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">

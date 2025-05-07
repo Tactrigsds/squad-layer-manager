@@ -586,7 +586,7 @@ type ApplyFilterProps = {
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
-	let filters = [...ReactRxCore.useStateObservable(FilterEntityClient.filterEntities$).values()]
+	let filters = FilterEntityClient.useFIlterEntities()
 	if (props.editedFilterId) {
 		filters = filters?.filter((f) => f.id !== props.editedFilterId)
 	}

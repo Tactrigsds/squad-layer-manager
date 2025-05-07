@@ -1,3 +1,4 @@
+import * as MapUtils from '@/lib/map'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import { type WatchFiltersOutput } from '@/server/systems/filter-entity'
@@ -18,12 +19,14 @@ export function useFilterContributors(filterId: string) {
 	})
 }
 
-const filterEntities = new Map<string, M.FilterEntity>()
+export const filterEntities = new Map<string, M.FilterEntity>()
+export const filterEntityChanged$ = new Rx.Subject<void>()
 
 export const filterMutation$ = new Rx.Observable<M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>>((s) => {
 	const sub = trpc.filters.watchFilters.subscribe(undefined, {
 		onData: (_output) => {
 			const output = PartsSys.stripParts(_output) as WatchFiltersOutput
+			console.log(output)
 			switch (output.code) {
 				case 'initial-value': {
 					filterEntities.clear()
@@ -35,13 +38,11 @@ export const filterMutation$ = new Rx.Observable<M.UserEntityMutation<M.FilterEn
 				case 'mutation': {
 					switch (output.mutation.type) {
 						case 'update':
+						case 'add':
 							filterEntities.set(output.mutation.key, output.mutation.value)
 							break
 						case 'delete':
 							filterEntities.delete(output.mutation.key)
-							break
-						case 'add':
-							filterEntities.set(output.mutation.key, output.mutation.value)
 							break
 						default:
 							assertNever(output.mutation.type)
@@ -52,6 +53,7 @@ export const filterMutation$ = new Rx.Observable<M.UserEntityMutation<M.FilterEn
 				default:
 					assertNever(output)
 			}
+			filterEntityChanged$.next()
 		},
 		onComplete: () => s.complete(),
 		onError: (e) => s.error(e),
@@ -65,9 +67,7 @@ export function setup() {
 }
 
 export const [useFilterEntities, filterEntities$] = ReactRx.bind(
-	filterMutation$.pipe(
-		Rx.map(() => filterEntities),
-	),
+	filterEntityChanged$.pipe(Rx.map(() => MapUtils.deepClone(filterEntities))),
 	filterEntities,
 )
 

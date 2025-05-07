@@ -147,7 +147,6 @@
       "default": 5,
       "description": "Maximum number of choices allowed in a vote"
     },
-    "matchHistoryUrl": {"type": "string", "format": "uri"},
     "adminListSources": {
       "type": "array",
       "items": {

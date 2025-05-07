@@ -1204,7 +1204,7 @@ export type LQServerStateUpdate = {
 	source:
 		| {
 			type: 'system'
-			event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer'
+			event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer' | 'filter-delete'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {

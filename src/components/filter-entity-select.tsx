@@ -24,7 +24,7 @@ export default function FilterEntitySelect(props: {
 	excludedFilterIds?: M.FilterEntityId[]
 	children?: React.ReactNode
 }) {
-	const filters = ReactRx.useStateObservable(FilterEntityClient.filterEntities$)
+	const filters = FilterEntityClient.useFilterEntities()
 	const filterOptions = []
 	for (const f of filters.values()) {
 		if (!props.excludedFilterIds || !props.excludedFilterIds.includes(f.id)) {

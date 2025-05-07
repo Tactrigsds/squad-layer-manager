@@ -36,7 +36,8 @@ type ConstraintRowDetails = {
 	constraints: M.LayerQueryConstraint[]
 	values: boolean[]
 }
-const columnHelper = createColumnHelper<M.Layer & M.LayerComposite & { 'constraints': ConstraintRowDetails }>()
+type RowData = M.Layer & M.LayerComposite & { 'constraints': ConstraintRowDetails }
+const columnHelper = createColumnHelper<RowData>()
 
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
@@ -91,6 +92,19 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	})
 }
 
+function Cell({ row }: { row: Row<M.Layer & M.LayerComposite & 'constraints'> }) {
+	const loggedInUser = useLoggedInUser()
+	const canForceSelect = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+
+	return (
+		<Checkbox
+			checked={row.getIsSelected()}
+			className={getIsRowDisabled(row, canForceSelect) ? 'invisible' : ''}
+			aria-label="Select row"
+		/>
+	)
+}
+
 const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite & 'constraints', any>[] = [
 	{
 		id: 'select',
@@ -101,15 +115,7 @@ const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite & 'constraints', any>[] = [
 				aria-label="Select all"
 			/>
 		),
-		cell: ({ row }) => (
-			<Checkbox
-				checked={row.getIsSelected()}
-				// onCheckedChange={(value) => {
-				// 	return row.toggleSelected(!!value)
-				// }}
-				aria-label="Select row"
-			/>
-		),
+		cell: ({ row }) => <Cell row={row} />,
 		enableSorting: false,
 		enableHiding: false,
 	},
@@ -164,7 +170,14 @@ const constraintsCol = columnHelper.accessor('constraints', {
 			)
 		}
 		const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
-		return <ConstraintViolationDisplay violated={namedConstraints} layerId={info.row.id} violationDescriptors={violationDescriptors} />
+		return (
+			<ConstraintViolationDisplay
+				padEmpty={true}
+				violated={namedConstraints}
+				layerId={info.row.id}
+				violationDescriptors={violationDescriptors}
+			/>
+		)
 	},
 })
 
@@ -348,13 +361,6 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const prevConstraints = React.useRef<any>(null)
-	React.useEffect(() => {
-		if (!deepEqual(prevConstraints.current, queryConstraints)) {
-			prevConstraints.current = queryConstraints
-			console.log({ queryConstraints })
-		}
-	}, [queryConstraints])
 	const layersRes = useLayersQuery({
 		pageIndex: props.pageIndex,
 		pageSize,
@@ -631,12 +637,15 @@ export default function LayerTable(props: {
 					<TableBody>
 						{table.getRowModel().rows.map((row) => {
 							const id = row.original.id
+							const disabled = 'hover:bg-unset bg-gray-800'
 							return (
 								<ContextMenu key={row.id}>
 									<ContextMenuTrigger asChild>
 										<TableRow
 											key={row.id}
+											className={getIsRowDisabled(row, canForceSelect) ? disabled : ''}
 											onClick={() => {
+												if (getIsRowDisabled(row, canForceSelect)) return
 												onSetRowSelection(
 													Im.produce(rowSelection, (draft) => {
 														draft[id] = !draft[id]
@@ -841,4 +850,9 @@ function MultiLayerSetDialog({
 			</DialogContent>
 		</Dialog>
 	)
+}
+
+function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
+	const constraints = row.original.constraints
+	return !row.getIsSelected() && !canForceSelect && constraints.values.some(v => !v)
 }

@@ -229,6 +229,9 @@ function QueueControlPanel() {
 
 	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(lqLength, { constraints }, QD.LQStore)
 	const playNextQueryContext: M.LayerQueryContext = { constraints }
+	const user = useLoggedInUser()
+
+	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -276,7 +279,7 @@ function QueueControlPanel() {
 				</Button>
 			</SelectLayersDialog>
 			<PoolConfigurationPopover>
-				<Button size="icon" variant="ghost" title="Pool Configuration">
+				<Button disabled={!canWriteSettings} size="icon" variant="ghost" title="Pool Configuration">
 					<Icons.Settings />
 				</Button>
 			</PoolConfigurationPopover>
@@ -540,7 +543,7 @@ const PoolConfigurationPopover = React.forwardRef(function PoolConfigurationPopo
 	ref: React.ForwardedRef<PoolConfigurationPopoverHandle>,
 ) {
 	const filterOptions = []
-	for (const f of ReactRx.useStateObservable(FilterEntityClient.filterEntities$).values()) {
+	for (const f of FilterEntityClient.useFilterEntities().values()) {
 		filterOptions.push({
 			value: f.id as string | null,
 			label: f.name,

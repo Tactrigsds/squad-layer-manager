@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
+import * as C from '@/server/context'
 import * as LayerQueue from '@/server/systems/layer-queue'
 import * as Rbac from '@/server/systems/rbac.system'
 import { procedure, router } from '@/server/trpc.server.ts'
@@ -13,7 +14,7 @@ import { aliasedTable, and, eq, or } from 'drizzle-orm'
 import { Subject } from 'rxjs'
 import { z } from 'zod'
 
-const filterMutation$ = new Subject<M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>>()
+export const filterMutation$ = new Subject<[C.Log & C.Db, M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: M.FilterEntityIdSchema, userId: z.bigint().optional(), role: RBAC.RoleSchema.optional() })
 	.refine((input) => input.userId || input.role, { message: 'Either userId or role must be provided' })
@@ -116,12 +117,12 @@ export const filtersRouter = router({
 		}
 		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 		if (res.code === 'ok') {
-			filterMutation$.next({
+			filterMutation$.next([ctx, {
 				type: 'add',
 				key: newFilterEntity.id,
 				value: newFilterEntity,
 				username: ctx.user.username,
-			})
+			}])
 		}
 		return {
 			code: 'ok' as const,
@@ -156,12 +157,12 @@ export const filtersRouter = router({
 			})
 			ctx.log.info(res, 'Updated filter %d', id)
 			if (res.code === 'ok') {
-				filterMutation$.next({
+				filterMutation$.next([ctx, {
 					type: 'update',
 					key: id,
 					value: res.filter,
 					username: ctx.user.username,
-				})
+				}])
 			}
 			return res
 		}),
@@ -205,12 +206,12 @@ export const filtersRouter = router({
 		if (res.code !== 'ok') {
 			return res
 		}
-		filterMutation$.next({
+		filterMutation$.next([ctx, {
 			type: 'delete',
 			key: idToDelete,
 			username: ctx.user.username,
 			value: res.filter,
-		})
+		}])
 		return { code: 'ok' as const }
 	}),
 	watchFilters: procedure.subscription(async function* watchFilter({
@@ -232,22 +233,19 @@ export const filtersRouter = router({
 				users: users,
 			},
 		}
-		for await (const mutation of toAsyncGenerator(filterMutation$)) {
+		for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$)) {
 			// TODO could cache users
 			const users = await ctx.db().select().from(Schema.users).where(
 				or(eq(Schema.users.discordId, mutation.value.owner), eq(Schema.users.username, mutation.username)),
 			)
 
-			if (mutation.value.id === input) {
-				yield {
-					code: 'mutation' as const,
-					mutation,
-					parts: {
-						users,
-					},
-				}
+			yield {
+				code: 'mutation' as const,
+				mutation,
+				parts: {
+					users,
+				},
 			}
-			if (mutation.type === 'delete') break
 		}
 	}),
 })

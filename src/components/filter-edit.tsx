@@ -198,6 +198,13 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 		return 'none'
 	})()
 
+	const queryContext: M.LayerQueryContext | undefined = React.useMemo(() =>
+		validFilter
+			? ({
+				constraints: [{ type: 'filter-anon', id: 'edited-filter', filter: validFilter, applyAs: 'where-condition' }],
+			})
+			: undefined, [validFilter])
+
 	const saveBtn = (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
 			{([canSubmit, isDirty]) => {
@@ -350,11 +357,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				queryContext={{
-					constraints: validFilter
-						? [{ type: 'filter-anon', id: 'edited-filter', filter: validFilter, applyAs: 'where-condition' }]
-						: undefined,
-				}}
+				queryContext={queryContext}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

@@ -13,7 +13,7 @@ export function useLayersQuery(input: LayersQueryInput, options?: { enabled?: bo
 	options ??= {}
 	return useQuery({
 		...options,
-		queryKey: ['getLayers', superjson.serialize(input)],
+		queryKey: ['selectLayers', superjson.serialize(input)],
 		placeholderData: (prev) => prev,
 		queryFn: () => trpc.layers.selectLayers.query(input),
 	})

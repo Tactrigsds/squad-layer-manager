@@ -21,6 +21,7 @@ import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { configAtom } from './config.client'
+import * as FilterEntityClient from './filter-entity.client'
 import { fetchLoggedInUser } from './logged-in-user'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
 
@@ -397,6 +398,17 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 	function writeExtraQueryFilters() {
 		localStorage.setItem('extraQueryFilters:v1', JSON.stringify(get().extraQueryFilters))
 	}
+	FilterEntityClient.filterEntityChanged$.subscribe(() => {
+		const toWrite: ExtraQueryFilter[] = []
+		for (const extraFilter of extraQueryFilters) {
+			if (FilterEntityClient.filterEntities.has(extraFilter.filterId)) {
+				toWrite.push(extraFilter)
+			}
+		}
+
+		set({ extraQueryFilters: toWrite })
+		writeExtraQueryFilters()
+	})
 
 	return {
 		...initialState,

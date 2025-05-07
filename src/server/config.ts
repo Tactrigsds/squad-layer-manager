@@ -52,7 +52,6 @@ export const ConfigSchema = z.object({
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
 
-	matchHistoryUrl: z.string().url().optional(),
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	adminListAdminRole: z.string().describe('The role in the adminlist which identifies an admin'),
 	homeDiscordGuildId: ParsedBigIntSchema,

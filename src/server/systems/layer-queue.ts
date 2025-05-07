@@ -13,6 +13,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
+import * as FilterEntity from '@/server/systems/filter-entity.ts'
 import * as LayerQueries from '@/server/systems/layer-queries.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadServer from '@/server/systems/squad-server'
@@ -22,7 +23,7 @@ import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
-import { BehaviorSubject, distinctUntilChanged, filter, from, interval, map, scan, skip, Subject, Subscription } from 'rxjs'
+import { BehaviorSubject, filter, from, interval, map, scan, skip, Subject, Subscription } from 'rxjs'
 import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
@@ -38,7 +39,7 @@ const userPresenceUpdate$ = new Subject<M.UserPresenceStateUpdate & Parts<M.User
 const voteStateMtx = new Mutex()
 
 const tracer = Otel.trace.getTracer('layer-queue')
-export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tracer }, async () => {
+export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 	const log = baseLogger
 	const ctx = DB.addPooledDb({ log })
 	ctx.log.info('setting up layer queue and server state')
@@ -69,6 +70,13 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		}
 
 		const initialServerState = M.ServerStateSchema.parse(server)
+
+		// -------- prune main pool filters when filter entities are deleted  --------
+		const mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
+		const filters = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, mainPoolFilterIds)).for('update')
+		mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
+		initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
+
 		const initialStateUpdate: M.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
 		const withParts = await includeLQServerUpdateParts(ctx, initialStateUpdate)
 		// idk why this cast on ctx is necessary
@@ -135,7 +143,7 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
 	type LayerStatus = { currentLayer: M.UnvalidatedMiniLayer; nextLayer: M.UnvalidatedMiniLayer | null }
 	type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
-	const processLayerStatusRunner = new AsyncExclusiveTaskRunner()
+
 	SquadServer.rcon.serverStatus
 		.observe(ctx)
 		.pipe(
@@ -299,21 +307,6 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 		return { code: 'layer-set:reset' as const, expectedNextLayerId: lqNextLayerId }
 	}
 
-	// -------- invalidate history filters cache on roll --------
-	{
-		SquadServer.rcon.serverStatus
-			.observe(ctx)
-			.pipe(
-				distinctDeepEquals(),
-				filter((statusRes) => statusRes.code === 'ok'),
-				map((status) => status.data.currentLayer),
-				distinctUntilChanged(),
-			)
-			.subscribe(() => {
-				LayerQueries.historyFiltersCache.clear()
-			})
-	}
-
 	// -------- take editing user out of editing slot on disconnect --------
 	WSSessionSys.disconnect$.pipe(
 		C.durableSub('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
@@ -324,6 +317,27 @@ export const setupLayerQueueAndServerState = C.spanOp('layer-queue:setup', { tra
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
 		}),
 	).subscribe()
+
+	// -------- trim pool filters when filter entities are deleted
+	FilterEntity.filterMutation$
+		.pipe(
+			Rx.filter(([_, mut]) => mut.type === 'delete'),
+			C.durableSub('layer-queue:handle-filter-delete', { ctx, tracer }, async ([ctx, mutation]) => {
+				const updatedServerState = await DB.runTransaction(ctx, async (ctx) => {
+					const serverState = await getServerState({ lock: true }, ctx)
+					const remainingFilterIds = serverState.settings.queue.mainPool.filters.filter(f => f !== mutation.key)
+					if (remainingFilterIds.length === serverState.settings.queue.mainPool.filters.length) return null
+					serverState.settings.queue.mainPool.filters = remainingFilterIds
+					await ctx.db().update(Schema.servers).set({ settings: serverState.settings }).where(E.eq(Schema.servers.id, serverState.id))
+
+					return serverState
+				})
+
+				if (!updatedServerState) return
+
+				serverStateUpdate$.next([{ state: updatedServerState, source: { type: 'system', event: 'filter-delete' } }, ctx])
+			}),
+		).subscribe()
 })
 
 // -------- voting --------
@@ -815,120 +829,116 @@ async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 	}
 }
 
-const updateQueue = C.spanOp(
-	'layer-queue:update',
-	{ tracer },
-	async ({ input, ctx }: { input: M.UserModifiableServerState; ctx: C.TrpcRequest }) => {
-		C.setSpanOpAttrs({ input })
-		input = deepClone(input)
-		const res = await DB.runTransaction(ctx, async (ctx) => {
-			const serverStatePrev = await getServerState({ lock: true }, ctx)
-			const serverState = deepClone(serverStatePrev)
-			if (input.layerQueueSeqId !== serverState.layerQueueSeqId) {
+export async function updateQueue({ input, ctx }: { input: M.UserModifiableServerState; ctx: C.TrpcRequest }) {
+	C.setSpanOpAttrs({ input })
+	input = deepClone(input)
+	const res = await DB.runTransaction(ctx, async (ctx) => {
+		const serverStatePrev = await getServerState({ lock: true }, ctx)
+		const serverState = deepClone(serverStatePrev)
+		if (input.layerQueueSeqId !== serverState.layerQueueSeqId) {
+			return {
+				code: 'err:out-of-sync' as const,
+				msg: 'Update is out of sync',
+			}
+		}
+
+		if (!deepEqual(serverState.layerQueue, input.layerQueue)) {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+				check: 'all',
+				permits: [RBAC.perm('queue:write')],
+			})
+			if (denyRes) return denyRes
+		}
+
+		if (!deepEqual(serverState.settings, input.settings)) {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+				check: 'all',
+				permits: [RBAC.perm('settings:write')],
+			})
+			if (denyRes) return denyRes
+		}
+
+		// in case we've voted for a layer that has been shuffled to the back
+		for (let i = 1; i < input.layerQueue.length; i++) {
+			const item = input.layerQueue[i]
+			if (item.vote && item.layerId) {
+				delete item.layerId
+			}
+		}
+		if (input.layerQueue.length > CONFIG.maxQueueSize) {
+			return { code: 'err:queue-too-large' as const }
+		}
+
+		for (const item of input.layerQueue) {
+			if (item.vote && item.vote.choices.length === 0) {
+				return { code: 'err:empty-vote' as const }
+			}
+			if (item.vote && item.vote.choices.length > CONFIG.maxNumVoteChoices) {
 				return {
-					code: 'err:out-of-sync' as const,
-					msg: 'Update is out of sync',
+					code: 'err:too-many-vote-choices' as const,
+					msg: `Max choices allowed is ${CONFIG.maxNumVoteChoices}`,
 				}
 			}
-
-			if (!deepEqual(serverState.layerQueue, input.layerQueue)) {
-				const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-					check: 'all',
-					permits: [RBAC.perm('queue:write')],
-				})
-				if (denyRes) return denyRes
+			if (item.vote && item.vote.defaultChoice && !item.vote.choices.includes(item.vote.defaultChoice)) {
+				return { code: 'err:default-choice-not-in-choices' as const }
 			}
-
-			if (!deepEqual(serverState.settings, input.settings)) {
-				const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-					check: 'all',
-					permits: [RBAC.perm('settings:write')],
-				})
-				if (denyRes) return denyRes
-			}
-
-			// in case we've voted for a layer that has been shuffled to the back
-			for (let i = 1; i < input.layerQueue.length; i++) {
-				const item = input.layerQueue[i]
-				if (item.vote && item.layerId) {
-					delete item.layerId
-				}
-			}
-			if (input.layerQueue.length > CONFIG.maxQueueSize) {
-				return { code: 'err:queue-too-large' as const }
-			}
-
-			for (const item of input.layerQueue) {
-				if (item.vote && item.vote.choices.length === 0) {
-					return { code: 'err:empty-vote' as const }
-				}
-				if (item.vote && item.vote.choices.length > CONFIG.maxNumVoteChoices) {
-					return {
-						code: 'err:too-many-vote-choices' as const,
-						msg: `Max choices allowed is ${CONFIG.maxNumVoteChoices}`,
-					}
-				}
-				if (item.vote && item.vote.defaultChoice && !item.vote.choices.includes(item.vote.defaultChoice)) {
-					return { code: 'err:default-choice-not-in-choices' as const }
-				}
-				const choiceSet = new Set<string>()
-				if (item.vote) {
-					for (const choice of item.vote.choices) {
-						if (choiceSet.has(choice)) {
-							return {
-								code: 'err:duplicate-vote-choices' as const,
-								msg: `Duplicate choice: ${choice}`,
-							}
+			const choiceSet = new Set<string>()
+			if (item.vote) {
+				for (const choice of item.vote.choices) {
+					if (choiceSet.has(choice)) {
+						return {
+							code: 'err:duplicate-vote-choices' as const,
+							msg: `Duplicate choice: ${choice}`,
 						}
-						choiceSet.add(choice)
 					}
+					choiceSet.add(choice)
 				}
 			}
+		}
 
-			// TODO need to implement queue:force-write via a structural diff on the changed layerIds
+		// TODO need to implement queue:force-write via a structural diff on the changed layerIds
 
-			serverState.settings = input.settings
-			serverState.layerQueue = input.layerQueue
-			serverState.historyFilters = input.historyFilters
-			serverState.layerQueueSeqId++
+		serverState.settings = input.settings
+		serverState.layerQueue = input.layerQueue
+		serverState.historyFilters = input.historyFilters
+		serverState.layerQueueSeqId++
 
-			const voteUpdateRes = getVoteStateUpdatesFromQueueUpdate(serverStatePrev.layerQueue, serverState.layerQueue, voteState)
+		const voteUpdateRes = getVoteStateUpdatesFromQueueUpdate(serverStatePrev.layerQueue, serverState.layerQueue, voteState)
 
-			switch (voteUpdateRes.code) {
-				case 'err:queue-change-during-vote':
-					return { code: 'err:queue-change-during-vote' as const }
-				case 'noop':
-					break
-				case 'ok': {
-					voteState = voteUpdateRes.update.state
-					voteStateUpdate$.next([ctx, voteUpdateRes.update])
-				}
+		switch (voteUpdateRes.code) {
+			case 'err:queue-change-during-vote':
+				return { code: 'err:queue-change-during-vote' as const }
+			case 'noop':
+				break
+			case 'ok': {
+				voteState = voteUpdateRes.update.state
+				voteStateUpdate$.next([ctx, voteUpdateRes.update])
 			}
-
-			await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(
-				E.eq(Schema.servers.id, CONFIG.serverId),
-			)
-			endEditing({ ctx })
-
-			return { code: 'ok' as const, serverState }
-		})
-		if (res.code !== 'ok') return res
-
-		const nextLayerId = M.getNextLayerId(res.serverState.layerQueue)
-		if (nextLayerId) {
-			await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
 		}
 
-		const update: M.LQServerStateUpdate = {
-			state: res.serverState,
-			source: { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' },
-		}
-		const withParts = await includeLQServerUpdateParts(ctx, update)
-		serverStateUpdate$.next([withParts, ctx])
+		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, serverState)).where(
+			E.eq(Schema.servers.id, CONFIG.serverId),
+		)
+		endEditing({ ctx })
 
-		return { code: 'ok' as const, serverStateUpdate: withParts }
-	},
-)
+		return { code: 'ok' as const, serverState }
+	})
+	if (res.code !== 'ok') return res
+
+	const nextLayerId = M.getNextLayerId(res.serverState.layerQueue)
+	if (nextLayerId) {
+		await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
+	}
+
+	const update: M.LQServerStateUpdate = {
+		state: res.serverState,
+		source: { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' },
+	}
+	const withParts = await includeLQServerUpdateParts(ctx, update)
+	serverStateUpdate$.next([withParts, ctx])
+
+	return { code: 'ok' as const, serverStateUpdate: withParts }
+}
 
 // -------- utility --------
 export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {

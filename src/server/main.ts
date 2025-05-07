@@ -35,7 +35,7 @@ await C.spanOp('main', {
 	SquadServer.setupSquadServer()
 	await Discord.setupDiscordSystem()
 	TrpcRouter.setupTrpcRouter()
-	void LayerQueue.setupLayerQueueAndServerState()
+	void LayerQueue.setup()
 	const { serverClosed } = await Fastify.setupFastify()
 	const closedMsg = await serverClosed
 	baseLogger.info('server closed: %s', closedMsg)

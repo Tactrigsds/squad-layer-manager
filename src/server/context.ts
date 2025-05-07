@@ -56,9 +56,11 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	return async (...args) => {
 		const activeSpanContext = Otel.context.active()
 		let context: Otel.Context
-		// by convention if ctx is passed as the first argument then use its span context if it exists
+		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then use its span context if it has one
 		if (args[0]?.span?.spanContext) {
 			context = Otel.trace.setSpan(activeSpanContext, args[0].span)
+		} else if (args[0]?.[0]?.span?.spanContext) {
+			context = Otel.trace.setSpan(activeSpanContext, args[0]?.[0]?.span)
 		} else if (opts.parentSpan) {
 			context = Otel.trace.setSpan(activeSpanContext, opts.parentSpan)
 		} else {

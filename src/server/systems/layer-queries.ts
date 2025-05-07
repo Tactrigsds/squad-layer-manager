@@ -36,7 +36,6 @@ export const LayersQueryInputSchema = z.object({
 		'Layer Ids to be considered as part of the history for filtering purposes',
 	),
 })
-export const historyFiltersCache = new Map<string, M.FilterNode>()
 
 export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
 
@@ -52,7 +51,7 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 	input.pageIndex ??= 0
 	const constraints = input.constraints ?? []
 
-	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds.length)
+	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
 	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
 		previousLayerIds,
@@ -166,7 +165,7 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 	const whereConditions: SQL<unknown>[] = []
 	const constraintBuildingTasks: Promise<any>[] = []
 	const constraints = input.constraints ?? []
-	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds.length)
+	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
 		constraintBuildingTasks.push(
@@ -433,8 +432,7 @@ export async function getLayerStatusesForLayerQueue(
 		constraints = M.getPoolConstraints(serverState.settings.queue.mainPool)
 	}
 
-	const historicLayerIds = resolveRelevantLayerHistory(ctx, constraints, 0)
-	const relevantPreviousLayerIds: M.LayerId[] = [...historicLayerIds]
+	const relevantPreviousLayerIds = resolveRelevantLayerHistory(ctx, constraints, [])
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const violationDescriptorsState = new Map<string, Record<string, string[] | undefined>>()
 	const filterConditions: Map<string, Promise<SQL<unknown>>> = new Map()
@@ -592,9 +590,12 @@ function hasTeam(
  * @param constraints The constraints to apply
  * @param previousLayerIds Other IDs which should be considered as being at the front of the history
  */
-function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], queueLength: number) {
+function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], previousLayerIds: string[]) {
 	const maxHistoryLookback = Math.max(...constraints.map(c => c.type === 'do-not-repeat' ? c.rule.within : -1))
-	return MatchHistory.state.recentMatches.slice(0, maxHistoryLookback - queueLength).map(match => match.layerId)
+	return [
+		...previousLayerIds,
+		...MatchHistory.state.recentMatches.slice(0, maxHistoryLookback - previousLayerIds.length).map(match => match.layerId),
+	]
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {
