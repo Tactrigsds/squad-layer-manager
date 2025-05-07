@@ -94,11 +94,21 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 		return layers.map((layer) => {
 			// default to true because missing means the constraint is applied via a where condition
 			const constraintResults: boolean[] = Array(constraints.length).fill(true)
+			const violationDescriptors: Record<string, string[] | undefined> = {}
 			for (const key of Object.keys(layer)) {
 				const groups = key.match(/^constraint_(\d+)$/)
 				if (!groups) continue
 				const idx = Number(groups[1])
 				constraintResults[idx] = Number(layer[key as keyof M.Layer]) === 1
+				const constraint = constraints[idx]
+				if (constraint.type === 'do-not-repeat') {
+					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
+					const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRule(constraint.rule, layer.id, previousLayerIds)
+					if (isBlocked) constraintResults[idx] = false
+					if (descriptors && descriptors.length > 0) {
+						violationDescriptors[constraint.id] = descriptors
+					}
+				}
 			}
 			return {
 				...M.includeComputedCollections(layer),

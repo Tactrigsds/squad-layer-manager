@@ -1,3 +1,4 @@
+import * as AR from '@/app-routes'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -10,8 +11,10 @@ import * as M from '@/models'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import React from 'react'
 import LayerSourceDisplay from './layer-source-display'
 
 export default function MatchHistoryPanel() {
@@ -37,10 +40,8 @@ export default function MatchHistoryPanel() {
 
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>
-					Match History<span className="ml-1 font-light">(most recent {allEntries.length} layers)</span>
-				</CardTitle>
+			<CardHeader className="flex flex-row justify-between items-center">
+				<CardTitle>Match History</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<Table>
@@ -51,6 +52,7 @@ export default function MatchHistoryPanel() {
 							<TableHead className="font-medium">Layer</TableHead>
 							<TableHead className="font-medium">Team 1</TableHead>
 							<TableHead className="font-medium">Team 2</TableHead>
+							<TableHead className="font-medium">Tickets</TableHead>
 							<TableHead className="font-medium">Set By</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -59,8 +61,9 @@ export default function MatchHistoryPanel() {
 							const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(entry.layerId))
 							const subfaction1 = layer.SubFac_1 ? DH.toShortSubfaction(layer.SubFac_1 ?? null) : undefined
 							const subfaction2 = layer.SubFac_2 ? DH.toShortSubfaction(layer.SubFac_2 ?? null) : undefined
-							const team1TicketDisp = entry.outcome.type !== 'draw' ? `(${entry.outcome.team1Tickets})` : undefined
-							const team2TicketDisp = entry.outcome.type !== 'draw' ? `(${entry.outcome.team2Tickets})` : undefined
+							const outcomeDisp = entry.outcome.type !== 'draw'
+								? `${entry.outcome.team1Tickets}:${entry.outcome.team2Tickets}`
+								: 'draw'
 							const gameRuntime = entry.endTime.getTime() - entry.startTime.getTime()
 							const idx = index + (currentPage - 1) * itemsPerPage + 1
 
@@ -101,6 +104,10 @@ export default function MatchHistoryPanel() {
 									),
 								})
 							}
+							let differenceDisp = '-' + Math.floor(dateFns.differenceInHours(new Date(), entry.endTime)).toString() + 'h'
+							if (differenceDisp === '-0h') {
+								differenceDisp = '-' + Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString() + 'm'
+							}
 
 							return (
 								<ContextMenu key={entry.historyEntryId}>
@@ -110,7 +117,7 @@ export default function MatchHistoryPanel() {
 											<TableCell className="font-mono text-xs font-light">
 												{formatTimeLeftWithZeros(gameRuntime)}
 												<span className="ml-1 text-muted-foreground">
-													(-{Math.floor(dateFns.differenceInHours(new Date(), entry.endTime))}h)
+													({differenceDisp})
 												</span>
 											</TableCell>
 											<TableCell className="font-mono text-sm">{layer.Layer}</TableCell>
@@ -118,14 +125,13 @@ export default function MatchHistoryPanel() {
 												{entry.outcome.type === 'team1' ? <span className="font-bold text-green-600">(W)</span> : ''}
 												{entry.outcome.type === 'draw' ? <span className="font-medium text-amber-600">(D)</span> : ''}
 												{layer.Faction_1} <span className="text-sm text-secondary-foreground">{subfaction1}</span>
-												<span className="text-sm">{team1TicketDisp}</span>
 											</TableCell>
 											<TableCell>
 												{entry.outcome.type === 'team2' ? <span className="font-bold text-green-600">(W)</span> : ''}
 												{entry.outcome.type === 'draw' ? <span className="font-medium text-amber-600">(D)</span> : ''}
 												{layer.Faction_2} <span className="text-sm text-secondary-foreground">{subfaction2}</span>
-												<span className="text-sm">{team2TicketDisp}</span>
 											</TableCell>
+											<TableCell>{outcomeDisp}</TableCell>
 											<TableCell>
 												<LayerSourceDisplay source={entry.layerSource} />
 											</TableCell>
@@ -138,7 +144,9 @@ export default function MatchHistoryPanel() {
 										<ContextMenuItem onClick={() => copyLayerId()}>
 											Copy Layer ID
 										</ContextMenuItem>
-										<ContextMenuItem onClick={() => copyAdminSetNextLayerCommand()}>
+										<ContextMenuItem
+											onClick={() => copyAdminSetNextLayerCommand()}
+										>
 											Copy Admin Set Next Layer Command
 										</ContextMenuItem>
 									</ContextMenuContent>

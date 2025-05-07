@@ -148,9 +148,10 @@ const constraintsCol = columnHelper.accessor('constraints', {
 	header: '',
 	enableHiding: false,
 	cell: info => {
-		const { values, constraints } = info.getValue() as {
+		const { values, constraints, violationDescriptors } = info.getValue() as {
 			constraints?: M.LayerQueryConstraint[]
 			values?: boolean[]
+			violationDescriptors?: Record<string, string[] | undefined>
 		}
 		if (!constraints || !values) return null
 		const nodes: React.ReactNode[] = []
@@ -163,8 +164,7 @@ const constraintsCol = columnHelper.accessor('constraints', {
 			)
 		}
 		const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
-		console.log({ id: info.row.id, constraints, namedConstraints, values })
-		return <ConstraintViolationDisplay violated={namedConstraints} layerId={info.row.id} />
+		return <ConstraintViolationDisplay violated={namedConstraints} layerId={info.row.id} violationDescriptors={violationDescriptors} />
 	},
 })
 
