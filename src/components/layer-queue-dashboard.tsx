@@ -23,7 +23,6 @@ import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client.ts'
-import * as ReactRx from '@react-rxjs/core'
 import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
 import { zodValidator } from '@tanstack/zod-form-adapter'
@@ -43,7 +42,16 @@ import VoteTallyDisplay from './votes-display.tsx'
 
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useSquadServerStatus()
-	const settingsPanelRef = React.useRef<PoolConfigurationPopoverHandle>(null)
+
+	// -------- set title --------
+	React.useEffect(() => {
+		if (!serverStatusRes) return
+		if (serverStatusRes.code !== 'ok') {
+			document.title = 'Squad Layer Manager'
+		} else if (serverStatusRes.code === 'ok') {
+			document.title = `SLM - ${serverStatusRes.data.name}`
+		}
+	}, [serverStatusRes])
 
 	const toaster = useToast()
 	const updateQueueMutation = useMutation({

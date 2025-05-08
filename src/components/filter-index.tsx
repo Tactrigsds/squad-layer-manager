@@ -4,13 +4,17 @@ import * as Typography from '@/lib/typography'
 import * as M from '@/models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
-import * as ReactRx from '@react-rxjs/core'
-import * as Icons from 'lucide-react'
+import React from 'react'
 import { Link } from 'react-router-dom'
 
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
+	// -------- set title --------
+	React.useEffect(() => {
+		document.title = 'SLM - Filters'
+	}, [])
+
 	const filters = FilterEntityClient.useFilterEntities()
 	return (
 		<div className="container mx-auto py-8">

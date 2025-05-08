@@ -44,6 +44,13 @@ export default function FilterWrapper() {
 	const loggedInUser = useLoggedInUser()
 	const navigate = useNavigate()
 	const filterEntity = ReactRx.useStateObservable(FilterEntityClient.filterEntities$).get(editParams.id)
+
+	// -------- set title --------
+	React.useEffect(() => {
+		if (!filterEntity?.name) return
+		document.title = `SLM - ${filterEntity?.name}`
+	}, [filterEntity?.name])
+
 	React.useEffect(() => {
 		const sub = FilterEntityClient.filterMutation$.subscribe((mutation) => {
 			if (!mutation || mutation.key !== editParams.id) return
