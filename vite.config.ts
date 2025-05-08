@@ -1,9 +1,9 @@
 import react from '@vitejs/plugin-react-swc'
 import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
-
 import * as AR from './src/app-routes.ts'
-import { ensureEnvSetup, ENV } from './src/server/env.ts'
+import { ensureEnvSetup } from './src/server/env.ts'
+import * as Env from './src/server/env.ts'
 
 const prod = process.env.NODE_ENV === 'production'
 
@@ -21,6 +21,7 @@ export default defineConfig({
 
 function buildProxy() {
 	ensureEnvSetup()
+	const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 	return Object.fromEntries(
 		Object.values(AR.routes).map((r) => {
 			const protocol = r.websocket ? 'ws://' : 'http://'

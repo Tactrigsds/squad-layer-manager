@@ -6,7 +6,7 @@ import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
-import { ENV } from '@/server/env.ts'
+import * as Env from '@/server/env.ts'
 import { baseLogger, Logger } from '@/server/logger.ts'
 import * as Paths from '@/server/paths'
 import * as TrpcRouter from '@/server/router'
@@ -29,16 +29,20 @@ import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
 import { WebSocket } from 'ws'
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer, ...Env.groups.discord })
+let ENV!: ReturnType<typeof envBuilder>
+const tracer = Otel.trace.getTracer('fastify')
+let instance!: Awaited<ReturnType<typeof getFastifyBase>>
+
 async function getFastifyBase() {
 	return await fastify({
 		maxParamLength: 5000,
 		logger: false,
 	})
 }
-const tracer = Otel.trace.getTracer('fastify')
-let instance!: Awaited<ReturnType<typeof getFastifyBase>>
 
 export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
+	ENV = envBuilder()
 	instance = await getFastifyBase()
 
 	// --------  logging --------

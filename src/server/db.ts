@@ -8,13 +8,17 @@ import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
 import { EventEmitter } from 'node:events'
 import path from 'node:path'
 import * as C from './context.ts'
-import { ENV } from './env.ts'
+import * as Env from './env.ts'
 
 export type Db = MySql2Database<Record<string, never>>
 
 let pool: MySQL.Pool
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
+let ENV!: ReturnType<typeof envBuilder>
+
 export async function setupDatabase() {
+	ENV = envBuilder()
 	pool = MySQL.createPool({
 		host: ENV.DB_HOST,
 		port: ENV.DB_PORT,

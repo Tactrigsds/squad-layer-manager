@@ -9,7 +9,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
-import { ENV } from './env.ts'
+import * as Env from './env.ts'
 
 const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
@@ -68,9 +68,13 @@ export const ConfigSchema = z.object({
 
 export let CONFIG!: Config
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+let ENV!: ReturnType<typeof envBuilder>
+
 export async function ensureConfigSetup() {
 	if (CONFIG) return
 
+	ENV = envBuilder()
 	if (ENV.NODE_ENV === 'development') {
 		await generateConfigJsonSchema()
 	}

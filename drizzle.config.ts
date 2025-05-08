@@ -1,8 +1,9 @@
 import { defineConfig } from 'drizzle-kit'
 
-import { ensureEnvSetup, ENV } from './src/server/env.ts'
+import * as Env from './src/server/env.ts'
 
-ensureEnvSetup()
+Env.ensureEnvSetup()
+const ENV = Env.getEnvBuilder({ ...Env.groups.db })()
 
 export default defineConfig({
 	schema: './drizzle/schema.ts',

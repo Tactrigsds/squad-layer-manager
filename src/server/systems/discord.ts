@@ -3,7 +3,7 @@ import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
 import * as D from 'discord.js'
 import { z } from 'zod'
-import { ENV } from '../env'
+import * as Env from '../env'
 import { baseLogger } from '../logger'
 
 export const DiscordUserSchema = z.object({
@@ -25,8 +25,12 @@ export type AccessToken = {
 
 let client!: D.Client
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
+let ENV!: ReturnType<typeof envBuilder>
+
 const tracer = Otel.trace.getTracer('discord')
 export const setupDiscordSystem = C.spanOp('discord:setup', { tracer }, async () => {
+	ENV = envBuilder()
 	const ctx = { log: baseLogger }
 	client = new D.Client({
 		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],

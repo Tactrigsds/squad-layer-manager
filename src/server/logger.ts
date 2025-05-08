@@ -6,7 +6,7 @@ import { flattenObjToAttrs } from '@/lib/object'
 import * as Otel from '@opentelemetry/api'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
-import { ENV, Env } from './env'
+import * as Env from './env'
 
 import build from 'pino-abstract-transport'
 export type Logger = PinoLogger
@@ -41,7 +41,11 @@ const LEVELS = {
 
 let otelLogger: OtelLogger | undefined
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+let ENV!: ReturnType<typeof envBuilder>
+
 export function ensureLoggerSetup() {
+	ENV = envBuilder()
 	if (baseLogger) return
 	otelLogger = ((otelSdk as any)._loggerProvider as LoggerProvider)?.getLogger('squad-layer-manager')
 	const hooks: pino.LoggerOptions['hooks'] = {
@@ -108,7 +112,7 @@ export function ensureLoggerSetup() {
 			serializers,
 			hooks,
 		},
-	} satisfies { [env in Env['NODE_ENV']]: LoggerOptions }
+	} satisfies { [env in (typeof ENV)['NODE_ENV']]: LoggerOptions }
 
 	const baseConfig = envToLogger[ENV.NODE_ENV]
 

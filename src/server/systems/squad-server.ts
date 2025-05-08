@@ -19,9 +19,8 @@ import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
-import * as E from 'drizzle-orm/expressions'
 import StringComparison from 'string-comparison'
-import { ENV } from '../env'
+import * as Env from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
 type SquadServerState = {
@@ -44,6 +43,9 @@ export let adminList!: AsyncResource<SM.SquadAdmins>
 export let serverStatus!: AsyncResource<SM.ServerStatusWithCurrentMatchRes>
 
 export let state!: SquadServerState
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadSftpLogs, ...Env.groups.rcon })
+let ENV!: ReturnType<typeof envBuilder>
 
 export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, message: string) => {
 	C.setSpanOpAttrs({ message })
@@ -208,6 +210,7 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 })
 
 export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async () => {
+	ENV = envBuilder()
 	// -------- set up admin list --------
 	const adminListTTL = 1000 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })

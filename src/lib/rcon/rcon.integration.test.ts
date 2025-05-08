@@ -1,10 +1,9 @@
-import { Mutex } from 'async-mutex'
-import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
-
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
-import { ensureEnvSetup, ENV } from '@/server/env'
+import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
+import { Mutex } from 'async-mutex'
+import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
 
 import Rcon from './core-rcon.ts'
 import SquadRcon from './squad-rcon.ts'
@@ -14,8 +13,9 @@ let rcon!: Rcon
 let baseCtx: C.Log
 
 beforeAll(async () => {
-	ensureEnvSetup()
-	await ensureLoggerSetup()
+	Env.ensureEnvSetup()
+	ensureLoggerSetup()
+	const ENV = Env.getEnvBuilder({ ...Env.groups.rcon })()
 	baseCtx = { log: baseLogger }
 	const config = {
 		host: ENV.RCON_HOST,
