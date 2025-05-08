@@ -17,7 +17,6 @@ import * as RBAC from '@/rbac.models'
 import type { LayersQueryInput } from '@/server/systems/layer-queries'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
-import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
@@ -92,20 +91,20 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	})
 }
 
-function Cell({ row }: { row: Row<M.Layer & M.LayerComposite & 'constraints'> }) {
+function Cell({ row }: { row: Row<RowData> }) {
 	const loggedInUser = useLoggedInUser()
-	const canForceSelect = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const canForceWrite = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
 	return (
 		<Checkbox
 			checked={row.getIsSelected()}
-			className={getIsRowDisabled(row, canForceSelect) ? 'invisible' : ''}
+			className={getIsRowDisabled(row, canForceWrite) ? 'invisible' : ''}
 			aria-label="Select row"
 		/>
 	)
 }
 
-const COL_DEFS: ColumnDef<M.Layer & M.LayerComposite & 'constraints', any>[] = [
+const COL_DEFS: ColumnDef<RowData>[] = [
 	{
 		id: 'select',
 		header: ({ table }) => (
@@ -419,11 +418,10 @@ export default function LayerTable(props: {
 	}, [page, autoSelectIfSingleResult])
 
 	const table = useReactTable({
-		data: page?.layers.map(layer => ({
+		data: page?.layers.map((layer): RowData => ({
 			...layer,
-			constraints: { values: layer.constraints, constraints: queryConstraints },
+			constraints: { values: layer.constraints, constraints: queryConstraints ?? [] },
 		})) ?? [],
-		// @ts-expect-error idk
 		columns: COL_DEFS,
 		pageCount: page?.pageCount ?? -1,
 		state: {
@@ -450,7 +448,7 @@ export default function LayerTable(props: {
 	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, page?.totalCount ?? 0)
 
 	const loggedInUser = useLoggedInUser()
-	const canForceSelect = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const canForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
 	function getChosenRows(row: Row<M.Layer>) {
 		if (!props.selected.includes(row.original.id)) {

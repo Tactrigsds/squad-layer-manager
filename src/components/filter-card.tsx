@@ -4,6 +4,7 @@ import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
 import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
+import * as MapUtils from '@/lib/map'
 import { eltToFocusable, Focusable } from '@/lib/react'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { cn } from '@/lib/utils.ts'
@@ -586,11 +587,13 @@ type ApplyFilterProps = {
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
-	let filters = FilterEntityClient.useFIlterEntities()
-	if (props.editedFilterId) {
-		filters = filters?.filter((f) => f.id !== props.editedFilterId)
+	const filters = FilterEntityClient.useFilterEntities()
+	const options: ComboBoxOption<string>[] = []
+	for (const filter of filters.values()) {
+		if (props.editedFilterId && filter.id === props.editedFilterId) continue
+
+		options.push({ label: filter.name, value: filter.id })
 	}
-	const options = filters ? filters.map((f) => ({ label: f.name, value: f.id })) : LOADING
 	const boxRef = useRef<ComboBoxHandle>()
 	React.useEffect(() => {
 		if (props.defaultEditing) {

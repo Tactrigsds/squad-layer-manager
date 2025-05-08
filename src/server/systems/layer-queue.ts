@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, AsyncExclusiveTaskRunner, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
@@ -72,7 +72,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		const initialServerState = M.ServerStateSchema.parse(server)
 
 		// -------- prune main pool filters when filter entities are deleted  --------
-		const mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
+		let mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
 		const filters = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, mainPoolFilterIds)).for('update')
 		mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
 		initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
