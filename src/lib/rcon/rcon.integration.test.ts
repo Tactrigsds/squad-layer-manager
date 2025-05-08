@@ -44,7 +44,7 @@ test('can set next layer', async () => {
 	const ctx = C.includeLogProperties(baseCtx, { test: 'can set next layer' })
 	const layer1Id = M.getLayerId({
 		Gamemode: 'RAAS',
-		Level: 'Fallujah',
+		Map: 'Fallujah',
 		LayerVersion: 'V1',
 		Faction_1: 'RGF',
 		Faction_2: 'USA',
@@ -65,7 +65,7 @@ test('can set next layer', async () => {
 	expect(nextLayer1!.id).toBe(layer1Id)
 	const layer2Id = M.getLayerId({
 		Gamemode: 'RAAS',
-		Level: 'GooseBay',
+		Map: 'GooseBay',
 		LayerVersion: 'V1',
 		Faction_1: 'USA',
 		SubFac_1: 'CombinedArms',

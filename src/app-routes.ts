@@ -4,7 +4,7 @@ export type RouteDefinition<Params extends string[] = string[]> = {
 	handle: 'page' | 'custom'
 	websocket: boolean
 	params: Params
-	link: (args: Params) => string
+	link: (...args: Params) => string
 }
 export const routes = {
 	...defRoute('/', []),
@@ -12,9 +12,7 @@ export const routes = {
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
-	...defRoute('/filters/:id', ['id'], {
-		link: ([id]) => `/filters/${id}`,
-	}),
+	...defRoute('/filters/:id', ['id'], { link: (id) => `/filters/${id}`, }),
 
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),

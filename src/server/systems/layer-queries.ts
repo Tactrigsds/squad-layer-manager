@@ -496,7 +496,7 @@ function getisBlockedByDoNotRepeatRule(rule: M.DoNotRepeatRule, targetLayerId: M
 	for (const layerId of layerIds) {
 		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
 		switch (rule.field) {
-			case 'Level':
+			case 'Map':
 			case 'Layer':
 				if (layer[rule.field] && targetLayer[rule.field] === layer[rule.field]) return retValue(true)
 				break
@@ -536,7 +536,7 @@ function getDoNotRepeatSQLConditions(
 	for (const layerId of layerIds) {
 		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
 		switch (rule.field) {
-			case 'Level':
+			case 'Map':
 			case 'Layer':
 				if (layer[rule.field]) values.add(layer[rule.field]!)
 				break
@@ -556,7 +556,7 @@ function getDoNotRepeatSQLConditions(
 	const valuesArr = Array.from(values)
 
 	switch (rule.field) {
-		case 'Level':
+		case 'Map':
 		case 'Layer':
 			return E.notInArray(Schema.layers[rule.field], valuesArr)
 		case 'Faction':

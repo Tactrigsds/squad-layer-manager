@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { objKeys } from '@/lib/object'
+import * as ObjUtils from '@/lib/object'
 import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
 import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
 import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
@@ -37,7 +37,7 @@ const SUBFACTIONS = [
 	'AmphibiousAssault',
 ] as const
 
-const LEVEL_ABBREVIATIONS = {
+const MAP_ABBREVIATIONS = {
 	AlBasrah: 'AB',
 	Anvil: 'AN',
 	Belaya: 'BL',
@@ -105,7 +105,7 @@ const GAMEMODE_ABBREVIATIONS = {
 	Tanks: 'TN',
 } satisfies Record<(typeof GAMEMODES)[number], string>
 
-const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = {
+const MAP_SHORT_NAMES: Record<M.Layer['Map'], string> = {
 	AlBasrah: 'Basrah',
 	Anvil: 'Anvil',
 	Belaya: 'Belaya',
@@ -148,7 +148,7 @@ const SUBFACTION_SHORT_NAMES = {
 // layout expected from csv
 export const RawLayerSchema = z
 	.object({
-		Level: z.string(),
+		Level: z.string().transform((level) => M.preprocessLevel(level)),
 		Layer: z.string(),
 		Size: z.string(),
 		Faction_1: z.string(),
@@ -220,7 +220,7 @@ const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
-		args.push(...objKeys(Steps.Values))
+		args.push(...ObjUtils.objKeys(Steps.Values))
 	}
 	ensureEnvSetup()
 	setupOtel()
@@ -289,10 +289,9 @@ async function downloadPipeline(ctx: C.Log) {
 
 function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M.Layer {
 	const { gamemode, version: version } = M.parseLayerStringSegment(rawLayer.Layer)!
-	const level = M.preprocessLevel(rawLayer.Level)
 	const id = M.getLayerId(
 		{
-			Level: level,
+			Map: rawLayer.Level,
 			Gamemode: gamemode,
 			LayerVersion: version,
 			Faction_1: rawLayer.Faction_1,
@@ -313,7 +312,8 @@ function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M
 		id,
 		Gamemode: gamemode,
 		LayerVersion: version,
-		...rawLayer,
+		Map: rawLayer.Level,
+		...ObjUtils.exclude(rawLayer, ['Level']),
 		Logistics_Diff: getDiff('Logistics_1', 'Logistics_2'),
 		Transportation_Diff: getDiff('Transportation_1', 'Transportation_2'),
 		'Anti-Infantry_Diff': getDiff('Anti-Infantry_1', 'Anti-Infantry_2'),
@@ -331,7 +331,7 @@ async function parsePipelineData() {
 
 async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Output, biomes: Biome[], factions: FactionDetails[]) {
 	const baseLayerComponents: BaseLayerComponents = {
-		levels: new Set(),
+		maps: new Set(),
 		layers: new Set(),
 		gamemodes: new Set(),
 		versions: new Set(),
@@ -366,9 +366,9 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
 
 	for (const layer of rawLayers) {
-		const { gamemode, version, level } = M.parseLayerStringSegment(layer.Layer)!
-		if (level !== layer.Level) throw new Error(`Layer ${layer.Layer} has level ${level} but expected ${layer.Level}`)
-		baseLayerComponents.levels.add(layer.Level)
+		const { gamemode, version, map: map } = M.parseLayerStringSegment(layer.Layer)!
+		if (map !== layer.Level) throw new Error(`Layer ${layer.Layer} has level ${map} but expected ${layer.Level}`)
+		baseLayerComponents.maps.add(layer.Level)
 		baseLayerComponents.layers.add(layer.Layer)
 		baseLayerComponents.gamemodes.add(gamemode)
 		baseLayerComponents.versions.add(version!)
@@ -424,7 +424,7 @@ async function updateLayersTable(
 			.values(
 				factions
 					.map((faction) =>
-						objKeys(faction.subfactions).map((subfaction) => {
+						ObjUtils.objKeys(faction.subfactions).map((subfaction) => {
 							return {
 								fullName: faction.subfactions[subfaction],
 								shortName: subfaction,
@@ -493,7 +493,7 @@ function getJensensLayers(pipeline: SquadPipelineModels.Output): RawLayer[] {
 	const jensensLayers: RawLayer[] = []
 	for (const layerString of pipeline.mapsavailable) {
 		if (!layerString.toLowerCase().includes('jensens')) continue
-		const { level, jensensFactions } = M.parseLayerStringSegment(layerString)!
+		const { map: level, jensensFactions } = M.parseLayerStringSegment(layerString)!
 		jensensLayers.push(
 			RawLayerSchema.parse({
 				Level: level,
@@ -513,7 +513,7 @@ function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[],
 	const seedLayers: RawLayer[] = []
 	for (const layerString of pipeline.mapsavailable) {
 		if (!layerString.toLowerCase().includes('seed')) continue
-		const { level } = M.parseLayerStringSegment(layerString)!
+		const { map: level } = M.parseLayerStringSegment(layerString)!
 
 		const matchups = getSeedingMatchupsForLayer(level, factions, biomes)
 		for (const [team1, team2] of matchups) {
@@ -562,7 +562,7 @@ function getSeedingMatchupsForLayer(mapName: string, factions: FactionDetails[],
 }
 
 type BaseLayerComponents = {
-	levels: Set<string>
+	maps: Set<string>
 	layers: Set<string>
 	gamemodes: Set<string>
 	versions: Set<string>
@@ -581,12 +581,12 @@ function parseLayerComponents(
 		pipeline: SquadPipelineModels.Output
 	},
 ) {
-	for (const level of baseLayerComponents.levels) {
-		if (!(level in LEVEL_SHORT_NAMES)) {
-			throw new Error(`level ${level} doesn't have a short name`)
+	for (const map of baseLayerComponents.maps) {
+		if (!(map in MAP_SHORT_NAMES)) {
+			throw new Error(`map ${map} doesn't have a short name`)
 		}
-		if (!(level in LEVEL_ABBREVIATIONS)) {
-			throw new Error(`level ${level} doesn't have an abbreviation`)
+		if (!(map in MAP_ABBREVIATIONS)) {
+			throw new Error(`map ${map} doesn't have an abbreviation`)
 		}
 	}
 	for (const subfaction of baseLayerComponents.subfactions) {
@@ -623,9 +623,9 @@ function parseLayerComponents(
 		subfactionAbbreviations: SUBFACTION_ABBREVIATIONS,
 		subfactionShortNames: SUBFACTION_SHORT_NAMES,
 		subfactionFullNames,
-		levels: [...baseLayerComponents.levels],
-		levelAbbreviations: LEVEL_ABBREVIATIONS,
-		levelShortNames: LEVEL_SHORT_NAMES,
+		maps: [...baseLayerComponents.maps],
+		mapAbbreviations: MAP_ABBREVIATIONS,
+		mapShortNames: MAP_SHORT_NAMES,
 		layers: [...baseLayerComponents.layers],
 		layerVersions: [...baseLayerComponents.versions],
 		gamemodes: GAMEMODES as unknown as string[],
@@ -640,6 +640,7 @@ function parseLayerComponents(
 
 	return layerComponents
 }
+
 async function parseBiomes(_ctx: C.Log) {
 	await using ctx = C.pushOperation(_ctx, 'parse-biomes')
 	const fileStream = fs.createReadStream(path.join(Paths.DATA, 'biomes.csv'), 'utf-8')

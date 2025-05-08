@@ -22,7 +22,7 @@ async function main() {
 		await rcon.connect(ctx)
 		const squadRcon = new SquadRcon(ctx, rcon)
 		const layer1 = M.getLayerId({
-			Level: 'Yehorivka',
+			Map: 'Yehorivka',
 			LayerVersion: 'V1',
 			Gamemode: 'RAAS',
 			Faction_1: 'USA',

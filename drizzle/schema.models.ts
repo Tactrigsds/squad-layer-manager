@@ -22,7 +22,7 @@ export type NewMatchHistory = typeof Schema.matchHistory.$inferInsert
 
 export const MINI_LAYER_SELECT = {
 	id: Schema.layers.id,
-	Level: Schema.layers.Level,
+	Map: Schema.layers.Map,
 	Layer: Schema.layers.Layer,
 	Gamemode: Schema.layers.Gamemode,
 	LayerVersion: Schema.layers.LayerVersion,

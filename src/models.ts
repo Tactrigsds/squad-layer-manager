@@ -12,7 +12,7 @@ import { PercentageSchema } from './lib/zod'
 const StaticLayerComponents = _StaticLayerComponents as LayerComponents
 
 export const getLayerKey = (layer: Layer) =>
-	`${layer.Level}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
+	`${layer.Map}-${layer.Layer}-${layer.Faction_1}-${layer.SubFac_1}-${layer.Faction_2}-${layer.SubFac_2}`
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = SchemaModels.Layer & MiniLayer
@@ -21,7 +21,7 @@ export type QueriedLayer = Layer & LayerComposite & { constraints: boolean[] }
 export type Subfaction = keyof (typeof _StaticLayerComponents)['subfactionAbbreviations']
 
 export type LayerIdArgs = {
-	Level: string
+	Map: string
 	Gamemode: string
 	LayerVersion: string | null
 	Faction_1: string
@@ -67,7 +67,7 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 			code: 'raw',
 			id: `RAW:${rawLayerText}`,
 			partialLayer: {
-				Level: parsedLayer?.level,
+				Map: parsedLayer?.map,
 				Layer: layerString,
 				Gamemode: parsedLayer?.gamemode,
 				LayerVersion: parsedLayer?.version ?? null,
@@ -79,13 +79,13 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 		}
 	}
 	const {
-		level,
+		map: map,
 		gamemode,
 		version,
 	} = parsedLayer
 
 	const layerIdArgs: LayerIdArgs = {
-		Level: level,
+		Map: map,
 		Gamemode: gamemode,
 		LayerVersion: version ?? null,
 		Faction_1: faction1.faction,
@@ -105,7 +105,7 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 		code: 'raw',
 		id: `RAW:${rawLayerText}`,
 		partialLayer: {
-			Level: level,
+			Map: map,
 			Layer: layerString,
 			Gamemode: gamemode,
 			LayerVersion: version ?? null,
@@ -117,12 +117,12 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 	}
 }
 
-export const LAYER_STRING_PROPERTIES = ['Level', 'Gamemode', 'LayerVersion'] as const satisfies (keyof MiniLayer)[]
+export const LAYER_STRING_PROPERTIES = ['Map', 'Gamemode', 'LayerVersion'] as const satisfies (keyof MiniLayer)[]
 export function parseLayerStringSegment(layer: string) {
 	if (layer.startsWith('JensensRange')) {
 		const jensensFactions = layer.slice('JensensRange_'.length).split('-')
 		return {
-			level: 'JensensRange',
+			map: 'JensensRange',
 			gamemode: 'Training',
 			version: null,
 			jensensFactions,
@@ -130,9 +130,9 @@ export function parseLayerStringSegment(layer: string) {
 	}
 	const groups = layer.match(/^([A-Za-z0-9]+)_([A-Za-z0-9]+)?_([A-Za-z0-9]+)$/)
 	if (!groups) return null
-	const [level, gamemode, version] = groups.slice(1)
+	const [map, gamemode, version] = groups.slice(1)
 	return {
-		level: level,
+		map: map,
 		gamemode: gamemode,
 		version: version?.toUpperCase() ?? null,
 	}
@@ -163,9 +163,9 @@ function parseLayerFactions(faction1String: string, faction2String: string) {
 }
 
 export type LayerComponents = {
-	levels: string[]
-	levelAbbreviations: Record<string, string>
-	levelShortNames: Record<string, string>
+	maps: string[]
+	mapAbbreviations: Record<string, string>
+	mapShortNames: Record<string, string>
 	layers: string[]
 	layerVersions: string[]
 
@@ -193,19 +193,19 @@ export type LayerComponents = {
 	gamemodeAbbreviations: Record<string, string>
 }
 
-export function getLayerString(details: Pick<MiniLayer, 'Level' | 'Gamemode' | 'LayerVersion'>) {
-	if (details.Level === 'JensensRange') {
-		return `${details.Level}_Training`
+export function getLayerString(details: Pick<MiniLayer, 'Map' | 'Gamemode' | 'LayerVersion'>) {
+	if (details.Map === 'JensensRange') {
+		return `${details.Map}_Training`
 	}
-	let layer = `${details.Level}_${details.Gamemode}`
+	let layer = `${details.Map}_${details.Gamemode}`
 	if (details.LayerVersion) layer += `_${details.LayerVersion.toLowerCase()}`
 	return layer
 }
 
 export function getLayerId(layer: LayerIdArgs, components: LayerComponents = StaticLayerComponents) {
-	const levelPart = components.levelAbbreviations[layer.Level] ?? layer.Level
+	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
 	const gamemodePart = components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode
-	let mapLayer = `${levelPart}-${gamemodePart}`
+	let mapLayer = `${mapPart}-${gamemodePart}`
 	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
 
 	const team1 = getLayerTeamString(layer.Faction_1, layer.SubFac_1)
@@ -282,8 +282,8 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		// for backwards compatibility with old layerids
 		gamemode = gamemodeAbbr
 	}
-	const level = revLookup(components.levelAbbreviations, mapAbbr)
-	if (!level) {
+	const map = revLookup(components.mapAbbreviations, mapAbbr)
+	if (!map) {
 		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
 	}
 	const [faction1, subfac1] = parseFactionPart(faction1Part)
@@ -291,20 +291,20 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 
 	const layerVersion = versionPart ? versionPart.toUpperCase() : null
 	let layer: string | undefined
-	if (level === 'JensensRange') {
-		layer = `${level}_${faction1}-${faction2}`
+	if (map === 'JensensRange') {
+		layer = `${map}_${faction1}-${faction2}`
 	} else {
 		layer = StaticLayerComponents.layers.find(
-			(l) => l.startsWith(`${level}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
+			(l) => l.startsWith(`${map}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
 		)
 	}
 	if (!layer) {
-		throw new Error(`Invalid layer: ${level}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
+		throw new Error(`Invalid layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`)
 	}
 
 	return {
 		id,
-		Level: level,
+		Map: map,
 		Layer: layer,
 		Gamemode: gamemode,
 		LayerVersion: layerVersion,
@@ -421,7 +421,7 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'Armor_Diff',
 		'ZERO_Score_Diff',
 	] as const,
-	string: ['id', 'Level', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
+	string: ['id', 'Map', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
 	integer: [] as const,
 	collection: ['FactionMatchup', 'FullMatchup', 'SubFacMatchup'] as const,
 	boolean: ['Z_Pool', 'Scored'] as const,
@@ -429,7 +429,7 @@ export const COLUMN_TYPE_MAPPINGS = {
 
 export const COLUMN_LABELS = {
 	id: 'ID',
-	Level: 'Level',
+	Map: 'Map',
 	Layer: 'Layer',
 	Size: 'Size',
 	Faction_1: 'T1',
@@ -750,7 +750,7 @@ export function preprocessLevel(level: string) {
 
 export const MiniLayerSchema = z.object({
 	id: LayerIdSchema,
-	Level: z.string().transform(preprocessLevel),
+	Map: z.string().transform(preprocessLevel),
 	Layer: z.string(),
 	Gamemode: z.string(),
 	LayerVersion: z
@@ -857,7 +857,7 @@ export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
 export const DoNotRepeatRuleSchema = z.object({
-	field: z.enum(['Level', 'Layer', 'Faction', 'SubFac']),
+	field: z.enum(['Map', 'Layer', 'Faction', 'SubFac']),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
 export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
@@ -1111,7 +1111,7 @@ export type VoteStateWithVoteData = Extract<
 >
 
 const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
-	{ field: 'Level', within: 5 },
+	{ field: 'Map', within: 5 },
 	{ field: 'Layer', within: 7 },
 	{ field: 'Faction', within: 3 },
 	{ field: 'SubFac', within: 0 },

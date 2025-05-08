@@ -69,7 +69,7 @@ export const RoundDecidedSchema = z.object({
 	action: z.enum(['won', 'lost']),
 	tickets: z.number().int(),
 	layer: z.string(),
-	level: z.string(),
+	map: z.string(),
 })
 
 export type RoundDecided = z.infer<typeof RoundDecidedSchema>
@@ -90,7 +90,7 @@ export const RoundDecidedMatcher: EventMatcher<RoundDecided> = {
 			action: args[6] as 'won' | 'lost',
 			tickets: parseInt(args[7]),
 			layer: args[8],
-			level: args[9],
+			map: args[9],
 		}
 	},
 }

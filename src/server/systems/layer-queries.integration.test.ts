@@ -17,7 +17,7 @@ beforeAll(async () => {
 })
 
 test('can filter results', async () => {
-	const filter = FB.and([FB.comp(FB.eq('Level', 'Lashkar')), FB.comp(FB.eq('Gamemode', 'TC'))])
+	const filter = FB.and([FB.comp(FB.eq('Map', 'Lashkar')), FB.comp(FB.eq('Gamemode', 'TC'))])
 	const res = await queryLayers({
 		input: {
 			constraints: [{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'idk' }],
@@ -29,7 +29,7 @@ test('can filter results', async () => {
 	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
-		expect(layer.Level).toBe('Skorpo')
+		expect(layer.Map).toBe('Skorpo')
 		expect(layer.Gamemode).toBe('TC')
 	}
 })

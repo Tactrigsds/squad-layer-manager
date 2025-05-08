@@ -175,7 +175,7 @@
       "Support": "150th Support Battalion"
     }
   },
-  "levels": [
+  "maps": [
     "AlBasrah",
     "Anvil",
     "Belaya",
@@ -203,7 +203,7 @@
     "Yehorivka",
     "JensensRange"
   ],
-  "levelAbbreviations": {
+  "mapAbbreviations": {
     "AlBasrah": "AB",
     "Anvil": "AN",
     "Belaya": "BL",
@@ -231,7 +231,7 @@
     "Yehorivka": "YH",
     "JensensRange": "JR"
   },
-  "levelShortNames": {
+  "mapShortNames": {
     "AlBasrah": "Basrah",
     "Anvil": "Anvil",
     "Belaya": "Belaya",

@@ -34,7 +34,7 @@ export const layers = mysqlTable(
 	'layers',
 	{
 		id: varchar('id', { length: 64 }).primaryKey().notNull(),
-		Level: varchar('Level', { length: 255 }).notNull(),
+		Map: varchar('Map', { length: 255 }).notNull(),
 		Layer: varchar('Layer', { length: 255 }).notNull(),
 		Size: varchar('Size', { length: 255 }).notNull(),
 		Gamemode: varchar('Gamemode', { length: 255 }).notNull(),
@@ -65,7 +65,7 @@ export const layers = mysqlTable(
 	},
 	(layers) => {
 		return {
-			levelIndex: index('levelIndex').on(layers.Level),
+			mapIndex: index('mapIndex').on(layers.Map),
 			layerIndex: index('layerIndex').on(layers.Layer),
 			sizeIndex: index('sizeIndex').on(layers.Size),
 			gamemodeIndex: index('gamemodeIndex').on(layers.Gamemode),

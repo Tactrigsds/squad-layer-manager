@@ -123,7 +123,7 @@ const COL_DEFS: ColumnDef<RowData>[] = [
 const COLS_ORDER = [
 	'id',
 	'Layer',
-	'Level',
+	'Map',
 	'Gamemode',
 	'LayerVersion',
 	'Faction_1',

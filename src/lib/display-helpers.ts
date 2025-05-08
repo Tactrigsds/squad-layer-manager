@@ -2,10 +2,10 @@ import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
 // TODO use layer-components.json instead
-export const LEVEL_SHORT_NAMES: Record<M.Layer['Level'], string> = LayerComponents.levelShortNames
+export const MAP_SHORT_NAMES: Record<M.Layer['Map'], string> = LayerComponents.mapShortNames
 
-export function toShortLevel(level: M.Layer['Level']) {
-	return LayerComponents.levelShortNames[level as keyof typeof LayerComponents.levelShortNames]
+export function toShortLevel(map: M.Layer['Map']) {
+	return LayerComponents.mapShortNames[map as keyof typeof LayerComponents.mapShortNames]
 }
 
 export function toShortSubfaction(subfaction: string | null) {
@@ -31,7 +31,7 @@ export function toFullLayerName(layer: M.MiniLayer) {
 	const subfaction2 = layer.SubFac_2 ? ` ${layer.SubFac_2}` : ''
 	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
 
-	return `${layer.Level} ${layer.Gamemode}${layerVersion} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
+	return `${layer.Map} ${layer.Gamemode}${layerVersion} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
 }
 
 export function toFullLayerNameFromId(id: string) {
@@ -44,7 +44,7 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	const subfaction1 = toShortSubfaction(layer.SubFac_1)
 	const subFaction2 = toShortSubfaction(layer.SubFac_2)
 	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
-	let txt = `${LEVEL_SHORT_NAMES[layer.Level]} `
+	let txt = `${MAP_SHORT_NAMES[layer.Map]} `
 	txt += `${layer.Gamemode}${layerVersion}`
 	txt += ' '
 	txt += `- ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()

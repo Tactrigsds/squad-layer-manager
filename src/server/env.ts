@@ -6,12 +6,6 @@ import * as Cli from './systems/cli.ts'
 export const groups = {
 	general: {
 		NODE_ENV: z.enum(['development', 'production']),
-		ORIGIN: z
-			.string()
-			.url()
-			.default('http://localhost:5173')
-			// trim trailing whitespace
-			.transform((url) => url.replace(/\/$/, '')),
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 		OTLP_COLLECTOR_ENDPOINT: z
 			.string()
@@ -30,7 +24,7 @@ export const groups = {
 		DB_PORT: ParsedIntSchema.default('3306'),
 		DB_USER: z.string().nonempty().default('root'),
 		DB_PASSWORD: z.string().nonempty().default('dev'),
-		DB_DATABASE: z.string().nonempty(),
+    DB_DATABASE: z.string().nonempty().default('squadLayerManager'),
 	},
 
 	discord: {
@@ -52,6 +46,12 @@ export const groups = {
 	httpServer: {
 		PORT: ParsedIntSchema.default('3000'),
 		HOST: z.string().default('127.0.0.1'),
+		ORIGIN: z
+			.string()
+			.url()
+			.default('http://localhost:5173')
+			// trim trailing slash
+			.transform((url) => url.replace(/\/$/, '')),
 	},
 
 	squadSftpLogs: {

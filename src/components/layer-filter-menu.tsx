@@ -15,7 +15,7 @@ import { Comparison } from './filter-card'
 function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
 	return [
 		EFB.eq('Layer', defaultFields['Layer']),
-		EFB.eq('Level', defaultFields['Level']),
+		EFB.eq('Map', defaultFields['Map']),
 		EFB.eq('Gamemode', defaultFields['Gamemode']),
 		EFB.eq('LayerVersion', defaultFields['LayerVersion']),
 		EFB.eq('Faction_1', defaultFields['Faction_1']),
@@ -59,8 +59,8 @@ function getSiblingFiltersForMenuItems(items: M.EditableComparison[]) {
 			if (!M.isValidComparison(cand)) continue
 
 			// don't filter out the composite columns based on the filter with a combined value, because that would be annoying
-			if (item.column === 'Layer' && ['Level', 'Gamemode', 'LayerVersion'].includes(cand.column)) continue
-			if (['Level', 'Gamemode', 'LayerVersion'].includes(item.column) && cand.column === 'Layer') continue
+			if (item.column === 'Layer' && ['Map', 'Gamemode', 'LayerVersion'].includes(cand.column)) continue
+			if (['Map', 'Gamemode', 'LayerVersion'].includes(item.column) && cand.column === 'Layer') continue
 			comparisonsToApply.push(FB.comp(cand))
 		}
 
@@ -143,12 +143,12 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 						if (!parsedLayer) {
 							return
 						}
-						draft[idxMap['Level']].value = parsedLayer.level
+						draft[idxMap['Map']].value = parsedLayer.map
 						draft[idxMap['Gamemode']].value = parsedLayer.gamemode
 						draft[idxMap['LayerVersion']].value = parsedLayer.version
 					} else if (comp.column === 'Layer' && !comp.value) {
 						delete draft[idxMap['Layer']].value
-						delete draft[idxMap['Level']].value
+						delete draft[idxMap['Map']].value
 						delete draft[idxMap['Gamemode']].value
 						delete draft[idxMap['LayerVersion']].value
 					} else if (comp !== undefined) {
@@ -160,7 +160,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 						draft[idxMap['Layer']].value = M.getLayerString(
 							{
 								Gamemode: draft[idxMap['Gamemode']].value!,
-								Level: draft[idxMap['Level']].value!,
+								Map: draft[idxMap['Map']].value!,
 								LayerVersion: draft[idxMap['LayerVersion']].value!,
 							} as Parameters<typeof M.getLayerString>[0],
 						)
@@ -219,7 +219,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 
 					return (
 						<React.Fragment key={name}>
-							{(name === 'Level' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
+							{(name === 'Map' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
 							{name === 'Faction_2' && (
 								<>
 									<Button title="Swap Factions" disabled={swapFactionsDisabled} onClick={swapFactions} size="icon" variant="outline">
