@@ -1,48 +1,48 @@
 {
-  "version": "7",
-  "dialect": "mysql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "5",
-      "when": 1738048762481,
-      "tag": "0000_sad_tombstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1739058883305,
-      "tag": "0001_fair_virginia_dare",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1740879797294,
-      "tag": "0002_curved_sleepwalker",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1745098904215,
-      "tag": "0003_last_norrin_radd",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1746732838758,
-      "tag": "0004_long_hercules",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1746735034913,
-      "tag": "0005_chief_silhouette",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "mysql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "5",
+			"when": 1738048762481,
+			"tag": "0000_sad_tombstone",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "5",
+			"when": 1739058883305,
+			"tag": "0001_fair_virginia_dare",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "5",
+			"when": 1740879797294,
+			"tag": "0002_curved_sleepwalker",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "5",
+			"when": 1745098904215,
+			"tag": "0003_last_norrin_radd",
+			"breakpoints": true
+		},
+		{
+			"idx": 4,
+			"version": "5",
+			"when": 1746732838758,
+			"tag": "0004_long_hercules",
+			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "5",
+			"when": 1746735034913,
+			"tag": "0005_chief_silhouette",
+			"breakpoints": true
+		}
+	]
 }

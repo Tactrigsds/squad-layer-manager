@@ -24,7 +24,7 @@ export const groups = {
 		DB_PORT: ParsedIntSchema.default('3306'),
 		DB_USER: z.string().nonempty().default('root'),
 		DB_PASSWORD: z.string().nonempty().default('dev'),
-    DB_DATABASE: z.string().nonempty().default('squadLayerManager'),
+		DB_DATABASE: z.string().nonempty().default('squadLayerManager'),
 	},
 
 	discord: {

@@ -12,7 +12,7 @@ export const routes = {
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
-	...defRoute('/filters/:id', ['id'], { link: (id) => `/filters/${id}`, }),
+	...defRoute('/filters/:id', ['id'], { link: (id) => `/filters/${id}` }),
 
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),
@@ -53,5 +53,6 @@ export function link<R extends Route<'server'>>(path: R, ...args: (typeof routes
 	if (!linkFn) {
 		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
-	return linkFn(args)
+	// @ts-expect-error idgaf
+	return linkFn(...args)
 }

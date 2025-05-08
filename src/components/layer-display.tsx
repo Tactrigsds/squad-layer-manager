@@ -32,9 +32,6 @@ export default function LayerDisplay(props: { layerId: M.LayerId; itemId: string
 		const blockingConstraintIds = layerStatusesRes.data?.blocked.get(
 			M.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
 		)
-		if (props.layerId.startsWith('FL')) {
-			console.log({ id: props.itemId, constraints, ...layerStatusesRes.data })
-		}
 		if (blockingConstraintIds) {
 			badges.push(
 				<ConstraintViolationDisplay

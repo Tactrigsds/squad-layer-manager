@@ -82,7 +82,6 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
-	console.log({ lqContext: props.layerQueryContext })
 	const queryContextWithFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
 
 	return (

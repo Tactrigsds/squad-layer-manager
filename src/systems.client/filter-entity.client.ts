@@ -26,7 +26,6 @@ export const filterMutation$ = new Rx.Observable<M.UserEntityMutation<M.FilterEn
 	const sub = trpc.filters.watchFilters.subscribe(undefined, {
 		onData: (_output) => {
 			const output = PartsSys.stripParts(_output) as WatchFiltersOutput
-			console.log(output)
 			switch (output.code) {
 				case 'initial-value': {
 					filterEntities.clear()
