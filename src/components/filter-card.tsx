@@ -864,7 +864,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	})
 
 	const mirrorCheckboxId = React.useId()
-	const [mirror, setMirror] = useState(false)
+	const [mirror, setMirror] = useState(!!props.values[0] && props.values[0] === props.values[1])
 
 	if (props.column === 'FactionMatchup') {
 		const onSelect = props.setValues as ComboBoxMultiProps['onSelect']
