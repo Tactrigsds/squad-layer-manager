@@ -36,7 +36,8 @@ export async function setupDatabase() {
 	if (ENV.NODE_ENV === 'production') {
 		const db = drizzle(pool)
 		baseLogger.info('Running database migrations...')
-		await migrate(db, { migrationsFolder: path.join(Paths.PROJECT_ROOT, 'drizzle') })
+		// TODO make this nicer
+		// await migrate(db, { migrationsFolder: path.join(Paths.PROJECT_ROOT, 'drizzle') })
 		baseLogger.info('Database migrations completed')
 	}
 }

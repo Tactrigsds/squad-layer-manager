@@ -60,14 +60,14 @@ export const groups = {
 		SQUAD_SFTP_LOG_FILE: z.string().default('squad-sftp.log'),
 		SQUAD_SFTP_USERNAME: z.string().default('squad'),
 		SQUAD_SFTP_PASSWORD: z.string().default('password'),
-		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().min(1)),
+		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().positive()),
 	},
 } satisfies { [key: string]: Record<string, z.ZodTypeAny> }
 
 let rawEnv!: Record<string, string | undefined>
 
 export function getEnvBuilder<G extends Record<string, z.ZodTypeAny>>(groups: G) {
-	return () => z.object(groups).parse(rawEnv)
+	return () => z.object(groups).parse({ ...rawEnv })
 }
 
 let setup = false
