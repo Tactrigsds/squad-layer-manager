@@ -1,34 +1,34 @@
 {
-  "version": "7",
-  "dialect": "mysql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "5",
-      "when": 1738048762481,
-      "tag": "0000_sad_tombstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1739058883305,
-      "tag": "0001_fair_virginia_dare",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1740879797294,
-      "tag": "0002_curved_sleepwalker",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1745098904215,
-      "tag": "0003_last_norrin_radd",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "mysql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "5",
+			"when": 1738048762481,
+			"tag": "0000_sad_tombstone",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "5",
+			"when": 1739058883305,
+			"tag": "0001_fair_virginia_dare",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "5",
+			"when": 1740879797294,
+			"tag": "0002_curved_sleepwalker",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "5",
+			"when": 1745098904215,
+			"tag": "0003_last_norrin_radd",
+			"breakpoints": true
+		}
+	]
 }
