@@ -18,7 +18,7 @@ export const RECENT_HISTORY_BASE_LENGTH = 100
 export let state!: { recentMatches: SM.MatchDetails[] } & Parts<M.UserPart>
 const recentMatchesModified$ = new Rx.Subject<void>()
 
-const modifyHistoryMtx = new Mutex()
+export const modifyHistoryMtx = new Mutex()
 
 export async function setup() {
 	const ctx = DB.addPooledDb({ log: baseLogger })
@@ -98,8 +98,12 @@ export async function addHistoryEntry(ctx: C.Log & C.Db, entry: SchemaModels.New
 	})
 }
 
-export async function finalizeCurrentHistoryEntry(ctx: C.Log & C.Db, entry: Partial<SchemaModels.NewMatchHistory>) {
-	using _lock = await acquireInBlock(modifyHistoryMtx)
+export async function finalizeCurrentHistoryEntry(
+	ctx: C.Log & C.Db,
+	entry: Partial<SchemaModels.NewMatchHistory>,
+	opts?: { lock?: boolean },
+) {
+	using _lock = await acquireInBlock(modifyHistoryMtx, { bypass: !(opts?.lock ?? true) })
 	if (state.recentMatches.length === 0) {
 		ctx.log.warn('unable to update current history entry: empty')
 		return
@@ -108,10 +112,14 @@ export async function finalizeCurrentHistoryEntry(ctx: C.Log & C.Db, entry: Part
 		ctx.log.warn('unable to update current history entry: not in-progress')
 		return
 	}
-	await ctx.db().update(Schema.matchHistory).set(entry).where(E.eq(Schema.matchHistory.id, state.recentMatches[0].historyEntryId))
-	state.recentMatches[0] = SM.historyEntryToMatchDetails({ ...SM.matchHistoryEntryFromMatchDetails(state.recentMatches[0]), ...entry })
-	recentMatchesModified$.next()
-	return state.recentMatches[0]
+
+	// We're running a transaction here to keep in line with calling .next during the sql transaction. if we want to send the event after the transaction we should change this pattern in all places where we're sending the event and not just here
+	return await DB.runTransaction(ctx, async ctx => {
+		await ctx.db().update(Schema.matchHistory).set(entry).where(E.eq(Schema.matchHistory.id, state.recentMatches[0].historyEntryId))
+		state.recentMatches[0] = SM.historyEntryToMatchDetails({ ...SM.matchHistoryEntryFromMatchDetails(state.recentMatches[0]), ...entry })
+		recentMatchesModified$.next()
+		return state.recentMatches[0]
+	})
 }
 
 export async function getMatchHistoryCount(ctx: C.Log & C.Db): Promise<number> {

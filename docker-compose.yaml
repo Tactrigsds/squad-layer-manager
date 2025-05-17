@@ -10,6 +10,7 @@ services:
       - 3306:3306
     volumes:
       - db_data:/var/lib/mysql
+      - ./logs/debug.log:/tmp/debug.log
   squad_server:
     container_name: slm-squad-server
     image: cm2network/squad

@@ -140,6 +140,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 
 					if (comp.column === 'Layer' && comp.value) {
 						const parsedLayer = M.parseLayerStringSegment(comp.value as string)
+						draft[idxMap['Layer']].value = comp.value
 						if (!parsedLayer) {
 							return
 						}
@@ -154,18 +155,27 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					} else if (comp !== undefined) {
 						const idx = draft.findIndex((item) => item.column === name)
 						draft[idx] = comp
+						draft[idxMap[name]] = comp
 					}
-					const cols = draft.map((item) => item.column)
-					if (M.LAYER_STRING_PROPERTIES.every((p) => p in cols)) {
-						draft[idxMap['Layer']].value = M.getLayerString(
-							{
+
+					if (comp.column === 'Map' || comp.column === 'Gamemode') {
+						delete draft[idxMap['LayerVersion']].value
+					}
+
+					if ((M.LAYER_STRING_PROPERTIES as string[]).includes(comp.column as string) && comp.value) {
+						const excludingCurrent = M.LAYER_STRING_PROPERTIES.filter((p) => p !== comp.column)
+						if (excludingCurrent.every((p) => draft[idxMap[p]]?.value)) {
+							const args = {
 								Gamemode: draft[idxMap['Gamemode']].value!,
 								Map: draft[idxMap['Map']].value!,
 								LayerVersion: draft[idxMap['LayerVersion']].value!,
-							} as Parameters<typeof M.getLayerString>[0],
-						)
-					} else {
-						delete draft[idxMap['Layer']].value
+							} as Parameters<typeof M.getLayerString>[0]
+							// @ts-expect-error idc
+							args[comp.column] = comp.value!
+							draft[idxMap['Layer']].value = M.getLayerString(args)
+						} else {
+							delete draft[idxMap['Layer']].value
+						}
 					}
 				}),
 			)

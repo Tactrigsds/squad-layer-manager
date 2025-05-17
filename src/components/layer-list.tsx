@@ -8,6 +8,7 @@ import { useLayerStatuses } from '@/hooks/use-layer-queries.ts'
 import * as DH from '@/lib/display-helpers'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import * as SM from '@/lib/rcon/squad-models.ts'
 import * as Text from '@/lib/text'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -17,6 +18,7 @@ import * as M from '@/models'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -280,6 +282,9 @@ function LayerListItem(props: QueueItemProps) {
 		id: draggableItemId,
 	})
 
+	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
+	const normTeamOffset = currentMatch ? SM.getNormTeamOffsetForQueueIndex(currentMatch, props.index) : undefined
+
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
 		if (!canEdit) _setDropdownOpen(false)
@@ -372,7 +377,13 @@ function LayerListItem(props: QueueItemProps) {
 								return (
 									<li key={choice} className="flex items-center ">
 										<span className="mr-2">{index + 1}.</span>
-										<LayerDisplay itemId={props.itemId} layerId={choice} isVoteChoice={true} badges={badges} />
+										<LayerDisplay
+											itemId={props.itemId}
+											layerId={choice}
+											isVoteChoice={true}
+											badges={badges}
+											normTeamOffset={normTeamOffset}
+										/>
 									</li>
 								)
 							})}
@@ -402,7 +413,7 @@ function LayerListItem(props: QueueItemProps) {
 					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay layerId={item.layerId} itemId={item.itemId} />
+							<LayerDisplay layerId={item.layerId} itemId={item.itemId} normTeamOffset={normTeamOffset} />
 						</div>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>

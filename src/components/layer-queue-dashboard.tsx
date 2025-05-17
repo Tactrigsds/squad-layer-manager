@@ -16,6 +16,7 @@ import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
@@ -30,6 +31,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import ComboBox from './combo-box/combo-box.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
 import { LayerList } from './layer-list.tsx'
@@ -38,6 +40,7 @@ import { ServerUnreachable } from './server-offline-display.tsx'
 import { Timer } from './timer.tsx'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
+import { Switch } from './ui/switch.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 
 export default function LayerQueueDashboard() {
@@ -137,7 +140,10 @@ export default function LayerQueueDashboard() {
 	})
 	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
 	return (
-		<div className="contianer mx-auto grid place-items-center py-10">
+		<div className="mx-auto grid place-items-center">
+			<div className="w-full flex justify-end">
+				<NormTeamsSwitch />
+			</div>
 			<div className="flex space-x-4">
 				<div>
 					<MatchHistoryPanel />
@@ -217,6 +223,23 @@ export default function LayerQueueDashboard() {
 	)
 }
 
+function NormTeamsSwitch() {
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const switchId = React.useId()
+
+	const onCheckedChange = (checked: boolean | 'indeterminate') => {
+		if (checked === 'indeterminate') return
+		globalSettings.setDisplayLayersNormalized(checked)
+	}
+
+	return (
+		<div className="flex space-x-1 items-center p-2">
+			<Switch id={switchId} defaultChecked={globalSettings.displayLayersNormalized} onCheckedChange={onCheckedChange} />
+			<Label className="cursor-pointer" htmlFor={switchId}>Display Normalized Layers</Label>
+		</div>
+	)
+}
+
 function QueueControlPanel() {
 	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
 	function setPlayNextPopoverOpen(v: boolean) {
@@ -237,9 +260,6 @@ function QueueControlPanel() {
 
 	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(lqLength, { constraints }, QD.LQStore)
 	const playNextQueryContext: M.LayerQueryContext = { constraints }
-	const user = useLoggedInUser()
-
-	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -287,7 +307,7 @@ function QueueControlPanel() {
 				</Button>
 			</SelectLayersDialog>
 			<PoolConfigurationPopover>
-				<Button disabled={!canWriteSettings} size="icon" variant="ghost" title="Pool Configuration">
+				<Button size="icon" variant="ghost" title="Pool Configuration">
 					<Icons.Settings />
 				</Button>
 			</PoolConfigurationPopover>
@@ -585,6 +605,9 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 		s => [s.editedServerState.settings.queue[poolId].filters, s.setSetting],
 	)
 
+	const user = useLoggedInUser()
+	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+
 	const add = (filterId: M.FilterEntityId | null) => {
 		if (filterId === null) return
 		setSetting(s => {
@@ -617,6 +640,7 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 					return (
 						<li className="flex space-x-1 items-center" key={filterId}>
 							<FilterEntitySelect
+								enabled={canWriteSettings ?? false}
 								className="flex-grow"
 								title="Pool Filter"
 								filterId={filterId}
@@ -625,14 +649,21 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 								allowEmpty={false}
 								excludedFilterIds={excluded}
 							/>
-							<Button size="icon" variant="ghost" onClick={() => deleteFilter()}>
+							<Button disabled={!canWriteSettings} size="icon" variant="ghost" onClick={() => deleteFilter()}>
 								<Icons.Minus />
 							</Button>
 						</li>
 					)
 				})}
-				<FilterEntitySelect title="New Pool Filter" filterId={null} onSelect={add} excludedFilterIds={filterIds} allowEmpty={false}>
-					<Button size="icon" variant="ghost">
+				<FilterEntitySelect
+					title="New Pool Filter"
+					filterId={null}
+					onSelect={add}
+					excludedFilterIds={filterIds}
+					allowEmpty={false}
+					enabled={canWriteSettings ?? false}
+				>
+					<Button disabled={!canWriteSettings} size="icon" variant="ghost">
 						<Icons.Plus />
 					</Button>
 				</FilterEntitySelect>
@@ -644,6 +675,8 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'generationPool' }) {
 	const rules = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings.queue[poolId].doNotRepeatRules)
 	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
+	const user = useLoggedInUser()
+	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	return (
 		<div className="flex flex-col space-y-1 p-1 rounded">
@@ -652,18 +685,55 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 			</div>
 			{rules.map((rule, index) => (
 				<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
-					<Label>{rule.field}</Label>
+					<ComboBox
+						title={'Rule'}
+						options={M.DnrFieldSchema.options}
+						value={rule.field}
+						allowEmpty={false}
+						onSelect={(value) => {
+							if (!value) return
+							setSetting((settings) => {
+								settings.queue[poolId].doNotRepeatRules[index].field = value as M.DnrField
+							})
+						}}
+						disabled={!canWriteSettings}
+					/>
 					<Input
 						type="number"
 						defaultValue={rule.within}
+						disabled={!canWriteSettings}
 						onChange={(e) => {
 							setSetting((settings) => {
 								settings.queue[poolId].doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
 							})
 						}}
 					/>
+					<Button
+						size="icon"
+						variant="ghost"
+						onClick={() => {
+							setSetting((settings) => {
+								settings.queue[poolId].doNotRepeatRules.splice(index, 1)
+							})
+						}}
+						disabled={!canWriteSettings}
+					>
+						<Icons.Minus />
+					</Button>
 				</div>
 			))}
+			<Button
+				size="icon"
+				variant="ghost"
+				disabled={!canWriteSettings}
+				onClick={() => {
+					setSetting((settings) => {
+						settings.queue[poolId].doNotRepeatRules.push({ field: 'Map', within: 0 })
+					})
+				}}
+			>
+				<Icons.Plus />
+			</Button>
 		</div>
 	)
 }

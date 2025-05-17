@@ -32,20 +32,20 @@ export function useLayerStatuses(
 	options?: { enabled?: boolean },
 ) {
 	options ??= {}
-	const queue = Zus.useStore(QD.QDStore, s => s.editedServerState.layerQueue)
+	const editedQueue = Zus.useStore(QD.QDStore, s => s.editedServerState.layerQueue)
 	const serverLayerQueue = Zus.useStore(QD.QDStore, s => s.serverState?.layerQueue)
 	return useQuery({
 		...options,
 		queryKey: [
 			'getLayerStatusesForLayerQueue',
-			superjson.serialize({ queue, layerQueue: serverLayerQueue }),
+			superjson.serialize({ editedQueue, serverlayerQueue: serverLayerQueue }),
 		],
 		queryFn: async () => {
-			if (serverLayerQueue && deepEqual(serverLayerQueue, queue)) {
+			if (serverLayerQueue && deepEqual(serverLayerQueue, editedQueue)) {
 				return PartsSys.getLayerStatuses()
 			}
 
-			return await trpc.layers.getLayerStatusesForLayerQueue.query({ queue: queue })
+			return await trpc.layers.getLayerStatusesForLayerQueue.query({ queue: editedQueue })
 		},
 	})
 }

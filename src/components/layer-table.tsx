@@ -44,7 +44,7 @@ const formatFloat = (value: number) => {
 	if (numeric > 0) return `+${formatted}`
 	return formatted
 }
-
+const noSortCols = ['Layer', 'Map', 'Gamemode', 'LayerVersion', 'Faction1', 'SubFaction1', 'Faction2', 'SubFaction2']
 function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 	return columnHelper.accessor(key, {
 		header: ({ column }) => {
@@ -59,9 +59,13 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					{label}
-					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
-					{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
-					{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
+					{!noSortCols.includes(column.id) && (
+						<>
+							{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
+							{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
+							{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
+						</>
+					)}
 				</Button>
 			)
 		},

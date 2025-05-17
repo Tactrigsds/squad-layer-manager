@@ -1,9 +1,6 @@
 import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
-// TODO use layer-components.json instead
-export const MAP_SHORT_NAMES: Record<M.Layer['Map'], string> = LayerComponents.mapShortNames
-
 export function toShortLevel(map: M.Layer['Map']) {
 	return LayerComponents.mapShortNames[map as keyof typeof LayerComponents.mapShortNames]
 }
@@ -29,9 +26,7 @@ export function displayUnvalidatedLayer(possibleUnknown: M.UnvalidatedMiniLayer)
 export function toFullLayerName(layer: M.MiniLayer) {
 	const subfaction1 = layer.SubFac_1 ? ` ${layer.SubFac_1}` : ''
 	const subfaction2 = layer.SubFac_2 ? ` ${layer.SubFac_2}` : ''
-	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
-
-	return `${layer.Map} ${layer.Gamemode}${layerVersion} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
+	return `${layer.Layer} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
 }
 
 export function toFullLayerNameFromId(id: string) {
@@ -43,15 +38,13 @@ export function toFullLayerNameFromId(id: string) {
 export function toShortLayerName(layer: M.MiniLayer) {
 	const subfaction1 = toShortSubfaction(layer.SubFac_1)
 	const subFaction2 = toShortSubfaction(layer.SubFac_2)
-	const layerVersion = layer.LayerVersion ? ` ${layer.LayerVersion} ` : ''
-	let txt = `${MAP_SHORT_NAMES[layer.Map]} `
-	txt += `${layer.Gamemode}${layerVersion}`
-	txt += ' '
+	let txt = `${layer.Layer} `
 	txt += `- ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
 	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}`.trim()
 	return txt
 }
+
 export function toShortLayerNameFromId(id: string) {
 	const res = M.getUnvalidatedLayerFromId(id)
 	return displayUnvalidatedLayer(res)

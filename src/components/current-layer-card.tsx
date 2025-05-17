@@ -6,30 +6,64 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as DH from '@/lib/display-helpers'
+import { getTeamsDisplay } from '@/lib/display-helpers-react.tsx'
 import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
+import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Zus from 'zustand'
+import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
 export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusWithCurrentMatch }) {
 	const historyEntry = MatchHistoryClient.useCurrentMatchDetails()
-
 	const layerDetails = M.getLayerDetailsFromUnvalidated(props.serverStatus.currentLayer)
-	const team1DisplayName = layerDetails.Faction_1 ? `${layerDetails.Faction_1} ${layerDetails.SubFac_1 ?? ''}` : 'Team 1'
-	const team2DisplayName = layerDetails.Faction_2 ? `${layerDetails.Faction_2} ${layerDetails.SubFac_2 ?? ''}` : 'Team 2'
+	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, undefined, false)
 	const loggedInUser = useLoggedInUser()
 	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
 
 	const isEmpty = props.serverStatus.playerCount === 0
+
+	let postGameElt: React.ReactNode = null
+	if (!isEmpty && historyEntry?.status === 'post-game') {
+		postGameElt = (
+			<div className="flex flex-col space-y-1">
+				<Badge variant="outline" className="flex items-center">
+					<span className="pr-1">Post-Game</span>
+					<Timer start={historyEntry.endTime.getTime()} className="font-mono" />
+				</Badge>
+				{historyEntry.outcome.type === 'draw' && (
+					<Badge variant="outline" className="flex items-center">
+						<span className="pr-1">Draw</span>
+					</Badge>
+				)}
+				{historyEntry.outcome.type === 'team1' && (
+					<Badge variant="outline" className="flex items-center">
+						<span className="pr-1">
+							{team1Elt} has won ({historyEntry.outcome.team1Tickets} to {historyEntry.outcome.team2Tickets})
+						</span>
+					</Badge>
+				)}
+				{historyEntry.outcome.type === 'team2' && (
+					<Badge variant="outline" className="flex items-center">
+						<span className="pr-1">
+							{team2Elt} has won ({historyEntry.outcome.team2Tickets} to {historyEntry.outcome.team1Tickets})
+						</span>
+					</Badge>
+				)}
+			</div>
+		)
+	}
+
 	return (
 		<Card>
 			<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
@@ -38,7 +72,7 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 						Current Layer:
 					</CardTitle>
 					<div>
-						{DH.displayUnvalidatedLayer(props.serverStatus.currentLayer)}
+						<LayerDisplay layerId={props.serverStatus.currentLayer.id} normTeamOffset={historyEntry?.normTeamOffset} />
 					</div>
 				</span>
 				{historyEntry && <LayerSourceDisplay source={historyEntry.layerSource} />}
@@ -61,33 +95,7 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 								<Timer zeros={true} start={historyEntry.startTime.getTime()} className="font-mono" />
 							</Badge>
 						)}
-						{!isEmpty && historyEntry?.status === 'post-game' && (
-							<div className="flex flex-col space-y-1">
-								<Badge variant="outline" className="flex items-center">
-									<span className="pr-1">Post-Game</span>
-									<Timer start={historyEntry.endTime.getTime()} className="font-mono" />
-								</Badge>
-								{historyEntry.outcome.type === 'draw' && (
-									<Badge variant="outline" className="flex items-center">
-										<span className="pr-1">Draw</span>
-									</Badge>
-								)}
-								{historyEntry.outcome.type === 'team1' && (
-									<Badge variant="outline" className="flex items-center">
-										<span className="pr-1">
-											{team1DisplayName} has won ({historyEntry.outcome.team1Tickets} to {historyEntry.outcome.team2Tickets})
-										</span>
-									</Badge>
-								)}
-								{historyEntry.outcome.type === 'team2' && (
-									<Badge variant="outline" className="flex items-center">
-										<span className="pr-1">
-											{team2DisplayName} has won ({historyEntry.outcome.team2Tickets} to {historyEntry.outcome.team1Tickets})
-										</span>
-									</Badge>
-								)}
-							</div>
-						)}
+						{postGameElt}
 					</div>
 					<div>
 					</div>

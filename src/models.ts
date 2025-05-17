@@ -138,6 +138,23 @@ export function parseLayerStringSegment(layer: string) {
 	}
 }
 
+export function createLayerStringSegment(details: {
+	Map: string
+	Gamemode: string
+	LayerVersion: string | null
+}): string {
+	if (details.Map === 'JensensRange') {
+		throw new Error('JensensRange is not supported')
+	}
+
+	let layerString = `${details.Map}_${details.Gamemode}`
+	if (details.LayerVersion) {
+		layerString += `_${details.LayerVersion.toLowerCase()}`
+	}
+
+	return layerString
+}
+
 export function factionFullNameToAbbr(fullName: string, components = StaticLayerComponents) {
 	return revLookup(components.factionFullNames, fullName)
 }
@@ -856,11 +873,28 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true }
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
+export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit'])
+export type DnrField = z.infer<typeof DnrFieldSchema>
 export const DoNotRepeatRuleSchema = z.object({
-	field: z.enum(['Map', 'Layer', 'Faction', 'SubFac']),
+	field: DnrFieldSchema,
+	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
 export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
+
+export function getTeamNormFactionProp(offset: number, team: 'A' | 'B') {
+	const props = ['Faction_1', 'Faction_2'] as const
+	return props[(offset + Number(team === 'B')) % 2]
+}
+
+export function getTeamNormUnitProp(offset: number, team: 'A' | 'B') {
+	const props = ['SubFac_1', 'SubFac_2'] as const
+	return props[(offset + Number(team === 'B')) % 2]
+}
+
+export function getFactionAndUnitValue(faction: string, unit: string | null | undefined) {
+	return faction + '_' + unit || ''
+}
 
 export const QueryConstraintSchema = z.discriminatedUnion('type', [
 	z.object({
@@ -1114,7 +1148,6 @@ const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
 	{ field: 'Map', within: 5 },
 	{ field: 'Layer', within: 7 },
 	{ field: 'Faction', within: 3 },
-	{ field: 'SubFac', within: 0 },
 ]
 
 export const PoolConfigurationSchema = z.object({

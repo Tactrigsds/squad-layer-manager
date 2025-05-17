@@ -287,9 +287,9 @@ export class AsyncExclusiveTaskRunner {
 	}
 }
 
-export async function acquireInBlock(mutex: Mutex, bypass = false) {
+export async function acquireInBlock(mutex: Mutex, opts?: { bypass?: boolean }) {
 	let release: (() => void) | undefined
-	if (!bypass) {
+	if (!opts?.bypass) {
 		release = await mutex.acquire()
 	}
 	return {

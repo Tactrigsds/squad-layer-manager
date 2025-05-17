@@ -5,9 +5,11 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
+import { getTeamsDisplay } from '@/lib/display-helpers-react'
 import * as SM from '@/lib/rcon/squad-models'
 import { cn } from '@/lib/utils'
 import * as M from '@/models'
+import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
@@ -15,9 +17,11 @@ import * as Icons from 'lucide-react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
+import * as Zus from 'zustand'
 import LayerSourceDisplay from './layer-source-display'
 
 export default function MatchHistoryPanel() {
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverStatus = SquadServerClient.useSquadServerStatus()
 	const allEntries = MatchHistoryClient.useRecentMatchHistory()
 		.filter(entry =>
@@ -38,6 +42,16 @@ export default function MatchHistoryPanel() {
 	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
 	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
 
+	let leftTeamLabel: string
+	let rightTeamLabel: string
+	if (globalSettings.displayLayersNormalized) {
+		leftTeamLabel = 'Team A'
+		rightTeamLabel = 'Team B'
+	} else {
+		leftTeamLabel = 'Team 1'
+		rightTeamLabel = 'Team 2'
+	}
+
 	return (
 		<Card>
 			<CardHeader className="flex flex-row justify-between items-center">
@@ -46,24 +60,37 @@ export default function MatchHistoryPanel() {
 			<CardContent>
 				<Table>
 					<TableHeader>
-						<TableRow>
-							<TableHead className="font-medium"></TableHead>
-							<TableHead className="font-medium"></TableHead>
-							<TableHead className="font-medium">Layer</TableHead>
-							<TableHead className="font-medium">Team 1</TableHead>
-							<TableHead className="font-medium">Team 2</TableHead>
-							<TableHead className="font-medium">Tickets</TableHead>
-							<TableHead className="font-medium">Set By</TableHead>
+						<TableRow className="font-medium">
+							<TableHead></TableHead>
+							<TableHead></TableHead>
+							<TableHead>Layer</TableHead>
+							<TableHead>{leftTeamLabel}</TableHead>
+							<TableHead className="text-center">Outcome</TableHead>
+							<TableHead>{rightTeamLabel}</TableHead>
+							<TableHead>Set By</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
 						{currentEntries.map((entry, index) => {
 							const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(entry.layerId))
-							const subfaction1 = layer.SubFac_1 ? DH.toShortSubfaction(layer.SubFac_1 ?? null) : undefined
-							const subfaction2 = layer.SubFac_2 ? DH.toShortSubfaction(layer.SubFac_2 ?? null) : undefined
-							const outcomeDisp = entry.outcome.type !== 'draw'
-								? `${entry.outcome.team1Tickets}:${entry.outcome.team2Tickets}`
-								: 'draw'
+							let outcomeDisp: React.ReactNode
+							if (entry.outcome.type === 'draw') {
+								outcomeDisp = 'draw'
+							} else {
+								// Determine win/loss status
+								let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
+								let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
+								let team1Tickets = entry.outcome.team1Tickets
+								let team2Tickets = entry.outcome.team2Tickets
+
+								if (globalSettings.displayLayersNormalized && entry.normTeamOffset === 1) {
+									// Swap status if normalized
+									;[team1Status, team2Status] = [team2Status, team1Status]
+									;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
+								}
+
+								outcomeDisp = `${team1Tickets} ${team1Status} - ${team2Status} ${team2Tickets}`
+							}
 							const gameRuntime = entry.endTime.getTime() - entry.startTime.getTime()
 							const idx = index + (currentPage - 1) * itemsPerPage + 1
 
@@ -109,6 +136,8 @@ export default function MatchHistoryPanel() {
 								differenceDisp = '-' + Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString() + 'm'
 							}
 
+							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.normTeamOffset, globalSettings.displayLayersNormalized)
+
 							return (
 								<ContextMenu key={entry.historyEntryId}>
 									<ContextMenuTrigger asChild>
@@ -121,17 +150,13 @@ export default function MatchHistoryPanel() {
 												</span>
 											</TableCell>
 											<TableCell className="font-mono text-sm">{layer.Layer}</TableCell>
-											<TableCell className={`${entry.outcome.type === 'team1' ? 'underline' : ''}`}>
-												{entry.outcome.type === 'team1' ? <span className="font-bold text-green-600">(W)</span> : ''}
-												{entry.outcome.type === 'draw' ? <span className="font-medium text-amber-600">(D)</span> : ''}
-												{layer.Faction_1} <span className="text-sm text-secondary-foreground">{subfaction1}</span>
-											</TableCell>
 											<TableCell>
-												{entry.outcome.type === 'team2' ? <span className="font-bold text-green-600">(W)</span> : ''}
-												{entry.outcome.type === 'draw' ? <span className="font-medium text-amber-600">(D)</span> : ''}
-												{layer.Faction_2} <span className="text-sm text-secondary-foreground">{subfaction2}</span>
+												{leftTeam}
 											</TableCell>
-											<TableCell>{outcomeDisp}</TableCell>
+											<TableCell className="text-center">{outcomeDisp}</TableCell>
+											<TableCell>
+												{rightTeam}
+											</TableCell>
 											<TableCell>
 												<LayerSourceDisplay source={entry.layerSource} />
 											</TableCell>

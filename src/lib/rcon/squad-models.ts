@@ -39,27 +39,36 @@ export type ServerStatus = {
 	nextLayer: M.UnvalidatedMiniLayer | null
 }
 
+type MatchDetailsCommon = {
+	layerSource: M.LayerSource
+	layerId: M.LayerId
+	// whether team 1 2 is aligned or swapped with the normalized teams A B
+	normTeamOffset: 0 | 1
+	historyEntryId: number
+	startTime: Date
+}
 // Details about current match besides the layer
-export type MatchDetails = {
-	status: 'in-progress'
-	layerSource: M.LayerSource
-	layerId: M.LayerId
-	historyEntryId: number
-	startTime: Date
-} | {
-	status: 'post-game'
-	layerSource: M.LayerSource
-	layerId: M.LayerId
-	historyEntryId: number
-	startTime: Date
-	endTime: Date
-	outcome: {
-		type: 'team1' | 'team2'
-		team1Tickets: number
-		team2Tickets: number
-	} | {
-		type: 'draw'
-	}
+export type MatchDetails =
+	| ({
+		status: 'in-progress'
+	} & MatchDetailsCommon)
+	| (
+		& {
+			status: 'post-game'
+			endTime: Date
+			outcome: {
+				type: 'team1' | 'team2'
+				team1Tickets: number
+				team2Tickets: number
+			} | {
+				type: 'draw'
+			}
+		}
+		& MatchDetailsCommon
+	)
+
+export function getNormTeamOffsetForQueueIndex(currentMatch: MatchDetails, index: number) {
+	return (currentMatch.normTeamOffset + index + 1) % 2 as 0 | 1
 }
 
 export type MatchHistoryPart = {
@@ -94,6 +103,7 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory &
 		layerId: entry.layerId,
 		startTime: entry.startTime,
 		historyEntryId: entry.id,
+		normTeamOffset: entry.id % 2 as 0 | 1,
 	}
 
 	if (entry.endTime && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')

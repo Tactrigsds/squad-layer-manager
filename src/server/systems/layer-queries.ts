@@ -4,6 +4,7 @@ import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as LayerQueue from '@/server/systems/layer-queue'
 import * as MatchHistory from '@/server/systems/match-history'
 import { procedure, router } from '@/server/trpc.server.ts'
@@ -32,8 +33,11 @@ export const LayersQueryInputSchema = z.object({
 	pageSize: z.number().int().min(1).max(200).optional(),
 	sort: LayersQuerySortSchema.optional(),
 	constraints: z.array(M.QueryConstraintSchema).optional(),
+	historyOffset: z.number().int().min(0).optional().describe(
+		'Offset of history entries to consider for DNR rules, where 0 is current layer, 1 is the previous layer, etc',
+	),
 	previousLayerIds: z.array(M.LayerIdSchema).default([]).describe(
-		'Layer Ids to be considered as part of the history for filtering purposes',
+		'Layer Ids to be considered as part of the history for DNR rules',
 	),
 })
 
@@ -51,10 +55,16 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 	input.pageIndex ??= 0
 	const constraints = input.constraints ?? []
 
-	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
+	const { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(
+		ctx,
+		constraints,
+		input.previousLayerIds,
+		input.historyOffset,
+	)
 	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
-		previousLayerIds,
+		historicLayers,
+		normTeamOffset,
 		input.constraints ?? [],
 	)
 
@@ -102,7 +112,12 @@ export async function queryLayers(args: { input: LayersQueryInput; ctx: C.Log & 
 				const constraint = constraints[idx]
 				if (constraint.type === 'do-not-repeat') {
 					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
-					const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRule(constraint.rule, layer.id, previousLayerIds)
+					const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRule(
+						constraint.rule,
+						layer.id,
+						historicLayers,
+						normTeamOffset,
+					)
 					if (isBlocked) constraintResults[idx] = false
 					if (descriptors && descriptors.length > 0) {
 						violationDescriptors[constraint.id] = descriptors
@@ -165,7 +180,7 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 	const whereConditions: SQL<unknown>[] = []
 	const constraintBuildingTasks: Promise<any>[] = []
 	const constraints = input.constraints ?? []
-	const previousLayerIds = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
+	const { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(ctx, constraints, input.previousLayerIds)
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
 		constraintBuildingTasks.push(
@@ -176,7 +191,7 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 					constraintType: constraint.type,
 					constraintApplyAs: constraint.applyAs,
 				})
-				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
+				const condition = await getConstraintSQLConditions(ctx, constraint, historicLayers, normTeamOffset)
 				if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
 				switch (constraint.applyAs) {
 					case 'field':
@@ -226,14 +241,19 @@ export async function queryLayersGroupedBy({ ctx, input }: { ctx: C.Log & C.Db; 
 	return res as Record<M.StringColumn, string>[]
 }
 
-export async function getConstraintSQLConditions(ctx: C.Log & C.Db, constraint: M.LayerQueryConstraint, previousLayerIds: string[]) {
+export async function getConstraintSQLConditions(
+	ctx: C.Log & C.Db,
+	constraint: M.LayerQueryConstraint,
+	previousLayerIds: string[],
+	normTeamOffset: number,
+) {
 	switch (constraint.type) {
 		case 'filter-anon':
 			return await getFilterNodeSQLConditions(ctx, constraint.filter, [])
 		case 'filter-entity':
 			return await getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [])
 		case 'do-not-repeat':
-			return getDoNotRepeatSQLConditions(ctx, constraint.rule, previousLayerIds)
+			return getDoNotRepeatSQLConditions(ctx, constraint.rule, previousLayerIds, normTeamOffset)
 			break
 		default:
 			assertNever(constraint)
@@ -383,7 +403,12 @@ export async function getFilterNodeSQLConditions(
 	return res!
 }
 
-async function buildConstraintSqlCondition(ctx: C.Log & C.Db, previousLayerIds: M.LayerId[], constraints: M.LayerQueryConstraint[]) {
+async function buildConstraintSqlCondition(
+	ctx: C.Log & C.Db,
+	previousLayerIds: M.LayerId[],
+	normTeamOffset: number,
+	constraints: M.LayerQueryConstraint[],
+) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
 	const constraintBuildingTasks: Promise<any>[] = []
@@ -398,7 +423,7 @@ async function buildConstraintSqlCondition(ctx: C.Log & C.Db, previousLayerIds: 
 					constraintType: constraint.type,
 					constraintApplyAs: constraint.applyAs,
 				})
-				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds)
+				const condition = await getConstraintSQLConditions(ctx, constraint, previousLayerIds, normTeamOffset)
 				if (!condition) return { code: 'err:no-constraint' as const, msg: 'No constraint found' }
 				switch (constraint.applyAs) {
 					case 'field':
@@ -432,7 +457,8 @@ export async function getLayerStatusesForLayerQueue(
 		constraints = M.getPoolConstraints(serverState.settings.queue.mainPool)
 	}
 
-	const relevantPreviousLayerIds = resolveRelevantLayerHistory(ctx, constraints, [])
+	// eslint-disable-next-line prefer-const
+	let { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(ctx, constraints, [])
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const violationDescriptorsState = new Map<string, Record<string, string[] | undefined>>()
 	const filterConditions: Map<string, Promise<SQL<unknown>>> = new Map()
@@ -443,7 +469,7 @@ export async function getLayerStatusesForLayerQueue(
 			for (const constraint of constraints) {
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRule(constraint.rule, layerId, relevantPreviousLayerIds)
+						const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRule(constraint.rule, layerId, historicLayers, normTeamOffset)
 						if (!isBlocked) break
 						OneToMany.set(blockedState, queuedLayerKey, constraint.id)
 						if (descriptors) violationDescriptors[constraint.id] = descriptors
@@ -460,7 +486,10 @@ export async function getLayerStatusesForLayerQueue(
 			}
 			violationDescriptorsState.set(queuedLayerKey, violationDescriptors)
 		}
-		if (item.layerId) relevantPreviousLayerIds.unshift(item.layerId)
+		if (item.layerId) {
+			historicLayers.unshift(item.layerId)
+			normTeamOffset = (normTeamOffset + 1) % 2
+		}
 	}
 
 	const queueLayerIds = M.getAllLayerIdsFromList(queue)
@@ -489,38 +518,71 @@ export async function getLayerStatusesForLayerQueue(
 	return { blocked: blockedState, present, violationDescriptors: violationDescriptorsState }
 }
 
-function getisBlockedByDoNotRepeatRule(rule: M.DoNotRepeatRule, targetLayerId: M.LayerId, previousLayerIds: M.LayerId[]) {
+function getisBlockedByDoNotRepeatRule(
+	rule: M.DoNotRepeatRule,
+	targetLayerId: M.LayerId,
+	previousLayerIds: M.LayerId[],
+	normTeamOffset: number,
+) {
 	const targetLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(targetLayerId))
 	const layerIds = previousLayerIds.slice(0, rule.within)
+	let layerIndex = normTeamOffset - 1
 	const retValue = (v: boolean, descriptors?: string[]) => ({ isBlocked: v, descriptors })
+
 	for (const layerId of layerIds) {
 		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
 		switch (rule.field) {
 			case 'Map':
+			case 'Gamemode':
 			case 'Layer':
-				if (layer[rule.field] && targetLayer[rule.field] === layer[rule.field]) return retValue(true)
+				if (
+					layer[rule.field] && targetLayer[rule.field] === layer[rule.field]
+					&& (rule.targetValues?.includes(layer[rule.field] as string) ?? true)
+				) return retValue(true)
 				break
 			case 'Faction': {
 				const descriptors: string[] = []
-				const layerFactions = [layer.Faction_1, layer.Faction_2].filter(Boolean)
-				if (layerFactions.includes(targetLayer.Faction_1)) descriptors.push('Faction_1')
-				if (layerFactions.includes(targetLayer.Faction_2)) descriptors.push('Faction_2')
+				const checkFaction = (team: 'A' | 'B') => {
+					const targetFaction = targetLayer[M.getTeamNormFactionProp(normTeamOffset, team)]!
+					if (
+						targetFaction && layer[M.getTeamNormFactionProp(layerIndex, team)] === targetFaction
+						&& (rule.targetValues?.includes(targetFaction) ?? true)
+					) descriptors.push(`Faction_${team}`)
+				}
+				checkFaction('A')
+				checkFaction('B')
 				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
-			case 'SubFac': {
+			case 'FactionAndUnit': {
 				const descriptors: string[] = []
 
-				// SubFac can be null instead of undefined indicating a unitless layer, but we just ignore those here
-				const layerSubFacs = [layer.SubFac_1, layer.SubFac_2].filter(Boolean)
-				if (layerSubFacs.includes(targetLayer.SubFac_1)) descriptors.push('SubFac_1')
-				if (layerSubFacs.includes(targetLayer.SubFac_2)) descriptors.push('SubFac_2')
+				const checkFactionAndUnit = (team: 'A' | 'B') => {
+					const targetFaction = targetLayer[M.getTeamNormFactionProp(normTeamOffset, team)]!
+					const targetUnit = targetLayer[M.getTeamNormUnitProp(normTeamOffset, team)]
+					const targetFactionAndUnit = M.getFactionAndUnitValue(targetFaction, targetUnit)
+
+					const faction = layer[M.getTeamNormFactionProp(layerIndex, team)]
+					const unit = layer[M.getTeamNormUnitProp(layerIndex, team)]
+
+					if (targetFaction && faction) {
+						const factionAndUnit = M.getFactionAndUnitValue(faction, unit)
+						if (factionAndUnit === targetFactionAndUnit && (rule.targetValues?.includes(factionAndUnit) ?? true)) {
+							descriptors.push(`FactionAndUnit_${team}`)
+						}
+					}
+				}
+
+				checkFactionAndUnit('A')
+				checkFactionAndUnit('B')
+
 				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
 			default:
 				assertNever(rule.field)
 		}
+		layerIndex--
 	}
 	return retValue(false)
 }
@@ -529,42 +591,119 @@ function getDoNotRepeatSQLConditions(
 	ctx: C.Db,
 	rule: M.DoNotRepeatRule,
 	previousLayerIds: string[],
+	normTeamOffset: number,
 ) {
 	const values = new Set<string>()
 	const layerIds = previousLayerIds.slice(0, rule.within)
 	if (rule.within <= 0) return sql`1=1`
+
+	let layerIndex = normTeamOffset - 1
 	for (const layerId of layerIds) {
 		const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
 		switch (rule.field) {
 			case 'Map':
+			case 'Gamemode':
 			case 'Layer':
-				if (layer[rule.field]) values.add(layer[rule.field]!)
+				if (layer[rule.field] && (rule.targetValues?.includes(layer[rule.field]!) ?? true)) values.add(layer[rule.field]!)
 				break
-			case 'Faction':
-				if (layer.Faction_1) values.add(layer.Faction_1!)
-				if (layer.Faction_2) values.add(layer.Faction_2!)
+			case 'Faction': {
+				const addApplicable = (team: 'A' | 'B') => {
+					const value = layer[M.getTeamNormFactionProp(layerIndex, team)]
+					if (value && (rule.targetValues?.includes(value) ?? true)) values.add(team + ':' + value)
+				}
+				addApplicable('A')
+				addApplicable('B')
 				break
-			case 'SubFac':
-				// SubFac can be null instead of undefined indicating a unitless layer, but we just ignore those here
-				if (layer.SubFac_1) values.add(layer.SubFac_1!)
-				if (layer.SubFac_2) values.add(layer.SubFac_2!)
+			}
+			case 'FactionAndUnit': {
+				const addApplicable = (team: 'A' | 'B') => {
+					const faction = layer[M.getTeamNormFactionProp(layerIndex, team)]
+					if (!faction) return
+					const subFac = layer[M.getTeamNormUnitProp(layerIndex, team)]
+					const factionAndUnit = M.getFactionAndUnitValue(faction, subFac)
+					if (factionAndUnit && (rule.targetValues?.includes(factionAndUnit) ?? true)) {
+						values.add(team + ':' + factionAndUnit)
+					}
+				}
+				addApplicable('A')
+				addApplicable('B')
 				break
+			}
 			default:
 				assertNever(rule.field)
 		}
+		layerIndex--
 	}
 	const valuesArr = Array.from(values)
+	if (valuesArr.length === 0) {
+		return sql`1=1`
+	}
 
 	switch (rule.field) {
 		case 'Map':
 		case 'Layer':
 			return E.notInArray(Schema.layers[rule.field], valuesArr)
-		case 'Faction':
-			return E.and(E.notInArray(Schema.layers.Faction_1, valuesArr), E.notInArray(Schema.layers.Faction_2, valuesArr))
-		case 'SubFac':
-			return E.and(E.notInArray(Schema.layers.SubFac_1, valuesArr), E.notInArray(Schema.layers.SubFac_2, valuesArr))
+		case 'Faction': {
+			const valuesArrA = valuesArr.filter(v => v.startsWith('A:')).map(v => v.slice(2))
+			const valuesArrB = valuesArr.filter(v => v.startsWith('B:')).map(v => v.slice(2))
+			return E.and(
+				E.notInArray(Schema.layers[M.getTeamNormFactionProp(normTeamOffset, 'A')], valuesArrA),
+				E.notInArray(Schema.layers[M.getTeamNormFactionProp(normTeamOffset, 'B')], valuesArrB),
+			)
+		}
+		case 'FactionAndUnit': {
+			const getExpr = (team: 'A' | 'B') =>
+				sql`CONCAT(${Schema.layers[M.getTeamNormFactionProp(normTeamOffset, team)]}, '_', ${
+					Schema.layers[M.getTeamNormUnitProp(normTeamOffset, team)]
+				})`
+
+			const factionAndUnitExpressionA = getExpr('A')
+			const valuesArrA = valuesArr.filter(v => v.startsWith('A:')).map(v => v.slice(2))
+
+			const factionAndUnitExpressionB = getExpr('B')
+			const valuesArrB = valuesArr.filter(v => v.startsWith('B:')).map(v => v.slice(2))
+
+			return E.and(
+				E.notInArray(
+					factionAndUnitExpressionA,
+					valuesArrA,
+				),
+				E.notInArray(
+					factionAndUnitExpressionB,
+					valuesArrB,
+				),
+			)
+		}
 	}
 }
+
+export const GetRandomLayersInputSchema = z.object({
+	number: z.number().min(1).max(100).default(10),
+	constraints: z.array(M.QueryConstraintSchema).default([]),
+	previousLayerIds: z.array(M.LayerIdSchema).default([]),
+})
+export type GetRandomLayersInput = z.infer<typeof GetRandomLayersInputSchema>
+
+// export async function getRandomGeneratedLayers(args: { input: GetRandomLayersInput; ctx: C.Log & C.Db }) {
+// 	const { ctx, input } = args
+// 	const { conditions } = await buildConstraintSqlCondition(ctx, input.constraints, input.previousLayerIds)
+// 	const subquery = ctx.db().select().from(Schema.layers).where(E.and(...conditions)).as('constraints-query')
+// 	const randLayersProc = sql`
+// delimiter //
+// create or replace procedure getRandLayers()
+// begin
+//     drop temporary table if exists tmp_layers;
+//     create temporary table tmp_layers  as ${subquery}
+
+//     drop temporary table if exists tmp_properties;
+//     create temporary table tmp_properties as (
+//         select * from ('Map', 'Gamemode', '')
+//     );
+
+// end
+
+// `
+// }
 
 function hasTeam(
 	faction: string | null | typeof Schema.layers.Faction_1 = null,
@@ -590,12 +729,28 @@ function hasTeam(
  * @param constraints The constraints to apply
  * @param previousLayerIds Other IDs which should be considered as being at the front of the history
  */
-function resolveRelevantLayerHistory(ctx: C.Db, constraints: M.LayerQueryConstraint[], previousLayerIds: string[]) {
-	const maxHistoryLookback = Math.max(...constraints.map(c => c.type === 'do-not-repeat' ? c.rule.within : -1))
-	return [
-		...previousLayerIds,
-		...MatchHistory.state.recentMatches.slice(0, maxHistoryLookback - previousLayerIds.length).map(match => match.layerId),
-	]
+function resolveRelevantLayerHistory(
+	ctx: C.Db,
+	constraints: M.LayerQueryConstraint[],
+	previousLayerIds: string[],
+	startWithOffset?: number,
+) {
+	const maxHistoryLookback = Math.max(...constraints.map(c => c.type === 'do-not-repeat' ? c.rule.within : 0))
+	const relevantRecentMatches = MatchHistory.state.recentMatches.slice(
+		startWithOffset ?? 0,
+		Math.max((maxHistoryLookback - previousLayerIds.length) + (startWithOffset ?? 0), 0),
+	)
+
+	const newestPrevLayerId = relevantRecentMatches[0]?.historyEntryId
+		?? MatchHistory.state.recentMatches[startWithOffset ?? 0]?.historyEntryId ?? 0
+
+	return {
+		historicLayers: [
+			...previousLayerIds,
+			...relevantRecentMatches.map(match => match.layerId),
+		],
+		normTeamOffset: (newestPrevLayerId + previousLayerIds.length + 1),
+	}
 }
 
 async function getFilterEntity(filterId: string, ctx: C.Db) {

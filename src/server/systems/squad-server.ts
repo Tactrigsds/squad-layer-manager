@@ -1,5 +1,5 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
-import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
+import { acquireInBlock, AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
@@ -327,6 +327,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
 
+			using _lock = await acquireInBlock(MatchHistory.modifyHistoryMtx)
 			await DB.runTransaction(ctx, async (ctx) => {
 				const currentMatch = MatchHistory.state.recentMatches[0]
 				if (!currentMatch || !M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
@@ -343,7 +344,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 					outcome,
 				}
 
-				state.currentMatchId = (await MatchHistory.finalizeCurrentHistoryEntry(ctx, entry))?.historyEntryId
+				state.currentMatchId = (await MatchHistory.finalizeCurrentHistoryEntry(ctx, entry, { lock: false }))?.historyEntryId
 			})
 			return { code: 'ok' as const }
 		}
