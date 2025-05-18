@@ -1,3 +1,4 @@
+import LayerComponents from '$root/assets/layer-components.json'
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
@@ -8,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
+import { cartesianProduct } from '@/lib/array.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -31,6 +33,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
@@ -41,6 +44,7 @@ import { Timer } from './timer.tsx'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 import { Switch } from './ui/switch.tsx'
+import TabsList from './ui/tabs-list.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 
 export default function LayerQueueDashboard() {
@@ -583,16 +587,28 @@ const PoolConfigurationPopover = React.forwardRef(function PoolConfigurationPopo
 		reset: () => {},
 	}))
 
+	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
+
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
 				{props.children}
 			</PopoverTrigger>
-			<PopoverContent className="sm:max-w-[425px]" side="right">
+			<PopoverContent className="w-[700px]" side="right">
 				<div className="flex flex-col space-y-2">
-					<h3 className="font-medium">Pool Configuration</h3>
-					<PoolFiltersConfigurationPanel poolId="mainPool" />
-					<PoolDoNotRepeatRulesConfigurationPanel poolId="mainPool" />
+					<div className="flex items-center justify-between">
+						<h3 className="font-medium">Pool Configuration</h3>
+						<TabsList
+							options={[
+								{ label: 'Main Pool', value: 'mainPool' },
+								{ label: 'Autogeneration', value: 'generationPool' },
+							]}
+							active={poolId}
+							setActive={setPoolId}
+						/>
+					</div>
+					<PoolFiltersConfigurationPanel poolId={poolId} />
+					<PoolDoNotRepeatRulesConfigurationPanel poolId={poolId} />
 				</div>
 			</PopoverContent>
 		</Popover>
@@ -683,52 +699,101 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 			<div>
 				<h4 className={Typography.H4}>Do Not Repeat Rules</h4>
 			</div>
-			{rules.map((rule, index) => (
-				<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
-					<ComboBox
-						title={'Rule'}
-						options={M.DnrFieldSchema.options}
-						value={rule.field}
-						allowEmpty={false}
-						onSelect={(value) => {
-							if (!value) return
-							setSetting((settings) => {
-								settings.queue[poolId].doNotRepeatRules[index].field = value as M.DnrField
-							})
-						}}
-						disabled={!canWriteSettings}
-					/>
-					<Input
-						type="number"
-						defaultValue={rule.within}
-						disabled={!canWriteSettings}
-						onChange={(e) => {
-							setSetting((settings) => {
-								settings.queue[poolId].doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
-							})
-						}}
-					/>
-					<Button
-						size="icon"
-						variant="ghost"
-						onClick={() => {
-							setSetting((settings) => {
-								settings.queue[poolId].doNotRepeatRules.splice(index, 1)
-							})
-						}}
-						disabled={!canWriteSettings}
-					>
-						<Icons.Minus />
-					</Button>
-				</div>
-			))}
+			{rules.map((rule, index) => {
+				let targetValueOptions: string[]
+				switch (rule.field) {
+					case 'Map':
+						targetValueOptions = LayerComponents.maps
+						break
+					case 'Layer':
+						targetValueOptions = LayerComponents.layers
+						break
+					case 'Gamemode':
+						targetValueOptions = LayerComponents.gamemodes
+						break
+					case 'Faction':
+						targetValueOptions = LayerComponents.factions
+						break
+					case 'FactionAndUnit':
+						throw new Error('FactionAndUnit is not a valid field')
+						break
+					default:
+						assertNever(rule.field)
+				}
+				return (
+					<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
+						<Input
+							placeholder="Label"
+							defaultValue={rule.label}
+							containerClassName="grow-0"
+							disabled={!canWriteSettings}
+							onChange={(e) => {
+								setSetting((settings) => {
+									settings.queue[poolId].doNotRepeatRules[index].label = e.target.value
+								})
+							}}
+						/>
+						<ComboBox
+							title={'Rule'}
+							options={M.DnrFieldSchema.options.filter(o => o !== 'FactionAndUnit')}
+							value={rule.field}
+							allowEmpty={false}
+							onSelect={(value) => {
+								if (!value) return
+								setSetting((settings) => {
+									settings.queue[poolId].doNotRepeatRules[index].field = value as M.DnrField
+									settings.queue[poolId].doNotRepeatRules[index].label = value
+									delete settings.queue[poolId].doNotRepeatRules[index].targetValues
+								})
+							}}
+							disabled={!canWriteSettings}
+						/>
+						<Input
+							type="number"
+							defaultValue={rule.within}
+							containerClassName="w-[250px]"
+							disabled={!canWriteSettings}
+							onChange={(e) => {
+								setSetting((settings) => {
+									settings.queue[poolId].doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
+								})
+							}}
+						/>
+						<ComboBoxMulti
+							className="flex-grow"
+							title="Target Values"
+							options={targetValueOptions}
+							values={rule.targetValues ?? []}
+							onSelect={(updated) => {
+								setSetting((settings) => {
+									const rule = settings.queue[poolId].doNotRepeatRules[index]
+									const values = typeof updated === 'function' ? updated(rule.targetValues ?? []) : updated
+									rule.targetValues = values.filter((v) => !!v) as string[]
+								})
+							}}
+						/>
+						<Button
+							size="icon"
+							variant="ghost"
+							onClick={() => {
+								setSetting((settings) => {
+									settings.queue[poolId].doNotRepeatRules.splice(index, 1)
+								})
+							}}
+							disabled={!canWriteSettings}
+						>
+							<Icons.Minus />
+						</Button>
+					</div>
+				)
+			})}
 			<Button
 				size="icon"
 				variant="ghost"
 				disabled={!canWriteSettings}
 				onClick={() => {
 					setSetting((settings) => {
-						settings.queue[poolId].doNotRepeatRules.push({ field: 'Map', within: 0 })
+						settings.queue[poolId].doNotRepeatRules.push({ field: 'Map', within: 0, label: 'Map' })
 					})
 				}}
 			>

@@ -13,7 +13,6 @@ import * as RBAC from '@/rbac.models'
 import { trpc } from '@/trpc.client'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
-import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Jotai from 'jotai'
 import React from 'react'
@@ -26,10 +25,8 @@ import { fetchLoggedInUser } from './logged-in-user'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
 
 // -------- types --------
-export type EditedHistoryFilterWithId = M.HistoryFilterEdited & WithMutationId
 export type MutServerStateWithIds = M.UserModifiableServerState & {
 	layerQueue: M.LayerListItem[]
-	historyFilters: EditedHistoryFilterWithId[]
 }
 
 export type LLState = {
@@ -284,10 +281,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 
 export function getEditableServerState(state: M.LQServerState): MutServerStateWithIds {
 	const layerQueue = state.layerQueue
-	const historyFilters = state.historyFilters.map((filter) => ({ ...filter, id: createId(6) }) as M.HistoryFilterEdited & WithMutationId)
 	return {
-		// @ts-expect-error idk
-		historyFilters,
 		layerQueue,
 		layerQueueSeqId: state.layerQueueSeqId,
 		settings: state.settings,
@@ -295,7 +289,7 @@ export function getEditableServerState(state: M.LQServerState): MutServerStateWi
 }
 
 export const initialState: QDState = {
-	editedServerState: { historyFilters: [], layerQueue: [], layerQueueSeqId: 0, settings: M.ServerSettingsSchema.parse({ queue: {} }) },
+	editedServerState: { layerQueue: [], layerQueueSeqId: 0, settings: M.ServerSettingsSchema.parse({ queue: {} }) },
 	queueMutations: ItemMut.initMutations(),
 	serverState: null,
 	isEditing: false,

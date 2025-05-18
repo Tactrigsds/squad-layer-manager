@@ -74,7 +74,12 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" role="combobox" aria-expanded={open} className="max-w-[400px] justify-between font-mono">
+				<Button
+					variant="outline"
+					role="combobox"
+					aria-expanded={open}
+					className={cn(props.className, 'max-w-[400px] justify-between font-mono')}
+				>
 					{valuesDisplay}
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>

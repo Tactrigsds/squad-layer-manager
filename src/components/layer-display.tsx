@@ -44,7 +44,7 @@ export default function LayerDisplay(
 			badges.push(
 				<ConstraintViolationDisplay
 					key="constraint violation display"
-					violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)!)}
+					violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)).filter(c => c !== undefined)}
 					violationDescriptors={props.itemId ? layerStatusesRes.data?.violationDescriptors.get(props.itemId) : undefined}
 					layerId={props.layerId}
 				/>,

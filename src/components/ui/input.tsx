@@ -3,12 +3,13 @@ import * as React from 'react'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 	rightElement?: React.ReactNode
+	containerClassName?: string
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-	({ className, type, rightElement, ...props }, ref) => {
+	({ className, type, rightElement, containerClassName, ...props }, ref) => {
 		return (
-			<div className="relative flex items-center w-full">
+			<div className={cn('relative flex items-center w-full', containerClassName)}>
 				<input
 					type={type}
 					className={cn(

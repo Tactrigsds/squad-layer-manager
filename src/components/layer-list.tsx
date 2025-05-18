@@ -55,7 +55,7 @@ export function LayerList(props: { store: Zus.StoreApi<QD.LLStore>; onStartEdit?
 	})
 
 	return (
-		<ul className="flex w-max flex-col space-y-1">
+		<ul className="flex w-full flex-col space-y-1">
 			{queueIds.map((id, index) => (
 				<LayerListItem
 					llStore={props.store}

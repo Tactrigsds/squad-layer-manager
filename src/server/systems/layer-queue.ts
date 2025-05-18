@@ -94,11 +94,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
 				if (!isConnected) return
 				const serverState = await getServerState({}, ctx)
-				const nextLayerId = M.getNextLayerId(serverState.layerQueue)
-				if (nextLayerId) {
-					ctx.log.info('setting initial next layer')
-					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
-				}
+				await syncNextLayerInPlace(ctx, serverState)
 				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		).subscribe()
@@ -193,9 +189,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 				case 'layer-set-during-vote:reset':
 				case 'layer-set:reset':
 				case 'null-layer-set:reset': {
-					const nextLayerId = M.getNextLayerId(serverState.layerQueue)
-					if (!nextLayerId) return
-					await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
+					await syncNextLayerInPlace(ctx, serverState)
 					break
 				}
 				default:
@@ -234,15 +228,12 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 					assertNever(updateRes)
 			}
 			serverState.lastRoll = new Date()
+			await syncNextLayerInPlace(baseCtx, serverState, { noDbWrite: true })
 			await baseCtx
 				.db()
 				.update(Schema.servers)
 				.set(superjsonify(Schema.servers, serverState))
 				.where(E.eq(Schema.servers.id, CONFIG.serverId))
-			const nextLayer = M.getNextLayerId(layerQueue)
-			if (nextLayer) {
-				await SquadServer.rcon.setNextLayer(baseCtx, nextLayer)
-			}
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'server-roll' } }, baseCtx])
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
 		},
@@ -255,15 +246,14 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			C.setSpanOpAttrs({ serverState })
 			// the new current layer was set to something unexpected, so we just handle updating the next layer
 			const time = new Date()
-			const nextLayer = M.getNextLayerId(serverState.layerQueue)
-			if (nextLayer) {
-				await SquadServer.rcon.setNextLayer(baseCtx, nextLayer)
-			}
+
+			await syncNextLayerInPlace(baseCtx, serverState, { noDbWrite: true })
+
 			serverState.lastRoll = time
 			await baseCtx
 				.db()
 				.update(Schema.servers)
-				.set(superjsonify(Schema.servers, { lastRoll: time }))
+				.set(superjsonify(Schema.servers, serverState))
 				.where(E.eq(Schema.servers.id, CONFIG.serverId))
 
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'admin-change-layer' } }, baseCtx])
@@ -900,8 +890,9 @@ export async function updateQueue({ input, ctx }: { input: M.UserModifiableServe
 
 		serverState.settings = input.settings
 		serverState.layerQueue = input.layerQueue
-		serverState.historyFilters = input.historyFilters
 		serverState.layerQueueSeqId++
+
+		await syncNextLayerInPlace(ctx, serverState, { noDbWrite: true })
 
 		const voteUpdateRes = getVoteStateUpdatesFromQueueUpdate(serverStatePrev.layerQueue, serverState.layerQueue, voteState)
 
@@ -1011,6 +1002,38 @@ async function includeFilterEntityPart(ctx: C.Db & C.Log, serverStateUpdate: M.L
 		part.filterEntities.set(row.id, M.FilterEntitySchema.parse(row))
 	}
 	return part
+}
+
+/**
+ * sets next layer on server, generating a new queue item if needed. modifies serverState in place
+ */
+async function syncNextLayerInPlace(ctx: C.Log & C.Db & C.Tx, serverState: M.LQServerState, opts?: { noDbWrite: boolean }) {
+	let nextLayerId = M.getNextLayerId(serverState.layerQueue)
+	let wroteServerState = false
+	if (!nextLayerId) {
+		const { ids } = await LayerQueries.getRandomGeneratedLayers(
+			ctx,
+			1,
+			M.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'),
+			[],
+			false,
+		)
+		;[nextLayerId] = ids
+		if (!nextLayerId) return false
+		const nextQueueItem = M.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })
+		serverState.layerQueue.push(nextQueueItem)
+		serverState.layerQueueSeqId++
+		if (!opts?.noDbWrite) {
+			await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, {
+				layerQueue: serverState.layerQueue,
+				layerQueueSeqId: serverState.layerQueueSeqId,
+			})).where(E.eq(Schema.servers.id, serverState.id))
+			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'next-layer-generated' } }, ctx])
+		}
+		wroteServerState = true
+	}
+	await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
+	return wroteServerState
 }
 
 const generateLayerQueueItems = C.spanOp(

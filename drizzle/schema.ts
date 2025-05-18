@@ -24,9 +24,14 @@ export const subfactions = mysqlTable(
 		fullName: varchar('fullName', { length: 255 }).notNull(),
 	},
 	(subfactions) => ({
-		primaryKey: unique().on(subfactions.shortName, subfactions.factionShortName),
+		primaryKey: unique().on(
+			subfactions.shortName,
+			subfactions.factionShortName,
+		),
 		fullName: index('fullName').on(subfactions.fullName),
-		factionShortName: index('factionShortName').on(subfactions.factionShortName),
+		factionShortName: index('factionShortName').on(
+			subfactions.factionShortName,
+		),
 	}),
 )
 
@@ -75,54 +80,84 @@ export const layers = mysqlTable(
 			faction2Index: index('faction2Index').on(layers.Faction_2),
 			subfac2Index: index('subfac2Index').on(layers.SubFac_2),
 			logistics1Index: index('logistics1Index').on(layers.Logistics_1),
-			transportation1Index: index('transportation1Index').on(layers.Transportation_1),
-			antiInfantry1Index: index('antiInfantry1Index').on(layers['Anti-Infantry_1']),
+			transportation1Index: index('transportation1Index').on(
+				layers.Transportation_1,
+			),
+			antiInfantry1Index: index('antiInfantry1Index').on(
+				layers['Anti-Infantry_1'],
+			),
 			armor1Index: index('armor1Index').on(layers.Armor_1),
 			zeroScore1Index: index('zeroScore1Index').on(layers.ZERO_Score_1),
 			logistics2Index: index('logistics2Index').on(layers.Logistics_2),
-			transportation2Index: index('transportation2Index').on(layers.Transportation_2),
-			antiInfantry2Index: index('antiInfantry2Index').on(layers['Anti-Infantry_2']),
+			transportation2Index: index('transportation2Index').on(
+				layers.Transportation_2,
+			),
+			antiInfantry2Index: index('antiInfantry2Index').on(
+				layers['Anti-Infantry_2'],
+			),
 			armor2Index: index('armor2Index').on(layers.Armor_2),
 			zeroScore2Index: index('zeroScore2Index').on(layers.ZERO_Score_2),
-			balanceDifferentialIndex: index('balanceDifferentialIndex').on(layers.Balance_Differential),
-			asymmetryScoreIndex: index('asymmetryScoreIndex').on(layers['Asymmetry_Score']),
+			balanceDifferentialIndex: index('balanceDifferentialIndex').on(
+				layers.Balance_Differential,
+			),
+			asymmetryScoreIndex: index('asymmetryScoreIndex').on(
+				layers['Asymmetry_Score'],
+			),
 			logisticsDiffIndex: index('logisticsDiffIndex').on(layers.Logistics_Diff),
-			transportationDiffIndex: index('transportationDiffIndex').on(layers.Transportation_Diff),
-			antiInfantryDiffIndex: index('antiInfantryDiffIndex').on(layers['Anti-Infantry_Diff']),
+			transportationDiffIndex: index('transportationDiffIndex').on(
+				layers.Transportation_Diff,
+			),
+			antiInfantryDiffIndex: index('antiInfantryDiffIndex').on(
+				layers['Anti-Infantry_Diff'],
+			),
 			armorDiffIndex: index('armorDiffIndex').on(layers.Armor_Diff),
-			zeroScoreDiffIndex: index('zeroScoreDiffIndex').on(layers.ZERO_Score_Diff),
+			zeroScoreDiffIndex: index('zeroScoreDiffIndex').on(
+				layers.ZERO_Score_Diff,
+			),
 			Z_PoolIndex: index('Z_PoolIndex').on(layers.Z_Pool),
 			Scored: index('ScoredIndex').on(layers.Scored),
 		}
 	},
 )
 
-export const matchHistory = mysqlTable('matchHistory', {
-	id: int('id').primaryKey().autoincrement(),
-	// may not be in layerId table if unknown layers are set
-	layerId: varchar('layerId', { length: 256 }).notNull(),
-	// vote details of the same structure as serverState.layerQueue[].vote
-	// vote: json('vote'),
-	startTime: timestamp('startTime').notNull(),
-	endTime: timestamp('endTime'),
-	outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
-	team1Tickets: int('team1Tickets'),
-	team2Tickets: int('team2Tickets'),
-	setByType: mysqlEnum('setByType', ['manual', 'gameserver', 'generated', 'unknown']).notNull(),
-	setByUserId: bigint('setByUserId', { mode: 'bigint', unsigned: true }),
-}, table => ({
-	layerIdIndex: index('layerIdIndex').on(table.layerId),
-	startTimeIndex: index('startTimeIndex').on(table.startTime),
-	endTimeIndex: index('endTimeIndex').on(table.endTime),
-	userIndex: index('userIndex').on(table.setByUserId),
-}))
+export const matchHistory = mysqlTable(
+	'matchHistory',
+	{
+		id: int('id').primaryKey().autoincrement(),
+		// may not be in layerId table if unknown layers are set
+		layerId: varchar('layerId', { length: 256 }).notNull(),
+		// vote details of the same structure as serverState.layerQueue[].vote
+		// vote: json('vote'),
+		startTime: timestamp('startTime').notNull(),
+		endTime: timestamp('endTime'),
+		outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
+		team1Tickets: int('team1Tickets'),
+		team2Tickets: int('team2Tickets'),
+		setByType: mysqlEnum('setByType', [
+			'manual',
+			'gameserver',
+			'generated',
+			'unknown',
+		]).notNull(),
+		setByUserId: bigint('setByUserId', { mode: 'bigint', unsigned: true }),
+	},
+	(table) => ({
+		layerIdIndex: index('layerIdIndex').on(table.layerId),
+		startTimeIndex: index('startTimeIndex').on(table.startTime),
+		endTimeIndex: index('endTimeIndex').on(table.endTime),
+		userIndex: index('userIndex').on(table.setByUserId),
+	}),
+)
 
 export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
 	name: varchar('name', { length: 128 }).notNull(),
 	description: varchar('description', { length: 2048 }),
 	filter: json('filter').notNull(),
-	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(() => users.discordId, { onDelete: 'set null' }),
+	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(
+		() => users.discordId,
+		{ onDelete: 'set null' },
+	),
 })
 
 export const filterUserContributors = mysqlTable(
@@ -161,7 +196,6 @@ export const servers = mysqlTable('servers', {
 	// should be incremented whenver layer queue is modified. used to make sure modifiers are up-to-date with the current state of the queue before submitting modifications
 	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
 	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
-	historyFilters: json('historyFilters').notNull().default(superjson.stringify([])),
 	settings: json('settings').default(superjson.stringify({})),
 
 	lastRoll: timestamp('lastRoll', { mode: 'date' }),
@@ -170,7 +204,9 @@ export const servers = mysqlTable('servers', {
 export type Server = typeof servers.$inferSelect
 
 export const users = mysqlTable('users', {
-	discordId: bigint('discordId', { mode: 'bigint', unsigned: true }).notNull().primaryKey(),
+	discordId: bigint('discordId', { mode: 'bigint', unsigned: true })
+		.notNull()
+		.primaryKey(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: varchar('username', { length: 32 }).notNull(),
 	avatar: varchar('avatar', { length: 255 }),
@@ -191,3 +227,14 @@ export const sessions = mysqlTable(
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
 	}),
 )
+
+export const genLayerColumnOrder = mysqlTable('genLayerColumnOrder', {
+	ordinal: int('ordinal').notNull(),
+	columnName: varchar('columnName', { length: 255 }).notNull(),
+})
+
+export const genLayerWeights = mysqlTable('genLayerWeights', {
+	columnName: varchar('columnName', { length: 255 }).notNull(),
+	value: varchar('value', { length: 255 }).notNull(),
+	weight: float('weight').notNull(),
+})

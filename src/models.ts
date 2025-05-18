@@ -877,6 +877,7 @@ export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Fa
 export type DnrField = z.infer<typeof DnrFieldSchema>
 export const DoNotRepeatRuleSchema = z.object({
 	field: DnrFieldSchema,
+	label: z.string().min(1).max(100).default('Label').describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
@@ -966,50 +967,6 @@ export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]
 	previousLayerIds?: LayerId[]
 }
-
-export const HistoryFilterSchema = z.discriminatedUnion(
-	'type',
-	[
-		z.object({
-			type: z.literal('static', {
-				description: 'sets hardcoded filters which match on attributes that should not be repeated within a certain threshold',
-			}),
-			comparison: ComparisonSchema,
-			excludeFor: z.object({
-				matches: z.number().int().positive(),
-			}),
-		}),
-		z.object({
-			type: z.literal('dynamic', {
-				description:
-					'Will use an equality comparison to check if any layers in the history match the predicated layer under the specific column',
-			}),
-			column: z.enum(COLUMN_KEYS_WITH_COMPUTED),
-			excludeFor: z.object({
-				matches: z.number().int().positive(),
-			}),
-		}),
-	],
-	{ description: 'exclude layers based on the match history' },
-)
-
-export type HistoryFilter = z.infer<typeof HistoryFilterSchema>
-
-export type HistoryFilterEdited =
-	| {
-		type: 'dynamic'
-		column: (typeof COLUMN_KEYS_WITH_COMPUTED)[number]
-		excludeFor: {
-			matches: number
-		}
-	}
-	| {
-		type: 'static'
-		comparison: EditableComparison
-		excludeFor: {
-			matches: number
-		}
-	}
 
 export const GenLayerQueueItemsOptionsSchema = z.object({
 	numToAdd: z.number().positive(),
@@ -1145,9 +1102,9 @@ export type VoteStateWithVoteData = Extract<
 >
 
 const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
-	{ field: 'Map', within: 5 },
-	{ field: 'Layer', within: 7 },
-	{ field: 'Faction', within: 3 },
+	{ field: 'Map', within: 5, label: 'Map' },
+	{ field: 'Layer', within: 7, label: 'Layer' },
+	{ field: 'Faction', within: 3, label: 'Faction' },
 ]
 
 export const PoolConfigurationSchema = z.object({
@@ -1227,7 +1184,6 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 export const UserModifiableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
 	layerQueue: LayerListSchema,
-	historyFilters: z.array(HistoryFilterSchema),
 	settings: ServerSettingsSchema,
 })
 
@@ -1237,7 +1193,15 @@ export type LQServerStateUpdate = {
 	source:
 		| {
 			type: 'system'
-			event: 'server-roll' | 'app-startup' | 'vote-timeout' | 'next-layer-override' | 'vote-start' | 'admin-change-layer' | 'filter-delete'
+			event:
+				| 'server-roll'
+				| 'app-startup'
+				| 'vote-timeout'
+				| 'next-layer-override'
+				| 'vote-start'
+				| 'admin-change-layer'
+				| 'filter-delete'
+				| 'next-layer-generated'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {

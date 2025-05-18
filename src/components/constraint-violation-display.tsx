@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 export type ConstraintViolatioDisplayProps = {
 	violated: M.LayerQueryConstraint[]
 	violationDescriptors?: Record<string, string[] | undefined>
+	normTeamOffset?: number
 	children?: React.ReactNode
 	layerId: string
 	padEmpty?: boolean
@@ -16,6 +17,8 @@ export type ConstraintViolatioDisplayProps = {
 
 export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps) {
 	if (props.violated.length == 0) return null
+	const normTeamOffset = props.normTeamOffset ?? 0
+	console.log({ violated: props.violated })
 	const dnrViolations = props.violated.filter(v => v.type === 'do-not-repeat')
 	const filterViolations = props.violated.filter(v => v.type !== 'do-not-repeat')
 	const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(props.layerId))

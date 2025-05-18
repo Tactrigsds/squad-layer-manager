@@ -47,7 +47,7 @@ let ENV!: ReturnType<typeof envBuilder>
 export function ensureLoggerSetup() {
 	ENV = envBuilder()
 	if (baseLogger) return
-	otelLogger = ((otelSdk as any)._loggerProvider as LoggerProvider)?.getLogger('squad-layer-manager')
+	otelLogger = ((otelSdk as any)?._loggerProvider as LoggerProvider)?.getLogger('squad-layer-manager')
 	const hooks: pino.LoggerOptions['hooks'] = {
 		logMethod(_inputArgs, method, level) {
 			let inputArgs = [..._inputArgs]
