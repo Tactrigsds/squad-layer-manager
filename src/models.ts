@@ -983,6 +983,8 @@ export function filterEntityToConstraint(
 
 export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]
+
+	// ids previous to this one but after any relevant layer history, in the order they would appear in the queue/list
 	previousLayerIds?: LayerId[]
 }
 

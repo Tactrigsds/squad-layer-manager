@@ -132,14 +132,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const queryContextWithMenuFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
 	const addVoteQueryContext = QD.useDerivedQueryContextForLQIndex(numChoices, props.layerQueryContext, editedVoteChoiceStore)
-	const [poolApplyAs, setPoolApplyAs] = Zus.useStore(QD.QDStore, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
-	const hideFiltered = poolApplyAs.filter === 'where-condition'
-	const setHideFiltered = React.useCallback((hideFiltered: boolean) => {
-		const applyAs = hideFiltered ? 'where-condition' : 'field'
-		setPoolApplyAs('filter', applyAs)
-		setPoolApplyAs('dnr', applyAs)
-	}, [setPoolApplyAs])
-	const hideFilteredId = React.useId()
 
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 

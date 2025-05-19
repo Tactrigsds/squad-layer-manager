@@ -926,7 +926,7 @@ function hasTeam(
 
 /**
  * @param constraints The constraints to apply
- * @param previousLayerIds Other IDs which should be considered as being at the front of the history
+ * @param previousLayerIds Other IDs which should be considered as being at the front of the history, in the order they appear in the queue/list
  */
 function resolveRelevantLayerHistory(
 	ctx: C.Db,
@@ -937,6 +937,7 @@ function resolveRelevantLayerHistory(
 	const maxHistoryLookback = Math.max(
 		...constraints.map((c) => (c.type === 'do-not-repeat' ? c.rule.within : 0)),
 	)
+
 	const relevantRecentMatches = MatchHistory.state.recentMatches.slice(
 		startWithOffset ?? 0,
 		Math.max(
@@ -951,7 +952,7 @@ function resolveRelevantLayerHistory(
 
 	return {
 		historicLayers: [
-			...previousLayerIds,
+			...[...previousLayerIds].reverse(),
 			...relevantRecentMatches.map((match) => match.layerId),
 		],
 		normTeamOffset: newestPrevLayerId + previousLayerIds.length + 1,
