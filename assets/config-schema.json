@@ -128,6 +128,11 @@
           "$ref": "#/properties/defaults/properties/voteDuration",
           "default": "10s",
           "description": "How far in advance the final vote reminder should be sent"
+        },
+        "postRollAnnouncementsTimeout": {
+          "$ref": "#/properties/defaults/properties/voteDuration",
+          "default": "5m",
+          "description": "How long to wait before sending post-roll reminders"
         }
       },
       "additionalProperties": false,

@@ -331,6 +331,7 @@ export function Comparison(props: {
 	layerQueryContext?: M.LayerQueryContext
 	showValueDropdown?: boolean
 	defaultEditing?: boolean
+	highlight?: boolean
 }) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const { comp, setComp } = props
@@ -355,10 +356,13 @@ export function Comparison(props: {
 		codeOptions = codeOptions.filter((c) => props.allowedComparisonCodes!.includes(c.value))
 	}
 
+	const componentStyles = props.highlight ? 'bg-accent' : undefined
+
 	const columnBox = columnEditable
 		? (
 			<ComboBox
 				title="Column"
+				className={componentStyles}
 				allowEmpty={true}
 				value={comp.column}
 				options={columnOptions}
@@ -402,12 +406,17 @@ export function Comparison(props: {
 				}}
 			/>
 		)
-		: <span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none')}>{comp.column}</span>
+		: (
+			<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+				{comp.column}
+			</span>
+		)
 	if (!comp.column) return columnBox
 
 	const codeBox = (
 		<ComboBox
 			allowEmpty={true}
+			className={componentStyles}
 			title=""
 			value={comp.code}
 			options={codeOptions}
@@ -439,6 +448,7 @@ export function Comparison(props: {
 				valueBox = (
 					<StringEqConfig
 						ref={valueBoxRef}
+						className={componentStyles}
 						column={comp.column as M.StringColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
@@ -451,6 +461,7 @@ export function Comparison(props: {
 				valueBox = (
 					<StringEqConfigLimitedAutocomplete
 						ref={valueBoxRef}
+						className={componentStyles}
 						column={comp.column as M.StringColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => setComp((c) => ({ ...c, value }))}
@@ -465,6 +476,7 @@ export function Comparison(props: {
 			if (!LIMIT_AUTOCOMPLETE_COLS.includes(comp.column)) {
 				valueBox = (
 					<StringInConfig
+						className={componentStyles}
 						ref={valueBoxRef}
 						column={comp.column as M.StringColumn}
 						values={(comp.values ?? []) as string[]}
@@ -487,6 +499,7 @@ export function Comparison(props: {
 						value={comp.value as string | undefined | null}
 						setValue={(value) => setComp((c) => ({ ...c, value }))}
 						queryContext={props.layerQueryContext}
+						className={componentStyles}
 					/>
 				)
 			}
@@ -498,7 +511,7 @@ export function Comparison(props: {
 			valueBox = (
 				<NumericSingleValueConfig
 					ref={valueBoxRef}
-					className="w-[200px]"
+					className={cn('w-[200px]', componentStyles)}
 					value={comp.value as number | undefined}
 					setValue={(value) => {
 						return setComp((c) => ({ ...c, value }))
@@ -511,6 +524,7 @@ export function Comparison(props: {
 		case 'inrange': {
 			valueBox = (
 				<NumericRangeConfig
+					className={componentStyles}
 					ref={valueBoxRef}
 					range={comp.range ?? [undefined, undefined]}
 					setValues={(update) => {
@@ -529,6 +543,7 @@ export function Comparison(props: {
 				<HasAllConfig
 					ref={valueBoxRef}
 					column={comp.column as M.CollectionColumn}
+					className={componentStyles}
 					values={comp.values as string[]}
 					setValues={(updater) => {
 						// @ts-expect-error idk
@@ -551,6 +566,7 @@ export function Comparison(props: {
 		case 'like': {
 			valueBox = (
 				<StringLikeConfig
+					className={componentStyles}
 					setValue={(newValue) => {
 						setComp(
 							produce((c) => {
@@ -621,6 +637,7 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		column: M.StringColumn
 		setValue: (value: T | undefined) => void
 		queryContext?: M.LayerQueryContext
+		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
@@ -633,6 +650,7 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		<ComboBox
 			ref={ref}
 			allowEmpty={true}
+			className={props.className}
 			title={props.column}
 			value={props.value}
 			options={options}
@@ -647,6 +665,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 		column: M.StringColumn
 		setValue: (value: T | undefined) => void
 		queryContext?: M.LayerQueryContext
+		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
@@ -661,12 +680,13 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 			setInputValue={autocomplete.setInputValue}
 			options={autocomplete.options}
 			onSelect={(v) => props.setValue(v as T | undefined)}
+			className={props.className}
 		/>
 	)
 })
 
 const StringLikeConfig = React.forwardRef(function StringLikeConfig(
-	props: { value: string; setValue: (value: string) => void },
+	props: { value: string; setValue: (value: string) => void; className?: string },
 	ref: React.ForwardedRef<Focusable>,
 ) {
 	const debouncer = useDebounced({
@@ -686,7 +706,7 @@ const StringLikeConfig = React.forwardRef(function StringLikeConfig(
 		},
 	}))
 
-	return <Input ref={inputRef} onChange={(e) => setInputValue(e.target.value)} />
+	return <Input className={props.className} ref={inputRef} onChange={(e) => setInputValue(e.target.value)} />
 })
 
 function useDynamicColumnAutocomplete<T extends string | null>(
@@ -749,6 +769,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 		column: M.StringColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		queryContext?: M.LayerQueryContext
+		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
@@ -763,6 +784,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 			values={props.values}
 			options={valuesRes.data?.map((r) => r[props.column]) ?? []}
 			onSelect={props.setValues}
+			className={props.className}
 		/>
 	)
 })
@@ -773,6 +795,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 		column: M.StringColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		queryContext: M.LayerQueryContext
+		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
@@ -786,6 +809,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 			onSelect={props.setValues as ComboBoxMultiProps['onSelect']}
 			inputValue={autocomplete.inputValue}
 			setInputValue={autocomplete.setInputValue}
+			className={props.className}
 		/>
 	)
 })
@@ -824,6 +848,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	props: {
 		range: [number | undefined, number | undefined]
 		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
+		className?: string
 	},
 	ref: React.ForwardedRef<Focusable>,
 ) {
@@ -835,7 +860,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	}
 
 	return (
-		<div className="flex w-[200px] items-center space-x-2">
+		<div className={cn(props.className, 'flex w-[200px] items-center space-x-2')}>
 			<NumericSingleValueConfig value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
 			<NumericSingleValueConfig ref={ref} value={props.range[1]} setValue={setSecond} />
@@ -849,6 +874,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 		column: M.CollectionColumn
 		setValues: React.Dispatch<React.SetStateAction<string[]>>
 		queryContext?: M.FilterNode
+		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
@@ -870,7 +896,15 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 			...new Set([...(factions1Res.data?.map((r) => r.Faction_1) ?? []), ...(factions2Res.data?.map((r) => r.Faction_2) ?? [])]),
 		]
 		return (
-			<ComboBoxMulti title={props.column} ref={ref} values={props.values} options={allFactions} onSelect={onSelect} selectionLimit={2} />
+			<ComboBoxMulti
+				className={props.className}
+				title={props.column}
+				ref={ref}
+				values={props.values}
+				options={allFactions}
+				onSelect={onSelect}
+				selectionLimit={2}
+			/>
 		)
 	}
 
@@ -898,6 +932,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 		return (
 			<div className="flex space-x-2">
 				<ComboBoxMulti
+					className={props.className}
 					title={props.column}
 					ref={ref}
 					values={mirror ? props.values.slice(1) : props.values}

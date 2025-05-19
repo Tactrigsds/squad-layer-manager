@@ -33,8 +33,8 @@ export default function TableStyleLayerPicker(props: {
 				setSelected={props.onSelect}
 				maxSelected={props.maxSelected}
 				enableForceSelect={true}
-				defaultSortBy="random"
-				defaultSortDirection="DESC"
+				defaultSortBy="Asymmetry_Score"
+				defaultSortDirection="ASC"
 				canChangeRowsPerPage={false}
 				canToggleColumns={false}
 				extraPanelItems={props.extraPanelItems}

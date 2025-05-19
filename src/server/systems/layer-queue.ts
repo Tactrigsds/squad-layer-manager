@@ -23,18 +23,19 @@ import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
-import { BehaviorSubject, filter, from, interval, map, scan, skip, Subject, Subscription } from 'rxjs'
 import { procedure, router } from '../trpc.server.ts'
 
-export let serverStateUpdate$!: BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
+export let serverStateUpdate$!: Rx.BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
-let voteEndTask: Subscription | null = null
+let voteEndTask: Rx.Subscription | null = null
 let voteState: M.VoteState | null = null
 
-const voteStateUpdate$ = new Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
+const voteStateUpdate$ = new Rx.Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
 
 const userPresence: M.UserPresenceState = {}
-const userPresenceUpdate$ = new Subject<M.UserPresenceStateUpdate & Parts<M.UserPart>>()
+const userPresenceUpdate$ = new Rx.Subject<M.UserPresenceStateUpdate & Parts<M.UserPart>>()
+
+let postRollAnnouncementsSub: Rx.Subscription | undefined
 
 const voteStateMtx = new Mutex()
 
@@ -80,7 +81,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		const initialStateUpdate: M.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
 		const withParts = await includeLQServerUpdateParts(ctx, initialStateUpdate)
 		// idk why this cast on ctx is necessary
-		serverStateUpdate$ = new BehaviorSubject([withParts, ctx as C.Log & C.Db] as const)
+		serverStateUpdate$ = new Rx.BehaviorSubject([withParts, ctx as C.Log & C.Db] as const)
 
 		// -------- initialize vote state --------
 		const update = getVoteStateUpdatesFromQueueUpdate([], initialServerState.layerQueue, voteState)
@@ -105,7 +106,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 	})
 
 	// -------- schedule post-roll reminders --------
-	interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
+	Rx.interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
 		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
 			if (
@@ -126,10 +127,10 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 	// note: temporary solution, if we want something more robust we should be integrating squadjs most likely
 	let lastRoll = -1
 	SquadServer.rcon.serverStatus.observe(ctx).pipe(
-		map(res => res.code === 'ok' && res.data.currentLayer ? res.data.currentLayer : null),
-		filter(layer => !!layer),
+		Rx.map(res => res.code === 'ok' && res.data.currentLayer ? res.data.currentLayer : null),
+		Rx.filter(layer => !!layer),
 		distinctDeepEquals(),
-		skip(1),
+		Rx.skip(1),
 		C.durableSub('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
 			ctx.log.info('tracking map roll: %s', DH.displayUnvalidatedLayer(layer))
 			lastRoll = Date.now()
@@ -143,10 +144,10 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 	SquadServer.rcon.serverStatus
 		.observe(ctx)
 		.pipe(
-			filter((statusRes) => statusRes.code === 'ok'),
-			map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
+			Rx.filter((statusRes) => statusRes.code === 'ok'),
+			Rx.map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
-			scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
+			Rx.scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
 			C.durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
 				if (!status) return
 				ctx.log.info('checking layer status change')
@@ -208,14 +209,31 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			using acquired = await acquireInBlock(voteStateMtx)
 			const serverState = deepClone(prevServerState)
-			const layerQueue = serverState.layerQueue
 			if (prevServerState.layerQueue.length === 0) {
 				C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No layers in queue to roll to')
 				return
 			}
-			const currentLayerItem = layerQueue.shift()
+			const currentLayerItem = serverState.layerQueue.shift()
+			const currentLayerId = currentLayerItem ? M.getLayerIdToSetFromItem(currentLayerItem) : undefined
+			let fogoff = false
+			if (currentLayerItem && currentLayerId) {
+				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerItem?.itemId))
+				if (currentLayer.Gamemode === 'FRAAS') {
+					await SquadServer.rcon.setFogOfWar(ctx, 'off')
+					fogoff = true
+				}
+			}
+
+			// -------- schedule post-roll announcements --------
+			postRollAnnouncementsSub?.unsubscribe()
+			postRollAnnouncementsSub = undefined
+			postRollAnnouncementsSub = Rx.from(sleep(CONFIG.reminders.postRollAnnouncementsTimeout)).subscribe(async () => {
+				if (fogoff) await SquadServer.rcon.broadcast(ctx, BROADCASTS.fogOff)
+				await warnShowNext(ctx, 'all-admins')
+			})
+
 			await SquadServer.bufferNextMatchLQItem(ctx, currentLayerItem!)
-			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, layerQueue, voteState, true)
+			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
 			switch (updateRes.code) {
 				case 'noop':
 				case 'err:queue-change-during-vote':
@@ -570,7 +588,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	voteEndTask?.unsubscribe()
 
 	if (!voteState || voteState.code !== 'in-progress') return
-	voteEndTask = new Subscription()
+	voteEndTask = new Rx.Subscription()
 
 	const finalReminderWaitTime = Math.max(0, voteState.deadline - CONFIG.reminders.finalVote - Date.now())
 	const finalReminderBuffer = finalReminderWaitTime - 5 * 1000
@@ -593,7 +611,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	// -------- schedule final reminder --------
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
-			from(sleep(finalReminderWaitTime)).pipe(
+			Rx.from(sleep(finalReminderWaitTime)).pipe(
 				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					await SquadServer.rcon.broadcast(
@@ -607,7 +625,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 
 	// -------- schedule timeout handling --------
 	voteEndTask.add(
-		from(sleep(Math.max(voteState.deadline - Date.now(), 0))).subscribe({
+		Rx.from(sleep(Math.max(voteState.deadline - Date.now(), 0))).subscribe({
 			next: async () => {
 				await handleVoteTimeout(ctx)
 			},
@@ -941,9 +959,21 @@ export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C
 	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-export async function peekNext(ctx: C.Db & C.Log) {
+export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-admins') {
 	const serverState = await getServerState({}, ctx)
-	return serverState.layerQueue[0] ?? null
+	const layerQueue = serverState.layerQueue
+	const parts: M.UserPart = { users: [] }
+	const firstItem = layerQueue[0]
+	if (firstItem?.source.type === 'manual') {
+		const userId = firstItem.source.userId
+		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
+		parts.users.push(user)
+	}
+  if (playerId === 'all-admins') {
+    await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts))
+  } else {
+    await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts))
+  }
 }
 
 async function includeLQServerUpdateParts(

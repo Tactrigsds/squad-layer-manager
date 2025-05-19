@@ -87,7 +87,7 @@ function ShortLayerName({ layerId, normTeamOffset }: { layerId: M.LayerId; normT
 	const [leftTeamElt, rightTeamElt] = getTeamsDisplay(
 		partialLayer,
 		normTeamOffset,
-		globalSettings.displayLayersNormalized,
+		globalSettings.displayTeamsNormalized,
 	)
 
 	return (

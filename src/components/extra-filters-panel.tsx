@@ -42,7 +42,7 @@ export default function ExtraFiltersPanel() {
 						<Icons.Edit />
 					</Button>
 				</PopoverTrigger>
-				<PopoverContent className="">
+				<PopoverContent className="w-min">
 					<h4 className={Typography.H4}>Edit Extra Filters</h4>
 					<div className="space-y-4">
 						<ul>

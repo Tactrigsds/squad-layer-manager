@@ -127,22 +127,35 @@ export default function LayerQueueDashboard() {
 	}
 
 	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
-	const layerQueryConstraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectQDQueryConstraints)
-	const layerQueryContext: M.LayerQueryContext = { constraints: layerQueryConstraints, previousLayerIds: [] }
+	const layerQueryConstraints = ZusUtils.useStoreDeep(
+		QD.QDStore,
+		QD.selectQDQueryConstraints,
+	)
+	const layerQueryContext: M.LayerQueryContext = {
+		constraints: layerQueryConstraints,
+		previousLayerIds: [],
+	}
 	const userPresenceState = useUserPresenceState()
-	const editingUser = userPresenceState?.editState && PartsSys.findUser(userPresenceState.editState.userId)
+	const editingUser = userPresenceState?.editState
+		&& PartsSys.findUser(userPresenceState.editState.userId)
 	const loggedInUser = useLoggedInUser()
 
 	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = useConfig()?.maxQueueSize
 	const hasKickPermission = loggedInUser
-		&& RBAC.rbacUserHasPerms(loggedInUser, { check: 'any', permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')] })
+		&& RBAC.rbacUserHasPerms(loggedInUser, {
+			check: 'any',
+			permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
+		})
 
 	const kickEditorMutation = useMutation({
 		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
 	})
-	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
+	const inEditTransition = Zus.useStore(
+		QD.QDStore,
+		(s) => s.stopEditingInProgress,
+	)
 	return (
 		<div className="mx-auto grid place-items-center">
 			<div className="w-full flex justify-end">
@@ -155,12 +168,18 @@ export default function LayerQueueDashboard() {
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					<Card>
-						{!isEditing && serverStatusRes && serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
-						{!isEditing && serverStatusRes && serverStatusRes?.code === 'ok' && (!editingUser || inEditTransition) && (
-							<CurrentLayerCard serverStatus={serverStatusRes.data} />
-						)}
+						{!isEditing
+							&& serverStatusRes
+							&& serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
+						{!isEditing
+							&& serverStatusRes
+							&& serverStatusRes?.code === 'ok'
+							&& (!editingUser || inEditTransition) && <CurrentLayerCard serverStatus={serverStatusRes.data} />}
 						{!isEditing && editingUser && !inEditTransition && (
-							<Alert variant="info" className="flex justify-between items-center">
+							<Alert
+								variant="info"
+								className="flex justify-between items-center"
+							>
 								<AlertTitle className="flex space-x-2">
 									{editingUser.discordId === loggedInUser?.discordId
 										? 'You are editing on another tab'
@@ -172,7 +191,11 @@ export default function LayerQueueDashboard() {
 										</>
 									)}
 								</AlertTitle>
-								<Button disabled={!hasKickPermission} onClick={() => kickEditorMutation.mutate()} variant="outline">
+								<Button
+									disabled={!hasKickPermission}
+									onClick={() => kickEditorMutation.mutate()}
+									variant="outline"
+								>
 									Kick
 								</Button>
 							</Alert>
@@ -184,12 +207,20 @@ export default function LayerQueueDashboard() {
 									<CardHeader>
 										<CardTitle>Changes Pending</CardTitle>
 									</CardHeader>
-									<CardContent>{queueHasMutations && <EditSummary />}</CardContent>
+									<CardContent>
+										{queueHasMutations && <EditSummary />}
+									</CardContent>
 									<CardFooter className="space-x-1">
-										<Button onClick={saveLqState} disabled={updateQueueMutation.isPending}>
+										<Button
+											onClick={saveLqState}
+											disabled={updateQueueMutation.isPending}
+										>
 											Save Changes
 										</Button>
-										<Button onClick={() => QD.QDStore.getState().reset()} variant="secondary">
+										<Button
+											onClick={() => QD.QDStore.getState().reset()}
+											variant="secondary"
+										>
 											Cancel
 										</Button>
 										<Icons.LoaderCircle
@@ -233,13 +264,19 @@ function NormTeamsSwitch() {
 
 	const onCheckedChange = (checked: boolean | 'indeterminate') => {
 		if (checked === 'indeterminate') return
-		globalSettings.setDisplayLayersNormalized(checked)
+		globalSettings.setDisplayTeamsNormalized(checked)
 	}
 
 	return (
 		<div className="flex space-x-1 items-center p-2">
-			<Switch id={switchId} defaultChecked={globalSettings.displayLayersNormalized} onCheckedChange={onCheckedChange} />
-			<Label className="cursor-pointer" htmlFor={switchId}>Display Normalized Layers</Label>
+			<Switch
+				id={switchId}
+				defaultChecked={globalSettings.displayTeamsNormalized}
+				onCheckedChange={onCheckedChange}
+			/>
+			<Label className="cursor-pointer" htmlFor={switchId}>
+				Normalize Teams
+			</Label>
 		</div>
 	)
 }
@@ -260,9 +297,16 @@ function QueueControlPanel() {
 		QD.QDStore,
 		useShallow((s) => [s.canEditQueue, s.editedServerState.layerQueue.length]),
 	)
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectQDQueryConstraints)
+	const constraints = ZusUtils.useStoreDeep(
+		QD.QDStore,
+		QD.selectQDQueryConstraints,
+	)
 
-	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(lqLength, { constraints }, QD.LQStore)
+	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(
+		lqLength,
+		{ constraints },
+		QD.LQStore,
+	)
 	const playNextQueryContext: M.LayerQueryContext = { constraints }
 
 	return (
@@ -292,7 +336,11 @@ function QueueControlPanel() {
 				onOpenChange={setAppendLayersPopoverOpen}
 				layerQueryContext={addToQueueQueryContext}
 			>
-				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
+				<Button
+					disabled={!canEdit}
+					className="flex w-min items-center space-x-1"
+					variant="default"
+				>
 					<Icons.PlusIcon />
 					<span>Play After</span>
 				</Button>
@@ -305,7 +353,11 @@ function QueueControlPanel() {
 				onOpenChange={setPlayNextPopoverOpen}
 				layerQueryContext={playNextQueryContext}
 			>
-				<Button disabled={!canEdit} className="flex w-min items-center space-x-1" variant="default">
+				<Button
+					disabled={!canEdit}
+					className="flex w-min items-center space-x-1"
+					variant="default"
+				>
 					<Icons.PlusIcon />
 					<span>Play Next</span>
 				</Button>
@@ -401,10 +453,16 @@ function VoteState() {
 
 	const voteDurationEltId = React.useId()
 	const minRequiredEltId = React.useId()
-	const canModifyVote = loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+	const canModifyVote = loggedInUser
+		&& RBAC.rbacUserHasPerms(loggedInUser, {
+			check: 'all',
+			permits: [RBAC.perm('vote:manage')],
+		})
 		&& !editInProgress
 
-	if (!voteState || !squadServerStatus || squadServerStatus.code !== 'ok') return null
+	if (!voteState || !squadServerStatus || squadServerStatus.code !== 'ok') {
+		return null
+	}
 	function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
 		e.stopPropagation()
@@ -429,13 +487,20 @@ function VoteState() {
 								return field.setValue(e.target.valueAsNumber)
 							}}
 						/>
-						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
+						{field.state.meta.errors.length > 0 && (
+							<Alert variant="destructive">
+								{field.state.meta.errors.join(', ')}
+							</Alert>
+						)}
 					</>
 				)}
 			/>
 			<startVoteForm.Field
 				name="minValidVotePercentage"
-				validators={{ onChange: M.StartVoteInputSchema.shape.minValidVotePercentage, onChangeAsyncDebounceMs: 250 }}
+				validators={{
+					onChange: M.StartVoteInputSchema.shape.minValidVotePercentage,
+					onChangeAsyncDebounceMs: 250,
+				}}
 				children={(field) => (
 					<>
 						<Label htmlFor={minRequiredEltId}>Min Required Turnout(%)</Label>
@@ -448,7 +513,11 @@ function VoteState() {
 								return field.setValue(e.target.valueAsNumber)
 							}}
 						/>
-						{field.state.meta.errors.length > 0 && <Alert variant="destructive">{field.state.meta.errors.join(', ')}</Alert>}
+						{field.state.meta.errors.length > 0 && (
+							<Alert variant="destructive">
+								{field.state.meta.errors.join(', ')}
+							</Alert>
+						)}
 					</>
 				)}
 			/>
@@ -513,8 +582,14 @@ function VoteState() {
 			{
 				body = (
 					<>
-						<Timer deadline={voteState.deadline} className={Typography.Blockquote} />
-						<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
+						<Timer
+							deadline={voteState.deadline}
+							className={Typography.Blockquote}
+						/>
+						<VoteTallyDisplay
+							voteState={voteState}
+							playerCount={squadServerStatus.data.playerCount}
+						/>
 						{cancelBtn}
 					</>
 				)
@@ -523,7 +598,10 @@ function VoteState() {
 		case 'ended:winner':
 			body = (
 				<>
-					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
+					<VoteTallyDisplay
+						voteState={voteState}
+						playerCount={squadServerStatus.data.playerCount}
+					/>
 					{rerunVoteBtn}
 					{voteConfigElt}
 				</>
@@ -532,17 +610,29 @@ function VoteState() {
 		case 'ended:insufficient-votes':
 		case 'ended:aborted': {
 			const user = voteState.code === 'ended:aborted'
-				? voteState.aborter.discordId && PartsSys.findUser(voteState.aborter.discordId)
+				? voteState.aborter.discordId
+					&& PartsSys.findUser(voteState.aborter.discordId)
 				: null
 			body = (
 				<>
-					<VoteTallyDisplay voteState={voteState} playerCount={squadServerStatus.data.playerCount} />
+					<VoteTallyDisplay
+						voteState={voteState}
+						playerCount={squadServerStatus.data.playerCount}
+					/>
 					<Alert variant="destructive">
 						<AlertTitle>Vote Aborted</AlertTitle>
-						{voteState.code === 'ended:insufficient-votes' && <AlertDescription>Insufficient votes to determine a winner</AlertDescription>}
+						{voteState.code === 'ended:insufficient-votes' && (
+							<AlertDescription>
+								Insufficient votes to determine a winner
+							</AlertDescription>
+						)}
 						{voteState.code === 'ended:aborted'
 							&& (user
-								? <AlertDescription>Vote was manually aborted by {user.username}</AlertDescription>
+								? (
+									<AlertDescription>
+										Vote was manually aborted by {user.username}
+									</AlertDescription>
+								)
 								: <AlertDescription>Vote was Aborted</AlertDescription>)}
 					</Alert>
 					{rerunVoteBtn}
@@ -570,63 +660,69 @@ function VoteState() {
 type PoolConfigurationPopoverHandle = {
 	reset(settings: M.ServerSettings): void
 }
-const PoolConfigurationPopover = React.forwardRef(function PoolConfigurationPopover(
-	props: { children: React.ReactNode },
-	ref: React.ForwardedRef<PoolConfigurationPopoverHandle>,
-) {
-	const filterOptions = []
-	for (const f of FilterEntityClient.useFilterEntities().values()) {
-		filterOptions.push({
-			value: f.id as string | null,
-			label: f.name,
-		})
-	}
-	filterOptions.push({ value: null, label: '<none>' })
+const PoolConfigurationPopover = React.forwardRef(
+	function PoolConfigurationPopover(
+		props: { children: React.ReactNode },
+		ref: React.ForwardedRef<PoolConfigurationPopoverHandle>,
+	) {
+		const filterOptions = []
+		for (const f of FilterEntityClient.useFilterEntities().values()) {
+			filterOptions.push({
+				value: f.id as string | null,
+				label: f.name,
+			})
+		}
+		filterOptions.push({ value: null, label: '<none>' })
 
-	React.useImperativeHandle(ref, () => ({
-		reset: () => {},
-	}))
+		React.useImperativeHandle(ref, () => ({
+			reset: () => {},
+		}))
 
-	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
+		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>(
+			'mainPool',
+		)
 
-	return (
-		<Popover>
-			<PopoverTrigger asChild>
-				{props.children}
-			</PopoverTrigger>
-			<PopoverContent className="w-[700px]" side="right">
-				<div className="flex flex-col space-y-2">
-					<div className="flex items-center justify-between">
-						<h3 className="font-medium">Pool Configuration</h3>
-						<TabsList
-							options={[
-								{ label: 'Main Pool', value: 'mainPool' },
-								{ label: 'Autogeneration', value: 'generationPool' },
-							]}
-							active={poolId}
-							setActive={setPoolId}
-						/>
+		return (
+			<Popover>
+				<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+				<PopoverContent className="w-[700px]" side="right">
+					<div className="flex flex-col space-y-2">
+						<div className="flex items-center justify-between">
+							<h3 className="font-medium">Pool Configuration</h3>
+							<TabsList
+								options={[
+									{ label: 'Main Pool', value: 'mainPool' },
+									{ label: 'Autogeneration', value: 'generationPool' },
+								]}
+								active={poolId}
+								setActive={setPoolId}
+							/>
+						</div>
+						<PoolFiltersConfigurationPanel poolId={poolId} />
+						<PoolDoNotRepeatRulesConfigurationPanel poolId={poolId} />
 					</div>
-					<PoolFiltersConfigurationPanel poolId={poolId} />
-					<PoolDoNotRepeatRulesConfigurationPanel poolId={poolId} />
-				</div>
-			</PopoverContent>
-		</Popover>
-	)
-})
+				</PopoverContent>
+			</Popover>
+		)
+	},
+)
 
-function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'generationPool' }) {
-	const [filterIds, setSetting] = ZusUtils.useStoreDeep(
-		QD.QDStore,
-		s => [s.editedServerState.settings.queue[poolId].filters, s.setSetting],
-	)
+function PoolFiltersConfigurationPanel({
+	poolId,
+}: {
+	poolId: 'mainPool' | 'generationPool'
+}) {
+	const [filterIds, setSetting] = ZusUtils.useStoreDeep(QD.QDStore, (s) => [
+		s.editedServerState.settings.queue[poolId].filters,
+		s.setSetting,
+	])
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	const add = (filterId: M.FilterEntityId | null) => {
 		if (filterId === null) return
-		setSetting(s => {
+		setSetting((s) => {
 			s.queue[poolId].filters.push(filterId)
 		})
 	}
@@ -642,12 +738,12 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 						if (newFilterId === null) {
 							return
 						}
-						setSetting(s => {
+						setSetting((s) => {
 							s.queue[poolId].filters[i] = newFilterId
 						})
 					}
 					const deleteFilter = () => {
-						setSetting(s => {
+						setSetting((s) => {
 							s.queue[poolId].filters.splice(i, 1)
 						})
 					}
@@ -665,7 +761,12 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 								allowEmpty={false}
 								excludedFilterIds={excluded}
 							/>
-							<Button disabled={!canWriteSettings} size="icon" variant="ghost" onClick={() => deleteFilter()}>
+							<Button
+								disabled={!canWriteSettings}
+								size="icon"
+								variant="ghost"
+								onClick={() => deleteFilter()}
+							>
 								<Icons.Minus />
 							</Button>
 						</li>
@@ -688,8 +789,15 @@ function PoolFiltersConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'gener
 	)
 }
 
-function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool' | 'generationPool' }) {
-	const rules = Zus.useStore(QD.QDStore, (s) => s.editedServerState.settings.queue[poolId].doNotRepeatRules)
+function PoolDoNotRepeatRulesConfigurationPanel({
+	poolId,
+}: {
+	poolId: 'mainPool' | 'generationPool'
+}) {
+	const rules = Zus.useStore(
+		QD.QDStore,
+		(s) => s.editedServerState.settings.queue[poolId].doNotRepeatRules,
+	)
 	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -721,7 +829,10 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 						assertNever(rule.field)
 				}
 				return (
-					<div key={index + '_' + rule.field} className="flex space-x-1 items-center">
+					<div
+						key={index + '_' + rule.field}
+						className="flex space-x-1 items-center"
+					>
 						<Input
 							placeholder="Label"
 							defaultValue={rule.label}
@@ -735,7 +846,9 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 						/>
 						<ComboBox
 							title={'Rule'}
-							options={M.DnrFieldSchema.options.filter(o => o !== 'FactionAndUnit')}
+							options={M.DnrFieldSchema.options.filter(
+								(o) => o !== 'FactionAndUnit',
+							)}
 							value={rule.field}
 							allowEmpty={false}
 							onSelect={(value) => {
@@ -743,7 +856,8 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 								setSetting((settings) => {
 									settings.queue[poolId].doNotRepeatRules[index].field = value as M.DnrField
 									settings.queue[poolId].doNotRepeatRules[index].label = value
-									delete settings.queue[poolId].doNotRepeatRules[index].targetValues
+									delete settings.queue[poolId].doNotRepeatRules[index]
+										.targetValues
 								})
 							}}
 							disabled={!canWriteSettings}
@@ -767,7 +881,9 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 							onSelect={(updated) => {
 								setSetting((settings) => {
 									const rule = settings.queue[poolId].doNotRepeatRules[index]
-									const values = typeof updated === 'function' ? updated(rule.targetValues ?? []) : updated
+									const values = typeof updated === 'function'
+										? updated(rule.targetValues ?? [])
+										: updated
 									rule.targetValues = values.filter((v) => !!v) as string[]
 								})
 							}}
@@ -793,7 +909,11 @@ function PoolDoNotRepeatRulesConfigurationPanel({ poolId }: { poolId: 'mainPool'
 				disabled={!canWriteSettings}
 				onClick={() => {
 					setSetting((settings) => {
-						settings.queue[poolId].doNotRepeatRules.push({ field: 'Map', within: 0, label: 'Map' })
+						settings.queue[poolId].doNotRepeatRules.push({
+							field: 'Map',
+							within: 0,
+							label: 'Map',
+						})
 					})
 				}}
 			>

@@ -34,6 +34,12 @@ begin
         value      varchar(255) collate utf8mb4_0900_ai_ci
     );
 
+#     drop temporary table if exists dbg;
+#     create temporary table if not exists dbg
+#     (
+#         msg varchar(2048) collate utf8mb4_0900_ai_ci
+#     ) collate utf8mb4_0900_ai_ci;
+
     -- loop for num_layers times
     while iterations > 0
         do
@@ -43,7 +49,7 @@ begin
             col_loop:
             loop
                 fetch col_cursor into colname, column_ordinal;
-                -- insert into dbg (msg) values (concat('Processing column: ', coalesce(colname, '<empty>')));
+#                 insert into dbg (msg) values (concat('Processing column: ', coalesce(colname, '<empty>')));
                 if done then
                     leave col_loop;
                 end if;
@@ -66,21 +72,29 @@ begin
                     left join genLayerWeights weights
                           on weights.value = vals.value collate utf8mb4_0900_ai_ci and weights.columnName = ''',
                                   colname, ''' collate utf8mb4_0900_ai_ci)');
+
+#                 insert into dbg (msg) values (concat('SQL: ', @sql));
                 prepare stmt from @sql;
                 execute stmt;
                 deallocate prepare stmt;
 
-                if (select count(*) from weights_map) = 0 then
-                    -- insert into dbg (msg) values (concat('No values found for column: ', coalesce(colname, '<empty>')));
+                set @values_count = 0;
+                select count(*) into @values_count from weights_map;
+
+                if @values_count = 0 then
+#                     insert into dbg (msg) values (concat('Unable to resolve weights for column: ', coalesce(colname, '<empty>')));
                     leave col_loop;
+                elseif @values_count = 1 then
+                    set @selected_value = (select value from weights_map);
+                else
+                    set @selected_value = select_from_weights_map();
+                    if @selected_value is null then
+#                         insert into dbg (msg) values (concat('No value found for column: ', coalesce(colname, '<empty>')));
+                        leave col_loop;
+                    end if;
                 end if;
 
-                set @selected_value = select_from_weights_map();
-                if @selected_value is null then
-                    -- insert into dbg (msg) values (concat('No value found for column: ', coalesce(colname, '<empty>')));
-                    leave col_loop;
-                end if;
-                -- insert into dbg (msg) values (concat('Selected value: ', coalesce(@selected_value, '<empty>')));
+#                 insert into dbg (msg) values (concat('Selected value: ', coalesce(@selected_value, '<empty>')));
                 insert into selected_values (columnName, value) values (colname, @selected_value);
             end loop;
             close col_cursor;
@@ -102,7 +116,7 @@ begin
 #
             if @selected_id is not null then
                 insert into results (id) values (@selected_id);
-                -- insert into dbg (msg) values (concat('Selected ID: ', @selected_id));
+#                 insert into dbg (msg) values (concat('Selected ID: ', @selected_id));
             end if;
             set iterations = iterations - 1;
         end while;
@@ -129,7 +143,7 @@ begin
     select sum(weight) into total_weight from weights_map;
 
     set target_weight = rand() * total_weight;
-    -- insert into dbg (msg) values (concat('Target weight: ', target_weight));
+#     insert into dbg (msg) values (concat('Target weight: ', target_weight));
 
     set curr_weight = 0;
     set cum_weight = 0;

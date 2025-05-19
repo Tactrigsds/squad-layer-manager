@@ -48,6 +48,7 @@ export const ConfigSchema = z.object({
 		voteReminderInterval: HumanTime.default('15s').describe('How often to remind users to vote'),
 		startVoteReminderThreshold: HumanTime.default('25m').describe('How far into a match to start reminding admins to start a vote'),
 		finalVote: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
+		postRollAnnouncementsTimeout: HumanTime.default('5m').describe('How long to wait before sending post-roll reminders'),
 	}).default({}),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),

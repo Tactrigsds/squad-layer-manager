@@ -80,6 +80,7 @@ const SUBFACTION_ABBREVIATIONS = {
 const GAMEMODES = [
 	'AAS',
 	'RAAS',
+	'FRAAS',
 	'TC',
 	'Invasion',
 	'Destruction',
@@ -93,6 +94,7 @@ const GAMEMODES = [
 
 const GAMEMODE_ABBREVIATIONS = {
 	RAAS: 'RAAS',
+	FRAAS: 'FRAAS',
 	AAS: 'AAS',
 	TC: 'TC',
 	Invasion: 'INV',
@@ -125,7 +127,7 @@ const MAP_SHORT_NAMES: Record<M.Layer['Map'], string> = {
 	Mestia: 'Mestia',
 	Mutaha: 'Muta',
 	Narva: 'Narva',
-	PacificProvingGrounds: 'PPG',
+	PacificProvingGrounds: 'PacificProvingGrounds',
 	Sanxian: 'Sanxian',
 	Skorpo: 'Skorpo',
 	Sumari: 'Sumari',

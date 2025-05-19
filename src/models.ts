@@ -516,6 +516,11 @@ export type EditableComparison = {
 	values?: (string | null)[]
 	range?: [number | undefined, number | undefined]
 }
+
+export function editableComparisonHasValue(comp: EditableComparison) {
+	return comp.code === 'is-true' || comp.value !== undefined || comp.values !== undefined || comp.range !== undefined
+}
+
 // --------  numeric --------
 export const LessThanComparison = z.object({
 	code: z.literal('lt'),
@@ -1223,7 +1228,12 @@ export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 
 export type LQServerState = z.infer<typeof ServerStateSchema>
 export function getNextLayerId(layerQueue: LayerList) {
-	return layerQueue[0]?.layerId ?? layerQueue[0]?.vote?.defaultChoice
+	if (layerQueue.length === 0) return
+	return getLayerIdToSetFromItem(layerQueue[0])
+}
+
+export function getLayerIdToSetFromItem(item: LayerListItem) {
+	return item.layerId ?? item.vote?.defaultChoice
 }
 
 export function getAllItemLayerIds(item: LayerListItem, opts?: { excludeVoteChoices?: boolean }) {

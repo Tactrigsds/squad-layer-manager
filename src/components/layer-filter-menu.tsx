@@ -194,6 +194,17 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 								delete prev.value
 							}),
 						)
+						// @ts-expect-error idgaf
+						if (M.LAYER_STRING_PROPERTIES.includes(name)) {
+							props.filterMenuStore.getState().setMenuItems(
+								Im.produce((draft) => {
+									const layerComp = draft.find((item) => item.column === 'Layer')
+									if (layerComp) {
+										delete layerComp.value
+									}
+								}),
+							)
+						}
 					}
 
 					function swapFactions() {
@@ -242,6 +253,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 							)}
 							<Comparison
 								columnEditable={false}
+								highlight={M.editableComparisonHasValue(comparison)}
 								comp={comparison}
 								setComp={setComp}
 								layerQueryContext={{ ...props.queryContext, constraints }}

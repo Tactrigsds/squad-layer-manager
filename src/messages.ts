@@ -3,6 +3,7 @@ import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
+import { assertNever } from './lib/typeGuards'
 import { CommandConfig } from './server/config'
 
 function formatInterval(interval: number) {
@@ -11,6 +12,8 @@ function formatInterval(interval: number) {
 }
 
 export const BROADCASTS = {
+	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
+	queue: {},
 	vote: {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
 			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
@@ -62,19 +65,51 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
-		showNext(item: M.LayerListItem | null) {
-			if (!item) return `Next layer not configured`
+		showNext(layerQueue: M.LayerList, parts: M.UserPart) {
+			const item = layerQueue[0]
+			let setByDisplay: string
+			switch (item?.source.type) {
+				case undefined:
+				case 'unknown':
+					setByDisplay = `Unknown`
+					break
+				case 'generated':
+					setByDisplay = `Generated`
+					break
+				case 'gameserver':
+					setByDisplay = `Game Server`
+					break
+				case 'manual':
+					{
+						const userId = item.source.userId
+						setByDisplay = `Set by ${parts.users.find(user => user.discordId === userId)}`
+					}
+					break
+				default:
+					assertNever(item.source)
+			}
+
+			const queueCountDisplay = `(${layerQueue.length} in queue)`
+
+			if (!item) return `Next layer not configured ${queueCountDisplay}`
 			if (item.vote) {
 				if (item.layerId) {
-					return `Next layer (Chosen via vote):\n${DH.toShortLayerNameFromId(item.layerId)}`
+					return `Next layer (Chosen via vote):\n${DH.toShortLayerNameFromId(item.layerId)} (${setByDisplay}) ${queueCountDisplay}`
 				} else {
-					return { msg: ['Upcoming vote:', ...voteChoicesLines(item.vote.choices, item.vote.defaultChoice)], repeat: 3 }
+					return {
+						msg: [
+							'Upcoming vote:',
+							...voteChoicesLines(item.vote.choices, item.vote.defaultChoice),
+							`${setByDisplay} ${queueCountDisplay}`,
+						],
+						repeat: 3,
+					}
 				}
 			}
 			// this shouldn't be possible
-			if (!item.layerId) return `No next layer set`
+			if (!item.layerId) return `No next layer set ${queueCountDisplay}`
 
-			return `Next layer: ${DH.toShortLayerNameFromId(item.layerId)}`
+			return `Next layer: ${DH.toShortLayerNameFromId(item.layerId)} (${setByDisplay}) ${queueCountDisplay}`
 		},
 	},
 	commands: {

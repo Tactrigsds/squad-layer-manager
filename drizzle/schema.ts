@@ -229,12 +229,20 @@ export const sessions = mysqlTable(
 )
 
 export const genLayerColumnOrder = mysqlTable('genLayerColumnOrder', {
+	columnName: varchar('columnName', { length: 255 }).primaryKey().notNull(),
 	ordinal: int('ordinal').notNull(),
-	columnName: varchar('columnName', { length: 255 }).notNull(),
 })
 
-export const genLayerWeights = mysqlTable('genLayerWeights', {
-	columnName: varchar('columnName', { length: 255 }).notNull(),
-	value: varchar('value', { length: 255 }).notNull(),
-	weight: float('weight').notNull(),
-})
+export const genLayerWeights = mysqlTable(
+	'genLayerWeights',
+	{
+		columnName: varchar('columnName', { length: 255 }).notNull(),
+		value: varchar('value', { length: 255 }).notNull(),
+		weight: float('weight').notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.columnName, table.value] }),
+		columnNameIndex: index('columnNameIndex').on(table.columnName),
+		valueIndex: index('valueIndex').on(table.value),
+	}),
+)

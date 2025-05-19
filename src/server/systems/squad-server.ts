@@ -4,7 +4,7 @@ import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
 import * as SME from '@/lib/rcon/squad-models.events.ts'
-import SquadRcon from '@/lib/rcon/squad-rcon.ts'
+import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import { WARNS } from '@/messages.ts'
@@ -47,8 +47,7 @@ export let state!: SquadServerState
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadSftpLogs, ...Env.groups.rcon })
 let ENV!: ReturnType<typeof envBuilder>
 
-export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, message: string) => {
-	C.setSpanOpAttrs({ message })
+export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, options: WarnOptions) => {
 	const [{ value: admins }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
 	const ops: Promise<void>[] = []
 
@@ -56,7 +55,7 @@ export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }
 	for (const player of playersRes.players) {
 		const groups = admins.get(player.steamID)
 		if (groups?.[CONFIG.adminListAdminRole]) {
-			ops.push(rcon.warn(ctx, player.steamID.toString(), message))
+			ops.push(rcon.warn(ctx, player.steamID.toString(), options))
 		}
 	}
 	await Promise.all(ops)
@@ -198,8 +197,7 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 			return
 		}
 		case 'showNext': {
-			const nextItem = await LayerQueue.peekNext(ctx)
-			await rcon.warn(ctx, msg.playerId, WARNS.queue.showNext(nextItem))
+			await LayerQueue.warnShowNext(ctx, msg.playerId)
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}

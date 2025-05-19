@@ -44,7 +44,7 @@ export default function MatchHistoryPanel() {
 
 	let leftTeamLabel: string
 	let rightTeamLabel: string
-	if (globalSettings.displayLayersNormalized) {
+	if (globalSettings.displayTeamsNormalized) {
 		leftTeamLabel = 'Team A'
 		rightTeamLabel = 'Team B'
 	} else {
@@ -83,7 +83,7 @@ export default function MatchHistoryPanel() {
 								let team1Tickets = entry.outcome.team1Tickets
 								let team2Tickets = entry.outcome.team2Tickets
 
-								if (globalSettings.displayLayersNormalized && entry.normTeamOffset === 1) {
+								if (globalSettings.displayTeamsNormalized && entry.normTeamOffset === 1) {
 									// Swap status if normalized
 									;[team1Status, team2Status] = [team2Status, team1Status]
 									;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
@@ -136,7 +136,7 @@ export default function MatchHistoryPanel() {
 								differenceDisp = '-' + Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString() + 'm'
 							}
 
-							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.normTeamOffset, globalSettings.displayLayersNormalized)
+							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.normTeamOffset, globalSettings.displayTeamsNormalized)
 
 							return (
 								<ContextMenu key={entry.historyEntryId}>
