@@ -1,3 +1,4 @@
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { atom, getDefaultStore, useAtomValue } from 'jotai'
 import { withImmer } from 'jotai-immer'
 
@@ -22,10 +23,17 @@ function atomWithLocalStorage<T>(key: string, initialValue: T) {
 }
 
 const FEATURE_FLAGS = {
-	historyFilters: false,
+	reactQueryDevtools: false,
 }
 
-export const featureFlagsAtom = atomWithLocalStorage('featureFlags', FEATURE_FLAGS)
+export const featureFlagsAtom = atomWithLocalStorage('featureFlags:v1', FEATURE_FLAGS)
+
+// @ts-expect-error - this is a hack to expose the feature flags to the window object so we can set them in the console
+window.listFeatureFlags = () => {
+	const store = getDefaultStore()
+	const flags = store.get(featureFlagsAtom)
+	console.log('Feature flags:', flags)
+}
 
 // @ts-expect-error - this is a hack to expose the feature flags to the window object so we can set them in the console
 window.setFeatureFlag = (flag, value) => {

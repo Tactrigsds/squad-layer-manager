@@ -1,25 +1,37 @@
+import { Toaster } from '@/components/ui/toaster'
+import { useGlobalToast } from '@/hooks/use-global-toast'
+import * as ConfigClient from '@/systems.client/config.client'
+import { DragContextProvider } from '@/systems.client/dndkit.provider'
+import * as FeatureFlagClient from '@/systems.client/feature-flags'
+import * as QD from '@/systems.client/queue-dashboard'
+import { reactQueryClient } from '@/trpc.client'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import * as jotai from 'jotai'
 import { ReactNode } from 'react'
 import React from 'react'
-
-import { Toaster } from '@/components/ui/toaster'
-import { reactQueryClient } from '@/trpc.client'
-
-import { useGlobalToast } from '@/hooks/use-global-toast'
-import { DragContextProvider } from '@/systems.client/dndkit.provider'
-import * as QD from '@/systems.client/queue-dashboard'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { ThemeProvider } from './theme-provider'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 import { TooltipProvider } from './ui/tooltip'
 
 export function Providers(props: { children: ReactNode }) {
-	useGlobalToast()
-
 	return (
 		<QueryClientProvider client={reactQueryClient}>
-			<ReactQueryDevtools initialIsOpen={true} />
+			<ProvidersInner>
+				{props.children}
+			</ProvidersInner>
+		</QueryClientProvider>
+	)
+}
+
+function ProvidersInner(props: { children: ReactNode }) {
+	useGlobalToast()
+	const slmConfig = ConfigClient.useConfig()
+	const flags = FeatureFlagClient.useFeatureFlags()
+
+	return (
+		<>
+			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen={true} />}
 			<jotai.Provider>
 				<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
 					<TooltipProvider>
@@ -30,7 +42,7 @@ export function Providers(props: { children: ReactNode }) {
 					<Toaster />
 				</ThemeProvider>
 			</jotai.Provider>
-		</QueryClientProvider>
+		</>
 	)
 }
 

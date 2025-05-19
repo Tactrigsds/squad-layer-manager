@@ -98,7 +98,7 @@ export async function ensureConfigSetup() {
 }
 
 export function getPublicConfig() {
-	return selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize'])
+	return { ...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize']), isProduction: ENV.NODE_ENV === 'production' }
 }
 
 export async function generateConfigJsonSchema() {
