@@ -1,6 +1,6 @@
 import * as AR from '@/app-routes.ts'
 import { useDebounced } from '@/hooks/use-debounce'
-import { useLayersGroupedBy } from '@/hooks/use-layer-queries.ts'
+import * as ArrUtils from '@/lib/array.ts'
 import { sleepUntil } from '@/lib/async'
 import * as EFB from '@/lib/editable-filter-builders.ts'
 import * as FB from '@/lib/filter-builders.ts'
@@ -9,6 +9,7 @@ import { assertNever } from '@/lib/typeGuards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as M from '@/models.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import { useLayerComponents, useSearchIds } from '@/systems.client/layer-queries.client.ts'
 import { produce } from 'immer'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -27,6 +28,7 @@ import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
+
 function getNodeWrapperClasses(depth: number, invalid: boolean) {
 	const base = 'p-2 border-l-2 w-full'
 	const depthColor = depth === 0 ? 'border-secondary' : depthColors[depth % depthColors.length]
@@ -449,7 +451,7 @@ export function Comparison(props: {
 					<StringEqConfig
 						ref={valueBoxRef}
 						className={componentStyles}
-						column={comp.column as M.StringColumn}
+						column={comp.column as M.GroupByColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
 							return setComp((c) => ({ ...c, value }))
@@ -478,7 +480,7 @@ export function Comparison(props: {
 					<StringInConfig
 						className={componentStyles}
 						ref={valueBoxRef}
-						column={comp.column as M.StringColumn}
+						column={comp.column as M.GroupByColumn}
 						values={(comp.values ?? []) as string[]}
 						queryContext={props.layerQueryContext}
 						setValues={(action) => {
@@ -493,11 +495,14 @@ export function Comparison(props: {
 				)
 			} else {
 				valueBox = (
-					<StringEqConfigLimitedAutocomplete
+					<StringInConfigLimitAutoComplete
 						ref={valueBoxRef}
 						column={comp.column as M.StringColumn}
-						value={comp.value as string | undefined | null}
-						setValue={(value) => setComp((c) => ({ ...c, value }))}
+						values={comp.values ?? []}
+						setValues={(values) => {
+							// @ts-expect-error idc
+							return setComp((c) => ({ ...c, values }))
+						}}
 						queryContext={props.layerQueryContext}
 						className={componentStyles}
 					/>
@@ -634,18 +639,17 @@ function ApplyFilter(props: ApplyFilterProps) {
 const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string | null>(
 	props: {
 		value: T | undefined
-		column: M.StringColumn
+		column: M.GroupByColumn
 		setValue: (value: T | undefined) => void
 		queryContext?: M.LayerQueryContext
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayersGroupedBy({
-		columns: [props.column],
+	const valuesRes = useLayerComponents({
 		...(props.queryContext ?? {}),
 	})
-	const options = valuesRes.isSuccess ? valuesRes.data.map((r) => r[props.column]) : LOADING
+	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
 	return (
 		<ComboBox
 			ref={ref}
@@ -736,20 +740,24 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 		constraints = [...constraints, M.filterToConstraint(filter, 'autocomplete-' + column)]
 	}
 
-	const valuesRes = useLayersGroupedBy(
+	const valuesRes = useLayerComponents(
 		{
-			columns: [column],
-			constraints,
 			previousLayerIds: queryContext?.previousLayerIds,
 		},
 		{
-			enabled: debouncedInput !== '',
+			enabled: debouncedInput !== '' && column !== 'id',
 		},
 	)
+	const idsRes = useSearchIds({ constraints, previousLayerIds: queryContext?.previousLayerIds, queryString: debouncedInput }, {
+		enabled: debouncedInput !== '' && column === 'id',
+	})
+
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
-	else if (debouncedInput && valuesRes.isSuccess) {
-		options = valuesRes.data!.map((v) => v[column]) as T[]
+	else if (debouncedInput && valuesRes.isSuccess && column !== 'id') {
+		options = valuesRes.data[column] as T[]
+	} else if (debouncedInput && idsRes.isSuccess) {
+		options = idsRes.data.ids as unknown as T[]
 	}
 
 	return {
@@ -766,15 +774,14 @@ function buildLikeFilter(column: M.StringColumn, input: string): M.FilterNode {
 const StringInConfig = React.forwardRef(function StringInConfig(
 	props: {
 		values: (string | null)[]
-		column: M.StringColumn
+		column: M.GroupByColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		queryContext?: M.LayerQueryContext
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayersGroupedBy({
-		columns: [props.column],
+	const valuesRes = useLayerComponents({
 		...props.queryContext,
 	})
 	return (
@@ -782,7 +789,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 			title={props.column}
 			ref={ref}
 			values={props.values}
-			options={valuesRes.data?.map((r) => r[props.column]) ?? []}
+			options={valuesRes.data ? valuesRes.data[props.column] : []}
 			onSelect={props.setValues}
 			className={props.className}
 		/>
@@ -794,7 +801,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 		values: (string | null)[]
 		column: M.StringColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		queryContext: M.LayerQueryContext
+		queryContext?: M.LayerQueryContext
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
@@ -873,17 +880,12 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 		values: string[]
 		column: M.CollectionColumn
 		setValues: React.Dispatch<React.SetStateAction<string[]>>
-		queryContext?: M.FilterNode
+		queryContext?: M.LayerQueryContext
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const factions1Res = useLayersGroupedBy({
-		columns: ['Faction_1', 'SubFac_1'],
-		...(props.queryContext ?? {}),
-	})
-	const factions2Res = useLayersGroupedBy({
-		columns: ['Faction_2', 'SubFac_2'],
+	const groupedByRes = useLayerComponents({
 		...(props.queryContext ?? {}),
 	})
 
@@ -892,9 +894,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 
 	if (props.column === 'FactionMatchup') {
 		const onSelect = props.setValues as ComboBoxMultiProps['onSelect']
-		const allFactions = [
-			...new Set([...(factions1Res.data?.map((r) => r.Faction_1) ?? []), ...(factions2Res.data?.map((r) => r.Faction_2) ?? [])]),
-		]
+		const allFactions = ArrUtils.union(groupedByRes.data?.Faction_1 ?? [], groupedByRes.data?.Faction_2 ?? [])
 		return (
 			<ComboBoxMulti
 				className={props.className}
@@ -909,10 +909,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	}
 
 	if (props.column === 'SubFacMatchup') {
-		const allSubFactions = [
-			...new Set([...(factions1Res.data?.map((r) => r.SubFac_1) ?? []), ...(factions2Res.data?.map((r) => r.SubFac_2) ?? [])]),
-		]
-
+		const allSubFactions = ArrUtils.union(groupedByRes.data?.SubFac_1 ?? [], groupedByRes.data?.SubFac_2 ?? [])
 		function canMirror(values: string[]) {
 			return values.length === 1 || (values.length === 2 && values[0] === values[1])
 		}
@@ -967,12 +964,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	}
 
 	if (props.column === 'FullMatchup') {
-		const allFullTeams = [
-			...new Set([
-				...(factions1Res.data?.map((r) => M.getLayerTeamString(r.Faction_1, r.SubFac_1)) ?? []),
-				...(factions2Res.data?.map((r) => M.getLayerTeamString(r.Faction_2, r.SubFac_2)) ?? []),
-			]),
-		]
+		const allFullTeams = ArrUtils.union(groupedByRes.data?.Faction_1 ?? [], groupedByRes.data?.Faction_2 ?? [])
 
 		const allTeamOptions: ComboBoxOption<string>[] = allFullTeams.map((team) => {
 			const { faction, subfac } = M.parseTeamString(team)

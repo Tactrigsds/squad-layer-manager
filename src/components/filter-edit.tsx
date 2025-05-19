@@ -11,9 +11,8 @@ import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as RbacClient from '@/systems.client/rbac.client'
-import * as Users from '@/systems.client/users.client'
+import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Form from '@tanstack/react-form'
@@ -41,7 +40,7 @@ export default function FilterWrapper() {
 	// could also be /filters/new, in which case we're creating a new filter and id is undefined
 	const editParams = useAppParams('/filters/:id')
 	const { toast } = useToast()
-	const loggedInUser = useLoggedInUser()
+	const loggedInUser = UsersClient.useLoggedInUser()
 	const navigate = useNavigate()
 	const filterEntity = ReactRx.useStateObservable(FilterEntityClient.filterEntities$).get(editParams.id)
 
@@ -78,7 +77,7 @@ export default function FilterWrapper() {
 			return () => sub.unsubscribe()
 		})
 	}, [editParams.id, navigate, toast, loggedInUser?.username])
-	const userRes = Users.useUser(filterEntity?.owner)
+	const userRes = UsersClient.useUser(filterEntity?.owner)
 	const filterContributorRes = FilterEntityClient.useFilterContributors(editParams.id)
 
 	// TODO handle not found
@@ -135,7 +134,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 			const res = await updateFilterMutation.mutateAsync([props.entity.id, { ...value, description, filter: validFilter ?? undefined }])
 			switch (res.code) {
 				case 'err:permission-denied':
-					RbacClient.showPermissionDenied(res)
+					RbacClient.handlePermissionDenied(res)
 					break
 
 				case 'err:not-found':
@@ -159,7 +158,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	// const canSave = (editedFilterModified || (isDirty && isValid)) && !!validFilter && !updateFilterMutation.isPending
 
 	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
-	const loggedInUser = useLoggedInUser()
+	const loggedInUser = UsersClient.useLoggedInUser()
 
 	async function onDelete() {
 		if (!props.entity) {
@@ -386,7 +385,7 @@ function FilterContributors(props: {
 		onSuccess: (res) => {
 			switch (res.code) {
 				case 'err:permission-denied':
-					return RbacClient.showPermissionDenied(res)
+					return RbacClient.handlePermissionDenied(res)
 				case 'err:already-exists':
 					return toast({ title: 'Contributor already added' })
 				case 'ok':
@@ -407,7 +406,7 @@ function FilterContributors(props: {
 		onSuccess: (res) => {
 			switch (res.code) {
 				case 'err:permission-denied':
-					return RbacClient.showPermissionDenied(res)
+					return RbacClient.handlePermissionDenied(res)
 				case 'err:not-found':
 					return toast({ title: 'Contributor not found' })
 				case 'ok':
@@ -510,7 +509,7 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 }
 
 function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user: M.User) => void }) {
-	const usersRes = Users.useUsers()
+	const usersRes = UsersClient.useUsers()
 	const [isOpen, setIsOpen] = useState(false)
 	function onSelect(user: M.User) {
 		props.selectUser(user)

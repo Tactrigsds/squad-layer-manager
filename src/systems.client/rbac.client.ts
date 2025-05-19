@@ -1,9 +1,12 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
+import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
-export function showPermissionDenied(res: RBAC.PermissionDeniedResponse) {
+
+export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
+	void UsersClient.invalidateLoggedInUser()
 	globalToast$.next({
 		title: Messages.WARNS.permissionDenied(res),
 	})

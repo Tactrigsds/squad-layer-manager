@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
-import { useLayerExists, useLayersQuery } from '@/hooks/use-layer-queries.ts'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
 import * as FB from '@/lib/filter-builders'
@@ -15,7 +14,8 @@ import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import type { LayersQueryInput } from '@/server/systems/layer-queries'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
+import { useLayerExists, useLayersQuery } from '@/systems.client/layer-queries.client'
+import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -236,6 +236,15 @@ export default function LayerTable(props: {
 		}, [props.queryContext?.constraints, setPageIndex])
 	}
 
+	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
+	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
+		_setShowSelectedLayers(value)
+		props.setPageIndex(0)
+		if (sortingState.length > 0) {
+			setSorting([])
+		}
+	}
+
 	let queryConstraints = props.queryContext?.constraints
 
 	let defaultSortingState: SortingState = []
@@ -245,6 +254,7 @@ export default function LayerTable(props: {
 			desc: props.defaultSortDirection === 'DESC',
 		}]
 	}
+
 	const [sortingState, _setSortingState] = useState<SortingState>(defaultSortingState)
 	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
 		_setSortingState((sortingState) => {
@@ -255,7 +265,8 @@ export default function LayerTable(props: {
 		setRandomize(false)
 		props.setPageIndex(0)
 	}
-	const [randomize, setRandomize] = useState<boolean>(props.defaultSortBy === 'random')
+	const [_randomize, setRandomize] = useState<boolean>(props.defaultSortBy === 'random')
+	const randomize = !showSelectedLayers && _randomize
 	const [seed, setSeed] = useState<number>(generateSeed())
 	function generateSeed() {
 		return Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
@@ -278,14 +289,6 @@ export default function LayerTable(props: {
 	})
 
 	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultVisibility.current)
-	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
-	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
-		_setShowSelectedLayers(value)
-		props.setPageIndex(0)
-		if (sortingState.length > 0) {
-			setSorting([])
-		}
-	}
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
 	const rawSetDialogRef = useRef<SetRawDialogHandle>(null)
@@ -349,7 +352,10 @@ export default function LayerTable(props: {
 
 	if (showSelectedLayers) {
 		const filter = FB.comp(FB.inValues('id', props.selected))
-		queryConstraints = [{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' }]
+		queryConstraints = [
+			...(queryConstraints ?? []).filter(q => q.applyAs === 'field'),
+			{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' },
+		]
 	}
 
 	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
@@ -573,7 +579,7 @@ export default function LayerTable(props: {
 						<Dices />
 					</Button>
 					<div className="flex items-center space-x-1">
-						<Switch checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
+						<Switch disabled={showSelectedLayers} checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
 						<Label htmlFor="toggle-randomize">Randomize</Label>
 					</div>
 					<Separator orientation="vertical" />

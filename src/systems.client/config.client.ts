@@ -1,7 +1,23 @@
-import { type Config } from '@/server/config'
-import * as Jotai from 'jotai'
-export const configAtom = Jotai.atom(null as null | Config)
+import { reactQueryClient, trpc } from '@/trpc.client'
+import { useQuery } from '@tanstack/react-query'
+const baseQuery = {
+	queryKey: ['config'],
+	queryFn: () => trpc.config.query(),
+}
 
 export function useConfig() {
-	return Jotai.useAtomValue(configAtom, { store: Jotai.getDefaultStore() })
+	return useQuery({
+		...baseQuery,
+		staleTime: Infinity,
+	}).data
+}
+
+export function fetchConfig() {
+	return reactQueryClient.getQueryCache().build(reactQueryClient, {
+		...baseQuery,
+	}).fetch()
+}
+
+export function setup() {
+	reactQueryClient.prefetchQuery({ ...baseQuery })
 }

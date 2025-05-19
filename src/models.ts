@@ -444,6 +444,19 @@ export const COLUMN_TYPE_MAPPINGS = {
 	boolean: ['Z_Pool', 'Scored'] as const,
 } satisfies { [key in ColumnType]: (LayerColumnKey | LayerCompositeKey)[] }
 
+export const GROUP_BY_COLUMNS = [
+	'Map',
+	'Layer',
+	'Size',
+	'Faction_1',
+	'Faction_2',
+	'SubFac_1',
+	'SubFac_2',
+	'Gamemode',
+	'LayerVersion',
+] as const
+export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
+
 export const COLUMN_LABELS = {
 	id: 'ID',
 	Map: 'Map',
@@ -882,7 +895,7 @@ export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Fa
 export type DnrField = z.infer<typeof DnrFieldSchema>
 export const DoNotRepeatRuleSchema = z.object({
 	field: DnrFieldSchema,
-	label: z.string().min(1).max(100).default('Label').describe('A label for the rule'),
+	label: z.string().min(1).max(100).optional().describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
@@ -902,7 +915,7 @@ export function getFactionAndUnitValue(faction: string, unit: string | null | un
 	return faction + '_' + unit || ''
 }
 
-export const QueryConstraintSchema = z.discriminatedUnion('type', [
+export const LayerQueryConstraintSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('filter-anon'),
 		filter: FilterNodeSchema,
@@ -925,7 +938,7 @@ export const QueryConstraintSchema = z.discriminatedUnion('type', [
 		id: z.string(),
 	}),
 ])
-export type LayerQueryConstraint = z.infer<typeof QueryConstraintSchema>
+export type LayerQueryConstraint = z.infer<typeof LayerQueryConstraintSchema>
 export type NamedQueryConstraint = LayerQueryConstraint & { name: string }
 export function filterToNamedConstrant(
 	filter: FilterNode,
@@ -1107,9 +1120,9 @@ export type VoteStateWithVoteData = Extract<
 >
 
 const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
-	{ field: 'Map', within: 5, label: 'Map' },
-	{ field: 'Layer', within: 7, label: 'Layer' },
-	{ field: 'Faction', within: 3, label: 'Faction' },
+	{ field: 'Map', within: 4 },
+	{ field: 'Layer', within: 7 },
+	{ field: 'Faction', within: 3 },
 ]
 
 export const PoolConfigurationSchema = z.object({

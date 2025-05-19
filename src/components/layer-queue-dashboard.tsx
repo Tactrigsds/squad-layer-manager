@@ -19,12 +19,12 @@ import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
+import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client.ts'
 import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
@@ -70,7 +70,7 @@ export default function LayerQueueDashboard() {
 		const reset = QD.QDStore.getState().reset
 		switch (res.code) {
 			case 'err:permission-denied':
-				RbacClient.showPermissionDenied(res)
+				RbacClient.handlePermissionDenied(res)
 				reset()
 				break
 			case 'err:out-of-sync':
@@ -434,7 +434,7 @@ function VoteState() {
 					toaster.toast({ title: 'Vote started!' })
 					break
 				case 'err:permission-denied':
-					RbacClient.showPermissionDenied(res)
+					RbacClient.handlePermissionDenied(res)
 					break
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress':
@@ -835,7 +835,7 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 					>
 						<Input
 							placeholder="Label"
-							defaultValue={rule.label}
+							defaultValue={rule.label ?? rule.field}
 							containerClassName="grow-0"
 							disabled={!canWriteSettings}
 							onChange={(e) => {

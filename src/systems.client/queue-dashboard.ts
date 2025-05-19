@@ -19,10 +19,10 @@ import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { configAtom } from './config.client'
+import { fetchConfig, useConfig } from './config.client'
 import * as FilterEntityClient from './filter-entity.client'
-import { fetchLoggedInUser } from './logged-in-user'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
+import { fetchLoggedInUser } from './users.client'
 
 // -------- types --------
 export type MutServerStateWithIds = M.UserModifiableServerState & {
@@ -404,6 +404,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 		writeExtraQueryFilters()
 	})
 
+	let maxQueueSize: number = 10
+	fetchConfig().then(config => {
+		maxQueueSize = config.maxQueueSize ?? 10
+	})
+
 	return {
 		...initialState,
 		extraQueryFilters,
@@ -441,7 +446,6 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 		},
 		setQueue: (handler) => {
 			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
-			const maxQueueSize = Jotai.getDefaultStore().get(configAtom)?.maxQueueSize ?? 10
 			if (updated.layerList && updated.layerList.length > maxQueueSize) {
 				globalToast$.next({ title: `Too many queue items! Queue size limit is ${maxQueueSize}`, variant: 'destructive' })
 				return

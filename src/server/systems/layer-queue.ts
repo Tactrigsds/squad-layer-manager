@@ -1016,8 +1016,10 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQS
 
 async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQServerStateUpdate) {
 	const queue = serverStateUpdate.state.layerQueue
-	const constraints = M.getPoolConstraints(serverStateUpdate.state.settings.queue.mainPool)
-	const layerStatuses = await LayerQueries.getLayerStatusesForLayerQueue({ ctx, input: { queue, constraints } })
+	const layerStatuses = await LayerQueries.getLayerStatusesForLayerQueue({
+		ctx,
+		input: { queue, pool: serverStateUpdate.state.settings.queue.mainPool },
+	})
 	return { layerStatuses }
 }
 

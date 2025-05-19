@@ -1,3 +1,4 @@
+import { selectProps } from '@/lib/object.ts'
 import * as SM from '@/lib/rcon/squad-models.ts'
 import { HumanTime, ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
 import * as RBAC from '@/rbac.models'
@@ -94,6 +95,10 @@ export async function ensureConfigSetup() {
 			allStrings.add(str)
 		}
 	}
+}
+
+export function getPublicConfig() {
+	return selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize'])
 }
 
 export async function generateConfigJsonSchema() {

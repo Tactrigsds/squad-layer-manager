@@ -17,11 +17,8 @@ export type ConstraintViolatioDisplayProps = {
 
 export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps) {
 	if (props.violated.length == 0) return null
-	const normTeamOffset = props.normTeamOffset ?? 0
-	console.log({ violated: props.violated })
 	const dnrViolations = props.violated.filter(v => v.type === 'do-not-repeat')
 	const filterViolations = props.violated.filter(v => v.type !== 'do-not-repeat')
-	const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(props.layerId))
 	if (dnrViolations.length === 0 && filterViolations.length === 0) return null
 	return (
 		<div className="flex space-x-0.5 items-center">
@@ -42,9 +39,7 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 									<li key={v.id}>
 										{v.name ?? v.id}
 										{props.violationDescriptors?.[v.id]
-											&& props.violationDescriptors[v.id]?.map((descriptor) => (
-												<div key={descriptor}>{`- ${(layer as any)?.[descriptor] ?? descriptor}`}</div>
-											))}
+											&& props.violationDescriptors[v.id]?.map((descriptor) => <div key={descriptor}>{descriptor}</div>)}
 									</li>
 								))}
 							</ul>

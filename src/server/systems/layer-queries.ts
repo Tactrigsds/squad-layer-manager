@@ -35,7 +35,7 @@ export const LayersQueryInputSchema = z.object({
 	pageIndex: z.number().int().min(0).optional(),
 	pageSize: z.number().int().min(1).max(200).optional(),
 	sort: LayersQuerySortSchema.optional(),
-	constraints: z.array(M.QueryConstraintSchema).optional(),
+	constraints: z.array(M.LayerQueryConstraintSchema).optional(),
 	historyOffset: z
 		.number()
 		.int()
@@ -206,105 +206,77 @@ export async function layerExists({
 	}
 }
 
-export const LayersQueryGroupedByInputSchema = z.object({
-	columns: z.array(z.enum(M.COLUMN_TYPE_MAPPINGS.string)),
-	limit: z.number().positive().max(500).default(500),
-	constraints: z.array(M.QueryConstraintSchema).optional(),
+export const QueryLayerComponentsSchema = z.object({
+	constraints: z.array(M.LayerQueryConstraintSchema).optional(),
 	previousLayerIds: z.array(M.LayerIdSchema).default([]),
-	sort: LayersQuerySortSchema.optional(),
 })
 
 export type LayersQueryGroupedByInput = z.infer<
-	typeof LayersQueryGroupedByInputSchema
+	typeof QueryLayerComponentsSchema
 >
-export async function queryLayersGroupedBy({
+export async function queryLayerComponents({
 	ctx,
 	input,
 }: {
 	ctx: C.Log & C.Db
 	input: LayersQueryGroupedByInput
 }) {
-	const whereConditions: SQL<unknown>[] = []
-	const constraintBuildingTasks: Promise<any>[] = []
 	const constraints = input.constraints ?? []
 	const { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
 		input.previousLayerIds,
 	)
-	for (let i = 0; i < constraints.length; i++) {
-		const constraint = constraints[i]
-		constraintBuildingTasks.push(
-			C.spanOp(
-				'layer-queries:build-constraint-sql-condition-groupby',
-				{ tracer },
-				async () => {
-					C.setSpanOpAttrs({
-						constraintName: constraint.name,
-						constraintIndex: i,
-						constraintType: constraint.type,
-						constraintApplyAs: constraint.applyAs,
-					})
-					const condition = await getConstraintSQLConditions(
-						ctx,
-						constraint,
-						historicLayers,
-						normTeamOffset,
-					)
-					if (!condition) {
-						return {
-							code: 'err:no-constraint' as const,
-							msg: 'No constraint found',
-						}
-					}
-					switch (constraint.applyAs) {
-						case 'field':
-							break
-						case 'where-condition':
-							whereConditions.push(condition)
-							break
-						default:
-							assertNever(constraint.applyAs)
-					}
-					return { code: 'ok' as const }
-				},
-			)(),
-		)
-	}
-	await Promise.all(constraintBuildingTasks)
-	type Columns = (typeof input.columns)[number]
+	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, historicLayers, normTeamOffset, constraints)
 
-	const selectObj = input.columns.reduce(
-		(acc, column) => {
-			// @ts-expect-error no idea
-			acc[column] = Schema.layers[column]
-			return acc
-		},
-		{} as { [key in Columns]: (typeof Schema.layers)[key] },
+	const res = Object.fromEntries(
+		await Promise.all(M.GROUP_BY_COLUMNS.map(
+			async (column) => {
+				const res =
+					(await ctx.db().selectDistinct({ [column]: Schema.layers[column] }).from(Schema.layers).where(E.and(...whereConditions)))
+						.map((row) => row[column])
+				return [column, res]
+			},
+		)),
 	)
 
-	let query: any = ctx.db().select(selectObj).from(Schema.layers)
+	return res as Record<M.GroupByColumn, string[]>
+}
 
-	if (whereConditions.length > 0) {
-		query = query.where(E.and(...whereConditions))
-	}
-	query = query.groupBy(
-		...input.columns.map((column) => Schema.layers[column]),
+export const SearchIdsInputSchema = z.object({
+	queryString: z.string().min(1).max(100),
+	constraints: z.array(M.LayerQueryConstraintSchema).optional(),
+	previousLayerIds: z.array(z.string()).optional(),
+})
+export type SearchIdsInput = z.infer<typeof SearchIdsInputSchema>
+
+export async function searchIds({ ctx, input }: { ctx: C.Log & C.Db; input: SearchIdsInput }) {
+	const { queryString, constraints, previousLayerIds } = input
+
+	const { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(
+		ctx,
+		constraints ?? [],
+		previousLayerIds ?? [],
 	)
 
-	if (input.sort && input.sort.type === 'column') {
-		query = query.orderBy(
-			input.sort.sortDirection === 'ASC'
-				? E.asc(Schema.layers[input.sort.sortBy])
-				: E.desc(Schema.layers[input.sort.sortBy]),
-		)
-	} else if (input.sort && input.sort.type === 'random') {
-		query = query.orderBy(sql`RAND(${input.sort.seed})`)
-	}
+	const { conditions: whereConditions } = await buildConstraintSqlCondition(
+		ctx,
+		historicLayers,
+		normTeamOffset,
+		constraints ?? [],
+	)
 
-	const res = await query.limit(input.limit)
-	// TODO fix this type definition
-	return res as Record<M.StringColumn, string>[]
+	const results = await ctx
+		.db()
+		.select({ id: Schema.layers.id })
+		.from(Schema.layers)
+		.where(E.and(E.like(Schema.layers.id, `%${queryString}%`), ...whereConditions))
+		.limit(15)
+
+	return {
+		code: 'ok' as const,
+		ids: results.map(r => r.id),
+	}
 }
 
 export async function getConstraintSQLConditions(
@@ -543,7 +515,7 @@ async function buildConstraintSqlCondition(
 
 export const LayerStatusesForLayerQueueInputSchema = z.object({
 	queue: M.LayerListSchema,
-	constraints: z.array(M.QueryConstraintSchema).optional(),
+	pool: M.PoolConfigurationSchema,
 })
 export type LayerStatusesForLayerQueueInput = z.infer<
 	typeof LayerStatusesForLayerQueueInputSchema
@@ -551,15 +523,12 @@ export type LayerStatusesForLayerQueueInput = z.infer<
 
 export async function getLayerStatusesForLayerQueue({
 	ctx,
-	input: { queue, constraints },
+	input: { queue, pool },
 }: {
 	ctx: C.Db & C.Log
 	input: LayerStatusesForLayerQueueInput
 }) {
-	if (!constraints) {
-		const serverState = await LayerQueue.getServerState({}, ctx)
-		constraints = M.getPoolConstraints(serverState.settings.queue.mainPool)
-	}
+	const constraints = M.getPoolConstraints(pool)
 
 	// eslint-disable-next-line prefer-const
 	let { historicLayers, normTeamOffset } = resolveRelevantLayerHistory(
@@ -1039,10 +1008,11 @@ async function getFilterEntity(filterId: string, ctx: C.Db) {
 }
 
 export const layersRouter = router({
-	selectLayers: procedure.input(LayersQueryInputSchema).query(queryLayers),
-	selectLayersGroupedBy: procedure
-		.input(LayersQueryGroupedByInputSchema)
-		.query(queryLayersGroupedBy),
+	queryLayers: procedure.input(LayersQueryInputSchema).query(queryLayers),
+	queryLayerComponents: procedure
+		.input(QueryLayerComponentsSchema)
+		.query(queryLayerComponents),
+	searchIds: procedure.input(SearchIdsInputSchema).query(searchIds),
 	layerExists: procedure.input(LayerExistsInputSchema).query(layerExists),
 	getLayerStatusesForLayerQueue: procedure
 		.input(LayerStatusesForLayerQueueInputSchema)

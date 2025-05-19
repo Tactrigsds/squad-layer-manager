@@ -12,10 +12,10 @@ import { assertNever } from '@/lib/typeGuards.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import { useLoggedInUser } from '@/systems.client/logged-in-user'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
+import { useLoggedInUser } from '@/systems.client/users.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -138,7 +138,7 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 				globalToast$.next({ title: 'Match ended!' })
 				break
 			case 'err:permission-denied':
-				RbacClient.showPermissionDenied(res)
+				RbacClient.handlePermissionDenied(res)
 				break
 			case 'err':
 				console.error(res)

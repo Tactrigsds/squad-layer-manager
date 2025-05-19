@@ -1,9 +1,5 @@
-import { z } from 'zod'
-
-import * as M from '@/models.ts'
-
-import { CONFIG } from '@/server/config.ts'
-import { filtersRouter } from './systems/filter-entity.ts'
+import { getPublicConfig } from '@/server/config.ts'
+import * as FilterEntity from './systems/filter-entity.ts'
 import * as LayerQueries from './systems/layer-queries.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as MatchHistory from './systems/match-history.ts'
@@ -20,9 +16,9 @@ export function setupTrpcRouter() {
 		layerQueue: LayerQueue.layerQueueRouter,
 		layers: LayerQueries.layersRouter,
 		squadServer: SquadServer.squadServerRouter,
-		filters: filtersRouter,
+		filters: FilterEntity.filtersRouter,
 		config: procedure.query(async () => {
-			return CONFIG
+			return getPublicConfig()
 		}),
 		users: Users.usersRouter,
 		rbac: Rbac.rbacRouter,

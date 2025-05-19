@@ -12,7 +12,7 @@ import * as M from '@/models.ts'
 
 import { assertNever } from '@/lib/typeGuards'
 import { useFilterCreate } from '@/systems.client/filter-entity.client.ts'
-import { invalidateLoggedInUser } from '@/systems.client/logged-in-user'
+import { invalidateLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
 import FilterCard from './filter-card'
 import LayerTable from './layer-table'
