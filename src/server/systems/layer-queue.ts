@@ -969,11 +969,11 @@ export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-ad
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
 		parts.users.push(user)
 	}
-  if (playerId === 'all-admins') {
-    await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts))
-  } else {
-    await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts))
-  }
+	if (playerId === 'all-admins') {
+		await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts))
+	} else {
+		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts))
+	}
 }
 
 async function includeLQServerUpdateParts(

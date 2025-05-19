@@ -79,7 +79,7 @@ jobs:
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
-            GIT_BRANCH=${{ steps.branch.outputs.BRANCH_NAME }}
+            GIT_BRANCH=${{ github.ref_name }}
           tags: |
             ${{ steps.branch.outputs.BRANCH_NAME == 'main' && format('ghcr.io/{0}/squad-layer-manager:latest', steps.owner.outputs.name) || '' }}
             ${{ contains(github.ref, 'refs/tags/') && format('ghcr.io/{0}/squad-layer-manager:{1}', steps.owner.outputs.name, github.ref_name) || '' }}
