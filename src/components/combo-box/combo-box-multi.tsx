@@ -18,13 +18,14 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	setInputValue?: (value: string) => void
 	values: T[]
 	selectionLimit?: number
+	disabled?: boolean
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: React.Dispatch<React.SetStateAction<T[]>>
 }
 
 function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values, selectionLimit } = props
+	const { values, selectionLimit, disabled } = props
 	const [open, setOpen] = useState(false)
 	const openRef = useRef(open)
 	openRef.current = open
@@ -76,6 +77,7 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 			<PopoverTrigger asChild>
 				<Button
 					variant="outline"
+					disabled={disabled}
 					role="combobox"
 					aria-expanded={open}
 					className={cn(props.className, 'max-w-[400px] justify-between font-mono')}

@@ -82,6 +82,9 @@ export async function addHistoryEntry(ctx: C.Log & C.Db, entry: SchemaModels.New
 
 		const [{ id }] = await ctx.db().insert(Schema.matchHistory).values(entry).$returningId()
 		state.recentMatches.unshift(SM.historyEntryToMatchDetails({ ...entry, id }))
+		if (state.recentMatches.length > RECENT_HISTORY_BASE_LENGTH) {
+			state.recentMatches.pop()
+		}
 		if (userPromise) {
 			const user = await userPromise
 			if (user) {

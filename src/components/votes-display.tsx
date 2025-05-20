@@ -1,9 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
-import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
-import { useEndMatch, useSquadServerStatus } from '@/systems.client/squad-server.client'
+import { useSquadServerStatus } from '@/systems.client/squad-server.client'
 
 type VoteTallyProps = {
 	voteState: M.VoteStateWithVoteData
@@ -45,7 +44,7 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 	}
 
 	return (
-		<Card className="mx-auto w-full max-w-md">
+		<Card className="mx-auto w-full">
 			<CardHeader>
 				<CardTitle className="">{statusDisplay}</CardTitle>
 			</CardHeader>

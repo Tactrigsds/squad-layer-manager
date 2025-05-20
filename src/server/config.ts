@@ -1,6 +1,6 @@
 import { selectProps } from '@/lib/object.ts'
 import * as SM from '@/lib/rcon/squad-models.ts'
-import { HumanTime, ParsedBigIntSchema, PercentageSchema } from '@/lib/zod'
+import { HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as RBAC from '@/rbac.models'
 import * as Paths from '@/server/paths'
 import * as Cli from '@/server/systems/cli.ts'
@@ -29,7 +29,6 @@ export const ConfigSchema = z.object({
 	commandPrefix: StrNoWhitespace,
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
-		minValidVotePercentage: PercentageSchema.describe('Minimum threshold for a vote tally to be valid'),
 	}),
 	commands: z.object({
 		help: CommandConfigSchema.describe('Show help text'),

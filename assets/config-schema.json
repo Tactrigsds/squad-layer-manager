@@ -12,15 +12,8 @@
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
           "description": "Duration of a vote",
           "default": "120s"
-        },
-        "minValidVotePercentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Minimum threshold for a vote tally to be valid"
         }
       },
-      "required": ["minValidVotePercentage"],
       "additionalProperties": false
     },
     "commands": {

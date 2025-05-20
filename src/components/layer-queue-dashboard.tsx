@@ -252,7 +252,9 @@ export default function LayerQueueDashboard() {
 						</CardContent>
 					</Card>
 				</div>
-				<VoteState />
+				<div>
+					<VoteState />
+				</div>
 			</div>
 		</div>
 	)
@@ -421,13 +423,11 @@ function VoteState() {
 	const startVoteForm = useForm({
 		defaultValues: {
 			durationSeconds: (slmConfig?.defaults.voteDuration ?? 3000) / 1000,
-			minValidVotePercentage: slmConfig?.defaults.minValidVotePercentage ?? 75,
 		},
 		validatorAdapter: zodValidator(),
 		onSubmit: async ({ value }) => {
 			const res = await startVoteMutation.mutateAsync({
 				durationSeconds: value.durationSeconds,
-				minValidVotePercentage: value.minValidVotePercentage,
 			})
 			switch (res.code) {
 				case 'ok':
@@ -452,7 +452,6 @@ function VoteState() {
 	})
 
 	const voteDurationEltId = React.useId()
-	const minRequiredEltId = React.useId()
 	const canModifyVote = loggedInUser
 		&& RBAC.rbacUserHasPerms(loggedInUser, {
 			check: 'all',
@@ -480,32 +479,6 @@ function VoteState() {
 						<Input
 							id={voteDurationEltId}
 							name={field.name}
-							type="number"
-							disabled={!canModifyVote}
-							defaultValue={field.state.value}
-							onChange={(e) => {
-								return field.setValue(e.target.valueAsNumber)
-							}}
-						/>
-						{field.state.meta.errors.length > 0 && (
-							<Alert variant="destructive">
-								{field.state.meta.errors.join(', ')}
-							</Alert>
-						)}
-					</>
-				)}
-			/>
-			<startVoteForm.Field
-				name="minValidVotePercentage"
-				validators={{
-					onChange: M.StartVoteInputSchema.shape.minValidVotePercentage,
-					onChangeAsyncDebounceMs: 250,
-				}}
-				children={(field) => (
-					<>
-						<Label htmlFor={minRequiredEltId}>Min Required Turnout(%)</Label>
-						<Input
-							id={minRequiredEltId}
 							type="number"
 							disabled={!canModifyVote}
 							defaultValue={field.state.value}
@@ -646,14 +619,12 @@ function VoteState() {
 	}
 
 	return (
-		<div>
-			<Card>
-				<CardHeader>
-					<CardTitle>Vote</CardTitle>
-				</CardHeader>
-				<CardContent className="flex flex-col space-y-2">{body}</CardContent>
-			</Card>
-		</div>
+		<Card className="w-min min-w-[200px]">
+			<CardHeader>
+				<CardTitle>Vote</CardTitle>
+			</CardHeader>
+			<CardContent className="flex flex-col space-y-2">{body}</CardContent>
+		</Card>
 	)
 }
 
@@ -877,6 +848,7 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 							className="flex-grow"
 							title="Target Values"
 							options={targetValueOptions}
+							disabled={!canWriteSettings}
 							values={rule.targetValues ?? []}
 							onSelect={(updated) => {
 								setSetting((settings) => {

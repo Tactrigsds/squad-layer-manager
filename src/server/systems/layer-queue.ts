@@ -418,7 +418,7 @@ export const startVote = C.spanOp(
 	{ tracer },
 	async (
 		ctx: C.Log & C.Db & Partial<C.User>,
-		opts: { durationSeconds?: number; minValidVotePercentage?: number; initiator: M.GuiOrChatUserId },
+		opts: { durationSeconds?: number; initiator: M.GuiOrChatUserId },
 	) => {
 		C.setSpanOpAttrs(opts)
 		if (ctx.user) {
@@ -439,12 +439,9 @@ export const startVote = C.spanOp(
 			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Failed to get server status')
 			return statusRes
 		}
-		const status = statusRes.data
 
 		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDuration / 1000
 		const res = await DB.runTransaction(ctx, async (ctx) => {
-			const minValidVotePercentage = opts.minValidVotePercentage ?? CONFIG.defaults.minValidVotePercentage
-			const minValidVotes = Math.ceil((minValidVotePercentage / 100) * Math.max(status.playerCount, 1))
 			if (!voteState) {
 				return {
 					code: 'err:no-vote-exists' as const,
@@ -478,7 +475,6 @@ export const startVote = C.spanOp(
 				defaultChoice: voteState.defaultChoice,
 				deadline: Date.now() + durationSeconds * 1000,
 				votes: {},
-				minValidVotes,
 				initiator: opts.initiator,
 			} satisfies M.VoteState
 
@@ -652,7 +648,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer }
 		let newVoteState: M.VoteState
 		let voteUpdate: M.VoteStateUpdate
 		let tally: M.Tally | null = null
-		if (Object.values(voteState.votes).length < voteState.minValidVotes) {
+		if (Object.values(voteState.votes).length === 0) {
 			serverState.layerQueue[0].layerId = voteState.defaultChoice
 			newVoteState = {
 				code: 'ended:insufficient-votes',

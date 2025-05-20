@@ -999,7 +999,6 @@ export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptions
 export const StartVoteInputSchema = z.object({
 	restart: z.boolean().default(false),
 	durationSeconds: z.number().positive(),
-	minValidVotePercentage: PercentageSchema,
 })
 
 type TallyProperties = {
@@ -1013,7 +1012,6 @@ export type VoteState =
 		& {
 			code: 'in-progress'
 			initiator: GuiOrChatUserId
-			minValidVotes: number
 		}
 		& TallyProperties
 		& LayerVote

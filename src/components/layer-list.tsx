@@ -144,7 +144,17 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 			}
 			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
 
-			props.itemStore.getState().setItem({ itemId: itemState.item.itemId, vote: { choices, defaultChoice }, source })
+			// ensure that if this vote has already been decideed then we overwrite it when the choice is remove
+			let layerId: string | undefined
+			if (itemState.item.layerId) {
+				if (choices.includes(itemState.item.layerId)) {
+					layerId = itemState.item.layerId
+				} else {
+					layerId = choices[0]
+				}
+			}
+
+			props.itemStore.getState().setItem({ itemId: itemState.item.itemId, layerId, vote: { choices, defaultChoice }, source })
 		} else {
 			props.itemStore.getState().setItem({ ...editedItemStore.getState().item, source })
 		}
@@ -166,14 +176,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				</div>
 				<div className="flex items-center space-x-2">
 					{allowVotes && (
-						<TabsList
-							options={[
-								{ label: 'Vote', value: 'vote' },
-								{ label: 'Set Layer', value: 'set-layer' },
-							]}
-							active={itemType}
-							setActive={(newItemType) => {
-								if (itemType === newItemType) return
+						<Button
+							variant="outline"
+							onClick={() => {
+								const newItemType = itemType === 'vote' ? 'set-layer' : 'vote'
 								console.log('setting ', newItemType)
 								setItemType(newItemType)
 								switch (newItemType) {
@@ -191,7 +197,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 									case 'set-layer': {
 										editedItemStore.getState().setItem(prev => {
 											const selectedLayerIds = itemToLayerIds(prev)
-											const layerSource: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
 											return {
 												...prev,
 												itemId: prev.itemId,
@@ -205,7 +210,9 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 										assertNever(newItemType)
 								}
 							}}
-						/>
+						>
+							{itemType === 'vote' ? 'Convert to Set Layer' : 'Convert to Vote'}
+						</Button>
 					)}
 				</div>
 			</DialogHeader>
