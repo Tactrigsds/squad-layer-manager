@@ -494,6 +494,8 @@ function ItemDropdown(props: {
 					>
 						<DropdownMenuItem>Edit</DropdownMenuItem>
 					</EditLayerListItemDialogWrapper>
+					<DropdownMenuItem onClick={() => props.itemStore.getState().swapFactions()}>Swap Factions</DropdownMenuItem>
+					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						onClick={() => {
 							const id = props.itemStore.getState().item.itemId
@@ -504,6 +506,7 @@ function ItemDropdown(props: {
 						Delete
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
+
 				<DropdownMenuSeparator />
 
 				<DropdownMenuGroup>

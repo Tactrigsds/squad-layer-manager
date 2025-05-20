@@ -23,7 +23,7 @@ import * as Zus from 'zustand'
 import { fetchConfig, useConfig } from './config.client'
 import * as FilterEntityClient from './filter-entity.client'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
-import { fetchLoggedInUser } from './users.client'
+import * as UsersClient from './users.client'
 
 // -------- types --------
 export type MutServerStateWithIds = M.UserModifiableServerState & {
@@ -51,6 +51,7 @@ export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
 	setItem: React.Dispatch<React.SetStateAction<M.LayerListItem>>
+	swapFactions: () => void
 	// if not present then removing is disabled
 	remove?: () => void
 }
@@ -230,14 +231,38 @@ export const createLLItemStore = (
 				set({ item: update })
 			}
 		},
+		swapFactions: () => {
+			const item = get().item
+			set({ item: swapFactions(item) })
+		},
 		remove: removeItem,
 	}
+}
+
+function swapFactions(existingItem: M.LayerListItem) {
+	const updated: M.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId } }
+	if (existingItem.layerId) {
+		const layerId = M.swapFactionsInId(existingItem.layerId)
+		updated.layerId = layerId
+	}
+	if (existingItem.vote) {
+		updated.vote = {
+			...existingItem.vote,
+			choices: existingItem.vote.choices.map(M.swapFactionsInId),
+			defaultChoice: M.swapFactionsInId(existingItem.vote.defaultChoice),
+		}
+	}
+	return updated
 }
 
 export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) => {
 	const actions: LLItemActions = {
 		setItem: (update) => store.getState().setItem(itemId, update),
 		remove: () => store.getState().remove(itemId),
+		swapFactions: () => {
+			const item = store.getState().layerList.find((item) => item.itemId === itemId)!
+			store.getState().setItem(itemId, swapFactions(item))
+		},
 	}
 
 	return derive<LLItemStore>((get) => ({
@@ -313,7 +338,7 @@ export const initialState: QDState = {
 export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 	const canEdit$ = userPresenceState$.pipe(
 		Rx.mergeMap(async (state) => {
-			const user = await fetchLoggedInUser()
+			const user = await UsersClient.fetchLoggedInUser()
 			const canEdit = !state?.editState || state.editState.wsClientId === user?.wsClientId
 			if (!user) return { canEditQueue: false, canEditSettings: false }
 			return {
@@ -341,7 +366,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 			get().reset()
 			return
 		}
-		const loggedInUser = await fetchLoggedInUser()
+		const loggedInUser = await UsersClient.fetchLoggedInUser()
 		if (presence.editState.wsClientId !== loggedInUser?.wsClientId) {
 			if (get().isEditing && update.event === 'edit-kick') {
 				globalToast$.next({ title: 'You have been kicked from your editing session' })
@@ -376,7 +401,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 		set({ isEditing: false })
 		void trpc.layerQueue.endEditing.mutate()
 		try {
-			const loggedInUser = await fetchLoggedInUser()
+			const loggedInUser = await UsersClient.fetchLoggedInUser()
 			await Rx.firstValueFrom(
 				userPresenceState$.pipe(
 					Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),

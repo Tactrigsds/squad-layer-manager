@@ -4,6 +4,8 @@ import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import superjson from 'superjson'
 
+export let logggedInUserId: bigint | undefined
+
 export function useUser(id?: bigint) {
 	return useQuery({
 		queryKey: ['getUser', superjson.serialize(id)],
@@ -24,6 +26,7 @@ export function useUsers() {
 async function _fetchLoggedInUser() {
 	const user = await trpc.users.getLoggedInUser.query()
 	PartSys.upsertParts({ users: [user] })
+	logggedInUserId = user.discordId
 	return user
 }
 const loggedInUserBaseQuery = {

@@ -7,7 +7,6 @@ import { deepClone, isPartial, revLookup } from './lib/object'
 import * as OneToMany from './lib/one-to-many-map'
 import { assertNever } from './lib/typeGuards'
 import { Parts } from './lib/types'
-import { PercentageSchema } from './lib/zod'
 
 const StaticLayerComponents = _StaticLayerComponents as LayerComponents
 
