@@ -113,20 +113,41 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore)
 
 	const loggedInUser = useLoggedInUser()
+	const [itemType, setItemType] = React.useState<'vote' | 'set-layer'>(editedItem.vote ? 'vote' : 'set-layer')
 
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
 	const filterMenuStore = useFilterMenuStore(unvalidatedLayer ? M.getLayerDetailsFromUnvalidated(unvalidatedLayer) : undefined)
 
-	const canSubmit = Zus.useStore(
+	const canSubmitSetLayer = Zus.useStore(
 		editedItemStore,
 		(s) => !deepEqual(initialItem, s.item) && (!s.item.vote || s.item.vote.choices.length > 0),
 	)
+	const canSubmitVoteChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length > 0)
+	const canSubmit = itemType === 'set-layer' ? canSubmitSetLayer : canSubmitVoteChoices
+
 	function submit() {
 		if (!canSubmit) return
 		props.onOpenChange(false)
-		props.itemStore.getState().setItem(editedItem)
+		const source: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
+		if (itemType === 'vote') {
+			const itemState = editedItemStore.getState()
+			const choices = editedVoteChoiceStore.getState().layerList.map(item => item.layerId!)
+			if (choices.length === 0) {
+				return
+			}
+			if (choices.length === 1) {
+				console.log(itemState.item)
+				props.itemStore.getState().setItem({ ...itemState.item, vote: undefined, layerId: choices[0], source })
+				return
+			}
+			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
+
+			props.itemStore.getState().setItem({ itemId: itemState.item.itemId, vote: { choices, defaultChoice }, source })
+		} else {
+			props.itemStore.getState().setItem({ ...editedItemStore.getState().item, source })
+		}
 	}
 	const numChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length)
 
@@ -148,39 +169,48 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						<TabsList
 							options={[
 								{ label: 'Vote', value: 'vote' },
-								{ label: 'Set Layer', value: 'layer' },
+								{ label: 'Set Layer', value: 'set-layer' },
 							]}
-							active={editedItem.vote ? 'vote' : 'layer'}
-							setActive={(itemType) => {
-								editedItemStore.getState().setItem((prev) => {
-									const selectedLayerIds = itemToLayerIds(prev)
-									const layerSource: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
-									if (itemType === 'vote') {
-										return {
-											itemId: prev.itemId,
-											vote: {
-												choices: selectedLayerIds,
-												defaultChoice: selectedLayerIds[0],
-											},
-											source: layerSource,
+							active={itemType}
+							setActive={(newItemType) => {
+								if (itemType === newItemType) return
+								console.log('setting ', newItemType)
+								setItemType(newItemType)
+								switch (newItemType) {
+									case 'vote': {
+										const newState = QD.getVoteChoiceStateFromItem(editedItem)
+										if (editedItem.layerId) {
+											newState.layerList = [M.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
+										} else {
+											newState.layerList = []
 										}
-									} else if (itemType === 'layer') {
-										return {
-											itemId: prev.itemId,
-											layerId: selectedLayerIds[0],
-											source: layerSource,
-										}
-									} else {
-										assertNever(itemType)
+										editedVoteChoiceStore.setState(newState)
+										editedItemStore.getState().setItem({ ...editedItemStore.getState().item, layerId: undefined })
+										break
 									}
-								})
+									case 'set-layer': {
+										editedItemStore.getState().setItem(prev => {
+											const selectedLayerIds = itemToLayerIds(prev)
+											const layerSource: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
+											return {
+												...prev,
+												itemId: prev.itemId,
+												layerId: selectedLayerIds[0],
+												vote: undefined,
+											} satisfies M.LayerListItem
+										})
+										break
+									}
+									default:
+										assertNever(newItemType)
+								}
 							}}
 						/>
 					)}
 				</div>
 			</DialogHeader>
 
-			{editedItem.vote
+			{itemType === 'vote'
 				? (
 					<div className="flex flex-col">
 						<div className="flex w-min"></div>
@@ -205,7 +235,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				)}
 
 			<DialogFooter>
-				{editedItem.vote && (
+				{itemType === 'vote' && (
 					<SelectLayersDialog
 						title="Add"
 						description="Select layers to add to the voting pool"

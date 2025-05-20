@@ -13,6 +13,7 @@ import * as RBAC from '@/rbac.models'
 import { trpc } from '@/trpc.client'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Jotai from 'jotai'
 import React from 'react'
@@ -162,13 +163,20 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 	}
 }
 
-const getVoteChoiceStore = (item: M.LayerListItem) => {
-	const initialState: LLState = {
+export const getVoteChoiceStateFromItem = (item: M.LayerListItem): LLState => {
+	return {
 		listMutations: ItemMut.initMutations(),
 		layerList: item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: item.source })) ?? [],
 		isVoteChoice: true,
 	}
+}
 
+// const choices = state.layerList.map(item => item.layerId!)
+// 			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
+// 			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
+
+export const getVoteChoiceStore = (item: M.LayerListItem) => {
+	const initialState = getVoteChoiceStateFromItem(item)
 	return Zus.createStore<LLStore>((set, get) => ({
 		...createLLActions(set, get),
 		...initialState,
@@ -176,16 +184,15 @@ const getVoteChoiceStore = (item: M.LayerListItem) => {
 }
 
 export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(getVoteChoiceStore(itemStore.getState().item))
+	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState().item), [itemStore])
+	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(newStore)
+
+	const initialRef = React.useRef(false)
 	React.useEffect(() => {
-		const unsubscribe = store.subscribe((state) => {
-			const choices = state.layerList.map(item => item.layerId!)
-			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
-			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
-		})
-		return unsubscribe
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [itemStore])
+		if (initialRef.current) return
+		initialRef.current = true
+		_setStore(newStore)
+	}, [newStore])
 
 	return store
 }
@@ -544,9 +551,8 @@ export function useDerivedQueryContextForLQIndex(index: number, baseContext: M.L
 
 	// in the case of vote choices we want to enforce that there are no identical choices available
 	if (isVoteChoice) {
-		const filter = FB.comp(FB.inValues('id', Array.from(queueLayerIds)), { neg: true })
+		const filter = FB.comp(FB.inValues('id', queueLayerIds.filter((id, idx) => idx !== index)), { neg: true })
 		constraints = [...constraints, M.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + index)]
-		// we don't want to apply the do-not-repeat rules across vote choice siblings
 	}
 
 	return {
