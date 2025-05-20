@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
+import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import { useSquadServerStatus } from '@/systems.client/squad-server.client'
 

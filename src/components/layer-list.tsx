@@ -80,6 +80,7 @@ type EditLayerQueueItemDialogProps = {
 type InnerEditLayerListItemDialogProps = {
 	open: boolean
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
+	index: number
 	allowVotes?: boolean
 	itemStore: Zus.StoreApi<QD.LLItemStore>
 	layerQueryContext: M.LayerQueryContext
@@ -101,7 +102,7 @@ function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	const allowVotes = props.allowVotes ?? true
 
-	const initialItem = Zus.useStore(props.itemStore, (s) => s.item)
+	const initialItem = ZusUtils.useStoreDeep(props.itemStore, (s) => s.item)
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<QD.LLItemStore>((set, get) =>
@@ -110,7 +111,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	}, [initialItem])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
-	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore)
+	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore, props.index)
 
 	const loggedInUser = useLoggedInUser()
 	const [itemType, setItemType] = React.useState<'vote' | 'set-layer'>(editedItem.vote ? 'vote' : 'set-layer')
@@ -159,10 +160,9 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 			props.itemStore.getState().setItem({ ...editedItemStore.getState().item, source })
 		}
 	}
-	const numChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length)
 
 	const queryContextWithMenuFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
-	const addVoteQueryContext = QD.useDerivedQueryContextForLQIndex(numChoices, props.layerQueryContext, editedVoteChoiceStore)
+	const addVoteQueryContext = QD.useDerivedQueryContextForLQIndex(props.index, props.layerQueryContext, editedVoteChoiceStore)
 
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
@@ -184,7 +184,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 								setItemType(newItemType)
 								switch (newItemType) {
 									case 'vote': {
-										const newState = QD.getVoteChoiceStateFromItem(editedItem)
+										const newState = QD.getVoteChoiceStateFromItem(editedItem, props.index)
 										if (editedItem.layerId) {
 											newState.layerList = [M.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
 										} else {
@@ -310,8 +310,9 @@ function LayerListItem(props: QueueItemProps) {
 		id: draggableItemId,
 	})
 
+	const parentIndex = Zus.useStore(props.llStore, s => s.parentIndex)
 	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
-	const normTeamOffset = currentMatch ? SM.getNormTeamOffsetForQueueIndex(currentMatch, props.index) : undefined
+	const normTeamOffset = currentMatch ? SM.getNormTeamOffsetForQueueIndex(currentMatch, parentIndex ?? props.index) : undefined
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
@@ -475,6 +476,11 @@ function ItemDropdown(props: {
 		props.onStartEdit?.()
 		_setSubDropdownState(state)
 	}
+	const [isVoteChoiceList, layerIds] = ZusUtils.useStoreDeep(
+		props.listStore,
+		useShallow(s => [s.isVoteChoice, M.getAllLayerIdsFromList(s.layerList)]),
+	)
+	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)
 
 	const user = useLoggedInUser()
 	return (
@@ -483,6 +489,7 @@ function ItemDropdown(props: {
 			<DropdownMenuContent>
 				<DropdownMenuGroup>
 					<EditLayerListItemDialogWrapper
+						index={props.index}
 						allowVotes={allowVotes}
 						open={subDropdownState === 'edit'}
 						onOpenChange={(update) => {
@@ -494,7 +501,12 @@ function ItemDropdown(props: {
 					>
 						<DropdownMenuItem>Edit</DropdownMenuItem>
 					</EditLayerListItemDialogWrapper>
-					<DropdownMenuItem onClick={() => props.itemStore.getState().swapFactions()}>Swap Factions</DropdownMenuItem>
+					<DropdownMenuItem
+						disabled={isVoteChoiceList && !!layerId && layerIds?.includes(M.swapFactionsInId(layerId))}
+						onClick={() => props.itemStore.getState().swapFactions()}
+					>
+						Swap Factions
+					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						onClick={() => {

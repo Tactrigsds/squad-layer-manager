@@ -34,6 +34,7 @@ export type LLState = {
 	layerList: M.LayerListItem[]
 	listMutations: ItemMutations
 	isVoteChoice?: boolean
+	parentIndex?: number
 }
 
 export type LLStore = LLState & LLActions
@@ -164,11 +165,12 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 	}
 }
 
-export const getVoteChoiceStateFromItem = (item: M.LayerListItem): LLState => {
+export const getVoteChoiceStateFromItem = (item: M.LayerListItem, index: number): LLState => {
 	return {
 		listMutations: ItemMut.initMutations(),
 		layerList: item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: item.source })) ?? [],
 		isVoteChoice: true,
+		parentIndex: index,
 	}
 }
 
@@ -176,16 +178,16 @@ export const getVoteChoiceStateFromItem = (item: M.LayerListItem): LLState => {
 // 			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
 // 			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
 
-export const getVoteChoiceStore = (item: M.LayerListItem) => {
-	const initialState = getVoteChoiceStateFromItem(item)
+export const getVoteChoiceStore = (item: M.LayerListItem, index: number) => {
+	const initialState = getVoteChoiceStateFromItem(item, index)
 	return Zus.createStore<LLStore>((set, get) => ({
 		...createLLActions(set, get),
 		...initialState,
 	}))
 }
 
-export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState().item), [itemStore])
+export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>, index: number) => {
+	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState().item, index), [itemStore, index])
 	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(newStore)
 
 	const initialRef = React.useRef(false)
@@ -240,7 +242,7 @@ export const createLLItemStore = (
 }
 
 function swapFactions(existingItem: M.LayerListItem) {
-	const updated: M.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId } }
+	const updated: M.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId! } }
 	if (existingItem.layerId) {
 		const layerId = M.swapFactionsInId(existingItem.layerId)
 		updated.layerId = layerId
