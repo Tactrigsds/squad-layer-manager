@@ -456,6 +456,18 @@ export const GROUP_BY_COLUMNS = [
 ] as const
 export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
 
+export const WEIGHT_COLUMNS = [
+	'Map',
+	'Layer',
+	'Gamemode',
+	'Size',
+	'Faction_1',
+	'Faction_2',
+	'SubFac_1',
+	'SubFac_2',
+] as const
+export type WeightColumn = typeof WEIGHT_COLUMNS[number]
+
 export const COLUMN_LABELS = {
 	id: 'ID',
 	Map: 'Map',

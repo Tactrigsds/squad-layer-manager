@@ -145,6 +145,12 @@
       "default": 5,
       "description": "Maximum number of choices allowed in a vote"
     },
+    "layerGenerationMaxBasePoolSizePerItem": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "default": 300,
+      "description": "Implementation detail which somewhat affects the performance of the random layer functionality."
+    },
     "adminListSources": {
       "type": "array",
       "items": {

@@ -15,10 +15,10 @@ import { enableMapSet } from 'immer'
 import FullPageSpinner from './components/full-page-spinner.tsx'
 import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
-const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))
-const FilterEdit = React.lazy(() => import('./components/filter-edit.tsx'))
-const FilterNew = React.lazy(() => import('./components/filter-new.tsx'))
-const LayerQueueDashboard = React.lazy(() => import('./components/layer-queue-dashboard.tsx'))
+import FilterEdit from './components/filter-edit.tsx'
+import FilterIndex from './components/filter-index.tsx'
+import FilterNew from './components/filter-new.tsx'
+import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -30,9 +30,7 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
-					<React.Suspense fallback={<FullPageSpinner />}>
-						<FilterIndex />
-					</React.Suspense>
+					<FilterIndex />
 				</AppContainer>
 			</InnerRouterProviders>
 		),
@@ -42,9 +40,7 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
-					<React.Suspense fallback={<FullPageSpinner />}>
-						<FilterEdit />
-					</React.Suspense>
+					<FilterEdit />
 				</AppContainer>
 			</InnerRouterProviders>
 		),
@@ -54,9 +50,7 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
-					<React.Suspense fallback={<FullPageSpinner />}>
-						<FilterNew />
-					</React.Suspense>
+					<FilterNew />
 				</AppContainer>
 			</InnerRouterProviders>
 		),
@@ -66,9 +60,7 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
-					<React.Suspense fallback={<FullPageSpinner />}>
-						<LayerQueueDashboard />
-					</React.Suspense>
+					<LayerQueueDashboard />
 				</AppContainer>
 			</InnerRouterProviders>
 		),

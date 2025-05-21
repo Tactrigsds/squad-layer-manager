@@ -1,21 +1,19 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/lib/filter-builders'
-import { createId } from '@/lib/id'
+import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
+import { weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
-import * as DB from '@/server/db'
-import * as LayerQueue from '@/server/systems/layer-queue'
 import * as MatchHistory from '@/server/systems/match-history'
 import { procedure, router } from '@/server/trpc.server.ts'
 import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
-import { SQL, sql } from 'drizzle-orm'
+import { count, SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import { getViewConfig } from 'drizzle-orm/mysql-core'
-import { MySqlDialect, mysqlView } from 'drizzle-orm/mysql-core'
 import { z } from 'zod'
+import { CONFIG } from '../config'
 
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
@@ -848,48 +846,72 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		constraints,
 	)
 	const p_condition = conditions.length > 0 ? E.and(...conditions) : sql`1=1`
-	const view_name = 'gen_view_' + createId(6).replace('-', '')
-	const query = ctx.db().select().from(Schema.layers).where(p_condition)
-	const view = mysqlView(view_name).as(query)
 
-	try {
-		await ctx.db().execute(sql`set collation_server = 'utf8mb4_0900_ai_ci'`)
-		// create a view just for this query so we don't have to deal with templating in a custom sql expression to the stored proc. unfortunately CTEs aren't portable in mysql -- would have used that if it was available
-		await ctx
-			.db()
-			.execute(
-				sql`create or replace view ${view} as (
-            select * from layers where ${p_condition})`,
-			)
+	const colOrderRowsPromise = ctx.db().select({ columnName: Schema.genLayerColumnOrder.columnName }).from(Schema.genLayerColumnOrder)
+		.orderBy(E.asc(Schema.genLayerColumnOrder.ordinal)).execute()
+	const totalCountPromise = ctx.db().select({ totalCount: count() }).from(Schema.layers).where(p_condition).execute()
+	const allWeightsPromise = ctx.db().select().from(Schema.genLayerWeights).execute()
 
-		// @ts-expect-error idgaf
-		const [[rows]] = await ctx
-			.db()
-			.execute(sql`call select_layers_weightedrandom(${view_name}, ${number})`)
-		const ids = rows.map((r: any) => r.id) as string[]
-		const [countRes] = await ctx.db().select({ count: sql<string>`count(*)` }).from(view)
-		if (returnLayers) {
-			const rawLayers = await ctx
-				.db()
-				.select({ ...Schema.layers, ...selectProperties })
-				.from(Schema.layers)
-				.where(E.inArray(Schema.layers.id, ids)).orderBy(sql`rand()`)
-			// @ts-expect-error idgaf
-			return {
-				totalCount: parseInt(countRes.count),
-				layers: postProcessLayers(
-					rawLayers as (M.Layer & Record<string, boolean>)[],
-					constraints,
-					historicLayers,
-					normTeamOffset,
-				),
-			}
-		}
-		// @ts-expect-error idgaf
-		return { ids, totalCount: parseInt(countRes.count) }
-	} finally {
-		await ctx.db().execute(sql`drop view if exists ${view}`)
+	const colOrderRows = await colOrderRowsPromise
+	const orderedColumns = colOrderRows.map(row => row.columnName).filter(colName =>
+		(M.WEIGHT_COLUMNS as unknown as string[]).includes(colName)
+	) as [M.WeightColumn, ...M.WeightColumn[]]
+
+	const baseLayerPoolPromise = ctx.db().select(
+		Obj.selectProps(Schema.layers, [...orderedColumns, 'id'] as [M.WeightColumn, ...M.WeightColumn[], 'id']),
+	).from(Schema.layers).where(p_condition).limit(CONFIG.layerGenerationMaxBasePoolSizePerItem * number).orderBy(E.asc(sql`rand()`))
+		.execute()
+
+	const totalCountResult = await totalCountPromise
+	const totalCount = Number(totalCountResult[0].totalCount)
+	const baseLayerPool = await baseLayerPoolPromise
+	const allWeights = await allWeightsPromise
+
+	if (baseLayerPool.length === 0) {
+		// @ts-expect-error type-safe method is too annoying
+		return { layers: [], totalCount: 0 }
 	}
+
+	const selected: string[] = []
+	for (let i = 0; i < number; i++) {
+		let layerPool = baseLayerPool
+		for (const columnName of orderedColumns) {
+			const weightsForColl = allWeights.filter(w => w.columnName === columnName)
+			const values: (string | null)[] = []
+			const weights: number[] = []
+			const defaultWeight = 1 / values.length
+			for (const layer of layerPool) {
+				if (values.includes(layer[columnName]) || selected.includes(layer.id)) continue
+				values.push(layer[columnName])
+				weights.push(weightsForColl.find(w => w.value === layer[columnName])?.weight ?? defaultWeight)
+			}
+			if (values.length === 0) continue
+			const chosen = weightedRandomSelection(values, weights)
+			layerPool = layerPool.filter(l => l[columnName] === chosen)
+		}
+		if (layerPool.length === 0) {
+			for (const layer of baseLayerPool) {
+				if (!selected.includes(layer.id)) {
+					selected.push(layer.id)
+				}
+			}
+		} else {
+			selected.push(layerPool[0].id)
+		}
+	}
+
+	const results = await ctx.db().select({ ...Schema.layers, ...selectProperties }).from(Schema.layers).where(
+		E.inArray(Schema.layers.id, selected),
+	).orderBy(sql`rand()`)
+	if (returnLayers) {
+		// @ts-expect-error idgaf
+		return {
+			layers: postProcessLayers(results as (M.Layer & Record<string, boolean>)[], constraints, historicLayers, normTeamOffset),
+			totalCount,
+		}
+	}
+	// @ts-expect-error idgaf
+	return { ids: selected, totalCount }
 }
 
 function hasTeam(
