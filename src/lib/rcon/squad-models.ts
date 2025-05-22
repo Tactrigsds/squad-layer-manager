@@ -43,7 +43,7 @@ type MatchDetailsCommon = {
 	layerSource: M.LayerSource
 	layerId: M.LayerId
 	// whether team 1 2 is aligned or swapped with the normalized teams A B
-	normTeamOffset: 0 | 1
+	teamParity: number
 	historyEntryId: number
 	startTime: Date
 }
@@ -67,8 +67,8 @@ export type MatchDetails =
 		& MatchDetailsCommon
 	)
 
-export function getNormTeamOffsetForQueueIndex(currentMatch: MatchDetails, index: number) {
-	return (currentMatch.normTeamOffset + index + 1) % 2 as 0 | 1
+export function getTeamParityForQueueIndex(currentMatch: Pick<MatchDetails, 'teamParity'>, index: number) {
+	return (currentMatch.teamParity + index + 1) % 2
 }
 
 export type MatchHistoryPart = {
@@ -103,7 +103,7 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory &
 		layerId: entry.layerId,
 		startTime: entry.startTime,
 		historyEntryId: entry.id,
-		normTeamOffset: entry.id % 2 as 0 | 1,
+		teamParity: entry.id % 2 as 0 | 1,
 	}
 
 	if (entry.endTime && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')

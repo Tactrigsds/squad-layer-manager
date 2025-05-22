@@ -5,6 +5,7 @@ import * as FB from '@/lib/filter-builders.ts'
 import { selectProps } from '@/lib/object.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
+import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -12,22 +13,23 @@ import * as Zus from 'zustand'
 import ExtraFiltersPanel from './extra-filters-panel'
 import { Comparison } from './filter-card'
 
-function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): M.EditableComparison[] {
-	return [
-		EFB.eq('Layer', defaultFields['Layer']),
-		EFB.eq('Map', defaultFields['Map']),
-		EFB.eq('Gamemode', defaultFields['Gamemode']),
-		EFB.eq('LayerVersion', defaultFields['LayerVersion']),
-		EFB.eq('Faction_1', defaultFields['Faction_1']),
-		EFB.eq('SubFac_1', defaultFields['SubFac_1']),
-		EFB.eq('Faction_2', defaultFields['Faction_2']),
-		EFB.eq('SubFac_2', defaultFields['SubFac_2']),
-	]
+function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): Record<keyof M.MiniLayer, M.EditableComparison> {
+	return {
+		Layer: EFB.eq('Layer', defaultFields['Layer']),
+		Map: EFB.eq('Map', defaultFields['Map']),
+		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
+		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion']),
+		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
+		SubFac_1: EFB.eq('SubFac_1', defaultFields['SubFac_1']),
+		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
+		SubFac_2: EFB.eq('SubFac_2', defaultFields['SubFac_2']),
+	} as Record<keyof M.MiniLayer, M.EditableComparison>
 }
 
-function getFilterFromComparisons(items: M.EditableComparison[]) {
+function getFilterFromComparisons(items: Record<keyof M.MiniLayer, M.EditableComparison>) {
 	const nodes: M.FilterNode[] = []
-	for (const item of items) {
+	for (const key in items) {
+		const item = items[key as keyof M.MiniLayer]
 		if (!M.isValidComparison(item)) continue
 		nodes.push(FB.comp(item))
 	}
@@ -38,24 +40,27 @@ function getFilterFromComparisons(items: M.EditableComparison[]) {
 
 type FilterMenuStore = {
 	filter?: M.FilterNode
-	menuItems: M.EditableComparison[]
+	menuItems: Record<keyof M.MiniLayer, M.EditableComparison>
 	siblingFilters: { [k in keyof M.MiniLayer]: M.FilterNode | undefined }
-	setMenuItems: React.Dispatch<React.SetStateAction<M.EditableComparison[]>>
+	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof M.MiniLayer, M.EditableComparison>>>
 }
 
 /**
  * Derive filter nodes which
  */
-function getSiblingFiltersForMenuItems(items: M.EditableComparison[]) {
+function getSiblingFiltersForMenuItems(items: Record<keyof M.MiniLayer, M.EditableComparison>) {
 	// @ts-expect-error idc
 	const filtersExcludingFields: { [k in keyof M.MiniLayer]: M.FilterNode | undefined } = {}
-	for (let i = 0; i < items.length; i++) {
-		const item = items[i]
+
+	for (const itemKey in items) {
+		const key = itemKey as keyof M.MiniLayer
+		const item = items[key]
 		if (!item.column) continue
+
 		const comparisonsToApply: M.FilterNode[] = []
-		for (let j = 0; j < items.length; j++) {
-			if (i === j) continue
-			const cand = items[j]
+		for (const candKey in items) {
+			if (key === candKey) continue
+			const cand = items[candKey as keyof M.MiniLayer]
 			if (!M.isValidComparison(cand)) continue
 
 			// don't filter out the composite columns based on the filter with a combined value, because that would be annoying
@@ -64,10 +69,10 @@ function getSiblingFiltersForMenuItems(items: M.EditableComparison[]) {
 			comparisonsToApply.push(FB.comp(cand))
 		}
 
-		if (filtersExcludingFields[item.column as keyof M.MiniLayer]) {
+		if (filtersExcludingFields[key]) {
 			console.warn('unexpected duplicate detected when deriving sibling filters', items)
 		}
-		filtersExcludingFields[item.column as keyof M.MiniLayer] = comparisonsToApply.length > 0 ? FB.and(comparisonsToApply) : undefined
+		filtersExcludingFields[key] = comparisonsToApply.length > 0 ? FB.and(comparisonsToApply) : undefined
 	}
 
 	return filtersExcludingFields
@@ -85,7 +90,7 @@ export function useFilterMenuStore(defaultFields: Partial<M.MiniLayer> = {}) {
 				filter,
 				siblingFilters: siblingFilters,
 				setMenuItems: (update) => {
-					let updated: M.EditableComparison[]
+					let updated: Record<keyof M.MiniLayer, M.EditableComparison>
 					const state = get()
 					if (typeof update === 'function') {
 						updated = update(state.menuItems)
@@ -125,56 +130,51 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 		props.filterMenuStore,
 		state => selectProps(state, ['menuItems', 'siblingFilters']),
 	)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
 		return (update) => {
 			props.filterMenuStore.getState().setMenuItems(
 				// TODO having this be inline is kinda gross
 				Im.produce((draft) => {
-					const prevComp = draft.find((item) => item.column === name)!
+					const prevComp = draft[name]
 					const comp = typeof update === 'function' ? update(prevComp) : update
-					const idxMap: Record<string, number> = {}
-					draft.forEach((item, idx) => {
-						idxMap[item.column!] = idx
-					})
 
 					if (comp.column === 'Layer' && comp.value) {
 						const parsedLayer = M.parseLayerStringSegment(comp.value as string)
-						draft[idxMap['Layer']].value = comp.value
+						draft['Layer'].value = comp.value
 						if (!parsedLayer) {
 							return
 						}
-						draft[idxMap['Map']].value = parsedLayer.map
-						draft[idxMap['Gamemode']].value = parsedLayer.gamemode
-						draft[idxMap['LayerVersion']].value = parsedLayer.version
+						draft['Map'].value = parsedLayer.map
+						draft['Gamemode'].value = parsedLayer.gamemode
+						draft['LayerVersion'].value = parsedLayer.version
 					} else if (comp.column === 'Layer' && !comp.value) {
-						delete draft[idxMap['Layer']].value
-						delete draft[idxMap['Map']].value
-						delete draft[idxMap['Gamemode']].value
-						delete draft[idxMap['LayerVersion']].value
+						delete draft['Layer'].value
+						delete draft['Map'].value
+						delete draft['Gamemode'].value
+						delete draft['LayerVersion'].value
 					} else if (comp !== undefined) {
-						const idx = draft.findIndex((item) => item.column === name)
-						draft[idx] = comp
-						draft[idxMap[name]] = comp
+						draft[name] = comp
 					}
 
 					if (comp.column === 'Map' || comp.column === 'Gamemode') {
-						delete draft[idxMap['LayerVersion']].value
+						delete draft['LayerVersion'].value
 					}
 
 					if ((M.LAYER_STRING_PROPERTIES as string[]).includes(comp.column as string) && comp.value) {
 						const excludingCurrent = M.LAYER_STRING_PROPERTIES.filter((p) => p !== comp.column)
-						if (excludingCurrent.every((p) => draft[idxMap[p]]?.value)) {
+						if (excludingCurrent.every((p) => draft[p as keyof M.MiniLayer]?.value)) {
 							const args = {
-								Gamemode: draft[idxMap['Gamemode']].value!,
-								Map: draft[idxMap['Map']].value!,
-								LayerVersion: draft[idxMap['LayerVersion']].value!,
+								Gamemode: draft['Gamemode'].value!,
+								Map: draft['Map'].value!,
+								LayerVersion: draft['LayerVersion'].value!,
 							} as Parameters<typeof M.getLayerString>[0]
 							// @ts-expect-error idc
 							args[comp.column] = comp.value!
-							draft[idxMap['Layer']].value = M.getLayerString(args)
+							draft['Layer'].value = M.getLayerString(args)
 						} else {
-							delete draft[idxMap['Layer']].value
+							delete draft['Layer'].value
 						}
 					}
 				}),
@@ -182,11 +182,24 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 		}
 	}
 
+	function swapFactions() {
+		props.filterMenuStore.getState().setMenuItems(
+			Im.produce((draft) => {
+				const faction1 = draft['Faction_1'].value
+				const subFac1 = draft['SubFac_1'].value
+				draft['Faction_1'].value = draft['Faction_2'].value
+				draft['SubFac_1'].value = draft['SubFac_2'].value
+				draft['Faction_2'].value = faction1
+				draft['SubFac_2'].value = subFac1
+			}),
+		)
+	}
+
 	return (
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
-				{storeState.menuItems.map((comparison) => {
-					const name = comparison.column as keyof M.MiniLayer
+				{Object.entries(storeState.menuItems).map(([key, comparison]) => {
+					const name = key as keyof M.MiniLayer
 					const setComp = applySetFilterFieldComparison(name)
 					function clear() {
 						setComp(
@@ -198,38 +211,17 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 						if (M.LAYER_STRING_PROPERTIES.includes(name)) {
 							props.filterMenuStore.getState().setMenuItems(
 								Im.produce((draft) => {
-									const layerComp = draft.find((item) => item.column === 'Layer')
-									if (layerComp) {
-										delete layerComp.value
-									}
+									delete draft['Layer'].value
 								}),
 							)
 						}
 					}
 
-					function swapFactions() {
-						props.filterMenuStore.getState().setMenuItems(
-							Im.produce((draft) => {
-								const idxMap: Record<string, number> = {}
-								draft.forEach((item, idx) => {
-									idxMap[item.column!] = idx
-								})
-								const faction1 = draft[idxMap['Faction_1']].value
-								const subFac1 = draft[idxMap['SubFac_1']].value
-								draft[idxMap['Faction_1']].value = draft[idxMap['Faction_2']].value
-								draft[idxMap['SubFac_1']].value = draft[idxMap['SubFac_2']].value
-								draft[idxMap['Faction_2']].value = faction1
-								draft[idxMap['SubFac_2']].value = subFac1
-							}),
-						)
-					}
-					const swapFactionsDisabled = !storeState.menuItems.some(
-						(comp) => (comp.column === 'Faction_1' && comp.value !== undefined) || (comp.column === 'SubFac_1' && comp.value !== undefined),
+					const swapFactionsDisabled = !(
+						(storeState.menuItems['Faction_1'].value !== undefined || storeState.menuItems['SubFac_1'].value !== undefined)
+						|| (storeState.menuItems['Faction_2'].value !== undefined || storeState.menuItems['SubFac_2'].value !== undefined)
 					)
-						&& !storeState.menuItems.some(
-							(comp) =>
-								(comp.column === 'Faction_2' && comp.value !== undefined) || (comp.column === 'SubFac_2' && comp.value !== undefined),
-						)
+
 					let constraints = props.queryContext.constraints ?? []
 					if (storeState.siblingFilters[name]) {
 						constraints = [
@@ -237,6 +229,11 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 							M.filterToConstraint(storeState.siblingFilters[name], 'sibling-' + name),
 						]
 					}
+
+					let customColumnLabel: string | undefined
+					// if (displayTeamsNormalized) {
+					//   if (M.getTeamNormalizedUnitProp('A')) { }
+					// }
 
 					return (
 						<React.Fragment key={name}>

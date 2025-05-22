@@ -3,7 +3,7 @@ import * as DH from './display-helpers'
 
 export function getTeamsDisplay(
 	partialLayer: ReturnType<typeof M.getLayerDetailsFromUnvalidated>,
-	normTeamOffset?: 0 | 1,
+	teamParity?: number,
 	displayLayersNormalized?: boolean,
 ) {
 	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined
@@ -11,10 +11,10 @@ export function getTeamsDisplay(
 
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
-	if (typeof normTeamOffset === 'number' && !displayLayersNormalized) {
+	if (typeof teamParity === 'number' && !displayLayersNormalized) {
 		const colors = ['teal', 'coral']
-		team1Color = colors[normTeamOffset]
-		team2Color = colors[(normTeamOffset + 1) % 2]
+		team1Color = colors[teamParity]
+		team2Color = colors[(teamParity + 1) % 2]
 	} else if (displayLayersNormalized) {
 		// Colors specifically for (1) and (2) normalized team labels
 		team1Color = '#9932CC' // purple
@@ -26,27 +26,27 @@ export function getTeamsDisplay(
 			{partialLayer.Faction_1}
 			{subfaction1 ? ` ${subfaction1}` : ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '1' : normTeamOffset === 1 ? 'B' : 'A'}`}
+				title={`Team ${displayLayersNormalized ? '1' : teamParity === 1 ? 'B' : 'A'}`}
 				className="font-mono text-sm"
 				style={{ color: team1Color }}
 			>
-				{displayLayersNormalized ? '(1)' : normTeamOffset === 1 ? '(B)' : '(A)'}
+				{displayLayersNormalized ? '(1)' : teamParity === 1 ? '(B)' : '(A)'}
 			</span>
 		</span>,
 		<span>
 			{partialLayer.Faction_2}
 			{subFaction2 ? ` ${subFaction2}` : ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '2' : normTeamOffset === 1 ? 'A' : 'B'}`}
+				title={`Team ${displayLayersNormalized ? '2' : teamParity === 1 ? 'A' : 'B'}`}
 				className="font-mono text-sm"
 				style={{ color: team2Color }}
 			>
-				{displayLayersNormalized ? '(2)' : normTeamOffset === 1 ? '(A)' : '(B)'}
+				{displayLayersNormalized ? '(2)' : teamParity === 1 ? '(A)' : '(B)'}
 			</span>
 		</span>,
 	]
 
-	const swapTeamOffset = Number(displayLayersNormalized && normTeamOffset === 1)
+	const swapTeamOffset = Number(displayLayersNormalized && teamParity === 1)
 
 	return [
 		teamElts[swapTeamOffset],

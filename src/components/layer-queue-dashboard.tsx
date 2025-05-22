@@ -9,7 +9,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
-import { cartesianProduct } from '@/lib/array.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -32,7 +31,6 @@ import { zodValidator } from '@tanstack/zod-form-adapter'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
@@ -127,14 +125,6 @@ export default function LayerQueueDashboard() {
 	}
 
 	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
-	const layerQueryConstraints = ZusUtils.useStoreDeep(
-		QD.QDStore,
-		QD.selectQDQueryConstraints,
-	)
-	const layerQueryContext: M.LayerQueryContext = {
-		constraints: layerQueryConstraints,
-		previousLayerIds: [],
-	}
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState
 		&& PartsSys.findUser(userPresenceState.editState.userId)
@@ -247,7 +237,6 @@ export default function LayerQueueDashboard() {
 							<LayerList
 								store={QD.LQStore}
 								onStartEdit={() => QD.QDStore.getState().tryStartEditing()}
-								queryLayerContext={layerQueryContext}
 							/>
 						</CardContent>
 					</Card>
@@ -295,21 +284,10 @@ function QueueControlPanel() {
 		QD.QDStore.getState().tryStartEditing()
 		_setAppendLayersPopoverOpen(v)
 	}
-	const [canEdit, lqLength] = ZusUtils.useStoreDeep(
-		QD.QDStore,
-		useShallow((s) => [s.canEditQueue, s.editedServerState.layerQueue.length]),
-	)
-	const constraints = ZusUtils.useStoreDeep(
-		QD.QDStore,
-		QD.selectQDQueryConstraints,
-	)
+	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
 
-	const addToQueueQueryContext = QD.useDerivedQueryContextForLQIndex(
-		lqLength,
-		{ constraints },
-		QD.LQStore,
-	)
-	const playNextQueryContext: M.LayerQueryContext = { constraints }
+	const addToQueueQueryContext = ZusUtils.useStoreDeep(QD.LQStore, state => QD.selectLayerListQueryContext(state, state.layerList.length))
+	const playNextQueryContext = ZusUtils.useStoreDeep(QD.LQStore, state => QD.selectLayerListQueryContext(state, 0))
 
 	return (
 		<div className="flex items-center space-x-1">

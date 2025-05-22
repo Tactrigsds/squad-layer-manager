@@ -334,6 +334,7 @@ export function Comparison(props: {
 	showValueDropdown?: boolean
 	defaultEditing?: boolean
 	highlight?: boolean
+	columnLabel?: string
 }) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const { comp, setComp } = props
@@ -363,7 +364,7 @@ export function Comparison(props: {
 	const columnBox = columnEditable
 		? (
 			<ComboBox
-				title="Column"
+				title={props.columnLabel ?? 'Column'}
 				className={componentStyles}
 				allowEmpty={true}
 				value={comp.column}
@@ -410,7 +411,7 @@ export function Comparison(props: {
 		)
 		: (
 			<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-				{comp.column}
+				{props.columnLabel ?? comp.column}
 			</span>
 		)
 	if (!comp.column) return columnBox

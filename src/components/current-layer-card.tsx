@@ -72,7 +72,7 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 						Current Layer:
 					</CardTitle>
 					<div>
-						<LayerDisplay layerId={props.serverStatus.currentLayer.id} normTeamOffset={historyEntry?.normTeamOffset} />
+						<LayerDisplay layerId={props.serverStatus.currentLayer.id} teamParity={historyEntry?.teamParity} />
 					</div>
 				</span>
 				{historyEntry && <LayerSourceDisplay source={historyEntry.layerSource} />}

@@ -2,10 +2,10 @@ import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import * as FB from '@/lib/filter-builders'
-import { createId } from '@/lib/id'
-import { ItemMutations, ItemMutationState, WithMutationId } from '@/lib/item-mutations'
+import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
 import { deepClone, selectProps } from '@/lib/object'
+import * as SM from '@/lib/rcon/squad-models'
 import { Getter, Setter } from '@/lib/zustand'
 import * as ZusUtils from '@/lib/zustand'
 import * as M from '@/models'
@@ -13,15 +13,14 @@ import * as RBAC from '@/rbac.models'
 import { trpc } from '@/trpc.client'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
-import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
-import * as Jotai from 'jotai'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { fetchConfig, useConfig } from './config.client'
+import { fetchConfig } from './config.client'
 import * as FilterEntityClient from './filter-entity.client'
+import * as MatchHistoryClient from './match-history.client'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
 import * as UsersClient from './users.client'
 
@@ -33,8 +32,14 @@ export type MutServerStateWithIds = M.UserModifiableServerState & {
 export type LLState = {
 	layerList: M.LayerListItem[]
 	listMutations: ItemMutations
+
+	// the parity of the first item in a regular layer list, but if vote choice it's all items
+	teamParity: number
+
 	isVoteChoice?: boolean
-	parentIndex?: number
+
+	// this is usually just the main layer pool but for vote choice layer lists it could be more specific
+	baseQueryContext: M.LayerQueryContext
 }
 
 export type LLStore = LLState & LLActions
@@ -47,7 +52,14 @@ export type LLActions = {
 	clear: () => void
 }
 
-export type LLItemState = { item: M.LayerListItem; mutationState: ItemMutationState }
+export type LLItemState = {
+	index: number
+	item: M.LayerListItem
+	teamParity: number
+	mutationState: ItemMutationState
+	baseQueryContext: M.LayerQueryContext
+}
+
 export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
@@ -71,6 +83,7 @@ export type QDState = {
 	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
+	queueTeamParity: number
 	poolApplyAs: {
 		dnr: M.LayerQueryConstraint['applyAs']
 		filter: M.LayerQueryConstraint['applyAs']
@@ -165,29 +178,27 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 	}
 }
 
-export const getVoteChoiceStateFromItem = (item: M.LayerListItem, index: number): LLState => {
+export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item' | 'teamParity' | 'baseQueryContext'>): LLState => {
 	return {
 		listMutations: ItemMut.initMutations(),
-		layerList: item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: item.source })) ?? [],
+		layerList: itemState.item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
 		isVoteChoice: true,
-		parentIndex: index,
+		teamParity: itemState.teamParity,
+		baseQueryContext: itemState.baseQueryContext,
 	}
 }
 
-// const choices = state.layerList.map(item => item.layerId!)
-// 			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
-// 			itemStore.setState({ item: { ...itemStore.getState().item, vote: { choices, defaultChoice } } })
-
-export const getVoteChoiceStore = (item: M.LayerListItem, index: number) => {
-	const initialState = getVoteChoiceStateFromItem(item, index)
+export const getVoteChoiceStore = (itemState: Pick<LLItemState, 'item' | 'teamParity' | 'baseQueryContext'>) => {
+	const initialState = getVoteChoiceStateFromItem(itemState)
 	return Zus.createStore<LLStore>((set, get) => ({
 		...createLLActions(set, get),
 		...initialState,
 	}))
 }
 
-export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>, index: number) => {
-	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState().item, index), [itemStore, index])
+export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
+	// notably we're not syncing and state from itemStore here
+	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState()), [itemStore])
 	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(newStore)
 
 	const initialRef = React.useRef(false)
@@ -203,6 +214,12 @@ export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>, index: 
 export const selectLLState = (state: QDState): LLState => ({
 	layerList: state.editedServerState.layerQueue,
 	listMutations: state.queueMutations,
+	teamParity: state.queueTeamParity,
+	baseQueryContext: {
+		constraints: state.serverState
+			? M.getPoolConstraints(state.serverState.settings.queue.mainPool, state.poolApplyAs.dnr, state.poolApplyAs.filter)
+			: undefined,
+	},
 })
 
 export const deriveLLStore = (store: Zus.StoreApi<QDStore>) => {
@@ -267,11 +284,31 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 		},
 	}
 
-	return derive<LLItemStore>((get) => ({
-		...actions,
-		item: get(store).layerList.find((item) => item.itemId === itemId)!,
-		mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
-	}))
+	return derive<LLItemStore>((get) => {
+		const layerList = get(store).layerList
+		const index = layerList.findIndex((item) => item.itemId === itemId)
+		const isVoteChoice = get(store).isVoteChoice
+		const baseQueryContext = get(store).baseQueryContext
+		const firstItemTeamParity = get(store).teamParity
+		if (isVoteChoice) {
+			return {
+				...actions,
+				index,
+				item: layerList[index],
+				mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
+				teamParity: firstItemTeamParity,
+				baseQueryContext: { previousLayerIds: [], ...baseQueryContext },
+			}
+		}
+		return {
+			...actions,
+			index,
+			item: layerList[index],
+			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
+			baseQueryContext,
+			teamParity: SM.getTeamParityForQueueIndex({teamParity: firstItemTeamParity},index)
+		}
+	})
 }
 
 export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
@@ -281,6 +318,8 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 			listMutations: mutState,
 			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: { type: 'gameserver' } })) ?? [],
 			isVoteChoice: true,
+			baseQueryContext: state.baseQueryContext,
+			teamParity: state.teamParity,
 		}
 	}
 	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
@@ -329,6 +368,7 @@ export const initialState: QDState = {
 	isEditing: false,
 	canEditQueue: false,
 	canEditSettings: false,
+	queueTeamParity: 0,
 	stopEditingInProgress: false,
 	extraQueryFilters: [],
 	poolApplyAs: {
@@ -337,7 +377,7 @@ export const initialState: QDState = {
 	},
 }
 
-export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
+export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	const canEdit$ = userPresenceState$.pipe(
 		Rx.mergeMap(async (state) => {
 			const user = await UsersClient.fetchLoggedInUser()
@@ -441,6 +481,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get, store) => {
 	let maxQueueSize: number = 10
 	fetchConfig().then(config => {
 		maxQueueSize = config.maxQueueSize ?? 10
+	})
+
+	MatchHistoryClient.currentMatchDetails$().subscribe(details => {
+		if (!details) return
+		set({ queueTeamParity: SM.getTeamParityForQueueIndex(details, 0) })
 	})
 
 	return {
@@ -569,23 +614,42 @@ export function selectQDQueryConstraints(state: QDStore): M.LayerQueryConstraint
 	return queryConstraints
 }
 
-export function useDerivedQueryContextForLQIndex(index: number, baseContext: M.LayerQueryContext, llStore: Zus.StoreApi<LLStore>) {
-	const { isVoteChoice, layerList } = ZusUtils.useStoreDeep(llStore, (s) => selectProps(s, ['isVoteChoice', 'layerList']))
-	const queueLayerIds = M.getAllLayerIdsFromList(layerList, { excludeVoteChoices: true })
-
-	let constraints = baseContext.constraints ?? []
-	const previousLayerIds = queueLayerIds.slice(0, index)
-
-	// in the case of vote choices we want to enforce that there are no identical choices available
-	if (isVoteChoice) {
-		const filter = FB.comp(FB.inValues('id', queueLayerIds.filter((id, idx) => idx !== index)), { neg: true })
-		constraints = [...constraints, M.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + index)]
+export function selectLayerListQueryContext(
+	state: Pick<LLState, 'layerList' | 'baseQueryContext' | 'isVoteChoice'>,
+	// index can be up to and including the length of the list
+	atIndex?: number,
+): M.LayerQueryContext {
+	const queueLayerIds = M.getAllLayerIdsFromList(state.layerList, { excludeVoteChoices: true })
+	// points to next layer in queue past existing one
+	atIndex = atIndex ?? state.layerList.length
+	if (state.isVoteChoice) {
+		let constraints = state.baseQueryContext.constraints
+		const filter = FB.comp(FB.inValues('id', queueLayerIds.filter((id, idx) => idx !== atIndex)), { neg: true })
+		constraints = [...(state.baseQueryContext.constraints ?? []), M.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + atIndex)]
+		return {
+			previousLayerIds: state.baseQueryContext.previousLayerIds ?? [],
+			constraints,
+		}
 	}
 
 	return {
-		...baseContext,
-		constraints,
-		previousLayerIds: [...(baseContext.previousLayerIds ?? []), ...previousLayerIds],
+		...state.baseQueryContext,
+		previousLayerIds: [...(state.baseQueryContext.previousLayerIds ?? []), ...queueLayerIds.slice(0, atIndex)],
+	}
+}
+
+export function selectItemQueryContext(itemState: Pick<LLItemState, 'baseQueryContext' | 'index'>) {
+  return {
+    ...itemState.baseQueryContext,
+    previousLayerIds: itemState.baseQueryContext.previousLayerIds?.slice(0, itemState.index) ?? []
+  };
+}
+
+export function useLayerListItemQueryContext(itemStore: Zus.StoreApi<LLItemStore>): M.LayerQueryContext {
+	const { baseQueryContext, index } = ZusUtils.useStoreDeep(itemStore, (s) => selectProps(s, ['baseQueryContext', 'index']))
+	return {
+		...baseQueryContext,
+		previousLayerIds: baseQueryContext.previousLayerIds?.slice(0, index) ?? [],
 	}
 }
 

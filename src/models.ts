@@ -912,12 +912,12 @@ export const DoNotRepeatRuleSchema = z.object({
 })
 export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
 
-export function getTeamNormFactionProp(offset: number, team: 'A' | 'B') {
+export function getTeamNormalizedFactionProp(offset: number, team: 'A' | 'B') {
 	const props = ['Faction_1', 'Faction_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
 }
 
-export function getTeamNormUnitProp(offset: number, team: 'A' | 'B') {
+export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B') {
 	const props = ['SubFac_1', 'SubFac_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
 }
@@ -997,6 +997,9 @@ export type LayerQueryContext = {
 
 	// ids previous to this one but after any relevant layer history, in the order they would appear in the queue/list
 	previousLayerIds?: LayerId[]
+
+	// whether to consider stored match history for layers previous to previousLayerIds. defaults to true
+	applyMatchHistory?: boolean
 }
 
 export const GenLayerQueueItemsOptionsSchema = z.object({

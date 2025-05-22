@@ -1,5 +1,4 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-react.tsx'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
@@ -12,7 +11,7 @@ import * as Zus from 'zustand'
 import { ConstraintViolationDisplay } from './constraint-violation-display.tsx'
 
 export default function LayerDisplay(
-	props: { layerId: M.LayerId; itemId?: string; isVoteChoice?: boolean; badges?: React.ReactNode[]; normTeamOffset?: 0 | 1 },
+	props: { layerId: M.LayerId; itemId?: string; isVoteChoice?: boolean; badges?: React.ReactNode[]; teamParity?: number },
 ) {
 	const layerStatusesRes = useLayerStatuses({ enabled: !!props.itemId })
 	const badges: React.ReactNode[] = []
@@ -69,7 +68,7 @@ export default function LayerDisplay(
 	return (
 		<div className="flex space-x-2 items-center">
 			<span className="flex-1 text-nowrap">
-				<ShortLayerName layerId={props.layerId} normTeamOffset={props.normTeamOffset} />
+				<ShortLayerName layerId={props.layerId} teamParity={props.teamParity} />
 			</span>
 			<span className="flex items-center space-x-1">
 				{badges}
@@ -78,7 +77,7 @@ export default function LayerDisplay(
 	)
 }
 
-function ShortLayerName({ layerId, normTeamOffset }: { layerId: M.LayerId; normTeamOffset?: 0 | 1 }) {
+function ShortLayerName({ layerId, teamParity }: { layerId: M.LayerId; teamParity?: number }) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const partialLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
 
@@ -86,7 +85,7 @@ function ShortLayerName({ layerId, normTeamOffset }: { layerId: M.LayerId; normT
 
 	const [leftTeamElt, rightTeamElt] = getTeamsDisplay(
 		partialLayer,
-		normTeamOffset,
+		teamParity,
 		globalSettings.displayTeamsNormalized,
 	)
 

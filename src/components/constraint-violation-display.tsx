@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 export type ConstraintViolatioDisplayProps = {
 	violated: M.LayerQueryConstraint[]
 	violationDescriptors?: Record<string, string[] | undefined>
-	normTeamOffset?: number
+	teamParity?: number
 	children?: React.ReactNode
 	layerId: string
 	padEmpty?: boolean
