@@ -12,7 +12,7 @@ export default function PoolCheckboxes() {
 
 	return (
 		<>
-			<div className="flex items-center flex-nowrap space-x-0.5">
+			<div className="flex items-center flex-nowrap whitespace-nowrap space-x-0.5">
 				<Label title="Hide layers which violate Do-Not-Repeat rules" htmlFor={dnrCheckboxId}>Hide Reruns</Label>
 				<Checkbox
 					id={dnrCheckboxId}
@@ -23,7 +23,7 @@ export default function PoolCheckboxes() {
 					checked={poolApplyAs.dnr === 'where-condition'}
 				/>
 			</div>
-			<div className="flex items-center flex-nowrap space-x-0.5">
+			<div className="flex items-center flex-nowrap space-x-0.5 whitespace-nowrap">
 				<Label htmlFor={filterCheckboxId}>Hide Out-Of-Pool</Label>
 				<Checkbox
 					id={filterCheckboxId}

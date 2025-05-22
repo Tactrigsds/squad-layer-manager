@@ -3,7 +3,7 @@ import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
@@ -12,6 +12,7 @@ import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
+import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
@@ -28,6 +29,8 @@ import { trpc } from '@/trpc.client.ts'
 import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
 import { zodValidator } from '@tanstack/zod-form-adapter'
+import deepEqual from 'fast-deep-equal'
+import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -58,90 +61,14 @@ export default function LayerQueueDashboard() {
 		}
 	}, [serverStatusRes])
 
-	const toaster = useToast()
-	const updateQueueMutation = useMutation({
-		mutationFn: trpc.layerQueue.updateQueue.mutate,
-	})
-	async function saveLqState() {
-		const serverStateMut = QD.QDStore.getState().editedServerState
-		const res = await updateQueueMutation.mutateAsync(serverStateMut)
-		const reset = QD.QDStore.getState().reset
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				reset()
-				break
-			case 'err:out-of-sync':
-				toaster.toast({
-					title: 'State changed before submission, please try again.',
-					variant: 'destructive',
-				})
-				reset()
-				return
-			case 'err:queue-change-during-vote':
-				toaster.toast({
-					title: 'Cannot update: layer vote in progress',
-					variant: 'destructive',
-				})
-				reset()
-				break
-			case 'err:queue-too-large':
-				toaster.toast({
-					title: 'Queue too large',
-					variant: 'destructive',
-				})
-				break
-			case 'err:empty-vote':
-				toaster.toast({
-					title: 'Cannot update: vote is empty',
-					variant: 'destructive',
-				})
-				break
-			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:default-choice-not-in-choices':
-				toaster.toast({
-					title: 'Cannot update: default choice must be one of the vote choices',
-					variant: 'destructive',
-				})
-				break
-			case 'err:duplicate-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'ok':
-				toaster.toast({ title: 'Changes applied' })
-				QD.QDStore.getState().reset()
-				break
-			default:
-				assertNever(res)
-		}
-	}
-
 	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState
 		&& PartsSys.findUser(userPresenceState.editState.userId)
-	const loggedInUser = useLoggedInUser()
 
-	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = useConfig()?.maxQueueSize
-	const hasKickPermission = loggedInUser
-		&& RBAC.rbacUserHasPerms(loggedInUser, {
-			check: 'any',
-			permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
-		})
 
-	const kickEditorMutation = useMutation({
-		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
-	})
 	const inEditTransition = Zus.useStore(
 		QD.QDStore,
 		(s) => s.stopEditingInProgress,
@@ -157,71 +84,10 @@ export default function LayerQueueDashboard() {
 				</div>
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
-					<Card>
-						{!isEditing
-							&& serverStatusRes
-							&& serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
-						{!isEditing
-							&& serverStatusRes
-							&& serverStatusRes?.code === 'ok'
-							&& (!editingUser || inEditTransition) && <CurrentLayerCard serverStatus={serverStatusRes.data} />}
-						{!isEditing && editingUser && !inEditTransition && (
-							<Alert
-								variant="info"
-								className="flex justify-between items-center"
-							>
-								<AlertTitle className="flex space-x-2">
-									{editingUser.discordId === loggedInUser?.discordId
-										? 'You are editing on another tab'
-										: editingUser.username + ' is editing'}
-									{userPresenceState.editState?.startTime && (
-										<>
-											<span>:</span>
-											<Timer start={userPresenceState.editState.startTime} />
-										</>
-									)}
-								</AlertTitle>
-								<Button
-									disabled={!hasKickPermission}
-									onClick={() => kickEditorMutation.mutate()}
-									variant="outline"
-								>
-									Kick
-								</Button>
-							</Alert>
-						)}
-						{isEditing && !inEditTransition && (
-							/* ------- editing card ------- */
-							<div className="flex flex-col space-y-2">
-								<Card>
-									<CardHeader>
-										<CardTitle>Changes Pending</CardTitle>
-									</CardHeader>
-									<CardContent>
-										{queueHasMutations && <EditSummary />}
-									</CardContent>
-									<CardFooter className="space-x-1">
-										<Button
-											onClick={saveLqState}
-											disabled={updateQueueMutation.isPending}
-										>
-											Save Changes
-										</Button>
-										<Button
-											onClick={() => QD.QDStore.getState().reset()}
-											variant="secondary"
-										>
-											Cancel
-										</Button>
-										<Icons.LoaderCircle
-											className="animate-spin data-[pending=false]:invisible"
-											data-pending={updateQueueMutation.isPending}
-										/>
-									</CardFooter>
-								</Card>
-							</div>
-						)}
-					</Card>
+					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
+					{serverStatusRes?.code === 'ok' && <CurrentLayerCard serverStatus={serverStatusRes.data} />}
+					{!isEditing && editingUser && !inEditTransition && <UserEditingAlert />}
+					{isEditing && !inEditTransition && <EditingCard />}
 					<Card className="">
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
@@ -286,8 +152,8 @@ function QueueControlPanel() {
 	}
 	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
 
-	const addToQueueQueryContext = ZusUtils.useStoreDeep(QD.LQStore, state => QD.selectLayerListQueryContext(state, state.layerList.length))
-	const playNextQueryContext = ZusUtils.useStoreDeep(QD.LQStore, state => QD.selectLayerListQueryContext(state, 0))
+	const addToQueueQueryContext = ZusUtils.useStoreDeep(QD.LQStore, (state) => QD.selectLayerListQueryContext(state, state.layerList.length))
+	const playNextQueryContext = ZusUtils.useStoreDeep(QD.LQStore, (state) => QD.selectLayerListQueryContext(state, 0))
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -351,18 +217,247 @@ function QueueControlPanel() {
 	)
 }
 
-function EditSummary() {
+function useSaveChangesMutation() {
+	const updateQueueMutation = useMutation({
+		mutationFn: saveLqState,
+	})
+	const toaster = useToast()
+	async function saveLqState() {
+		const serverStateMut = QD.QDStore.getState().editedServerState
+		const res = await trpc.layerQueue.updateQueue.mutate(serverStateMut)
+		const reset = QD.QDStore.getState().reset
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				reset()
+				break
+			case 'err:out-of-sync':
+				toaster.toast({
+					title: 'State changed before submission, please try again.',
+					variant: 'destructive',
+				})
+				reset()
+				return
+			case 'err:queue-change-during-vote':
+				toaster.toast({
+					title: 'Cannot update: layer vote in progress',
+					variant: 'destructive',
+				})
+				reset()
+				break
+			case 'err:queue-too-large':
+				toaster.toast({
+					title: 'Queue too large',
+					variant: 'destructive',
+				})
+				break
+			case 'err:empty-vote':
+				toaster.toast({
+					title: 'Cannot update: vote is empty',
+					variant: 'destructive',
+				})
+				break
+			case 'err:too-many-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'err:default-choice-not-in-choices':
+				toaster.toast({
+					title: 'Cannot update: default choice must be one of the vote choices',
+					variant: 'destructive',
+				})
+				break
+			case 'err:duplicate-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'ok':
+				toaster.toast({ title: 'Changes applied' })
+				QD.QDStore.getState().reset()
+				break
+			default:
+				assertNever(res)
+		}
+	}
+
+	return updateQueueMutation
+}
+
+function EditingCard() {
+	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
+	const updateQueueMutation = useMutation({
+		mutationFn: trpc.layerQueue.updateQueue.mutate,
+	})
+	const toaster = useToast()
+
+	async function saveLqState() {
+		const serverStateMut = QD.QDStore.getState().editedServerState
+		const res = await updateQueueMutation.mutateAsync(serverStateMut)
+		const reset = QD.QDStore.getState().reset
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				reset()
+				break
+			case 'err:out-of-sync':
+				toaster.toast({
+					title: 'State changed before submission, please try again.',
+					variant: 'destructive',
+				})
+				reset()
+				return
+			case 'err:queue-change-during-vote':
+				toaster.toast({
+					title: 'Cannot update: layer vote in progress',
+					variant: 'destructive',
+				})
+				reset()
+				break
+			case 'err:queue-too-large':
+				toaster.toast({
+					title: 'Queue too large',
+					variant: 'destructive',
+				})
+				break
+			case 'err:empty-vote':
+				toaster.toast({
+					title: 'Cannot update: vote is empty',
+					variant: 'destructive',
+				})
+				break
+			case 'err:too-many-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'err:default-choice-not-in-choices':
+				toaster.toast({
+					title: 'Cannot update: default choice must be one of the vote choices',
+					variant: 'destructive',
+				})
+				break
+			case 'err:duplicate-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'ok':
+				toaster.toast({ title: 'Changes applied' })
+				QD.QDStore.getState().reset()
+				break
+			default:
+				assertNever(res)
+		}
+	}
 	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.listMutations)
+	const settingsEdited = Zus.useStore(
+		QD.QDStore,
+		(s) =>
+			s.serverState?.settings
+			&& !deepEqual(s.serverState.settings, s.editedServerState.settings),
+	)
+
 	return (
-		<>
-			<h3>Layer Changes pending</h3>
-			<span className="flex space-x-1">
-				{queueMutations.added.size > 0 && <Badge variant="added">{queueMutations.added.size} added</Badge>}
-				{queueMutations.removed.size > 0 && <Badge variant="removed">{queueMutations.removed.size} deleted</Badge>}
-				{queueMutations.moved.size > 0 && <Badge variant="moved">{queueMutations.moved.size} moved</Badge>}
-				{queueMutations.edited.size > 0 && <Badge variant="edited">{queueMutations.edited.size} edited</Badge>}
-			</span>
-		</>
+		<Card>
+			<CardHeader>
+				<CardTitle>Changes Pending</CardTitle>
+			</CardHeader>
+			<CardContent className="flex justify-between py-0">
+				<div className="space-y-1">
+					{queueHasMutations && (
+						<>
+							<span className="flex space-x-1">
+								{queueMutations.added.size > 0 && (
+									<Badge variant="added">
+										{queueMutations.added.size} layers added
+									</Badge>
+								)}
+								{queueMutations.removed.size > 0 && (
+									<Badge variant="removed">
+										{queueMutations.removed.size} layers deleted
+									</Badge>
+								)}
+								{queueMutations.moved.size > 0 && (
+									<Badge variant="moved">
+										{queueMutations.moved.size} layers moved
+									</Badge>
+								)}
+								{queueMutations.edited.size > 0 && (
+									<Badge variant="edited">
+										{queueMutations.edited.size} layers edited
+									</Badge>
+								)}
+							</span>
+						</>
+					)}
+					{settingsEdited && <Badge variant="edited">settings modified</Badge>}
+				</div>
+				<div className="space-x-1">
+					<Button
+						onClick={saveLqState}
+						disabled={updateQueueMutation.isPending}
+					>
+						Save Changes
+					</Button>
+					<Button
+						onClick={() => QD.QDStore.getState().reset()}
+						variant="secondary"
+					>
+						Cancel
+					</Button>
+					<Icons.LoaderCircle
+						className="animate-spin data-[pending=false]:invisible"
+						data-pending={updateQueueMutation.isPending}
+					/>
+				</div>
+			</CardContent>
+		</Card>
+	)
+}
+
+function UserEditingAlert() {
+	const userPresenceState = useUserPresenceState()
+	const editingUser = userPresenceState?.editState
+		&& PartsSys.findUser(userPresenceState.editState.userId)
+	const loggedInUser = useLoggedInUser()
+	const hasKickPermission = loggedInUser
+		&& RBAC.rbacUserHasPerms(loggedInUser, {
+			check: 'any',
+			permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
+		})
+	const kickEditorMutation = useMutation({
+		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
+	})
+
+	if (!userPresenceState || !editingUser) return null
+
+	return (
+		<Alert variant="info" className="flex justify-between items-center">
+			<AlertTitle className="flex space-x-2">
+				{editingUser.discordId === loggedInUser?.discordId
+					? 'You are editing on another tab'
+					: editingUser.username + ' is editing'}
+				{userPresenceState.editState?.startTime && (
+					<>
+						<span>:</span>
+						<Timer start={userPresenceState.editState.startTime} />
+					</>
+				)}
+			</AlertTitle>
+			<Button
+				disabled={!hasKickPermission}
+				onClick={() => kickEditorMutation.mutate()}
+				variant="outline"
+			>
+				Kick
+			</Button>
+		</Alert>
 	)
 }
 
@@ -630,26 +725,101 @@ const PoolConfigurationPopover = React.forwardRef(
 		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>(
 			'mainPool',
 		)
+		const saveChangesMutation = useSaveChangesMutation()
+
+		const storedSettingsChanged = Zus.useStore(
+			QD.QDStore,
+			(state) =>
+				!deepEqual(
+					state.serverState?.settings,
+					state.editedServerState.settings,
+				),
+		)
+		const [storedMainPoolDnrRules, storedGenerationPoolDnrRules] = ZusUtils.useStoreDeep(
+			QD.QDStore,
+			(s) => [
+				s.editedServerState.settings.queue.mainPool.doNotRepeatRules,
+				s.editedServerState.settings.queue.generationPool.doNotRepeatRules,
+			],
+		)
+		const [mainPoolRules, setMainPoolRules] = React.useState(storedMainPoolDnrRules)
+		const [generationPoolRules, setGenerationPoolRules] = React.useState(
+			[...storedGenerationPoolDnrRules],
+		)
+		React.useEffect(() => {
+			setMainPoolRules(storedMainPoolDnrRules)
+			setGenerationPoolRules(storedGenerationPoolDnrRules)
+		}, [storedMainPoolDnrRules, storedGenerationPoolDnrRules])
+		const settingsChanged = React.useMemo(() => {
+			const mainPoolRulesChanged = !deepEqual(storedMainPoolDnrRules, mainPoolRules)
+			const generationPoolRulesChanged = !deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
+			const res = storedSettingsChanged || mainPoolRulesChanged || generationPoolRulesChanged
+			return res
+		}, [
+			storedSettingsChanged,
+			storedMainPoolDnrRules,
+			mainPoolRules,
+			storedGenerationPoolDnrRules,
+			generationPoolRules,
+		])
+
+		function saveRules() {
+			QD.QDStore.getState().setSetting((settings) => {
+				settings.queue.mainPool.doNotRepeatRules = [...mainPoolRules]
+				settings.queue.generationPool.doNotRepeatRules = [...generationPoolRules]
+				return settings
+			})
+		}
+
+		const [open, _setOpen] = React.useState(false)
+		const setOpen = (open: boolean) => {
+			if (!open) {
+				saveRules()
+			}
+			_setOpen(open)
+		}
 
 		return (
-			<Popover>
+			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-				<PopoverContent className="w-[700px]" side="right">
-					<div className="flex flex-col space-y-2">
-						<div className="flex items-center justify-between">
-							<h3 className="font-medium">Pool Configuration</h3>
-							<TabsList
-								options={[
-									{ label: 'Main Pool', value: 'mainPool' },
-									{ label: 'Autogeneration', value: 'generationPool' },
-								]}
-								active={poolId}
-								setActive={setPoolId}
-							/>
-						</div>
-						<PoolFiltersConfigurationPanel poolId={poolId} />
-						<PoolDoNotRepeatRulesConfigurationPanel poolId={poolId} />
+				<PopoverContent
+					className="w-[700px] flex flex-col space-y-2"
+					side="right"
+				>
+					<div className="flex items-center justify-between">
+						<h3 className="font-medium">Pool Configuration</h3>
+						<TabsList
+							options={[
+								{ label: 'Main Pool', value: 'mainPool' },
+								{ label: 'Autogeneration', value: 'generationPool' },
+							]}
+							active={poolId}
+							setActive={setPoolId}
+						/>
 					</div>
+					<PoolFiltersConfigurationPanel poolId={poolId} />
+					<PoolDoNotRepeatRulesConfigurationPanel
+						className={poolId !== 'mainPool' ? 'hidden' : undefined}
+						poolId="mainPool"
+						rules={mainPoolRules}
+						setRules={setMainPoolRules}
+					/>
+					<PoolDoNotRepeatRulesConfigurationPanel
+						className={poolId !== 'generationPool' ? 'hidden' : undefined}
+						poolId="generationPool"
+						rules={generationPoolRules}
+						setRules={setGenerationPoolRules}
+					/>
+					<Button
+						disabled={!settingsChanged}
+						onClick={() => {
+							saveRules()
+							saveChangesMutation.mutate()
+							_setOpen(false)
+						}}
+					>
+						Save Changes
+					</Button>
 				</PopoverContent>
 			</Popover>
 		)
@@ -738,25 +908,25 @@ function PoolFiltersConfigurationPanel({
 	)
 }
 
-function PoolDoNotRepeatRulesConfigurationPanel({
-	poolId,
-}: {
+type SaveChangesHandle = {
+	saveChanges: () => void
+}
+
+function PoolDoNotRepeatRulesConfigurationPanel(props: {
+	className?: string
 	poolId: 'mainPool' | 'generationPool'
+	rules: M.DoNotRepeatRule[]
+	setRules: React.Dispatch<React.SetStateAction<M.DoNotRepeatRule[]>>
 }) {
-	const rules = Zus.useStore(
-		QD.QDStore,
-		(s) => s.editedServerState.settings.queue[poolId].doNotRepeatRules,
-	)
-	const setSetting = Zus.useStore(QD.QDStore, (s) => s.setSetting)
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	return (
-		<div className="flex flex-col space-y-1 p-1 rounded">
+		<div className={cn('flex flex-col space-y-1 p-1 rounded', props.className)}>
 			<div>
 				<h4 className={Typography.H4}>Do Not Repeat Rules</h4>
 			</div>
-			{rules.map((rule, index) => {
+			{props.rules.map((rule, index) => {
 				let targetValueOptions: string[]
 				switch (rule.field) {
 					case 'Map':
@@ -788,9 +958,11 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 							containerClassName="grow-0"
 							disabled={!canWriteSettings}
 							onChange={(e) => {
-								setSetting((settings) => {
-									settings.queue[poolId].doNotRepeatRules[index].label = e.target.value
-								})
+								props.setRules(
+									Im.produce((draft) => {
+										draft[index].label = e.target.value
+									}),
+								)
 							}}
 						/>
 						<ComboBox
@@ -802,12 +974,13 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 							allowEmpty={false}
 							onSelect={(value) => {
 								if (!value) return
-								setSetting((settings) => {
-									settings.queue[poolId].doNotRepeatRules[index].field = value as M.DnrField
-									settings.queue[poolId].doNotRepeatRules[index].label = value
-									delete settings.queue[poolId].doNotRepeatRules[index]
-										.targetValues
-								})
+								props.setRules(
+									Im.produce((draft) => {
+										draft[index].field = value as M.DnrField
+										draft[index].label = value
+										delete draft[index].targetValues
+									}),
+								)
 							}}
 							disabled={!canWriteSettings}
 						/>
@@ -817,9 +990,11 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 							containerClassName="w-[250px]"
 							disabled={!canWriteSettings}
 							onChange={(e) => {
-								setSetting((settings) => {
-									settings.queue[poolId].doNotRepeatRules[index].within = Math.floor(Number(e.target.value))
-								})
+								props.setRules(
+									Im.produce((draft) => {
+										draft[index].within = Math.floor(Number(e.target.value))
+									}),
+								)
 							}}
 						/>
 						<ComboBoxMulti
@@ -829,22 +1004,25 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 							disabled={!canWriteSettings}
 							values={rule.targetValues ?? []}
 							onSelect={(updated) => {
-								setSetting((settings) => {
-									const rule = settings.queue[poolId].doNotRepeatRules[index]
-									const values = typeof updated === 'function'
-										? updated(rule.targetValues ?? [])
-										: updated
-									rule.targetValues = values.filter((v) => !!v) as string[]
-								})
+								props.setRules(
+									Im.produce((draft) => {
+										// @ts-expect-error idgaf
+										draft[index].targetValues = typeof updated === 'function'
+											? updated(draft[index].targetValues ?? [])
+											: updated
+									}),
+								)
 							}}
 						/>
 						<Button
 							size="icon"
 							variant="ghost"
 							onClick={() => {
-								setSetting((settings) => {
-									settings.queue[poolId].doNotRepeatRules.splice(index, 1)
-								})
+								props.setRules(
+									Im.produce((draft) => {
+										draft.splice(index, 1)
+									}),
+								)
 							}}
 							disabled={!canWriteSettings}
 						>
@@ -858,13 +1036,15 @@ function PoolDoNotRepeatRulesConfigurationPanel({
 				variant="ghost"
 				disabled={!canWriteSettings}
 				onClick={() => {
-					setSetting((settings) => {
-						settings.queue[poolId].doNotRepeatRules.push({
-							field: 'Map',
-							within: 0,
-							label: 'Map',
-						})
-					})
+					props.setRules(
+						Im.produce((draft) => {
+							draft.push({
+								field: 'Map',
+								within: 0,
+								label: 'Map',
+							})
+						}),
+					)
 				}}
 			>
 				<Icons.Plus />

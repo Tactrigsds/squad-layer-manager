@@ -164,15 +164,15 @@ export default function MatchHistoryPanel() {
 									</ContextMenuTrigger>
 									<ContextMenuContent>
 										<ContextMenuItem onClick={() => copyHistoryEntryId()}>
-											Copy Entry ID
+											copy history entry id
 										</ContextMenuItem>
 										<ContextMenuItem onClick={() => copyLayerId()}>
-											Copy Layer ID
+											copy layer id
 										</ContextMenuItem>
 										<ContextMenuItem
 											onClick={() => copyAdminSetNextLayerCommand()}
 										>
-											Copy Admin Set Next Layer Command
+											copy AdminSetNextLayer command
 										</ContextMenuItem>
 									</ContextMenuContent>
 								</ContextMenu>

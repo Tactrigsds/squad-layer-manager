@@ -306,7 +306,7 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 			item: layerList[index],
 			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
 			baseQueryContext,
-			teamParity: SM.getTeamParityForQueueIndex({teamParity: firstItemTeamParity},index)
+			teamParity: SM.getTeamParityForQueueIndex({ teamParity: firstItemTeamParity }, index),
 		}
 	})
 }
@@ -639,10 +639,10 @@ export function selectLayerListQueryContext(
 }
 
 export function selectItemQueryContext(itemState: Pick<LLItemState, 'baseQueryContext' | 'index'>) {
-  return {
-    ...itemState.baseQueryContext,
-    previousLayerIds: itemState.baseQueryContext.previousLayerIds?.slice(0, itemState.index) ?? []
-  };
+	return {
+		...itemState.baseQueryContext,
+		previousLayerIds: itemState.baseQueryContext.previousLayerIds?.slice(0, itemState.index) ?? [],
+	}
 }
 
 export function useLayerListItemQueryContext(itemStore: Zus.StoreApi<LLItemStore>): M.LayerQueryContext {

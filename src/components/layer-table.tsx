@@ -560,7 +560,7 @@ export default function LayerTable(props: {
 							>
 								Reset
 							</Button>
-							<p>
+							<p className="whitespace-nowrap">
 								{props.selected.length} {props.maxSelected ? ` / ${props.maxSelected}` : ''} layers selected
 							</p>
 						</>

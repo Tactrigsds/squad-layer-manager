@@ -89,13 +89,16 @@ function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	const allowVotes = props.allowVotes ?? true
 
-	const [initialItem, index, baseQueryContext,teamParity] = ZusUtils.useStoreDeep(props.itemStore, (s) => [s.item, s.index, s.baseQueryContext,s.teamParity])
+	const [initialItem, index, baseQueryContext, teamParity] = ZusUtils.useStoreDeep(
+		props.itemStore,
+		(s) => [s.item, s.index, s.baseQueryContext, s.teamParity],
+	)
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<QD.LLItemStore>((set, get) =>
-			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState(), baseQueryContext, index, teamParity  })
+			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState(), baseQueryContext, index, teamParity })
 		)
-	}, [initialItem, baseQueryContext, index,teamParity])
+	}, [initialItem, baseQueryContext, index, teamParity])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
 	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore)
@@ -115,7 +118,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const canSubmitVoteChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length > 0)
 	const canSubmit = itemType === 'set-layer' ? canSubmitSetLayer : canSubmitVoteChoices
 
-	const voteChoiceAddLayersQueryContext = ZusUtils.useStoreDeep(editedVoteChoiceStore, state => QD.selectLayerListQueryContext(state, state.layerList.length))
+	const voteChoiceAddLayersQueryContext = ZusUtils.useStoreDeep(
+		editedVoteChoiceStore,
+		state => QD.selectLayerListQueryContext(state, state.layerList.length),
+	)
 	const editedItemQueryContext = QD.useLayerListItemQueryContext(editedItemStore)
 
 	function submit() {
@@ -294,7 +300,7 @@ function LayerListItem(props: QueueItemProps) {
 	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable({
 		id: draggableItemId,
 	})
-	const [teamParity,index] = Zus.useStore(itemStore, useShallow((s) => [s.teamParity,s.index]))
+	const [teamParity, index] = Zus.useStore(itemStore, useShallow((s) => [s.teamParity, s.index]))
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
@@ -453,9 +459,12 @@ function ItemDropdown(props: {
 		_setSubDropdownState(state)
 	}
 	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)
-  const addLayersBeforeQueryContext = ZusUtils.useStoreDeep(props.itemStore, QD.selectItemQueryContext)
-  const addLayersAfterQueryContext = ZusUtils.useStoreDeep(props.itemStore, state => QD.selectItemQueryContext({ baseQueryContext:  state.baseQueryContext, index: state.index + 1}))
-  const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => M.getAllItemLayerIds(state.item))
+	const addLayersBeforeQueryContext = ZusUtils.useStoreDeep(props.itemStore, QD.selectItemQueryContext)
+	const addLayersAfterQueryContext = ZusUtils.useStoreDeep(
+		props.itemStore,
+		state => QD.selectItemQueryContext({ baseQueryContext: state.baseQueryContext, index: state.index + 1 }),
+	)
+	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => M.getAllItemLayerIds(state.item))
 
 	const user = useLoggedInUser()
 	return (
