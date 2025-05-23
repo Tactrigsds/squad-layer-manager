@@ -180,7 +180,7 @@ export type Rcon = {
 	rcon: RconCore
 }
 
-export type HttpRequest = { req: FastifyRequest; res: FastifyReply } & Log & Db
+export type HttpRequest = { req: FastifyRequest; res: FastifyReply }
 
 export type User = {
 	user: M.User

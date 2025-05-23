@@ -23,7 +23,6 @@ import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
 import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
-import Cookie from 'cookie'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
@@ -159,13 +158,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 				expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE),
 			})
 		})
-		reply
-			.cookie('sessionId', sessionId, {
-				path: '/',
-				maxAge: Sessions.SESSION_MAX_AGE,
-				httpOnly: true,
-			})
-			.redirect('/')
+
+		await Sessions.setSessionCookie({ ...ctx, req, res: reply }, sessionId).redirect(AR.exists('/'))
 	})
 
 	instance.post(AR.exists('/logout'), async function(req, res) {
@@ -173,10 +167,11 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		const authRes = await createAuthorizedRequestContext({
 			...ctx,
 			req,
+			res,
 			span: Otel.trace.getActiveSpan(),
 		})
 		if (authRes.code !== 'ok') {
-			return Sessions.clearInvalidSession({ ...ctx, req, res })
+			return Sessions.clearInvalidSession({ ...ctx, res })
 		}
 
 		return await Sessions.logout({ ...authRes.ctx, res })
@@ -213,15 +208,14 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
-			case 'unauthorized:invalid-session':
-				return Sessions.clearInvalidSession({ ...ctx, req, res })
+			case 'err:expired':
+			case 'err:not-found':
+				return await Sessions.clearInvalidSession({ ...ctx, res })
 			case 'err:permission-denied':
 				return res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 			default:
 				assertNever(authRes)
 		}
-
-		res = Sessions.updateSession({ ...authRes.ctx, res })
 
 		switch (ENV.NODE_ENV) {
 			case 'development': {
@@ -262,49 +256,22 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 })
 
 export async function createAuthorizedRequestContext<
-	T extends C.Log & C.Db & Partial<C.SpanContext> & { req: FastifyRequest },
+	T extends C.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req'>,
 >(ctx: T) {
-	const cookie = ctx.req.headers.cookie
-	if (!cookie) {
-		return {
-			code: 'unauthorized:no-cookie' as const,
-			message: 'No cookie provided',
-		}
-	}
-	const sessionId = Cookie.parse(cookie).sessionId
-	if (!sessionId) {
-		return {
-			code: 'unauthorized:no-session' as const,
-			message: 'No session provided',
-		}
-	}
-
-	const validSessionRes = await Sessions.validateAndUpdate(sessionId, ctx)
-	switch (validSessionRes.code) {
-		case 'err:expired':
-		case 'err:not-found':
-			return {
-				code: 'unauthorized:invalid-session' as const,
-				message: 'Invalid session',
-			}
-		case 'err:permission-denied':
-			return validSessionRes
-		case 'ok':
-			break
-		default:
-			assertNever(validSessionRes)
+	const validSessionRes = await Sessions.validateAndUpdate(ctx)
+	if (validSessionRes.code !== 'ok') {
+		return validSessionRes
 	}
 
 	const authedCtx: T & C.AuthedUser = {
 		...ctx,
-		sessionId,
-		expiresAt: validSessionRes.expiresAt,
 		user: validSessionRes.user,
-		log: ctx.log.child({ username: validSessionRes.user.username }),
+		sessionId: validSessionRes.sessionId,
+		expiresAt: validSessionRes.expiresAt,
 	}
 
-	if (ctx.span) {
-		ctx.span.setAttributes({
+	if (authedCtx.span) {
+		authedCtx.span.setAttributes({
 			username: authedCtx.user.username,
 			user_id: authedCtx.user.discordId.toString(),
 			sessionid_prefix: authedCtx.sessionId.slice(0, 8),
@@ -328,9 +295,9 @@ export async function createTrpcRequestContext(
 		switch (result.code) {
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
-			case 'unauthorized:invalid-session':
-				// sleep(500).then(() => (options.res as unknown as WebSocket).close())
-				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.message })
+			case 'err:expired':
+			case 'err:not-found':
+				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.code })
 			case 'err:permission-denied':
 				throw new TRPCError({
 					code: 'UNAUTHORIZED',

@@ -7,10 +7,12 @@ import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger'
 import * as Rbac from '@/server/systems/rbac.system'
 import * as Otel from '@opentelemetry/api'
+import Cookie from 'cookie'
 import * as DateFns from 'date-fns'
 import { eq } from 'drizzle-orm'
 
-export const SESSION_MAX_AGE = 1000 * 60 * 24 * 7
+export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
+const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
 const tracer = Otel.trace.getTracer('sessions')
 
 export async function setupSessions() {
@@ -33,61 +35,82 @@ export async function setupSessions() {
 	}
 }
 
-export const validateAndUpdate = C.spanOp('sessions:validate-and-update', { tracer }, async (sessionId: string, ctx: C.Log & C.Db) => {
-	return await DB.runTransaction(ctx, async ctx => {
-		const [row] = await ctx
-			.db({ redactParams: true })
-			.select({ session: Schema.sessions, user: Schema.users })
-			.from(Schema.sessions)
-			.where(eq(Schema.sessions.id, sessionId))
-			.innerJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
-			.for('update')
-		if (!row) return { code: 'err:not-found' as const }
-		const currentTime = new Date()
-		if (currentTime > row.session.expiresAt) {
-			await ctx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, row.session.id))
-			return { code: 'err:expired' as const }
+export const validateAndUpdate = C.spanOp(
+	'sessions:validate-and-update',
+	{ tracer },
+	async (ctx: C.Log & C.Db & Pick<C.HttpRequest, 'req'>, allowRefresh = false) => {
+		const cookie = ctx.req.headers.cookie
+		if (!cookie) {
+			return {
+				code: 'unauthorized:no-cookie' as const,
+				message: 'No cookie provided',
+			}
 		}
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, row.user.discordId, RBAC.perm('site:authorized'))
-		if (denyRes) return denyRes
-		let expiresAt = row.session.expiresAt
-
-		if (DateFns.getTime(row.session.expiresAt) - DateFns.getTime(currentTime) < Math.floor(SESSION_MAX_AGE / 2)) {
-			expiresAt = new Date(DateFns.getTime(currentTime) + SESSION_MAX_AGE)
-			await ctx.db({ redactParams: true }).update(Schema.sessions).set({
-				expiresAt,
-			})
+		const sessionId = Cookie.parse(cookie).sessionId
+		if (!sessionId) {
+			return {
+				code: 'unauthorized:no-session' as const,
+				message: 'No session provided',
+			}
 		}
+		return await DB.runTransaction(ctx, async ctx => {
+			const [row] = await ctx
+				.db({ redactParams: true })
+				.select({ session: Schema.sessions, user: Schema.users })
+				.from(Schema.sessions)
+				.where(eq(Schema.sessions.id, sessionId))
+				.innerJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
+				.for('update')
+			if (!row) return { code: 'err:not-found' as const }
+			const currentTime = new Date()
+			if (currentTime > row.session.expiresAt) {
+				return { code: 'err:expired' as const }
+			}
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, row.user.discordId, RBAC.perm('site:authorized'))
+			if (denyRes) return denyRes
+			let expiresAt = row.session.expiresAt
+			if (allowRefresh && row.session.expiresAt.getTime() - currentTime.getTime() < Math.floor(SESSION_MAX_AGE / 4)) {
+				expiresAt = new Date(DateFns.getTime(currentTime) + SESSION_MAX_AGE)
+				await ctx.db({ redactParams: true }).update(Schema.sessions).set({ expiresAt })
+			}
+			return { code: 'ok' as const, sessionId, expiresAt, user: row.user }
+		})
+	},
+)
 
-		return { code: 'ok' as const, sessionId: row.session.id, expiresAt, user: row.user }
-	})
-})
-
-export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: C.AuthedUser & C.HttpRequest) => {
+export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: { sessionId: string } & Pick<C.HttpRequest, 'res'> & C.Db) => {
 	await ctx.db().delete(Schema.sessions).where(eq(Schema.sessions.id, ctx.sessionId))
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	return clearInvalidSession(ctx)
 })
 
-export function clearInvalidSession(ctx: C.HttpRequest) {
-	return ctx.res.cookie('sessionId', '', { path: '/', maxAge: 0 }).redirect(AR.exists('/login'))
+export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
+	let expireArg: { maxAge?: number; expiresAt?: number }
+	if (expiresAt !== undefined) expireArg = { expiresAt }
+	else expireArg = { maxAge: SESSION_MAX_AGE }
+	return ctx.res.cookie('sessionId', sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
 }
-export function updateSession(ctx: C.AuthedUser & C.HttpRequest) {
-	return ctx.res.cookie('sessionid', '', { path: '/', maxAge: Math.floor((DateFns.getTime(ctx.expiresAt) - Date.now()) / 1000) })
+
+export function clearInvalidSession(ctx: Pick<C.HttpRequest, 'res'>) {
+	return ctx.res.cookie('sessionId', '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.exists('/login'))
 }
 
-export const getUser = C.spanOp('sessions:get-user', { tracer }, async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest) => {
-	C.setSpanOpAttrs({ lock: opts.lock })
-	opts.lock ??= false
-	const q = ctx
-		.db()
-		.select({ user: Schema.users })
-		.from(Schema.sessions)
-		.where(eq(Schema.sessions.id, ctx.sessionId))
-		.leftJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
+export const getUser = C.spanOp(
+	'sessions:get-user',
+	{ tracer },
+	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
+		C.setSpanOpAttrs({ lock: opts.lock })
+		opts.lock ??= false
+		const q = ctx
+			.db({ redactParams: true })
+			.select({ user: Schema.users })
+			.from(Schema.sessions)
+			.where(eq(Schema.sessions.id, ctx.sessionId))
+			.leftJoin(Schema.users, eq(Schema.users.discordId, Schema.sessions.userId))
 
-	const [row] = opts.lock ? await q.for('update') : await q
+		const [row] = opts.lock ? await q.for('update') : await q
 
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
-	return row!.user!
-})
+		C.setSpanStatus(Otel.SpanStatusCode.OK)
+		return row!.user!
+	},
+)
