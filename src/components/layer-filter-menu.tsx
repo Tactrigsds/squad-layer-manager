@@ -230,11 +230,6 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 						]
 					}
 
-					let customColumnLabel: string | undefined
-					// if (displayTeamsNormalized) {
-					//   if (M.getTeamNormalizedUnitProp('A')) { }
-					// }
-
 					return (
 						<React.Fragment key={name}>
 							{(name === 'Map' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
@@ -254,6 +249,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 								comp={comparison}
 								setComp={setComp}
 								layerQueryContext={{ ...props.queryContext, constraints }}
+								lockOnSingleOption={true}
 							/>
 							<Button disabled={comparison.value === undefined} variant="ghost" size="icon" onClick={clear}>
 								<Icons.Trash />

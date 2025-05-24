@@ -1,0 +1,1099 @@
+{
+	"version": "5",
+	"dialect": "mysql",
+	"id": "e962f5dd-f58f-44d4-8d76-14b9b6852a07",
+	"prevId": "60529b39-0153-4981-8e69-cc99471b82c3",
+	"tables": {
+		"factions": {
+			"name": "factions",
+			"columns": {
+				"shortName": {
+					"name": "shortName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"fullName": {
+					"name": "fullName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"alliance": {
+					"name": "alliance",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"fullNameIndex": {
+					"name": "fullNameIndex",
+					"columns": [
+						"fullName"
+					],
+					"isUnique": false
+				},
+				"allianceIndex": {
+					"name": "allianceIndex",
+					"columns": [
+						"alliance"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"factions_shortName": {
+					"name": "factions_shortName",
+					"columns": [
+						"shortName"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"filterRoleContributors": {
+			"name": "filterRoleContributors",
+			"columns": {
+				"filterId": {
+					"name": "filterId",
+					"type": "varchar(64)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"roleId": {
+					"name": "roleId",
+					"type": "varchar(32)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"filterRoleContributors_filterId_filters_id_fk": {
+					"name": "filterRoleContributors_filterId_filters_id_fk",
+					"tableFrom": "filterRoleContributors",
+					"tableTo": "filters",
+					"columnsFrom": [
+						"filterId"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {
+				"filterRoleContributors_filterId_roleId_pk": {
+					"name": "filterRoleContributors_filterId_roleId_pk",
+					"columns": [
+						"filterId",
+						"roleId"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"filterUserContributors": {
+			"name": "filterUserContributors",
+			"columns": {
+				"filterId": {
+					"name": "filterId",
+					"type": "varchar(64)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"userId": {
+					"name": "userId",
+					"type": "bigint unsigned",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"filterUserContributors_filterId_filters_id_fk": {
+					"name": "filterUserContributors_filterId_filters_id_fk",
+					"tableFrom": "filterUserContributors",
+					"tableTo": "filters",
+					"columnsFrom": [
+						"filterId"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"filterUserContributors_userId_users_discordId_fk": {
+					"name": "filterUserContributors_userId_users_discordId_fk",
+					"tableFrom": "filterUserContributors",
+					"tableTo": "users",
+					"columnsFrom": [
+						"userId"
+					],
+					"columnsTo": [
+						"discordId"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {
+				"filterUserContributors_filterId_userId_pk": {
+					"name": "filterUserContributors_filterId_userId_pk",
+					"columns": [
+						"filterId",
+						"userId"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"filters": {
+			"name": "filters",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar(64)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"name": {
+					"name": "name",
+					"type": "varchar(128)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"description": {
+					"name": "description",
+					"type": "varchar(2048)",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"filter": {
+					"name": "filter",
+					"type": "json",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"owner": {
+					"name": "owner",
+					"type": "bigint unsigned",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"filters_owner_users_discordId_fk": {
+					"name": "filters_owner_users_discordId_fk",
+					"tableFrom": "filters",
+					"tableTo": "users",
+					"columnsFrom": [
+						"owner"
+					],
+					"columnsTo": [
+						"discordId"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {
+				"filters_id": {
+					"name": "filters_id",
+					"columns": [
+						"id"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"genLayerColumnOrder": {
+			"name": "genLayerColumnOrder",
+			"columns": {
+				"columnName": {
+					"name": "columnName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"ordinal": {
+					"name": "ordinal",
+					"type": "int",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"genLayerColumnOrder_columnName": {
+					"name": "genLayerColumnOrder_columnName",
+					"columns": [
+						"columnName"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"genLayerWeights": {
+			"name": "genLayerWeights",
+			"columns": {
+				"columnName": {
+					"name": "columnName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"value": {
+					"name": "value",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"weight": {
+					"name": "weight",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"columnNameIndex": {
+					"name": "columnNameIndex",
+					"columns": [
+						"columnName"
+					],
+					"isUnique": false
+				},
+				"valueIndex": {
+					"name": "valueIndex",
+					"columns": [
+						"value"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"genLayerWeights_columnName_value_pk": {
+					"name": "genLayerWeights_columnName_value_pk",
+					"columns": [
+						"columnName",
+						"value"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"layers": {
+			"name": "layers",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar(64)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"Map": {
+					"name": "Map",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"Layer": {
+					"name": "Layer",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"Size": {
+					"name": "Size",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"Gamemode": {
+					"name": "Gamemode",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"LayerVersion": {
+					"name": "LayerVersion",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Faction_1": {
+					"name": "Faction_1",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"SubFac_1": {
+					"name": "SubFac_1",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Logistics_1": {
+					"name": "Logistics_1",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Transportation_1": {
+					"name": "Transportation_1",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Anti-Infantry_1": {
+					"name": "Anti-Infantry_1",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Armor_1": {
+					"name": "Armor_1",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"ZERO_Score_1": {
+					"name": "ZERO_Score_1",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Faction_2": {
+					"name": "Faction_2",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"SubFac_2": {
+					"name": "SubFac_2",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Logistics_2": {
+					"name": "Logistics_2",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Transportation_2": {
+					"name": "Transportation_2",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Anti-Infantry_2": {
+					"name": "Anti-Infantry_2",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Armor_2": {
+					"name": "Armor_2",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"ZERO_Score_2": {
+					"name": "ZERO_Score_2",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Balance_Differential": {
+					"name": "Balance_Differential",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Asymmetry_Score": {
+					"name": "Asymmetry_Score",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Logistics_Diff": {
+					"name": "Logistics_Diff",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Transportation_Diff": {
+					"name": "Transportation_Diff",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Anti-Infantry_Diff": {
+					"name": "Anti-Infantry_Diff",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Armor_Diff": {
+					"name": "Armor_Diff",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"ZERO_Score_Diff": {
+					"name": "ZERO_Score_Diff",
+					"type": "float",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"Z_Pool": {
+					"name": "Z_Pool",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
+				},
+				"Scored": {
+					"name": "Scored",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
+				}
+			},
+			"indexes": {
+				"mapIndex": {
+					"name": "mapIndex",
+					"columns": [
+						"Map"
+					],
+					"isUnique": false
+				},
+				"layerIndex": {
+					"name": "layerIndex",
+					"columns": [
+						"Layer"
+					],
+					"isUnique": false
+				},
+				"sizeIndex": {
+					"name": "sizeIndex",
+					"columns": [
+						"Size"
+					],
+					"isUnique": false
+				},
+				"gamemodeIndex": {
+					"name": "gamemodeIndex",
+					"columns": [
+						"Gamemode"
+					],
+					"isUnique": false
+				},
+				"layerVersionIndex": {
+					"name": "layerVersionIndex",
+					"columns": [
+						"LayerVersion"
+					],
+					"isUnique": false
+				},
+				"faction1Index": {
+					"name": "faction1Index",
+					"columns": [
+						"Faction_1"
+					],
+					"isUnique": false
+				},
+				"subfac1Index": {
+					"name": "subfac1Index",
+					"columns": [
+						"SubFac_1"
+					],
+					"isUnique": false
+				},
+				"faction2Index": {
+					"name": "faction2Index",
+					"columns": [
+						"Faction_2"
+					],
+					"isUnique": false
+				},
+				"subfac2Index": {
+					"name": "subfac2Index",
+					"columns": [
+						"SubFac_2"
+					],
+					"isUnique": false
+				},
+				"logistics1Index": {
+					"name": "logistics1Index",
+					"columns": [
+						"Logistics_1"
+					],
+					"isUnique": false
+				},
+				"transportation1Index": {
+					"name": "transportation1Index",
+					"columns": [
+						"Transportation_1"
+					],
+					"isUnique": false
+				},
+				"antiInfantry1Index": {
+					"name": "antiInfantry1Index",
+					"columns": [
+						"Anti-Infantry_1"
+					],
+					"isUnique": false
+				},
+				"armor1Index": {
+					"name": "armor1Index",
+					"columns": [
+						"Armor_1"
+					],
+					"isUnique": false
+				},
+				"zeroScore1Index": {
+					"name": "zeroScore1Index",
+					"columns": [
+						"ZERO_Score_1"
+					],
+					"isUnique": false
+				},
+				"logistics2Index": {
+					"name": "logistics2Index",
+					"columns": [
+						"Logistics_2"
+					],
+					"isUnique": false
+				},
+				"transportation2Index": {
+					"name": "transportation2Index",
+					"columns": [
+						"Transportation_2"
+					],
+					"isUnique": false
+				},
+				"antiInfantry2Index": {
+					"name": "antiInfantry2Index",
+					"columns": [
+						"Anti-Infantry_2"
+					],
+					"isUnique": false
+				},
+				"armor2Index": {
+					"name": "armor2Index",
+					"columns": [
+						"Armor_2"
+					],
+					"isUnique": false
+				},
+				"zeroScore2Index": {
+					"name": "zeroScore2Index",
+					"columns": [
+						"ZERO_Score_2"
+					],
+					"isUnique": false
+				},
+				"balanceDifferentialIndex": {
+					"name": "balanceDifferentialIndex",
+					"columns": [
+						"Balance_Differential"
+					],
+					"isUnique": false
+				},
+				"asymmetryScoreIndex": {
+					"name": "asymmetryScoreIndex",
+					"columns": [
+						"Asymmetry_Score"
+					],
+					"isUnique": false
+				},
+				"logisticsDiffIndex": {
+					"name": "logisticsDiffIndex",
+					"columns": [
+						"Logistics_Diff"
+					],
+					"isUnique": false
+				},
+				"transportationDiffIndex": {
+					"name": "transportationDiffIndex",
+					"columns": [
+						"Transportation_Diff"
+					],
+					"isUnique": false
+				},
+				"antiInfantryDiffIndex": {
+					"name": "antiInfantryDiffIndex",
+					"columns": [
+						"Anti-Infantry_Diff"
+					],
+					"isUnique": false
+				},
+				"armorDiffIndex": {
+					"name": "armorDiffIndex",
+					"columns": [
+						"Armor_Diff"
+					],
+					"isUnique": false
+				},
+				"zeroScoreDiffIndex": {
+					"name": "zeroScoreDiffIndex",
+					"columns": [
+						"ZERO_Score_Diff"
+					],
+					"isUnique": false
+				},
+				"Z_PoolIndex": {
+					"name": "Z_PoolIndex",
+					"columns": [
+						"Z_Pool"
+					],
+					"isUnique": false
+				},
+				"ScoredIndex": {
+					"name": "ScoredIndex",
+					"columns": [
+						"Scored"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"layers_id": {
+					"name": "layers_id",
+					"columns": [
+						"id"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"matchHistory": {
+			"name": "matchHistory",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "int",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": true
+				},
+				"layerId": {
+					"name": "layerId",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"startTime": {
+					"name": "startTime",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"endTime": {
+					"name": "endTime",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"outcome": {
+					"name": "outcome",
+					"type": "enum('team1','team2','draw')",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"team1Tickets": {
+					"name": "team1Tickets",
+					"type": "int",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"team2Tickets": {
+					"name": "team2Tickets",
+					"type": "int",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"setByType": {
+					"name": "setByType",
+					"type": "enum('manual','gameserver','generated','unknown')",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"setByUserId": {
+					"name": "setByUserId",
+					"type": "bigint unsigned",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"layerIdIndex": {
+					"name": "layerIdIndex",
+					"columns": [
+						"layerId"
+					],
+					"isUnique": false
+				},
+				"startTimeIndex": {
+					"name": "startTimeIndex",
+					"columns": [
+						"startTime"
+					],
+					"isUnique": false
+				},
+				"endTimeIndex": {
+					"name": "endTimeIndex",
+					"columns": [
+						"endTime"
+					],
+					"isUnique": false
+				},
+				"userIndex": {
+					"name": "userIndex",
+					"columns": [
+						"setByUserId"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"matchHistory_id": {
+					"name": "matchHistory_id",
+					"columns": [
+						"id"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"servers": {
+			"name": "servers",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"online": {
+					"name": "online",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
+				},
+				"displayName": {
+					"name": "displayName",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"layerQueueSeqId": {
+					"name": "layerQueueSeqId",
+					"type": "int",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"layerQueue": {
+					"name": "layerQueue",
+					"type": "json",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "('{\"json\":[]}')"
+				},
+				"settings": {
+					"name": "settings",
+					"type": "json",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "('{\"json\":{}}')"
+				},
+				"fog": {
+					"name": "fog",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
+				},
+				"lastRoll": {
+					"name": "lastRoll",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"servers_id": {
+					"name": "servers_id",
+					"columns": [
+						"id"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"sessions": {
+			"name": "sessions",
+			"columns": {
+				"session": {
+					"name": "session",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"userId": {
+					"name": "userId",
+					"type": "bigint unsigned",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"expiresAt": {
+					"name": "expiresAt",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"expiresAtIndex": {
+					"name": "expiresAtIndex",
+					"columns": [
+						"expiresAt"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"sessions_userId_users_discordId_fk": {
+					"name": "sessions_userId_users_discordId_fk",
+					"tableFrom": "sessions",
+					"tableTo": "users",
+					"columnsFrom": [
+						"userId"
+					],
+					"columnsTo": [
+						"discordId"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {
+				"sessions_session": {
+					"name": "sessions_session",
+					"columns": [
+						"session"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		},
+		"subfactions": {
+			"name": "subfactions",
+			"columns": {
+				"shortName": {
+					"name": "shortName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"factionShortName": {
+					"name": "factionShortName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"fullName": {
+					"name": "fullName",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"fullName": {
+					"name": "fullName",
+					"columns": [
+						"fullName"
+					],
+					"isUnique": false
+				},
+				"factionShortName": {
+					"name": "factionShortName",
+					"columns": [
+						"factionShortName"
+					],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"subfactions_factionShortName_factions_shortName_fk": {
+					"name": "subfactions_factionShortName_factions_shortName_fk",
+					"tableFrom": "subfactions",
+					"tableTo": "factions",
+					"columnsFrom": [
+						"factionShortName"
+					],
+					"columnsTo": [
+						"shortName"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"subfactions_shortName_factionShortName_unique": {
+					"name": "subfactions_shortName_factionShortName_unique",
+					"columns": [
+						"shortName",
+						"factionShortName"
+					]
+				}
+			},
+			"checkConstraint": {}
+		},
+		"users": {
+			"name": "users",
+			"columns": {
+				"discordId": {
+					"name": "discordId",
+					"type": "bigint unsigned",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"username": {
+					"name": "username",
+					"type": "varchar(32)",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"avatar": {
+					"name": "avatar",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"users_discordId": {
+					"name": "users_discordId",
+					"columns": [
+						"discordId"
+					]
+				}
+			},
+			"uniqueConstraints": {},
+			"checkConstraint": {}
+		}
+	},
+	"views": {},
+	"_meta": {
+		"schemas": {},
+		"tables": {},
+		"columns": {}
+	},
+	"internal": {
+		"tables": {},
+		"indexes": {}
+	}
+}

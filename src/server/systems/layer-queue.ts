@@ -1,11 +1,12 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, distinctDeepEquals, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards'
 import { Parts } from '@/lib/types'
+import { HumanTime } from '@/lib/zod.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models.ts'
@@ -23,19 +24,21 @@ import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
+import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: Rx.BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
 
 let voteEndTask: Rx.Subscription | null = null
 let voteState: M.VoteState | null = null
+let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[C.Log & C.Db, M.LayerId | null]>
 
 const voteStateUpdate$ = new Rx.Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
 
 const userPresence: M.UserPresenceState = {}
 const userPresenceUpdate$ = new Rx.Subject<M.UserPresenceStateUpdate & Parts<M.UserPart>>()
 
-let postRollAnnouncementsSub: Rx.Subscription | undefined
+let postRollEventsSub: Rx.Subscription | undefined
 
 const voteStateMtx = new Mutex()
 
@@ -124,7 +127,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 	).subscribe()
 
 	// -------- track map rolls for reminders--------
-	// note: temporary solution, if we want something more robust we should be integrating squadjs most likely
+	// note: temporary solution, if we want something more robust we should be listening to the match history most likely
 	let lastRoll = -1
 	SquadServer.rcon.serverStatus.observe(ctx).pipe(
 		Rx.map(res => res.code === 'ok' && res.data.currentLayer ? res.data.currentLayer : null),
@@ -136,6 +139,30 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			lastRoll = Date.now()
 		}),
 	).subscribe()
+
+	// -------- when SLM is not able to set a layer on the server, notify admins.
+	unexpectedNextLayerSet$ = new Rx.BehaviorSubject<[C.Log & C.Db, M.LayerId | null]>([ctx, null])
+	unexpectedNextLayerSet$
+		.pipe(
+			Rx.switchMap(([ctx, unexpectedNextLayer]) => {
+				if (unexpectedNextLayer) {
+					return Rx.interval(HumanTime.parse('2m')).pipe(
+						Rx.startWith(0),
+						Rx.map(() => [ctx, unexpectedNextLayer] as [C.Log & C.Db, M.LayerId]),
+					)
+				}
+				return Rx.EMPTY
+			}),
+			C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async ([ctx, expectedNextLayerId]) => {
+				const serverState = await getServerState({}, ctx)
+				const expectedLayerName = DH.toFullLayerNameFromId(M.getNextLayerId(serverState.layerQueue)!)
+				const actualLayerName = DH.toFullLayerNameFromId(expectedNextLayerId)
+				SquadServer.warnAllAdmins(
+					ctx,
+					`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
+				)
+			}),
+		).subscribe()
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
 	type LayerStatus = { currentLayer: M.UnvalidatedMiniLayer; nextLayer: M.UnvalidatedMiniLayer | null }
@@ -167,6 +194,8 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			const action = checkforStatusChangeActions(status, prevStatus, serverState)
 			switch (action.code) {
 				case 'correct-layer-set:no-action':
+				case 'sync-disabled:no-action':
+				case 'no-next-layer-set:no-action':
 					break
 				case 'expected-new-current-layer:roll':
 					await handleServerRoll(ctx, serverState)
@@ -186,9 +215,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 					break
 				case 'unknown-layer-set:no-action':
 					break
-				case 'layer-set-during-roll:reset':
-				case 'layer-set-during-vote:reset':
-				case 'layer-set:reset':
+				case 'unexpected-layer-change:reset':
 				case 'null-layer-set:reset': {
 					await syncNextLayerInPlace(ctx, serverState)
 					break
@@ -215,22 +242,28 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			}
 			const currentLayerItem = serverState.layerQueue.shift()
 			const currentLayerId = currentLayerItem ? M.getLayerIdToSetFromItem(currentLayerItem) : undefined
-			let fogoff = false
+			postRollEventsSub?.unsubscribe()
+			postRollEventsSub = new Rx.Subscription()
+
+			// -------- schedule FRAAS auto fog-off --------
 			if (currentLayerItem && currentLayerId) {
-				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerItem?.itemId))
+				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerId))
 				if (currentLayer.Gamemode === 'FRAAS') {
-					await SquadServer.rcon.setFogOfWar(ctx, 'off')
-					fogoff = true
+					postRollEventsSub.add(
+						Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
+							await SquadServer.rcon.setFogOfWar(ctx, 'off')
+							await SquadServer.rcon.broadcast(ctx, BROADCASTS.fogOff)
+						}),
+					)
 				}
 			}
 
 			// -------- schedule post-roll announcements --------
-			postRollAnnouncementsSub?.unsubscribe()
-			postRollAnnouncementsSub = undefined
-			postRollAnnouncementsSub = Rx.from(sleep(CONFIG.reminders.postRollAnnouncementsTimeout)).subscribe(async () => {
-				if (fogoff) await SquadServer.rcon.broadcast(ctx, BROADCASTS.fogOff)
-				await warnShowNext(ctx, 'all-admins')
-			})
+			postRollEventsSub.add(
+				Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout).subscribe(async () => {
+					await warnShowNext(ctx, 'all-admins')
+				}),
+			)
 
 			await SquadServer.bufferNextMatchLQItem(ctx, currentLayerItem!)
 			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
@@ -287,13 +320,13 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		status: LayerStatus,
 		prevStatus: LayerStatus | null,
 		serverState: M.LQServerState,
-		voteState: M.VoteState | null = null,
 	) {
+		if (serverState.settings.updatesToSquadServerDisabled) return { code: 'sync-disabled:no-action' as const }
 		const lqNextLayerId = M.getNextLayerId(serverState.layerQueue)
 		if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
 			if (!lqNextLayerId) {
 				return { code: 'layer-change-with-empty-queue:buffer-next-match-context' as const }
-			} else if (M.isLayerIdPartialMatch(lqNextLayerId, status.currentLayer.id)) {
+			} else if (M.areLayerIdsCompatible(status.currentLayer.id, lqNextLayerId)) {
 				// new current layer was expected, so we just need to roll
 				return { code: 'expected-new-current-layer:roll' as const }
 			} else {
@@ -304,15 +337,9 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		if (status.nextLayer === null) return { code: 'null-layer-set:reset' as const }
 		if (!status.nextLayer) return { code: 'unknown-layer-set:no-action' as const }
 
-		if (lqNextLayerId === status.nextLayer.id) return { code: 'correct-layer-set:no-action' as const }
-
-		// don't respect the override if the map has rolled recently, as the gameserver probably set it to something random
-		if (serverState.lastRoll !== null) {
-			const lastRollTs = +serverState.lastRoll
-			if ((Date.now() - lastRollTs) / 1000 < 60) return { code: 'layer-set-during-roll:reset' as const }
-		}
-		if (voteState?.code === 'in-progress') return { code: 'layer-set-during-vote:reset' as const }
-		return { code: 'layer-set:reset' as const, expectedNextLayerId: lqNextLayerId }
+		if (!lqNextLayerId) return { code: 'no-next-layer-set:no-action' as const }
+		if (M.areLayerIdsCompatible(status.nextLayer.id, lqNextLayerId)) return { code: 'correct-layer-set:no-action' as const }
+		return { code: 'unexpected-layer-change:reset' as const, expectedNextLayerId: lqNextLayerId }
 	}
 
 	// -------- take editing user out of editing slot on disconnect --------
@@ -397,6 +424,12 @@ function getVoteStateUpdatesFromQueueUpdate(
 	}
 
 	return { code: 'noop' as const }
+}
+
+async function* watchUnexpectedNextLayer() {
+	for await (const [_ctx, unexpectedLayerId] of toAsyncGenerator(unexpectedNextLayerSet$)) {
+		yield unexpectedLayerId
+	}
 }
 
 async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
@@ -607,7 +640,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	// -------- schedule final reminder --------
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
-			Rx.from(sleep(finalReminderWaitTime)).pipe(
+			Rx.timer(finalReminderWaitTime).pipe(
 				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					await SquadServer.rcon.broadcast(
@@ -621,7 +654,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 
 	// -------- schedule timeout handling --------
 	voteEndTask.add(
-		Rx.from(sleep(Math.max(voteState.deadline - Date.now(), 0))).subscribe({
+		Rx.timer(Math.max(voteState.deadline - Date.now(), 0)).subscribe({
 			next: async () => {
 				await handleVoteTimeout(ctx)
 			},
@@ -702,7 +735,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer }
 	voteState = res.voteUpdate.state
 	voteStateUpdate$.next([ctx, res.voteUpdate])
 	if (res.voteUpdate.state!.code === 'ended:winner') {
-		await SquadServer.rcon.setNextLayer(ctx, res.voteUpdate.state!.winner)
+		await syncNextLayerInPlace(ctx, update.state, { noDbWrite: true })
 		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.winnerSelected(res.tally!, res.voteUpdate.state!.winner))
 	}
 	if (res.voteUpdate!.state!.code === 'ended:insufficient-votes') {
@@ -930,11 +963,6 @@ export async function updateQueue({ input, ctx }: { input: M.UserModifiableServe
 	})
 	if (res.code !== 'ok') return res
 
-	const nextLayerId = M.getNextLayerId(res.serverState.layerQueue)
-	if (nextLayerId) {
-		await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
-	}
-
 	const update: M.LQServerStateUpdate = {
 		state: res.serverState,
 		source: { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' },
@@ -1035,7 +1063,11 @@ async function includeFilterEntityPart(ctx: C.Db & C.Log, serverStateUpdate: M.L
 /**
  * sets next layer on server, generating a new queue item if needed. modifies serverState in place
  */
-async function syncNextLayerInPlace(ctx: C.Log & C.Db & C.Tx, serverState: M.LQServerState, opts?: { noDbWrite: boolean }) {
+async function syncNextLayerInPlace<NoDbWrite extends boolean>(
+	ctx: C.Log & C.Db & (NoDbWrite extends true ? object : C.Tx),
+	serverState: M.LQServerState,
+	opts?: { noDbWrite: NoDbWrite },
+) {
 	let nextLayerId = M.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextLayerId) {
@@ -1060,7 +1092,20 @@ async function syncNextLayerInPlace(ctx: C.Log & C.Db & C.Tx, serverState: M.LQS
 		}
 		wroteServerState = true
 	}
-	await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
+	if (!serverState.settings.updatesToSquadServerDisabled) {
+		const res = await SquadServer.rcon.setNextLayer(ctx, nextLayerId)
+		switch (res.code) {
+			case 'err:unable-to-set-next-layer':
+				unexpectedNextLayerSet$.next([ctx, res.unexpectedLayerId])
+				break
+			case 'err:rcon':
+			case 'ok':
+				unexpectedNextLayerSet$.next([ctx, null])
+				break
+			default:
+				assertNever(res)
+		}
+	}
 	return wroteServerState
 }
 
@@ -1072,11 +1117,24 @@ const generateLayerQueueItems = C.spanOp(
 	},
 )
 
+export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
+	if (denyRes) return denyRes
+
+	await DB.runTransaction(ctx, async ctx => {
+		const serverState = await getServerState({ lock: true }, ctx)
+		serverState.settings.updatesToSquadServerDisabled = input.disabled
+		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings: serverState.settings }))
+		serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'updates-to-squad-server-toggled' } }, ctx])
+	})
+	await SquadServer.warnAllAdmins(ctx, `Updates from Squad Layer Manager have been ${input.disabled ? 'disabled' : 'enabled'}.`)
+}
+
 // -------- setup router --------
 export const layerQueueRouter = router({
 	watchLayerQueueState: procedure.subscription(watchLayerQueueStateUpdates),
-
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
+	watchUnexpectedNextLayer: procedure.subscription(watchUnexpectedNextLayer),
 	generateLayerQueueItems: procedure
 		.input(M.GenLayerQueueItemsOptionsSchema)
 		.query(({ input, ctx }) => generateLayerQueueItems(ctx, input)),
@@ -1096,4 +1154,5 @@ export const layerQueueRouter = router({
 	watchUserPresence: procedure.subscription(watchUserPresence),
 
 	updateQueue: procedure.input(M.GenericServerStateUpdateSchema).mutation(updateQueue),
+	toggleUpdatesToSquadServer: procedure.input(z.object({ disabled: z.boolean() })).mutation(toggleUpdatesToSquadServer),
 })

@@ -246,17 +246,23 @@ export function parseTeamString(
 /**
  * Check if the ids are equal, or at least all parts of the layer partials `id` contains are in targetId
  */
-export function isLayerIdPartialMatch(id: string, targetId: string) {
+export function isLayerIdPartialMatch(id: string, targetId: string, ignoreFraas: boolean = true) {
 	if (id === targetId) return true
 
 	const layerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(id))
 	const targetLayerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(targetId))
+	if (ignoreFraas) {
+		if (layerRes.Layer) layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
+		if (targetLayerRes.Layer) targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
+		if (layerRes.Gamemode === 'FRAAS') layerRes.Gamemode = 'RAAS'
+		if (targetLayerRes.Gamemode === 'FRAAS') targetLayerRes.Gamemode = 'RAAS'
+	}
 
 	return isPartial(layerRes, targetLayerRes)
 }
 
-export function areLayerIdsCompatible(id1: string, id2: string) {
-	return isLayerIdPartialMatch(id1, id2) || isLayerIdPartialMatch(id2, id1)
+export function areLayerIdsCompatible(id1: string, id2: string, ignoreFraas = true) {
+	return isLayerIdPartialMatch(id1, id2, ignoreFraas) || isLayerIdPartialMatch(id2, id1, ignoreFraas)
 }
 
 export function getLayerDetailsFromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
@@ -379,7 +385,7 @@ export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 		return `AdminSetNextLayer ${layer.Layer}`
 	}
 
-	return `AdminSetNextLayer ${layer.Layer}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${
+	return `AdminSetNextLayer ${layer.Layer?.replace('FRAAS', 'RAAS')}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${
 		getFactionModifier(
 			layer.Faction_2,
 			layer.SubFac_2,
@@ -1147,6 +1153,7 @@ export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
 
 export const ServerSettingsSchema = z
 	.object({
+		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
 		queue: z
 			.object({
 				mainPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
@@ -1234,6 +1241,7 @@ export type LQServerStateUpdate = {
 				| 'admin-change-layer'
 				| 'filter-delete'
 				| 'next-layer-generated'
+				| 'updates-to-squad-server-toggled'
 		}
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {

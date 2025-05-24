@@ -69,7 +69,7 @@ const router = createBrowserRouter([
 
 // -------- global server state setup --------
 FilterEntityClient.setup()
-MatchHistoryClient.recentMatchHistory$.subscribe()
+MatchHistoryClient.recentMatchHistory$().subscribe()
 MatchHistoryClient.currentMatchDetails$().subscribe()
 SquadServerClient.squadServerStatus$.subscribe()
 LayerQueriesClient.setup()

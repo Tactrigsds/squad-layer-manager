@@ -44,6 +44,8 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
 
 	...definePermission('squad-server:end-match', { description: 'end the current game on the server', scope: 'global' }),
+	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game server', scope: 'global' }),
+	...definePermission('squad-server:turn-fog-off', { description: 'Turn off fog in the current match', scope: 'global' }),
 }
 export type PermissionType = (typeof PERMISSION_DEFINITION)[number]['type']
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
@@ -55,6 +57,8 @@ export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
 	'vote:manage',
 	'filters:write-all',
 	'squad-server:end-match',
+	'squad-server:disable-slm-updates',
+	'squad-server:turn-fog-off',
 ])
 
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>

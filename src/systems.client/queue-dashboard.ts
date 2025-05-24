@@ -1,16 +1,21 @@
-import { lqServerStateUpdate$ } from '@/api/layer-queue.client'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { useToast } from '@/hooks/use-toast'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import * as FB from '@/lib/filter-builders'
 import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
 import { deepClone, selectProps } from '@/lib/object'
 import * as SM from '@/lib/rcon/squad-models'
+import { assertNever } from '@/lib/typeGuards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as ZusUtils from '@/lib/zustand'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
+import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
+import * as RbacClient from '@/systems.client/rbac.client'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
+import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
 import * as Im from 'immer'
@@ -29,8 +34,14 @@ export type MutServerStateWithIds = M.UserModifiableServerState & {
 	layerQueue: M.LayerListItem[]
 }
 
+/**
+ * Layer List State
+ */
 export type LLState = {
 	layerList: M.LayerListItem[]
+
+	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
+	nextLayerBackfillId?: string
 	listMutations: ItemMutations
 
 	// the parity of the first item in a regular layer list, but if vote choice it's all items
@@ -77,6 +88,9 @@ export type ExtraQueryFilter = {
 // Queue Dashboard state
 export type QDState = {
 	editedServerState: MutServerStateWithIds
+
+	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us.
+	nextLayerBackfillId?: string
 	queueMutations: ItemMutations
 	serverState: M.LQServerState | null
 	isEditing: boolean
@@ -215,6 +229,10 @@ export const selectLLState = (state: QDState): LLState => ({
 	layerList: state.editedServerState.layerQueue,
 	listMutations: state.queueMutations,
 	teamParity: state.queueTeamParity,
+	nextLayerBackfillId:
+		(state.serverState && M.getNextLayerId(state.serverState?.layerQueue) === M.getNextLayerId(state.editedServerState.layerQueue))
+			? state.nextLayerBackfillId
+			: undefined,
 	baseQueryContext: {
 		constraints: state.serverState
 			? M.getPoolConstraints(state.serverState.settings.queue.mainPool, state.poolApplyAs.dnr, state.poolApplyAs.filter)
@@ -390,6 +408,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		}),
 		distinctDeepEquals(),
 	)
+
+	SquadServerClient.squadServerStatus$.subscribe(status => {
+		set({ nextLayerBackfillId: (status.code === 'ok' && status.data.nextLayer) ? status.data.nextLayer.id : undefined })
+	})
+
 	canEdit$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((canEdit) => {
 		set(canEdit)
 	})
@@ -673,4 +696,87 @@ export function selectIsEditing(state: QDStore) {
 
 export function toDraggableItemId(id: string | null) {
 	return JSON.stringify(id)
+}
+
+export function useToggleSquadServerUpdates() {
+	const saveChangesMutation = useMutation({
+		mutationFn: (input: { disabled: boolean }) => trpc.layerQueue.toggleUpdatesToSquadServer.mutate(input),
+	})
+
+	return {
+		disableUpdates: () => {
+			saveChangesMutation.mutate({ disabled: true })
+		},
+		enableUpdates: () => {
+			saveChangesMutation.mutate({ disabled: false })
+		},
+	}
+}
+
+export function useSaveChangesMutation() {
+	const updateQueueMutation = useMutation({ mutationFn: saveLqState })
+	const toaster = useToast()
+	async function saveLqState() {
+		const serverStateMut = QDStore.getState().editedServerState
+		const res = await trpc.layerQueue.updateQueue.mutate(serverStateMut)
+		const reset = QDStore.getState().reset
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				reset()
+				break
+			case 'err:out-of-sync':
+				toaster.toast({
+					title: 'State changed before submission, please try again.',
+					variant: 'destructive',
+				})
+				reset()
+				return
+			case 'err:queue-change-during-vote':
+				toaster.toast({
+					title: 'Cannot update: layer vote in progress',
+					variant: 'destructive',
+				})
+				reset()
+				break
+			case 'err:queue-too-large':
+				toaster.toast({
+					title: 'Queue too large',
+					variant: 'destructive',
+				})
+				break
+			case 'err:empty-vote':
+				toaster.toast({
+					title: 'Cannot update: vote is empty',
+					variant: 'destructive',
+				})
+				break
+			case 'err:too-many-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'err:default-choice-not-in-choices':
+				toaster.toast({
+					title: 'Cannot update: default choice must be one of the vote choices',
+					variant: 'destructive',
+				})
+				break
+			case 'err:duplicate-vote-choices':
+				toaster.toast({
+					title: res.msg,
+					variant: 'destructive',
+				})
+				break
+			case 'ok':
+				toaster.toast({ title: 'Changes applied' })
+				QDStore.getState().reset()
+				break
+			default:
+				assertNever(res)
+		}
+	}
+
+	return updateQueueMutation
 }

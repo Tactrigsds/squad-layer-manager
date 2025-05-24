@@ -362,6 +362,9 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 
 	for (const row of parser) {
 		const layer = RawLayerSchema.parse(row)
+		if (layer.Layer.includes('RAAS')) {
+			rawLayers.push({ ...layer, Layer: layer.Layer.replace('RAAS', 'FRAAS') })
+		}
 		rawLayers.push(layer)
 	}
 	rawLayers.push(...getJensensLayers(pipeline))
@@ -457,7 +460,7 @@ async function updateLayersTable(
 			insertedIds.add(processed.id)
 			if (chunk.length >= chunkSize) {
 				if (!dryRun) {
-					await ctx.db().insert(Schema.layers).values(chunk)
+					await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
 					rowsInserted += chunk.length
 					ctx.log.info(`Inserted ${rowsInserted} rows`)
 				}
@@ -466,7 +469,7 @@ async function updateLayersTable(
 		}
 
 		if (chunk.length > 0) {
-			await ctx.db().insert(Schema.layers).values(chunk)
+			await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
 			rowsInserted += chunk.length
 			ctx.log.info(`Inserted ${rowsInserted} rows`)
 		}

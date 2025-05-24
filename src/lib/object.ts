@@ -100,8 +100,19 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<str
 }
 
 export function isPartial(obj: object, target: object) {
-	for (const key of Object.keys(obj)) {
-		if (!(key in target)) return false
+	for (const key of Object.keys(trimUndefined(obj))) {
+		// @ts-expect-error idgaf
+		if (obj[key] !== target[key]) return false
 	}
 	return true
+}
+
+export function trimUndefined<T extends object>(obj: T) {
+	const result = {} as T
+	for (const key in obj) {
+		if (obj[key] !== undefined) {
+			result[key] = obj[key]
+		}
+	}
+	return result
 }

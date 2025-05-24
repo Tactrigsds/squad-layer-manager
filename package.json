@@ -13,10 +13,8 @@
 		"build:prod": "vite build",
 		"server:prod": "NODE_ENV=production tsx --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
 		"server:dev": "NODE_ENV=development tsx --inspect --watch --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
-
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"run-script": "tsx --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts",
-
 		"rcon:test": "NODE_ENV=development vitest 'src/lib/rcon'",
 		"check-layer-compat": "tsx --tsconfig tsconfig.node.json src/scripts/check-layer-compat.ts ./broken-layers.csv"
 	},
@@ -61,6 +59,7 @@
 		"@radix-ui/react-dropdown-menu": "^2.1.2",
 		"@radix-ui/react-focus-guards": "^1.1.1",
 		"@radix-ui/react-focus-scope": "^1.1.0",
+		"@radix-ui/react-hover-card": "^1.1.14",
 		"@radix-ui/react-icons": "^1.3.0",
 		"@radix-ui/react-id": "^1.1.0",
 		"@radix-ui/react-label": "^2.1.0",

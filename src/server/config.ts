@@ -55,6 +55,7 @@ export const ConfigSchema = z.object({
 	layerGenerationMaxBasePoolSizePerItem: z.number().int().positive().default(300).describe(
 		'Implementation detail which somewhat affects the performance of the random layer functionality.',
 	),
+	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
 
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	adminListAdminRole: z.string().describe('The role in the adminlist which identifies an admin'),

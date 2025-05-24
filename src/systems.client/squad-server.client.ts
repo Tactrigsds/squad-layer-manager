@@ -2,13 +2,12 @@ import type * as SM from '@/lib/rcon/squad-models.ts'
 import * as M from '@/models.ts'
 import * as Parts from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
-import { shareLatest, state } from '@react-rxjs/core'
-import { useStateObservable } from '@react-rxjs/core'
+import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import React from 'react'
 import * as Rx from 'rxjs'
 
-export const squadServerStatus$ = state(
+export const [useSquadServerStatus, squadServerStatus$] = ReactRx.bind<SM.ServerStatusWithCurrentMatchRes>(
 	new Rx.Observable<SM.ServerStatusWithCurrentMatchRes>((s) => {
 		const sub = trpc.squadServer.watchServerStatus.subscribe(undefined, {
 			onData: (data) => {
@@ -25,15 +24,18 @@ export const squadServerStatus$ = state(
 	}),
 )
 
-// cringe way of doing this,  but trpc-jotai is weird. should write my own at some point maybe tanstack query can handle this usecase as well idk
-export function useSquadServerStatus() {
-	return useStateObservable(squadServerStatus$)
-}
-
 export function useEndMatch() {
 	return useMutation({
 		mutationFn: async () => {
 			return trpc.squadServer.endMatch.mutate()
+		},
+	})
+}
+
+export function useDisableFogOfWarMutation() {
+	return useMutation({
+		mutationFn: async () => {
+			return trpc.squadServer.toggleFogOfWar.mutate({ disabled: true })
 		},
 	})
 }

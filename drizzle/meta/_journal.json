@@ -64,6 +64,27 @@
 			"when": 1747622184071,
 			"tag": "0008_flimsy_night_thrasher",
 			"breakpoints": true
+		},
+		{
+			"idx": 9,
+			"version": "5",
+			"when": 1748062674922,
+			"tag": "0009_mixed_hellion",
+			"breakpoints": true
+		},
+		{
+			"idx": 10,
+			"version": "5",
+			"when": 1748062698115,
+			"tag": "0010_jazzy_dexter_bennett",
+			"breakpoints": true
+		},
+		{
+			"idx": 11,
+			"version": "5",
+			"when": 1748100926003,
+			"tag": "0011_narrow_sentry",
+			"breakpoints": true
 		}
 	]
 }

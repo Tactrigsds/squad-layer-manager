@@ -135,7 +135,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				return
 			}
 			if (choices.length === 1) {
-				console.log(itemState.item)
 				props.itemStore.getState().setItem({ ...itemState.item, vote: undefined, layerId: choices[0], source })
 				return
 			}
@@ -175,7 +174,6 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 							variant="outline"
 							onClick={() => {
 								const newItemType = itemType === 'vote' ? 'set-layer' : 'vote'
-								console.log('setting ', newItemType)
 								setItemType(newItemType)
 								switch (newItemType) {
 									case 'vote': {
@@ -307,6 +305,10 @@ function LayerListItem(props: QueueItemProps) {
 		if (!canEdit) _setDropdownOpen(false)
 		_setDropdownOpen(update)
 	}
+	const baseBackfillLayerId = Zus.useStore(props.llStore, s => s.nextLayerBackfillId)
+	const backfillLayerId = index === 0 && baseBackfillLayerId && M.areLayerIdsCompatible(M.getActiveItemLayerId(item), baseBackfillLayerId)
+		? baseBackfillLayerId
+		: undefined
 
 	const style = { transform: CSS.Translate.toString(transform) }
 	const itemDropdown = (
@@ -341,7 +343,7 @@ function LayerListItem(props: QueueItemProps) {
 	const activeUnvalidatedLayer = M.getUnvalidatedLayerFromId(M.getActiveItemLayerId(item))
 
 	if (
-		!isEditing && squadServerNextLayer && index === 0 && !M.isLayerIdPartialMatch(activeUnvalidatedLayer.id, squadServerNextLayer.id)
+		!isEditing && squadServerNextLayer && index === 0 && !M.areLayerIdsCompatible(activeUnvalidatedLayer.id, squadServerNextLayer.id, true)
 	) {
 		badges.push(
 			<Tooltip key="not current next">
@@ -396,6 +398,7 @@ function LayerListItem(props: QueueItemProps) {
 											isVoteChoice={true}
 											badges={badges}
 											teamParity={teamParity}
+											backfillLayerId={backfillLayerId}
 										/>
 									</li>
 								)
@@ -426,7 +429,7 @@ function LayerListItem(props: QueueItemProps) {
 					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay layerId={item.layerId} itemId={item.itemId} teamParity={teamParity} />
+							<LayerDisplay layerId={item.layerId} itemId={item.itemId} teamParity={teamParity} backfillLayerId={backfillLayerId} />
 						</div>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>

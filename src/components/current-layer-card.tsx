@@ -5,14 +5,14 @@ import { DialogTrigger } from '@/components/ui/dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
-import * as DH from '@/lib/display-helpers'
+import { useToast } from '@/hooks/use-toast'
+import * as Arr from '@/lib/array'
 import { getTeamsDisplay } from '@/lib/display-helpers-react.tsx'
-import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
-import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
+import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
@@ -24,39 +24,71 @@ import LayerSourceDisplay from './layer-source-display.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
-export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusWithCurrentMatch }) {
-	const historyEntry = MatchHistoryClient.useCurrentMatchDetails()
-	const layerDetails = M.getLayerDetailsFromUnvalidated(props.serverStatus.currentLayer)
-	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, undefined, false)
+export default function CurrentLayerCard() {
+	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 	const loggedInUser = useLoggedInUser()
-	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
+	const serverStatusRes = SquadServerClient.useSquadServerStatus()
 
-	const isEmpty = props.serverStatus.playerCount === 0
+	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
+	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
+	const canDisableFogOfWar = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:turn-fog-off'))
+
+	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
+	const { disableUpdates, enableUpdates } = QD.useToggleSquadServerUpdates()
+	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
+	const { toast } = useToast()
+	async function disableFogOfWar() {
+		const res = await disableFogOfWarMutation.mutateAsync()
+		switch (res.code) {
+			case 'err:rcon':
+				break
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				break
+			case 'ok':
+				toast({
+					title: 'Fog of war disabled for current match',
+					variant: 'default',
+				})
+				break
+			default:
+				assertNever(res)
+		}
+	}
+
+	if (serverStatusRes.code !== 'ok') return null
+	const serverStatus = serverStatusRes.data
+	const currentLayerId = (currentMatch?.layerId && M.areLayerIdsCompatible(currentMatch.layerId, serverStatus.currentLayer.id))
+		? currentMatch.layerId
+		: serverStatus.currentLayer.id
+	const layerDetails = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerId))
+	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, 0, false)
+	const isEmpty = serverStatus.playerCount === 0
 
 	let postGameElt: React.ReactNode = null
-	if (!isEmpty && historyEntry?.status === 'post-game') {
+	if (!isEmpty && currentMatch?.status === 'post-game') {
 		postGameElt = (
 			<div className="flex flex-col space-y-1">
 				<Badge variant="outline" className="flex items-center">
 					<span className="pr-1">Post-Game</span>
-					<Timer start={historyEntry.endTime.getTime()} className="font-mono" />
+					<Timer start={currentMatch.endTime.getTime()} className="font-mono" />
 				</Badge>
-				{historyEntry.outcome.type === 'draw' && (
+				{currentMatch.outcome.type === 'draw' && (
 					<Badge variant="outline" className="flex items-center">
 						<span className="pr-1">Draw</span>
 					</Badge>
 				)}
-				{historyEntry.outcome.type === 'team1' && (
+				{currentMatch.outcome.type === 'team1' && (
 					<Badge variant="outline" className="flex items-center">
 						<span className="pr-1">
-							{team1Elt} has won ({historyEntry.outcome.team1Tickets} to {historyEntry.outcome.team2Tickets})
+							{team1Elt} has won ({currentMatch.outcome.team1Tickets} to {currentMatch.outcome.team2Tickets})
 						</span>
 					</Badge>
 				)}
-				{historyEntry.outcome.type === 'team2' && (
+				{currentMatch.outcome.type === 'team2' && (
 					<Badge variant="outline" className="flex items-center">
 						<span className="pr-1">
-							{team2Elt} has won ({historyEntry.outcome.team2Tickets} to {historyEntry.outcome.team1Tickets})
+							{team2Elt} has won ({currentMatch.outcome.team2Tickets} to {currentMatch.outcome.team1Tickets})
 						</span>
 					</Badge>
 				)}
@@ -72,16 +104,16 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 						Current Layer:
 					</CardTitle>
 					<div>
-						<LayerDisplay layerId={props.serverStatus.currentLayer.id} teamParity={historyEntry?.teamParity} />
+						{currentLayerId && <LayerDisplay layerId={currentLayerId} teamParity={currentMatch?.teamParity} />}
 					</div>
 				</span>
-				{historyEntry && <LayerSourceDisplay source={historyEntry.layerSource} />}
+				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}
 			</CardHeader>
 			<CardContent className="flex justify-between">
 				<div className="flex items-center space-x-2">
 					<div className="flex space-x-2 items-center">
-						<div>{props.serverStatus.playerCount} / {props.serverStatus.maxPlayerCount} online</div>
-						<div>{props.serverStatus.queueLength} / {props.serverStatus.maxQueueLength} in queue</div>
+						<div>{serverStatus.playerCount} / {serverStatus.maxPlayerCount} online</div>
+						<div>{serverStatus.queueLength} / {serverStatus.maxQueueLength} in queue</div>
 					</div>
 					<div className="w-max">
 						{isEmpty && (
@@ -89,10 +121,10 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 								<span>Server empty</span>
 							</Badge>
 						)}
-						{!isEmpty && historyEntry?.status === 'in-progress' && (
+						{!isEmpty && currentMatch?.status === 'in-progress' && (
 							<Badge variant="secondary" className="flex items-center">
 								<span className="pr-1">In progress:</span>
-								<Timer zeros={true} start={historyEntry.startTime.getTime()} className="font-mono" />
+								<Timer zeros={true} start={currentMatch.startTime.getTime()} className="font-mono" />
 							</Badge>
 						)}
 						{postGameElt}
@@ -113,6 +145,20 @@ export default function CurrentLayerCard(props: { serverStatus: SM.ServerStatusW
 									End Match
 								</DropdownMenuItem>
 							</DialogTrigger>
+							{updatesToSquadServerDisabled
+								? <DropdownMenuItem disabled={!hasDisableUpdatesPerm} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
+								: (
+									<DropdownMenuItem
+										title="Prevents SLM from setting layers on the Squad Server"
+										disabled={!hasDisableUpdatesPerm}
+										onClick={disableUpdates}
+									>
+										Disable SLM Updates
+									</DropdownMenuItem>
+								)}
+							<DropdownMenuItem disabled={!canDisableFogOfWar} onClick={disableFogOfWar}>
+								Disable Fog Of War
+							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</EndMatchDialog>

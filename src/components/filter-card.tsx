@@ -332,11 +332,13 @@ export function Comparison(props: {
 	allowedComparisonCodes?: M.ComparisonCode[]
 	layerQueryContext?: M.LayerQueryContext
 	showValueDropdown?: boolean
+	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
 	highlight?: boolean
 	columnLabel?: string
 }) {
 	const showValueDropdown = props.showValueDropdown ?? true
+	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
@@ -452,6 +454,7 @@ export function Comparison(props: {
 					<StringEqConfig
 						ref={valueBoxRef}
 						className={componentStyles}
+						lockOnSingleOption={lockOnSingleOption}
 						column={comp.column as M.GroupByColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
@@ -644,20 +647,24 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		setValue: (value: T | undefined) => void
 		queryContext?: M.LayerQueryContext
 		className?: string
+		lockOnSingleOption?: boolean
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
+	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const valuesRes = useLayerComponents({
 		...(props.queryContext ?? {}),
 	})
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
+	if (props.column === 'LayerVersion') console.log({ options })
 	return (
 		<ComboBox
 			ref={ref}
 			allowEmpty={true}
 			className={props.className}
 			title={props.column}
-			value={props.value}
+			disabled={valuesRes.isSuccess && lockOnSingleOption && options.length === 1}
+			value={(valuesRes.isSuccess && lockOnSingleOption && options.length === 1) ? options[0] : props.value}
 			options={options}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>

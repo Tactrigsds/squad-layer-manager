@@ -2,13 +2,11 @@ import * as M from '@/models'
 import * as DH from './display-helpers'
 
 export function getTeamsDisplay(
-	partialLayer: ReturnType<typeof M.getLayerDetailsFromUnvalidated>,
-	teamParity?: number,
-	displayLayersNormalized?: boolean,
+	partialLayer: Partial<M.MiniLayer>,
+	teamParity: number,
+	displayLayersNormalized: boolean,
+	withBackfilledStyles?: Record<keyof M.MiniLayer, string | undefined>,
 ) {
-	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined
-	const subFaction2 = partialLayer.SubFac_2 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_2) : undefined
-
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
 	if (typeof teamParity === 'number' && !displayLayersNormalized) {
@@ -21,10 +19,19 @@ export function getTeamsDisplay(
 		team2Color = '#00BFFF' // deep sky blue
 	}
 
+	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined
+	const subFaction2 = partialLayer.SubFac_2 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_2) : undefined
+
 	const teamElts = [
 		<span>
-			{partialLayer.Faction_1}
-			{subfaction1 ? ` ${subfaction1}` : ''}
+			<span className={withBackfilledStyles?.Faction_1}>{partialLayer.Faction_1}</span>
+			{subfaction1
+				? (
+					<span className={withBackfilledStyles?.SubFac_1}>
+						{` ${subfaction1}`}
+					</span>
+				)
+				: ''}
 			<span
 				title={`Team ${displayLayersNormalized ? '1' : teamParity === 1 ? 'B' : 'A'}`}
 				className="font-mono text-sm"
@@ -34,8 +41,14 @@ export function getTeamsDisplay(
 			</span>
 		</span>,
 		<span>
-			{partialLayer.Faction_2}
-			{subFaction2 ? ` ${subFaction2}` : ''}
+			<span className={withBackfilledStyles?.Faction_2}>{partialLayer.Faction_2}</span>
+			{subFaction2
+				? (
+					<span className={withBackfilledStyles?.SubFac_2}>
+						{` ${subFaction2}`}
+					</span>
+				)
+				: ''}
 			<span
 				title={`Team ${displayLayersNormalized ? '2' : teamParity === 1 ? 'A' : 'B'}`}
 				className="font-mono text-sm"

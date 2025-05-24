@@ -3,7 +3,6 @@ import * as M from '@/models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Subject } from 'rxjs'
-import { assertNever } from '../typeGuards'
 import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import * as SM from './squad-models'
@@ -203,10 +202,14 @@ export default class SquadRcon {
 		const newStatus = (await this.serverStatus.get(ctx)).value
 		if (newStatus.code !== 'ok') return newStatus
 
-		if (!M.isLayerIdPartialMatch(id, newStatus.data.currentLayer.id)) {
+		// this shouldn't happen. if it does we need to handle it more gracefully
+		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${id}, received undefined`)
+
+		if (newStatus.data.nextLayer && !M.areLayerIdsCompatible(id, newStatus.data.nextLayer.id)) {
 			return {
 				code: 'err:unable-to-set-next-layer' as const,
-				msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.currentLayer.id}`,
+				unexpectedLayerId: newStatus.data.nextLayer.id,
+				msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.nextLayer.id}`,
 			}
 		}
 		return { code: 'ok' as const }

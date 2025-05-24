@@ -1,4 +1,5 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
+import * as Arr from '@/lib/array'
 import { acquireInBlock, AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -7,7 +8,7 @@ import * as SME from '@/lib/rcon/squad-models.events.ts'
 import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
-import { WARNS } from '@/messages.ts'
+import { BROADCASTS, WARNS } from '@/messages.ts'
 import * as M from '@/models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
@@ -20,6 +21,7 @@ import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
 import StringComparison from 'string-comparison'
+import { z } from 'zod'
 import * as Env from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
@@ -229,8 +231,13 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 			const statusRes = await rcon.serverStatus.get(ctx)
 			if (statusRes.value.code === 'err:rcon') return
 			const match = MatchHistory.state.recentMatches[0]
-			if (match && M.areLayerIdsCompatible(match.layerId, statusRes.value.data.currentLayer.id)) {
+			if (match && M.areLayerIdsCompatible(statusRes.value.data.currentLayer.id, match.layerId)) {
 				state.currentMatchId = match.historyEntryId
+
+				const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
+				if (layer.Gamemode === 'FRAAS') {
+					await rcon.setFogOfWar(ctx, 'off')
+				}
 			}
 		})
 	rcon = new SquadRcon(ctx, coreRcon)
@@ -295,6 +302,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 						? state.bufferedNextMatch.layerListItem.source.userId
 						: undefined
 					const updated: Partial<SchemaModels.NewMatchHistory> = {
+						layerId: M.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId,
 						setByType: state.bufferedNextMatch.layerListItem.source.type,
 						setByUserId: setByUserId,
 					}
@@ -328,7 +336,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 			using _lock = await acquireInBlock(MatchHistory.modifyHistoryMtx)
 			await DB.runTransaction(ctx, async (ctx) => {
 				const currentMatch = MatchHistory.state.recentMatches[0]
-				if (!currentMatch || !M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
+				if (!currentMatch || !M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
 					delete state.currentMatchId
 					return
 				}
@@ -359,7 +367,20 @@ export async function bufferNextMatchLQItem(ctx: C.Db & C.Log, item: M.LayerList
 	}
 }
 
+export async function toggleFogOfWar({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {
+	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
+	if (denyRes) return denyRes
+	const { value: serverStatusRes } = await rcon.serverStatus.get(ctx)
+	if (serverStatusRes.code !== 'ok') return serverStatusRes
+	await rcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+	if (input.disabled) {
+		await rcon.broadcast(ctx, BROADCASTS.fogOff)
+	}
+	return { code: 'ok' as const }
+}
+
 export const squadServerRouter = router({
 	watchServerStatus: procedure.subscription(watchServerStatus),
 	endMatch: procedure.mutation(endMatch),
+	toggleFogOfWar: procedure.input(z.object({ disabled: z.boolean() })).mutation(toggleFogOfWar),
 })

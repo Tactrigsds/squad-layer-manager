@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -19,6 +20,7 @@ import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
+import * as LayerQueueClient from '@/systems.client/layer-queue.client'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -68,7 +70,8 @@ export default function LayerQueueDashboard() {
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = useConfig()?.maxQueueSize
-
+	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
+	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
 	const inEditTransition = Zus.useStore(
 		QD.QDStore,
 		(s) => s.stopEditingInProgress,
@@ -85,10 +88,12 @@ export default function LayerQueueDashboard() {
 				<div className="flex flex-col space-y-4">
 					{/* ------- top card ------- */}
 					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
-					{serverStatusRes?.code === 'ok' && <CurrentLayerCard serverStatus={serverStatusRes.data} />}
+					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
 					{!isEditing && editingUser && !inEditTransition && <UserEditingAlert />}
 					{isEditing && !inEditTransition && <EditingCard />}
-					<Card className="">
+					{!updatesToSquadServerDisabled && unexpectedNextLayer && <UnexpectedNextLayerAlert />}
+					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
+					<Card>
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
 							<CardDescription
@@ -215,76 +220,6 @@ function QueueControlPanel() {
 			</PoolConfigurationPopover>
 		</div>
 	)
-}
-
-function useSaveChangesMutation() {
-	const updateQueueMutation = useMutation({
-		mutationFn: saveLqState,
-	})
-	const toaster = useToast()
-	async function saveLqState() {
-		const serverStateMut = QD.QDStore.getState().editedServerState
-		const res = await trpc.layerQueue.updateQueue.mutate(serverStateMut)
-		const reset = QD.QDStore.getState().reset
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				reset()
-				break
-			case 'err:out-of-sync':
-				toaster.toast({
-					title: 'State changed before submission, please try again.',
-					variant: 'destructive',
-				})
-				reset()
-				return
-			case 'err:queue-change-during-vote':
-				toaster.toast({
-					title: 'Cannot update: layer vote in progress',
-					variant: 'destructive',
-				})
-				reset()
-				break
-			case 'err:queue-too-large':
-				toaster.toast({
-					title: 'Queue too large',
-					variant: 'destructive',
-				})
-				break
-			case 'err:empty-vote':
-				toaster.toast({
-					title: 'Cannot update: vote is empty',
-					variant: 'destructive',
-				})
-				break
-			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:default-choice-not-in-choices':
-				toaster.toast({
-					title: 'Cannot update: default choice must be one of the vote choices',
-					variant: 'destructive',
-				})
-				break
-			case 'err:duplicate-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'ok':
-				toaster.toast({ title: 'Changes applied' })
-				QD.QDStore.getState().reset()
-				break
-			default:
-				assertNever(res)
-		}
-	}
-
-	return updateQueueMutation
 }
 
 function EditingCard() {
@@ -725,7 +660,7 @@ const PoolConfigurationPopover = React.forwardRef(
 		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>(
 			'mainPool',
 		)
-		const saveChangesMutation = useSaveChangesMutation()
+		const saveChangesMutation = QD.useSaveChangesMutation()
 
 		const storedSettingsChanged = Zus.useStore(
 			QD.QDStore,
@@ -1050,5 +985,57 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 				<Icons.Plus />
 			</Button>
 		</div>
+	)
+}
+function UnexpectedNextLayerAlert() {
+	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
+	const expectedNextLayer = Zus.useStore(
+		QD.QDStore,
+		state => state.serverState ? M.getNextLayerId(state.serverState?.layerQueue) : undefined,
+	)
+
+	if (!unexpectedNextLayer) return null
+
+	const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextLayer)
+	const expectedLayerName = expectedNextLayer ? DH.toFullLayerNameFromId(expectedNextLayer) : 'Unknown'
+
+	return (
+		<Alert variant="destructive">
+			<AlertTitle>Current next layer on the server is out-of-sync with queue.</AlertTitle>
+			<AlertDescription>
+				Got <b>{actualLayerName}</b> but expected <b>{expectedLayerName}</b>
+			</AlertDescription>
+		</Alert>
+	)
+}
+
+function SyncToSquadServerDisabledAlert() {
+	const { enableUpdates } = QD.useToggleSquadServerUpdates()
+	const serverStatusRes = SquadServerClient.useSquadServerStatus()
+	const loggedInUser = useLoggedInUser()
+	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
+	const nextLayerDisplay = (serverStatusRes.code === 'ok' && serverStatusRes.data.nextLayer)
+		? (
+			<>
+				Next Layer is set to: <b>{DH.displayUnvalidatedLayer(serverStatusRes.data.nextLayer)}</b>t
+			</>
+		)
+		: ''
+	return (
+		<Alert variant="destructive">
+			<AlertTitle>Updates to Squad Server have been Disabled</AlertTitle>
+			<div className="flex items-center justify-between">
+				<AlertDescription>
+					<p>
+						SLM is not currently syncing layers in the queue to{' '}
+						<b>{serverStatusRes.code === 'ok' ? serverStatusRes.data.name : 'Squad Server'}</b>.
+					</p>
+					<p>
+						{nextLayerDisplay}
+					</p>
+				</AlertDescription>
+				<Button onClick={enableUpdates} disabled={!hasDisableUpdatesPerm} variant="secondary">Re-Enable</Button>
+			</div>
+		</Alert>
 	)
 }

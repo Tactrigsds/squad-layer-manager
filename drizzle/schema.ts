@@ -197,7 +197,6 @@ export const servers = mysqlTable('servers', {
 	layerQueueSeqId: int('layerQueueSeqId').notNull().default(0),
 	layerQueue: json('layerQueue').notNull().default(superjson.stringify([])),
 	settings: json('settings').default(superjson.stringify({})),
-
 	lastRoll: timestamp('lastRoll', { mode: 'date' }),
 })
 
