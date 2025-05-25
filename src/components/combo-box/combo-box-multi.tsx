@@ -88,7 +88,7 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 			</PopoverTrigger>
 			<PopoverContent className="max-[200px] p-0">
 				<Command shouldFilter={!props.setInputValue}>
-					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search framework..." />
+					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search..." />
 					<CommandList>
 						<CommandEmpty>No results found.</CommandEmpty>
 						<CommandGroup>
