@@ -585,7 +585,7 @@ export async function getLayerStatusesForLayerQueue({
 			violationDescriptorsState.set(queuedLayerKey, violationDescriptors)
 		}
 		if (item.layerId) {
-			historicLayers.unshift(item.layerId)
+			historicLayers.push(item.layerId)
 		}
 	}
 
@@ -959,10 +959,10 @@ function resolveRelevantLayerHistory(
 	previousLayerIds: string[],
 	startWithOffset?: number,
 ) {
-	const historicLayers = [...previousLayerIds]
-	historicLayers.push(
-		...MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0)).map(m => m.layerId),
+	const historicLayers = MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0)).map(
+		m => m.layerId,
 	)
+	historicLayers.push(...previousLayerIds)
 	return {
 		historicLayers,
 		oldestLayerTeamParity: (MatchHistory.getCurrentMatch()?.ordinal ?? 0) % 2,

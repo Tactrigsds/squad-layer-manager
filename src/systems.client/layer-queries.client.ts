@@ -3,6 +3,7 @@ import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import { type LayersQueryInput } from '@/server/systems/layer-queries'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
+import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
 import { reactQueryClient, trpc } from '@/trpc.client'
@@ -50,12 +51,19 @@ export function useLayerStatuses(
 	const serverLayerQueue = Zus.useStore(QD.QDStore, s => s.serverState?.layerQueue)
 	const editedPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.mainPool)
 	const serverPool = Zus.useStore(QD.QDStore, s => s.serverState?.settings.queue.mainPool)
+	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 	return useQuery({
 		...options,
 		queryKey: [
 			'layers',
 			'getLayerStatusesForLayerQueue',
-			superjson.serialize({ editedQueue, serverlayerQueue: serverLayerQueue, editedPool, serverPool }),
+			superjson.serialize({
+				editedQueue,
+				serverlayerQueue: serverLayerQueue,
+				editedPool,
+				serverPool,
+				historyEntryId: currentMatch?.historyEntryId,
+			}),
 		],
 		queryFn: async () => {
 			if (serverLayerQueue && deepEqual(serverLayerQueue, editedQueue) && deepEqual(serverPool, editedPool)) {

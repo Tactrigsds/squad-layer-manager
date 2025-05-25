@@ -71,7 +71,7 @@ export default function MatchHistoryPanel() {
 			<>
 				<span className="text-right">Current Streak{'  '}:{' '}</span>
 				<span className="text-lg font-bold">
-					<span style={{ color: !globalSettings.displayTeamsNormalized ? teamColors[streaker] : undefined }}>
+					<span>
 						{streakerTitle}
 					</span>
 					{streakerFaction}
@@ -103,13 +103,13 @@ export default function MatchHistoryPanel() {
 		}
 	}
 
-	let diffFor: string
+	let diffFor: React.ReactNode
 	if (ticketDiff > 0) {
 		diffFor = 'Team A'
 	} else if (ticketDiff < 0) {
 		diffFor = 'Team B'
 	} else {
-		diffFor = 'draw'
+		diffFor = null
 	}
 	let ticketDiffElt: React.ReactNode = null
 	if (matchCount > 0) {

@@ -8,6 +8,10 @@ export const teamColors = {
 	team2: 'coral',
 }
 
+export function TeamIndicator(props: { team: keyof typeof teamColors }) {
+	return <span className="font-mono text-sm" style={{ color: teamColors[props.team] }}>({props.team[props.team.length - 1]})</span>
+}
+
 export function getTeamsDisplay(
 	partialLayer: Partial<M.MiniLayer>,
 	teamParity: number,
@@ -22,8 +26,8 @@ export function getTeamsDisplay(
 		team2Color = colors[(teamParity + 1) % 2]
 	} else if (displayLayersNormalized) {
 		// Colors specifically for (1) and (2) normalized team labels
-		team1Color = teamColors.team1
 		team2Color = teamColors.team2
+		team1Color = teamColors.team1
 	}
 
 	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined

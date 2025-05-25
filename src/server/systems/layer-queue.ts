@@ -1071,10 +1071,15 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	let nextLayerId = M.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextLayerId) {
+		const constraints: M.LayerQueryConstraint[] = []
+		if (serverState.settings.queue.applyMainPoolToGenerationPool) {
+			constraints.push(...M.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
+		}
+		constraints.push(...M.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
 		const { ids } = await LayerQueries.getRandomGeneratedLayers(
 			ctx,
 			1,
-			M.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'),
+			constraints,
 			[],
 			false,
 		)
@@ -1109,14 +1114,6 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	return wroteServerState
 }
 
-const generateLayerQueueItems = C.spanOp(
-	'layer-queue:generate-layer-items',
-	{ tracer },
-	async (_ctx: C.Log & C.Db & C.User, _opts: M.GenLayerQueueItemsOptions) => {
-		throw new Error('implement me')
-	},
-)
-
 export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {
 	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
 	if (denyRes) return denyRes
@@ -1135,9 +1132,6 @@ export const layerQueueRouter = router({
 	watchLayerQueueState: procedure.subscription(watchLayerQueueStateUpdates),
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	watchUnexpectedNextLayer: procedure.subscription(watchUnexpectedNextLayer),
-	generateLayerQueueItems: procedure
-		.input(M.GenLayerQueueItemsOptionsSchema)
-		.query(({ input, ctx }) => generateLayerQueueItems(ctx, input)),
 	startVote: procedure
 		.input(M.StartVoteInputSchema)
 		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),

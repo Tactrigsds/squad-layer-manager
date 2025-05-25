@@ -1158,7 +1158,8 @@ export const ServerSettingsSchema = z
 			.object({
 				mainPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
 				// extends the main pool during automated generation
-				generationPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
+				applyMainPoolToGenerationPool: z.boolean().default(true),
+				generationPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: [] }),
 				preferredLength: z.number().default(12),
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),

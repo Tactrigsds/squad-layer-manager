@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useToast } from '@/hooks/use-toast'
 import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
+import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
 import { assertNever } from '@/lib/typeGuards.ts'
@@ -137,7 +138,17 @@ function NormTeamsSwitch() {
 				onCheckedChange={onCheckedChange}
 			/>
 			<Label className="cursor-pointer" htmlFor={switchId}>
-				Normalize Teams
+				Normalize Teams {globalSettings.displayTeamsNormalized
+					? (
+						<span>
+							(left: <TeamIndicator team="teamA" /> right: <TeamIndicator team="teamB" />)
+						</span>
+					)
+					: (
+						<span>
+							(left: <TeamIndicator team="team1" /> right: <TeamIndicator team="team2" />)
+						</span>
+					)}
 			</Label>
 		</div>
 	)
@@ -333,7 +344,11 @@ function EditingCard() {
 					)}
 					{settingsEdited && <Badge variant="edited">settings modified</Badge>}
 				</div>
-				<div className="space-x-1">
+				<div className="space-x-1 flex items-center">
+					<Icons.LoaderCircle
+						className="animate-spin data-[pending=false]:invisible"
+						data-pending={updateQueueMutation.isPending}
+					/>
 					<Button
 						onClick={saveLqState}
 						disabled={updateQueueMutation.isPending}
@@ -346,10 +361,6 @@ function EditingCard() {
 					>
 						Cancel
 					</Button>
-					<Icons.LoaderCircle
-						className="animate-spin data-[pending=false]:invisible"
-						data-pending={updateQueueMutation.isPending}
-					/>
 				</div>
 			</CardContent>
 		</Card>
@@ -381,7 +392,7 @@ function UserEditingAlert() {
 				{userPresenceState.editState?.startTime && (
 					<>
 						<span>:</span>
-						<Timer start={userPresenceState.editState.startTime} />
+						<Timer zeros={true} start={userPresenceState.editState.startTime} />
 					</>
 				)}
 			</AlertTitle>
@@ -714,6 +725,16 @@ const PoolConfigurationPopover = React.forwardRef(
 			_setOpen(open)
 		}
 
+		const applyMainPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.applyMainPoolToGenerationPool)
+		const applymainPoolSwitchId = React.useId()
+
+		function setApplyMainPool(checked: boolean | 'indeterminate') {
+			if (checked === 'indeterminate') return
+			QD.QDStore.getState().setSetting((settings) => {
+				settings.queue.applyMainPoolToGenerationPool = checked
+			})
+		}
+
 		return (
 			<Popover open={open} onOpenChange={setOpen}>
 				<PopoverTrigger asChild>{props.children}</PopoverTrigger>
@@ -723,14 +744,20 @@ const PoolConfigurationPopover = React.forwardRef(
 				>
 					<div className="flex items-center justify-between">
 						<h3 className="font-medium">Pool Configuration</h3>
-						<TabsList
-							options={[
-								{ label: 'Main Pool', value: 'mainPool' },
-								{ label: 'Autogeneration', value: 'generationPool' },
-							]}
-							active={poolId}
-							setActive={setPoolId}
-						/>
+						<div className="flex items-center space-x-2">
+							<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
+								<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
+								<Switch id={applymainPoolSwitchId} checked={applyMainPool} onCheckedChange={setApplyMainPool} />
+							</div>
+							<TabsList
+								options={[
+									{ label: 'Main Pool', value: 'mainPool' },
+									{ label: 'Autogeneration', value: 'generationPool' },
+								]}
+								active={poolId}
+								setActive={setPoolId}
+							/>
+						</div>
 					</div>
 					<PoolFiltersConfigurationPanel poolId={poolId} />
 					<PoolDoNotRepeatRulesConfigurationPanel
