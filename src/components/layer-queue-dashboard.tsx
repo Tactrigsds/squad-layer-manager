@@ -664,13 +664,14 @@ const PoolConfigurationPopover = React.forwardRef(
 		}
 		filterOptions.push({ value: null, label: '<none>' })
 
+		const user = useLoggedInUser()
+		const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+
 		React.useImperativeHandle(ref, () => ({
 			reset: () => {},
 		}))
 
-		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>(
-			'mainPool',
-		)
+		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 		const saveChangesMutation = QD.useSaveChangesMutation()
 
 		const storedSettingsChanged = Zus.useStore(
@@ -747,7 +748,12 @@ const PoolConfigurationPopover = React.forwardRef(
 						<div className="flex items-center space-x-2">
 							<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
 								<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
-								<Switch id={applymainPoolSwitchId} checked={applyMainPool} onCheckedChange={setApplyMainPool} />
+								<Switch
+									disabled={!canWriteSettings}
+									id={applymainPoolSwitchId}
+									checked={applyMainPool}
+									onCheckedChange={setApplyMainPool}
+								/>
 							</div>
 							<TabsList
 								options={[
@@ -773,7 +779,7 @@ const PoolConfigurationPopover = React.forwardRef(
 						setRules={setGenerationPoolRules}
 					/>
 					<Button
-						disabled={!settingsChanged}
+						disabled={!settingsChanged || !canWriteSettings}
 						onClick={() => {
 							saveRules()
 							saveChangesMutation.mutate()
