@@ -6,8 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
-import * as Arr from '@/lib/array'
-import { getTeamsDisplay } from '@/lib/display-helpers-react.tsx'
+import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import { assertNever } from '@/lib/typeGuards.ts'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
@@ -47,7 +46,7 @@ export default function CurrentLayerCard() {
 				break
 			case 'ok':
 				toast({
-					title: 'Fog of war disabled for current match',
+					title: 'Fog of War disabled for current match',
 					variant: 'default',
 				})
 				break
@@ -68,10 +67,10 @@ export default function CurrentLayerCard() {
 	let postGameElt: React.ReactNode = null
 	if (!isEmpty && currentMatch?.status === 'post-game') {
 		postGameElt = (
-			<div className="flex flex-col space-y-1">
+			<div className="flex space-x-2">
 				<Badge variant="outline" className="flex items-center">
 					<span className="pr-1">Post-Game</span>
-					<Timer start={currentMatch.endTime.getTime()} className="font-mono" />
+					<Timer zeros={true} start={currentMatch.endTime.getTime()} className="font-mono" />
 				</Badge>
 				{currentMatch.outcome.type === 'draw' && (
 					<Badge variant="outline" className="flex items-center">
@@ -104,7 +103,7 @@ export default function CurrentLayerCard() {
 						Current Layer:
 					</CardTitle>
 					<div>
-						{currentLayerId && <LayerDisplay layerId={currentLayerId} teamParity={currentMatch?.teamParity} />}
+						{currentLayerId && <LayerDisplay layerId={currentLayerId} teamParity={currentMatch ? currentMatch?.ordinal % 2 : undefined} />}
 					</div>
 				</span>
 				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}
@@ -124,7 +123,7 @@ export default function CurrentLayerCard() {
 						{!isEmpty && currentMatch?.status === 'in-progress' && (
 							<Badge variant="secondary" className="flex items-center">
 								<span className="pr-1">In progress:</span>
-								<Timer zeros={true} start={currentMatch.startTime.getTime()} className="font-mono" />
+								{currentMatch.startTime && <Timer zeros={true} start={currentMatch.startTime.getTime()} className="font-mono" />}
 							</Badge>
 						)}
 						{postGameElt}

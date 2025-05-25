@@ -1,5 +1,4 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
-import * as Arr from '@/lib/array'
 import { acquireInBlock, AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -31,8 +30,6 @@ type SquadServerState = {
 	// An ephemeral copy of the current matches layer queue item, taken just before the server rolls and the NEW_GAME squad event is emitted. in order for usages of this to be valid, the corresponding NEW_GAME event must be received after its details are buffered.
 	bufferedNextMatch?: {
 		layerListItem: M.LayerListItem
-		// the expected entry id for the next game when the layer source was buffered
-		historyEntryCount: number
 	}
 }
 
@@ -144,7 +141,6 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 
 	if (cmdConfig.enabled === false) {
 		return await showError(`Command "${cmd}" is disabled`)
-		return
 	}
 
 	const user: M.GuiOrChatUserId = { steamId: msg.steamID }
@@ -228,14 +224,15 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 	})
 	void coreRcon.connect(ctx)
 		.then(async () => {
-			const statusRes = await rcon.serverStatus.get(ctx)
-			if (statusRes.value.code === 'err:rcon') return
-			const match = MatchHistory.state.recentMatches[0]
-			if (match && M.areLayerIdsCompatible(statusRes.value.data.currentLayer.id, match.layerId)) {
-				state.currentMatchId = match.historyEntryId
+			const { value: statusRes } = await rcon.serverStatus.get(ctx)
+			if (statusRes.code === 'err:rcon') return
+			await MatchHistory.resolvePotentialSquadServerCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
+			const currentMatch = MatchHistory.getCurrentMatch()
+			if (currentMatch && M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
+				state.currentMatchId = currentMatch.historyEntryId
 
-				const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
-				if (layer.Gamemode === 'FRAAS') {
+				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentMatch.layerId))
+				if (currentLayer.Gamemode === 'FRAAS') {
 					await rcon.setFogOfWar(ctx, 'off')
 				}
 			}
@@ -275,8 +272,11 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 		})
 		if (statusRes.code !== 'ok') return statusRes
 		const res: SM.ServerStatusWithCurrentMatchRes = { code: 'ok' as const, data: { ...statusRes.data } }
-		const match = MatchHistory.state.recentMatches[0]
-		if (match && match?.historyEntryId === state.currentMatchId && M.areLayerIdsCompatible(match.layerId, statusRes.data.currentLayer.id)) {
+		const currentMatch = MatchHistory.getCurrentMatch()
+		if (
+			currentMatch && currentMatch?.historyEntryId === state.currentMatchId
+			&& M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)
+		) {
 			res.data.currentMatchId = state.currentMatchId
 		}
 		return res
@@ -291,11 +291,17 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes
-				let newEntry: SchemaModels.NewMatchHistory = {
+				let newEntry: Omit<SchemaModels.MatchHistory, 'id' | 'ordinal'> = {
 					layerId: statusRes.data.currentLayer.id,
+					lqItemId: null,
+					layerVote: null,
 					startTime: event.time,
 					setByType: 'unknown',
-					// setByUserId: state.bufferedNewGameLayerSource?.type ==
+					endTime: null,
+					outcome: null,
+					setByUserId: null,
+					team1Tickets: null,
+					team2Tickets: null,
 				}
 				if (state.bufferedNextMatch) {
 					const setByUserId = state.bufferedNextMatch.layerListItem.source.type === 'manual'
@@ -303,6 +309,8 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 						: undefined
 					const updated: Partial<SchemaModels.NewMatchHistory> = {
 						layerId: M.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId,
+						lqItemId: state.bufferedNextMatch.layerListItem.itemId,
+						layerVote: state.bufferedNextMatch.layerListItem.vote,
 						setByType: state.bufferedNextMatch.layerListItem.source.type,
 						setByUserId: setByUserId,
 					}
@@ -312,7 +320,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 					}
 				}
 
-				const res = await MatchHistory.addHistoryEntry(ctx, newEntry, state.bufferedNextMatch?.historyEntryCount)
+				const res = await MatchHistory.addNewCurrentMatch(ctx, newEntry)
 				if (res.code !== 'ok') return res
 				state.currentMatchId = res.match.historyEntryId
 
@@ -335,7 +343,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 
 			using _lock = await acquireInBlock(MatchHistory.modifyHistoryMtx)
 			await DB.runTransaction(ctx, async (ctx) => {
-				const currentMatch = MatchHistory.state.recentMatches[0]
+				const currentMatch = MatchHistory.getCurrentMatch()
 				if (!currentMatch || !M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
 					delete state.currentMatchId
 					return
@@ -350,7 +358,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 					outcome,
 				}
 
-				state.currentMatchId = (await MatchHistory.finalizeCurrentHistoryEntry(ctx, entry, { lock: false }))?.historyEntryId
+				state.currentMatchId = (await MatchHistory.finalizeCurrentMatch(ctx, entry, { lock: false }))?.historyEntryId
 			})
 			return { code: 'ok' as const }
 		}
@@ -359,12 +367,8 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	}
 }
 
-export async function bufferNextMatchLQItem(ctx: C.Db & C.Log, item: M.LayerListItem) {
-	const count = await MatchHistory.getMatchHistoryCount(ctx)
-	state.bufferedNextMatch = {
-		historyEntryCount: count,
-		layerListItem: item,
-	}
+export function bufferNextMatchLQItem(item: M.LayerListItem) {
+	state.bufferedNextMatch = { layerListItem: item }
 }
 
 export async function toggleFogOfWar({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {

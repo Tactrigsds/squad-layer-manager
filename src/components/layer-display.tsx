@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { getTeamsDisplay } from '@/lib/display-helpers-react.tsx'
+import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'

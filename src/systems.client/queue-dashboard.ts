@@ -324,7 +324,7 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 			item: layerList[index],
 			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
 			baseQueryContext,
-			teamParity: SM.getTeamParityForQueueIndex({ teamParity: firstItemTeamParity }, index),
+			teamParity: SM.getTeamParityForOffset({ ordinal: firstItemTeamParity }, index + 1),
 		}
 	})
 }
@@ -508,7 +508,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	MatchHistoryClient.currentMatchDetails$().subscribe(details => {
 		if (!details) return
-		set({ queueTeamParity: SM.getTeamParityForQueueIndex(details, 0) })
+		set({ queueTeamParity: SM.getTeamParityForOffset(details, 0) })
 	})
 
 	return {

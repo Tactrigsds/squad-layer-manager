@@ -206,7 +206,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 						layerId: status.currentLayer.id,
 						source: { type: 'unknown' },
 					})
-					await SquadServer.bufferNextMatchLQItem(ctx, item)
+					SquadServer.bufferNextMatchLQItem(item)
 					break
 				}
 				case 'current-layer-changed:reset':
@@ -265,7 +265,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 				}),
 			)
 
-			await SquadServer.bufferNextMatchLQItem(ctx, currentLayerItem!)
+			SquadServer.bufferNextMatchLQItem(currentLayerItem!)
 			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
 			switch (updateRes.code) {
 				case 'noop':

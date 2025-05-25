@@ -656,7 +656,6 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		...(props.queryContext ?? {}),
 	})
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
-	if (props.column === 'LayerVersion') console.log({ options })
 	return (
 		<ComboBox
 			ref={ref}

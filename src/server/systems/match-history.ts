@@ -13,38 +13,56 @@ import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { procedure, router } from '../trpc.server'
 
-export const RECENT_HISTORY_BASE_LENGTH = 100
+export const MAX_RECENT_MATCHES = 100
 
-export let state!: { recentMatches: SM.MatchDetails[] } & Parts<M.UserPart>
+export let state!: { recentMatches: SM.MatchDetails[]; tempCurrentMatch?: M.LayerId } & Parts<M.UserPart>
 const recentMatchesModified$ = new Rx.Subject<void>()
+
+function addMatch(match: SM.MatchDetails) {
+	state.recentMatches.push(match)
+	if (state.recentMatches.length > MAX_RECENT_MATCHES) state.recentMatches.shift()
+}
 
 export const modifyHistoryMtx = new Mutex()
 
+export function getRecentMatchHistory() {
+	if (state.recentMatches[state.recentMatches.length - 1]?.status === 'in-progress') {
+		return state.recentMatches.slice(0, state.recentMatches.length - 1)
+	}
+	return state.recentMatches
+}
+
+export function getCurrentMatch() {
+	return state.recentMatches[state.recentMatches.length - 1]
+}
+
 export async function setup() {
 	const ctx = DB.addPooledDb({ log: baseLogger })
-	const rows = await ctx.db().select().from(Schema.matchHistory)
-		.leftJoin(Schema.users, E.eq(Schema.matchHistory.setByUserId, Schema.users.discordId))
-		.orderBy(E.desc(Schema.matchHistory.startTime)).limit(
-			RECENT_HISTORY_BASE_LENGTH,
-		).execute()
-	state = {
-		recentMatches: rows.map(r => SM.historyEntryToMatchDetails(r.matchHistory)),
-		parts: { users: [] },
-	}
-	for (const row of rows) {
-		if (!row.users) continue
-		const user = row.users
-		const existingIdx = state.parts.users.findIndex(u => u.discordId === user.discordId)
-		if (existingIdx !== -1) {
-			state.parts.users[existingIdx] = user
-		} else {
-			state.parts.users.push(user)
-		}
-	}
 
-	ctx.log.info('active match id: %s, status: %s', state.recentMatches[0]?.historyEntryId, state.recentMatches[0]?.status)
-	recentMatchesModified$.subscribe(() => {
-		ctx.log.info('active match id: %s, status: %s', state.recentMatches[0]?.historyEntryId, state.recentMatches[0]?.status)
+	await DB.runTransaction(ctx, async (ctx) => {
+		const rows = (await ctx.db().select().from(Schema.matchHistory)
+			.leftJoin(Schema.users, E.eq(Schema.matchHistory.setByUserId, Schema.users.discordId))
+			.orderBy(E.desc(Schema.matchHistory.ordinal))
+			.limit(
+				MAX_RECENT_MATCHES,
+			).execute()).reverse()
+		state = {
+			recentMatches: rows.map(r => SM.matchHistoryEntryToMatchDetails(r.matchHistory)),
+			parts: { users: [] },
+		}
+		for (const row of rows) {
+			if (!row.users) continue
+			const user = row.users
+			const existingIdx = state.parts.users.findIndex(u => u.discordId === user.discordId)
+			if (existingIdx !== -1) {
+				state.parts.users[existingIdx] = user
+			} else {
+				state.parts.users.push(user)
+			}
+		}
+	})
+	recentMatchesModified$.pipe(Rx.startWith(0)).subscribe(() => {
+		ctx.log.info('active match id: %s, status: %s', getCurrentMatch()?.historyEntryId, getCurrentMatch()?.status)
 	})
 }
 
@@ -52,39 +70,22 @@ export const matchHistoryRouter = router({
 	watchRecentMatchHistory: procedure.subscription(async function*({ ctx }) {
 		yield state
 		for await (const _ of toAsyncGenerator(recentMatchesModified$)) {
-			ctx.log.info('emitting recent match history')
 			yield state
 		}
 	}),
 })
 
-export async function addHistoryEntry(ctx: C.Log & C.Db, entry: SchemaModels.NewMatchHistory, expectedCount?: number) {
+export async function addNewCurrentMatch(ctx: C.Log & C.Db, entry: Omit<SchemaModels.MatchHistory, 'id' | 'ordinal'>) {
 	using _lock = await acquireInBlock(modifyHistoryMtx)
+
 	return await DB.runTransaction(ctx, async (ctx) => {
-		const count = await getMatchHistoryCount(ctx)
-		if (expectedCount && count !== expectedCount) {
-			ctx.tx.rollback()
-			ctx.log.warn(
-				' Unexpected history entry ID expected: %s actual: %s',
-				expectedCount,
-				count,
-			)
-			return {
-				code: 'error:unexpected-history-entry-count' as const,
-				data: { expectedId: expectedCount, actualId: count },
-				msg: 'Unexpected history entry count',
-			}
-		}
 		let userPromise: Promise<M.User | undefined> | undefined
 		if (entry.setByUserId) {
 			userPromise = (async () => (await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, entry.setByUserId!)))[0])()
 		}
-
-		const [{ id }] = await ctx.db().insert(Schema.matchHistory).values(entry).$returningId()
-		state.recentMatches.unshift(SM.historyEntryToMatchDetails({ ...entry, id }))
-		if (state.recentMatches.length > RECENT_HISTORY_BASE_LENGTH) {
-			state.recentMatches.pop()
-		}
+		const ordinal = (state.recentMatches[state.recentMatches.length - 1]?.ordinal ?? 0) + 1
+		const [{ id }] = await ctx.db().insert(Schema.matchHistory).values({ ...entry, ordinal }).$returningId()
+		addMatch(SM.matchHistoryEntryToMatchDetails({ ...entry, lqItemId: entry.lqItemId, ordinal, id }))
 		if (userPromise) {
 			const user = await userPromise
 			if (user) {
@@ -97,32 +98,60 @@ export async function addHistoryEntry(ctx: C.Log & C.Db, entry: SchemaModels.New
 			}
 		}
 		recentMatchesModified$.next()
-		return { code: 'ok' as const, match: state.recentMatches[0] }
+		return { code: 'ok' as const, match: getCurrentMatch() }
 	})
 }
 
-export async function finalizeCurrentHistoryEntry(
+export async function finalizeCurrentMatch(
 	ctx: C.Log & C.Db,
 	entry: Partial<SchemaModels.NewMatchHistory>,
 	opts?: { lock?: boolean },
 ) {
 	using _lock = await acquireInBlock(modifyHistoryMtx, { bypass: !(opts?.lock ?? true) })
-	if (state.recentMatches.length === 0) {
-		ctx.log.warn('unable to update current history entry: empty')
+	const currentMatch = getCurrentMatch()
+	if (!currentMatch) {
+		ctx.log.warn('unable to update current match: empty')
 		return
 	}
-	if (state.recentMatches[0].status !== 'in-progress') {
+
+	if (currentMatch.status !== 'in-progress') {
 		ctx.log.warn('unable to update current history entry: not in-progress')
 		return
 	}
 
 	// We're running a transaction here to keep in line with calling .next during the sql transaction. if we want to send the event after the transaction we should change this pattern in all places where we're sending the event and not just here
 	return await DB.runTransaction(ctx, async ctx => {
-		await ctx.db().update(Schema.matchHistory).set(entry).where(E.eq(Schema.matchHistory.id, state.recentMatches[0].historyEntryId))
-		state.recentMatches[0] = SM.historyEntryToMatchDetails({ ...SM.matchHistoryEntryFromMatchDetails(state.recentMatches[0]), ...entry })
+		await ctx.db().update(Schema.matchHistory).set(entry).where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
+		state.recentMatches[state.recentMatches.length - 1] = SM.matchHistoryEntryToMatchDetails({
+			...SM.matchHistoryEntryFromMatchDetails(currentMatch),
+			...entry,
+		})
 		recentMatchesModified$.next()
-		return state.recentMatches[0]
+		return getCurrentMatch()
 	})
+}
+
+/**
+ * Runs on startup once rcon is connected to ensure that the match history is up-to-date. TODO: Reconnections to unexpected layers are not handled currently
+ */
+export async function resolvePotentialSquadServerCurrentLayerConflict(ctx: C.Db, currentLayerOnServer: M.LayerId) {
+	using _lock = await acquireInBlock(modifyHistoryMtx)
+	const currentMatch = getCurrentMatch()
+
+	if (!currentMatch || currentMatch.status === 'in-progress' && !M.areLayerIdsCompatible(currentLayerOnServer, currentMatch.layerId)) {
+		await DB.runTransaction(ctx, async (ctx) => {
+			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
+			console.log(state.recentMatches)
+			const [{ id }] = await ctx.db().insert(Schema.matchHistory).values({
+				layerId: currentLayerOnServer,
+				ordinal,
+				setByType: 'unknown',
+			}).$returningId()
+			const [newCurrentMatchEntry] = await ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.id, id))
+			addMatch(SM.matchHistoryEntryToMatchDetails(newCurrentMatchEntry))
+			recentMatchesModified$.next()
+		})
+	}
 }
 
 export async function getMatchHistoryCount(ctx: C.Log & C.Db): Promise<number> {

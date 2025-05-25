@@ -1,46 +1,126 @@
-import * as AR from '@/app-routes'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
-import * as DH from '@/lib/display-helpers'
-import { getTeamsDisplay } from '@/lib/display-helpers-react'
+import { getTeamsDisplay, teamColors } from '@/lib/display-helpers-teams'
 import * as SM from '@/lib/rcon/squad-models'
-import { cn } from '@/lib/utils'
 import * as M from '@/models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
-import * as Icons from 'lucide-react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import LayerSourceDisplay from './layer-source-display'
+import { Badge } from './ui/badge'
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const serverStatus = SquadServerClient.useSquadServerStatus()
-	const allEntries = MatchHistoryClient.useRecentMatchHistory()
-		.filter(entry =>
-			(serverStatus.code !== 'ok' || serverStatus.data.currentMatchId !== entry.historyEntryId) && entry.status === 'post-game'
-		) as Extract<SM.MatchDetails, { status: 'post-game' }>[]
+	const history = MatchHistoryClient.useRecentMatches()
+	const allEntries = React.useMemo(() => [...history].reverse(), [history])
+	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 
-	// Pagination state
+	// -------- Pagination state --------
 	const [currentPage, setCurrentPage] = useState(1)
 	const itemsPerPage = 15
 	const totalPages = Math.ceil(allEntries.length / itemsPerPage)
 
-	// Get current entries
+	// -------- Get current entries --------
 	const indexOfLastEntry = currentPage * itemsPerPage
 	const indexOfFirstEntry = indexOfLastEntry - itemsPerPage
 	const currentEntries = allEntries.slice(indexOfFirstEntry, indexOfLastEntry)
 
-	// Page navigation
+	// -------- Page navigation --------
 	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
 	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
+
+	// -------- calculate streaks --------
+	let streaker: 'teamA' | 'teamB' | null = null
+	let streak = 0
+	// console.table(currentEntries.map(SM.matchHistoryEntryFromMatchDetails))
+	for (let i = 0; i < allEntries.length; i++) {
+		const entry = currentEntries[i]
+		if (entry.status === 'in-progress' && i === 0) continue
+		if (entry.status === 'in-progress') break
+		const outcomeNorm = SM.getTeamNormalizedOutcome(entry)
+		if (outcomeNorm.type === 'draw') break
+		if (!streaker) {
+			streaker = outcomeNorm.type
+		}
+		if (outcomeNorm.type !== streaker) {
+			break
+		}
+		streak++
+	}
+
+	let streakerElt: React.ReactNode
+	if (!streaker) {
+		streakerElt = null
+	} else {
+		const streakerTitle = streaker === 'teamA' ? 'Team A' : 'Team B'
+		let streakerFaction: string
+		if (!currentMatch) streakerFaction = ''
+		else {
+			const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentMatch.layerId))
+			streakerFaction = layer[M.getTeamNormalizedFactionProp(currentMatch.ordinal, streaker === 'teamA' ? 'A' : 'B')] ?? 'Unknown'
+			streakerFaction = `(${streakerFaction})`
+		}
+		streakerElt = (
+			<>
+				<span className="text-right">Current Streak{'  '}:{' '}</span>
+				<span className="text-lg font-bold">
+					<span style={{ color: !globalSettings.displayTeamsNormalized ? teamColors[streaker] : undefined }}>
+						{streakerTitle}
+					</span>
+					{streakerFaction}
+				</span>
+				<span>
+					{streak} Game{streak > 1 ? 's' : ''}
+				</span>
+			</>
+		)
+	}
+
+	// -------- calculate ticket differences --------
+	let ticketDiff = 0
+	let matchCount = 0
+
+	{
+		const today = new Date()
+		today.setHours(0, 0, 0, 0)
+
+		for (let i = 0; i < allEntries.length && matchCount < 10; i++) {
+			const entry = allEntries[i]
+			if (entry.status === 'post-game' && entry.endTime < today) break
+			if (entry.status !== 'post-game') continue
+			const outcome = SM.getTeamNormalizedOutcome(entry)
+			if (outcome.type !== 'draw') {
+				ticketDiff += outcome.teamATickets - outcome.teamBTickets
+			}
+			matchCount++
+		}
+	}
+
+	let diffFor: string
+	if (ticketDiff > 0) {
+		diffFor = 'Team A'
+	} else if (ticketDiff < 0) {
+		diffFor = 'Team B'
+	} else {
+		diffFor = 'draw'
+	}
+	let ticketDiffElt: React.ReactNode = null
+	if (matchCount > 0) {
+		ticketDiffElt = (
+			<>
+				<span className="text-right">Last {matchCount} games ticket diff :{' '}</span>
+				<span className="text-lg font-bold">{diffFor}</span>
+				<span>{Math.abs(ticketDiff)} ticket{Math.abs(ticketDiff) === 1 ? '' : 's'}</span>
+			</>
+		)
+	}
 
 	let leftTeamLabel: string
 	let rightTeamLabel: string
@@ -56,6 +136,10 @@ export default function MatchHistoryPanel() {
 		<Card>
 			<CardHeader className="flex flex-row justify-between items-center">
 				<CardTitle>Match History</CardTitle>
+				<div className="grid grid-cols-[auto,auto,auto] gap-x-2">
+					{streakerElt}
+					{ticketDiffElt}
+				</div>
 			</CardHeader>
 			<CardContent>
 				<Table>
@@ -72,9 +156,14 @@ export default function MatchHistoryPanel() {
 					</TableHeader>
 					<TableBody>
 						{currentEntries.map((entry, index) => {
+							if (entry.historyEntryId === currentMatch?.historyEntryId) {
+								return
+							}
 							const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(entry.layerId))
 							let outcomeDisp: React.ReactNode
-							if (entry.outcome.type === 'draw') {
+							if (entry.status === 'in-progress') {
+								outcomeDisp = '-'
+							} else if (entry.outcome.type === 'draw') {
 								outcomeDisp = 'draw'
 							} else {
 								// Determine win/loss status
@@ -83,7 +172,7 @@ export default function MatchHistoryPanel() {
 								let team1Tickets = entry.outcome.team1Tickets
 								let team2Tickets = entry.outcome.team2Tickets
 
-								if (globalSettings.displayTeamsNormalized && entry.teamParity === 1) {
+								if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
 									// Swap status if normalized
 									;[team1Status, team2Status] = [team2Status, team1Status]
 									;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
@@ -91,8 +180,10 @@ export default function MatchHistoryPanel() {
 
 								outcomeDisp = `${team1Tickets} ${team1Status} - ${team2Status} ${team2Tickets}`
 							}
-							const gameRuntime = entry.endTime.getTime() - entry.startTime.getTime()
-							const idx = index + (currentPage - 1) * itemsPerPage + 1
+							const gameRuntime = (entry.startTime && entry.status === 'post-game')
+								? entry.endTime.getTime() - entry.startTime.getTime()
+								: undefined
+							const idx = index + (currentPage - 1) * itemsPerPage
 
 							const copyHistoryEntryId = () => {
 								navigator.clipboard.writeText(entry.historyEntryId.toString())
@@ -131,22 +222,29 @@ export default function MatchHistoryPanel() {
 									),
 								})
 							}
-							let differenceDisp = '-' + Math.floor(dateFns.differenceInHours(new Date(), entry.endTime)).toString() + 'h'
-							if (differenceDisp === '-0h') {
-								differenceDisp = '-' + Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString() + 'm'
+							let differenceDisp: React.ReactNode = null
+							if (entry.status === 'post-game') {
+								const difference = dateFns.differenceInHours(new Date(), entry.endTime)
+								if (difference === 0) {
+									differenceDisp = `(-${Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString()}m)`
+								} else {
+									differenceDisp = `(-${Math.floor(difference).toString()}h)`
+								}
 							}
 
-							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.teamParity, globalSettings.displayTeamsNormalized)
+							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal % 2, globalSettings.displayTeamsNormalized)
 
 							return (
 								<ContextMenu key={entry.historyEntryId}>
 									<ContextMenuTrigger asChild>
 										<TableRow>
 											<TableCell className="font-mono text-xs">{idx.toString().padStart(2, '0')}</TableCell>
-											<TableCell className="font-mono text-xs font-light">
-												{formatTimeLeftWithZeros(gameRuntime)}
-												<span className="ml-1 text-muted-foreground">
-													({differenceDisp})
+											<TableCell className="text-xs ">
+												{gameRuntime
+													? <span className="font-mono font-light">{formatTimeLeftWithZeros(gameRuntime)}</span>
+													: <Badge variant="secondary">incomplete</Badge>}
+												<span className="ml-1 text-muted-foreground font-mono font-light">
+													{differenceDisp}
 												</span>
 											</TableCell>
 											<TableCell className="font-mono text-sm">{layer.Layer}</TableCell>

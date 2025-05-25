@@ -38,15 +38,17 @@ export type ServerStatus = {
 	currentLayer: M.UnvalidatedMiniLayer
 	nextLayer: M.UnvalidatedMiniLayer | null
 }
+export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 
 type MatchDetailsCommon = {
 	layerSource: M.LayerSource
+	ordinal: number
 	layerId: M.LayerId
-	// whether team 1 2 is aligned or swapped with the normalized teams A B
-	teamParity: number
+	lqItemId?: string
 	historyEntryId: number
-	startTime: Date
+	startTime?: Date
 }
+
 // Details about current match besides the layer
 export type MatchDetails =
 	| ({
@@ -67,8 +69,32 @@ export type MatchDetails =
 		& MatchDetailsCommon
 	)
 
-export function getTeamParityForQueueIndex(currentMatch: Pick<MatchDetails, 'teamParity'>, index: number) {
-	return (currentMatch.teamParity + index + 1) % 2
+export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal'>, offset: number) {
+	return (matchDetails.ordinal + offset) % 2
+}
+
+export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { status: 'post-game' }>) {
+	if (matchDetails.outcome.type === 'draw') {
+		return matchDetails.outcome
+	}
+	const teamATickets = matchDetails.ordinal % 2 === 0 ? matchDetails.outcome.team1Tickets : matchDetails.outcome.team2Tickets
+	const teamBTickets = matchDetails.ordinal % 2 === 0 ? matchDetails.outcome.team2Tickets : matchDetails.outcome.team1Tickets
+	switch (matchDetails.outcome.type) {
+		case 'team1':
+			return {
+				type: matchDetails.ordinal % 2 === 0 ? 'teamA' as const : 'teamB' as const,
+				teamATickets,
+				teamBTickets,
+			}
+		case 'team2':
+			return {
+				type: matchDetails.ordinal % 2 === 0 ? 'teamB' as const : 'teamA' as const,
+				teamATickets,
+				teamBTickets,
+			}
+		default:
+			assertNever(matchDetails.outcome)
+	}
 }
 
 export type MatchHistoryPart = {
@@ -78,7 +104,7 @@ export type MatchHistoryPart = {
 /**
  * Converts a match history entry to current match details and validates the data
  */
-export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory & { id: number }): MatchDetails {
+export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory): MatchDetails {
 	let layerSource: M.LayerSource
 
 	switch (entry.setByType) {
@@ -101,10 +127,11 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory &
 	const shared = {
 		layerSource: layerSource,
 		layerId: entry.layerId,
-		startTime: entry.startTime,
+		startTime: entry.startTime ?? undefined,
 		historyEntryId: entry.id,
-		teamParity: entry.id % 2 as 0 | 1,
-	}
+		ordinal: entry.ordinal,
+		lqItemId: entry.lqItemId ?? undefined,
+	} satisfies Partial<MatchDetailsCommon>
 
 	if (entry.endTime && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
 	else if (!entry.endTime && !nullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
@@ -146,11 +173,14 @@ export function historyEntryToMatchDetails(entry: SchemaModels.NewMatchHistory &
 	throw new Error('Invalid match state: unknown')
 }
 
-export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): SchemaModels.MatchHistory {
+export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails, layerVote?: M.VoteState): SchemaModels.MatchHistory {
 	const entry: SchemaModels.MatchHistory = {
 		id: matchDetails.historyEntryId,
 		layerId: matchDetails.layerId,
-		startTime: matchDetails.startTime,
+		lqItemId: matchDetails.lqItemId ?? null,
+		layerVote: layerVote ?? null,
+		ordinal: matchDetails.ordinal,
+		startTime: matchDetails.startTime ?? null,
 		setByType: matchDetails.layerSource.type,
 		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
 		endTime: null,
@@ -182,7 +212,7 @@ export const PlayerSchema = z.object({
 	playerID: z.number(),
 	steamID: zUtils.ParsedBigIntSchema,
 	name: z.string().min(1),
-	teamID: z.number(),
+	teamID: z.number().nullable(),
 	squadID: z.number().nullable(),
 	isLeader: z.boolean(),
 	role: z.string(),

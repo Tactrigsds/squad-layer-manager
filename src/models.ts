@@ -769,7 +769,7 @@ export const LayerSourceSchema = z.discriminatedUnion('type', [
 export type LayerSource = z.infer<typeof LayerSourceSchema>
 
 export const LayerListItemSchema = z.object({
-	itemId: z.string().regex(/^[a-zA-Z0-9_-]{6}$/),
+	itemId: z.string().regex(/^[a-zA-Z0-9_-]{6,24}$/),
 	layerId: LayerIdSchema.optional(),
 	vote: LayerVoteSchema.optional(),
 	source: LayerSourceSchema,
@@ -787,7 +787,7 @@ export function getActiveItemLayerId(item: LayerListItem) {
 export function createLayerListItem(newItem: NewLayerListItem): LayerListItem {
 	return {
 		...newItem,
-		itemId: createId(6),
+		itemId: createId(24),
 	}
 }
 

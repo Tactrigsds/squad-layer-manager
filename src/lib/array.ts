@@ -32,3 +32,7 @@ export function union<T>(arr1: T[], arr2: T[]): T[] {
 	}
 	return result
 }
+
+export function includes(arr: unknown[], value: unknown): boolean {
+	return arr.includes(value)
+}

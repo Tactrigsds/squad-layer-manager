@@ -2,7 +2,7 @@ import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
-import { BehaviorSubject } from 'rxjs'
+import * as Rx from 'rxjs'
 import * as SM from './squad-models.ts'
 
 export type DecodedPacket = {
@@ -31,7 +31,7 @@ export default class Rcon extends EventEmitter {
 	public get connected() {
 		return this.connected$.value
 	}
-	public connected$ = new BehaviorSubject<boolean>(false)
+	public connected$ = new Rx.BehaviorSubject<boolean>(false)
 
 	private autoReconnect: boolean
 	private autoReconnectDelay: number
@@ -65,7 +65,7 @@ export default class Rcon extends EventEmitter {
 		return ctx
 	}
 
-	async connect(ctx: C.Log & { module?: string }): Promise<void> {
+	async connect(ctx: C.Log & { module?: string }) {
 		ctx = this.addLogProps(ctx)
 		return new Promise<void>((resolve, reject) => {
 			if (this.client && this.connected && !this.client.destroyed) {

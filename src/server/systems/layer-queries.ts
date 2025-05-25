@@ -3,6 +3,7 @@ import * as FB from '@/lib/filter-builders'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { weightedRandomSelection } from '@/lib/random'
+import * as SM from '@/lib/rcon/squad-models'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models.ts'
 import * as C from '@/server/context'
@@ -77,7 +78,7 @@ export async function queryLayers(args: {
 	}
 	const constraints = input.constraints ?? []
 
-	const { historicLayers, teamParity } = resolveRelevantLayerHistory(
+	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
 		input.previousLayerIds,
@@ -86,7 +87,7 @@ export async function queryLayers(args: {
 	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
 		historicLayers,
-		teamParity,
+		oldestLayerTeamParity,
 		input.constraints ?? [],
 	)
 
@@ -143,7 +144,7 @@ export async function queryLayers(args: {
 						constraint.rule,
 						layer.id,
 						historicLayers,
-						teamParity,
+						oldestLayerTeamParity,
 					)
 					if (isBlocked) constraintResults[idx] = false
 					if (descriptors && descriptors.length > 0) {
@@ -220,12 +221,12 @@ export async function queryLayerComponents({
 	input: LayersQueryGroupedByInput
 }) {
 	const constraints = input.constraints ?? []
-	const { historicLayers, teamParity } = resolveRelevantLayerHistory(
+	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
 		input.previousLayerIds,
 	)
-	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, historicLayers, teamParity, constraints)
+	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, historicLayers, oldestLayerTeamParity, constraints)
 
 	const res = Object.fromEntries(
 		await Promise.all(M.GROUP_BY_COLUMNS.map(
@@ -251,7 +252,7 @@ export type SearchIdsInput = z.infer<typeof SearchIdsInputSchema>
 export async function searchIds({ ctx, input }: { ctx: C.Log & C.Db; input: SearchIdsInput }) {
 	const { queryString, constraints, previousLayerIds } = input
 
-	const { historicLayers, teamParity } = resolveRelevantLayerHistory(
+	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints ?? [],
 		previousLayerIds ?? [],
@@ -260,7 +261,7 @@ export async function searchIds({ ctx, input }: { ctx: C.Log & C.Db; input: Sear
 	const { conditions: whereConditions } = await buildConstraintSqlCondition(
 		ctx,
 		historicLayers,
-		teamParity,
+		oldestLayerTeamParity,
 		constraints ?? [],
 	)
 
@@ -460,7 +461,7 @@ export async function getFilterNodeSQLConditions(
 async function buildConstraintSqlCondition(
 	ctx: C.Log & C.Db,
 	previousLayerIds: M.LayerId[],
-	teamParity: number,
+	oldestLayerTeamParity: number,
 	constraints: M.LayerQueryConstraint[],
 ) {
 	const conditions: SQL<unknown>[] = []
@@ -484,7 +485,7 @@ async function buildConstraintSqlCondition(
 						ctx,
 						constraint,
 						previousLayerIds,
-						teamParity,
+						oldestLayerTeamParity,
 					)
 					if (!condition) {
 						return {
@@ -529,7 +530,7 @@ export async function getLayerStatusesForLayerQueue({
 	const constraints = M.getPoolConstraints(pool)
 
 	// eslint-disable-next-line prefer-const
-	let { historicLayers, teamParity } = resolveRelevantLayerHistory(
+	let { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
 		[],
@@ -555,7 +556,7 @@ export async function getLayerStatusesForLayerQueue({
 							constraint.rule,
 							layerId,
 							historicLayers,
-							teamParity,
+							oldestLayerTeamParity,
 						)
 						if (!isBlocked) break
 						OneToMany.set(blockedState, queuedLayerKey, constraint.id)
@@ -585,7 +586,6 @@ export async function getLayerStatusesForLayerQueue({
 		}
 		if (item.layerId) {
 			historicLayers.unshift(item.layerId)
-			teamParity = (teamParity + 1) % 2
 		}
 	}
 
@@ -629,19 +629,20 @@ function getisBlockedByDoNotRepeatRuleDirect(
 	rule: M.DoNotRepeatRule,
 	targetLayerId: M.LayerId,
 	previousLayerIds: M.LayerId[],
-	teamParity: number,
+	oldestPrevLayerTeamParity: number,
 ) {
 	const targetLayer = M.getLayerDetailsFromUnvalidated(
 		M.getUnvalidatedLayerFromId(targetLayerId),
 	)
-	const layerIds = previousLayerIds.slice(0, rule.within)
-	let layerIndex = teamParity - 1
+	const targetLayerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length)
+	let layerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length - 1)
 	const retValue = (v: boolean, descriptors?: string[]) => ({
 		isBlocked: v,
 		descriptors,
 	})
 
-	for (const layerId of layerIds) {
+	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
+		const layerId = previousLayerIds[i]
 		const layer = M.getLayerDetailsFromUnvalidated(
 			M.getUnvalidatedLayerFromId(layerId),
 		)
@@ -660,10 +661,10 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			case 'Faction': {
 				const descriptors: string[] = []
 				const checkFaction = (team: 'A' | 'B') => {
-					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(teamParity, team)]!
+					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					if (
 						targetFaction
-						&& layer[M.getTeamNormalizedFactionProp(layerIndex, team)]
+						&& layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
 							=== targetFaction
 						&& (rule.targetValues?.includes(targetFaction) ?? true)
 					) {
@@ -679,15 +680,15 @@ function getisBlockedByDoNotRepeatRuleDirect(
 				const descriptors: string[] = []
 
 				const checkFactionAndUnit = (team: 'A' | 'B') => {
-					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(teamParity, team)]!
-					const targetUnit = targetLayer[M.getTeamNormalizedUnitProp(teamParity, team)]
+					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
+					const targetUnit = targetLayer[M.getTeamNormalizedUnitProp(targetLayerTeamParity, team)]
 					const targetFactionAndUnit = M.getFactionAndUnitValue(
 						targetFaction,
 						targetUnit,
 					)
 
-					const faction = layer[M.getTeamNormalizedFactionProp(layerIndex, team)]
-					const unit = layer[M.getTeamNormalizedUnitProp(layerIndex, team)]
+					const faction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
+					const unit = layer[M.getTeamNormalizedUnitProp(layerTeamParity, team)]
 
 					if (targetFaction && faction) {
 						const factionAndUnit = M.getFactionAndUnitValue(faction, unit)
@@ -709,7 +710,7 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			default:
 				assertNever(rule.field)
 		}
-		layerIndex--
+		layerTeamParity--
 	}
 	return retValue(false)
 }
@@ -718,16 +719,16 @@ function getDoNotRepeatSQLConditions(
 	ctx: C.Db,
 	rule: M.DoNotRepeatRule,
 	previousLayerIds: string[],
-	teamParity: number,
+	oldestLayerTeamParity: number,
 ) {
 	const values = new Set<string>()
 	const layerIds = previousLayerIds.slice(0, rule.within)
 	if (rule.within <= 0) return sql`1=1`
 
-	let layerIndex = teamParity - 1
-	for (const layerId of layerIds) {
+	let teamParity = SM.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length - 1)
+	for (let i = previousLayerIds.length - 1; i >= Math.max(layerIds.length - rule.within, 0); i--) {
 		const layer = M.getLayerDetailsFromUnvalidated(
-			M.getUnvalidatedLayerFromId(layerId),
+			M.getUnvalidatedLayerFromId(previousLayerIds[i]),
 		)
 		switch (rule.field) {
 			case 'Map':
@@ -742,7 +743,7 @@ function getDoNotRepeatSQLConditions(
 				break
 			case 'Faction': {
 				const addApplicable = (team: 'A' | 'B') => {
-					const value = layer[M.getTeamNormalizedFactionProp(layerIndex, team)]
+					const value = layer[M.getTeamNormalizedFactionProp(teamParity, team)]
 					if (value && (rule.targetValues?.includes(value) ?? true)) {
 						values.add(team + ':' + value)
 					}
@@ -753,9 +754,9 @@ function getDoNotRepeatSQLConditions(
 			}
 			case 'FactionAndUnit': {
 				const addApplicable = (team: 'A' | 'B') => {
-					const faction = layer[M.getTeamNormalizedFactionProp(layerIndex, team)]
+					const faction = layer[M.getTeamNormalizedFactionProp(teamParity, team)]
 					if (!faction) return
-					const subFac = layer[M.getTeamNormalizedUnitProp(layerIndex, team)]
+					const subFac = layer[M.getTeamNormalizedUnitProp(teamParity, team)]
 					const factionAndUnit = M.getFactionAndUnitValue(faction, subFac)
 					if (
 						factionAndUnit
@@ -771,13 +772,15 @@ function getDoNotRepeatSQLConditions(
 			default:
 				assertNever(rule.field)
 		}
-		layerIndex--
+		teamParity = (teamParity - 1) % 2
 	}
+
 	const valuesArr = Array.from(values)
 	if (valuesArr.length === 0) {
 		return sql`1=1`
 	}
 
+	const targetLayerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length)
 	switch (rule.field) {
 		case 'Map':
 		case 'Gamemode':
@@ -792,19 +795,19 @@ function getDoNotRepeatSQLConditions(
 				.map((v) => v.slice(2))
 			return E.and(
 				E.notInArray(
-					Schema.layers[M.getTeamNormalizedFactionProp(teamParity, 'A')],
+					Schema.layers[M.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')],
 					valuesArrA,
 				),
 				E.notInArray(
-					Schema.layers[M.getTeamNormalizedFactionProp(teamParity, 'B')],
+					Schema.layers[M.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')],
 					valuesArrB,
 				),
 			)
 		}
 		case 'FactionAndUnit': {
 			const getExpr = (team: 'A' | 'B') =>
-				sql`CONCAT(${Schema.layers[M.getTeamNormalizedFactionProp(teamParity, team)]}, '_', ${
-					Schema.layers[M.getTeamNormalizedUnitProp(teamParity, team)]
+				sql`CONCAT(${Schema.layers[M.getTeamNormalizedFactionProp(oldestLayerTeamParity, team)]}, '_', ${
+					Schema.layers[M.getTeamNormalizedUnitProp(oldestLayerTeamParity, team)]
 				})`
 
 			const factionAndUnitExpressionA = getExpr('A')
@@ -834,7 +837,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	previousLayerIds: string[],
 	returnLayers: ReturnLayers,
 ): Promise<ReturnLayers extends true ? { layers: PostProcessedLayers[]; totalCount: number } : { ids: string[]; totalCount: number }> {
-	const { historicLayers, teamParity } = resolveRelevantLayerHistory(
+	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
 		previousLayerIds,
@@ -842,7 +845,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	const { conditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
 		historicLayers,
-		teamParity,
+		oldestLayerTeamParity,
 		constraints,
 	)
 	const p_condition = conditions.length > 0 ? E.and(...conditions) : sql`1=1`
@@ -906,7 +909,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	if (returnLayers) {
 		// @ts-expect-error idgaf
 		return {
-			layers: postProcessLayers(results as (M.Layer & Record<string, boolean>)[], constraints, historicLayers, teamParity),
+			layers: postProcessLayers(results as (M.Layer & Record<string, boolean>)[], constraints, historicLayers, oldestLayerTeamParity),
 			totalCount,
 		}
 	}
@@ -951,33 +954,18 @@ function hasTeam(
  * @param previousLayerIds Other IDs which should be considered as being at the front of the history, in the order they appear in the queue/list
  */
 function resolveRelevantLayerHistory(
-	ctx: C.Db,
+	ctx: C.Db & C.Log,
 	constraints: M.LayerQueryConstraint[],
 	previousLayerIds: string[],
 	startWithOffset?: number,
 ) {
-	const maxHistoryLookback = Math.max(
-		...constraints.map((c) => (c.type === 'do-not-repeat' ? c.rule.within : 0)),
+	const historicLayers = [...previousLayerIds]
+	historicLayers.push(
+		...MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0)).map(m => m.layerId),
 	)
-
-	const relevantRecentMatches = MatchHistory.state.recentMatches.slice(
-		startWithOffset ?? 0,
-		Math.max(
-			maxHistoryLookback - previousLayerIds.length + (startWithOffset ?? 0),
-			0,
-		),
-	)
-
-	const newestPrevLayerId = relevantRecentMatches[0]?.historyEntryId
-		?? MatchHistory.state.recentMatches[startWithOffset ?? 0]?.historyEntryId
-		?? 0
-
 	return {
-		historicLayers: [
-			...[...previousLayerIds].reverse(),
-			...relevantRecentMatches.map((match) => match.layerId),
-		],
-		teamParity: newestPrevLayerId + previousLayerIds.length + 1,
+		historicLayers,
+		oldestLayerTeamParity: (MatchHistory.getCurrentMatch()?.ordinal ?? 0) % 2,
 	}
 }
 
@@ -988,7 +976,7 @@ function postProcessLayers(
 	layers: (M.Layer & Record<string, boolean>)[],
 	constraints: M.LayerQueryConstraint[],
 	historicLayers: string[],
-	teamParity: number,
+	oldestLayerTeamParity: number,
 ) {
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
@@ -1006,7 +994,7 @@ function postProcessLayers(
 					constraint.rule,
 					layer.id,
 					historicLayers,
-					teamParity,
+					oldestLayerTeamParity,
 				)
 				if (isBlocked) constraintResults[idx] = false
 				if (descriptors && descriptors.length > 0) {

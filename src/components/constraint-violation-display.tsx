@@ -37,9 +37,9 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 							<ul className="flex flex-col">
 								{dnrViolations.map(v => (
 									<li key={v.id}>
-										{v.name ?? v.id}
 										{props.violationDescriptors?.[v.id]
-											&& props.violationDescriptors[v.id]?.map((descriptor) => <div key={descriptor}>{descriptor}</div>)}
+											? props.violationDescriptors[v.id]?.map((descriptor) => <div key={descriptor}>{descriptor}</div>)
+											: v.name ?? v.id}
 									</li>
 								))}
 							</ul>

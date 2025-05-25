@@ -1,6 +1,13 @@
 import * as M from '@/models'
 import * as DH from './display-helpers'
 
+export const teamColors = {
+	teamA: '#9932CC',
+	teamB: '#00BFFF',
+	team1: 'teal',
+	team2: 'coral',
+}
+
 export function getTeamsDisplay(
 	partialLayer: Partial<M.MiniLayer>,
 	teamParity: number,
@@ -10,13 +17,13 @@ export function getTeamsDisplay(
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
 	if (typeof teamParity === 'number' && !displayLayersNormalized) {
-		const colors = ['teal', 'coral']
+		const colors = [teamColors.teamA, teamColors.teamB]
 		team1Color = colors[teamParity]
 		team2Color = colors[(teamParity + 1) % 2]
 	} else if (displayLayersNormalized) {
 		// Colors specifically for (1) and (2) normalized team labels
-		team1Color = '#9932CC' // purple
-		team2Color = '#00BFFF' // deep sky blue
+		team1Color = teamColors.team1
+		team2Color = teamColors.team2
 	}
 
 	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined

@@ -76,6 +76,7 @@ export default class SquadRcon {
 		const players: SM.Player[] = []
 
 		if (!res || res.data.length < 1) return { code: 'ok' as const, players: [] }
+		console.log(res.data)
 
 		for (const line of res.data.split('\n')) {
 			const match = line.match(
