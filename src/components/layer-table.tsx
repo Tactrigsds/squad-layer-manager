@@ -8,13 +8,11 @@ import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
-import * as FB from '@/lib/filter-builders'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
-import type { LayersQueryInput } from '@/server/systems/layer-queries'
-import { useLayerExists, useLayersQuery } from '@/systems.client/layer-queries.client'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
@@ -192,7 +190,7 @@ const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 
 	| M.LayerCompositeKey
 )[]
 
-const DEFAULT_SORT: LayersQueryInput['sort'] = {
+const DEFAULT_SORT: M.LayersQueryInput['sort'] = {
 	type: 'column',
 	sortBy: 'Asymmetry_Score',
 	sortDirection: 'ASC',
@@ -244,8 +242,6 @@ export default function LayerTable(props: {
 			setSorting([])
 		}
 	}
-
-	let queryConstraints = props.queryContext?.constraints
 
 	let defaultSortingState: SortingState = []
 	if (props.defaultSortBy && props.defaultSortBy !== 'random') {
@@ -350,15 +346,7 @@ export default function LayerTable(props: {
 		setPageSize(newState.pageSize)
 	}
 
-	if (showSelectedLayers) {
-		const filter = FB.comp(FB.inValues('id', props.selected))
-		queryConstraints = [
-			...(queryConstraints ?? []).filter(q => q.applyAs === 'field'),
-			{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' },
-		]
-	}
-
-	let sort: LayersQueryInput['sort'] = DEFAULT_SORT
+	let sort: M.LayersQueryInput['sort'] = DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
 	} else if (sortingState.length > 0) {
@@ -370,13 +358,12 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const layersRes = useLayersQuery({
+	const layersRes = LayerQueriesClient.useLayersQuery(LayerQueriesClient.getLayerQueryInput(props.queryContext ?? {}, {
 		pageIndex: props.pageIndex,
+		selectedLayers: showSelectedLayers ? props.selected : undefined,
 		pageSize,
 		sort,
-		constraints: queryConstraints,
-		previousLayerIds: props.queryContext?.previousLayerIds ?? [],
-	})
+	}))
 
 	let page = layersRes.data
 	if (showSelectedLayers && page) {
@@ -430,7 +417,7 @@ export default function LayerTable(props: {
 	const table = useReactTable({
 		data: page?.layers.map((layer): RowData => ({
 			...layer,
-			constraints: { values: layer.constraints, constraints: queryConstraints ?? [] },
+			constraints: { values: layer.constraints, constraints: props.queryContext?.constraints ?? [] },
 		})) ?? [],
 		columns: COL_DEFS,
 		pageCount: page?.pageCount ?? -1,
@@ -727,7 +714,7 @@ const SetRawLayerDialog = React.forwardRef<
 		delay: 400,
 	})
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
-	const layersKnownRes = useLayerExists(layerIds, { enabled: !!validLayerDebounced })
+	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
 	React.useImperativeHandle(
 		ref,

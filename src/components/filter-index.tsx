@@ -3,6 +3,7 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/comp
 import * as Typography from '@/lib/typography'
 import * as M from '@/models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
 import React from 'react'
 import { Link } from 'react-router-dom'
@@ -15,7 +16,7 @@ export default function FiltersIndex() {
 		document.title = 'SLM - Filters'
 	}, [])
 
-	const filters = FilterEntityClient.useFilterEntities()
+	const filterEntities = FilterEntityClient.useFilterEntities()
 	return (
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
@@ -25,15 +26,21 @@ export default function FiltersIndex() {
 				</Link>
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{[...filters.values()]?.map((filter) => {
-					const user = PartsSys.findUser(filter.owner)
+				{[...filterEntities.values()]?.map((entity) => {
+					const user = PartsSys.findUser(entity.owner)
+					const onHover = () => {
+						console.log('prefetching')
+						LayerQueriesClient.prefetchLayersQuery(
+							LayerQueriesClient.getLayerQueryInput({ constraints: [M.getEditedFilterConstraint(entity.filter)] }),
+						)
+					}
 					return (
-						<li key={filter.id}>
-							<Link to={AR.link('/filters/:id', filter.id)} className="block h-full">
+						<li key={entity.id}>
+							<Link onMouseEnter={onHover} to={AR.link('/filters/:id', entity.id)} className="block h-full">
 								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground">
 									<CardHeader>
-										<CardTitle>{filter.name}</CardTitle>
-										<CardDescription>{filter.description}</CardDescription>
+										<CardTitle>{entity.name}</CardTitle>
+										<CardDescription>{entity.description}</CardDescription>
 									</CardHeader>
 									<CardFooter>
 										<p className="text-sm">Owner: {user?.username}</p>

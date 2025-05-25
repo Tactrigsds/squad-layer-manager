@@ -1,7 +1,7 @@
 import { sleep } from '@/lib/async'
+import * as FB from '@/lib/filter-builders'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
-import { type LayersQueryInput } from '@/server/systems/layer-queries'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as PartsSys from '@/systems.client/parts'
@@ -13,7 +13,7 @@ import superjson from 'superjson'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 
-export function useLayersQuery(input: LayersQueryInput, options?: { enabled?: boolean }) {
+export function useLayersQuery(input: M.LayersQueryInput, options?: { enabled?: boolean }) {
 	options ??= {}
 	return useQuery({
 		...options,
@@ -22,6 +22,45 @@ export function useLayersQuery(input: LayersQueryInput, options?: { enabled?: bo
 		queryFn: () => trpc.layers.queryLayers.query(input),
 		staleTime: Infinity,
 	})
+}
+
+export function prefetchLayersQuery(input: M.LayersQueryInput) {
+	return reactQueryClient.prefetchQuery({
+		queryKey: ['layers', 'queryLayers', superjson.serialize(input)],
+		queryFn: () => trpc.layers.queryLayers.query(input),
+		staleTime: Infinity,
+	})
+}
+
+export function getLayerQueryInput(queryContext: M.LayerQueryContext, opts?: {
+	selectedLayers?: M.LayerId[]
+	sort?: M.LayersQueryInput['sort']
+	pageSize?: number
+	pageIndex?: number
+}): M.LayersQueryInput {
+	const sort = opts?.sort ?? M.DEFAULT_SORT
+	const pageSize = opts?.pageSize ?? M.DEFAULT_PAGE_SIZE
+	const pageIndex = opts?.pageIndex
+	const selectedLayers = opts?.selectedLayers
+
+	if (selectedLayers) {
+		const filter = FB.comp(FB.inValues('id', selectedLayers))
+		queryContext = {
+			...queryContext,
+			constraints: [
+				...(queryContext.constraints?.filter(c => c.applyAs === 'field') ?? []),
+				{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' },
+			],
+		}
+	}
+
+	return {
+		previousLayerIds: queryContext.previousLayerIds ?? [],
+		constraints: queryContext.constraints ?? [],
+		pageIndex,
+		sort,
+		pageSize,
+	}
 }
 
 export function useLayerComponents(input: Parameters<typeof trpc.layers.queryLayerComponents.query>[0], options?: { enabled?: boolean }) {

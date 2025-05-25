@@ -207,7 +207,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	const queryContext: M.LayerQueryContext | undefined = React.useMemo(() =>
 		validFilter
 			? ({
-				constraints: [{ type: 'filter-anon', id: 'edited-filter', filter: validFilter, applyAs: 'where-condition' }],
+				constraints: [M.getEditedFilterConstraint(validFilter)],
 			})
 			: undefined, [validFilter])
 

@@ -45,7 +45,7 @@ export const LayersQueryInputSchema = z.object({
 		),
 	previousLayerIds: z
 		.array(M.LayerIdSchema)
-		.default([])
+		.optional()
 		.describe(
 			'Layer Ids to be considered as part of the history for DNR rules',
 		),
@@ -71,7 +71,7 @@ export async function queryLayers(args: {
 			ctx,
 			input.pageSize,
 			input.constraints ?? [],
-			input.previousLayerIds,
+			input.previousLayerIds ?? [],
 			true,
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
@@ -81,7 +81,7 @@ export async function queryLayers(args: {
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		constraints,
-		input.previousLayerIds,
+		input.previousLayerIds ?? [],
 		input.historyOffset,
 	)
 	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(

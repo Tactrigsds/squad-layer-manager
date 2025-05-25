@@ -998,6 +998,54 @@ export function filterEntityToConstraint(
 	}
 }
 
+export const LayersQuerySortSchema = z
+	.discriminatedUnion('type', [
+		z.object({
+			type: z.literal('column'),
+			sortBy: z.enum(COLUMN_KEYS),
+			sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
+		}),
+		z.object({
+			type: z.literal('random'),
+			seed: z.number().int().positive(),
+		}),
+	])
+	.describe('if not provided, no sorting will be done')
+
+export const DEFAULT_SORT: LayersQueryInput['sort'] = {
+	type: 'column',
+	sortBy: 'Asymmetry_Score',
+	sortDirection: 'ASC',
+}
+export const DEFAULT_PAGE_SIZE = 20
+
+export const LayersQueryInputSchema = z.object({
+	pageIndex: z.number().int().min(0).optional(),
+	pageSize: z.number().int().min(1).max(200).optional(),
+	sort: LayersQuerySortSchema.optional(),
+	constraints: z.array(LayerQueryConstraintSchema).optional(),
+	historyOffset: z
+		.number()
+		.int()
+		.min(0)
+		.optional()
+		.describe(
+			'Offset of history entries to consider for DNR rules, where 0 is current layer, 1 is the previous layer, etc',
+		),
+	previousLayerIds: z
+		.array(LayerIdSchema)
+		.default([])
+		.describe(
+			'Layer Ids to be considered as part of the history for DNR rules',
+		),
+})
+
+export function getEditedFilterConstraint(filter: FilterNode): LayerQueryConstraint {
+	return { type: 'filter-anon', id: 'edited-filter', filter, applyAs: 'where-condition' }
+}
+
+export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
+
 export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]
 
