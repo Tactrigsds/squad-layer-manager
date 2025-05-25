@@ -88,12 +88,12 @@ export default function MatchHistoryPanel() {
 	let matchCount = 0
 
 	{
-		const today = new Date()
-		today.setHours(0, 0, 0, 0)
+		const fiveHoursAgo = new Date()
+		fiveHoursAgo.setTime(fiveHoursAgo.getTime() - 5 * 60 * 60 * 1000)
 
-		for (let i = 0; i < allEntries.length && matchCount < 10; i++) {
+		for (let i = 0; i < allEntries.length && matchCount < 5; i++) {
 			const entry = allEntries[i]
-			if (entry.status === 'post-game' && entry.endTime < today) break
+			if (entry.status === 'post-game' && entry.endTime < fiveHoursAgo) break
 			if (entry.status !== 'post-game') continue
 			const outcome = SM.getTeamNormalizedOutcome(entry)
 			if (outcome.type !== 'draw') {

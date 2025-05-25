@@ -155,7 +155,7 @@ export default function CurrentLayerCard() {
 										Disable SLM Updates
 									</DropdownMenuItem>
 								)}
-							<DropdownMenuItem disabled={!canDisableFogOfWar} onClick={disableFogOfWar}>
+							<DropdownMenuItem title="Disables Fog Of War for the current match" disabled={!canDisableFogOfWar} onClick={disableFogOfWar}>
 								Disable Fog Of War
 							</DropdownMenuItem>
 						</DropdownMenuContent>
