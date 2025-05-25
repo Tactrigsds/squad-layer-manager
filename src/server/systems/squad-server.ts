@@ -344,21 +344,25 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 			using _lock = await acquireInBlock(MatchHistory.modifyHistoryMtx)
 			await DB.runTransaction(ctx, async (ctx) => {
 				const currentMatch = MatchHistory.getCurrentMatch()
+				let createNew = false
 				if (!currentMatch || !M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
 					delete state.currentMatchId
-					return
+					createNew = true
 				}
 				const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [event.winner, event.loser]
 				if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
 				const outcome = event.winner === null ? 'draw' : event.winner.team === 1 ? 'team1' : 'team2'
-				const entry: Partial<SchemaModels.NewMatchHistory> = {
+				// we're populating end specific properties as well as any properties we may have access to in case this is a new entry
+				const entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
+					layerId: currentMatch?.layerId ?? statusRes.data.currentLayer.id,
 					endTime: event.time,
 					team1Tickets: teams[0]?.tickets,
 					team2Tickets: teams[1]?.tickets,
+					setByType: currentMatch?.layerSource.type ?? 'unknown',
 					outcome,
 				}
 
-				state.currentMatchId = (await MatchHistory.finalizeCurrentMatch(ctx, entry, { lock: false }))?.historyEntryId
+				state.currentMatchId = (await MatchHistory.finalizeCurrentMatch(ctx, entry, { lock: false, createNew }))?.historyEntryId
 			})
 			return { code: 'ok' as const }
 		}

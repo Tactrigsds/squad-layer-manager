@@ -104,13 +104,17 @@ export async function addNewCurrentMatch(ctx: C.Log & C.Db, entry: Omit<SchemaMo
 
 export async function finalizeCurrentMatch(
 	ctx: C.Log & C.Db,
-	entry: Partial<SchemaModels.NewMatchHistory>,
-	opts?: { lock?: boolean },
+	entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>,
+	opts?: { lock?: boolean; createNew?: boolean },
 ) {
+	const createNew = opts?.createNew ?? false
 	using _lock = await acquireInBlock(modifyHistoryMtx, { bypass: !(opts?.lock ?? true) })
 	const currentMatch = getCurrentMatch()
-	if (!currentMatch) {
-		ctx.log.warn('unable to update current match: empty')
+	if (!currentMatch || createNew) {
+		ctx.log.warn('unable to update current match. inserting new entry instead')
+		const prevOrdinal = state.recentMatches[state.recentMatches.length - 1]?.ordinal
+		const ordinal = prevOrdinal ? prevOrdinal + 1 : 0
+		await ctx.db().insert(Schema.matchHistory).values({ ...entry, ordinal })
 		return
 	}
 
