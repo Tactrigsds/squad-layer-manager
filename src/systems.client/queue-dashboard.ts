@@ -391,7 +391,7 @@ export const initialState: QDState = {
 	extraQueryFilters: [],
 	poolApplyAs: {
 		dnr: 'field',
-		filter: 'field',
+		filter: 'where-condition',
 	},
 }
 
