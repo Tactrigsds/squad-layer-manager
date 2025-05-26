@@ -1,3 +1,5 @@
+import * as OneToMany from '@/lib/one-to-many-map.ts'
+import { OneToManyMap } from '@/lib/one-to-many-map.ts'
 import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
 import { Client as FTPClient } from 'basic-ftp'
@@ -10,11 +12,15 @@ import * as SM from './squad-models.ts'
 import WritableBuffer from './writable-buffer.ts'
 
 const tracer = Otel.trace.getTracer('fetch-admin-lists')
-export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sources: SM.AdminListSource[]) => {
-	const groups: { [key: string]: string[] } = {}
-	const admins: SM.SquadAdmins = new Map()
+export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sources: SM.AdminListSource[]): Promise<SM.AdminList> => {
+	// maps groups to their permissions
+	const groups: OneToManyMap<string, string> = new Map()
 
-	for (const [idx, source] of sources.entries()) {
+	// maps admins to their groups
+	const admins: OneToManyMap<bigint, string> = new Map()
+
+	for (const [_idx, source] of sources.entries()) {
+		ctx.log.info(`Fetching admin list from ${source.type} source ${source.source}`)
 		let data = ''
 		try {
 			switch (source.type) {
@@ -69,28 +75,19 @@ export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sour
 		const adminRgx = /(?<=^Admin=)(?<adminID>\d{17}|[a-f0-9]{32}):(?<groupID>\S+)/gm
 
 		for (const m of data.matchAll(groupRgx)) {
-			groups[`${idx}-${m.groups!.groupID}`] = m.groups!.groupPerms.split(',')
+			for (const perm of m.groups!.groupPerms.split(',')) {
+				OneToMany.set(groups, m.groups!.groupID, perm)
+			}
 		}
 		for (const m of data.matchAll(adminRgx)) {
 			try {
-				const group = groups[`${idx}-${m.groups!.groupID}`]
-				const perms: SM.SquadAdminPerms = {}
-				for (const groupPerm of group) perms[groupPerm.toLowerCase()] = true
-
 				const adminID = BigInt(m.groups!.adminID)
-				if (admins.has(adminID)) {
-					const existingPerms = admins.get(adminID)!
-					admins.set(adminID, Object.assign(existingPerms, perms))
-					ctx.log.trace(`Merged duplicate Admin ${adminID} to ${Object.keys(admins.get(adminID)!)}`)
-				} else {
-					admins.set(adminID, perms)
-					ctx.log.trace(`Added Admin ${adminID} with ${Object.keys(perms)}`)
-				}
+				OneToMany.set(admins, adminID, m.groups!.groupID)
 			} catch (error) {
 				ctx.log.error(`Error parsing admin group ${m.groups!.groupID} from admin list: ${source.source}`, error)
 			}
 		}
 	}
 	ctx.log.trace(`${Object.keys(admins).length} admins loaded...`)
-	return admins
+	return { admins, groups }
 })

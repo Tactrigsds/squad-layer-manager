@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as zUtils from '@/lib/zod'
 import { z } from 'zod'
+import { OneToManyMap } from '../one-to-many-map'
 
 import * as M from '@/models'
 import { assertNever, nullOrUndefined as nullOrUndef } from '../typeGuards'
@@ -325,8 +326,9 @@ export const AdminListSourceSchema = z.object({
 	source: z.string(),
 })
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
-export type SquadAdminPerms = { [key: string]: boolean }
-export type SquadAdmins = Map<bigint, Record<string, boolean>>
+export type SquadAdmins = OneToManyMap<bigint, string>
+export type SquadGroups = OneToManyMap<string, string>
+export type AdminList = { admins: SquadAdmins; groups: SquadGroups }
 
 export const BiomeSchema = z.object({
 	name: z.string(),

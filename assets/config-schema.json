@@ -8,6 +8,11 @@
       "anyOf": [{"type": "string", "default": "#033e03"}, {"type": "null"}],
       "description": "this should be set to null for production"
     },
+    "warnPrefix": {
+      "type": "string",
+      "default": "SLM: ",
+      "description": "Prefix to use for warnings"
+    },
     "defaults": {
       "type": "object",
       "properties": {
@@ -108,17 +113,17 @@
         },
         "adminQueueReminderInterval": {
           "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "25s",
+          "default": "10m",
           "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often."
         },
         "voteReminderInterval": {
           "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "15s",
+          "default": "45s",
           "description": "How often to remind users to vote"
         },
         "startVoteReminderThreshold": {
           "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "25m",
+          "default": "20m",
           "description": "How far into a match to start reminding admins to start a vote"
         },
         "finalVote": {
@@ -174,7 +179,7 @@
     },
     "adminListAdminRole": {
       "type": "string",
-      "description": "The role in the adminlist which identifies an admin"
+      "description": "The role in the adminlist which identifies an admin for SLM's purposes"
     },
     "homeDiscordGuildId": {"type": "string", "pattern": "^-?\\d+$"},
     "globalRolePermissions": {

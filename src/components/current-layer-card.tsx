@@ -185,10 +185,6 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
 				break
-			case 'err':
-				console.error(res)
-				globalToast$.next({ title: 'error while ending match', variant: 'destructive' })
-				break
 			default:
 				assertNever(res)
 		}

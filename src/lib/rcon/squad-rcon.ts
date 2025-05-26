@@ -20,6 +20,7 @@ export default class SquadRcon {
 	constructor(
 		ctx: C.Log,
 		public core: Rcon,
+		private opts?: { warnPrefix?: string },
 	) {
 		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx), { defaultTTL: 5000 })
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
@@ -175,13 +176,16 @@ export default class SquadRcon {
 			msgArr = Array.isArray(opts.msg) ? opts.msg : [opts.msg]
 			repeatCount = opts.repeat || 1
 		}
+		if (msgArr[0] && this.opts?.warnPrefix) {
+			msgArr[0] = this.opts.warnPrefix + msgArr[0]
+		}
 
 		ctx.log.info(`Warning player: %s: %s`, anyID, msgArr)
 		for (let i = 0; i < repeatCount; i++) {
+			if (i !== 0) await sleep(5000)
 			for (const msg of msgArr) {
 				await this.core.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
 			}
-			await sleep(5000)
 		}
 	}
 

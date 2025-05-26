@@ -4,6 +4,7 @@ import { HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as RBAC from '@/rbac.models'
 import * as Paths from '@/server/paths'
 import * as Cli from '@/server/systems/cli.ts'
+import { DEPRECATION_WARNING_PREFIX } from 'discord.js'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import fs from 'node:fs/promises'
@@ -28,6 +29,7 @@ export const ConfigSchema = z.object({
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: StrNoWhitespace,
 	topBarColor: z.string().default('#033e03').nullable().describe('this should be set to null for production'),
+	warnPrefix: z.string().optional().default('SLM: ').describe('Prefix to use for warnings'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 	}),
@@ -43,11 +45,11 @@ export const ConfigSchema = z.object({
 			.positive()
 			.default(2)
 			.describe('Number of layers in the queue to trigger a low queue size warning'),
-		adminQueueReminderInterval: HumanTime.default('25s').describe(
+		adminQueueReminderInterval: HumanTime.default('10m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
-		voteReminderInterval: HumanTime.default('15s').describe('How often to remind users to vote'),
-		startVoteReminderThreshold: HumanTime.default('25m').describe('How far into a match to start reminding admins to start a vote'),
+		voteReminderInterval: HumanTime.default('45s').describe('How often to remind users to vote'),
+		startVoteReminderThreshold: HumanTime.default('20m').describe('How far into a match to start reminding admins to start a vote'),
 		finalVote: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
 		postRollAnnouncementsTimeout: HumanTime.default('5m').describe('How long to wait before sending post-roll reminders'),
 	}).default({}),
@@ -59,7 +61,7 @@ export const ConfigSchema = z.object({
 	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
 
 	adminListSources: z.array(SM.AdminListSourceSchema),
-	adminListAdminRole: z.string().describe('The role in the adminlist which identifies an admin'),
+	adminListAdminRole: z.string().describe("The role in the adminlist which identifies an admin for SLM's purposes"),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
 		.record(z.array(z.union([RBAC.GLOBAL_PERMISSION_TYPE, z.literal('*').describe('include all permissions')])))
@@ -102,7 +104,10 @@ export async function ensureConfigSetup() {
 }
 
 export function getPublicConfig() {
-  return { ...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor']), isProduction: ENV.NODE_ENV === 'production' }
+	return {
+		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor']),
+		isProduction: ENV.NODE_ENV === 'production',
+	}
 }
 
 export async function generateConfigJsonSchema() {

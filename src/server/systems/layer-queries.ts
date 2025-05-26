@@ -868,8 +868,10 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	const allWeights = await allWeightsPromise
 
 	if (baseLayerPool.length === 0) {
-	if (returnLayers) return { layers: [], totalCount }
-    return { ids: [], totalCount: 0 }
+		// @ts-expect-error idgaf
+		if (returnLayers) return { layers: [], totalCount } as { layers: PostProcessedLayers[]; totalCount: number }
+		// @ts-expect-error idgaf
+		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
 
 	const selected: string[] = []

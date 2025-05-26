@@ -1,5 +1,6 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
 import { acquireInBlock, AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
+import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import * as SM from '@/lib/rcon/squad-models'
@@ -38,7 +39,7 @@ const tracer = Otel.trace.getTracer('squad-server')
 export let rcon!: SquadRcon
 export let squadLogEvents!: SquadEventEmitter
 
-export let adminList!: AsyncResource<SM.SquadAdmins>
+export let adminList!: AsyncResource<SM.AdminList>
 export let serverStatus!: AsyncResource<SM.ServerStatusWithCurrentMatchRes>
 
 export let state!: SquadServerState
@@ -47,14 +48,13 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squa
 let ENV!: ReturnType<typeof envBuilder>
 
 export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, options: WarnOptions) => {
-	const [{ value: admins }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
+	const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
 	const ops: Promise<void>[] = []
 
 	if (playersRes.code === 'err:rcon') return
 	for (const player of playersRes.players) {
-		const groups = admins.get(player.steamID)
-		if (groups?.[CONFIG.adminListAdminRole]) {
-			ops.push(rcon.warn(ctx, player.steamID.toString(), options))
+		if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
+			await rcon.warn(ctx, player.steamID.toString(), options)
 		}
 	}
 	await Promise.all(ops)
@@ -67,19 +67,13 @@ async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 }
 
 async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
-	try {
-		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'all',
-			permits: [RBAC.perm('squad-server:end-match')],
-		})
-		if (deniedRes) return deniedRes
-		await rcon.endMatch(ctx)
-		await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
-	} catch (err) {
-		return { code: 'err' as const, msg: 'error while ending match', err }
-	}
+	const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+		check: 'all',
+		permits: [RBAC.perm('squad-server:end-match')],
+	})
+	if (deniedRes) return deniedRes
 	await rcon.endMatch(ctx)
-	await warnAllAdmins(ctx, 'Match ended via squad-layer-manager')
+	await warnAllAdmins(ctx, BROADCASTS.matchEnded(ctx.user))
 	return { code: 'ok' as const }
 }
 
@@ -208,7 +202,7 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async () => {
 	ENV = envBuilder()
 	// -------- set up admin list --------
-	const adminListTTL = 1000 * 60 * 60
+	const adminListTTL = 1000 * 60 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })
 
 	state = {}
@@ -237,7 +231,7 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 				}
 			}
 		})
-	rcon = new SquadRcon(ctx, coreRcon)
+	rcon = new SquadRcon(ctx, coreRcon, { warnPrefix: CONFIG.warnPrefix })
 
 	rcon.event$.subscribe(async (event) => {
 		if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {

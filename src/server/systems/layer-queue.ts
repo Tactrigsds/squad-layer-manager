@@ -176,7 +176,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			distinctDeepEquals(),
 			Rx.scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
 			C.durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
-			  C.setSpanOpAttrs({ status, prevStatus })
+				C.setSpanOpAttrs({ status, prevStatus })
 				if (!status) return
 				await DB.runTransaction(ctx, (ctx) => processLayerStatusChange(ctx, status, prevStatus))
 				C.setSpanStatus(Otel.SpanStatusCode.OK)

@@ -15,3 +15,9 @@ export function del<K, V>(map: OneToManyMap<K, V>, key: K, value: V) {
 	s.delete(value)
 	if (s.size === 0) map.delete(key)
 }
+
+export function has<K, V>(map: OneToManyMap<K, V>, key: K, value: V) {
+	const s = map.get(key)
+	if (!s) return false
+	return s.has(value)
+}

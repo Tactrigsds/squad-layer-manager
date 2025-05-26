@@ -13,6 +13,9 @@ function formatInterval(interval: number) {
 
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
+	matchEnded(user: M.User) {
+		return `${user.username} ended the match via squad-layer-manager`
+	},
 	queue: {},
 	vote: {
 		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
@@ -61,7 +64,7 @@ export const WARNS = {
 	},
 	queue: {
 		lowLayerCount(count: number) {
-			return `WARNING: only ${count} items in the queue. Consider adding some more`
+			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
