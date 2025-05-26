@@ -176,56 +176,50 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 			distinctDeepEquals(),
 			Rx.scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
 			C.durableSub('layer-queue:check-layer-status-change', { ctx, tracer }, async ([status, prevStatus]) => {
+			  C.setSpanOpAttrs({ status, prevStatus })
 				if (!status) return
-				ctx.log.info('checking layer status change')
 				await DB.runTransaction(ctx, (ctx) => processLayerStatusChange(ctx, status, prevStatus))
 				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		)
 		.subscribe()
 
-	const processLayerStatusChange = C.spanOp(
-		'layer-queue:process-layer-status-change',
-		{ tracer },
-		async (ctx: C.Log & C.Db & C.Tx, status: LayerStatus, prevStatus: LayerStatus | null) => {
-			C.setSpanOpAttrs({ status, prevStatus })
-			ctx.log.debug('status change')
-			const serverState = await getServerState({ lock: true }, ctx)
-			const action = checkforStatusChangeActions(status, prevStatus, serverState)
-			switch (action.code) {
-				case 'correct-layer-set:no-action':
-				case 'sync-disabled:no-action':
-				case 'no-next-layer-set:no-action':
-					break
-				case 'expected-new-current-layer:roll':
-					await handleServerRoll(ctx, serverState)
-					break
-				case 'layer-change-with-empty-queue:buffer-next-match-context': {
-					// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to so we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
-					const item = M.createLayerListItem({
-						layerId: status.currentLayer.id,
-						source: { type: 'unknown' },
-					})
-					SquadServer.bufferNextMatchLQItem(item)
-					break
-				}
-				case 'current-layer-changed:reset':
-					// unclear if this can even be hit at the moment
-					await handleAdminChangeLayer(ctx, serverState)
-					break
-				case 'unknown-layer-set:no-action':
-					break
-				case 'unexpected-layer-change:reset':
-				case 'null-layer-set:reset': {
-					await syncNextLayerInPlace(ctx, serverState)
-					break
-				}
-				default:
-					assertNever(action)
+	async function processLayerStatusChange(ctx: C.Log & C.Db & C.Tx, status: LayerStatus, prevStatus: LayerStatus | null) {
+		const serverState = await getServerState({ lock: true }, ctx)
+		const action = checkforStatusChangeActions(status, prevStatus, serverState)
+		switch (action.code) {
+			case 'correct-layer-set:no-action':
+			case 'sync-disabled:no-action':
+			case 'no-next-layer-set:no-action':
+				break
+			case 'expected-new-current-layer:roll':
+				await handleServerRoll(ctx, serverState)
+				break
+			case 'layer-change-with-empty-queue:buffer-next-match-context': {
+				// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to so we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
+				const item = M.createLayerListItem({
+					layerId: status.currentLayer.id,
+					source: { type: 'unknown' },
+				})
+				SquadServer.bufferNextMatchLQItem(item)
+				break
 			}
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
-		},
-	)
+			case 'current-layer-changed:reset':
+				// unclear if this can even be hit at the moment
+				await handleAdminChangeLayer(ctx, serverState)
+				break
+			case 'unknown-layer-set:no-action':
+				break
+			case 'unexpected-layer-change:reset':
+			case 'null-layer-set:reset': {
+				await syncNextLayerInPlace(ctx, serverState)
+				break
+			}
+			default:
+				assertNever(action)
+		}
+		C.setSpanStatus(Otel.SpanStatusCode.OK)
+	}
 
 	const handleServerRoll = C.spanOp(
 		'layer-queue:handle-server-roll',

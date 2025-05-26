@@ -67,7 +67,7 @@ export async function setup() {
 }
 
 export const matchHistoryRouter = router({
-	watchRecentMatchHistory: procedure.subscription(async function*({ ctx }) {
+	watchRecentMatchHistory: procedure.subscription(async function*() {
 		yield state
 		for await (const _ of toAsyncGenerator(recentMatchesModified$)) {
 			yield state
@@ -78,28 +78,30 @@ export const matchHistoryRouter = router({
 export async function addNewCurrentMatch(ctx: C.Log & C.Db, entry: Omit<SchemaModels.MatchHistory, 'id' | 'ordinal'>) {
 	using _lock = await acquireInBlock(modifyHistoryMtx)
 
-	return await DB.runTransaction(ctx, async (ctx) => {
-		let userPromise: Promise<M.User | undefined> | undefined
-		if (entry.setByUserId) {
-			userPromise = (async () => (await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, entry.setByUserId!)))[0])()
-		}
-		const ordinal = (state.recentMatches[state.recentMatches.length - 1]?.ordinal ?? 0) + 1
+	let userPromise: Promise<M.User | undefined> | undefined
+	if (entry.setByUserId) {
+		userPromise = (async () => (await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, entry.setByUserId!)))[0])()
+	}
+	const ordinal = (state.recentMatches[state.recentMatches.length - 1]?.ordinal ?? 0) + 1
+	const newEntry = await DB.runTransaction(ctx, async (ctx) => {
 		const [{ id }] = await ctx.db().insert(Schema.matchHistory).values({ ...entry, ordinal }).$returningId()
-		addMatch(SM.matchHistoryEntryToMatchDetails({ ...entry, lqItemId: entry.lqItemId, ordinal, id }))
-		if (userPromise) {
-			const user = await userPromise
-			if (user) {
-				const existingIdx = state.parts.users.findIndex(u => u.discordId === user.discordId)
-				if (existingIdx !== -1) {
-					state.parts.users[existingIdx] = user
-				} else {
-					state.parts.users.push(user)
-				}
+		return (await ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.id, id)))[0]
+	})
+
+	addMatch(SM.matchHistoryEntryToMatchDetails(newEntry))
+	if (userPromise) {
+		const user = await userPromise
+		if (user) {
+			const existingIdx = state.parts.users.findIndex(u => u.discordId === user.discordId)
+			if (existingIdx !== -1) {
+				state.parts.users[existingIdx] = user
+			} else {
+				state.parts.users.push(user)
 			}
 		}
-		recentMatchesModified$.next()
-		return { code: 'ok' as const, match: getCurrentMatch() }
-	})
+	}
+	recentMatchesModified$.next()
+	return { code: 'ok' as const, match: getCurrentMatch() }
 }
 
 export async function finalizeCurrentMatch(
@@ -123,16 +125,16 @@ export async function finalizeCurrentMatch(
 		return
 	}
 
-	// We're running a transaction here to keep in line with calling .next during the sql transaction. if we want to send the event after the transaction we should change this pattern in all places where we're sending the event and not just here
-	return await DB.runTransaction(ctx, async ctx => {
+	const updatedEntry = await DB.runTransaction(ctx, async ctx => {
 		await ctx.db().update(Schema.matchHistory).set(entry).where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
-		state.recentMatches[state.recentMatches.length - 1] = SM.matchHistoryEntryToMatchDetails({
-			...SM.matchHistoryEntryFromMatchDetails(currentMatch),
-			...entry,
-		})
-		recentMatchesModified$.next()
-		return getCurrentMatch()
+		const [updatedMatch] = await ctx.db().select().from(Schema.matchHistory).where(
+			E.eq(Schema.matchHistory.id, currentMatch.historyEntryId),
+		)
+		return updatedMatch
 	})
+	state.recentMatches[state.recentMatches.length - 1] = SM.matchHistoryEntryToMatchDetails(updatedEntry)
+	recentMatchesModified$.next()
+	return getCurrentMatch()
 }
 
 /**
@@ -143,18 +145,18 @@ export async function resolvePotentialSquadServerCurrentLayerConflict(ctx: C.Db,
 	const currentMatch = getCurrentMatch()
 
 	if (!currentMatch || currentMatch.status === 'in-progress' && !M.areLayerIdsCompatible(currentLayerOnServer, currentMatch.layerId)) {
-		await DB.runTransaction(ctx, async (ctx) => {
+		const newCurrentMatchEntry = await DB.runTransaction(ctx, async (ctx) => {
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			console.log(state.recentMatches)
 			const [{ id }] = await ctx.db().insert(Schema.matchHistory).values({
 				layerId: currentLayerOnServer,
 				ordinal,
 				setByType: 'unknown',
 			}).$returningId()
 			const [newCurrentMatchEntry] = await ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.id, id))
-			addMatch(SM.matchHistoryEntryToMatchDetails(newCurrentMatchEntry))
-			recentMatchesModified$.next()
+			return newCurrentMatchEntry
 		})
+		addMatch(SM.matchHistoryEntryToMatchDetails(newCurrentMatchEntry))
+		recentMatchesModified$.next()
 	}
 }
 

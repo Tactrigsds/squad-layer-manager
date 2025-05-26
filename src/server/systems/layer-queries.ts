@@ -295,7 +295,6 @@ export async function getConstraintSQLConditions(
 			)
 		case 'do-not-repeat':
 			return getDoNotRepeatSQLConditions(
-				ctx,
 				constraint.rule,
 				previousLayerIds,
 				teamParity,
@@ -716,17 +715,15 @@ function getisBlockedByDoNotRepeatRuleDirect(
 }
 
 function getDoNotRepeatSQLConditions(
-	ctx: C.Db,
 	rule: M.DoNotRepeatRule,
 	previousLayerIds: string[],
 	oldestLayerTeamParity: number,
 ) {
 	const values = new Set<string>()
-	const layerIds = previousLayerIds.slice(0, rule.within)
 	if (rule.within <= 0) return sql`1=1`
 
 	let teamParity = SM.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length - 1)
-	for (let i = previousLayerIds.length - 1; i >= Math.max(layerIds.length - rule.within, 0); i--) {
+	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
 		const layer = M.getLayerDetailsFromUnvalidated(
 			M.getUnvalidatedLayerFromId(previousLayerIds[i]),
 		)
@@ -871,8 +868,8 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	const allWeights = await allWeightsPromise
 
 	if (baseLayerPool.length === 0) {
-		// @ts-expect-error type-safe method is too annoying
-		return { layers: [], totalCount: 0 }
+	if (returnLayers) return { layers: [], totalCount }
+    return { ids: [], totalCount: 0 }
 	}
 
 	const selected: string[] = []
