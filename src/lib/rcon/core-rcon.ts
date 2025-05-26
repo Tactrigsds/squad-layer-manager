@@ -109,7 +109,7 @@ export default class Rcon extends EventEmitter {
 	}
 
 	async execute(_ctx: C.Log, body: string) {
-		return C.spanOp('rcon:execute', { tracer }, async () => {
+		return C.spanOp('rcon:execute', { tracer, eventLogLevel: 'trace' }, async () => {
 			const ctx = this.addLogProps(_ctx)
 			ctx.log.trace(`Executing %s `, body)
 			if (typeof body !== 'string') {

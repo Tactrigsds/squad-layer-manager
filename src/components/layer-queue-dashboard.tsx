@@ -575,6 +575,7 @@ function VoteState() {
 				body = (
 					<>
 						<Timer
+							zeros={true}
 							deadline={voteState.deadline}
 							className={Typography.Blockquote}
 						/>

@@ -2,7 +2,7 @@
 services:
   db:
     container_name: slm-db
-    image: mysql
+    image: mysql:8.0
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: dev

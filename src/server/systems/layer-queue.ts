@@ -43,7 +43,7 @@ let postRollEventsSub: Rx.Subscription | undefined
 const voteStateMtx = new Mutex()
 
 const tracer = Otel.trace.getTracer('layer-queue')
-export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
+export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'info' }, async () => {
 	const log = baseLogger
 	const ctx = DB.addPooledDb({ log })
 	ctx.log.info('setting up layer queue and server state')
@@ -95,7 +95,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 
 		// -------- set next layer on server when rcon is connected--------
 		SquadServer.rcon.core.connected$.pipe(
-			C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer }, async (isConnected) => {
+			C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer, eventLogLevel: 'info' }, async (isConnected) => {
 				if (!isConnected) return
 				const serverState = await getServerState({}, ctx)
 				await syncNextLayerInPlace(ctx, serverState)
@@ -108,7 +108,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
 	})
 
-	// -------- schedule post-roll reminders --------
+	// -------- schedule generic admin reminders --------
 	Rx.interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
 		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
 			const serverState = await getServerState({}, ctx)
@@ -134,7 +134,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 		Rx.filter(layer => !!layer),
 		distinctDeepEquals(),
 		Rx.skip(1),
-		C.durableSub('layer-queue:track-map-rolls', { ctx, tracer }, async (layer) => {
+		C.durableSub('layer-queue:track-map-rolls', { ctx, tracer, eventLogLevel: 'trace' }, async (layer) => {
 			ctx.log.info('tracking map roll: %s', DH.displayUnvalidatedLayer(layer))
 			lastRoll = Date.now()
 		}),
@@ -223,7 +223,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer }, async () => {
 
 	const handleServerRoll = C.spanOp(
 		'layer-queue:handle-server-roll',
-		{ tracer },
+		{ tracer, eventLogLevel: 'info' },
 		async (baseCtx: C.Log & C.Db & C.Tx, prevServerState: M.LQServerState) => {
 			baseCtx.log.info('Attempting to handle roll to next layer')
 			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
@@ -442,7 +442,7 @@ async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
 
 export const startVote = C.spanOp(
 	'layer-queue:vote:start',
-	{ tracer },
+	{ tracer, eventLogLevel: 'info' },
 	async (
 		ctx: C.Log & C.Db & Partial<C.User>,
 		opts: { durationSeconds?: number; initiator: M.GuiOrChatUserId },
@@ -534,7 +534,7 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (msg: SM.ChatMessage, ctx: C.Log & C.Db) => {
+export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (ctx: C.Log & C.Db, msg: SM.ChatMessage) => {
 	// no need to acquire vote mutex here, this is a safe operation
 	C.setSpanOpAttrs({ messageId: msg.message, playerId: msg.playerId })
 
@@ -572,7 +572,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
-	{ tracer },
+	{ tracer, eventLogLevel: 'info' },
 	async (ctx: C.Log & C.Db, opts: { aborter: M.GuiOrChatUserId }) => {
 		C.setSpanOpAttrs(opts)
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -660,7 +660,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	)
 }
 
-const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer }, async (ctx: C.Log & C.Db) => {
+const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, eventLogLevel: 'info' }, async (ctx: C.Log & C.Db) => {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	using acquired = await acquireInBlock(voteStateMtx)
 	const res = await DB.runTransaction(ctx, async (ctx) => {

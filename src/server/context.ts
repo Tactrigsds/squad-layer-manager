@@ -9,7 +9,7 @@ import Pino from 'pino'
 import * as Rx from 'rxjs'
 import * as ws from 'ws'
 import * as DB from './db.ts'
-import { Logger } from './logger.ts'
+import { baseLogger, Logger } from './logger.ts'
 
 // -------- Logging --------
 export type Log = {
@@ -50,7 +50,14 @@ export function failOperation(ctx: Op, err?: any, code?: string): void {
 
 export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
-	opts: { tracer: Otel.Tracer; onError?: (err: any) => void; parentSpan?: Otel.Span; links?: Otel.Link[] },
+	opts: {
+		tracer: Otel.Tracer
+		parentSpan?: Otel.Span
+		links?: Otel.Link[]
+		eventLogLevel?: Pino.Level
+		root?: boolean
+		attrs?: Record<string, any>
+	},
 	cb: Cb,
 ): Cb {
 	// @ts-expect-error idk
@@ -68,33 +75,42 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 			context = activeSpanContext
 		}
 
-		return opts.tracer.startActiveSpan(name, { root: !Otel.trace.getActiveSpan(), links: opts.links }, context, async (span) => {
-			try {
-				const result = await cb(...args)
-				if (typeof result === 'object' && 'code' in result) {
-					if (result.code === 'ok') {
-						span.setStatus({ code: Otel.SpanStatusCode.OK })
-					} else {
-						const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
-						span.setStatus({ code: Otel.SpanStatusCode.ERROR, message: msg })
+		return opts.tracer.startActiveSpan(
+			name,
+			{ root: opts.root ?? !Otel.trace.getActiveSpan(), links: opts.links },
+			context,
+			async (span) => {
+				if (opts.attrs) {
+					setSpanOpAttrs(opts.attrs)
+				}
+
+				let logger = baseLogger as typeof baseLogger | undefined
+				if (args[0]?.log) {
+					logger = args[0].log
+				}
+				logger?.[opts.eventLogLevel ?? 'debug'](`${name} - executed`)
+				try {
+					const result = await cb(...args)
+					if (result !== null && typeof result === 'object' && 'code' in result) {
+						if (result.code === 'ok') {
+							span.setStatus({ code: Otel.SpanStatusCode.OK })
+						} else {
+							const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
+							logger?.[opts.eventLogLevel ?? 'debug'](`Error running ${name}: ${msg}`)
+							span.setStatus({ code: Otel.SpanStatusCode.ERROR, message: msg })
+						}
 					}
+					logger?.[opts.eventLogLevel ?? 'debug'](`${name} - ok`)
+					return result as Awaited<ReturnType<Cb>>
+				} catch (error) {
+					const message = recordGenericError(error)
+					logger?.warn(`${name} : error : ${message} `)
+					throw error
+				} finally {
+					span.end()
 				}
-				return result as Awaited<ReturnType<Cb>>
-			} catch (error) {
-				let message: string
-				if (error instanceof Error) {
-					span.recordException(error)
-					message = error.message
-				} else {
-					message = typeof error === 'string' ? error : JSON.stringify(error)
-					span.recordException(message)
-				}
-				span.setStatus({ code: SpanStatusCode.ERROR, message })
-				throw error
-			} finally {
-				span.end()
-			}
-		})
+			},
+		)
 	}
 }
 
@@ -126,7 +142,9 @@ export function recordGenericError(error: unknown, setStatus = true) {
 	if (error instanceof Error || typeof error === 'string') {
 		span.recordException(error)
 		if (setStatus) {
-			setSpanStatus(Otel.SpanStatusCode.ERROR, error instanceof Error ? error.message : String(error))
+			const message = error instanceof Error ? error.message : String(error)
+			setSpanStatus(Otel.SpanStatusCode.ERROR, message)
+			return message
 		}
 	}
 }
@@ -229,16 +247,27 @@ export type AsyncResourceInvocation = {
  */
 export function durableSub<T, O>(
 	name: string,
-	opts: { ctx: Log; tracer: Otel.Tracer; retryTimeoutMs?: number; numRetries?: number },
+	opts: {
+		ctx: Log
+		tracer: Otel.Tracer
+		eventLogLevel?: Pino.Level
+		numTaskRetries?: number
+		retryTaskOnValueError?: boolean
+		numDownstreamFailureBeforeErrorPropagation?: number
+		downstreamRetryTeimoutMs?: number
+	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
 	return (o) => {
+		const numDownstreamFailureBeforeErrorPropagation = opts.numDownstreamFailureBeforeErrorPropagation ?? 10
+		const numRetries = opts.numTaskRetries ?? 0
+		const retryOnValueError = opts.retryTaskOnValueError ?? false
+
 		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
 		const link: Otel.Link = {
 			context: subSpan.spanContext(),
 			attributes: { 'link.reason': 'async-processing' },
 		}
-		let retriesLeft = opts.numRetries ?? 3
 		return o.pipe(
 			Rx.tap({
 				error: error => {
@@ -252,22 +281,30 @@ export function durableSub<T, O>(
 				},
 			}),
 			Rx.concatMap((arg) => {
-				const task = () => (spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg))
+				const task = async () => {
+					let attemptsLeft = numRetries + 1
+					while (true) {
+						try {
+							const res = await spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg)
+							if (retryOnValueError && (res as any).code !== 'ok') {
+								attemptsLeft--
+								if (attemptsLeft === 0) return res
+								opts.ctx.log.warn(`retrying ${name}`)
+								continue
+							}
+							return res
+						} catch (error) {
+							attemptsLeft--
+							if (attemptsLeft === 0) throw error
+							opts.ctx.log.warn(`retrying ${name}`)
+						}
+					}
+				}
 
 				// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
 				return toCold(task)
 			}),
-			Rx.tap({
-				next: () => {
-					retriesLeft = opts.numRetries ?? 3
-				},
-				error: (err) => {
-					opts.ctx.log.error(err)
-					opts.ctx.log.error('retries left for %s : %s', name, retriesLeft)
-					retriesLeft--
-				},
-			}),
-			Rx.retry({ resetOnSuccess: true, count: opts.numRetries ?? 3, delay: opts.retryTimeoutMs ?? 250 }),
+			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTeimoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)
 	}

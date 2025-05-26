@@ -1,5 +1,5 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
-import { acquireInBlock, AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -26,8 +26,6 @@ import * as Env from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
 type SquadServerState = {
-	currentMatchId?: number
-
 	// An ephemeral copy of the current matches layer queue item, taken just before the server rolls and the NEW_GAME squad event is emitted. in order for usages of this to be valid, the corresponding NEW_GAME event must be received after its details are buffered.
 	bufferedNextMatch?: {
 		layerListItem: M.LayerListItem
@@ -47,18 +45,22 @@ export let state!: SquadServerState
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadSftpLogs, ...Env.groups.rcon })
 let ENV!: ReturnType<typeof envBuilder>
 
-export const warnAllAdmins = C.spanOp('squad-server:warn-all-admins', { tracer }, async (ctx: C.Log, options: WarnOptions) => {
-	const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
-	const ops: Promise<void>[] = []
+export const warnAllAdmins = C.spanOp(
+	'squad-server:warn-all-admins',
+	{ tracer, eventLogLevel: 'info' },
+	async (ctx: C.Log, options: WarnOptions) => {
+		const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
+		const ops: Promise<void>[] = []
 
-	if (playersRes.code === 'err:rcon') return
-	for (const player of playersRes.players) {
-		if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
-			await rcon.warn(ctx, player.steamID.toString(), options)
+		if (playersRes.code === 'err:rcon') return
+		for (const player of playersRes.players) {
+			if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
+				await rcon.warn(ctx, player.steamID.toString(), options)
+			}
 		}
-	}
-	await Promise.all(ops)
-})
+		await Promise.all(ops)
+	},
+)
 
 async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
 	for await (const info of toAsyncGenerator(serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
@@ -94,7 +96,7 @@ function chatInScope(scopes: SM.CommandScope[], msgChat: SM.ChatChannel) {
 	return false
 }
 
-const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async (msg: SM.ChatMessage, ctx: C.Log & C.Db) => {
+async function handleCommand(ctx: C.Log & C.Db, msg: SM.ChatMessage) {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid chat channel')
 		return
@@ -148,7 +150,6 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress': {
 					return await showError(res.msg)
-					break
 				}
 				case 'err:rcon': {
 					throw new Error(`RCON error`)
@@ -197,9 +198,9 @@ const handleCommand = C.spanOp('squad-server:handle-command', { tracer }, async 
 			assertNever(cmd)
 		}
 	}
-})
+}
 
-export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async () => {
+export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'info' }, async () => {
 	ENV = envBuilder()
 	// -------- set up admin list --------
 	const adminListTTL = 1000 * 60 * 60 * 60
@@ -216,32 +217,29 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 		port: ENV.RCON_PORT,
 		password: ENV.RCON_PASSWORD,
 	})
+
 	void coreRcon.connect(ctx)
 		.then(async () => {
 			const { value: statusRes } = await rcon.serverStatus.get(ctx)
 			if (statusRes.code === 'err:rcon') return
-			await MatchHistory.resolvePotentialSquadServerCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
+			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
 			const currentMatch = MatchHistory.getCurrentMatch()
 			if (currentMatch && M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
-				state.currentMatchId = currentMatch.historyEntryId
-
 				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentMatch.layerId))
-				if (currentLayer.Gamemode === 'FRAAS') {
-					await rcon.setFogOfWar(ctx, 'off')
-				}
+				if (currentLayer.Gamemode === 'FRAAS') await rcon.setFogOfWar(ctx, 'off')
 			}
 		})
 	rcon = new SquadRcon(ctx, coreRcon, { warnPrefix: CONFIG.warnPrefix })
 
-	rcon.event$.subscribe(async (event) => {
+	rcon.event$.pipe(C.durableSub('squad-server:handle-rcon-event', { tracer, ctx, eventLogLevel: 'trace' }, async (event) => {
 		if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-			await handleCommand(event.message, ctx)
+			await handleCommand(ctx, event.message)
 		}
 
 		if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-			await LayerQueue.handleVote(event.message, ctx)
+			await LayerQueue.handleVote(ctx, event.message)
 		}
-	})
+	})).subscribe()
 
 	// -------- set up squad events (events from logger) --------
 	squadLogEvents = new SquadEventEmitter(ctx, {
@@ -256,7 +254,11 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 	})
 
 	squadLogEvents.event$.pipe(
-		C.durableSub('squad-server:handle-squadjs-event', { tracer, ctx }, ([ctx, event]) => handleSquadEvent(DB.addPooledDb(ctx), event)),
+		C.durableSub(
+			'squad-server:handle-squad-log-event',
+			{ tracer, ctx, eventLogLevel: 'info' },
+			([ctx, event]) => handleSquadEvent(DB.addPooledDb(ctx), event),
+		),
 	).subscribe()
 	void squadLogEvents.connect()
 
@@ -267,11 +269,8 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer }, async
 		if (statusRes.code !== 'ok') return statusRes
 		const res: SM.ServerStatusWithCurrentMatchRes = { code: 'ok' as const, data: { ...statusRes.data } }
 		const currentMatch = MatchHistory.getCurrentMatch()
-		if (
-			currentMatch && currentMatch?.historyEntryId === state.currentMatchId
-			&& M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)
-		) {
-			res.data.currentMatchId = state.currentMatchId
+		if (currentMatch && M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
+			res.data.currentMatchId = currentMatch.historyEntryId
 		}
 		return res
 	}, { defaultTTL: 5000 })
@@ -285,38 +284,27 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes
-				let newEntry: Omit<SchemaModels.MatchHistory, 'id' | 'ordinal'> = {
+
+				const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
 					layerId: statusRes.data.currentLayer.id,
-					lqItemId: null,
-					layerVote: null,
 					startTime: event.time,
 					setByType: 'unknown',
-					endTime: null,
-					outcome: null,
-					setByUserId: null,
-					team1Tickets: null,
-					team2Tickets: null,
 				}
+
 				if (state.bufferedNextMatch) {
+					newEntry.layerId = M.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
+					newEntry.lqItemId = state.bufferedNextMatch.layerListItem.itemId
+					newEntry.layerVote = state.bufferedNextMatch.layerListItem.vote
+					newEntry.setByType = state.bufferedNextMatch.layerListItem.source.type
+
 					const setByUserId = state.bufferedNextMatch.layerListItem.source.type === 'manual'
 						? state.bufferedNextMatch.layerListItem.source.userId
 						: undefined
-					const updated: Partial<SchemaModels.NewMatchHistory> = {
-						layerId: M.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId,
-						lqItemId: state.bufferedNextMatch.layerListItem.itemId,
-						layerVote: state.bufferedNextMatch.layerListItem.vote,
-						setByType: state.bufferedNextMatch.layerListItem.source.type,
-						setByUserId: setByUserId,
-					}
-					newEntry = {
-						...newEntry,
-						...updated,
-					}
+					newEntry.setByUserId = setByUserId
 				}
 
 				const res = await MatchHistory.addNewCurrentMatch(ctx, newEntry)
 				if (res.code !== 'ok') return res
-				state.currentMatchId = res.match.historyEntryId
 
 				delete state.bufferedNextMatch
 
@@ -334,31 +322,8 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 		case 'ROUND_ENDED': {
 			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
-
-			using _lock = await acquireInBlock(MatchHistory.modifyHistoryMtx)
-			await DB.runTransaction(ctx, async (ctx) => {
-				const currentMatch = MatchHistory.getCurrentMatch()
-				let createNew = false
-				if (!currentMatch || !M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
-					delete state.currentMatchId
-					createNew = true
-				}
-				const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [event.winner, event.loser]
-				if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
-				const outcome = event.winner === null ? 'draw' : event.winner.team === 1 ? 'team1' : 'team2'
-				// we're populating end specific properties as well as any properties we may have access to in case this is a new entry
-				const entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
-					layerId: currentMatch?.layerId ?? statusRes.data.currentLayer.id,
-					endTime: event.time,
-					team1Tickets: teams[0]?.tickets,
-					team2Tickets: teams[1]?.tickets,
-					setByType: currentMatch?.layerSource.type ?? 'unknown',
-					outcome,
-				}
-
-				state.currentMatchId = (await MatchHistory.finalizeCurrentMatch(ctx, entry, { lock: false, createNew }))?.historyEntryId
-			})
-			return { code: 'ok' as const }
+			await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+			break
 		}
 		default:
 			assertNever(event)

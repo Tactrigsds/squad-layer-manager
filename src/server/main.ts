@@ -16,13 +16,7 @@ import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
 
 const tracer = Otel.trace.getTracer('squad-layer-manager')
-await C.spanOp('main', {
-	tracer,
-	onError: (err) => {
-		if (!baseLogger) console.error(err)
-		else baseLogger.fatal(err)
-	},
-}, async () => {
+await C.spanOp('main', { tracer }, async () => {
 	// Use provided env file path if available
 	await Cli.ensureCliParsed()
 	Env.ensureEnvSetup()
@@ -41,10 +35,14 @@ await C.spanOp('main', {
 	baseLogger.info('server closed: %s', closedMsg)
 	return 0
 })()
-	.catch(() => 1)
+	.catch((err) => {
+		if (baseLogger) baseLogger.fatal(err)
+		else console.error(err)
+		return 1
+	})
 	.then(async (status) => {
 		baseLogger.warn('sleeping before exit: %s', status)
 		// sleep so any latent logs and traces are flushed in time
-		await sleep(250)
+		await sleep(1000)
 		process.exit(status)
 	})
