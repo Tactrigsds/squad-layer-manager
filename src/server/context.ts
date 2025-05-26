@@ -1,5 +1,6 @@
 import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
+import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import * as Otel from '@opentelemetry/api'
 import { SpanStatusCode } from '@opentelemetry/api'
@@ -186,6 +187,9 @@ export type User = {
 	user: M.User
 }
 
+export type Player = {
+	player: SM.Player
+}
 export type RbacUser = { user: M.UserWithRbac }
 
 export type AuthSession = {

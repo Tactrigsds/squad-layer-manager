@@ -1,6 +1,7 @@
 import * as DH from '@/lib/display-helpers'
 import * as M from '@/models'
 import * as RBAC from '@/rbac.models'
+import type * as C from '@/server/context'
 import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import { assertNever } from './lib/typeGuards'
@@ -68,7 +69,7 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
-		showNext(layerQueue: M.LayerList, parts: M.UserPart) {
+		showNext: (layerQueue: M.LayerList, parts: M.UserPart) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -85,34 +86,55 @@ export const WARNS = {
 				case 'manual':
 					{
 						const userId = item.source.userId
-						setByDisplay = `Set by ${parts.users.find(user => user.discordId === userId)}`
+						setByDisplay = `Set by ${parts?.users.find(user => user.discordId === userId)?.username ?? 'Unknown'}`
 					}
 					break
 				default:
 					assertNever(item.source)
 			}
 
-			const queueCountDisplay = `(${layerQueue.length} in queue)`
-
-			if (!item) return `Next layer not configured ${queueCountDisplay}`
+			const extraDisplay = setByDisplay
+			const nextLayerPartial = item.layerId ? M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(item.layerId)) : null
+			const factionDisplay = (() => {
+				if (!item) return null
+				if (!nextLayerPartial) return null
+				let userFactionDisplay = ''
+				if (ctx.player.teamID !== null) {
+					const nextTeamId = ctx.player.teamID === 1 ? 2 : 1
+					const userFaction = nextLayerPartial[`Faction_${nextTeamId}`]
+					userFactionDisplay = userFaction ? `(You will be ${userFaction})` : ``
+				}
+				return `Factions:\n${DH.toShortTeamsDisplay(nextLayerPartial)} ${userFactionDisplay}`.trim()
+			})()
+			const getOptions = (msg: string | string[]) => ({
+				msg,
+				repeat: 3,
+			})
 			if (item.vote) {
 				if (item.layerId) {
-					return `Next layer (Chosen via vote):\n${DH.toShortLayerNameFromId(item.layerId)} (${setByDisplay}) ${queueCountDisplay}`
+					const msg: string[] = []
+					msg.push(`Next layer (Chosen via vote):\n${nextLayerPartial?.Layer ?? 'Unknown'}`)
+					if (factionDisplay) msg.push(factionDisplay)
+					msg.push(extraDisplay)
+					return getOptions(msg)
 				} else {
-					return {
-						msg: [
-							'Upcoming vote:',
-							...voteChoicesLines(item.vote.choices, item.vote.defaultChoice),
-							`${setByDisplay} ${queueCountDisplay}`,
-						],
-						repeat: 3,
-					}
+					const msg = [
+						'Upcoming vote:',
+						...voteChoicesLines(item.vote.choices, item.vote.defaultChoice),
+					]
+					if (factionDisplay) msg.push(factionDisplay)
+					msg.push(extraDisplay)
+					return getOptions(msg)
 				}
 			}
-			// this shouldn't be possible
-			if (!item.layerId) return `No next layer set ${queueCountDisplay}`
 
-			return `Next layer: ${DH.toShortLayerNameFromId(item.layerId)} (${setByDisplay}) ${queueCountDisplay}`
+			// this shouldn't be possible
+			if (!item.layerId) return `No next layer set`
+
+			const msg: string[] = [`Next layer:\n${DH.toShortLayerNameFromId(item.layerId)}`]
+			if (factionDisplay) msg.push(factionDisplay)
+			msg.push(extraDisplay)
+			return getOptions(msg)
 		},
 	},
 	commands: {

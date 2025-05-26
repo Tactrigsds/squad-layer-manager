@@ -209,11 +209,14 @@ export type ServerStatusWithCurrentMatch = ServerStatus & {
 	currentMatchId?: number
 }
 
+export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
+export type TeamId = z.infer<typeof TeamIdSchema>
+
 export const PlayerSchema = z.object({
 	playerID: z.number(),
 	steamID: zUtils.ParsedBigIntSchema,
 	name: z.string().min(1),
-	teamID: z.number().nullable(),
+	teamID: TeamIdSchema.nullable(),
 	squadID: z.number().nullable(),
 	isLeader: z.boolean(),
 	role: z.string(),
@@ -227,7 +230,7 @@ export const SquadSchema = z.object({
 	size: z.number(),
 	locked: z.boolean(),
 	creatorName: z.string().min(1),
-	teamID: z.number(),
+	teamID: TeamIdSchema.nullable(),
 })
 
 export type Squad = z.infer<typeof SquadSchema>
@@ -363,8 +366,6 @@ export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
 export const RCON_MAX_BUF_LEN = 4152
-
-export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 
 export const SquadOutcomeTeamSchema = z.object({
 	faction: z.string(),

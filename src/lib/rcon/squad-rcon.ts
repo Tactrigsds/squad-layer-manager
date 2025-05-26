@@ -7,7 +7,8 @@ import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 import * as SM from './squad-models'
 
-export type WarnOptions = { msg: string | string[]; repeat?: number } | string | string[]
+export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | string | string[]
+export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase)
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 export default class SquadRcon {
@@ -68,6 +69,15 @@ export default class SquadRcon {
 		const factions = match[3]
 		if (!layer || !factions) return { code: 'ok' as const, layer: null }
 		return { code: 'ok' as const, layer: M.parseRawLayerText(`${layer} ${factions}`) }
+	}
+
+	async getPlayer(ctx: C.Log, anyID: string) {
+		const { value: playersRes } = await this.playerList.get(ctx)
+		if (playersRes.code !== 'ok') return playersRes
+		const players = playersRes.players
+		const player = players.find(p => p.playerID.toString() === anyID || p.steamID.toString() === anyID)
+		if (!player) return { code: 'err:player-not-found' as const }
+		return { code: 'ok' as const, player }
 	}
 
 	private async getListPlayers(ctx: C.Log) {
@@ -165,7 +175,16 @@ export default class SquadRcon {
 		await this.core.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
-	async warn(ctx: C.Log, anyID: string, opts: WarnOptions) {
+	async warn(ctx: C.Log, anyID: string, _opts: WarnOptions) {
+		let opts: WarnOptionsBase
+		if (typeof _opts === 'function') {
+			const playerRes = await this.getPlayer(ctx, anyID)
+			if (playerRes.code !== 'ok') return playerRes
+			opts = _opts({ player: playerRes.player })
+		} else {
+			opts = _opts
+		}
+
 		let repeatCount = 1
 		let msgArr: string[]
 		if (typeof opts === 'string') {

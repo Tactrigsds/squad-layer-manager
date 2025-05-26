@@ -45,6 +45,15 @@ export function toShortLayerName(layer: M.MiniLayer) {
 	return txt
 }
 
+export function toShortTeamsDisplay(layer: Partial<M.MiniLayer>) {
+	const subfaction1 = toShortSubfaction(layer.SubFac_1 ?? null)
+	const subFaction2 = toShortSubfaction(layer.SubFac_2 ?? null)
+	let txt = `${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
+	txt += ' vs '
+	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}`.trim()
+	return txt
+}
+
 export function toShortLayerNameFromId(id: string) {
 	const res = M.getUnvalidatedLayerFromId(id)
 	return displayUnvalidatedLayer(res)
