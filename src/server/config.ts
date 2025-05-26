@@ -27,6 +27,7 @@ export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: StrNoWhitespace,
+	topBarColor: z.string().default('#033e03').nullable().describe('this should be set to null for production'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 	}),
@@ -101,7 +102,7 @@ export async function ensureConfigSetup() {
 }
 
 export function getPublicConfig() {
-	return { ...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize']), isProduction: ENV.NODE_ENV === 'production' }
+  return { ...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor']), isProduction: ENV.NODE_ENV === 'production' }
 }
 
 export async function generateConfigJsonSchema() {

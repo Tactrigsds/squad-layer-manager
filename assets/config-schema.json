@@ -4,6 +4,10 @@
     "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
     "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
     "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
+    "topBarColor": {
+      "anyOf": [{"type": "string", "default": "#033e03"}, {"type": "null"}],
+      "description": "this should be set to null for production"
+    },
     "defaults": {
       "type": "object",
       "properties": {

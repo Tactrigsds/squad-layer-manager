@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes.ts'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -30,11 +31,12 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onPermissionsOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'permissions' : null)
 	}
+	const config = ConfigClient.useConfig()
 	const primaryDropdownOpen = openState !== null
 	const permissionsOpen = openState === 'permissions'
 	return (
 		<div className="h-full w-full">
-			<nav className="flex h-16 items-center justify-between border-b px-4">
+      <nav className="flex h-16 items-center justify-between border-b px-4" style={{backgroundColor: config?.topBarColor ?? undefined}}>
 				<div className="flex items-start space-x-6">
 					<Link to={AR.link('/')} className={`flex items-center space-x-2 ${location.pathname === '/' ? 'underline' : ''}`}>
 						<span className={Typography.Lead}>Queue</span>
