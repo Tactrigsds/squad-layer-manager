@@ -14,13 +14,15 @@ export function TeamIndicator(props: { team: keyof typeof teamColors }) {
 
 export function getTeamsDisplay(
 	partialLayer: Partial<M.MiniLayer>,
-	teamParity: number,
-	displayLayersNormalized: boolean,
+	teamParity: number | undefined,
+	_displayLayersNormalized: boolean,
 	withBackfilledStyles?: Record<keyof M.MiniLayer, string | undefined>,
 ) {
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
-	if (typeof teamParity === 'number' && !displayLayersNormalized) {
+	const displayLayersNormalized = teamParity !== undefined && _displayLayersNormalized
+	teamParity ??= 0
+	if (!displayLayersNormalized) {
 		const colors = [teamColors.teamA, teamColors.teamB]
 		team1Color = colors[teamParity]
 		team2Color = colors[(teamParity + 1) % 2]

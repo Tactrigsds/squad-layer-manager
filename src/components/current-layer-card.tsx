@@ -61,7 +61,7 @@ export default function CurrentLayerCard() {
 		? currentMatch.layerId
 		: serverStatus.currentLayer.id
 	const layerDetails = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerId))
-	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, 0, false)
+	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, currentMatch?.ordinal, false)
 	const isEmpty = serverStatus.playerCount === 0
 
 	let postGameElt: React.ReactNode = null
