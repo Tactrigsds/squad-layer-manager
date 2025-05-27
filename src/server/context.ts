@@ -3,7 +3,6 @@ import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
 import * as Otel from '@opentelemetry/api'
-import { SpanStatusCode } from '@opentelemetry/api'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
 import * as Rx from 'rxjs'
@@ -254,7 +253,8 @@ export function durableSub<T, O>(
 		numTaskRetries?: number
 		retryTaskOnValueError?: boolean
 		numDownstreamFailureBeforeErrorPropagation?: number
-		downstreamRetryTeimoutMs?: number
+		downstreamRetryTimeoutMs?: number
+		taskScheduling?: 'switch' | 'parallel' | 'sequential'
 	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
@@ -262,12 +262,39 @@ export function durableSub<T, O>(
 		const numDownstreamFailureBeforeErrorPropagation = opts.numDownstreamFailureBeforeErrorPropagation ?? 10
 		const numRetries = opts.numTaskRetries ?? 0
 		const retryOnValueError = opts.retryTaskOnValueError ?? false
+		const taskScheduling = opts.taskScheduling || 'sequential' as const
 
 		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
 		const link: Otel.Link = {
 			context: subSpan.spanContext(),
 			attributes: { 'link.reason': 'async-processing' },
 		}
+
+		const getTask = (arg: T): Rx.Observable<O> => {
+			const task = async () => {
+				let attemptsLeft = numRetries + 1
+				while (true) {
+					try {
+						const res = await spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg)
+						if (retryOnValueError && (res as any).code !== 'ok') {
+							attemptsLeft--
+							if (attemptsLeft === 0) return res
+							opts.ctx.log.warn(`retrying ${name}`)
+							continue
+						}
+						return res
+					} catch (error) {
+						attemptsLeft--
+						if (attemptsLeft === 0) throw error
+						opts.ctx.log.warn(`retrying ${name}`)
+					}
+				}
+			}
+
+			// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
+			return toCold(task)
+		}
+
 		return o.pipe(
 			Rx.tap({
 				error: error => {
@@ -280,31 +307,12 @@ export function durableSub<T, O>(
 					opts.ctx.log.error(error)
 				},
 			}),
-			Rx.concatMap((arg) => {
-				const task = async () => {
-					let attemptsLeft = numRetries + 1
-					while (true) {
-						try {
-							const res = await spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg)
-							if (retryOnValueError && (res as any).code !== 'ok') {
-								attemptsLeft--
-								if (attemptsLeft === 0) return res
-								opts.ctx.log.warn(`retrying ${name}`)
-								continue
-							}
-							return res
-						} catch (error) {
-							attemptsLeft--
-							if (attemptsLeft === 0) throw error
-							opts.ctx.log.warn(`retrying ${name}`)
-						}
-					}
-				}
-
-				// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
-				return toCold(task)
-			}),
-			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTeimoutMs ?? 250 }),
+      ({
+        'parallel': Rx.mergeMap(getTask),
+        'sequential': Rx.concatMap(getTask),
+        'switch': Rx.switchMap(getTask)
+      })[taskScheduling],
+			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)
 	}

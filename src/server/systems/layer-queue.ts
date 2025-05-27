@@ -157,7 +157,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				const serverState = await getServerState({}, ctx)
 				const expectedLayerName = DH.toFullLayerNameFromId(M.getNextLayerId(serverState.layerQueue)!)
 				const actualLayerName = DH.toFullLayerNameFromId(expectedNextLayerId)
-				SquadServer.warnAllAdmins(
+				await SquadServer.warnAllAdmins(
 					ctx,
 					`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
 				)
@@ -351,7 +351,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	FilterEntity.filterMutation$
 		.pipe(
 			Rx.filter(([_, mut]) => mut.type === 'delete'),
-			C.durableSub('layer-queue:handle-filter-delete', { ctx, tracer }, async ([ctx, mutation]) => {
+			C.durableSub('layer-queue:handle-filter-delete', { ctx, tracer, taskScheduling: 'parallel' }, async ([ctx, mutation]) => {
 				const updatedServerState = await DB.runTransaction(ctx, async (ctx) => {
 					const serverState = await getServerState({ lock: true }, ctx)
 					const remainingFilterIds = serverState.settings.queue.mainPool.filters.filter(f => f !== mutation.key)
