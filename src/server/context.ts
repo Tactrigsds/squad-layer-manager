@@ -307,11 +307,11 @@ export function durableSub<T, O>(
 					opts.ctx.log.error(error)
 				},
 			}),
-      ({
-        'parallel': Rx.mergeMap(getTask),
-        'sequential': Rx.concatMap(getTask),
-        'switch': Rx.switchMap(getTask)
-      })[taskScheduling],
+			({
+				'parallel': Rx.mergeMap(getTask),
+				'sequential': Rx.concatMap(getTask),
+				'switch': Rx.switchMap(getTask),
+			})[taskScheduling],
 			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)

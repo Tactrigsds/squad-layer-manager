@@ -134,9 +134,9 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		lqItemId: entry.lqItemId ?? undefined,
 	} satisfies Partial<MatchDetailsCommon>
 
-	if (entry.endTime && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
-	else if (!entry.endTime && !nullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
-	else if (entry.endTime && entry.outcome === 'draw') {
+	if (!nullOrUndef(entry.endTime) && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
+	else if (nullOrUndef(entry.endTime) && !nullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
+	else if (!nullOrUndef(entry.endTime) && entry.outcome === 'draw') {
 		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) {
 			throw new Error('Match ended in a draw but tickets were not null')
 		}
@@ -150,7 +150,9 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 			},
 		}
 	} else if (entry.endTime && entry.outcome !== 'draw') {
-		if (!entry.team1Tickets || !entry.team2Tickets) throw new Error('Match ended in a win but tickets were null or empty')
+		if (nullOrUndef(entry.team1Tickets) || nullOrUndef(entry.team2Tickets)) {
+			throw new Error('Match ended in a win but tickets were null or empty')
+		}
 
 		return {
 			status: 'post-game',
