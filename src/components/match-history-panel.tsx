@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import * as Arr from '@/lib/array'
 import { getTeamsDisplay, teamColors } from '@/lib/display-helpers-teams'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models'
@@ -42,6 +43,7 @@ export default function MatchHistoryPanel() {
 	// console.table(currentEntries.map(SM.matchHistoryEntryFromMatchDetails))
 	for (let i = 0; i < allEntries.length; i++) {
 		const entry = currentEntries[i]
+		if (M.isHistoryLookbackExcludedLayer(entry.layerId)) break
 		if (entry.status === 'in-progress' && i === 0) continue
 		if (entry.status === 'in-progress') break
 		const outcomeNorm = SM.getTeamNormalizedOutcome(entry)
@@ -91,8 +93,9 @@ export default function MatchHistoryPanel() {
 		const fiveHoursAgo = new Date()
 		fiveHoursAgo.setTime(fiveHoursAgo.getTime() - 5 * 60 * 60 * 1000)
 
-		for (let i = 0; i < allEntries.length && matchCount < 5; i++) {
+		for (let i = 0; i < allEntries.length && matchCount < 4; i++) {
 			const entry = allEntries[i]
+			if (M.isHistoryLookbackExcludedLayer(entry.layerId)) break
 			if (entry.status === 'post-game' && entry.endTime < fiveHoursAgo) break
 			if (entry.status !== 'post-game') continue
 			const outcome = SM.getTeamNormalizedOutcome(entry)

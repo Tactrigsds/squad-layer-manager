@@ -1,4 +1,5 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
+import * as Arr from '@/lib/array'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as RBAC from '@/rbac.models'
 import * as z from 'zod'
@@ -295,6 +296,8 @@ export function getUnvalidatedLayerFromId(id: string, components = StaticLayerCo
 	return { code: 'parsed', layer, id }
 }
 
+
+
 export function getMiniLayerFromId(id: string, components = StaticLayerComponents): MiniLayer {
 	const [mapPart, faction1Part, faction2Part] = id.split(':')
 	const [mapAbbr, gamemodeAbbr, versionPart] = mapPart.split('-')
@@ -336,6 +339,12 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		SubFac_2: subfac2,
 	}
 }
+
+export function isHistoryLookbackExcludedLayer(layerId: LayerId) {
+  const details = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(layerId))
+  return details.Layer?.includes("Jensens") || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)
+}
+
 
 function validateLayerId(id: string) {
 	if (id.startsWith('RAW:')) return true

@@ -255,6 +255,7 @@ export function durableSub<T, O>(
 		numDownstreamFailureBeforeErrorPropagation?: number
 		downstreamRetryTimeoutMs?: number
 		taskScheduling?: 'switch' | 'parallel' | 'sequential'
+		root?: boolean
 	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
@@ -275,7 +276,7 @@ export function durableSub<T, O>(
 				let attemptsLeft = numRetries + 1
 				while (true) {
 					try {
-						const res = await spanOp(name, { tracer: opts.tracer, links: [link] }, cb)(arg)
+						const res = await spanOp(name, { tracer: opts.tracer, links: [link], root: opts.root }, cb)(arg)
 						if (retryOnValueError && (res as any).code !== 'ok') {
 							attemptsLeft--
 							if (attemptsLeft === 0) return res

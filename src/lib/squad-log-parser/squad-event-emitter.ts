@@ -93,7 +93,7 @@ export class SquadEventEmitter {
 	async connect() {
 		this.reader.on(
 			'line',
-			C.spanOp('squad-log-event-emitter:on-line-parsed', { tracer, eventLogLevel: 'trace' }, async (line: string) => {
+			C.spanOp('squad-log-event-emitter:on-line-parsed', { tracer, eventLogLevel: 'trace', root: true }, async (line: string) => {
 				const ctx = C.pushOtelCtx(this.ctx)
 				for (const matcher of SLE.EventMatchers) {
 					try {

@@ -164,7 +164,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 				team2Tickets: entry.team2Tickets,
 			},
 		}
-	} else if (!entry.endTime && nullOrUndef(entry.outcome)) {
+	} else if (nullOrUndef(entry.endTime) && nullOrUndef(entry.outcome)) {
 		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) throw new Error('Match not ended but tickets were not null')
 
 		return {

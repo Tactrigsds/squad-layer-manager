@@ -367,7 +367,7 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 		}
 		rawLayers.push(layer)
 	}
-	rawLayers.push(...getJensensLayers(pipeline))
+	rawLayers.push(...getJensensLayers())
 	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
 
 	for (const layer of rawLayers) {
@@ -494,23 +494,29 @@ function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
 	return factionFullNames
 }
 
-function getJensensLayers(pipeline: SquadPipelineModels.Output): RawLayer[] {
-	const jensensLayers: RawLayer[] = []
-	for (const layerString of pipeline.mapsavailable) {
-		if (!layerString.toLowerCase().includes('jensens')) continue
-		const { map: level, jensensFactions } = M.parseLayerStringSegment(layerString)!
-		jensensLayers.push(
-			RawLayerSchema.parse({
-				Level: level,
-				Layer: layerString,
-				Size: 'Small',
-				Faction_1: jensensFactions![0],
-				SubFac_1: null,
-				Faction_2: jensensFactions![1],
-				SubFac_2: null,
-			}),
-		)
-	}
+const JENSENS_MATCHUPS = [
+	'WPMC-TLF',
+	'USMC-MEA',
+	'USA-RGF',
+	'PLANMC-VDV',
+	'CAF-INS',
+	'DAF-IMF',
+	'ADF-PLA',
+]
+
+function getJensensLayers(): RawLayer[] {
+	const jensensLayers = JENSENS_MATCHUPS.map((matchup) => {
+		const [faction1, faction2] = matchup.split('-')
+		return RawLayerSchema.parse({
+			Level: 'Jensens',
+			Layer: matchup,
+			Size: 'Small',
+			Faction_1: faction1,
+			SubFac_1: null,
+			Faction_2: faction2,
+			SubFac_2: null,
+		})
+	})
 	return jensensLayers
 }
 

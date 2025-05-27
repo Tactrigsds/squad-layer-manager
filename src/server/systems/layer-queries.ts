@@ -1,4 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as Arr from '@/lib/array'
 import * as FB from '@/lib/filter-builders'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
@@ -958,9 +959,13 @@ function resolveRelevantLayerHistory(
 	previousLayerIds: string[],
 	startWithOffset?: number,
 ) {
-	const historicLayers = MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0)).map(
-		m => m.layerId,
-	)
+	const historicMatches = MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0))
+	const historicLayers: string[] = []
+	for (const match of historicMatches) {
+		const details = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
+		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
+		historicLayers.push(match.layerId)
+	}
 	historicLayers.push(...previousLayerIds)
 	return {
 		historicLayers,
