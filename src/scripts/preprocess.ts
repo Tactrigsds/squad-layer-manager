@@ -1,18 +1,20 @@
-import * as Schema from '$root/drizzle/schema.ts'
+import * as Schema from '$root/drizzle/schema'
+import * as SchemaModels from '$root/drizzle/schema.models'
+import * as LC from '@/layer-components.models'
 import * as ObjUtils from '@/lib/object'
-import { Biome, BIOME_FACTIONS } from '@/lib/rcon/squad-models'
-import * as SquadPipelineModels from '@/lib/squad-pipeline/squad-pipeline-models.ts'
+import * as OneToMany from '@/lib/one-to-many-map'
+import { OneToManyMap } from '@/lib/one-to-many-map'
+import { isNullOrUndef } from '@/lib/typeGuards'
 import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
 import * as M from '@/models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import { ensureEnvSetup } from '@/server/env'
+import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
-import { setupOtel } from '@/server/systems/otel'
 import { parse } from 'csv-parse'
 import { sql } from 'drizzle-orm'
-import deepEqual from 'fast-deep-equal'
+import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
 import path from 'path'
@@ -26,151 +28,32 @@ export const ParsedNanFloatSchema = z
 
 const NullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const SUBFACTIONS = [
-	'CombinedArms',
-	'Armored',
-	'LightInfantry',
-	'Mechanized',
-	'Motorized',
-	'Support',
-	'AirAssault',
-	'AmphibiousAssault',
-] as const
-
-const MAP_ABBREVIATIONS = {
-	AlBasrah: 'AB',
-	Anvil: 'AN',
-	Belaya: 'BL',
-	BlackCoast: 'BC',
-	Chora: 'CH',
-	Fallujah: 'FL',
-	FoolsRoad: 'FR',
-	GooseBay: 'GB',
-	Gorodok: 'GD',
-	Harju: 'HJ',
-	Kamdesh: 'KD',
-	Kohat: 'KH',
-	Kokan: 'KK',
-	Lashkar: 'LK',
-	Logar: 'LG',
-	Manicouagan: 'MN',
-	Mestia: 'MS',
-	Mutaha: 'MT',
-	Narva: 'NV',
-	PacificProvingGrounds: 'PPG',
-	Sanxian: 'SX',
-	Skorpo: 'SK',
-	Sumari: 'SM',
-	Tallil: 'TL',
-	Yehorivka: 'YH',
-	JensensRange: 'JR',
-} as Record<string, string>
-
-const SUBFACTION_ABBREVIATIONS = {
-	AirAssault: 'AA',
-	Armored: 'AR',
-	CombinedArms: 'CA',
-	LightInfantry: 'LI',
-	Mechanized: 'MZ',
-	Motorized: 'MT',
-	Support: 'SP',
-	AmphibiousAssault: 'AM',
-} as Record<(typeof SUBFACTIONS)[number], string>
-
-const GAMEMODES = [
-	'AAS',
-	'RAAS',
-	'FRAAS',
-	'TC',
-	'Invasion',
-	'Destruction',
-	'Insurgency',
-	'Skirmish',
-	'Seed',
-	'Track Attack',
-	'Training',
-	'Tanks',
-] as const
-
-const GAMEMODE_ABBREVIATIONS = {
-	RAAS: 'RAAS',
-	FRAAS: 'FRAAS',
-	AAS: 'AAS',
-	TC: 'TC',
-	Invasion: 'INV',
-	Skirmish: 'SK',
-	Destruction: 'DES',
-	Insurgency: 'INS',
-	'Track Attack': 'TA',
-	Seed: 'SD',
-	Training: 'TR',
-	Tanks: 'TN',
-} satisfies Record<(typeof GAMEMODES)[number], string>
-
-const MAP_SHORT_NAMES: Record<M.Layer['Map'], string> = {
-	AlBasrah: 'Basrah',
-	Anvil: 'Anvil',
-	Belaya: 'Belaya',
-	BlackCoast: 'Coast',
-	Chora: 'Chora',
-	Fallujah: 'Fallujah',
-	FoolsRoad: 'Fools',
-	GooseBay: 'Goose',
-	Gorodok: 'Goro',
-	Harju: 'Harju',
-	Kamdesh: 'Kamdesh',
-	Kohat: 'Kohat',
-	Kokan: 'Kokan',
-	Lashkar: 'Lashkar',
-	Logar: 'Logar',
-	Manicouagan: 'Manic',
-	Mestia: 'Mestia',
-	Mutaha: 'Muta',
-	Narva: 'Narva',
-	PacificProvingGrounds: 'PacificProvingGrounds',
-	Sanxian: 'Sanxian',
-	Skorpo: 'Skorpo',
-	Sumari: 'Sumari',
-	Tallil: 'Tallil',
-	Yehorivka: 'Yeho',
-	JensensRange: 'Jensens',
+const LayerScores = {
+	Logistics_1: NullableFloat.default('nan'),
+	Transportation_1: NullableFloat.default('nan'),
+	'Anti-Infantry_1': NullableFloat.default('nan'),
+	Armor_1: NullableFloat.default('nan'),
+	ZERO_Score_1: NullableFloat.default('nan'),
+	Logistics_2: NullableFloat.default('nan'),
+	Transportation_2: NullableFloat.default('nan'),
+	'Anti-Infantry_2': NullableFloat.default('nan'),
+	Armor_2: NullableFloat.default('nan'),
+	ZERO_Score_2: NullableFloat.default('nan'),
+	Balance_Differential: NullableFloat.default('nan'),
+	Asymmetry_Score: NullableFloat.default('nan'),
+	Z_Pool: StrFlag.default('false'),
+	Scored: StrFlag.default('false'),
 }
 
-const SUBFACTION_SHORT_NAMES = {
-	CombinedArms: 'Combined',
-	Armored: 'Armored',
-	LightInfantry: 'Light',
-	Mechanized: 'Mech',
-	Motorized: 'Motor',
-	Support: 'Sup',
-	AirAssault: 'Air',
-	AmphibiousAssault: 'Amphib',
-} satisfies Record<M.Subfaction, string>
-
 // layout expected from csv
-export const RawLayerSchema = z
+export const ScoredLayer = z
 	.object({
-		Level: z.string().transform((level) => M.preprocessLevel(level)),
 		Layer: z.string(),
-		Size: z.string(),
 		Faction_1: z.string(),
-		SubFac_1: z.enum(SUBFACTIONS).nullable(),
-		Logistics_1: NullableFloat.default('nan'),
-		Transportation_1: NullableFloat.default('nan'),
-		'Anti-Infantry_1': NullableFloat.default('nan'),
-		Armor_1: NullableFloat.default('nan'),
-		ZERO_Score_1: NullableFloat.default('nan'),
+		Unit_1: z.string().nullable(),
 		Faction_2: z.string(),
-		SubFac_2: z.enum(SUBFACTIONS).nullable(),
-		Logistics_2: NullableFloat.default('nan'),
-		Transportation_2: NullableFloat.default('nan'),
-		'Anti-Infantry_2': NullableFloat.default('nan'),
-		Armor_2: NullableFloat.default('nan'),
-		ZERO_Score_2: NullableFloat.default('nan'),
-		Balance_Differential: NullableFloat.default('nan'),
-		Asymmetry_Score: NullableFloat.default('nan'),
-		Z_Pool: StrFlag.default('false'),
-		Scored: StrFlag.default('false'),
+		Unit_2: z.string().nullable(),
+		...LayerScores,
 	})
 	.refine(
 		(layer) => {
@@ -215,135 +98,41 @@ export const RawLayerSchema = z
 		{ message: 'un-scored layers must have all value columns as null' },
 	)
 
-type RawLayer = z.infer<typeof RawLayerSchema>
 
-const Steps = z.enum(['download-pipeline', 'update-layers-table', 'update-layer-components'])
+
+const Steps = z.enum(['update-layers-table', 'download-csvs'])
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.sheets })
+let ENV!: ReturnType<typeof envBuilder>
 
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
 		args.push(...ObjUtils.objKeys(Steps.Values))
 	}
-	ensureEnvSetup()
-	setupOtel()
+	Env.ensureEnvSetup()
+	ENV = envBuilder()
 	ensureLoggerSetup()
 	await DB.setupDatabase()
 
 	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
 
-	if (args.includes('download-pipeline')) await downloadPipeline(ctx)
-	let pipeline: SquadPipelineModels.Output | null = null
-	let factions: FactionDetails[] | null = null
-	let biomes: Biome[] | null = null
-	let rawLayers: RawLayer[] | null = null
-	let baseLayerComponents: BaseLayerComponents | null = null
-	let layerComponents: M.LayerComponents | null = null
-	if (args.includes('update-layer-components')) {
-		await using updateComponentsCtx = C.pushOperation(ctx, 'update-layer-components')
-		;[pipeline, factions, biomes] = await Promise.all([
-			pipeline ?? parsePipelineData(),
-			factions ?? parseFactionDetails(ctx),
-			parseBiomes(ctx),
-		])
-		const res = await parseRawLayersCsv(updateComponentsCtx, pipeline, biomes, factions)
-		rawLayers = res.rawLayers
-		baseLayerComponents = res.baseLayerComponents
-		layerComponents = parseLayerComponents(updateComponentsCtx, { factionDetails: factions, baseLayerComponents, pipeline })
-		updateComponentsCtx.tasks.push(
-			fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(layerComponents, null, 2)),
-		)
-		updateComponentsCtx.log.info(
-			'Updated layer-components.json with %d factions, %d subfactions, %d levels, %d layers, and %d layer versions',
-			layerComponents.factions.length,
-			layerComponents.subfactions.length,
-			layerComponents.layers.length,
-			layerComponents.layerVersions.length,
-		)
-	}
+	await ensureAllSheetsDownloaded({ invalidate: args.includes('download-csvs') })
+
+	const data = await parseSquadLayerSheetData()
+	const components =  LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
+	const fullLayers = await parseLayerScores(ctx, data,  components)
+
+	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 0))
+
 	if (args.includes('update-layers-table')) {
-		await using updateTableCtx = C.pushOperation(ctx, 'update-layers-table')
-		;[pipeline, factions, biomes] = await Promise.all([
-			pipeline ?? parsePipelineData(),
-			factions ?? parseFactionDetails(updateTableCtx),
-			parseBiomes(updateTableCtx),
-		])
-		if (!rawLayers || !baseLayerComponents) {
-			const res = await parseRawLayersCsv(updateTableCtx, pipeline, biomes, factions)
-			baseLayerComponents = res.baseLayerComponents
-			rawLayers = res.rawLayers
-		}
-		if (!layerComponents) {
-			layerComponents = parseLayerComponents(updateTableCtx, { factionDetails: factions, baseLayerComponents, pipeline })
-		}
-		await updateLayersTable(updateTableCtx, pipeline, factions, biomes, rawLayers, layerComponents)
+		await updateLayersTable(ctx, fullLayers)
 	}
-	await Promise.all(ctx.tasks)
 }
 
-async function downloadPipeline(ctx: C.Log) {
-	const res = await fetch(
-		'https://raw.githubusercontent.com/Squad-Wiki/squad-wiki-pipeline-map-data/refs/heads/master/completed_output/_Current%20Version/finished.json',
-	)
-	const data = await res.json()
-	await fsPromise.writeFile(path.join(Paths.DATA, 'squad-pipeline.json'), JSON.stringify(data, null, 2))
-	ctx.log.info('Downloaded squad pipeline data')
-}
-
-function processLayer(rawLayer: RawLayer, layerComponents: M.LayerComponents): M.Layer {
-	const { gamemode, version: version } = M.parseLayerStringSegment(rawLayer.Layer)!
-	const id = M.getLayerId(
-		{
-			Map: rawLayer.Level,
-			Gamemode: gamemode,
-			LayerVersion: version,
-			Faction_1: rawLayer.Faction_1,
-			SubFac_1: rawLayer.SubFac_1,
-			Faction_2: rawLayer.Faction_2,
-			SubFac_2: rawLayer.SubFac_2,
-		},
-		layerComponents,
-	)
-
-	const getDiff = (key1: keyof RawLayer, key2: keyof RawLayer) => {
-		const layer = rawLayer as any
-		if (layer[key1] === null || layer[key2] === null) return null
-		return layer[key1] - layer[key2]
-	}
-
-	const layer = {
-		id,
-		Gamemode: gamemode,
-		LayerVersion: version,
-		Map: rawLayer.Level,
-		...ObjUtils.exclude(rawLayer, ['Level']),
-		Logistics_Diff: getDiff('Logistics_1', 'Logistics_2'),
-		Transportation_Diff: getDiff('Transportation_1', 'Transportation_2'),
-		'Anti-Infantry_Diff': getDiff('Anti-Infantry_1', 'Anti-Infantry_2'),
-		Armor_Diff: getDiff('Armor_1', 'Armor_2'),
-		ZERO_Score_Diff: getDiff('ZERO_Score_1', 'ZERO_Score_2'),
-	} as M.Layer
-	return layer
-}
-
-async function parsePipelineData() {
-	return await fsPromise
-		.readFile(path.join(Paths.DATA, 'squad-pipeline.json'), 'utf8')
-		.then((data) => SquadPipelineModels.PipelineOutputSchema.parse(JSON.parse(data)))
-}
-
-async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Output, biomes: Biome[], factions: FactionDetails[]) {
-	const baseLayerComponents: BaseLayerComponents = {
-		maps: new Set(),
-		layers: new Set(),
-		gamemodes: new Set(),
-		versions: new Set(),
-		factions: new Set(),
-		subfactions: new Set(),
-	}
-
-	ctx.log.info('Parsing raw layers')
-	const parser = await new Promise<RawLayer[]>((resolve, reject) => {
-		const rawLayers: RawLayer[] = []
+async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.LayerComponentsJson) {
+	return await new Promise<SchemaModels.Layer[]>((resolve, reject) => {
+		const fullLayers: SchemaModels.Layer[] = []
 		fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
 			.pipe(
 				parse({
@@ -351,95 +140,55 @@ async function parseRawLayersCsv(ctx: C.Log, pipeline: SquadPipelineModels.Outpu
 					skip_empty_lines: true,
 				}),
 			)
-			.on('data', (row) => {
-				rawLayers.push(row)
+			.on('data', (_row) => {
+				const row = ScoredLayer.parse(_row)
+				if (!data.components.mapLayers.find(l => l.Layer === row['Layer'])) {
+					throw new Error(`Layer ${row['Layer']} not found`)
+				}
+				if (!data.components.factions.has(row.Faction_1)) {
+					throw new Error(`Faction_1 ${row['Faction_1']} :  not found`)
+				}
+				if (!data.components.factions.has(row.Faction_2)) {
+					throw new Error(`Faction_2 ${row['Faction_2']} :  not found`)
+				}
+				if (!data.components.units.has(row.Unit_1)) {
+					throw new Error(`Unit_1 ${row['Unit_1']} not found`)
+				}
+				if (!data.components.units.has(row.Unit_2)) {
+					throw new Error(`Unit_2 ${row['Unit_2']} not found`)
+				}
+
+				const segments = M.parseLayerStringSegment(row['Layer'])
+
+				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
+				const layerId = M.getLayerId({
+					Map: segments.Map,
+					Gamemode: segments.Gamemode,
+					LayerVersion: segments.LayerVersion,
+					Faction_1: row['Faction_1'],
+					Faction_2: row['Faction_2'],
+					Unit_1: row['Unit_1'],
+					Unit_2: row['Unit_2'],
+				}, components)
+				const index = data.idToIdx.get(layerId)
+				if (isNullOrUndef(index)) throw new Error(`Layer id ${layerId} not found`)
+				const baseLayer = data.baseLayers[index]
+				// @ts-expect-error idgaf
+				fullLayers.push({ ...row, ...baseLayer })
 			})
-			.on('end', () => resolve(rawLayers))
+			.on('end', () => resolve(fullLayers))
 			.on('error', reject)
 	})
-
-	const rawLayers: RawLayer[] = []
-
-	for (const row of parser) {
-		const layer = RawLayerSchema.parse(row)
-		if (layer.Layer.includes('RAAS')) {
-			rawLayers.push({ ...layer, Layer: layer.Layer.replace('RAAS', 'FRAAS') })
-		}
-		rawLayers.push(layer)
-	}
-	rawLayers.push(...getJensensLayers())
-	rawLayers.push(...getSeedingLayers(pipeline, biomes, factions))
-
-	for (const layer of rawLayers) {
-		const { gamemode, version, map: map } = M.parseLayerStringSegment(layer.Layer)!
-		if (map !== layer.Level) throw new Error(`Layer ${layer.Layer} has level ${map} but expected ${layer.Level}`)
-		baseLayerComponents.maps.add(layer.Level)
-		baseLayerComponents.layers.add(layer.Layer)
-		baseLayerComponents.gamemodes.add(gamemode)
-		baseLayerComponents.versions.add(version!)
-		baseLayerComponents.factions.add(layer.Faction_1)
-		baseLayerComponents.factions.add(layer.Faction_2)
-		baseLayerComponents.subfactions.add(layer.SubFac_1)
-		baseLayerComponents.subfactions.add(layer.SubFac_2)
-	}
-
-	ctx.log.info('Parsed %d raw layers', rawLayers.length)
-
-	return { rawLayers, baseLayerComponents }
 }
 
 async function updateLayersTable(
-	_ctx: C.Log & C.Db,
-	pipeline: SquadPipelineModels.Output,
-	factions: FactionDetails[],
-	biomes: Biome[],
-	rawLayers: RawLayer[],
-	layerComponents: M.LayerComponents,
-	dryRun = false,
+	ctx: C.Log & C.Db,
+	finalLayers: SchemaModels.Layer[],
 ) {
-	await using ctx = C.pushOperation(_ctx, 'update-layers-table')
 	const t0 = performance.now()
-	const factionFullNames = getFactionFullNames(pipeline)
 	let rowsInserted = 0
-	await DB.runTransaction(ctx, async (ctx) => {
-		// process factions
-		ctx.log.info('truncating factions table')
-		await ctx.db().execute(sql`ALTER TABLE ${Schema.subfactions} DROP FOREIGN KEY subfactions_factionShortName_factions_shortName_fk`)
-		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.subfactions}`)
-		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.factions}`)
-		await ctx
-			.db()
-			.execute(
-				sql`ALTER TABLE ${Schema.subfactions} ADD CONSTRAINT subfactions_factionShortName_factions_shortName_fk FOREIGN KEY (factionShortName) REFERENCES factions(shortName)`,
-			)
-		ctx.log.info('inserting factions')
-		await ctx
-			.db()
-			.insert(Schema.factions)
-			.values(
-				factions.map((faction) => ({
-					shortName: faction.faction,
-					fullName: factionFullNames[faction.faction],
-					alliance: faction.alliance,
-				})),
-			)
-		await ctx
-			.db()
-			.insert(Schema.subfactions)
-			.values(
-				factions
-					.map((faction) =>
-						ObjUtils.objKeys(faction.subfactions).map((subfaction) => {
-							return {
-								fullName: faction.subfactions[subfaction],
-								shortName: subfaction,
-								factionShortName: faction.faction,
-							}
-						})
-					)
-					.flat(),
-			)
 
+	await DB.runTransaction(ctx, async (ctx) => {
 		// -------- process layers --------
 		ctx.log.info('Truncating layers table')
 		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
@@ -449,21 +198,12 @@ async function updateLayersTable(
 
 		const chunkSize = 2500
 		let chunk: M.Layer[] = []
-		const insertedIds = new Set<string>()
-		for (const rawLayer of rawLayers) {
-			const processed = processLayer(rawLayer, layerComponents)
-			if (insertedIds.has(processed.id)) {
-				ctx.log.warn('Skipping duplicate layer %s', processed.id)
-				continue
-			}
-			chunk.push(processed)
-			insertedIds.add(processed.id)
+		for (const layer of finalLayers) {
+			chunk.push(layer)
 			if (chunk.length >= chunkSize) {
-				if (!dryRun) {
-					await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
-					rowsInserted += chunk.length
-					ctx.log.info(`Inserted ${rowsInserted} rows`)
-				}
+				await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
+				rowsInserted += chunk.length
+				ctx.log.info(`Inserted ${rowsInserted} rows`)
 				chunk = []
 			}
 		}
@@ -473,248 +213,414 @@ async function updateLayersTable(
 			rowsInserted += chunk.length
 			ctx.log.info(`Inserted ${rowsInserted} rows`)
 		}
-	})
 
-	await ctx.db().execute(sql`SET UNIQUE_CHECKS=1`)
+		await ctx.db().execute(sql`SET UNIQUE_CHECKS=1`)
+	})
 	const t1 = performance.now()
 	const elapsedSecondsInsert = (t1 - t0) / 1000
 	ctx.log.info(`Inserting ${rowsInserted} rows took ${elapsedSecondsInsert} s`)
 }
 
-function getFactionFullNames(pipeline: SquadPipelineModels.Output) {
-	const factionFullNames = Object.fromEntries(
-		Object.values(pipeline.Maps)
-			.map((map) => {
-				return [[map.team1.shortName, map.team1.faction] as const, [map.team2.shortName, map.team2.faction] as const]
-			})
-			.flat(),
-	)
-	factionFullNames.WPMC = 'Western Private Military Contractors'
-	factionFullNames.PLAAGF = 'PLA Amphibious Ground Forces'
-	return factionFullNames
+type FactionUnit = `${string}:${string}`
+type BattlegroupsData = {
+	allianceToFaction: OneToManyMap<string, string>
+	factionToUnit: OneToManyMap<string, string>
+	factionUnitToUnitFullName: Map<FactionUnit, string>
 }
 
-const JENSENS_MATCHUPS = [
-	'WPMC-TLF',
-	'USMC-MEA',
-	'USA-RGF',
-	'PLANMC-VDV',
-	'CAF-INS',
-	'DAF-IMF',
-	'ADF-PLA',
-]
+type BaseLayer = {
+	id: string
+	Map: string
+	Layer: string
+	Size: string
+	Gamemode: string
+	LayerVersion: string | null
+	Faction_1: string
+	Unit_1: string
+	Faction_2: string
+	Unit_2: string
+	Alliance_1: string
+	Alliance_2: string
+}
 
-function getJensensLayers(): RawLayer[] {
-	const jensensLayers = JENSENS_MATCHUPS.map((matchup) => {
-		const [faction1, faction2] = matchup.split('-')
-		return RawLayerSchema.parse({
-			Level: 'Jensens',
-			Layer: matchup,
-			Size: 'Small',
-			Faction_1: faction1,
-			SubFac_1: null,
-			Faction_2: faction2,
-			SubFac_2: null,
+type SheetData = Awaited<ReturnType<typeof parseSquadLayerSheetData>>
+async function parseSquadLayerSheetData() {
+	const mapLayers = await parseMapLayers()
+	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = await parseBattlegroups()
+
+	const { availability } = await parseBgLayerAvailability(factionToUnit, factionUnitToUnitFullName)
+	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
+
+	const baseLayers: BaseLayer[] = []
+	const idToIdx: Map<string, number> = new Map()
+	const components: LC.LayerComponents = LC.buildFullLayerComponents({
+		mapLayers,
+		allianceToFaction,
+		factionToUnit,
+		factionUnitToUnitFullName,
+
+		gamemodes: new Set(),
+		alliances: new Set(),
+		maps: new Set(),
+		layers: new Set(),
+		versions: new Set(),
+		factions: new Set(),
+		units: new Set(),
+		size: new Set(),
+	}, true)
+
+	for (const layer of mapLayers) {
+    components.maps.add(layer.Map)
+    components.size.add(layer.Size)
+    components.layers.add(layer.Layer)
+		for (const availEntry1 of availability) {
+			if (availEntry1.Layer !== layer.Layer) continue
+			if (!availEntry1.allowedTeams.includes(1)) continue
+			for (const availEntry2 of availability) {
+				if (!availEntry2.allowedTeams.includes(2)) continue
+				if (availEntry2.Layer !== layer.Layer) continue
+
+
+				const parsedSegments = M.parseLayerStringSegment(layer.Layer)
+				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
+				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
+				if (parsedSegments.LayerVersion) components.versions.add(parsedSegments.LayerVersion)
+				components.gamemodes.add(parsedSegments.Gamemode)
+				components.factions.add(availEntry1.Faction)
+				components.factions.add(availEntry1.Faction)
+				components.units.add(availEntry1.Unit)
+				components.units.add(availEntry2.Unit)
+				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
+				const layerId = M.getLayerId({
+					Map: layer.Map,
+					LayerVersion: parsedSegments.LayerVersion,
+					Gamemode: parsedSegments?.Gamemode,
+					Faction_1: availEntry1.Faction,
+					Faction_2: availEntry2.Faction,
+					Unit_1: availEntry1.Unit,
+					Unit_2: availEntry2.Unit,
+				}, LC.toLayerComponentsJson(components))
+				const alliance1 = factionToAlliance.get(availEntry1.Faction)!
+				const alliance2 = factionToAlliance.get(availEntry2.Faction)!
+				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
+				const baseLayer = {
+					id: layerId,
+					Map: layer.Map,
+					Layer: layer.Layer,
+					Gamemode: parsedSegments.Gamemode,
+					LayerVersion: parsedSegments.LayerVersion,
+					Size: layer.Size,
+					Faction_1: availEntry1.Faction,
+					Unit_1: availEntry1.Unit,
+					Faction_2: availEntry2.Faction,
+					Unit_2: availEntry2.Unit,
+					Alliance_1: factionToAlliance.get(availEntry1.Faction)!,
+					Alliance_2: factionToAlliance.get(availEntry2.Faction)!,
+				}
+				idToIdx.set(layerId, baseLayers.length)
+				baseLayers.push(baseLayer)
+			}
+		}
+	}
+
+	return { baseLayers, idToIdx, components, availability }
+}
+
+function parseBattlegroups() {
+	return new Promise<BattlegroupsData>((resolve, reject) => {
+		const allianceToFaction: OneToManyMap<string, string> = new Map()
+		const factionToUnit: OneToManyMap<string, string> = new Map()
+		const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
+
+		let currentAlliance: string | undefined
+		fs.createReadStream(path.join(Paths.DATA, 'battlegroups.csv'))
+			.pipe(parse({ columns: true }))
+			.on('data', (row) => {
+				if (row.Alliance) currentAlliance = row.Alliance
+				if (!row.Faction) return
+				const faction = row.Faction === 'MEI' ? 'INS' : row.Faction
+
+				OneToMany.set(allianceToFaction, currentAlliance, faction)
+				for (const [key, value] of Object.entries(row)) {
+					if (key === 'Alliance' || key === 'Faction' || !key || !value) continue
+					OneToMany.set(factionToUnit, faction, key.replace(' ', ''))
+					factionUnitToFullUnitName.set(`${faction}:${key.replace(' ', '')}`, value as string)
+				}
+			})
+			.on('end', () => {
+				console.log(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
+				console.log(`Parsed ${factionToUnit.size} faction to unit mappings`)
+				console.log(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
+
+				resolve({ allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName })
+			})
+			.on('error', (error) => {
+				console.error('Error parsing battlegroups CSV:', error)
+				reject(error)
+			})
+	})
+}
+
+function parseMapLayers() {
+	return new Promise<M.MapConfigLayer[]>((resolve, reject) => {
+		const layers: M.MapConfigLayer[] = []
+		let currentMap: string|undefined
+		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
+			.pipe(parse({ columns: true }))
+			.on('data', (row: Record<string, string>) => {
+				if (!row['Layer Name']) return
+				if (row['Level']) currentMap = M.preprocessLevel(row['Level'])
+				const layer = { Map: M.preprocessLevel(currentMap!), Layer: row['Layer Name'], Size: row['Layer Size*'] }
+				const segments = M.parseLayerStringSegment(layer.Layer)
+				if (!segments) throw new Error(`Invalid layer string: ${layer.Layer}`)
+				layers.push({
+					...layer,
+					Gamemode: segments.Gamemode!,
+					LayerVersion: segments.LayerVersion!,
+				})
+			})
+			.on('end', () => {
+				resolve(layers)
+			})
+			.on('error', (error) => {
+				console.error('Error parsing map layers CSV:', error)
+				reject(error)
+			})
+		return layers
+	})
+}
+
+type LayerFactionAvailabilityEntry = {
+	Layer: string
+	Faction: string
+	Unit: string
+	allowedTeams: (1 | 2)[]
+	isDefaultUnit: boolean
+}
+function parseBgLayerAvailability(
+	factionToUnit: OneToManyMap<string, string>,
+	factionUnitToFullUnitName: Map<FactionUnit, string>,
+) {
+	return new Promise<{ availability: LayerFactionAvailabilityEntry[] }>((resolve, reject) => {
+		const entries: LayerFactionAvailabilityEntry[] = []
+		const col = {
+			Layer: 2,
+			Faction: 3,
+			Unit: 4,
+			UnitFullName: 5,
+			TeamOptions: 6,
+			sheetLink: 8,
+		}
+
+		let currentLayer: string | undefined
+		let currentFaction: string | undefined
+		let i = 0
+		fs.createReadStream(path.join(Paths.DATA, 'bg-layer-availability.csv'))
+			.pipe(parse({ columns: false }))
+			.on('data', (row: string[]) => {
+				if (i < 5) {
+					i++
+					return
+				}
+
+				if (row[col.Layer]) {
+					currentLayer = row[col.Layer]
+					return
+				}
+				let unit: string | undefined
+				let isDefaultUnit = false
+				if (row[col.Faction]) {
+					currentFaction = row[col.Faction]
+
+					const sheetId = (new URL(row[col.sheetLink])).pathname.split('/')[3]
+					const gid = parseInt(u.hash.replace('#gid=','').replace(/\?range.+$/,''))
+					if (!unit) throw new Error(`Unit ${row[col.UnitFullName]} not found for faction ${row[col.Faction]}`)
+					isDefaultUnit = true
+				} else if (row[col.Unit]) {
+					unit = row[col.Unit]
+				} else {
+					return
+				}
+				const teams: (1 | 2)[] = []
+				if (row[col.TeamOptions].includes('1')) {
+					teams.push(1)
+				}
+				if (row[col.TeamOptions].includes('2')) {
+					teams.push(2)
+				}
+				entries.push({ Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit })
+			})
+			.on('end', () => {
+				console.log(`Parsed ${entries.length} layer availability entries`)
+				resolve({ availability: entries })
+			})
+			.on('error', (error) => {
+				console.error('Error parsing battlegroups CSV:', error)
+				reject(error)
+			})
+	})
+}
+
+async function ensureAllSheetsDownloaded(opts?: { invalidate?: boolean }) {
+	const invalidate = opts?.invalidate ?? false
+	const ops: Promise<void>[] = []
+	for (const sheet of SHEETS) {
+		if (invalidate || !fs.existsSync(sheet.path)) {
+			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheet.path))
+		}
+	}
+	await Promise.all(ops)
+}
+
+function downloadPublicSheetAsCSV(gid: number, filepath: string) {
+	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADHSEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
+
+	return new Promise<void>((resolve, reject) => {
+		const file = fs.createWriteStream(filepath)
+
+		http.https.get(url, (response) => {
+			response.pipe(file)
+
+			file.on('finish', () => {
+				file.close()
+				console.log(`CSV downloaded successfully to ${filepath}!`)
+				resolve()
+			})
+
+			file.on('error', (error) => {
+				file.close()
+				console.error(`Error downloading CSV from ${url} to ${filepath}:`, error)
+				reject(error)
+			})
+		}).on('error', (error) => {
+			console.error('Error:', error)
+			reject(error)
 		})
 	})
-	return jensensLayers
 }
 
-function getSeedingLayers(pipeline: SquadPipelineModels.Output, biomes: Biome[], factions: FactionDetails[]) {
-	const seedLayers: RawLayer[] = []
-	for (const layerString of pipeline.mapsavailable) {
-		if (!layerString.toLowerCase().includes('seed')) continue
-		const { map: level } = M.parseLayerStringSegment(layerString)!
-
-		const matchups = getSeedingMatchupsForLayer(level, factions, biomes)
-		for (const [team1, team2] of matchups) {
-			seedLayers.push(
-				RawLayerSchema.parse({
-					Level: level,
-					Layer: layerString,
-					Size: 'Small',
-					Faction_1: team1,
-					SubFac_1: null,
-					Faction_2: team2,
-					SubFac_2: null,
-				}),
-			)
-		}
-	}
-	return seedLayers
-}
-
-function normalizeMapName(name: string) {
-	return name.toLowerCase().replace(/[^a-z]/g, '')
-}
-
-function compareMapNames(a: string, b: string) {
-	a = normalizeMapName(a)
-	b = normalizeMapName(b)
-	return a.includes(a) || b.includes(a)
-}
-
-function getSeedingMatchupsForLayer(mapName: string, factions: FactionDetails[], biomes: Biome[]) {
-	const biome = biomes.find((b) => b.maps.some((map) => compareMapNames(map, mapName)))!
-	if (!biome) {
-		throw new Error(`No biome found for map ${mapName}`)
-	}
-	const allBiomeFactions = factions.filter((f) => biome.factions.includes(f.faction))
-	const matchups: [string, string][] = []
-	for (const team1 of allBiomeFactions) {
-		for (const team2 of allBiomeFactions) {
-			if (team1.alliance !== 'INDEPENDENT' && team1.alliance === team2.alliance) {
-				continue
-			}
-			matchups.push([team1.faction, team2.faction])
-		}
-	}
-	return matchups
-}
-
-type BaseLayerComponents = {
-	maps: Set<string>
-	layers: Set<string>
-	gamemodes: Set<string>
-	versions: Set<string>
-	factions: Set<string>
-	subfactions: Set<string | null>
-}
-function parseLayerComponents(
-	ctx: C.Log & C.Db & C.Op,
+const SHEETS = [
 	{
-		baseLayerComponents,
-		factionDetails,
-		pipeline,
-	}: {
-		baseLayerComponents: BaseLayerComponents
-		factionDetails: FactionDetails[]
-		pipeline: SquadPipelineModels.Output
+		name: 'battlegroups',
+		path: 'battlegroups.csv',
+		gid: 1796438364,
 	},
-) {
-	for (const map of baseLayerComponents.maps) {
-		if (!(map in MAP_SHORT_NAMES)) {
-			throw new Error(`map ${map} doesn't have a short name`)
-		}
-		if (!(map in MAP_ABBREVIATIONS)) {
-			throw new Error(`map ${map} doesn't have an abbreviation`)
-		}
-	}
-	for (const subfaction of baseLayerComponents.subfactions) {
-		if (subfaction === null) continue
-		if (!(subfaction in SUBFACTION_ABBREVIATIONS)) {
-			throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
-		}
-		if (!(subfaction in SUBFACTION_SHORT_NAMES)) {
-			throw new Error(`subfaction ${subfaction} doesn't have a short name`)
-		}
-	}
-	const factionFullNames = getFactionFullNames(pipeline)
-
-	const factions = [...baseLayerComponents.factions]
-	const missingFactionNames = factions.filter((faction) => !factionFullNames[faction])
-	if (missingFactionNames.length > 0) {
-		throw new Error(`Missing faction full names for: ${missingFactionNames.join(', ')}`)
-	}
-	const extraFactionNames = Object.entries(factionFullNames).filter(([faction]) => !factions.includes(faction))
-	if (extraFactionNames.length > 0) {
-		throw new Error(`Extra faction full names for: ${extraFactionNames.map(([f]) => f).join(', ')}`)
-	}
-
-	const subfactionFullNames = Object.fromEntries(
-		factionDetails.map((faction) => {
-			return [faction.faction, faction.subfactions] as const
-		}),
-	)
-
-	const layerComponents: M.LayerComponents = {
-		factions: factionDetails.map((f) => f.faction),
-		factionFullNames: factionFullNames,
-		subfactions: SUBFACTIONS as unknown as string[],
-		subfactionAbbreviations: SUBFACTION_ABBREVIATIONS,
-		subfactionShortNames: SUBFACTION_SHORT_NAMES,
-		subfactionFullNames,
-		maps: [...baseLayerComponents.maps],
-		mapAbbreviations: MAP_ABBREVIATIONS,
-		mapShortNames: MAP_SHORT_NAMES,
-		layers: [...baseLayerComponents.layers],
-		layerVersions: [...baseLayerComponents.versions],
-		gamemodes: GAMEMODES as unknown as string[],
-		gamemodeAbbreviations: GAMEMODE_ABBREVIATIONS,
-	}
-
-	if (!deepEqual([...SUBFACTIONS].sort(), [...layerComponents.subfactions].sort())) {
-		throw new Error(
-			`SUBFACTIONS should match the output of layerComponents, instead got SUBFACTIONS : ${layerComponents.subfactions.join(', ')}`,
-		)
-	}
-
-	return layerComponents
-}
-
-async function parseBiomes(_ctx: C.Log) {
-	await using ctx = C.pushOperation(_ctx, 'parse-biomes')
-	const fileStream = fs.createReadStream(path.join(Paths.DATA, 'biomes.csv'), 'utf-8')
-	const parser = fileStream.pipe(parse({ columns: false }))
-	const biomes: Biome[] = []
-	let isFirstRow = true
-	for await (const row of parser) {
-		if (isFirstRow) {
-			isFirstRow = false
-			continue
-		}
-		if (!row || row.length === 0) continue
-		const maps = row[1].split(/\r?\n/).map((e: string) => e.replace('- ', ''))
-		const name = row[0].replace('\n', '')
-		biomes.push({
-			name,
-			maps,
-			// @ts-expect-error nodude
-			factions: BIOME_FACTIONS[name],
-		})
-	}
-	ctx.log.info('Parsed %d biomes', biomes.length)
-
-	return biomes
-}
-
-type FactionDetails = {
-	faction: string
-	alliance: string
-	subfactions: Record<M.Subfaction, string>
-}
-
-async function parseFactionDetails(_ctx: C.Log) {
-	using _ = C.pushOperation(_ctx, 'parse-faction-details')
-	const filePath = path.join(Paths.DATA, 'battlegroups.csv')
-	const parser = fs.createReadStream(filePath).pipe(parse({ columns: true }))
-	let alliance: string | null = null
-	const parsed: FactionDetails[] = []
-	for await (const row of parser) {
-		if (row.Alliance) alliance = row.Alliance
-		if (!row.Faction) continue
-		// @ts-expect-error idc
-		const subfactions: Record<M.Subfaction, string> = {}
-		if (row['Air Assault']) subfactions['AirAssault'] = row['Air Assault']
-		if (row.Armored) subfactions['Armored'] = row.Armored
-		if (row['Combined Arms']) {
-			subfactions['CombinedArms'] = row['Combined Arms']
-		}
-		if (row['Light Infantry']) {
-			subfactions['LightInfantry'] = row['Light Infantry']
-		}
-		if (row.Mechanized) subfactions['Mechanized'] = row.Mechanized
-		if (row.Motorized) subfactions['Motorized'] = row.Motorized
-		if (row.Support) subfactions['Support'] = row.Support
-
-		parsed.push({
-			faction: row.Faction,
-			alliance: alliance!,
-			subfactions,
-		})
-	}
-	return parsed
-}
+	{
+		name: 'alliances',
+		path: 'alliances.csv',
+		gid: 337815939,
+	},
+	{
+	  name: 'biomes',
+	  path: 'biomes.csv',
+	  gid: 1025614852
+	},
+	{
+		name: 'bgDescriptions',
+		path: 'bg-descriptions.csv',
+		gid: 104824254,
+	},
+	{
+		name: 'bgLayerAvailability',
+		path: 'bg-layer-availability.csv',
+		gid: 1881530590,
+	},
+	{
+		name: 'mapLayers',
+		path: 'map-layers.csv',
+		gid: 1212962563,
+	},
+  {
+    name: 'Assets:AirAssault:Large:Offense',
+    unit: 'AirAssault',
+    gid: 196602319
+  },
+  {
+    name: 'Assets:Amphibious:Large:Offense',
+    unit: 'Amphibious',
+    gid: 1592545787
+  },
+  {
+    name: 'Assets:Armored:Large:Offense',
+    unit: 'Armored',
+    gid: 774448026
+  },
+  {
+    name: 'Assets:Armored:Large:Defense',
+    unit: 'Armored',
+    gid: 429375515
+  },
+  {
+    name: 'Assets:CombinedArms:Large:Offense',
+    unit: 'CombinedArms',
+    gid: 55130916
+  },
+  {
+    name: 'Assets:CombinedArms:Large:Defense',
+    unit: 'CombinedArms',
+    gid: 1024747126
+  },
+  {
+    name: 'Assets:LightInfantry:Large:Offense',
+    unit: 'LightInfantry',
+    gid: 706333626
+  },
+  {
+    name: 'Assets:LightInfantry:Large:Defense',
+    unit: 'LightInfantry',
+    gid: 1650555364
+  },
+  {
+    name: 'Assets:Mechanized:Large:Offense',
+    unit: 'Mechanized',
+    gid: 996007242
+  },
+  {
+    name: 'Assets:Mechanized:Large:Defense',
+    unit: 'Mechanized',
+    gid: 1128826127
+  },
+  {
+    name: 'Assets:Motorized:Large:Offense',
+    unit: 'Motorized',
+    gid: 131120776
+  },
+  {
+    name: 'Assets:Motorized:Large:Defense',
+    unit: 'Motorized',
+    gid: 1681257950
+  },
+  {
+    name: 'Assets:Support:Large:Offense',
+    unit: 'Support',
+    gid: 2080033084
+  },
+  {
+    name: 'Assets:Support:Large:Defense',
+    unit: 'Support',
+    gid: 1622797716
+  },
+  {
+    name: 'Assets:CombinedArms:Medium:Offense',
+    unit: 'CombinedArms',
+    gid: 970369378
+  },
+  {
+    name: 'Assets:CombinedArms:Medium:Defense',
+    unit: 'CombinedArms',
+    gid: 188928736
+  },
+  {
+    name: 'Assets:CombinedArms:Small',
+    unit: 'CombinedArms',
+    gid: 2069827913
+  },
+  {
+    name: 'Assets:CombinedArms:Seed',
+    unit: 'CombinedArms',
+    gid: 1905776366
+  }
+]
 
 await main()
 

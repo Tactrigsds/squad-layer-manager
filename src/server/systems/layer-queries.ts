@@ -363,7 +363,7 @@ export async function getFilterNodeSQLConditions(
 						const value = comp.values[0] as M.Subfaction
 						return E.and(
 							E.eq(Schema.layers.SubFac_1, value),
-							E.eq(Schema.layers.SubFac_2, value),
+							E.eq(Schema.layers.Unit_2, value),
 						)!
 					}
 					const conditions: SQL[] = []
@@ -934,7 +934,7 @@ function hasTeam(
 	if (faction === null) {
 		return E.or(
 			E.eq(Schema.layers.SubFac_1, subfaction),
-			E.eq(Schema.layers.SubFac_2, subfaction),
+			E.eq(Schema.layers.Unit_2, subfaction),
 		)!
 	}
 	return E.or(
@@ -944,7 +944,7 @@ function hasTeam(
 		),
 		E.and(
 			E.eq(Schema.layers.Faction_2, faction),
-			E.eq(Schema.layers.SubFac_2, subfaction),
+			E.eq(Schema.layers.Unit_2, subfaction),
 		),
 	)!
 }
@@ -963,6 +963,7 @@ function resolveRelevantLayerHistory(
 	const historicLayers: string[] = []
 	for (const match of historicMatches) {
 		const details = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
+		// don't consider jensens or seeding layers
 		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
 		historicLayers.push(match.layerId)
 	}

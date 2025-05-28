@@ -148,43 +148,6 @@ export function recordGenericError(error: unknown, setStatus = true) {
 	}
 }
 
-export function pushOperation<T extends Log>(ctx: T, type: string, _opts?: OperationOptions): T & Op {
-	const opts: OperationOptions = _opts ?? {}
-	opts.level ??= 'debug'
-	opts.startMsgBindings ??= {}
-	const operationId = (opIdx++).toString()
-	const bindings = ctx.log.bindings()
-	const ops = bindings.ops ? [...bindings.ops] : []
-	ops.push({ id: operationId, type })
-
-	const handleResult = async () => {
-		const result = newCtx.result ?? 'ok'
-		if (result && result !== 'ok') {
-			lifeCycleLog.error(newCtx.error, 'operation failed: %s', result)
-			return
-		}
-		if (newCtx.tasks.length > 0) {
-			await Promise.all(newCtx.tasks).catch((err) => {
-				lifeCycleLog.error(err, 'operation failed', type, operationId)
-				throw err
-			})
-		}
-		lifeCycleLog[opts.level!]('operation completed', type, operationId)
-	}
-
-	const newCtx: T & Op = {
-		...includeLogProperties(ctx, { ops }),
-		endMsgBindings: {},
-		tasks: [],
-		[Symbol.asyncDispose]: handleResult,
-		[Symbol.dispose]: handleResult,
-	}
-	const lifeCycleLog = newCtx.log.child({ opLifecycle: true })
-
-	lifeCycleLog[opts.level](opts.startMsgBindings, 'operation started', type, operationId)
-	return newCtx
-}
-
 // -------- Logging end --------
 
 export type Db = {

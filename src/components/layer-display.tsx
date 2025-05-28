@@ -106,9 +106,9 @@ function ShortLayerName(
 		Gamemode: (!partialLayer.Gamemode && !!backfillLayer?.Gamemode) ? backfilledStyle : undefined,
 		LayerVersion: (!partialLayer.LayerVersion && !!backfillLayer?.LayerVersion) ? backfilledStyle : undefined,
 		Faction_1: (!partialLayer.Faction_1 && !!backfillLayer?.Faction_1) ? backfilledStyle : undefined,
-		SubFac_1: (!partialLayer.SubFac_1 && !!backfillLayer?.SubFac_1) ? backfilledStyle : undefined,
+		SubFac_1: (!partialLayer.Unit_1 && !!backfillLayer?.Unit_1) ? backfilledStyle : undefined,
 		Faction_2: (!partialLayer.Faction_2 && !!backfillLayer?.Faction_2) ? backfilledStyle : undefined,
-		SubFac_2: (!partialLayer.SubFac_2 && !!backfillLayer?.SubFac_2) ? backfilledStyle : undefined,
+		SubFac_2: (!partialLayer.Unit_2 && !!backfillLayer?.Unit_2) ? backfilledStyle : undefined,
 	}
 
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)

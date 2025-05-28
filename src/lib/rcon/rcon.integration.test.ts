@@ -48,8 +48,8 @@ test('can set next layer', async () => {
 		LayerVersion: 'V1',
 		Faction_1: 'RGF',
 		Faction_2: 'USA',
-		SubFac_1: 'CombinedArms',
-		SubFac_2: 'CombinedArms',
+		Unit_1: 'CombinedArms',
+		Unit_2: 'CombinedArms',
 	})
 	// make sure currently set next layer is not the same as the one we are going to set
 	await squadRcon.setNextLayer(ctx, layer1Id)
@@ -68,9 +68,9 @@ test('can set next layer', async () => {
 		Map: 'GooseBay',
 		LayerVersion: 'V1',
 		Faction_1: 'USA',
-		SubFac_1: 'CombinedArms',
+		Unit_1: 'CombinedArms',
 		Faction_2: 'RGF',
-		SubFac_2: 'CombinedArms',
+		Unit_2: 'CombinedArms',
 	})
 	await squadRcon.setNextLayer(ctx, layer2Id)
 	const status2 = (await squadRcon.serverStatus.get(ctx)).value

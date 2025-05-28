@@ -62,6 +62,10 @@ export const groups = {
 		SQUAD_SFTP_PASSWORD: z.string().default('password'),
 		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().positive()),
 	},
+
+	sheets: {
+		SPREADHSEET_ID: z.string().default('1A3D4zeOS8YxoEYrWcXa8edBCG_EUueZK9cX2oFMLY9U'),
+	},
 } satisfies { [key: string]: Record<string, z.ZodTypeAny> }
 
 let rawEnv!: Record<string, string | undefined>

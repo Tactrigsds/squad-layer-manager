@@ -27,8 +27,8 @@ async function main() {
 			Gamemode: 'RAAS',
 			Faction_1: 'USA',
 			Faction_2: 'RGF',
-			SubFac_1: 'CombinedArms',
-			SubFac_2: 'CombinedArms',
+			Unit_1: 'CombinedArms',
+			Unit_2: 'CombinedArms',
 		})
 
 		await squadRcon.setNextLayer(ctx, layer1)

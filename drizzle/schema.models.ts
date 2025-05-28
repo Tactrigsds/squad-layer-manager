@@ -3,10 +3,6 @@ export type Layer = typeof Schema.layers.$inferSelect
 export type Filter = typeof Schema.filters.$inferSelect
 export type NewFilter = typeof Schema.filters.$inferInsert
 export type Server = typeof Schema.servers.$inferInsert
-export type Faction = typeof Schema.factions.$inferSelect
-export type NewFaction = typeof Schema.factions.$inferInsert
-export type Subfaction = typeof Schema.subfactions.$inferSelect
-export type NewSubfaction = typeof Schema.subfactions.$inferInsert
 export type Session = typeof Schema.sessions.$inferSelect
 export type NewSession = typeof Schema.sessions.$inferInsert
 export type User = typeof Schema.users.$inferSelect
@@ -29,5 +25,5 @@ export const MINI_LAYER_SELECT = {
 	Faction_1: Schema.layers.Faction_1,
 	SubFac_1: Schema.layers.SubFac_1,
 	Faction_2: Schema.layers.Faction_2,
-	SubFac_2: Schema.layers.SubFac_2,
+	SubFac_2: Schema.layers.Unit_2,
 }

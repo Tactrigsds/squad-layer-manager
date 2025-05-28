@@ -32,8 +32,8 @@ export function getTeamsDisplay(
 		team1Color = teamColors.team1
 	}
 
-	const subfaction1 = partialLayer.SubFac_1 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_1) : undefined
-	const subFaction2 = partialLayer.SubFac_2 !== undefined ? DH.toShortSubfaction(partialLayer.SubFac_2) : undefined
+	const subfaction1 = partialLayer.Unit_1 !== undefined ? DH.toShortSubfaction(partialLayer.Unit_1) : undefined
+	const subFaction2 = partialLayer.Unit_2 !== undefined ? DH.toShortSubfaction(partialLayer.Unit_2) : undefined
 
 	const teamElts = [
 		<span>

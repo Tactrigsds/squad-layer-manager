@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { OneToManyMap } from '../one-to-many-map'
 
 import * as M from '@/models'
-import { assertNever, nullOrUndefined as nullOrUndef } from '../typeGuards'
+import { assertNever, isNullOrUndef } from '../typeGuards'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
@@ -134,10 +134,10 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		lqItemId: entry.lqItemId ?? undefined,
 	} satisfies Partial<MatchDetailsCommon>
 
-	if (!nullOrUndef(entry.endTime) && nullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
-	else if (nullOrUndef(entry.endTime) && !nullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
-	else if (!nullOrUndef(entry.endTime) && entry.outcome === 'draw') {
-		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) {
+	if (!isNullOrUndef(entry.endTime) && isNullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
+	else if (isNullOrUndef(entry.endTime) && !isNullOrUndef(entry.outcome)) throw new Error('Match not ended but outcome is not null')
+	else if (!isNullOrUndef(entry.endTime) && entry.outcome === 'draw') {
+		if (!isNullOrUndef(entry.team1Tickets) || !isNullOrUndef(entry.team2Tickets)) {
 			throw new Error('Match ended in a draw but tickets were not null')
 		}
 
@@ -150,7 +150,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 			},
 		}
 	} else if (entry.endTime && entry.outcome !== 'draw') {
-		if (nullOrUndef(entry.team1Tickets) || nullOrUndef(entry.team2Tickets)) {
+		if (isNullOrUndef(entry.team1Tickets) || isNullOrUndef(entry.team2Tickets)) {
 			throw new Error('Match ended in a win but tickets were null or empty')
 		}
 
@@ -164,8 +164,10 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 				team2Tickets: entry.team2Tickets,
 			},
 		}
-	} else if (nullOrUndef(entry.endTime) && nullOrUndef(entry.outcome)) {
-		if (!nullOrUndef(entry.team1Tickets) || !nullOrUndef(entry.team2Tickets)) throw new Error('Match not ended but tickets were not null')
+	} else if (isNullOrUndef(entry.endTime) && isNullOrUndef(entry.outcome)) {
+		if (!isNullOrUndef(entry.team1Tickets) || !isNullOrUndef(entry.team2Tickets)) {
+			throw new Error('Match not ended but tickets were not null')
+		}
 
 		return {
 			status: 'in-progress',

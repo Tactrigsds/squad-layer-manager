@@ -232,15 +232,19 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 	rcon = new SquadRcon(ctx, coreRcon, { warnPrefix: CONFIG.warnPrefix })
 
 	rcon.event$.pipe(
-		C.durableSub('squad-server:handle-rcon-event', { tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel' }, async (event) => {
-			if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-				await handleCommand(ctx, event.message)
-			}
+		C.durableSub(
+			'squad-server:handle-rcon-event',
+			{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
+			async (event) => {
+				if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
+					await handleCommand(ctx, event.message)
+				}
 
-			if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-				await LayerQueue.handleVote(ctx, event.message)
-			}
-		}),
+				if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
+					await LayerQueue.handleVote(ctx, event.message)
+				}
+			},
+		),
 	).subscribe()
 
 	// -------- set up squad events (events from logger) --------

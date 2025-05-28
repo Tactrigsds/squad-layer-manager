@@ -20,9 +20,9 @@ function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): Rec
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion']),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
-		SubFac_1: EFB.eq('SubFac_1', defaultFields['SubFac_1']),
+		SubFac_1: EFB.eq('SubFac_1', defaultFields['Unit_1']),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
-		SubFac_2: EFB.eq('SubFac_2', defaultFields['SubFac_2']),
+		SubFac_2: EFB.eq('SubFac_2', defaultFields['Unit_2']),
 	} as Record<keyof M.MiniLayer, M.EditableComparison>
 }
 
@@ -141,14 +141,15 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					const comp = typeof update === 'function' ? update(prevComp) : update
 
 					if (comp.column === 'Layer' && comp.value) {
+						// TODO this section doesn't handle training modes well
 						const parsedLayer = M.parseLayerStringSegment(comp.value as string)
 						draft['Layer'].value = comp.value
 						if (!parsedLayer) {
 							return
 						}
-						draft['Map'].value = parsedLayer.map
-						draft['Gamemode'].value = parsedLayer.gamemode
-						draft['LayerVersion'].value = parsedLayer.version
+						draft['Map'].value = parsedLayer.Map
+						draft['Gamemode'].value = parsedLayer.Gamemode
+						draft['LayerVersion'].value = parsedLayer.LayerVersion
 					} else if (comp.column === 'Layer' && !comp.value) {
 						delete draft['Layer'].value
 						delete draft['Map'].value

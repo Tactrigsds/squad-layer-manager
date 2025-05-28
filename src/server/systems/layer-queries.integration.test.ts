@@ -68,8 +68,8 @@ test('can filter by sub-faction matchup', async () => {
 	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
-		expect([layer.SubFac_1, layer.SubFac_2]).toContain('CombinedArms')
-		expect([layer.SubFac_1, layer.SubFac_2]).toContain('Armored')
+		expect([layer.Unit_1, layer.Unit_2]).toContain('CombinedArms')
+		expect([layer.Unit_1, layer.Unit_2]).toContain('Armored')
 	}
 })
 
@@ -87,8 +87,8 @@ test('can filter by full faction matchup', async () => {
 	})
 	expect(res.layers.length).toBeGreaterThan(0)
 	for (const layer of res.layers) {
-		const team1 = M.getLayerTeamString(layer.Faction_1, layer.SubFac_1)
-		const team2 = M.getLayerTeamString(layer.Faction_2, layer.SubFac_2)
+		const team1 = M.getLayerTeamString(layer.Faction_1, layer.Unit_1)
+		const team2 = M.getLayerTeamString(layer.Faction_2, layer.Unit_2)
 		expect([team1, team2]).toContain(matchup[0])
 		expect([team1, team2]).toContain(matchup[1])
 	}

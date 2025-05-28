@@ -1,10 +1,6 @@
 import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
-export function toShortLevel(map: M.Layer['Map']) {
-	return LayerComponents.mapShortNames[map as keyof typeof LayerComponents.mapShortNames]
-}
-
 export function toShortSubfaction(subfaction: string | null) {
 	if (subfaction === null) return ''
 	// @ts-expect-error idc
@@ -24,8 +20,8 @@ export function displayUnvalidatedLayer(possibleUnknown: M.UnvalidatedMiniLayer)
 }
 
 export function toFullLayerName(layer: M.MiniLayer) {
-	const subfaction1 = layer.SubFac_1 ? ` ${layer.SubFac_1}` : ''
-	const subfaction2 = layer.SubFac_2 ? ` ${layer.SubFac_2}` : ''
+	const subfaction1 = layer.Unit_1 ? ` ${layer.Unit_1}` : ''
+	const subfaction2 = layer.Unit_2 ? ` ${layer.Unit_2}` : ''
 	return `${layer.Layer} - ${layer.Faction_1}${subfaction1} vs ${layer.Faction_2}${subfaction2}`
 }
 
@@ -36,8 +32,8 @@ export function toFullLayerNameFromId(id: string) {
 }
 
 export function toShortLayerName(layer: M.MiniLayer) {
-	const subfaction1 = toShortSubfaction(layer.SubFac_1)
-	const subFaction2 = toShortSubfaction(layer.SubFac_2)
+	const subfaction1 = toShortSubfaction(layer.Unit_1)
+	const subFaction2 = toShortSubfaction(layer.Unit_2)
 	let txt = `${layer.Layer} `
 	txt += `- ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
@@ -46,8 +42,8 @@ export function toShortLayerName(layer: M.MiniLayer) {
 }
 
 export function toShortTeamsDisplay(layer: Partial<M.MiniLayer>) {
-	const subfaction1 = toShortSubfaction(layer.SubFac_1 ?? null)
-	const subFaction2 = toShortSubfaction(layer.SubFac_2 ?? null)
+	const subfaction1 = toShortSubfaction(layer.Unit_1 ?? null)
+	const subFaction2 = toShortSubfaction(layer.Unit_2 ?? null)
 	let txt = `${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
 	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}`.trim()
