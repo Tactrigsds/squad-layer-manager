@@ -15,7 +15,7 @@ import * as Env from './env.ts'
 
 export type Db = MySql2Database<Record<string, never>>
 
-let pool: MySQL.Pool
+export let pool: MySQL.Pool
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>

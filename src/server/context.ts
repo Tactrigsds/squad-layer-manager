@@ -9,6 +9,7 @@ import * as Rx from 'rxjs'
 import * as ws from 'ws'
 import * as DB from './db.ts'
 import { baseLogger, Logger } from './logger.ts'
+import { createId } from '@/lib/id.ts'
 
 // -------- Logging --------
 export type Log = {
@@ -26,25 +27,10 @@ export type SpanContext = {
 export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
 	return { ...ctx, log: ctx.log.child(fields) }
 }
-
-export type Op = {
-	tasks: Promise<any>[]
-	result?: 'ok' | string
-	error?: any
-	endMsgBindings: Record<string, any>
-	[Symbol.asyncDispose]: () => Promise<void>
-	[Symbol.dispose]: () => void
-}
-
-let opIdx = 0
-type OperationOptions = {
-	level?: Pino.Level
-	startMsgBindings?: Record<string, any>
-}
-
-export function failOperation(ctx: Op, err?: any, code?: string): void {
-	ctx.result = code ?? 'err'
-	ctx.error = err
+export function setLogLevel<T extends Log>(ctx: T, level: Pino.Level): T {
+	const child = ctx.log.child({})
+	child.level = level
+	return { ...ctx, log: child }
 }
 
 export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
@@ -87,7 +73,8 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 				if (args[0]?.log) {
 					logger = args[0].log
 				}
-				logger?.[opts.eventLogLevel ?? 'debug'](`${name} - executed`)
+				const id = createId(6)
+				logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - executed`)
 				try {
 					const result = await cb(...args)
 					if (result !== null && typeof result === 'object' && 'code' in result) {
@@ -99,11 +86,11 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 							span.setStatus({ code: Otel.SpanStatusCode.ERROR, message: msg })
 						}
 					}
-					logger?.[opts.eventLogLevel ?? 'debug'](`${name} - ok`)
+					logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - ok`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
-					logger?.warn(`${name} : error : ${message} `)
+					logger?.warn(`${name}(${id}) : error : ${message} `)
 					throw error
 				} finally {
 					span.end()

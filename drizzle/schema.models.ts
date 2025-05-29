@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 export type Layer = typeof Schema.layers.$inferSelect
+export type NewLayer = typeof Schema.layers.$inferInsert
 export type Filter = typeof Schema.filters.$inferSelect
 export type NewFilter = typeof Schema.filters.$inferInsert
 export type Server = typeof Schema.servers.$inferInsert
@@ -23,7 +24,7 @@ export const MINI_LAYER_SELECT = {
 	Gamemode: Schema.layers.Gamemode,
 	LayerVersion: Schema.layers.LayerVersion,
 	Faction_1: Schema.layers.Faction_1,
-	SubFac_1: Schema.layers.SubFac_1,
+	Unit_1: Schema.layers.Unit_1,
 	Faction_2: Schema.layers.Faction_2,
-	SubFac_2: Schema.layers.Unit_2,
+	Unit_2: Schema.layers.Unit_2,
 }

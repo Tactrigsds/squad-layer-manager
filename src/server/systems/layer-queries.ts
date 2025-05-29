@@ -353,22 +353,22 @@ export async function getFilterNodeSQLConditions(
 					const factionValues = comp.values.map((v) => M.parseTeamString(v))
 					const conditions: SQL[] = []
 					for (const { faction, subfac } of factionValues) {
-						conditions.push(hasTeam(faction, subfac as M.Subfaction))
+						conditions.push(hasTeam(faction, subfac))
 					}
 					res = E.and(...conditions)!
 					break
 				}
 				if (comp.column === 'SubFacMatchup') {
 					if (comp.values[0] === comp.values[1]) {
-						const value = comp.values[0] as M.Subfaction
+						const value = comp.values[0]
 						return E.and(
-							E.eq(Schema.layers.SubFac_1, value),
+							E.eq(Schema.layers.Unit_1, value),
 							E.eq(Schema.layers.Unit_2, value),
 						)!
 					}
 					const conditions: SQL[] = []
 					for (const subfaction of comp.values) {
-						conditions.push(hasTeam(null, subfaction as M.Subfaction))
+						conditions.push(hasTeam(null, subfaction))
 					}
 					res = E.and(...conditions)!
 					break
@@ -650,6 +650,7 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			case 'Map':
 			case 'Gamemode':
 			case 'Layer':
+			case 'Size':
 				if (
 					layer[rule.field]
 					&& targetLayer[rule.field] === layer[rule.field]
@@ -707,6 +708,28 @@ function getisBlockedByDoNotRepeatRuleDirect(
 				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
+			case 'Alliance': {
+				const descriptors: string[] = []
+				const checkAlliance = (team: 'A' | 'B') => {
+					const targetFaction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
+					if (!targetFaction) return
+					const targetAlliance = M.StaticLayerComponents.factionToAlliance[targetFaction]
+					if (!targetAlliance) return
+					const faction = M.getTeamNormalizedFactionProp(layerTeamParity, team)
+					if (!faction) return
+					const alliance = M.StaticLayerComponents.factionToAlliance[faction]
+					if (!alliance) return
+					if (targetAlliance === alliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
+						descriptors.push(`Alliance_${team}`)
+					}
+				}
+
+				checkAlliance('A')
+				checkAlliance('B')
+
+				if (descriptors.length > 0) return retValue(true, descriptors)
+				break
+			}
 			default:
 				assertNever(rule.field)
 		}
@@ -731,6 +754,7 @@ function getDoNotRepeatSQLConditions(
 		switch (rule.field) {
 			case 'Map':
 			case 'Gamemode':
+			case 'Size':
 			case 'Layer':
 				if (
 					layer[rule.field]
@@ -767,6 +791,20 @@ function getDoNotRepeatSQLConditions(
 				addApplicable('B')
 				break
 			}
+			case 'Alliance': {
+				const addApplicable = (team: 'A' | 'B') => {
+					const faction = layer[M.getTeamNormalizedFactionProp(teamParity, team)]
+					if (!faction) return
+					const alliance = M.StaticLayerComponents.factionToAlliance[faction]
+					if (!alliance) return
+					if (rule.targetValues?.includes(alliance) ?? true) {
+						values.add(team + ':' + alliance)
+					}
+				}
+				addApplicable('A')
+				addApplicable('B')
+				break
+			}
 			default:
 				assertNever(rule.field)
 		}
@@ -782,6 +820,7 @@ function getDoNotRepeatSQLConditions(
 	switch (rule.field) {
 		case 'Map':
 		case 'Gamemode':
+		case 'Size':
 		case 'Layer':
 			return E.notInArray(Schema.layers[rule.field], valuesArr)
 		case 'Faction': {
@@ -821,6 +860,31 @@ function getDoNotRepeatSQLConditions(
 			return E.and(
 				E.notInArray(factionAndUnitExpressionA, valuesArrA),
 				E.notInArray(factionAndUnitExpressionB, valuesArrB),
+			)
+		}
+		case 'Alliance': {
+			const getAllianceExpr = (team: 'A' | 'B') => {
+				const factionColumn = Schema.layers[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]
+				// Create a CASE expression to map factions to alliances
+				const allianceMapping = Object.entries(M.StaticLayerComponents.factionToAlliance)
+					.map(([faction, alliance]) => `WHEN ${factionColumn.name} = '${faction}' THEN '${alliance}'`)
+					.join(' ')
+				return sql`CASE ${allianceMapping} END`
+			}
+
+			const allianceExpressionA = getAllianceExpr('A')
+			const valuesArrA = valuesArr
+				.filter((v) => v.startsWith('A:'))
+				.map((v) => v.slice(2))
+
+			const allianceExpressionB = getAllianceExpr('B')
+			const valuesArrB = valuesArr
+				.filter((v) => v.startsWith('B:'))
+				.map((v) => v.slice(2))
+
+			return E.and(
+				E.notInArray(allianceExpressionA, valuesArrA),
+				E.notInArray(allianceExpressionB, valuesArrB),
 			)
 		}
 		default:
@@ -918,8 +982,8 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 }
 
 function hasTeam(
-	faction: string | null | typeof Schema.layers.Faction_1 = null,
-	subfaction: M.Subfaction | null | typeof Schema.layers.SubFac_1 = null,
+	faction: string | null,
+	subfaction: string | null,
 ) {
 	if (!faction && !subfaction) {
 		throw new Error('At least one of faction or subfaction must be provided')
@@ -933,14 +997,14 @@ function hasTeam(
 	}
 	if (faction === null) {
 		return E.or(
-			E.eq(Schema.layers.SubFac_1, subfaction),
+			E.eq(Schema.layers.Unit_1, subfaction),
 			E.eq(Schema.layers.Unit_2, subfaction),
 		)!
 	}
 	return E.or(
 		E.and(
 			E.eq(Schema.layers.Faction_1, faction),
-			E.eq(Schema.layers.SubFac_1, subfaction),
+			E.eq(Schema.layers.Unit_1, subfaction),
 		),
 		E.and(
 			E.eq(Schema.layers.Faction_2, faction),

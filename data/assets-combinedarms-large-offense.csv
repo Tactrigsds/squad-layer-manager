@@ -1,0 +1,53 @@
+,ADF,,,,BAF,,,,CAF,,,,MEA,,,,PLA,,,,PLAAGF,,,,PLANMC,,,,RGF,,,,TLF,,,,USA,,,,USMC,,,,VDV,,,,WPMC,,,,IMF,,,,INS,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,3rd Brigade Battle Group,,,,3rd Division Battle Group,,,,1 Canadian Mechanized Brigade Group,,,,"1st Battalion, Legion of Babylon",,,,118th Combined Arms Brigade,,,,14th Amphibious Combined Arms Brigade,,,,5th Marine Combined Arms Brigade,,,,49th Combined Arms Army,,,,1st Army Battle Group,,,,"3rd Brigade Combat Team, 1st Infantry Division",,,,31st Marine Expeditionary Unit,,,,7th Guards Mountain Air Assault Division,,,,Manticore Security Task Force,,,,Irregular Battle Group,,,,Irregular Battle Group,
+Vehicles,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,HX60 Transport (6min),,,1,HX60 Transport (6min),,,1,MSVS Transport (6min),,,1,Ural4320 Transport (6min),,,1,CTM-131 QJZ-89 (6min),,,1,CTM-131 QJZ-89 (6min),,,1,CTM-131 QJZ-89 (6min),,,1,Kamaz Transport (6min),,,1,BMC Transport (6min),,,1,M939 Transport (6min),,,1,M939 Transport (6min),,,1,Kamaz Transport (6min),,,1,M939 Transport (6min),,,1,Ural375 Transport (6min),,,1,Ural375 Transport (6min)
+,2,HX60 Transport,,,2,HX60 Transport,,,2,MSVS Transport,,,2,Ural4320 Transport,,,2,CTM-131 QJZ-89,,,2,CTM-131 QJZ-89,,,2,CTM-131 QJZ-89,,,2,Kamaz Transport,,,2,BMC Transport,,,2,M939 Transport,,,2,M939 Transport,,,2,Kamaz Transport,,,4,CPV Transport,,,2,Ural375 Transport,,,2,Ural375 Transport
+,2,HX60 Logi,,,2,HX60 Logi,,,2,MSVS Logi,,,2,Ural4320 Logi,,,2,CTM-131 Logi,,,1,CTM-131 Logi,,,1,CTM-131 Logi,,,2,Kamaz Logi,,,2,BMC Logi,,,2,M939 Logi,,,1,M939 Logi,,,3,BTR-DG Logi,,,1,M939 Logi,,,3,Minsk,,,3,Minsk
+,2,PMV,,,1,LPPV,,,2,LUVW C6,,,2,Simir Logi,,,2,CSK QJZ-89,,,2,ZSD Logi,,,2,ZSD Logi,,,2,Tigr,,,1,Cobra II M2,,,2,MATV M2,,,2,AAVC Logi,,,1,BTR-D KORD,,,2,Technical Logi,,,2,Ural375 Logi,,,3,Ural375 Logi
+,1,PMV RWS (M113AS4),,,1,LPPV RWS,,,1,TAPV,,,3,Simir KORD,,,1,CSK RWS,,,2,ZSD APC,,,1,ZSD APC,,,1,Tigr RWS,,,1,Cobra II M2 RWS,,,1,MATV CROWS M2,,,2,M1151 M2,,,1,BTR-ZD,,,1,M113A3 MSV,,,3,Technical Logi,,,2,Technical Logi
+,3,ASLAV,,,2,FV510,,,3,LAV6,,,2,BRDM-2,,,2,ZBL08,,,2,ZBD05 IFV,,,1,ZBD05 IFV,,,2,BTR82A,,,2,ACV-15 IFV,,,2,M1126,,,2,AAVP,,,1,BTR-MDM,,,1,M113A3 M2,,,1,Technical HMG,,,1,Technical HMG
+,,,,,1,FV510 UA,,,,,,,1,BMP1,,,1,ZBD04A,,,1,ZTD05 MGS,,,4,ZTD05 MGS,,,1,BMP2,,,2,PARS III IFV,,,1,M2A3,,,3,LAV-25,,,2,BMD-4M,,,2,CPV M134,,,1,Technical SPG9,,,1,M1151 Technical DSHK
+,,,,,,,,,,,,,2,BMP2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,Sprut-SDM1,,,1,M1151 M2,,,1,BMP1,,,1,BRDM-2
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,Technical Mortar,,,1,BMP2,,,1,MTLB PKT
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,M1117,,,1,Ural ZU23,,,2,BMP1
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,M1151 TOW,,,1,MTLB ZU23,,,1,Technical UB32
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,BM-21 Grad (6min),,,2,Ural ZU23
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,11,Total,,,10,Total,,,11,Total,,,15,Total,,,11,Total,,,11,Total,,,12,Total,,,11,Total,,,11,Total,,,11,Total,,,13,Total,,,12,Total,,,19,Total,,,18,Total,,,20,Total
+Tanks,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,M1A1 (15min),,,1,FV4034 (15min),,,1,Leopard 2A6M (15min),,,1,T72S (15min),,,1,ZTZ-99A (15min),,,1,ZTZ-99A (15min),,,,,,,1,T90A (15min),,,2,M60T (15min),,,1,M1A2 (15min),,,1,M1A1 (15min),,,1,T72B3 (15min),,,1,M60T (15min),,,1,T62 (15min),,,1,T62 (15min)
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,0,Total,,,1,Total,,,2,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total
+Helicopters,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,2,MRH90 (6min),,,2,SA330 (6min),,,2,CH146 (6min),,,2,Mi17 (6min),,,2,Z-8G (6min),,,2,Z-8G (6min),,,2,Z-8J (6min),,,2,Mi8 (6min),,,1,UH1H (6min),,,2,UH60 (6min),,,2,UH1Y (6min),,,2,Mi8 (6min),,,2,Raven (6min),,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,UH60 (6min),,,,,,,,,,,,,,,1,Loach Scout,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,2,Total,,,2,Total,,,2,Total,,,2,Total,,,2,Total,,,2,Total,,,2,Total,,,2,Total,,,1,Total,,,2,Total,,,2,Total,,,2,Total,,,2,Total,,,0,Total,,,0,Total
+Boats,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB M134,,,1,RHIB 7.62,,,1,RHIB 7.62
+,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,1,RHIB Mk19,,,2,RHIB .50 cal,,,2,RHIB .50 cal
+,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB .50 cal,,,1,RHIB Logi,,,1,RHIB Logi
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,RHIB Logi,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,3,Total,,,4,Total,,,4,Total
+Special Characteristics,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,No FOB Mortars,,,,None,,,,None
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+FOB Emplacements,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,2,HMG Tripod,,,4,HMG Tripod,,,4,HMG Tripod
+,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,2,HMG Bunker,,,3,SPG,,,3,SPG
+,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,2,Mortar,,,2,Mortar
+,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,1,HAB,,,1,HAB (100 points),,,2,HAB (100 points)
+,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,,,,,2,AA Gun,,,2,AA Gun
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,Field Gun,,,1,Hell Cannon
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,UB32,,,,

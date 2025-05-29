@@ -73,10 +73,7 @@ export default function LayerQueueDashboard() {
 	const maxQueueSize = useConfig()?.maxQueueSize
 	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
 	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
-	const inEditTransition = Zus.useStore(
-		QD.QDStore,
-		(s) => s.stopEditingInProgress,
-	)
+	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
 	return (
 		<div className="mx-auto grid place-items-center">
 			<div className="w-full flex justify-end">
@@ -904,6 +901,9 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 					case 'Layer':
 						targetValueOptions = LayerComponents.layers
 						break
+					case 'Size':
+						targetValueOptions = LayerComponents.size
+						break
 					case 'Gamemode':
 						targetValueOptions = LayerComponents.gamemodes
 						break
@@ -912,6 +912,9 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 						break
 					case 'FactionAndUnit':
 						throw new Error('FactionAndUnit is not a valid field')
+						break
+					case 'Alliance':
+						targetValueOptions = LayerComponents.alliances
 						break
 					default:
 						assertNever(rule.field)

@@ -1,5 +1,14 @@
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 export type MapConfigLayer = { Layer: string; Map: string; Size: string; Gamemode: string; LayerVersion: string }
+
+type LayerFactionAvailabilityEntry = {
+	Layer: string
+	Faction: string
+	Unit: string
+	allowedTeams: (1 | 2)[]
+	isDefaultUnit: boolean
+}
+
 export type BaseLayerComponents = {
 	maps: Set<string>
 	alliances: Set<string>
@@ -9,10 +18,12 @@ export type BaseLayerComponents = {
 	size: Set<string>
 	mapLayers: MapConfigLayer[]
 	factions: Set<string>
-	units: Set<string | null>
+	units: Set<string>
 	allianceToFaction: OneToManyMap<string, string>
+	factionToAlliance: Map<string, string>
 	factionToUnit: OneToManyMap<string, string>
 	factionUnitToUnitFullName: Map<string, string>
+	layerFactionAvailability: LayerFactionAvailabilityEntry[]
 }
 
 export type BaseLayerComponentsJson = {
@@ -24,10 +35,12 @@ export type BaseLayerComponentsJson = {
 	size: string[]
 	mapLayers: MapConfigLayer[]
 	factions: string[]
-	units: (string | null)[]
+	units: string[]
 	allianceToFaction: Record<string, string[]>
+	factionToAlliance: Record<string, string>
 	factionToUnit: Record<string, string[]>
 	factionUnitToUnitFullName: Record<string, string>
+	layerFactionAvailability: LayerFactionAvailabilityEntry[]
 }
 
 export type LayerComponents = BaseLayerComponents & {
@@ -56,6 +69,7 @@ export function toLayerComponentsJson(components: LayerComponents): LayerCompone
 		factions: Array.from(components.factions),
 		units: Array.from(components.units),
 		allianceToFaction: toJsonCompatible(components.allianceToFaction),
+		factionToAlliance: Object.fromEntries(components.factionToAlliance),
 		factionToUnit: toJsonCompatible(components.factionToUnit),
 		factionUnitToUnitFullName: Object.fromEntries(components.factionUnitToUnitFullName),
 		mapAbbreviations: components.mapAbbreviations,
@@ -77,6 +91,7 @@ export function toLayerComponents(json: LayerComponentsJson): LayerComponents {
 		factions: new Set(json.factions),
 		units: new Set(json.units),
 		allianceToFaction: fromJsonCompatible(json.allianceToFaction),
+		factionToAlliance: new Map(Object.entries(json.factionToAlliance)),
 		factionToUnit: fromJsonCompatible(json.factionToUnit),
 		factionUnitToUnitFullName: new Map(Object.entries(json.factionUnitToUnitFullName)),
 		mapAbbreviations: json.mapAbbreviations,
@@ -120,8 +135,8 @@ export const UNIT_ABBREVIATIONS = {
 	Armored: 'AR',
 	CombinedArms: 'CA',
 	LightInfantry: 'LI',
-	Mechanized: 'ME',
-	Motorized: 'MO',
+	Mechanized: 'MZ',
+	Motorized: 'MT',
 	Support: 'SP',
 	AmphibiousAssault: 'AM',
 }

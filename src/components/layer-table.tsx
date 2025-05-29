@@ -129,9 +129,9 @@ const COLS_ORDER = [
 	'Gamemode',
 	'LayerVersion',
 	'Faction_1',
-	'SubFac_1',
+	'Unit_1',
 	'Faction_2',
-	'SubFac_2',
+	'Unit_2',
 	'Balance_Differential',
 	'Asymmetry_Score',
 ] as (M.LayerColumnKey | M.LayerCompositeKey)[]
@@ -185,7 +185,7 @@ const constraintsCol = columnHelper.accessor('constraints', {
 // @ts-expect-error idk
 COL_DEFS.push(constraintsCol)
 
-const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'SubFac_1', 'Faction_2', 'SubFac_2', 'Balance_Differential', 'Asymmetry_Score'] as (
+const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Balance_Differential', 'Asymmetry_Score'] as (
 	| M.LayerColumnKey
 	| M.LayerCompositeKey
 )[]
@@ -849,5 +849,5 @@ function MultiLayerSetDialog({
 
 function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
 	const constraints = row.original.constraints
-	return !row.getIsSelected() && !canForceSelect && constraints.values.some(v => !v)
+	return !row.getIsSelected() && !canForceSelect && constraints.values.some((v,i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
 }

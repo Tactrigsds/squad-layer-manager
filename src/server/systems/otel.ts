@@ -38,9 +38,9 @@ export function setupOtel() {
 	sdk = new NodeSDK({
 		resource: new Resource(resourceAttrs),
 		traceExporter: traceExporter,
-		spanProcessor: new tracing.SimpleSpanProcessor(traceExporter),
+		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),
 		metricReader: new PeriodicExportingMetricReader({ exporter: metricExporter }),
-		logRecordProcessors: [new logs.SimpleLogRecordProcessor(logExporter)],
+		logRecordProcessors: [new logs.BatchLogRecordProcessor(logExporter)],
 		instrumentations: [getNodeAutoInstrumentations()],
 	})
 }

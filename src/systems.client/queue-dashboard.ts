@@ -235,7 +235,7 @@ export const selectLLState = (state: QDState): LLState => ({
 			: undefined,
 	baseQueryContext: {
 		constraints: state.serverState
-			? M.getPoolConstraints(state.serverState.settings.queue.mainPool, state.poolApplyAs.dnr, state.poolApplyAs.filter)
+			? selectQDQueryConstraints(state)
 			: undefined,
 	},
 })
@@ -617,7 +617,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
-export function selectQDQueryConstraints(state: QDStore): M.LayerQueryConstraint[] {
+export function selectQDQueryConstraints(state: QDState): M.LayerQueryConstraint[] {
 	const queryConstraints = M.getPoolConstraints(
 		state.editedServerState.settings.queue.mainPool,
 		state.poolApplyAs.dnr,

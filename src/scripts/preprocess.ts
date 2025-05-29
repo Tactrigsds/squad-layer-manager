@@ -46,13 +46,14 @@ const LayerScores = {
 }
 
 // layout expected from csv
-export const ScoredLayer = z
+export const ScoredLayerSchema = z
 	.object({
 		Layer: z.string(),
+		Size: z.string(),
 		Faction_1: z.string(),
-		Unit_1: z.string().nullable(),
+		Unit_1: z.string(),
 		Faction_2: z.string(),
-		Unit_2: z.string().nullable(),
+		Unit_2: z.string(),
 		...LayerScores,
 	})
 	.refine(
@@ -98,8 +99,6 @@ export const ScoredLayer = z
 		{ message: 'un-scored layers must have all value columns as null' },
 	)
 
-
-
 const Steps = z.enum(['update-layers-table', 'download-csvs'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.sheets })
@@ -117,13 +116,13 @@ async function main() {
 
 	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
 
-	await ensureAllSheetsDownloaded({ invalidate: args.includes('download-csvs') })
+	await ensureAllSheetsDownloaded()
 
-	const data = await parseSquadLayerSheetData()
-	const components =  LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
-	const fullLayers = await parseLayerScores(ctx, data,  components)
+	const data = await parseSquadLayerSheetData(ctx)
+	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
+	const fullLayers = await parseLayerScores(ctx, data, components)
 
-	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 0))
+	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2))
 
 	if (args.includes('update-layers-table')) {
 		await updateLayersTable(ctx, fullLayers)
@@ -131,8 +130,11 @@ async function main() {
 }
 
 async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.LayerComponentsJson) {
-	return await new Promise<SchemaModels.Layer[]>((resolve, reject) => {
-		const fullLayers: SchemaModels.Layer[] = []
+	return await new Promise<SchemaModels.NewLayer[]>((resolve, reject) => {
+		const fullLayers: SchemaModels.NewLayer[] = data.baseLayers.map((layer): SchemaModels.NewLayer => ({
+			...layer,
+		}))
+		const seenIds = new Set<string>()
 		fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
 			.pipe(
 				parse({
@@ -141,7 +143,8 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 				}),
 			)
 			.on('data', (_row) => {
-				const row = ScoredLayer.parse(_row)
+				const row = ScoredLayerSchema.parse(_row)
+				if (!row.Scored) return
 				if (!data.components.mapLayers.find(l => l.Layer === row['Layer'])) {
 					throw new Error(`Layer ${row['Layer']} not found`)
 				}
@@ -159,9 +162,20 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 				}
 
 				const segments = M.parseLayerStringSegment(row['Layer'])
+				const diffs: Record<string, number> = {}
+				for (const [key, value] of Object.entries(row)) {
+					if (!value) continue
+					if (!Object.keys(LayerScores).includes(key)) continue
+					if (!key.match(/.+1$/)) continue
+					if (typeof value !== 'number') throw new Error(`Value ${value} is not a number in col ${key}`)
+					// @ts-expect-error idgaf
+					const otherTeamValue = row[key.replace(/1$/, '2')]
+					const diffKey = key.replace(/1$/, 'Diff')
+					diffs[diffKey] = value - otherTeamValue
+				}
 
 				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
-				const layerId = M.getLayerId({
+				const idArgs = {
 					Map: segments.Map,
 					Gamemode: segments.Gamemode,
 					LayerVersion: segments.LayerVersion,
@@ -169,12 +183,34 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 					Faction_2: row['Faction_2'],
 					Unit_1: row['Unit_1'],
 					Unit_2: row['Unit_2'],
-				}, components)
+				}
+				const layerId = M.getLayerId(idArgs, components)
+				if (seenIds.has(layerId)) {
+					ctx.log.warn(`Duplicate layer id ${layerId} found: ${JSON.stringify(idArgs)}`)
+					return
+				}
+				seenIds.add(layerId)
+
 				const index = data.idToIdx.get(layerId)
-				if (isNullOrUndef(index)) throw new Error(`Layer id ${layerId} not found`)
-				const baseLayer = data.baseLayers[index]
-				// @ts-expect-error idgaf
-				fullLayers.push({ ...row, ...baseLayer })
+				// availability sheet is out of date but based zero has a workaround that I don't want to bother to implement :shrug:
+				if (segments.Map === 'Sanxian' && isNullOrUndef(index)) {
+					fullLayers.push({
+						...row,
+						id: layerId,
+						LayerVersion: segments.LayerVersion,
+						Size: row.Size,
+						Map: segments.Map,
+						Gamemode: segments.Gamemode,
+						Alliance_1: data.components.factionToAlliance.get(row['Faction_1'])!,
+						Alliance_2: data.components.factionToAlliance.get(row['Faction_2'])!,
+						...diffs,
+					})
+					return
+				} else if (isNullOrUndef(index)) {
+					ctx.log.warn(`Layer id ${layerId} not found: ${JSON.stringify(idArgs)}`)
+					return
+				}
+				fullLayers[index] = { ...fullLayers[index], ...row, ...diffs }
 			})
 			.on('end', () => resolve(fullLayers))
 			.on('error', reject)
@@ -183,7 +219,7 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 
 async function updateLayersTable(
 	ctx: C.Log & C.Db,
-	finalLayers: SchemaModels.Layer[],
+	finalLayers: SchemaModels.NewLayer[],
 ) {
 	const t0 = performance.now()
 	let rowsInserted = 0
@@ -196,12 +232,14 @@ async function updateLayersTable(
 		// ------ disable keys for faster insert
 		await ctx.db().execute(sql`SET UNIQUE_CHECKS=0`)
 
+		const insertedIds = new Set<string>()
 		const chunkSize = 2500
-		let chunk: M.Layer[] = []
+		let chunk: SchemaModels.NewLayer[] = []
 		for (const layer of finalLayers) {
+			if (insertedIds.has(layer.id)) continue
 			chunk.push(layer)
 			if (chunk.length >= chunkSize) {
-				await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
+				await C.setLogLevel(ctx, 'warn').db({ redactParams: true }).insert(Schema.layers).values(chunk)
 				rowsInserted += chunk.length
 				ctx.log.info(`Inserted ${rowsInserted} rows`)
 				chunk = []
@@ -209,12 +247,10 @@ async function updateLayersTable(
 		}
 
 		if (chunk.length > 0) {
-			await ctx.db({ redactParams: true }).insert(Schema.layers).values(chunk)
+			await C.setLogLevel(ctx, 'warn').db({ redactParams: true }).insert(Schema.layers).values(chunk)
 			rowsInserted += chunk.length
 			ctx.log.info(`Inserted ${rowsInserted} rows`)
 		}
-
-		await ctx.db().execute(sql`SET UNIQUE_CHECKS=1`)
 	})
 	const t1 = performance.now()
 	const elapsedSecondsInsert = (t1 - t0) / 1000
@@ -244,11 +280,11 @@ type BaseLayer = {
 }
 
 type SheetData = Awaited<ReturnType<typeof parseSquadLayerSheetData>>
-async function parseSquadLayerSheetData() {
+async function parseSquadLayerSheetData(ctx: C.Log) {
 	const mapLayers = await parseMapLayers()
-	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = await parseBattlegroups()
+	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = await parseBattlegroups(ctx)
 
-	const { availability } = await parseBgLayerAvailability(factionToUnit, factionUnitToUnitFullName)
+	const { availability } = await parseBgLayerAvailability(ctx)
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
 
 	const baseLayers: BaseLayer[] = []
@@ -256,8 +292,10 @@ async function parseSquadLayerSheetData() {
 	const components: LC.LayerComponents = LC.buildFullLayerComponents({
 		mapLayers,
 		allianceToFaction,
+		factionToAlliance,
 		factionToUnit,
 		factionUnitToUnitFullName,
+		layerFactionAvailability: availability,
 
 		gamemodes: new Set(),
 		alliances: new Set(),
@@ -269,10 +307,18 @@ async function parseSquadLayerSheetData() {
 		size: new Set(),
 	}, true)
 
+	// Validate that all layers in availability are in mapLayers
+	const layerNames = new Set(mapLayers.map(l => l.Layer))
+	for (const availEntry of availability) {
+		if (!layerNames.has(availEntry.Layer)) {
+			throw new Error(`Layer ${availEntry.Layer} from availability not found in mapLayers`)
+		}
+	}
+
 	for (const layer of mapLayers) {
-    components.maps.add(layer.Map)
-    components.size.add(layer.Size)
-    components.layers.add(layer.Layer)
+		components.maps.add(layer.Map)
+		components.size.add(layer.Size)
+		components.layers.add(layer.Layer)
 		for (const availEntry1 of availability) {
 			if (availEntry1.Layer !== layer.Layer) continue
 			if (!availEntry1.allowedTeams.includes(1)) continue
@@ -280,6 +326,10 @@ async function parseSquadLayerSheetData() {
 				if (!availEntry2.allowedTeams.includes(2)) continue
 				if (availEntry2.Layer !== layer.Layer) continue
 
+				const alliance1 = factionToAlliance.get(availEntry1.Faction)!
+				const alliance2 = factionToAlliance.get(availEntry2.Faction)!
+				if (availEntry1.Faction === availEntry2.Faction) continue
+				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 
 				const parsedSegments = M.parseLayerStringSegment(layer.Layer)
 				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
@@ -287,9 +337,9 @@ async function parseSquadLayerSheetData() {
 				if (parsedSegments.LayerVersion) components.versions.add(parsedSegments.LayerVersion)
 				components.gamemodes.add(parsedSegments.Gamemode)
 				components.factions.add(availEntry1.Faction)
-				components.factions.add(availEntry1.Faction)
-				components.units.add(availEntry1.Unit)
-				components.units.add(availEntry2.Unit)
+				components.factions.add(availEntry2.Faction)
+				if (availEntry1.Unit) components.units.add(availEntry1.Unit)
+				if (availEntry2.Unit) components.units.add(availEntry2.Unit)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				const layerId = M.getLayerId({
 					Map: layer.Map,
@@ -297,12 +347,9 @@ async function parseSquadLayerSheetData() {
 					Gamemode: parsedSegments?.Gamemode,
 					Faction_1: availEntry1.Faction,
 					Faction_2: availEntry2.Faction,
-					Unit_1: availEntry1.Unit,
-					Unit_2: availEntry2.Unit,
+					Unit_1: availEntry1.Unit ?? null,
+					Unit_2: availEntry2.Unit ?? null,
 				}, LC.toLayerComponentsJson(components))
-				const alliance1 = factionToAlliance.get(availEntry1.Faction)!
-				const alliance2 = factionToAlliance.get(availEntry2.Faction)!
-				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 				const baseLayer = {
 					id: layerId,
 					Map: layer.Map,
@@ -311,9 +358,9 @@ async function parseSquadLayerSheetData() {
 					LayerVersion: parsedSegments.LayerVersion,
 					Size: layer.Size,
 					Faction_1: availEntry1.Faction,
-					Unit_1: availEntry1.Unit,
+					Unit_1: availEntry1.Unit ?? null,
 					Faction_2: availEntry2.Faction,
-					Unit_2: availEntry2.Unit,
+					Unit_2: availEntry2.Unit ?? null,
 					Alliance_1: factionToAlliance.get(availEntry1.Faction)!,
 					Alliance_2: factionToAlliance.get(availEntry2.Faction)!,
 				}
@@ -323,10 +370,11 @@ async function parseSquadLayerSheetData() {
 		}
 	}
 
+	ctx.log.info('Parsed %s total layers', baseLayers.length)
 	return { baseLayers, idToIdx, components, availability }
 }
 
-function parseBattlegroups() {
+function parseBattlegroups(ctx: C.Log) {
 	return new Promise<BattlegroupsData>((resolve, reject) => {
 		const allianceToFaction: OneToManyMap<string, string> = new Map()
 		const factionToUnit: OneToManyMap<string, string> = new Map()
@@ -348,14 +396,14 @@ function parseBattlegroups() {
 				}
 			})
 			.on('end', () => {
-				console.log(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
-				console.log(`Parsed ${factionToUnit.size} faction to unit mappings`)
-				console.log(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
+				ctx.log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
+				ctx.log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
+				ctx.log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
 
 				resolve({ allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName })
 			})
 			.on('error', (error) => {
-				console.error('Error parsing battlegroups CSV:', error)
+				ctx.log.error('Error parsing battlegroups CSV:', error)
 				reject(error)
 			})
 	})
@@ -364,7 +412,7 @@ function parseBattlegroups() {
 function parseMapLayers() {
 	return new Promise<M.MapConfigLayer[]>((resolve, reject) => {
 		const layers: M.MapConfigLayer[] = []
-		let currentMap: string|undefined
+		let currentMap: string | undefined
 		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
 			.pipe(parse({ columns: true }))
 			.on('data', (row: Record<string, string>) => {
@@ -373,11 +421,15 @@ function parseMapLayers() {
 				const layer = { Map: M.preprocessLevel(currentMap!), Layer: row['Layer Name'], Size: row['Layer Size*'] }
 				const segments = M.parseLayerStringSegment(layer.Layer)
 				if (!segments) throw new Error(`Invalid layer string: ${layer.Layer}`)
-				layers.push({
+				const withSegments = {
 					...layer,
 					Gamemode: segments.Gamemode!,
 					LayerVersion: segments.LayerVersion!,
-				})
+				}
+				layers.push(withSegments)
+				if (withSegments.Gamemode === 'RAAS') {
+					layers.push({ ...withSegments, Gamemode: 'FRAAS', Layer: withSegments.Layer.replace('RAAS', 'FRAAS') })
+				}
 			})
 			.on('end', () => {
 				resolve(layers)
@@ -397,10 +449,7 @@ type LayerFactionAvailabilityEntry = {
 	allowedTeams: (1 | 2)[]
 	isDefaultUnit: boolean
 }
-function parseBgLayerAvailability(
-	factionToUnit: OneToManyMap<string, string>,
-	factionUnitToFullUnitName: Map<FactionUnit, string>,
-) {
+function parseBgLayerAvailability(ctx: C.Log) {
 	return new Promise<{ availability: LayerFactionAvailabilityEntry[] }>((resolve, reject) => {
 		const entries: LayerFactionAvailabilityEntry[] = []
 		const col = {
@@ -432,8 +481,9 @@ function parseBgLayerAvailability(
 				if (row[col.Faction]) {
 					currentFaction = row[col.Faction]
 
-					const sheetId = (new URL(row[col.sheetLink])).pathname.split('/')[3]
-					const gid = parseInt(u.hash.replace('#gid=','').replace(/\?range.+$/,''))
+					const url = new URL(row[col.sheetLink])
+					const gid = parseInt(url.hash.replace('#gid=', '').replace(/\?range.+$/, ''))
+					unit = SHEETS.find(sheet => sheet.gid === gid)!.unit
 					if (!unit) throw new Error(`Unit ${row[col.UnitFullName]} not found for faction ${row[col.Faction]}`)
 					isDefaultUnit = true
 				} else if (row[col.Unit]) {
@@ -442,20 +492,24 @@ function parseBgLayerAvailability(
 					return
 				}
 				const teams: (1 | 2)[] = []
-				if (row[col.TeamOptions].includes('1')) {
-					teams.push(1)
+				if (row[col.TeamOptions].includes('1')) teams.push(1)
+				if (row[col.TeamOptions].includes('2')) teams.push(2)
+				const entry = { Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
+				entries.push(entry)
+				const segments = M.parseLayerStringSegment(currentLayer!)
+				if (segments.Gamemode === 'RAAS') {
+					entries.push({
+						...entry,
+						Layer: entry.Layer.replace('RAAS', 'FRAAS'),
+					})
 				}
-				if (row[col.TeamOptions].includes('2')) {
-					teams.push(2)
-				}
-				entries.push({ Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit })
 			})
 			.on('end', () => {
-				console.log(`Parsed ${entries.length} layer availability entries`)
+				ctx.log.info(`Parsed ${entries.length} layer availability entries`)
 				resolve({ availability: entries })
 			})
 			.on('error', (error) => {
-				console.error('Error parsing battlegroups CSV:', error)
+				ctx.log.error('Error parsing battlegroups CSV:', error)
 				reject(error)
 			})
 	})
@@ -465,8 +519,9 @@ async function ensureAllSheetsDownloaded(opts?: { invalidate?: boolean }) {
 	const invalidate = opts?.invalidate ?? false
 	const ops: Promise<void>[] = []
 	for (const sheet of SHEETS) {
-		if (invalidate || !fs.existsSync(sheet.path)) {
-			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheet.path))
+		const sheetPath = path.join(Paths.DATA, sheet.filename)
+		if (invalidate || !fs.existsSync(sheetPath)) {
+			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheetPath))
 		}
 	}
 	await Promise.all(ops)
@@ -502,124 +557,130 @@ function downloadPublicSheetAsCSV(gid: number, filepath: string) {
 const SHEETS = [
 	{
 		name: 'battlegroups',
-		path: 'battlegroups.csv',
+		filename: 'battlegroups.csv',
 		gid: 1796438364,
 	},
 	{
 		name: 'alliances',
-		path: 'alliances.csv',
+		filename: 'alliances.csv',
 		gid: 337815939,
 	},
 	{
-	  name: 'biomes',
-	  path: 'biomes.csv',
-	  gid: 1025614852
+		name: 'biomes',
+		filename: 'biomes.csv',
+		gid: 1025614852,
 	},
 	{
 		name: 'bgDescriptions',
-		path: 'bg-descriptions.csv',
+		filename: 'bg-descriptions.csv',
 		gid: 104824254,
 	},
 	{
 		name: 'bgLayerAvailability',
-		path: 'bg-layer-availability.csv',
+		filename: 'bg-layer-availability.csv',
 		gid: 1881530590,
 	},
 	{
 		name: 'mapLayers',
-		path: 'map-layers.csv',
+		filename: 'map-layers.csv',
 		gid: 1212962563,
 	},
-  {
-    name: 'Assets:AirAssault:Large:Offense',
-    unit: 'AirAssault',
-    gid: 196602319
-  },
-  {
-    name: 'Assets:Amphibious:Large:Offense',
-    unit: 'Amphibious',
-    gid: 1592545787
-  },
-  {
-    name: 'Assets:Armored:Large:Offense',
-    unit: 'Armored',
-    gid: 774448026
-  },
-  {
-    name: 'Assets:Armored:Large:Defense',
-    unit: 'Armored',
-    gid: 429375515
-  },
-  {
-    name: 'Assets:CombinedArms:Large:Offense',
-    unit: 'CombinedArms',
-    gid: 55130916
-  },
-  {
-    name: 'Assets:CombinedArms:Large:Defense',
-    unit: 'CombinedArms',
-    gid: 1024747126
-  },
-  {
-    name: 'Assets:LightInfantry:Large:Offense',
-    unit: 'LightInfantry',
-    gid: 706333626
-  },
-  {
-    name: 'Assets:LightInfantry:Large:Defense',
-    unit: 'LightInfantry',
-    gid: 1650555364
-  },
-  {
-    name: 'Assets:Mechanized:Large:Offense',
-    unit: 'Mechanized',
-    gid: 996007242
-  },
-  {
-    name: 'Assets:Mechanized:Large:Defense',
-    unit: 'Mechanized',
-    gid: 1128826127
-  },
-  {
-    name: 'Assets:Motorized:Large:Offense',
-    unit: 'Motorized',
-    gid: 131120776
-  },
-  {
-    name: 'Assets:Motorized:Large:Defense',
-    unit: 'Motorized',
-    gid: 1681257950
-  },
-  {
-    name: 'Assets:Support:Large:Offense',
-    unit: 'Support',
-    gid: 2080033084
-  },
-  {
-    name: 'Assets:Support:Large:Defense',
-    unit: 'Support',
-    gid: 1622797716
-  },
-  {
-    name: 'Assets:CombinedArms:Medium:Offense',
-    unit: 'CombinedArms',
-    gid: 970369378
-  },
-  {
-    name: 'Assets:CombinedArms:Medium:Defense',
-    unit: 'CombinedArms',
-    gid: 188928736
-  },
-  {
-    name: 'Assets:CombinedArms:Small',
-    unit: 'CombinedArms',
-    gid: 2069827913
-  },
-  {
-    name: 'Assets:CombinedArms:Seed',
-    unit: 'CombinedArms',
-    gid: 1905776366
-  }
+	{
+		name: 'Assets:AirAssault:Large:Offense',
+		filename: 'assets-airassault-large-offense.csv',
+		unit: 'Amphibious',
+		gid: 196602319,
+	},
+	{
+		name: 'Assets:AmphibiousAssault:Large:Offense',
+		filename: 'assets-amphibious-large-offense.csv',
+		unit: 'AmphibiousAssault',
+		gid: 1592545787,
+	},
+	{
+		name: 'Assets:CombinedArms:Large:Offense',
+		filename: 'assets-combinedarms-large-offense.csv',
+		unit: 'CombinedArms',
+		gid: 55130916,
+	},
+	{
+		name: 'Assets:CombinedArms:Large:Defense',
+		filename: 'assets-combinedarms-large-defense.csv',
+		unit: 'CombinedArms',
+		gid: 1024747126,
+	},
+	{
+		name: 'Assets:LightInfantry:Large:Offense',
+		filename: 'assets-lightinfantry-large-offense.csv',
+		unit: 'LightInfantry',
+		gid: 706333626,
+	},
+	{
+		name: 'Assets:LightInfantry:Large:Defense',
+		filename: 'assets-lightinfantry-large-defense.csv',
+		unit: 'LightInfantry',
+		gid: 1650555364,
+	},
+	{
+		name: 'Assets:Mechanized:Large:Offense',
+		filename: 'assets-mechanized-large-offense.csv',
+		unit: 'Mechanized',
+		gid: 996007242,
+	},
+	{
+		name: 'Assets:Mechanized:Large:Defense',
+		filename: 'assets-mechanized-large-defense.csv',
+		unit: 'Mechanized',
+		gid: 1128826127,
+	},
+	{
+		name: 'Assets:Motorized:Large:Offense',
+		filename: 'assets-motorized-large-offense.csv',
+		unit: 'Motorized',
+		gid: 131120776,
+	},
+	{
+		name: 'Assets:Motorized:Large:Defense',
+		filename: 'assets-motorized-large-defense.csv',
+		unit: 'Motorized',
+		gid: 1681257950,
+	},
+	{
+		name: 'Assets:Support:Large:Offense',
+		filename: 'assets-support-large-offense.csv',
+		unit: 'Support',
+		gid: 2080033084,
+	},
+	{
+		name: 'Assets:Support:Large:Defense',
+		filename: 'assets-support-large-defense.csv',
+		unit: 'Support',
+		gid: 1622797716,
+	},
+	{
+		name: 'Assets:CombinedArms:Medium:Offense',
+		filename: 'assets-combinedarms-medium-offense.csv',
+		unit: 'CombinedArms',
+		gid: 970369378,
+	},
+	{
+		name: 'Assets:CombinedArms:Medium:Defense',
+		filename: 'assets-combinedarms-medium-defense.csv',
+		unit: 'CombinedArms',
+		gid: 188928736,
+	},
+	{
+		name: 'Assets:CombinedArms:Small',
+		filename: 'assets-combinedarms-small.csv',
+		unit: 'CombinedArms',
+		gid: 2069827913,
+	},
+	{
+		name: 'Assets:CombinedArms:Seed',
+		filename: 'assets-combinedarms-seed.csv',
+		unit: 'CombinedArms',
+		gid: 1905776366,
+	},
 ]
 
 await main()

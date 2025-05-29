@@ -14,9 +14,9 @@ export default function TableStyleLayerPicker(props: {
 	const defaultColumns: (M.LayerColumnKey | M.LayerCompositeKey)[] = [
 		'Layer',
 		'Faction_1',
-		'SubFac_1',
+		'Unit_1',
 		'Faction_2',
-		'SubFac_2',
+		'Unit_2',
 		'Asymmetry_Score',
 		'Balance_Differential',
 	]

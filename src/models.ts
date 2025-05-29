@@ -11,7 +11,7 @@ import { OneToManyMap } from './lib/one-to-many-map'
 import { assertNever } from './lib/typeGuards'
 import { Parts } from './lib/types'
 
-const StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
+export const StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
 
 export const getLayerKey = (layer: Layer) =>
 	`${layer.Map}-${layer.Layer}-${layer.Faction_1}-${layer.Unit_1}-${layer.Faction_2}-${layer.Unit_2}`
@@ -20,8 +20,6 @@ export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
 export type Layer = SchemaModels.Layer & MiniLayer
 
 export type QueriedLayer = Layer & LayerComposite & { constraints: boolean[] }
-
-export type Subfaction = keyof (typeof _StaticLayerComponents)['subfactionAbbreviations']
 
 export type LayerIdArgs = {
 	Map: string
@@ -35,7 +33,7 @@ export type LayerIdArgs = {
 
 export type ParsedFaction = {
 	faction: string
-	subFaction: string | null
+	unit: string
 }
 
 export function isRawLayerId(id: LayerId) {
@@ -64,7 +62,7 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 	}
 	const [layerString, faction1String, faction2String] = rawLayerText.split(/\s/)
 	const parsedLayer = parseLayerStringSegment(layerString)
-	const [faction1, faction2] = parseLayerFactions(faction1String, faction2String)
+	const [faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String)
 	if (!parsedLayer || !faction1 || !faction2) {
 		return {
 			code: 'raw',
@@ -75,9 +73,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 				Gamemode: parsedLayer?.Gamemode,
 				LayerVersion: parsedLayer?.LayerVersion ?? null,
 				Faction_1: faction1?.faction,
-				Unit_1: faction1?.subFaction,
+				Unit_1: faction1?.unit,
 				Faction_2: faction2?.faction,
-				Unit_2: faction2?.subFaction,
+				Unit_2: faction2?.unit,
 			},
 		}
 	}
@@ -92,9 +90,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 		Gamemode: gamemode,
 		LayerVersion: version ?? null,
 		Faction_1: faction1.faction,
-		Unit_1: faction1.subFaction,
+		Unit_1: faction1.unit,
 		Faction_2: faction2.faction,
-		Unit_2: faction2.subFaction,
+		Unit_2: faction2.unit,
 	}
 
 	const miniLayer = {
@@ -113,9 +111,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedMiniLayer {
 			Gamemode: gamemode,
 			LayerVersion: version ?? null,
 			Faction_1: faction1.faction,
-			Unit_1: faction1.subFaction,
+			Unit_1: faction1.unit,
 			Faction_2: faction2.faction,
-			Unit_2: faction2.subFaction,
+			Unit_2: faction2.unit,
 		},
 	}
 }
@@ -171,16 +169,16 @@ export function subfacFullNameToAbbr(fullName: string, components = StaticLayerC
 	return revLookup(components.subfactionFullNames, fullName)!
 }
 
-function parseLayerFactions(faction1String: string, faction2String: string) {
+function parseLayerFactions(layer: string, faction1String: string, faction2String: string, components = StaticLayerComponents) {
 	const parsedFactions: [ParsedFaction | null, ParsedFaction | null] = [null, null]
 	for (let i = 0; i < 2; i++) {
 		const factionString = i === 0 ? faction1String : faction2String
 		if (!factionString) continue
-		const [faction, subFaction] = factionString.split('+').map(s => s.trim())
+		const [faction, unit] = factionString.split('+').map(s => s.trim())
 		if (!faction) continue
 		parsedFactions[i] = {
 			faction: faction.trim(),
-			subFaction: subFaction?.trim(),
+			unit: unit?.trim() ?? components.layerFactionAvailability.find(l => l.Layer === layer && l.Faction === faction && l.isDefaultUnit)?.Unit,
 		}
 	}
 	return parsedFactions
@@ -302,15 +300,15 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 	if (!map) {
 		throw new Error(`Invalid map abbreviation: ${mapAbbr}`)
 	}
-	const [faction1, subfac1] = parseFactionPart(faction1Part)
-	const [faction2, subfac2] = parseFactionPart(faction2Part)
+	const [faction1, subfac1] = parseFactionIdPart(faction1Part)
+	const [faction2, subfac2] = parseFactionIdPart(faction2Part)
 
 	const layerVersion = versionPart ? versionPart.toUpperCase() : null
 	let layer: string | undefined
 	if (map === 'JensensRange') {
 		layer = `${map}_${faction1}-${faction2}`
 	} else {
-		layer = StaticLayerComponents.layers.find(
+		layer = components.layers.find(
 			(l) => l.startsWith(`${map}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
 		)
 	}
@@ -322,12 +320,15 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 		id,
 		Map: map,
 		Layer: layer,
+		Size: components.mapLayers.find(l => l.Layer === layer)!.Size,
 		Gamemode: gamemode,
 		LayerVersion: layerVersion,
 		Faction_1: faction1,
 		Unit_1: subfac1,
+		Alliance_1: components.factionToAlliance[faction1],
 		Faction_2: faction2,
 		Unit_2: subfac2,
+		Alliance_2: components.factionToAlliance[faction2],
 	}
 }
 
@@ -342,25 +343,33 @@ function validateLayerId(id: string) {
 		getMiniLayerFromId(id)
 		return true
 	} catch {
+  	debugger
 		return false
 	}
 }
 
-export const LayerIdSchema = z.string().min(1).max(255).refine(validateLayerId, {
+export const LayerIdSchema = z.string().min(1).max(255).refine(id => {
+	const valid = validateLayerId(id)
+	if (!valid) {
+		console.warn(`Invalid layer id: ${id}`)
+		debugger
+	}
+	return valid
+}, {
 	message: 'Is valid layer id',
 })
 export type LayerId = z.infer<typeof LayerIdSchema>
 
-function parseFactionPart(part: string, components = StaticLayerComponents): [string, Subfaction | null] {
-	const [faction, subfacAbbr] = part.split('-')
-	if (!StaticLayerComponents.factions.includes(faction)) {
+function parseFactionIdPart(part: string, components = StaticLayerComponents): [string, string] {
+	const [faction, unitAbbr] = part.split('-')
+	if (!components.factions.includes(faction)) {
 		throw new Error(`Invalid faction: ${faction}`)
 	}
-	const subfac = subfacAbbr ? (revLookup(components.unitAbbreviations, subfacAbbr) as Subfaction) : null
-	if (subfacAbbr && !subfac) {
-		throw new Error(`Invalid subfaction abbreviation: ${subfacAbbr}`)
+	const unit = revLookup(components.unitAbbreviations, unitAbbr)
+	if (!unit) {
+		throw new Error(`Invalid unit abbreviation: ${unitAbbr}`)
 	}
-	return [faction, subfac]
+	return [faction, unit]
 }
 
 export function swapFactionsInId(id: string) {
@@ -371,9 +380,9 @@ export function swapFactionsInId(id: string) {
 export type AdminSetNextLayerOptions = {
 	Layer: string
 	Faction_1: string
-	SubFac_1: string | null
+	Unit_1: string | null
 	Faction_2: string
-	SubFac_2: string | null
+	Unit_2: string | null
 }
 
 export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
@@ -384,10 +393,10 @@ export function getAdminSetNextLayerCommand(layer: AdminSetNextLayerOptions) {
 		return `AdminSetNextLayer ${layer.Layer}`
 	}
 
-	return `AdminSetNextLayer ${layer.Layer?.replace('FRAAS', 'RAAS')}${getFactionModifier(layer.Faction_1, layer.SubFac_1)}${
+	return `AdminSetNextLayer ${layer.Layer?.replace('FRAAS', 'RAAS')}${getFactionModifier(layer.Faction_1, layer.Unit_1)}${
 		getFactionModifier(
 			layer.Faction_2,
-			layer.SubFac_2,
+			layer.Unit_2,
 		)
 	}`
 }
@@ -442,7 +451,20 @@ export const COLUMN_TYPE_MAPPINGS = {
 		'Armor_Diff',
 		'ZERO_Score_Diff',
 	] as const,
-	string: ['id', 'Map', 'Layer', 'Size', 'Faction_1', 'Faction_2', 'SubFac_1', 'SubFac_2', 'Gamemode', 'LayerVersion'] as const,
+	string: [
+		'id',
+		'Map',
+		'Layer',
+		'Size',
+		'Faction_1',
+		'Faction_2',
+		'Unit_1',
+		'Unit_2',
+		'Alliance_1',
+		'Alliance_2',
+		'Gamemode',
+		'LayerVersion',
+	] as const,
 	integer: [] as const,
 	collection: ['FactionMatchup', 'FullMatchup', 'SubFacMatchup'] as const,
 	boolean: ['Z_Pool', 'Scored'] as const,
@@ -454,8 +476,10 @@ export const GROUP_BY_COLUMNS = [
 	'Size',
 	'Faction_1',
 	'Faction_2',
-	'SubFac_1',
-	'SubFac_2',
+	'Unit_1',
+	'Unit_2',
+	'Alliance_1',
+	'Alliance_2',
 	'Gamemode',
 	'LayerVersion',
 ] as const
@@ -468,8 +492,10 @@ export const WEIGHT_COLUMNS = [
 	'Size',
 	'Faction_1',
 	'Faction_2',
-	'SubFac_1',
-	'SubFac_2',
+	'Unit_1',
+	'Unit_2',
+	'Alliance_1',
+	'Alliance_2',
 ] as const
 export type WeightColumn = typeof WEIGHT_COLUMNS[number]
 
@@ -480,8 +506,10 @@ export const COLUMN_LABELS = {
 	Size: 'Size',
 	Faction_1: 'T1',
 	Faction_2: 'T2',
-	SubFac_1: 'SubFac T1',
-	SubFac_2: 'SubFac T2',
+	Unit_1: 'Unit T1',
+	Unit_2: 'Unit T2',
+	Alliance_1: 'Alliance T1',
+	Alliance_2: 'Alliance T2',
 	Gamemode: 'Gamemode',
 	LayerVersion: 'Version',
 	'Anti-Infantry_1': 'Anti-Inf T1',
@@ -803,6 +831,7 @@ export function preprocessLevel(level: string) {
 export const MiniLayerSchema = z.object({
 	id: LayerIdSchema,
 	Map: z.string().transform(preprocessLevel),
+	Size: z.string(),
 	Layer: z.string(),
 	Gamemode: z.string(),
 	LayerVersion: z
@@ -810,9 +839,11 @@ export const MiniLayerSchema = z.object({
 		.nullable()
 		.transform((v) => (v === null ? v : v.toUpperCase())),
 	Faction_1: z.string(),
-	Unit_1: z.string().nullable(),
+	Unit_1: z.string(),
+	Alliance_1: z.string(),
 	Faction_2: z.string(),
-	Unit_2: z.string().nullable(),
+	Unit_2: z.string(),
+	Alliance_2: z.string(),
 })
 
 export const MiniLayersWithCollections = MiniLayerSchema.transform(includeComputedCollections)
@@ -908,7 +939,7 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true }
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
-export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit'])
+export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit', 'Alliance', 'Size'])
 export type DnrField = z.infer<typeof DnrFieldSchema>
 export const DoNotRepeatRuleSchema = z.object({
 	field: DnrFieldSchema,
@@ -924,7 +955,12 @@ export function getTeamNormalizedFactionProp(offset: number, team: 'A' | 'B') {
 }
 
 export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B') {
-	const props = ['SubFac_1', 'SubFac_2'] as const
+	const props = ['Unit_1', 'Unit_2'] as const
+	return props[(offset + Number(team === 'B')) % 2]
+}
+
+export function getNormalizedAllianceProp(offset: number, team: 'A' | 'B') {
+	const props = ['Alliance_1', 'Alliance_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
 }
 

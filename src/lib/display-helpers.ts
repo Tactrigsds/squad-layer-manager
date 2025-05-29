@@ -1,10 +1,10 @@
 import LayerComponents from '$root/assets/layer-components.json'
 import * as M from '@/models'
 
-export function toShortSubfaction(subfaction: string | null) {
-	if (subfaction === null) return ''
+export function toShortUnit(unit: string | null) {
+	if (unit === null) return ''
 	// @ts-expect-error idc
-	return LayerComponents.subfactionShortNames[subfaction] ?? subfaction
+	return LayerComponents.unitShortNames[unit] ?? unit
 }
 
 export const NULL_DISPLAY = ' <empty> '
@@ -32,8 +32,8 @@ export function toFullLayerNameFromId(id: string) {
 }
 
 export function toShortLayerName(layer: M.MiniLayer) {
-	const subfaction1 = toShortSubfaction(layer.Unit_1)
-	const subFaction2 = toShortSubfaction(layer.Unit_2)
+	const subfaction1 = toShortUnit(layer.Unit_1)
+	const subFaction2 = toShortUnit(layer.Unit_2)
 	let txt = `${layer.Layer} `
 	txt += `- ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
@@ -42,8 +42,8 @@ export function toShortLayerName(layer: M.MiniLayer) {
 }
 
 export function toShortTeamsDisplay(layer: Partial<M.MiniLayer>) {
-	const subfaction1 = toShortSubfaction(layer.Unit_1 ?? null)
-	const subFaction2 = toShortSubfaction(layer.Unit_2 ?? null)
+	const subfaction1 = toShortUnit(layer.Unit_1 ?? null)
+	const subFaction2 = toShortUnit(layer.Unit_2 ?? null)
 	let txt = `${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}`.trim()
 	txt += ' vs '
 	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}`.trim()

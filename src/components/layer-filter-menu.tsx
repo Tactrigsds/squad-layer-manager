@@ -20,9 +20,9 @@ function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): Rec
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion']),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
-		SubFac_1: EFB.eq('SubFac_1', defaultFields['Unit_1']),
+		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
-		SubFac_2: EFB.eq('SubFac_2', defaultFields['Unit_2']),
+		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 	} as Record<keyof M.MiniLayer, M.EditableComparison>
 }
 
@@ -187,11 +187,11 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 		props.filterMenuStore.getState().setMenuItems(
 			Im.produce((draft) => {
 				const faction1 = draft['Faction_1'].value
-				const subFac1 = draft['SubFac_1'].value
+				const subFac1 = draft['Unit_1'].value
 				draft['Faction_1'].value = draft['Faction_2'].value
-				draft['SubFac_1'].value = draft['SubFac_2'].value
+				draft['Unit_1'].value = draft['Unit_2'].value
 				draft['Faction_2'].value = faction1
-				draft['SubFac_2'].value = subFac1
+				draft['Unit_2'].value = subFac1
 			}),
 		)
 	}
@@ -219,8 +219,8 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					}
 
 					const swapFactionsDisabled = !(
-						(storeState.menuItems['Faction_1'].value !== undefined || storeState.menuItems['SubFac_1'].value !== undefined)
-						|| (storeState.menuItems['Faction_2'].value !== undefined || storeState.menuItems['SubFac_2'].value !== undefined)
+						(storeState.menuItems['Faction_1'].value !== undefined || storeState.menuItems['Unit_1'].value !== undefined)
+						|| (storeState.menuItems['Faction_2'].value !== undefined || storeState.menuItems['Unit_2'].value !== undefined)
 					)
 
 					let constraints = props.queryContext.constraints ?? []

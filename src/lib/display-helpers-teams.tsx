@@ -32,15 +32,15 @@ export function getTeamsDisplay(
 		team1Color = teamColors.team1
 	}
 
-	const subfaction1 = partialLayer.Unit_1 !== undefined ? DH.toShortSubfaction(partialLayer.Unit_1) : undefined
-	const subFaction2 = partialLayer.Unit_2 !== undefined ? DH.toShortSubfaction(partialLayer.Unit_2) : undefined
+	const subfaction1 = partialLayer.Unit_1 !== undefined ? DH.toShortUnit(partialLayer.Unit_1) : undefined
+	const subFaction2 = partialLayer.Unit_2 !== undefined ? DH.toShortUnit(partialLayer.Unit_2) : undefined
 
 	const teamElts = [
 		<span>
 			<span className={withBackfilledStyles?.Faction_1}>{partialLayer.Faction_1}</span>
 			{subfaction1
 				? (
-					<span className={withBackfilledStyles?.SubFac_1}>
+					<span className={withBackfilledStyles?.Unit_1}>
 						{` ${subfaction1}`}
 					</span>
 				)
@@ -57,7 +57,7 @@ export function getTeamsDisplay(
 			<span className={withBackfilledStyles?.Faction_2}>{partialLayer.Faction_2}</span>
 			{subFaction2
 				? (
-					<span className={withBackfilledStyles?.SubFac_2}>
+					<span className={withBackfilledStyles?.Unit_2}>
 						{` ${subFaction2}`}
 					</span>
 				)

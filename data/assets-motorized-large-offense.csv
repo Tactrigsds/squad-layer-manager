@@ -1,0 +1,49 @@
+,CAF,,,,PLA,,,,PLANMC,,,,RGF,,,,TLF,,,,USA,,,,USMC,,,,IMF,,,,INS,
+,12th Armored Regiment of Canada,,,,112th Combined Arms Brigade,,,,7th Marine Medium Battalion,,,,3rd Motor Rifle Brigade,,,,51st Motorized Infantry Brigade Battle Group,,,,2nd Cavalry Stryker Brigade Combat Team,,,,3rd Light Armored Recon Battalion,,,,Irregular Motorized Platoon,,,,Irregular Motorized Platoon,
+Vehicles,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,MSVS Transport (6min),,,1,CTM-131 QJZ89 (6min),,,1,CTM-131 QJZ-89 (6min),,,1,Kamaz Transport (6min),,,1,BMC Transport (6min),,,1,M939 Transport (6min),,,1,M939 Transport (6min),,,1,Ural375 Transport (6min),,,1,Ural375 Transport (6min)
+,2,MSVS Transport,,,2,CTM-131 QJZ89,,,2,CTM-131 QJZ-89,,,2,Kamaz Transport,,,2,BMC Transport,,,2,M939 Transport,,,2,M939 Transport,,,2,Ural375 Transport,,,2,Ural375 Transport
+,1,MSVS Logi,,,2,CTM-131 Logi,,,2,CTM-131 Logi,,,2,Kamaz Logi,,,2,BMC Logi,,,2,M939 Logi,,,2,M939 Logi,,,3,Minsk,,,3,Minsk
+,2,LUVW Logi,,,2,ZSL10,,,2,ZSL10,,,2,BRDM-2,,,1,PARS III Mk19,,,2,M1126 CROWS M240,,,2,M1151 M2,,,2,Ural375 Logi,,,3,Ural375 Logi
+,2,LUVW C6,,,3,ZBL08,,,3,ZBL08,,,1,BTR80,,,1,PARS III MG3,,,2,M1126 CROWS M2,,,2,M1151 M2 CROWS,,,3,Technical Logi,,,2,Technical Logi
+,1,TAPV,,,,,,,,,,,3,BTR82A,,,2,PARS III M2,,,2,M1128  MGS,,,4,LAV25,,,1,Technical HMG,,,1,Technical SPG9
+,1,LAV III RWS,,,,,,,,,,,,,,,2,PARS III IFV,,,,,,,,,,,1,Technical SPG9,,,2,M1151 Technical DSHK
+,3,Coyote,,,,,,,,,,,,,,,,,,,,,,,,,,,2,BRDM-2,,,1,Technical UB32
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,Techncial Kornet,,,1,Technical Kornet
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,BTR80,,,2,BRDM-2
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,URAL ZU23,,,2,BTR80
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,BM-21 Grad (10min),,,2,BMP Technical
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,Technical ZU23
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,13,Total,,,10,Total,,,10,Total,,,11,Total,,,11,Total,,,11,Total,,,13,Total,,,21,Total,,,24,Total
+Tanks,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,Leopard 2A6M (15min),,,1,ZTZ-99A (15min),,,2,ZTD05 (15min),,,1,T90A (15min),,,2,M60T (15min),,,1,M1A2 (15min),,,1,M1A1 (15min),,,1,T62 (15min),,,1,T62 (15min)
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,Total,,,1,Total,,,2,Total,,,1,Total,,,2,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total
+Helicopters,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,CH146 (6min),,,1,Z-8G (6min),,,1,Z-8J (6min),,,1,Mi8 (6min),,,1,UH1H (6min),,,1,UH60 (6min),,,1,UH1Y (6min),,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,1,Total,,,0,Total,,,0,Total
+Boats,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62,,,1,RHIB 7.62
+,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal,,,2,RHIB .50 cal
+,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi,,,1,RHIB Logi
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total,,,4,Total
+Special Characteristics,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None,,,,None
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+FOB Emplacements,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,2,MG Tripod,,,2,MG Tripod,,,2,MG Tripod,,,2,MG Tripod,,,2,MG Tripod,,,2,MG Tripod,,,,,,,4,MG Tripod,,,4,MG Tripod
+,2,MG Bunker,,,2,MG Bunker,,,2,MG Bunker,,,2,MG Bunker,,,2,MG Bunker,,,2,MG Bunker,,,,,,,3,SPG,,,3,SPG
+,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,1,ATGM,,,,,,,2,Mortar,,,2,Mortar
+,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,2,Mortar,,,,,,,1,HAB (100 points),,,2,HAB (100 points)
+,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,1,HAB,,,,,,,2,AA Gun,,,2,AA Gun
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,Field Gun,,,1,Hell Cannon
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,UB32,,,,

@@ -102,13 +102,16 @@ function ShortLayerName(
 	const withBackfilledStyles: Record<keyof M.MiniLayer, string | undefined> = {
 		id: undefined,
 		Layer: (!partialLayer.Layer && !!backfillLayer?.Layer) ? backfilledStyle : undefined,
+		Size: (!partialLayer.Size && !!backfillLayer?.Size) ? backfilledStyle : undefined,
 		Map: (!partialLayer.Map && !!backfillLayer?.Map) ? backfilledStyle : undefined,
 		Gamemode: (!partialLayer.Gamemode && !!backfillLayer?.Gamemode) ? backfilledStyle : undefined,
 		LayerVersion: (!partialLayer.LayerVersion && !!backfillLayer?.LayerVersion) ? backfilledStyle : undefined,
 		Faction_1: (!partialLayer.Faction_1 && !!backfillLayer?.Faction_1) ? backfilledStyle : undefined,
-		SubFac_1: (!partialLayer.Unit_1 && !!backfillLayer?.Unit_1) ? backfilledStyle : undefined,
+		Unit_1: (!partialLayer.Unit_1 && !!backfillLayer?.Unit_1) ? backfilledStyle : undefined,
+		Alliance_1: (!partialLayer.Alliance_1 && !!backfillLayer?.Alliance_1) ? backfilledStyle : undefined,
 		Faction_2: (!partialLayer.Faction_2 && !!backfillLayer?.Faction_2) ? backfilledStyle : undefined,
-		SubFac_2: (!partialLayer.Unit_2 && !!backfillLayer?.Unit_2) ? backfilledStyle : undefined,
+		Unit_2: (!partialLayer.Unit_2 && !!backfillLayer?.Unit_2) ? backfilledStyle : undefined,
+		Alliance_2: (!partialLayer.Alliance_2 && !!backfillLayer?.Alliance_2) ? backfilledStyle : undefined,
 	}
 
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)

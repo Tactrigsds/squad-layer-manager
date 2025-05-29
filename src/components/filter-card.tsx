@@ -916,7 +916,7 @@ const HasAllConfig = React.forwardRef(function HasAllConfig(
 	}
 
 	if (props.column === 'SubFacMatchup') {
-		const allSubFactions = ArrUtils.union(groupedByRes.data?.SubFac_1 ?? [], groupedByRes.data?.SubFac_2 ?? [])
+		const allSubFactions = ArrUtils.union(groupedByRes.data?.Unit_1 ?? [], groupedByRes.data?.Unit_2 ?? [])
 		function canMirror(values: string[]) {
 			return values.length === 1 || (values.length === 2 && values[0] === values[1])
 		}
