@@ -136,7 +136,7 @@ export function parseLayerStringSegment(layer: string) {
 				}
 			}
 		}
-		throw new Error(`Invalid layer string: ${layer}`)
+		return null
 	}
 	const [map, gamemode, version] = groups.slice(1)
 	return {

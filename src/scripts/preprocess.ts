@@ -162,6 +162,7 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 				}
 
 				const segments = M.parseLayerStringSegment(row['Layer'])
+				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
 				const diffs: Record<string, number> = {}
 				for (const [key, value] of Object.entries(row)) {
 					if (!value) continue
@@ -332,6 +333,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 
 				const parsedSegments = M.parseLayerStringSegment(layer.Layer)
+				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
 				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
 				if (parsedSegments.LayerVersion) components.versions.add(parsedSegments.LayerVersion)
@@ -497,6 +499,7 @@ function parseBgLayerAvailability(ctx: C.Log) {
 				const entry = { Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
 				entries.push(entry)
 				const segments = M.parseLayerStringSegment(currentLayer!)
+				if (!segments) throw new Error(`Invalid layer string segment: ${currentLayer}`)
 				if (segments.Gamemode === 'RAAS') {
 					entries.push({
 						...entry,
