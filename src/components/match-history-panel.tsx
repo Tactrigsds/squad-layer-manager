@@ -42,7 +42,7 @@ export default function MatchHistoryPanel() {
 	let streak = 0
 	// console.table(currentEntries.map(SM.matchHistoryEntryFromMatchDetails))
 	for (let i = 0; i < allEntries.length; i++) {
-		const entry = currentEntries[i]
+		const entry = allEntries[i]
 		if (M.isHistoryLookbackExcludedLayer(entry.layerId)) break
 		if (entry.status === 'in-progress' && i === 0) continue
 		if (entry.status === 'in-progress') break
