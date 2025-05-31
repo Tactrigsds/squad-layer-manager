@@ -120,7 +120,7 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg = [`Next Layer\n${nextLayerPartial?.Layer ?? 'Unknown'}${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`]
+			const msg = [`Next Layer\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`]
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
