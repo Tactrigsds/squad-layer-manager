@@ -1,5 +1,5 @@
-ARG GIT_SHA=unknown
-ARG GIT_BRANCH=unknown
+ARG GIT_SHA="unknown"
+ARG GIT_BRANCH="unknown"
 
 FROM node:lts AS base
 LABEL org.opencontainers.image.description="Squad Layer Manager. See https://github.com/Tactrigsds/squad-layer-manager"
