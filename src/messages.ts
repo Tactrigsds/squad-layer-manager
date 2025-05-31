@@ -4,7 +4,7 @@ import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
-import { assertNever } from './lib/typeGuards'
+import { assertNever, isNullOrUndef } from './lib/typeGuards'
 import { CommandConfig } from './server/config'
 
 function formatInterval(interval: number) {
@@ -95,34 +95,23 @@ export const WARNS = {
 
 			const extraDisplay = setByDisplay
 			const nextLayerPartial = item.layerId ? M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(item.layerId)) : null
-			const factionDisplay = (() => {
-				if (!item) return null
-				if (!nextLayerPartial) return null
-				let userFactionDisplay = ''
-				if (ctx.player.teamID !== null) {
-					const nextTeamId = ctx.player.teamID === 1 ? 2 : 1
-					const userFaction = nextLayerPartial[`Faction_${nextTeamId}`]
-					userFactionDisplay = userFaction ? `(You will be ${userFaction})` : ``
-				}
-				return `Factions:\n${DH.toShortTeamsDisplay(nextLayerPartial)} ${userFactionDisplay}`.trim()
-			})()
+
 			const getOptions = (msg: string | string[]) => ({
 				msg,
 				repeat: 3,
 			})
+
+			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
+
 			if (item.vote) {
 				if (item.layerId) {
-					const msg: string[] = []
-					msg.push(`Next layer (Chosen via vote):\n${nextLayerPartial?.Layer ?? 'Unknown'}`)
-					if (factionDisplay) msg.push(factionDisplay)
-					msg.push(extraDisplay)
+					const msg = `Next Layer (Chosen via vote)\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`
 					return getOptions(msg)
 				} else {
 					const msg = [
 						'Upcoming vote:',
-						...voteChoicesLines(item.vote.choices, item.vote.defaultChoice),
+						...voteChoicesLines(item.vote.choices, item.vote.defaultChoice, playerNextTeamId),
 					]
-					if (factionDisplay) msg.push(factionDisplay)
 					msg.push(extraDisplay)
 					return getOptions(msg)
 				}
@@ -131,8 +120,7 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg: string[] = [`Next layer:\n${nextLayerPartial?.Layer ?? 'Unknown'}`]
-			if (factionDisplay) msg.push(factionDisplay)
+			const msg = [`Next Layer\n${nextLayerPartial?.Layer ?? 'Unknown'}${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`]
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
@@ -183,9 +171,9 @@ type MessageNode = {
 	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }
 
-function voteChoicesLines(choices: M.LayerId[], defaultLayer: M.LayerId) {
+function voteChoicesLines(choices: M.LayerId[], defaultLayer: M.LayerId, you?: 1 | 2) {
 	return choices.map((c, index) => {
 		const isDefault = c === defaultLayer
-		return `${index + 1}. ${DH.toShortLayerNameFromId(c)} ${isDefault ? ' (Default)' : ''}`
+		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you)} ${isDefault ? '\n(Default)' : ''}`
 	})
 }

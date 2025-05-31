@@ -480,10 +480,10 @@ function parseBgLayerAvailability(ctx: C.Log) {
 				}
 				let unit: string | undefined
 				let isDefaultUnit = false
-        if (currentLayer?.startsWith('JensensRange')) {
-          currentFaction = row[col.UnitFullName]?.split(' ')?.[0]
-          unit = "CombinedArms"
-        } else if (row[col.Faction]) {
+				if (currentLayer?.startsWith('JensensRange')) {
+					currentFaction = row[col.UnitFullName]?.split(' ')?.[0]
+					unit = 'CombinedArms'
+				} else if (row[col.Faction]) {
 					currentFaction = row[col.Faction]
 
 					const url = new URL(row[col.sheetLink])

@@ -32,15 +32,14 @@ await DB.runTransaction(ctx, async (ctx) => {
 				return node
 			case 'comp':
 				// @ts-expect-error idc
-        if (node.comp.column === 'SubFac_1') {
-          // @ts-expect-error idc
-          node.comp.column = 'Unit_1'
-        }
-        // @ts-expect-error idc
-        else if (node.comp.column === 'SubFac_2') {
-          // @ts-expect-error idc
-          node.comp.column = 'Unit_2'
-        }
+				if (node.comp.column === 'SubFac_1') {
+					// @ts-expect-error idc
+					node.comp.column = 'Unit_1'
+				} // @ts-expect-error idc
+				else if (node.comp.column === 'SubFac_2') {
+					// @ts-expect-error idc
+					node.comp.column = 'Unit_2'
+				}
 				return node
 			default:
 				assertNever(node)
