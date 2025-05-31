@@ -344,7 +344,6 @@ function validateLayerId(id: string) {
 		getMiniLayerFromId(id)
 		return true
 	} catch {
-		debugger
 		return false
 	}
 }
@@ -353,7 +352,6 @@ export const LayerIdSchema = z.string().min(1).max(255).refine(id => {
 	const valid = validateLayerId(id)
 	if (!valid) {
 		console.warn(`Invalid layer id: ${id}`)
-		debugger
 	}
 	return valid
 }, {
