@@ -48476,6 +48476,139 @@
       "isDefaultUnit": true
     },
     {
+      "Layer": "JensensRange_ADF-PLA",
+      "Faction": "ADF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_ADF-PLA",
+      "Faction": "PLA",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_BAF-IMF",
+      "Faction": "BAF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_BAF-IMF",
+      "Faction": "IMF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_CAF-INS",
+      "Faction": "CAF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_CAF-INS",
+      "Faction": "INS",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_PLANMC-VDV",
+      "Faction": "PLANMC",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_PLANMC-VDV",
+      "Faction": "VDV",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_USA-RGF",
+      "Faction": "USA",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_USA-RGF",
+      "Faction": "RGF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_USMC-MEA",
+      "Faction": "USMC",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_USMC-MEA",
+      "Faction": "MEA",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_WPMC-TLF",
+      "Faction": "WPMC",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        1
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_WPMC-TLF",
+      "Faction": "TLF",
+      "Unit": "CombinedArms",
+      "allowedTeams": [
+        2
+      ],
+      "isDefaultUnit": false
+    },
+    {
+      "Layer": "JensensRange_WPMC-TLF",
+      "Faction": "",
+      "Unit": "CombinedArms",
+      "allowedTeams": [],
+      "isDefaultUnit": false
+    },
+    {
       "Layer": "Kamdesh_AAS_v1",
       "Faction": "ADF",
       "Unit": "CombinedArms",
@@ -105370,7 +105503,8 @@
     "Seed",
     "Skirmish",
     "TC",
-    "Destruction"
+    "Destruction",
+    "Training"
   ],
   "alliances": [
     "BLUEFOR",
