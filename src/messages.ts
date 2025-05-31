@@ -131,7 +131,7 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg: string[] = [`Next layer:\n${DH.toShortLayerNameFromId(item.layerId)}`]
+			const msg: string[] = [`Next layer:\n${nextLayerPartial?.Layer ?? 'Unknown'}`]
 			if (factionDisplay) msg.push(factionDisplay)
 			msg.push(extraDisplay)
 			return getOptions(msg)
