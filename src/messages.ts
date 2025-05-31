@@ -94,8 +94,6 @@ export const WARNS = {
 			}
 
 			const extraDisplay = setByDisplay
-			const nextLayerPartial = item.layerId ? M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(item.layerId)) : null
-
 			const getOptions = (msg: string | string[]) => ({
 				msg,
 				repeat: 3,

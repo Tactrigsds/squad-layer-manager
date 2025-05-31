@@ -636,10 +636,12 @@ function getisBlockedByDoNotRepeatRuleDirect(
 	)
 	const targetLayerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length)
 	let layerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length - 1)
-	const retValue = (v: boolean, descriptors?: string[]) => ({
-		isBlocked: v,
-		descriptors,
-	})
+	const retValue = (v: boolean, descriptors?: string[]) => {
+		return ({
+			isBlocked: v,
+			descriptors,
+		})
+	}
 
 	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
 		const layerId = previousLayerIds[i]
@@ -1034,7 +1036,7 @@ function resolveRelevantLayerHistory(
 	historicLayers.push(...previousLayerIds)
 	return {
 		historicLayers,
-		oldestLayerTeamParity: (MatchHistory.getCurrentMatch()?.ordinal ?? 0) % 2,
+		oldestLayerTeamParity: (historicMatches?.[0]?.ordinal ?? 0) % 2,
 	}
 }
 
