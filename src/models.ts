@@ -178,7 +178,8 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 		if (!faction) continue
 		parsedFactions[i] = {
 			faction: faction.trim(),
-			unit: unit?.trim() ?? components.layerFactionAvailability.find(l => l.Layer === layer && l.Faction === faction && l.isDefaultUnit)?.Unit,
+			unit: unit?.trim()
+				?? components.layerFactionAvailability.find(l => l.Layer === layer && l.Faction === faction && l.isDefaultUnit)?.Unit,
 		}
 	}
 	return parsedFactions
@@ -343,7 +344,7 @@ function validateLayerId(id: string) {
 		getMiniLayerFromId(id)
 		return true
 	} catch {
-  	debugger
+		debugger
 		return false
 	}
 }

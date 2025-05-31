@@ -849,5 +849,6 @@ function MultiLayerSetDialog({
 
 function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
 	const constraints = row.original.constraints
-	return !row.getIsSelected() && !canForceSelect && constraints.values.some((v,i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
+	return !row.getIsSelected() && !canForceSelect
+		&& constraints.values.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
 }
