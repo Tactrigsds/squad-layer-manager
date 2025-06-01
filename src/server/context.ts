@@ -3,6 +3,7 @@ import { createId } from '@/lib/id.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as SM from '@/lib/rcon/squad-models'
 import * as M from '@/models.ts'
+import * as RBAC from '@/rbac.models'
 import * as Otel from '@opentelemetry/api'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
@@ -74,6 +75,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 					logger = args[0].log
 				}
 				const id = createId(6)
+				setSpanOpAttrs({ op_id: id })
 				logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - executed`)
 				try {
 					const result = await cb(...args)
@@ -157,7 +159,7 @@ export type User = {
 export type Player = {
 	player: SM.Player
 }
-export type RbacUser = { user: M.UserWithRbac }
+export type RbacUser = { user: RBAC.UserWithRbac }
 
 export type AuthSession = {
 	sessionId: string

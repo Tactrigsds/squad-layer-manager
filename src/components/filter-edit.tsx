@@ -196,11 +196,28 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	}
 
 	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
-		if (loggedInUser && !RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('filters:write', { filterId: props.entity.id }))) return 'none'
-		if (loggedInUser?.discordId === props.owner.discordId) return 'owner'
-		if (props.contributors.users.some((u) => u.discordId === loggedInUser?.discordId)) return 'contributor'
-		if (props.contributors.roles.some((role) => loggedInUser?.roles.includes(role))) return 'contributor'
-		if (loggedInUser?.perms.find((perm) => perm.type === 'filters:write-all')) return 'write-all'
+		if (!loggedInUser) return 'none'
+		for (const perm of loggedInUser.perms) {
+			if (perm.type === 'filters:write' && perm.args!.filterId === props.entity.id && perm.allowedByRoles.includes('filter-owner')) {
+				return 'owner'
+			}
+		}
+
+		for (const perm of loggedInUser.perms) {
+			if (
+				perm.type === 'filters:write' && perm.args!.filterId === props.entity.id
+				&& (perm.allowedByRoles.includes('filter-user-contributor')
+					|| perm.allowedByRoles.some(r => typeof r !== 'string' && r.type === 'filter-role-contributor'))
+			) {
+				return 'contributor'
+			}
+		}
+		for (const perm of loggedInUser.perms) {
+			if (perm.type === 'filters:write-all') {
+				return 'write-all'
+			}
+		}
+
 		return 'none'
 	})()
 

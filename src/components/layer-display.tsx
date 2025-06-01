@@ -1,6 +1,9 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
+import { isNullOrUndef } from '@/lib/typeGuards.ts'
+import * as Typo from '@/lib/typography.ts'
+import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as M from '@/models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
@@ -15,6 +18,7 @@ export default function LayerDisplay(
 	props: {
 		layerId: M.LayerId
 		itemId?: string
+		historyEntryId?: number
 		isVoteChoice?: boolean
 		badges?: React.ReactNode[]
 		teamParity?: number
@@ -24,6 +28,26 @@ export default function LayerDisplay(
 	const layerStatusesRes = useLayerStatuses({ enabled: !!props.itemId })
 	const badges: React.ReactNode[] = []
 	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => M.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
+	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
+	const allViolationDescriptors = layerStatusesRes.data?.violationDescriptors
+	// violations that this item has caused for the hovered item
+	const hoveredReasonViolationDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== props.itemId
+		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => {
+			if (props.historyEntryId) return vd.reasonItem?.type === 'history-entry' && vd.reasonItem.historyEntryId === props.historyEntryId
+			if (props.itemId) return vd.reasonItem?.type === 'layer-list-item' && vd.reasonItem.layerListItemId === props.itemId
+		})) || undefined
+	const localViolationDescriptors = (props.itemId && hoveredConstraintItemId === props.itemId && allViolationDescriptors?.get(props.itemId))
+		|| undefined
+	if (props.layerId?.startsWith('SM')) {
+		console.log({
+			layerId: props.layerId,
+			itemId: props.itemId,
+			hoveredItemId: hoveredConstraintItemId,
+			localViolationDescriptors,
+			hoveredReasonViolationDescriptors,
+			allViolationDescriptors,
+		})
+	}
 	if (props.badges) badges.push(...props.badges)
 
 	const blockingConstraintIds = props.itemId
@@ -38,6 +62,7 @@ export default function LayerDisplay(
 				key="constraint violation display"
 				violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)).filter(c => c !== undefined)}
 				violationDescriptors={props.itemId ? layerStatusesRes.data?.violationDescriptors.get(props.itemId) : undefined}
+				itemId={props.itemId}
 				layerId={props.layerId}
 			/>,
 		)
@@ -77,7 +102,12 @@ export default function LayerDisplay(
 	return (
 		<div className="flex space-x-2 items-center">
 			<span className="flex-1 text-nowrap">
-				<ShortLayerName layerId={props.layerId} teamParity={props.teamParity} backfillLayerId={props.backfillLayerId} />
+				<ShortLayerName
+					layerId={props.layerId}
+					teamParity={props.teamParity}
+					backfillLayerId={props.backfillLayerId}
+					violationDescriptors={localViolationDescriptors || hoveredReasonViolationDescriptors || undefined}
+				/>
 			</span>
 			<span className="flex items-center space-x-1">
 				{badges}
@@ -87,7 +117,12 @@ export default function LayerDisplay(
 }
 
 function ShortLayerName(
-	{ layerId, teamParity, backfillLayerId }: { layerId: M.LayerId; teamParity?: number; backfillLayerId?: M.LayerId },
+	{ layerId, teamParity, backfillLayerId, violationDescriptors }: {
+		layerId: M.LayerId
+		teamParity?: number
+		backfillLayerId?: M.LayerId
+		violationDescriptors?: M.ViolationDescriptor[]
+	},
 ) {
 	const backfilledStyle = 'text-gray-500'
 
@@ -99,19 +134,44 @@ function ShortLayerName(
 		backfillLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(backfillLayerId))
 	}
 
-	const withBackfilledStyles: Record<keyof M.MiniLayer, string | undefined> = {
+	// Create violation field mapping
+	let violatedFields = new Set<string>()
+	if (violationDescriptors && !isNullOrUndef(teamParity)) {
+		violatedFields = M.resolveViolatedLayerProperties(violationDescriptors, teamParity)
+	}
+	if (violatedFields.size > 0) {
+		console.log({ violatedFields })
+	}
+
+	const combineStyles = (field: keyof typeof partialLayer) => {
+		const styles: string[] = []
+
+		// Add backfilled style if applicable
+		if (!partialLayer[field] && !!backfillLayer?.[field]) {
+			styles.push(backfilledStyle)
+		}
+
+		// Add violation style if applicable
+		if (violatedFields.has(field)) {
+			styles.push(Typo.ConstraintViolationDescriptor)
+		}
+
+		return styles.length > 0 ? styles.join(' ') : undefined
+	}
+
+	const extraStyles: Record<keyof M.MiniLayer, string | undefined> = {
 		id: undefined,
-		Layer: (!partialLayer.Layer && !!backfillLayer?.Layer) ? backfilledStyle : undefined,
-		Size: (!partialLayer.Size && !!backfillLayer?.Size) ? backfilledStyle : undefined,
-		Map: (!partialLayer.Map && !!backfillLayer?.Map) ? backfilledStyle : undefined,
-		Gamemode: (!partialLayer.Gamemode && !!backfillLayer?.Gamemode) ? backfilledStyle : undefined,
-		LayerVersion: (!partialLayer.LayerVersion && !!backfillLayer?.LayerVersion) ? backfilledStyle : undefined,
-		Faction_1: (!partialLayer.Faction_1 && !!backfillLayer?.Faction_1) ? backfilledStyle : undefined,
-		Unit_1: (!partialLayer.Unit_1 && !!backfillLayer?.Unit_1) ? backfilledStyle : undefined,
-		Alliance_1: (!partialLayer.Alliance_1 && !!backfillLayer?.Alliance_1) ? backfilledStyle : undefined,
-		Faction_2: (!partialLayer.Faction_2 && !!backfillLayer?.Faction_2) ? backfilledStyle : undefined,
-		Unit_2: (!partialLayer.Unit_2 && !!backfillLayer?.Unit_2) ? backfilledStyle : undefined,
-		Alliance_2: (!partialLayer.Alliance_2 && !!backfillLayer?.Alliance_2) ? backfilledStyle : undefined,
+		Layer: combineStyles('Layer'),
+		Size: combineStyles('Size'),
+		Map: combineStyles('Map'),
+		Gamemode: combineStyles('Gamemode'),
+		LayerVersion: combineStyles('LayerVersion'),
+		Faction_1: combineStyles('Faction_1'),
+		Unit_1: combineStyles('Unit_1'),
+		Alliance_1: combineStyles('Alliance_1'),
+		Faction_2: combineStyles('Faction_2'),
+		Unit_2: combineStyles('Unit_2'),
+		Alliance_2: combineStyles('Alliance_2'),
 	}
 
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)
@@ -125,13 +185,13 @@ function ShortLayerName(
 			partialLayer,
 			teamParity ?? 0,
 			globalSettings.displayTeamsNormalized,
-			withBackfilledStyles,
+			extraStyles,
 		)
 	}
 
 	return (
 		<div className="flex items-center space-x-1">
-			<span className={withBackfilledStyles.Layer}>{partialLayer.Layer}</span>
+			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
 					<span>-</span>
@@ -141,5 +201,21 @@ function ShortLayerName(
 				</>
 			)}
 		</div>
+	)
+}
+
+export function MapLayerDisplay(
+	{ layer, extraLayerStyles: backfilledStyles }: { layer: string; extraLayerStyles: Record<string, string> },
+) {
+	const segments = M.parseLayerStringSegment(layer)
+	if (!segments) return layer
+	return (
+		<span className={cn(backfilledStyles.Layer)}>
+			<span className={backfilledStyles.Map}>{segments.Map}</span>
+			_
+			<span className={backfilledStyles.Gamemode}>{segments.Gamemode}</span>
+			_
+			<span className={backfilledStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
+		</span>
 	)
 }

@@ -2,7 +2,6 @@ import _StaticLayerComponents from '$root/assets/layer-components.json'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as LC from '@/layer-components.models'
 import * as Arr from '@/lib/array'
-import * as RBAC from '@/rbac.models'
 import * as z from 'zod'
 import { createId } from './lib/id'
 import { deepClone, isPartial, revLookup } from './lib/object'
@@ -817,8 +816,6 @@ export function createLayerListItem(newItem: NewLayerListItem): LayerListItem {
 	}
 }
 
-// doing this because Omit<> sucks to work with
-
 export function preprocessLevel(level: string) {
 	level = level.replace(/\s/g, '')
 	if (level.startsWith('Sanxian')) return 'Sanxian'
@@ -885,7 +882,6 @@ export type UserPresenceStateUpdate = {
 }
 
 export type User = SchemaModels.User
-export type UserWithRbac = User & { perms: RBAC.Permission[]; roles: RBAC.Role[] }
 export type MiniUser = {
 	username: string
 	discordId: string
@@ -938,15 +934,15 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({ owner: true }
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
 
-export const DnrFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit', 'Alliance', 'Size'])
-export type DnrField = z.infer<typeof DnrFieldSchema>
-export const DoNotRepeatRuleSchema = z.object({
-	field: DnrFieldSchema,
+export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit', 'Alliance', 'Size'])
+export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
+export const RepeatRuleSchema = z.object({
+	field: RepeatRuleFieldSchema,
 	label: z.string().min(1).max(100).optional().describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
-export type DoNotRepeatRule = z.infer<typeof DoNotRepeatRuleSchema>
+export type RepeatRule = z.infer<typeof RepeatRuleSchema>
 
 export function getTeamNormalizedFactionProp(offset: number, team: 'A' | 'B') {
 	const props = ['Faction_1', 'Faction_2'] as const
@@ -958,7 +954,7 @@ export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B') {
 	return props[(offset + Number(team === 'B')) % 2]
 }
 
-export function getNormalizedAllianceProp(offset: number, team: 'A' | 'B') {
+export function getTeamNormalizedAllianceProp(offset: number, team: 'A' | 'B') {
 	const props = ['Alliance_1', 'Alliance_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
 }
@@ -984,7 +980,7 @@ export const LayerQueryConstraintSchema = z.discriminatedUnion('type', [
 	}),
 	z.object({
 		type: z.literal('do-not-repeat'),
-		rule: DoNotRepeatRuleSchema,
+		rule: RepeatRuleSchema,
 		applyAs: z.enum(['field', 'where-condition']),
 		name: z.string().optional(),
 		id: z.string(),
@@ -1065,13 +1061,13 @@ export const LayersQueryInputSchema = z.object({
 		.min(0)
 		.optional()
 		.describe(
-			'Offset of history entries to consider for DNR rules, where 0 is current layer, 1 is the previous layer, etc',
+			'Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc',
 		),
 	previousLayerIds: z
 		.array(LayerIdSchema)
 		.default([])
 		.describe(
-			'Layer Ids to be considered as part of the history for DNR rules',
+			'Layer Ids to be considered as part of the history for Repeat rules',
 		),
 })
 
@@ -1222,7 +1218,7 @@ export type VoteStateWithVoteData = Extract<
 	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
 >
 
-const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
+const DEFAULT_REPEAT_RULES: RepeatRule[] = [
 	{ field: 'Map', within: 4 },
 	{ field: 'Layer', within: 7 },
 	{ field: 'Faction', within: 3 },
@@ -1230,7 +1226,7 @@ const DEFAULT_DNR_RULES: DoNotRepeatRule[] = [
 
 export const PoolConfigurationSchema = z.object({
 	filters: z.array(FilterEntityIdSchema),
-	doNotRepeatRules: z.array(DoNotRepeatRuleSchema),
+	repeatRules: z.array(RepeatRuleSchema),
 })
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
 
@@ -1239,10 +1235,10 @@ export const ServerSettingsSchema = z
 		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
 		queue: z
 			.object({
-				mainPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: DEFAULT_DNR_RULES }),
+				mainPool: PoolConfigurationSchema.default({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
 				// extends the main pool during automated generation
 				applyMainPoolToGenerationPool: z.boolean().default(true),
-				generationPool: PoolConfigurationSchema.default({ filters: [], doNotRepeatRules: [] }),
+				generationPool: PoolConfigurationSchema.default({ filters: [], repeatRules: [] }),
 				preferredLength: z.number().default(12),
 				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
 				preferredNumVoteChoices: z.number().default(3),
@@ -1265,7 +1261,7 @@ export function getPoolConstraints(
 ) {
 	const constraints: LayerQueryConstraint[] = []
 
-	for (const rule of poolConfig.doNotRepeatRules) {
+	for (const rule of poolConfig.repeatRules) {
 		constraints.push({
 			type: 'do-not-repeat',
 			rule,
@@ -1381,7 +1377,64 @@ export type LayerStatuses = {
 	// keys are (itemId:(choiceLayerId)?)
 	blocked: OneToMany.OneToManyMap<string, string>
 	present: Set<LayerId>
-	violationDescriptors: Map<string, Record<string, string[] | undefined>>
+	violationDescriptors: Map<string, ViolationDescriptor[]>
+}
+
+export type ViolationReasonItem = {
+	type: 'layer-list-item'
+	layerListItemId: string
+} | {
+	type: 'history-entry'
+	historyEntryId: number
+}
+
+export type ViolationDescriptor = {
+	type: 'repeat-rule'
+	constraintId: string
+	field:
+		| 'Map'
+		| 'Gamemode'
+		| 'Layer'
+		| 'Size'
+		| 'Faction_A'
+		| 'Faction_B'
+		| 'Alliance_A'
+		| 'Alliance_B'
+		| 'FactionAndUnit_A'
+		| 'FactionAndUnit_B'
+	reasonItem?: ViolationReasonItem
+}
+export function resolveViolatedLayerProperties(descriptors: ViolationDescriptor[], teamParity: number) {
+	const violatedFields = new Set<string>()
+	for (const descriptor of descriptors) {
+		// Map ViolationDescriptor fields to MiniLayer fields
+		switch (descriptor.field) {
+			case 'Faction_A':
+				violatedFields.add(getTeamNormalizedFactionProp(teamParity, 'A'))
+				break
+			case 'Faction_B':
+				violatedFields.add(getTeamNormalizedFactionProp(teamParity, 'B'))
+				break
+			case 'Alliance_A':
+				violatedFields.add(getTeamNormalizedAllianceProp(teamParity, 'A'))
+				break
+			case 'Alliance_B':
+				violatedFields.add(getTeamNormalizedAllianceProp(teamParity, 'B'))
+				break
+			case 'FactionAndUnit_A':
+				violatedFields.add(getTeamNormalizedFactionProp(teamParity, 'A'))
+				violatedFields.add(getTeamNormalizedUnitProp(teamParity, 'A'))
+				break
+			case 'FactionAndUnit_B':
+				violatedFields.add(getTeamNormalizedFactionProp(teamParity, 'B'))
+				violatedFields.add(getTeamNormalizedUnitProp(teamParity, 'B'))
+				break
+			default:
+				violatedFields.add(descriptor.field)
+				break
+		}
+	}
+	return violatedFields
 }
 
 export function toQueueLayerKey(itemId: string, choice?: string) {
@@ -1404,6 +1457,15 @@ export function getAllLayerIdsWithQueueKey(item: LayerListItem) {
 		}
 	}
 	return tuples
+}
+
+export function getIndexOfQueueKey(queue: LayerList, key: string) {
+	for (let i = 0; i < queue.length; i++) {
+		if (toQueueLayerKey(queue[i].itemId, queue[i].vote?.choices[0]) === key) {
+			return i
+		}
+	}
+	return -1
 }
 
 export function getAllLayerQueueKeysWithLayerId(layerId: LayerId, queue: LayerList) {

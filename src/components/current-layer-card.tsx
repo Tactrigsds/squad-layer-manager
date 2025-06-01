@@ -103,7 +103,13 @@ export default function CurrentLayerCard() {
 						Current Layer:
 					</CardTitle>
 					<div>
-						{currentLayerId && <LayerDisplay layerId={currentLayerId} teamParity={currentMatch ? currentMatch?.ordinal % 2 : undefined} />}
+						{currentLayerId && (
+							<LayerDisplay
+								layerId={currentLayerId}
+								historyEntryId={currentMatch?.historyEntryId}
+								teamParity={currentMatch ? currentMatch?.ordinal % 2 : undefined}
+							/>
+						)}
 					</div>
 				</span>
 				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}

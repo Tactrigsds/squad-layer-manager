@@ -103,6 +103,9 @@ export type QDState = {
 		filter: M.LayerQueryConstraint['applyAs']
 	}
 	extraQueryFilters: ExtraQueryFilter[]
+
+	// M.toQueueLayerKey and stuff to lookup the id
+	hoveredConstraintItemId?: string
 }
 
 export type QDStore = QDState & {
@@ -121,6 +124,8 @@ export type QDStore = QDState & {
 		add: (newFilterId: M.FilterEntityId, active: boolean) => void
 		remove: (filterId: M.FilterEntityId) => void
 	}
+
+	setHoveredConstraintItemId: React.Dispatch<React.SetStateAction<string | undefined>>
 }
 
 // -------- store initialization --------
@@ -393,6 +398,7 @@ export const initialState: QDState = {
 		dnr: 'field',
 		filter: 'where-condition',
 	},
+	hoveredConstraintItemId: undefined,
 }
 
 export const QDStore = Zus.createStore<QDStore>((set, get) => {
@@ -611,6 +617,11 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 				)
 				writeExtraQueryFilters()
 			},
+		},
+		setHoveredConstraintItemId: (update) => {
+			const previous = get().hoveredConstraintItemId
+			const updated = typeof update === 'function' ? update(get().hoveredConstraintItemId) : update
+			if (updated !== previous) set({ hoveredConstraintItemId: updated })
 		},
 	}
 })

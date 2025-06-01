@@ -6,14 +6,20 @@ import { toast } from '@/hooks/use-toast'
 import * as Arr from '@/lib/array'
 import { getTeamsDisplay, teamColors } from '@/lib/display-helpers-teams'
 import * as SM from '@/lib/rcon/squad-models'
+import * as Typo from '@/lib/typography'
 import * as M from '@/models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
+import * as QD from '@/systems.client/queue-dashboard'
+
+import { cn } from '@/lib/utils'
 import * as dateFns from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
+import { MapLayerDisplay } from './layer-display'
 import LayerSourceDisplay from './layer-source-display'
 import { Badge } from './ui/badge'
 
@@ -22,6 +28,8 @@ export default function MatchHistoryPanel() {
 	const history = MatchHistoryClient.useRecentMatches()
 	const allEntries = React.useMemo(() => [...history].reverse(), [history])
 	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
+	const violationDescriptors = LayerQueriesClient.useLayerStatuses().data?.violationDescriptors
+	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 
 	// -------- Pagination state --------
 	const [currentPage, setCurrentPage] = useState(1)
@@ -162,6 +170,20 @@ export default function MatchHistoryPanel() {
 							if (entry.historyEntryId === currentMatch?.historyEntryId) {
 								return
 							}
+							const entryDescriptors = (hoveredConstraintItemId && violationDescriptors?.get(hoveredConstraintItemId)?.filter(d =>
+								d.reasonItem?.type === 'history-entry' && d.reasonItem.historyEntryId === entry.historyEntryId
+							)) || undefined
+							let violatedProperties: Set<string> | undefined
+							if (entryDescriptors) {
+								violatedProperties = M.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
+							}
+
+							const extraLayerStyles: Record<string, string> = {}
+							if (violatedProperties) {
+								for (const v of violatedProperties.values()) {
+									extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
+								}
+							}
 							const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(entry.layerId))
 							let outcomeDisp: React.ReactNode
 							if (entry.status === 'in-progress') {
@@ -235,7 +257,12 @@ export default function MatchHistoryPanel() {
 								}
 							}
 
-							const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal % 2, globalSettings.displayTeamsNormalized)
+							const [leftTeam, rightTeam] = getTeamsDisplay(
+								layer,
+								entry.ordinal % 2,
+								globalSettings.displayTeamsNormalized,
+								extraLayerStyles,
+							)
 
 							return (
 								<ContextMenu key={entry.historyEntryId}>
@@ -250,7 +277,7 @@ export default function MatchHistoryPanel() {
 													{differenceDisp}
 												</span>
 											</TableCell>
-											<TableCell className="font-mono text-sm">{layer.Layer}</TableCell>
+											<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 											<TableCell>
 												{leftTeam}
 											</TableCell>
@@ -264,10 +291,16 @@ export default function MatchHistoryPanel() {
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent>
-										<ContextMenuItem onClick={() => copyHistoryEntryId()}>
+										<ContextMenuItem
+											onClick={() =>
+												copyHistoryEntryId()}
+										>
 											copy history entry id
 										</ContextMenuItem>
-										<ContextMenuItem onClick={() => copyLayerId()}>
+										<ContextMenuItem
+											onClick={() =>
+												copyLayerId()}
+										>
 											copy layer id
 										</ContextMenuItem>
 										<ContextMenuItem

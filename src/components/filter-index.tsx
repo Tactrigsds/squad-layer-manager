@@ -29,7 +29,6 @@ export default function FiltersIndex() {
 				{[...filterEntities.values()]?.map((entity) => {
 					const user = PartsSys.findUser(entity.owner)
 					const onHover = () => {
-						console.log('prefetching')
 						LayerQueriesClient.prefetchLayersQuery(
 							LayerQueriesClient.getLayerQueryInput({ constraints: [M.getEditedFilterConstraint(entity.filter)] }),
 						)

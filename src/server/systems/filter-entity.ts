@@ -43,8 +43,8 @@ export const filtersRouter = router({
 	}),
 	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'any',
-			permits: [RBAC.perm('filters:write', { filterId: input.filterId })],
+			check: 'all',
+			permits: [RBAC.perm('filters:write', { filterId: input.filterId }), RBAC.perm('filters:write-all')],
 		})
 		if (denyRes) {
 			return denyRes
@@ -83,10 +83,7 @@ export const filtersRouter = router({
 		}
 	}),
 	removeFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'any',
-			permits: [RBAC.perm('filters:write', { filterId: input.filterId })],
-		})
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(input.filterId))
 		if (denyRes) {
 			return denyRes
 		}
@@ -137,10 +134,7 @@ export const filtersRouter = router({
 				if (!rawFilter) {
 					return { code: 'err:not-found' as const }
 				}
-				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-					check: 'any',
-					permits: [RBAC.perm('filters:write', { filterId: id })],
-				})
+				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(id))
 				if (deniedRes) {
 					return deniedRes
 				}
@@ -168,10 +162,7 @@ export const filtersRouter = router({
 		}),
 	deleteFilter: procedure.input(M.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
 		const serverState = await LayerQueue.getServerState({}, ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'any',
-			permits: [RBAC.perm('filters:write', { filterId: idToDelete })],
-		})
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes
 		}
@@ -214,40 +205,39 @@ export const filtersRouter = router({
 		}])
 		return { code: 'ok' as const }
 	}),
-	watchFilters: procedure.subscription(async function* watchFilter({
-		input,
-		ctx,
-	}): AsyncGenerator<WatchFiltersOutput & Parts<M.UserPart>, void, unknown> {
-		const rows = await ctx.db().select().from(Schema.filters).leftJoin(
-			Schema.users,
-			eq(Schema.users.discordId, Schema.filters.owner),
-		)
-
-		const users = rows.map((row) => row.users).filter((user) => user !== null)
-		const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
-
-		yield {
-			code: 'initial-value' as const,
-			entities: filters,
-			parts: {
-				users: users,
-			},
-		}
-		for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$)) {
-			// TODO could cache users
-			const users = await ctx.db().select().from(Schema.users).where(
-				or(eq(Schema.users.discordId, mutation.value.owner), eq(Schema.users.username, mutation.username)),
+	watchFilters: procedure.subscription(
+		async function* watchFilter({ ctx }): AsyncGenerator<WatchFiltersOutput & Parts<M.UserPart>, void, unknown> {
+			const rows = await ctx.db().select().from(Schema.filters).leftJoin(
+				Schema.users,
+				eq(Schema.users.discordId, Schema.filters.owner),
 			)
 
+			const users = rows.map((row) => row.users).filter((user) => user !== null)
+			const filters = rows.map((row) => M.FilterEntitySchema.parse(row.filters))
+
 			yield {
-				code: 'mutation' as const,
-				mutation,
+				code: 'initial-value' as const,
+				entities: filters,
 				parts: {
-					users,
+					users: users,
 				},
 			}
-		}
-	}),
+			for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$)) {
+				// TODO could cache users
+				const users = await ctx.db().select().from(Schema.users).where(
+					or(eq(Schema.users.discordId, mutation.value.owner), eq(Schema.users.username, mutation.username)),
+				)
+
+				yield {
+					code: 'mutation' as const,
+					mutation,
+					parts: {
+						users,
+					},
+				}
+			}
+		},
+	),
 })
 
 export type WatchFiltersOutput =

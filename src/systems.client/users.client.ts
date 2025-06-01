@@ -1,8 +1,11 @@
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
+import * as RbacClient from '@/systems.client/rbac.client'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
+import deepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
+import * as Zus from 'zustand'
 
 export let logggedInUserId: bigint | undefined
 
@@ -34,11 +37,27 @@ const loggedInUserBaseQuery = {
 	queryFn: _fetchLoggedInUser,
 }
 
-export function useLoggedInUser() {
+export function useLoggedInUserBase() {
 	return useQuery({
 		...loggedInUserBaseQuery,
 		staleTime: Infinity,
 	})?.data
+}
+
+// NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
+export function useLoggedInUser() {
+	const { simulateRoles, disabledRoles } = Zus.useStore(RbacClient.RbacStore)
+	const loggedInUser = useLoggedInUserBase()
+	if (!loggedInUser) return undefined
+
+	if (!simulateRoles) return loggedInUser
+	const simulatedPerms = loggedInUser.perms.filter(p =>
+		!p.allowedByRoles.some(r => disabledRoles.some(toCompare => deepEqual(r, toCompare)))
+	)
+	return {
+		...loggedInUser,
+		perms: simulatedPerms,
+	}
 }
 
 export async function fetchLoggedInUser() {

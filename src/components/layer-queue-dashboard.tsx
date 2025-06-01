@@ -683,8 +683,8 @@ const PoolConfigurationPopover = React.forwardRef(
 		const [storedMainPoolDnrRules, storedGenerationPoolDnrRules] = ZusUtils.useStoreDeep(
 			QD.QDStore,
 			(s) => [
-				s.editedServerState.settings.queue.mainPool.doNotRepeatRules,
-				s.editedServerState.settings.queue.generationPool.doNotRepeatRules,
+				s.editedServerState.settings.queue.mainPool.repeatRules,
+				s.editedServerState.settings.queue.generationPool.repeatRules,
 			],
 		)
 		const [mainPoolRules, setMainPoolRules] = React.useState(storedMainPoolDnrRules)
@@ -710,8 +710,8 @@ const PoolConfigurationPopover = React.forwardRef(
 
 		function saveRules() {
 			QD.QDStore.getState().setSetting((settings) => {
-				settings.queue.mainPool.doNotRepeatRules = [...mainPoolRules]
-				settings.queue.generationPool.doNotRepeatRules = [...generationPoolRules]
+				settings.queue.mainPool.repeatRules = [...mainPoolRules]
+				settings.queue.generationPool.repeatRules = [...generationPoolRules]
 				return settings
 			})
 		}
@@ -764,13 +764,13 @@ const PoolConfigurationPopover = React.forwardRef(
 						</div>
 					</div>
 					<PoolFiltersConfigurationPanel poolId={poolId} />
-					<PoolDoNotRepeatRulesConfigurationPanel
+					<PoolRepeatRulesConfigurationPanel
 						className={poolId !== 'mainPool' ? 'hidden' : undefined}
 						poolId="mainPool"
 						rules={mainPoolRules}
 						setRules={setMainPoolRules}
 					/>
-					<PoolDoNotRepeatRulesConfigurationPanel
+					<PoolRepeatRulesConfigurationPanel
 						className={poolId !== 'generationPool' ? 'hidden' : undefined}
 						poolId="generationPool"
 						rules={generationPoolRules}
@@ -874,15 +874,11 @@ function PoolFiltersConfigurationPanel({
 	)
 }
 
-type SaveChangesHandle = {
-	saveChanges: () => void
-}
-
-function PoolDoNotRepeatRulesConfigurationPanel(props: {
+function PoolRepeatRulesConfigurationPanel(props: {
 	className?: string
 	poolId: 'mainPool' | 'generationPool'
-	rules: M.DoNotRepeatRule[]
-	setRules: React.Dispatch<React.SetStateAction<M.DoNotRepeatRule[]>>
+	rules: M.RepeatRule[]
+	setRules: React.Dispatch<React.SetStateAction<M.RepeatRule[]>>
 }) {
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -890,7 +886,7 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 	return (
 		<div className={cn('flex flex-col space-y-1 p-1 rounded', props.className)}>
 			<div>
-				<h4 className={Typography.H4}>Do Not Repeat Rules</h4>
+				<h4 className={Typography.H4}>Repeat Rules</h4>
 			</div>
 			{props.rules.map((rule, index) => {
 				let targetValueOptions: string[]
@@ -939,7 +935,7 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 						/>
 						<ComboBox
 							title={'Rule'}
-							options={M.DnrFieldSchema.options.filter(
+							options={M.RepeatRuleFieldSchema.options.filter(
 								(o) => o !== 'FactionAndUnit',
 							)}
 							value={rule.field}
@@ -948,7 +944,7 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 								if (!value) return
 								props.setRules(
 									Im.produce((draft) => {
-										draft[index].field = value as M.DnrField
+										draft[index].field = value as M.RepeatRuleField
 										draft[index].label = value
 										delete draft[index].targetValues
 									}),
@@ -1024,6 +1020,7 @@ function PoolDoNotRepeatRulesConfigurationPanel(props: {
 		</div>
 	)
 }
+
 function UnexpectedNextLayerAlert() {
 	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
 	const expectedNextLayer = Zus.useStore(

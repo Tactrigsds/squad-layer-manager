@@ -158,7 +158,7 @@ const constraintsCol = columnHelper.accessor('constraints', {
 		const { values, constraints, violationDescriptors } = info.getValue() as {
 			constraints?: M.LayerQueryConstraint[]
 			values?: boolean[]
-			violationDescriptors?: Record<string, string[] | undefined>
+			violationDescriptors?: M.ViolationDescriptor[]
 		}
 		if (!constraints || !values) return null
 		const nodes: React.ReactNode[] = []
@@ -306,6 +306,17 @@ export default function LayerTable(props: {
 			} else {
 				newValues = updated
 			}
+
+			// prevent seelction of disabled rows
+			if (!userCanForceSelect) {
+				for (const id of Object.keys(newValues)) {
+					const layer = page?.layers.find(layer => layer.id === id)
+					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect)) {
+						newValues[id] = false
+					}
+				}
+			}
+
 			const updatedSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
 			if (updatedSelectedIds.length === 0) {
 				setShowSelectedLayers(false)
@@ -445,7 +456,7 @@ export default function LayerTable(props: {
 	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, page?.totalCount ?? 0)
 
 	const loggedInUser = useLoggedInUser()
-	const canForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const userCanForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
 	function getChosenRows(row: Row<M.Layer>) {
 		if (!props.selected.includes(row.original.id)) {
@@ -520,7 +531,7 @@ export default function LayerTable(props: {
 							aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
 							pressed={rawSetDialogOpen}
 							onClick={() => setRawSetDialogOpen(prev => !prev)}
-							disabled={!canForceSelect}
+							disabled={!userCanForceSelect}
 						>
 							<Icons.TextCursorInput />
 						</Toggle>
@@ -638,9 +649,9 @@ export default function LayerTable(props: {
 									<ContextMenuTrigger asChild>
 										<TableRow
 											key={row.id}
-											className={getIsRowDisabled(row, canForceSelect) ? disabled : ''}
+											className={getIsRowDisabled(row, userCanForceSelect) ? disabled : ''}
 											onClick={() => {
-												if (getIsRowDisabled(row, canForceSelect)) return
+												if (getIsRowDisabled(row, userCanForceSelect)) return
 												onSetRowSelection(
 													Im.produce(rowSelection, (draft) => {
 														draft[id] = !draft[id]
@@ -846,9 +857,11 @@ function MultiLayerSetDialog({
 		</Dialog>
 	)
 }
+function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean) {
+	const constraints = layerData.constraints
+	return !canForceSelect && constraints.values.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
+}
 
 function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
-	const constraints = row.original.constraints
-	return !row.getIsSelected() && !canForceSelect
-		&& constraints.values.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
+	return !row.getIsSelected() && getIsLayerDisabled(row.original, canForceSelect)
 }

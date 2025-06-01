@@ -1,22 +1,28 @@
 import * as AR from '@/app-routes.ts'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpcConnectedAtom } from '@/trpc.client'
 import { useAtomValue } from 'jotai'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
+import * as Zus from 'zustand'
 import { ServerUnreachable } from './server-offline-display'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
+import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useAtomValue(trpcConnectedAtom)
+	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const statusRes = SquadServerClient.useSquadServerStatus()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
@@ -46,6 +52,14 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-6">
+					{simulateRoles && (
+						<span className="flex items-center space-x-1">
+							<span>Simulating Roles</span>{' '}
+							<Button size="icon" variant="ghost" onClick={() => setSimulateRoles(false)}>
+								<Icons.X />
+							</Button>
+						</span>
+					)}
 					{statusRes?.code === 'ok' && (
 						<>
 							{trpcConnected === false && (
@@ -84,51 +98,5 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 			</nav>
 			<div className="flex flex-grow p-4">{props.children}</div>
 		</div>
-	)
-}
-
-function UserPermissionsDialog(props: { children: React.ReactNode; open: boolean; onOpenChange: (newState: boolean) => void }) {
-	const user = useLoggedInUser()
-	return (
-		<Dialog onOpenChange={props.onOpenChange} open={props.open}>
-			{props.children}
-			<DialogContent className="w-max">
-				<DialogHeader>
-					<DialogTitle>{user?.username}</DialogTitle>
-					<DialogDescription>Level of access</DialogDescription>
-				</DialogHeader>
-				<div className="flex space-x-4">
-					<div>
-						<h3 className={Typography.Large}>Permissions</h3>
-						<ul>
-							{user?.perms.map((perm) => {
-								let scopeDisplay = perm.scope as string
-								if (perm.scope === 'filter') {
-									scopeDisplay = `${perm.scope} ${perm.args!.filterId}`
-								}
-								return (
-									<li key={JSON.stringify(perm)}>
-										-{' '}
-										<code>
-											{perm.type} ({scopeDisplay})
-										</code>
-									</li>
-								)
-							})}
-						</ul>
-					</div>
-					<div>
-						<h3 className={Typography.Large}>Roles</h3>
-						<ul>
-							{user?.roles.map((role) => (
-								<li key={role}>
-									- <code>{role}</code>
-								</li>
-							))}
-						</ul>
-					</div>
-				</div>
-			</DialogContent>
-		</Dialog>
 	)
 }

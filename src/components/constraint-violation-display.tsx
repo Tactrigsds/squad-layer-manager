@@ -1,21 +1,40 @@
 import * as AR from '@/app-routes'
 import { assertNever } from '@/lib/typeGuards'
 import * as M from '@/models'
+import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-export type ConstraintViolatioDisplayProps = {
+export type ConstraintViolationDisplayProps = {
 	violated: M.LayerQueryConstraint[]
-	violationDescriptors?: Record<string, string[] | undefined>
+	violationDescriptors?: M.ViolationDescriptor[]
 	teamParity?: number
 	children?: React.ReactNode
 	layerId: string
+	itemId?: string
 	padEmpty?: boolean
 }
 
-export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps) {
+export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProps) {
+	const onMouseOver = () => {
+		QD.QDStore.getState().setHoveredConstraintItemId(original => {
+			if (original !== props.itemId) {
+				return props.itemId
+			}
+			return original
+		})
+	}
+	const onMouseOut = () => {
+		QD.QDStore.getState().setHoveredConstraintItemId(original => {
+			if (original === props.itemId) {
+				return undefined
+			}
+			return original
+		})
+	}
+
 	if (props.violated.length == 0) return null
 	const dnrViolations = props.violated.filter(v => v.type === 'do-not-repeat')
 	const filterViolations = props.violated.filter(v => v.type !== 'do-not-repeat')
@@ -28,20 +47,14 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 						{props.children
 							? <TooltipTrigger asChild>{props.children}</TooltipTrigger>
 							: (
-								<TooltipTrigger>
+								<TooltipTrigger onMouseOver={props.itemId ? onMouseOver : undefined} onMouseOut={props.itemId ? onMouseOut : undefined}>
 									<Icons.ShieldQuestion className="text-pink-400" />
 								</TooltipTrigger>
 							)}
-						<TooltipContent>
-							<div className="font-semibold">DNR:</div>
-							<ul className="flex flex-col">
-								{dnrViolations.map(v => (
-									<li key={v.id}>
-										{props.violationDescriptors?.[v.id]
-											? props.violationDescriptors[v.id]?.map((descriptor) => <div key={descriptor}>{descriptor}</div>)
-											: v.name ?? v.id}
-									</li>
-								))}
+						<TooltipContent align="start" side="right" className="max-w-sm p-3">
+							<div className="font-semibold text-base mb-2">Repeated:</div>
+							<ul className="flex flex-col space-y-1">
+								{dnrViolations.map(v => <li key={v.id} className="text-sm">{v.name ?? v.id}</li>)}
 							</ul>
 						</TooltipContent>
 					</Tooltip>
@@ -57,9 +70,9 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 									<Icons.ShieldQuestion className="text-orange-400" />
 								</TooltipTrigger>
 							)}
-						<TooltipContent>
-							<div className="font-semibold">Filters:</div>
-							<ul className="flex flex-col">
+						<TooltipContent className="max-w-sm p-3">
+							<div className="font-semibold text-base mb-2">Filtered:</div>
+							<ul className="flex flex-col space-y-2">
 								{filterViolations.map(v => {
 									let id: string
 									let displayName: string
@@ -79,13 +92,14 @@ export function ConstraintViolationDisplay(props: ConstraintViolatioDisplayProps
 									return (
 										<li key={v.id}>
 											<Link
-												className="underline"
+												className="underline text-blue-400 hover:text-blue-300 text-sm"
 												target="_blank"
 												to={AR.link('/filters/:id', id)}
 											>
 												{displayName}
-												{props.violationDescriptors?.[v.id]
-													&& props.violationDescriptors[v.id]?.map((descriptor, index) => <div key={index}>{`: ${descriptor}`}</div>)}
+												{props.violationDescriptors?.filter(d => d.constraintId === v.id).map((descriptor, index) => (
+													<div key={index} className="text-gray-300 text-xs mt-1">{`: ${descriptor.field}`}</div>
+												))}
 											</Link>
 										</li>
 									)

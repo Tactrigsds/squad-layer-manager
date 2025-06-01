@@ -126,43 +126,9 @@ export async function queryLayers(args: {
 		.from(Schema.layers)
 	countQuery = includeWhere(countQuery)
 
-	const postprocessLayers = (
-		layers: (M.Layer & Record<string, boolean>)[],
-	): M.QueriedLayer[] => {
-		return layers.map((layer) => {
-			// default to true because missing means the constraint is applied via a where condition
-			const constraintResults: boolean[] = Array(constraints.length).fill(true)
-			const violationDescriptors: Record<string, string[] | undefined> = {}
-			for (const key of Object.keys(layer)) {
-				const groups = key.match(/^constraint_(\d+)$/)
-				if (!groups) continue
-				const idx = Number(groups[1])
-				constraintResults[idx] = Number(layer[key as keyof M.Layer]) === 1
-				const constraint = constraints[idx]
-				if (constraint.type === 'do-not-repeat') {
-					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
-					const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
-						constraint.rule,
-						layer.id,
-						historicLayers,
-						oldestLayerTeamParity,
-					)
-					if (isBlocked) constraintResults[idx] = false
-					if (descriptors && descriptors.length > 0) {
-						violationDescriptors[constraint.id] = descriptors
-					}
-				}
-			}
-			return {
-				...M.includeComputedCollections(layer),
-				constraints: constraintResults,
-			}
-		})
-	}
-
 	const [layers, [countResult]] = await Promise.all(
 		[
-			query.then(postprocessLayers) as Promise<M.QueriedLayer[]>,
+			query.then((rows: any[]) => postProcessLayers(rows, constraints, historicLayers, oldestLayerTeamParity)),
 			countQuery,
 		] as const,
 	)
@@ -282,7 +248,7 @@ export async function searchIds({ ctx, input }: { ctx: C.Log & C.Db; input: Sear
 export async function getConstraintSQLConditions(
 	ctx: C.Log & C.Db,
 	constraint: M.LayerQueryConstraint,
-	previousLayerIds: string[],
+	previousLayerIds: [M.LayerId, M.ViolationReasonItem | undefined][],
 	teamParity: number,
 ) {
 	switch (constraint.type) {
@@ -460,7 +426,7 @@ export async function getFilterNodeSQLConditions(
 
 async function buildConstraintSqlCondition(
 	ctx: C.Log & C.Db,
-	previousLayerIds: M.LayerId[],
+	previousLayerIds: [M.LayerId, M.ViolationReasonItem | undefined][],
 	oldestLayerTeamParity: number,
 	constraints: M.LayerQueryConstraint[],
 ) {
@@ -538,7 +504,7 @@ export async function getLayerStatusesForLayerQueue({
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const violationDescriptorsState = new Map<
 		string,
-		Record<string, string[] | undefined>
+		M.ViolationDescriptor[]
 	>()
 	const filterConditions: Map<string, Promise<SQL<unknown>>> = new Map()
 	for (let i = 0; i < queue.length; i++) {
@@ -548,11 +514,12 @@ export async function getLayerStatusesForLayerQueue({
 				item,
 			)
 		) {
-			const violationDescriptors: Record<string, string[] | undefined> = {}
+			const violationDescriptors: M.ViolationDescriptor[] = []
 			for (const constraint of constraints) {
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+							constraint.id,
 							constraint.rule,
 							layerId,
 							historicLayers,
@@ -560,7 +527,7 @@ export async function getLayerStatusesForLayerQueue({
 						)
 						if (!isBlocked) break
 						OneToMany.set(blockedState, queuedLayerKey, constraint.id)
-						if (descriptors) violationDescriptors[constraint.id] = descriptors
+						if (descriptors) violationDescriptors.push(...descriptors)
 						break
 					}
 					case 'filter-anon':
@@ -585,7 +552,7 @@ export async function getLayerStatusesForLayerQueue({
 			violationDescriptorsState.set(queuedLayerKey, violationDescriptors)
 		}
 		if (item.layerId) {
-			historicLayers.push(item.layerId)
+			historicLayers.push([item.layerId, { type: 'layer-list-item', layerListItemId: item.itemId }])
 		}
 	}
 
@@ -626,25 +593,28 @@ export async function getLayerStatusesForLayerQueue({
 }
 
 function getisBlockedByDoNotRepeatRuleDirect(
-	rule: M.DoNotRepeatRule,
+	constraintId: string,
+	rule: M.RepeatRule,
 	targetLayerId: M.LayerId,
-	previousLayerIds: M.LayerId[],
+	previousLayerIds: [M.LayerId, M.ViolationReasonItem | undefined][],
 	oldestPrevLayerTeamParity: number,
 ) {
 	const targetLayer = M.getLayerDetailsFromUnvalidated(
 		M.getUnvalidatedLayerFromId(targetLayerId),
 	)
 	const targetLayerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length)
-	let layerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length - 1)
-	const retValue = (v: boolean, descriptors?: string[]) => {
-		return ({
-			isBlocked: v,
-			descriptors,
-		})
-	}
 
+	let isBlocked = false
+	const descriptors: M.ViolationDescriptor[] = []
 	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
-		const layerId = previousLayerIds[i]
+		let layerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, i)
+		const getViolationDescriptor = (field: M.ViolationDescriptor['field']): M.ViolationDescriptor => ({
+			constraintId,
+			type: 'repeat-rule',
+			field: field,
+			reasonItem: previousLayerIds[i][1],
+		})
+		const layerId = previousLayerIds[i][0]
 		const layer = M.getLayerDetailsFromUnvalidated(
 			M.getUnvalidatedLayerFromId(layerId),
 		)
@@ -658,11 +628,11 @@ function getisBlockedByDoNotRepeatRuleDirect(
 					&& targetLayer[rule.field] === layer[rule.field]
 					&& (rule.targetValues?.includes(layer[rule.field] as string) ?? true)
 				) {
-					return retValue(true)
+					descriptors.push(getViolationDescriptor(rule.field))
+					isBlocked = true
 				}
 				break
 			case 'Faction': {
-				const descriptors: string[] = []
 				const checkFaction = (team: 'A' | 'B') => {
 					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					if (
@@ -671,17 +641,15 @@ function getisBlockedByDoNotRepeatRuleDirect(
 							=== targetFaction
 						&& (rule.targetValues?.includes(targetFaction) ?? true)
 					) {
-						descriptors.push(`Faction_${team}`)
+						descriptors.push(getViolationDescriptor(`Faction_${team}`))
+						isBlocked = true
 					}
 				}
 				checkFaction('A')
 				checkFaction('B')
-				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
 			case 'FactionAndUnit': {
-				const descriptors: string[] = []
-
 				const checkFactionAndUnit = (team: 'A' | 'B') => {
 					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					const targetUnit = targetLayer[M.getTeamNormalizedUnitProp(targetLayerTeamParity, team)]
@@ -699,19 +667,17 @@ function getisBlockedByDoNotRepeatRuleDirect(
 							factionAndUnit === targetFactionAndUnit
 							&& (rule.targetValues?.includes(factionAndUnit) ?? true)
 						) {
-							descriptors.push(`FactionAndUnit_${team}`)
+							descriptors.push(getViolationDescriptor(`FactionAndUnit_${team}`))
+							isBlocked = true
 						}
 					}
 				}
 
 				checkFactionAndUnit('A')
 				checkFactionAndUnit('B')
-
-				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
 			case 'Alliance': {
-				const descriptors: string[] = []
 				const checkAlliance = (team: 'A' | 'B') => {
 					const targetFaction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
 					if (!targetFaction) return
@@ -722,14 +688,13 @@ function getisBlockedByDoNotRepeatRuleDirect(
 					const alliance = M.StaticLayerComponents.factionToAlliance[faction]
 					if (!alliance) return
 					if (targetAlliance === alliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
-						descriptors.push(`Alliance_${team}`)
+						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
+						isBlocked = true
 					}
 				}
 
 				checkAlliance('A')
 				checkAlliance('B')
-
-				if (descriptors.length > 0) return retValue(true, descriptors)
 				break
 			}
 			default:
@@ -737,12 +702,12 @@ function getisBlockedByDoNotRepeatRuleDirect(
 		}
 		layerTeamParity--
 	}
-	return retValue(false)
+	return { isBlocked, descriptors }
 }
 
 function getDoNotRepeatSQLConditions(
-	rule: M.DoNotRepeatRule,
-	previousLayerIds: string[],
+	rule: M.RepeatRule,
+	previousLayerIds: [M.LayerId, M.ViolationReasonItem | undefined][],
 	oldestLayerTeamParity: number,
 ) {
 	const values = new Set<string>()
@@ -751,7 +716,7 @@ function getDoNotRepeatSQLConditions(
 	let teamParity = SM.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length - 1)
 	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
 		const layer = M.getLayerDetailsFromUnvalidated(
-			M.getUnvalidatedLayerFromId(previousLayerIds[i]),
+			M.getUnvalidatedLayerFromId(previousLayerIds[i][0]),
 		)
 		switch (rule.field) {
 			case 'Map':
@@ -1022,18 +987,21 @@ function hasTeam(
 function resolveRelevantLayerHistory(
 	ctx: C.Db & C.Log,
 	constraints: M.LayerQueryConstraint[],
-	previousLayerIds: string[],
+	previousLayerIds: ([M.LayerId, M.ViolationReasonItem | undefined] | M.LayerId)[],
 	startWithOffset?: number,
 ) {
 	const historicMatches = MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0))
-	const historicLayers: string[] = []
+	const historicLayers: [string, M.ViolationReasonItem | undefined][] = []
 	for (const match of historicMatches) {
 		const details = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
 		// don't consider jensens or seeding layers
 		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
-		historicLayers.push(match.layerId)
+		historicLayers.push([match.layerId, { type: 'history-entry', historyEntryId: match.historyEntryId }])
 	}
-	historicLayers.push(...previousLayerIds)
+	for (const entry of previousLayerIds) {
+		if (typeof entry === 'string') historicLayers.push([entry, undefined])
+		else historicLayers.push(entry)
+	}
 	return {
 		historicLayers,
 		oldestLayerTeamParity: (historicMatches?.[0]?.ordinal ?? 0) % 2,
@@ -1046,13 +1014,13 @@ type PostProcessedLayers = Awaited<
 function postProcessLayers(
 	layers: (M.Layer & Record<string, boolean>)[],
 	constraints: M.LayerQueryConstraint[],
-	historicLayers: string[],
+	historicLayers: [M.LayerId, M.ViolationReasonItem | undefined][],
 	oldestLayerTeamParity: number,
 ) {
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
 		const constraintResults: boolean[] = Array(constraints.length).fill(true)
-		const violationDescriptors: Record<string, string[] | undefined> = {}
+		const violationDescriptors: M.ViolationDescriptor[] = []
 		for (const key of Object.keys(layer)) {
 			const groups = key.match(/^constraint_(\d+)$/)
 			if (!groups) continue
@@ -1062,6 +1030,7 @@ function postProcessLayers(
 			if (constraint.type === 'do-not-repeat') {
 				// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
 				const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+					constraint.id,
 					constraint.rule,
 					layer.id,
 					historicLayers,
@@ -1069,13 +1038,14 @@ function postProcessLayers(
 				)
 				if (isBlocked) constraintResults[idx] = false
 				if (descriptors && descriptors.length > 0) {
-					violationDescriptors[constraint.id] = descriptors
+					violationDescriptors.push(...descriptors)
 				}
 			}
 		}
 		return {
 			...M.includeComputedCollections(layer),
 			constraints: constraintResults,
+			violationDescriptors,
 		}
 	})
 }

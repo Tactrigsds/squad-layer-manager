@@ -1,16 +1,16 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import * as M from '@/models'
+import * as RBAC from '@/rbac.models'
 import { procedure, router } from '@/server/trpc.server.ts'
 import * as E from 'drizzle-orm/expressions'
 import { z } from 'zod'
-import { getUserRbac } from './rbac.system'
+import { getUserRbacPerms as getUserRbacPerms } from './rbac.system'
 
 export const usersRouter = router({
 	getLoggedInUser: procedure.query(async ({ ctx }) => {
-		const userRbac = await getUserRbac(ctx, ctx.user.discordId)
-		const user: M.UserWithRbac = {
+		const perms = await getUserRbacPerms(ctx, ctx.user.discordId)
+		const user: RBAC.UserWithRbac = {
 			...ctx.user,
-			...userRbac,
+			perms,
 		}
 		return { ...user, wsClientId: ctx.wsClientId }
 	}),

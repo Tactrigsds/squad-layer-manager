@@ -14,3 +14,5 @@ export const Large = 'text-lg font-semibold'
 export const Small = 'text-sm font-medium leading-none'
 export const Muted = 'text-sm text-muted-foreground'
 export const Label = 'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+
+export const ConstraintViolationDescriptor = 'underline decoration-pink-400 decoration-2'
