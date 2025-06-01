@@ -185,33 +185,39 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 					Unit_1: row['Unit_1'],
 					Unit_2: row['Unit_2'],
 				}
-				const layerId = M.getLayerId(idArgs, components)
-				if (seenIds.has(layerId)) {
-					ctx.log.warn(`Duplicate layer id ${layerId} found: ${JSON.stringify(idArgs)}`)
-					return
+				const ids = [M.getLayerId(idArgs, components)]
+				// for now we're just using the same data for FRAAS as RAAS
+				if (segments.Gamemode === 'RAAS') {
+					ids.push(M.getLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components))
 				}
-				seenIds.add(layerId)
+				for (const layerId of ids) {
+					if (seenIds.has(layerId)) {
+						ctx.log.warn(`Duplicate layer id ${layerId} found`)
+						return
+					}
+					seenIds.add(layerId)
 
-				const index = data.idToIdx.get(layerId)
-				// availability sheet is out of date but based zero has a workaround that I don't want to bother to implement :shrug:
-				if (segments.Map === 'Sanxian' && isNullOrUndef(index)) {
-					fullLayers.push({
-						...row,
-						id: layerId,
-						LayerVersion: segments.LayerVersion,
-						Size: row.Size,
-						Map: segments.Map,
-						Gamemode: segments.Gamemode,
-						Alliance_1: data.components.factionToAlliance.get(row['Faction_1'])!,
-						Alliance_2: data.components.factionToAlliance.get(row['Faction_2'])!,
-						...diffs,
-					})
-					return
-				} else if (isNullOrUndef(index)) {
-					ctx.log.warn(`Layer id ${layerId} not found: ${JSON.stringify(idArgs)}`)
-					return
+					const index = data.idToIdx.get(layerId)
+					// availability sheet is out of date but based zero has a workaround that I don't want to bother to implement :shrug:
+					if (segments.Map === 'Sanxian' && isNullOrUndef(index)) {
+						fullLayers.push({
+							...row,
+							id: layerId,
+							LayerVersion: segments.LayerVersion,
+							Size: row.Size,
+							Map: segments.Map,
+							Gamemode: segments.Gamemode,
+							Alliance_1: data.components.factionToAlliance.get(row['Faction_1'])!,
+							Alliance_2: data.components.factionToAlliance.get(row['Faction_2'])!,
+							...diffs,
+						})
+						return
+					} else if (isNullOrUndef(index)) {
+						ctx.log.warn(`Layer id ${layerId} not found`)
+						return
+					}
+					fullLayers[index] = { ...fullLayers[index], ...row, ...diffs }
 				}
-				fullLayers[index] = { ...fullLayers[index], ...row, ...diffs }
 			})
 			.on('end', () => resolve(fullLayers))
 			.on('error', reject)
@@ -298,7 +304,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 		factionUnitToUnitFullName,
 		layerFactionAvailability: availability,
 
-		gamemodes: new Set(),
+		gamemodes: new Set([]),
 		alliances: new Set(),
 		maps: new Set(),
 		layers: new Set(),
@@ -346,7 +352,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 				const layerId = M.getLayerId({
 					Map: layer.Map,
 					LayerVersion: parsedSegments.LayerVersion,
-					Gamemode: parsedSegments?.Gamemode,
+					Gamemode: parsedSegments.Gamemode,
 					Faction_1: availEntry1.Faction,
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
