@@ -45,15 +45,16 @@ const link = wsLink({
 			const config = await ConfigClient.fetchConfig()
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
-			if (config.PUBLIC_GIT_BRANCH !== import.meta.env.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA !== import.meta.env.PUBLIC_GIT_SHA) {
-				console.warn(
-					`Version skew detected (${formatVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)} -> ${
-						formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
-					})`,
-				)
-				console.warn('reloading window')
-				window.location.reload()
-			}
+      if (config.PUBLIC_GIT_BRANCH !== import.meta.env.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA !== import.meta.env.PUBLIC_GIT_SHA) {
+        console.warn(
+          `Version skew detected (${formatVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)} -> ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+          })`,
+        )
+        console.warn('reloading window')
+        window.location.reload()
+      } else {
+        console.log('Version is up to date')
+      }
 		},
 	}),
 	transformer: superjson,
