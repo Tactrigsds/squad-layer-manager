@@ -25,9 +25,9 @@ export type LayerIdArgs = {
 	Gamemode: string
 	LayerVersion: string | null
 	Faction_1: string
-	Unit_1: string | null
+	Unit_1?: string
 	Faction_2: string
-	Unit_2: string | null
+	Unit_2?: string
 }
 
 export type ParsedFaction = {
@@ -214,16 +214,30 @@ export function getLayerId(layer: LayerIdArgs, components: LC.LayerComponentsJso
 	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
 	const gamemodePart = components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode
 	let mapLayer = `${mapPart}-${gamemodePart}`
+	layer = { ...layer }
 	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
+	for (const prop of ['Unit_1', 'Unit_2'] as const) {
+		if (!layer[prop]) {
+			const entry = components.layerFactionAvailability.find(l => {
+				const segments = parseLayerStringSegment(l.Layer)
+				if (!segments) return false
+				const faction = prop === 'Unit_1' ? layer.Faction_1 : layer.Faction_2
+				return segments.Map === layer.Map && segments.Gamemode === layer.Gamemode && segments.LayerVersion === layer.LayerVersion
+					&& l.Faction === faction && l.isDefaultUnit && l.allowedTeams.includes(Number(prop[prop.length - 1]) as 1 | 2)
+			})
+			if (!entry?.Unit) console.warn(`No default unit found for layer ${JSON.stringify(layer)}`)
+			layer[prop] = entry?.Unit
+		}
+	}
 
-	const team1 = getLayerTeamString(layer.Faction_1, layer.Unit_1, components)
-	const team2 = getLayerTeamString(layer.Faction_2, layer.Unit_2, components)
+	const team1 = getLayerTeamString(layer.Faction_1, layer.Unit_1!, components)
+	const team2 = getLayerTeamString(layer.Faction_2, layer.Unit_2!, components)
 	return `${mapLayer}:${team1}:${team2}`
 }
 
-export function getLayerTeamString(faction: string, subfac: string | null, components: LC.LayerComponentsJson = StaticLayerComponents) {
-	const abbrSubfac = subfac ? (components.unitAbbreviations[subfac] ?? subfac) : ''
-	return abbrSubfac ? `${faction}-${abbrSubfac}` : faction
+export function getLayerTeamString(faction: string, unit: string, components: LC.LayerComponentsJson = StaticLayerComponents) {
+	const unitAbbr = unit ? (components.unitAbbreviations[unit] ?? unit) : ''
+	return unitAbbr ? `${faction}-${unitAbbr}` : faction
 }
 export function parseTeamString(
 	team: string,
