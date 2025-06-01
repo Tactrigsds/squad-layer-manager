@@ -195,6 +195,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 		res = res
+			// We shouldn't cache index.html so that our client version skew protection works well
 			.header('Cross-Origin-Opener-Policy', 'same-origin')
 			.header('Cross-Origin-Embedder-Policy', 'unsafe-none')
 		const ctx = getCtx(req)

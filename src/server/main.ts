@@ -1,4 +1,5 @@
 import { sleep } from '@/lib/async.ts'
+import { formatVersion } from '@/lib/versioning.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -16,12 +17,16 @@ import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
 
 const tracer = Otel.trace.getTracer('squad-layer-manager')
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+let ENV!: ReturnType<typeof envBuilder>
 await C.spanOp('main', { tracer }, async () => {
 	// Use provided env file path if available
 	await Cli.ensureCliParsed()
 	Env.ensureEnvSetup()
+	ENV = envBuilder()
 	ensureLoggerSetup()
 	await Config.ensureConfigSetup()
+	baseLogger.info('Starting SLM version %', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await DB.setupDatabase()
 	Rbac.setup()
 	Sessions.setupSessions()

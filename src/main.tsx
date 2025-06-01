@@ -12,17 +12,15 @@ import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client.ts'
 import { enableMapSet } from 'immer'
-import FullPageSpinner from './components/full-page-spinner.tsx'
-import { formatVersion as formatAppVersion } from './lib/versioning.ts'
-
 import FilterEdit from './components/filter-edit.tsx'
 import FilterIndex from './components/filter-index.tsx'
 import FilterNew from './components/filter-new.tsx'
 import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
+import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
 // Enable Map and Set support in Immer
 enableMapSet()
-console.log(`%cversion ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: limegreen')
+console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 
 const router = createBrowserRouter([
 	{

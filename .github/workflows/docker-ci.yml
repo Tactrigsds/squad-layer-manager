@@ -77,6 +77,8 @@ jobs:
         with:
           context: .
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ github.ref_name }}
