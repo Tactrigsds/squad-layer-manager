@@ -218,7 +218,7 @@ export function MapLayerDisplay(
 			<span className={backfilledStyles.Map}>{segments.Map}</span>
 			{segments.Gamemode && '_'}
 			<span className={backfilledStyles.Gamemode}>{segments.Gamemode}</span>
-			{segments.LayerVersion && '_'}
+			{segments.LayerVersion && segments.Gamemode && '_'}
 			<span className={backfilledStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
 		</span>
 	)
