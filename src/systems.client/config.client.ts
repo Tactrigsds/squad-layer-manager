@@ -22,5 +22,5 @@ export function setup() {
 	reactQueryClient.prefetchQuery({ ...baseQuery })
 }
 export function invalidateConfig() {
-	return reactQueryClient.invalidateQueries(baseQuery.queryKey)
+	return reactQueryClient.invalidateQueries({ ...baseQuery })
 }
