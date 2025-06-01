@@ -541,7 +541,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 	const choiceIdx = parseInt(msg.message.trim())
 	if (!voteState) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
-		return SquadServer.rcon.warn(ctx, msg.playerId, WARNS.vote.noVoteInProgress)
+		return
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')

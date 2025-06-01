@@ -278,7 +278,7 @@ export default function MatchHistoryPanel() {
 												</span>
 											</TableCell>
 											<TableCell>
-											<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+												<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 											</TableCell>
 											<TableCell>
 												{leftTeam}

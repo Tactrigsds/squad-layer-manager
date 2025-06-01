@@ -205,7 +205,11 @@ function ShortLayerName(
 }
 
 export function MapLayerDisplay(
-	{ layer, extraLayerStyles: backfilledStyles, className }: { layer: string; extraLayerStyles: Record<string, string|undefined>; className?: string },
+	{ layer, extraLayerStyles: backfilledStyles, className }: {
+		layer: string
+		extraLayerStyles: Record<string, string | undefined>
+		className?: string
+	},
 ) {
 	const segments = M.parseLayerStringSegment(layer)
 	if (!segments) return layer

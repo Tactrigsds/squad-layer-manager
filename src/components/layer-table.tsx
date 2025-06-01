@@ -311,7 +311,7 @@ export default function LayerTable(props: {
 			if (!userCanForceSelect) {
 				for (const id of Object.keys(newValues)) {
 					const layer = page?.layers.find(layer => layer.id === id)
-					//@ts-expect-error idgaf
+					// @ts-expect-error idgaf
 					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect)) {
 						newValues[id] = false
 					}
