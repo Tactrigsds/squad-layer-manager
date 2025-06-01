@@ -43,11 +43,14 @@ const link = wsLink({
 			console.log('WebSocket connection opened')
 			ConfigClient.invalidateConfig()
 			const config = await ConfigClient.fetchConfig()
+
+			const buildGitBranch = import.meta.env.PUBLIC_GIT_BRANCH ?? 'unknown'
+			const buildGitSha = import.meta.env.PUBLIC_GIT_SHA ?? 'unknown'
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
-      if (config.PUBLIC_GIT_BRANCH !== import.meta.env.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA !== import.meta.env.PUBLIC_GIT_SHA) {
+      if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
         console.warn(
-          `Version skew detected (${formatVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)} -> ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+          `Version skew detected (${formatVersion(buildGitBranch, buildGitSha)} -> ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
           })`,
         )
         console.warn('reloading window')
