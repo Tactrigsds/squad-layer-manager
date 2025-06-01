@@ -205,12 +205,12 @@ function ShortLayerName(
 }
 
 export function MapLayerDisplay(
-	{ layer, extraLayerStyles: backfilledStyles }: { layer: string; extraLayerStyles: Record<string, string> },
+	{ layer, extraLayerStyles: backfilledStyles, className }: { layer: string; extraLayerStyles: Record<string, string|undefined>; className?: string },
 ) {
 	const segments = M.parseLayerStringSegment(layer)
 	if (!segments) return layer
 	return (
-		<span className={cn(backfilledStyles.Layer)}>
+		<span className={cn(backfilledStyles.Layer, className)}>
 			<span className={backfilledStyles.Map}>{segments.Map}</span>
 			_
 			<span className={backfilledStyles.Gamemode}>{segments.Gamemode}</span>

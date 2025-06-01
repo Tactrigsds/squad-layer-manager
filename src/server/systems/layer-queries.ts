@@ -136,7 +136,7 @@ export async function queryLayers(args: {
 
 	return {
 		code: 'ok' as const,
-		layers: layers,
+		layers: layers as PostProcessedLayers[],
 		totalCount,
 		pageCount: Math.ceil(totalCount / input.pageSize),
 	}
