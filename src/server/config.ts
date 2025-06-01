@@ -103,10 +103,13 @@ export async function ensureConfigSetup() {
 	}
 }
 
+// we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
 		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor']),
 		isProduction: ENV.NODE_ENV === 'production',
+		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
+		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 	}
 }
 

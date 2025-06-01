@@ -1,5 +1,7 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
+import * as ConfigClient from '@/systems.client/config.client'
 import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
+import { formatVersion } from './lib/versioning'
 
 import superjson from 'superjson'
 
@@ -36,9 +38,20 @@ const link = wsLink({
 			console.log('WebSocket connection closed: ', JSON.stringify(error))
 			defaultStore.set(trpcConnectedAtom, false)
 		},
-		onOpen: () => {
+		onOpen: async () => {
 			defaultStore.set(trpcConnectedAtom, true)
 			console.log('WebSocket connection opened')
+			ConfigClient.invalidateConfig()
+			const config = await ConfigClient.fetchConfig()
+			if (config.PUBLIC_GIT_BRANCH !== import.meta.env.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA !== import.meta.env.PUBLIC_GIT_SHA) {
+				console.warn(
+					`Version skew detected (${formatVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)} -> ${
+						formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+					})`,
+				)
+				console.warn('reloading window')
+				window.location.reload()
+			}
 		},
 	}),
 	transformer: superjson,
