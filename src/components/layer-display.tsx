@@ -212,13 +212,13 @@ export function MapLayerDisplay(
 	},
 ) {
 	const segments = M.parseLayerStringSegment(layer)
-	if (!segments) return layer
+	if (!segments || segments.Gamemode === 'Training') return layer
 	return (
 		<span className={cn(backfilledStyles.Layer, className)}>
 			<span className={backfilledStyles.Map}>{segments.Map}</span>
-			_
+			{segments.Gamemode && '_'}
 			<span className={backfilledStyles.Gamemode}>{segments.Gamemode}</span>
-			_
+			{segments.LayerVersion && '_'}
 			<span className={backfilledStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
 		</span>
 	)
