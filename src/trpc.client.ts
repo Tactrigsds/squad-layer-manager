@@ -48,14 +48,14 @@ const link = wsLink({
 			const buildGitSha = import.meta.env.PUBLIC_GIT_SHA ?? 'unknown'
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
-      if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
-        const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
-        const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
-        console.warn( `Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
-        window.location.reload()
-      } else {
-        reactQueryClient.invalidateQueries()
-      }
+			if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
+				const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
+				const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+				console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
+				window.location.reload()
+			} else {
+				reactQueryClient.invalidateQueries()
+			}
 		},
 	}),
 	transformer: superjson,
