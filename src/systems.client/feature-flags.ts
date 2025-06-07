@@ -1,48 +1,53 @@
+import { isNullOrUndef } from '@/lib/typeGuards'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { atom, getDefaultStore, useAtomValue } from 'jotai'
-import { withImmer } from 'jotai-immer'
-
-function atomWithLocalStorage<T>(key: string, initialValue: T) {
-	const getInitialValue = () => {
-		const item = localStorage.getItem(key)
-		if (item !== null) {
-			return JSON.parse(item) as T
-		}
-		return initialValue
-	}
-	const baseAtom = atom(getInitialValue())
-	const derivedAtom = atom(
-		(get) => get(baseAtom),
-		(get, set, update) => {
-			const nextValue = typeof update === 'function' ? update(get(baseAtom)) : update
-			set(baseAtom, nextValue)
-			localStorage.setItem(key, JSON.stringify(nextValue))
-		},
-	)
-	return derivedAtom
-}
+import * as Zus from 'zustand'
+import { persist } from 'zustand/middleware'
 
 const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
 }
 
-export const featureFlagsAtom = atomWithLocalStorage('featureFlags:v1', FEATURE_FLAGS)
-
-// @ts-expect-error - this is a hack to expose the feature flags to the window object so we can set them in the console
-window.listFeatureFlags = () => {
-	const store = getDefaultStore()
-	const flags = store.get(featureFlagsAtom)
-	console.log('Feature flags:', flags)
+interface FeatureFlagsState {
+	flags: typeof FEATURE_FLAGS
+	setFeatureFlag: (flag: keyof typeof FEATURE_FLAGS, value: boolean) => void
 }
 
-// @ts-expect-error - this is a hack to expose the feature flags to the window object so we can set them in the console
-window.setFeatureFlag = (flag, value) => {
-	const store = getDefaultStore()
-	// @ts-expect-error whew
-	store.set(withImmer(featureFlagsAtom), (flags) => (flags[flag] = value))
-	console.log('Feature flag set:', flag, value)
+const featureFlagsStore = Zus.create<FeatureFlagsState>()(
+	persist(
+		(set) => ({
+			flags: FEATURE_FLAGS,
+			setFeatureFlag: (flag, value) =>
+				set((state) => ({
+					flags: {
+						...state.flags,
+						[flag]: value,
+					},
+				})),
+		}),
+		{
+			name: 'featureFlags:v1',
+			partialize: (state) => ({ flags: state.flags }),
+		},
+	),
+)
+
+// @ts-expect-error expose to console
+window.featureFlags = {
+	list() {
+		return featureFlagsStore.getState().flags
+	},
+	set(flag: string, value: boolean) {
+		const store = featureFlagsStore.getState()
+		if (isNullOrUndef(FEATURE_FLAGS[flag as keyof typeof FEATURE_FLAGS])) {
+			return `Feature flag ${flag} does not exist`
+		}
+		store.setFeatureFlag(flag as keyof typeof FEATURE_FLAGS, value)
+		return 'ok'
+	},
 }
 
 export function useFeatureFlags() {
-	return useAtomValue(featureFlagsAtom, { store: getDefaultStore() })
+	return featureFlagsStore((state) => state.flags)
 }
+
+export { featureFlagsStore }

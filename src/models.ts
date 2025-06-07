@@ -1497,7 +1497,6 @@ export function getAllLayerQueueKeysWithLayerId(layerId: LayerId, queue: LayerLi
 	return keys
 }
 
-export type LayerStatusPart = { layerStatuses: LayerStatuses }
 export function getLayerStatusId(layerId: LayerId, filterEntityId: FilterEntityId) {
 	return `${layerId}::${filterEntityId}`
 }

@@ -977,7 +977,7 @@ export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C
 	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-admins') {
+export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-admins', opts?: { repeat?: number }) {
 	const serverState = await getServerState({}, ctx)
 	const layerQueue = serverState.layerQueue
 	const parts: M.UserPart = { users: [] }
@@ -988,9 +988,9 @@ export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-ad
 		parts.users.push(user)
 	}
 	if (playerId === 'all-admins') {
-		await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts))
+    await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts, {repeat: opts?.repeat ?? 1}))
 	} else {
-		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts))
+		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts, {repeat: opts?.repeat ?? 1}))
 	}
 }
 
@@ -999,13 +999,11 @@ async function includeLQServerUpdateParts(
 	_serverStateUpdate: M.LQServerStateUpdate,
 ): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
-	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
 	const filterEntityPartPromise = includeFilterEntityPart(ctx, _serverStateUpdate)
 	return {
 		..._serverStateUpdate,
 		parts: {
 			...(await userPartPromise),
-			...(await layerStatusPartPromise),
 			...(await filterEntityPartPromise),
 		},
 	}

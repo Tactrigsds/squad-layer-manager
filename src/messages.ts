@@ -69,7 +69,7 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
-		showNext: (layerQueue: M.LayerList, parts: M.UserPart) => (ctx: C.Player) => {
+    showNext: (layerQueue: M.LayerList, parts: M.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -96,7 +96,7 @@ export const WARNS = {
 			const extraDisplay = setByDisplay
 			const getOptions = (msg: string | string[]) => ({
 				msg,
-				repeat: 3,
+				repeat: opts?.repeat ?? 1,
 			})
 
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1

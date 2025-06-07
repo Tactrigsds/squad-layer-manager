@@ -41,7 +41,7 @@ const link = wsLink({
 		onOpen: async () => {
 			defaultStore.set(trpcConnectedAtom, true)
 			console.log('WebSocket connection opened')
-			ConfigClient.invalidateConfig()
+			reactQueryClient.invalidateQueries()
 			const config = await ConfigClient.fetchConfig()
 
 			const buildGitBranch = import.meta.env.PUBLIC_GIT_BRANCH ?? 'unknown'

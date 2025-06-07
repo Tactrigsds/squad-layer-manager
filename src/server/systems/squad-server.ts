@@ -190,7 +190,7 @@ async function handleCommand(ctx: C.Log & C.Db, msg: SM.ChatMessage) {
 			return
 		}
 		case 'showNext': {
-			await LayerQueue.warnShowNext(ctx, msg.playerId)
+      await LayerQueue.warnShowNext(ctx, msg.playerId, {repeat: 3})
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}

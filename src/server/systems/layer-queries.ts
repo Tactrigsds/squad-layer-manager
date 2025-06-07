@@ -81,7 +81,6 @@ export async function queryLayers(args: {
 
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
-		constraints,
 		input.previousLayerIds ?? [],
 		input.historyOffset,
 	)
@@ -190,7 +189,6 @@ export async function queryLayerComponents({
 	const constraints = input.constraints ?? []
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
-		constraints,
 		input.previousLayerIds,
 	)
 	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, historicLayers, oldestLayerTeamParity, constraints)
@@ -221,7 +219,6 @@ export async function searchIds({ ctx, input }: { ctx: C.Log & C.Db; input: Sear
 
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
-		constraints ?? [],
 		previousLayerIds ?? [],
 	)
 
@@ -494,11 +491,9 @@ export async function getLayerStatusesForLayerQueue({
 	input: LayerStatusesForLayerQueueInput
 }) {
 	const constraints = M.getPoolConstraints(pool)
-
 	// eslint-disable-next-line prefer-const
 	let { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
-		constraints,
 		[],
 	)
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
@@ -868,7 +863,6 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 ): Promise<ReturnLayers extends true ? { layers: PostProcessedLayers[]; totalCount: number } : { ids: string[]; totalCount: number }> {
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
-		constraints,
 		previousLayerIds,
 	)
 	const { conditions, selectProperties } = await buildConstraintSqlCondition(
@@ -985,8 +979,7 @@ function hasTeam(
  * @param previousLayerIds Other IDs which should be considered as being at the front of the history, in the order they appear in the queue/list
  */
 function resolveRelevantLayerHistory(
-	ctx: C.Db & C.Log,
-	constraints: M.LayerQueryConstraint[],
+	ctx: C.Log,
 	previousLayerIds: ([M.LayerId, M.ViolationReasonItem | undefined] | M.LayerId)[],
 	startWithOffset?: number,
 ) {
@@ -1002,6 +995,9 @@ function resolveRelevantLayerHistory(
 		if (typeof entry === 'string') historicLayers.push([entry, undefined])
 		else historicLayers.push(entry)
 	}
+
+	ctx.log.info('previous layer ids: %s', JSON.stringify(previousLayerIds))
+	ctx.log.info('Resolved relevant layer history: %s', JSON.stringify(historicLayers))
 	return {
 		historicLayers,
 		oldestLayerTeamParity: (historicMatches?.[0]?.ordinal ?? 0) % 2,
