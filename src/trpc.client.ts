@@ -41,22 +41,21 @@ const link = wsLink({
 		onOpen: async () => {
 			defaultStore.set(trpcConnectedAtom, true)
 			console.log('WebSocket connection opened')
-			reactQueryClient.invalidateQueries()
+			ConfigClient.invalidateConfig()
 			const config = await ConfigClient.fetchConfig()
 
 			const buildGitBranch = import.meta.env.PUBLIC_GIT_BRANCH ?? 'unknown'
 			const buildGitSha = import.meta.env.PUBLIC_GIT_SHA ?? 'unknown'
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
-			if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
-				console.warn(
-					`Version skew detected (${formatVersion(buildGitBranch, buildGitSha)} -> ${
-						formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
-					})`,
-				)
-				console.warn('reloading window')
-				window.location.reload()
-			}
+      if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
+        const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
+        const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+        console.warn( `Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
+        window.location.reload()
+      } else {
+        reactQueryClient.invalidateQueries()
+      }
 		},
 	}),
 	transformer: superjson,
