@@ -127,11 +127,11 @@ function ShortLayerName(
 	const backfilledStyle = 'text-gray-500'
 
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	let partialLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(layerId))
+	let partialLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(layerId))
 	partialLayer = Obj.trimUndefined(partialLayer)
 	let backfillLayer: Partial<M.MiniLayer> | undefined
 	if (backfillLayerId) {
-		backfillLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(backfillLayerId))
+		backfillLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(backfillLayerId))
 	}
 
 	// Create violation field mapping

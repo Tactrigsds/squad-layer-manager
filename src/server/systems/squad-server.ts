@@ -190,7 +190,7 @@ async function handleCommand(ctx: C.Log & C.Db, msg: SM.ChatMessage) {
 			return
 		}
 		case 'showNext': {
-      await LayerQueue.warnShowNext(ctx, msg.playerId, {repeat: 3})
+			await LayerQueue.warnShowNext(ctx, msg.playerId, { repeat: 3 })
 			C.setSpanStatus(Otel.SpanStatusCode.OK)
 			return
 		}
@@ -225,7 +225,7 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
 			const currentMatch = MatchHistory.getCurrentMatch()
 			if (currentMatch && M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
-				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentMatch.layerId))
+				const currentLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentMatch.layerId))
 				if (currentLayer.Gamemode === 'FRAAS') await rcon.setFogOfWar(ctx, 'off')
 			}
 		})

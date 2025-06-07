@@ -60,7 +60,7 @@ export default function CurrentLayerCard() {
 	const currentLayerId = (currentMatch?.layerId && M.areLayerIdsCompatible(currentMatch.layerId, serverStatus.currentLayer.id))
 		? currentMatch.layerId
 		: serverStatus.currentLayer.id
-	const layerDetails = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerId))
+	const layerDetails = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentLayerId))
 	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, currentMatch?.ordinal, false)
 	const isEmpty = serverStatus.playerCount === 0
 

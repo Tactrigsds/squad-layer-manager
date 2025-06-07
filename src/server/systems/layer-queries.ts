@@ -125,17 +125,14 @@ export async function queryLayers(args: {
 		.from(Schema.layers)
 	countQuery = includeWhere(countQuery)
 
-	const [layers, [countResult]] = await Promise.all(
-		[
-			query.then((rows: any[]) => postProcessLayers(rows, constraints, historicLayers, oldestLayerTeamParity)),
-			countQuery,
-		] as const,
-	)
+	const queryPromise = query.execute()
+	const rows = await queryPromise
+	const layers = postProcessLayers(ctx, rows, constraints, historicLayers, oldestLayerTeamParity)
+	const [countResult] = await countQuery.execute()
 	const totalCount = Number(countResult.count)
-
 	return {
 		code: 'ok' as const,
-		layers: layers as PostProcessedLayers[],
+		layers: layers,
 		totalCount,
 		pageCount: Math.ceil(totalCount / input.pageSize),
 	}
@@ -514,6 +511,7 @@ export async function getLayerStatusesForLayerQueue({
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+							ctx,
 							constraint.id,
 							constraint.rule,
 							layerId,
@@ -588,16 +586,25 @@ export async function getLayerStatusesForLayerQueue({
 }
 
 function getisBlockedByDoNotRepeatRuleDirect(
+	ctx: C.Log,
 	constraintId: string,
 	rule: M.RepeatRule,
 	targetLayerId: M.LayerId,
 	previousLayerIds: [M.LayerId, M.ViolationReasonItem | undefined][],
 	oldestPrevLayerTeamParity: number,
 ) {
-	const targetLayer = M.getLayerDetailsFromUnvalidated(
+	ctx.log.debug(
+		`getisBlockedByDoNotRepeatRuleDirect: Checking rule ${rule.field} for target layer ${targetLayerId}, constraint ${constraintId}`,
+	)
+	ctx.log.debug(`Rule details: within=${rule.within}, targetValues=${JSON.stringify(rule.targetValues)}`)
+
+	const targetLayer = M.getLayerPartial(
 		M.getUnvalidatedLayerFromId(targetLayerId),
 	)
 	const targetLayerTeamParity = SM.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length)
+
+	ctx.log.debug(`Target layer: ${targetLayer.Layer}, team parity: ${targetLayerTeamParity}`)
+	ctx.log.debug(`Checking against ${previousLayerIds.length} previous layers`)
 
 	let isBlocked = false
 	const descriptors: M.ViolationDescriptor[] = []
@@ -610,19 +617,23 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			reasonItem: previousLayerIds[i][1],
 		})
 		const layerId = previousLayerIds[i][0]
-		const layer = M.getLayerDetailsFromUnvalidated(
+		const layer = M.getLayerPartial(
 			M.getUnvalidatedLayerFromId(layerId),
 		)
+
+		ctx.log.debug(`Checking previous layer ${i}: ${layer.Layer} (ID: ${layerId}), team parity: ${layerTeamParity}`)
 		switch (rule.field) {
 			case 'Map':
 			case 'Gamemode':
 			case 'Layer':
 			case 'Size':
+				ctx.log.debug(`Checking ${rule.field}: target=${targetLayer[rule.field]}, previous=${layer[rule.field]}`)
 				if (
 					layer[rule.field]
 					&& targetLayer[rule.field] === layer[rule.field]
 					&& (rule.targetValues?.includes(layer[rule.field] as string) ?? true)
 				) {
+					ctx.log.debug(`VIOLATION: ${rule.field} matches - ${layer[rule.field]}`)
 					descriptors.push(getViolationDescriptor(rule.field))
 					isBlocked = true
 				}
@@ -630,12 +641,14 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			case 'Faction': {
 				const checkFaction = (team: 'A' | 'B') => {
 					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
+					const previousFaction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
+					ctx.log.debug(`Checking Faction team ${team}: target=${targetFaction}, previous=${previousFaction}`)
 					if (
 						targetFaction
-						&& layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
-							=== targetFaction
+						&& previousFaction === targetFaction
 						&& (rule.targetValues?.includes(targetFaction) ?? true)
 					) {
+						ctx.log.debug(`VIOLATION: Faction team ${team} matches - ${targetFaction}`)
 						descriptors.push(getViolationDescriptor(`Faction_${team}`))
 						isBlocked = true
 					}
@@ -656,12 +669,19 @@ function getisBlockedByDoNotRepeatRuleDirect(
 					const faction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
 					const unit = layer[M.getTeamNormalizedUnitProp(layerTeamParity, team)]
 
+					ctx.log.debug(
+						`Checking FactionAndUnit team ${team}: target=${targetFactionAndUnit}, previous=${
+							faction ? M.getFactionAndUnitValue(faction, unit) : 'null'
+						}`,
+					)
+
 					if (targetFaction && faction) {
 						const factionAndUnit = M.getFactionAndUnitValue(faction, unit)
 						if (
 							factionAndUnit === targetFactionAndUnit
 							&& (rule.targetValues?.includes(factionAndUnit) ?? true)
 						) {
+							ctx.log.debug(`VIOLATION: FactionAndUnit team ${team} matches - ${factionAndUnit}`)
 							descriptors.push(getViolationDescriptor(`FactionAndUnit_${team}`))
 							isBlocked = true
 						}
@@ -674,15 +694,22 @@ function getisBlockedByDoNotRepeatRuleDirect(
 			}
 			case 'Alliance': {
 				const checkAlliance = (team: 'A' | 'B') => {
-					const targetFaction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					if (!targetFaction) return
+					const targetFaction = targetLayer[M.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]
+					const previousFaction = layer[M.getTeamNormalizedFactionProp(layerTeamParity, team)]
+
+					if (!targetFaction || !previousFaction) return
+
 					const targetAlliance = M.StaticLayerComponents.factionToAlliance[targetFaction]
-					if (!targetAlliance) return
-					const faction = M.getTeamNormalizedFactionProp(layerTeamParity, team)
-					if (!faction) return
-					const alliance = M.StaticLayerComponents.factionToAlliance[faction]
-					if (!alliance) return
-					if (targetAlliance === alliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
+					const previousAlliance = M.StaticLayerComponents.factionToAlliance[previousFaction]
+
+					ctx.log.debug(
+						`Checking Alliance team ${team}: target=${targetAlliance} (${targetFaction}), previous=${previousAlliance} (${previousFaction})`,
+					)
+
+					if (!targetAlliance || !previousAlliance) return
+
+					if (targetAlliance === previousAlliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
+						ctx.log.debug(`VIOLATION: Alliance team ${team} matches - ${targetAlliance}`)
 						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
 						isBlocked = true
 					}
@@ -697,6 +724,7 @@ function getisBlockedByDoNotRepeatRuleDirect(
 		}
 		layerTeamParity--
 	}
+	ctx.log.debug(`getisBlockedByDoNotRepeatRuleDirect result: isBlocked=${isBlocked}, violations=${descriptors.length}`)
 	return { isBlocked, descriptors }
 }
 
@@ -710,7 +738,7 @@ function getDoNotRepeatSQLConditions(
 
 	let teamParity = SM.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length - 1)
 	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
-		const layer = M.getLayerDetailsFromUnvalidated(
+		const layer = M.getLayerPartial(
 			M.getUnvalidatedLayerFromId(previousLayerIds[i][0]),
 		)
 		switch (rule.field) {
@@ -860,7 +888,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	constraints: M.LayerQueryConstraint[],
 	previousLayerIds: string[],
 	returnLayers: ReturnLayers,
-): Promise<ReturnLayers extends true ? { layers: PostProcessedLayers[]; totalCount: number } : { ids: string[]; totalCount: number }> {
+): Promise<ReturnLayers extends true ? { layers: PostProcessedLayer[]; totalCount: number } : { ids: string[]; totalCount: number }> {
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		previousLayerIds,
@@ -895,7 +923,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 
 	if (baseLayerPool.length === 0) {
 		// @ts-expect-error idgaf
-		if (returnLayers) return { layers: [], totalCount } as { layers: PostProcessedLayers[]; totalCount: number }
+		if (returnLayers) return { layers: [], totalCount } as { layers: PostProcessedLayer[]; totalCount: number }
 		// @ts-expect-error idgaf
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
@@ -934,7 +962,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	if (returnLayers) {
 		// @ts-expect-error idgaf
 		return {
-			layers: postProcessLayers(results as (M.Layer & Record<string, boolean>)[], constraints, historicLayers, oldestLayerTeamParity),
+			layers: postProcessLayers(ctx, results as (M.Layer & Record<string, boolean>)[], constraints, historicLayers, oldestLayerTeamParity),
 			totalCount,
 		}
 	}
@@ -986,7 +1014,7 @@ function resolveRelevantLayerHistory(
 	const historicMatches = MatchHistory.state.recentMatches.slice(0, MatchHistory.state.recentMatches.length - (startWithOffset ?? 0))
 	const historicLayers: [string, M.ViolationReasonItem | undefined][] = []
 	for (const match of historicMatches) {
-		const details = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(match.layerId))
+		const details = M.getLayerPartial(M.getUnvalidatedLayerFromId(match.layerId))
 		// don't consider jensens or seeding layers
 		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
 		historicLayers.push([match.layerId, { type: 'history-entry', historyEntryId: match.historyEntryId }])
@@ -996,18 +1024,19 @@ function resolveRelevantLayerHistory(
 		else historicLayers.push(entry)
 	}
 
-	ctx.log.info('previous layer ids: %s', JSON.stringify(previousLayerIds))
-	ctx.log.info('Resolved relevant layer history: %s', JSON.stringify(historicLayers))
+	ctx.log.debug('previous layer ids: %s', JSON.stringify(previousLayerIds))
+	ctx.log.debug('Resolved relevant layer history: %s', JSON.stringify(historicLayers))
 	return {
 		historicLayers,
 		oldestLayerTeamParity: (historicMatches?.[0]?.ordinal ?? 0) % 2,
 	}
 }
 
-type PostProcessedLayers = Awaited<
+export type PostProcessedLayer = Awaited<
 	ReturnType<typeof postProcessLayers>
 >[number]
 function postProcessLayers(
+	ctx: C.Log,
 	layers: (M.Layer & Record<string, boolean>)[],
 	constraints: M.LayerQueryConstraint[],
 	historicLayers: [M.LayerId, M.ViolationReasonItem | undefined][],
@@ -1026,6 +1055,7 @@ function postProcessLayers(
 			if (constraint.type === 'do-not-repeat') {
 				// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
 				const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+					ctx,
 					constraint.id,
 					constraint.rule,
 					layer.id,

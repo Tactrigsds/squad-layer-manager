@@ -255,8 +255,8 @@ export function parseTeamString(
 export function isLayerIdPartialMatch(id: string, targetId: string, ignoreFraas: boolean = true) {
 	if (id === targetId) return true
 
-	const layerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(id))
-	const targetLayerRes = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(targetId))
+	const layerRes = getLayerPartial(getUnvalidatedLayerFromId(id))
+	const targetLayerRes = getLayerPartial(getUnvalidatedLayerFromId(targetId))
 	if (ignoreFraas) {
 		if (layerRes.Layer) layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
 		if (targetLayerRes.Layer) targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
@@ -271,7 +271,7 @@ export function areLayerIdsCompatible(id1: string, id2: string, ignoreFraas = tr
 	return isLayerIdPartialMatch(id1, id2, ignoreFraas) || isLayerIdPartialMatch(id2, id1, ignoreFraas)
 }
 
-export function getLayerDetailsFromUnvalidated(unvalidatedLayer: UnvalidatedMiniLayer) {
+export function getLayerPartial(unvalidatedLayer: UnvalidatedMiniLayer) {
 	if (unvalidatedLayer.code === 'raw') return unvalidatedLayer.partialLayer ?? {}
 	const { id: _, ...partial } = unvalidatedLayer.layer
 	return partial
@@ -347,7 +347,7 @@ export function getMiniLayerFromId(id: string, components = StaticLayerComponent
 }
 
 export function isHistoryLookbackExcludedLayer(layerId: LayerId) {
-	const details = getLayerDetailsFromUnvalidated(getUnvalidatedLayerFromId(layerId))
+	const details = getLayerPartial(getUnvalidatedLayerFromId(layerId))
 	return details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)
 }
 
@@ -1497,12 +1497,9 @@ export function getAllLayerQueueKeysWithLayerId(layerId: LayerId, queue: LayerLi
 	return keys
 }
 
+export type LayerStatusPart = { layerStatuses: LayerStatuses }
 export function getLayerStatusId(layerId: LayerId, filterEntityId: FilterEntityId) {
 	return `${layerId}::${filterEntityId}`
-}
-
-export type FilterEntityPart = {
-	filterEntities: Map<FilterEntityId, FilterEntity>
 }
 
 export type LayerSyncState =

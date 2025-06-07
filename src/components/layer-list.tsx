@@ -109,7 +109,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
 	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
-	const filterMenuStore = useFilterMenuStore(unvalidatedLayer ? M.getLayerDetailsFromUnvalidated(unvalidatedLayer) : undefined)
+	const filterMenuStore = useFilterMenuStore(unvalidatedLayer ? M.getLayerPartial(unvalidatedLayer) : undefined)
 
 	const canSubmitSetLayer = Zus.useStore(
 		editedItemStore,

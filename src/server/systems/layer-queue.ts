@@ -241,7 +241,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 
 			// -------- schedule FRAAS auto fog-off --------
 			if (currentLayerItem && currentLayerId) {
-				const currentLayer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentLayerId))
+				const currentLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentLayerId))
 				if (currentLayer.Gamemode === 'FRAAS') {
 					postRollEventsSub.add(
 						Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
@@ -988,9 +988,9 @@ export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-ad
 		parts.users.push(user)
 	}
 	if (playerId === 'all-admins') {
-    await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts, {repeat: opts?.repeat ?? 1}))
+		await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	} else {
-		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts, {repeat: opts?.repeat ?? 1}))
+		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	}
 }
 
@@ -999,12 +999,12 @@ async function includeLQServerUpdateParts(
 	_serverStateUpdate: M.LQServerStateUpdate,
 ): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
-	const filterEntityPartPromise = includeFilterEntityPart(ctx, _serverStateUpdate)
+	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
 	return {
 		..._serverStateUpdate,
 		parts: {
 			...(await userPartPromise),
-			...(await filterEntityPartPromise),
+			...(await layerStatusPartPromise),
 		},
 	}
 }
@@ -1037,19 +1037,6 @@ async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQ
 		input: { queue, pool: serverStateUpdate.state.settings.queue.mainPool },
 	})
 	return { layerStatuses }
-}
-
-async function includeFilterEntityPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQServerStateUpdate) {
-	const filterEntityIds: M.FilterEntityId[] = []
-
-	filterEntityIds.push(...serverStateUpdate.state.settings.queue.mainPool.filters)
-	filterEntityIds.push(...serverStateUpdate.state.settings.queue.generationPool.filters)
-	const rawEntities = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, filterEntityIds))
-	const part: M.FilterEntityPart = { filterEntities: new Map() }
-	for (const row of rawEntities) {
-		part.filterEntities.set(row.id, M.FilterEntitySchema.parse(row))
-	}
-	return part
 }
 
 /**

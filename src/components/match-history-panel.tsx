@@ -73,7 +73,7 @@ export default function MatchHistoryPanel() {
 		let streakerFaction: string
 		if (!currentMatch) streakerFaction = ''
 		else {
-			const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(currentMatch.layerId))
+			const layer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentMatch.layerId))
 			streakerFaction = layer[M.getTeamNormalizedFactionProp(currentMatch.ordinal, streaker === 'teamA' ? 'A' : 'B')] ?? 'Unknown'
 			streakerFaction = `(${streakerFaction})`
 		}
@@ -184,7 +184,7 @@ export default function MatchHistoryPanel() {
 									extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
 								}
 							}
-							const layer = M.getLayerDetailsFromUnvalidated(M.getUnvalidatedLayerFromId(entry.layerId))
+							const layer = M.getLayerPartial(M.getUnvalidatedLayerFromId(entry.layerId))
 							let outcomeDisp: React.ReactNode
 							if (entry.status === 'in-progress') {
 								outcomeDisp = '-'

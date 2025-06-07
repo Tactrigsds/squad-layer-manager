@@ -5,7 +5,7 @@ import * as M from '@/models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = M.UserPart & M.LayerStatusPart & M.FilterEntityPart & SM.MatchHistoryPart
+export type ClientParts = M.UserPart & M.LayerStatusPart & SM.MatchHistoryPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
@@ -13,7 +13,6 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 			users: [],
 			layerInPoolState: new Map(),
 			layerStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
-			filterEntities: new Map(),
 			matchHistory: new Map(),
 			upsert(key, entity) {
 				set((draft) => {
@@ -31,10 +30,6 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 						}
 						case 'layerStatuses': {
 							draft.layerStatuses = entity as M.LayerStatuses
-							break
-						}
-						case 'filterEntities': {
-							draft.filterEntities = entity as M.FilterEntityPart['filterEntities']
 							break
 						}
 						case 'matchHistory': {

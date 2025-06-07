@@ -69,7 +69,7 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please add to it`,
-    showNext: (layerQueue: M.LayerList, parts: M.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
+		showNext: (layerQueue: M.LayerList, parts: M.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
