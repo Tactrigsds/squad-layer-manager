@@ -860,7 +860,7 @@ function MultiLayerSetDialog({
 }
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean) {
 	const constraints = layerData.constraints
-	return !canForceSelect && constraints.values.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
+	return !canForceSelect && constraints.values?.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
 }
 
 function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
