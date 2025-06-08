@@ -203,10 +203,11 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 						fullLayers.push({
 							...row,
 							id: layerId,
+							Layer: layerId.includes('FRAAS') ? row.Layer.replace('RAAS', 'FRAAS') : row.Layer,
 							LayerVersion: segments.LayerVersion,
 							Size: row.Size,
 							Map: segments.Map,
-							Gamemode: segments.Gamemode,
+							Gamemode: layerId.includes('FRAAS') ? 'FRAAS' : segments.Gamemode,
 							Alliance_1: data.components.factionToAlliance.get(row['Faction_1'])!,
 							Alliance_2: data.components.factionToAlliance.get(row['Faction_2'])!,
 							...diffs,
@@ -216,7 +217,7 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 						ctx.log.warn(`Layer id ${layerId} not found`)
 						return
 					}
-					fullLayers[index] = { ...fullLayers[index], ...row, ...diffs }
+					fullLayers[index] = { ...row, ...fullLayers[index], ...diffs }
 				}
 			})
 			.on('end', () => resolve(fullLayers))
