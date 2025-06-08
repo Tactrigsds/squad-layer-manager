@@ -30,6 +30,7 @@ type SquadServerState = {
 	bufferedNextMatch?: {
 		layerListItem: M.LayerListItem
 	}
+	lastRoll: Date
 }
 
 const tracer = Otel.trace.getTracer('squad-server')
@@ -40,6 +41,7 @@ export let squadLogEvents!: SquadEventEmitter
 export let adminList!: AsyncResource<SM.AdminList>
 export let serverStatus!: AsyncResource<SM.ServerStatusWithCurrentMatchRes>
 
+// be a good citizen and don't update this from outside of squad-server
 export let state!: SquadServerState
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadSftpLogs, ...Env.groups.rcon })
@@ -206,7 +208,9 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 	const adminListTTL = 1000 * 60 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })
 
-	state = {}
+	state = {
+		lastRoll: new Date(0),
+	}
 
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	void adminList.get(ctx)
@@ -287,6 +291,7 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
+			state.lastRoll = event.time
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes

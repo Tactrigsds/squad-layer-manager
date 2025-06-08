@@ -71,7 +71,6 @@ export default class Rcon extends EventEmitter {
 			if (this.client && this.connected && !this.client.destroyed) {
 				return reject(new Error('Rcon.connect() Rcon already connected.'))
 			}
-			this.removeAllListeners('server')
 			this.removeAllListeners('auth')
 			this.once('auth', () => {
 				ctx.log.trace(`Connected to: ${this.host}:${this.port}`)

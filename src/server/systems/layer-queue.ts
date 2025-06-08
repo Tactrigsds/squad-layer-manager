@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, distinctDeepEquals, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
@@ -115,28 +115,12 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			if (
 				serverState.layerQueue[0]?.vote
 				&& voteState?.code === 'ready'
-				&& lastRoll + CONFIG.reminders.startVoteReminderThreshold < Date.now()
+				&& SquadServer.state.lastRoll.getTime() + CONFIG.reminders.startVoteReminderThreshold < Date.now()
 			) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.votePending)
 			} else if (serverState.layerQueue.length === 0) {
 				await SquadServer.warnAllAdmins(ctx, WARNS.queue.empty)
-			} else if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold && i % 2 === 0) {
-				await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowLayerCount(serverState.layerQueue.length))
 			}
-		}),
-	).subscribe()
-
-	// -------- track map rolls for reminders--------
-	// note: temporary solution, if we want something more robust we should be listening to the match history most likely
-	let lastRoll = -1
-	SquadServer.rcon.serverStatus.observe(ctx).pipe(
-		Rx.map(res => res.code === 'ok' && res.data.currentLayer ? res.data.currentLayer : null),
-		Rx.filter(layer => !!layer),
-		distinctDeepEquals(),
-		Rx.skip(1),
-		C.durableSub('layer-queue:track-map-rolls', { ctx, tracer, eventLogLevel: 'trace' }, async (layer) => {
-			ctx.log.info('tracking map roll: %s', DH.displayUnvalidatedLayer(layer))
-			lastRoll = Date.now()
 		}),
 	).subscribe()
 
@@ -254,9 +238,20 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 
 			// -------- schedule post-roll announcements --------
 			postRollEventsSub.add(
-				Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout).subscribe(async () => {
-					await warnShowNext(ctx, 'all-admins')
-				}),
+				Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout)
+					.pipe(
+						Rx.concatMap(() => warnShowNext(ctx, 'all-admins')),
+						// we're doing this in a slightly funky way to allow for more granular cancellation
+						Rx.concatMap(() => Rx.timer(10_000)),
+						Rx.concatMap(async () => {
+							const serverState = await getServerState({}, ctx)
+							if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold) {
+								await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+							}
+						}),
+						Rx.retry({ count: 5, resetOnSuccess: true }),
+					)
+					.subscribe(),
 			)
 
 			SquadServer.bufferNextMatchLQItem(currentLayerItem!)

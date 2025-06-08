@@ -64,11 +64,11 @@ export const WARNS = {
 		},
 	},
 	queue: {
-		lowLayerCount(count: number) {
+		lowQueueItemCount(count: number) {
 			return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
 		},
 		votePending: `Vote is pending`,
-		empty: `WARNING: Queue is empty. Please add to it`,
+		empty: `WARNING: Queue is empty. Please populate it`,
 		showNext: (layerQueue: M.LayerList, parts: M.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string

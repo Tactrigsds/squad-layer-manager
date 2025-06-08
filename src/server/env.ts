@@ -13,7 +13,7 @@ export const groups = {
 			.default('http://localhost:4318')
 			// trim trailing whitespace
 			.transform((url) => url.replace(/\/$/, ''))
-			.describe('Endpoint for the OLTP collector'),
+			.describe('Endpoint for the OTLP collector'),
 
 		PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
 		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
@@ -35,11 +35,7 @@ export const groups = {
 
 	rcon: {
 		RCON_HOST: z.string().nonempty().default('localhost'),
-		RCON_PORT: z
-			.string()
-			.transform((val) => parseInt(val, 10))
-			.pipe(z.number().int().positive())
-			.default('21114'),
+		RCON_PORT: ParsedIntSchema.default('21114').pipe(z.number().positive()),
 		RCON_PASSWORD: z.string().default('testpassword'),
 	},
 
@@ -70,8 +66,39 @@ export const groups = {
 
 let rawEnv!: Record<string, string | undefined>
 
+const parsedProperties = new Map<string, object>()
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function parseGroups<G extends Record<string, z.ZodTypeAny>>(groups: G) {
+	return z.object(groups).parse(rawEnv)
+}
+
 export function getEnvBuilder<G extends Record<string, z.ZodTypeAny>>(groups: G) {
-	return () => z.object(groups).parse({ ...rawEnv })
+	return () => {
+		const res: Record<string, any> = {}
+		const errors: string[] = []
+
+		for (const [key, schema] of Object.entries(groups)) {
+			const cached = parsedProperties.get(key)
+			if (cached) {
+				res[key] = cached
+			} else {
+				const parsed = schema.safeParse(rawEnv[key])
+				if (!parsed.success) {
+					errors.push(`Invalid value for ${key}: ${JSON.stringify(parsed.error)}`)
+				} else {
+					parsedProperties.set(key, parsed.data)
+					res[key] = parsed.data
+				}
+			}
+		}
+
+		if (errors.length > 0) {
+			throw new Error(`Env errors:\n${errors.join('\n\n')}`)
+		}
+
+		return res as ReturnType<typeof parseGroups<G>>
+	}
 }
 
 let setup = false
