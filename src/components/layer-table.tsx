@@ -312,7 +312,6 @@ export default function LayerTable(props: {
 			if (!userCanForceSelect) {
 				for (const id of Object.keys(newValues)) {
 					const layer = page?.layers.find(layer => layer.id === id)
-					// @ts-expect-error idgaf
 					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect)) {
 						newValues[id] = false
 					}
@@ -378,45 +377,56 @@ export default function LayerTable(props: {
 		sort,
 	}))
 
-	let page = layersRes.data
-	if (showSelectedLayers && page) {
-		page = { ...page, layers: [...page.layers] }
-		const returnedIds = new Set(page.layers.map(layer => layer.id))
-		for (
-			const selectedId of props.selected.slice(
-				props.pageIndex * pageSize,
-				// no need to bounds-check slice in js
-				(props.pageIndex * pageSize) + pageSize,
-			)
-		) {
-			if (returnedIds.has(selectedId)) continue
-			const unvalidated = M.getUnvalidatedLayerFromId(selectedId)
-			if (unvalidated.code === 'parsed') {
-				// @ts-expect-error idc
-				page.layers.push(unvalidated.layer)
-			} else {
-				// @ts-expect-error idc
-				page.layers.push({ ...(unvalidated.partialLayer ?? {}), id: unvalidated.id })
+	const page = React.useMemo(() => {
+		let _page = layersRes.data
+		if (showSelectedLayers && _page) {
+			_page = { ..._page, layers: [..._page.layers] }
+			const returnedIds = new Set(_page.layers.map(layer => layer.id))
+			for (
+				const selectedId of props.selected.slice(
+					props.pageIndex * pageSize,
+					// no need to bounds-check slice in js
+					(props.pageIndex * pageSize) + pageSize,
+				)
+			) {
+				if (returnedIds.has(selectedId)) continue
+				const unvalidated = M.getUnvalidatedLayerFromId(selectedId)
+				if (unvalidated.code === 'parsed') {
+					// @ts-expect-error idc
+					_page.layers.push(unvalidated.layer)
+				} else {
+					// @ts-expect-error idc
+					_page.layers.push({ ...(unvalidated.partialLayer ?? {}), id: unvalidated.id })
+				}
 			}
+			_page.layers.sort((a, b) => {
+				if (sort && sort.type === 'column') {
+					const column = sort.sortBy
+					const direction = sort.sortDirection === 'ASC' ? 1 : -1
+
+					if (a[column] === b[column]) return 0
+					if (a[column] === null || a[column] === undefined) return direction
+					if (b[column] === null || b[column] === undefined) return -direction
+
+					return a[column] < b[column] ? -direction : direction
+				} else if (sort && sort.type === 'random') {
+					// For random sort just shuffle the entries
+					return Math.random() - 0.5
+				}
+				// Default sort by insertion time if no sort specified
+				return (insertionTimes.current[a.id] ?? now) - (insertionTimes.current[b.id] ?? now)
+			})
 		}
-		page.layers.sort((a, b) => {
-			if (sort && sort.type === 'column') {
-				const column = sort.sortBy
-				const direction = sort.sortDirection === 'ASC' ? 1 : -1
-
-				if (a[column] === b[column]) return 0
-				if (a[column] === null || a[column] === undefined) return direction
-				if (b[column] === null || b[column] === undefined) return -direction
-
-				return a[column] < b[column] ? -direction : direction
-			} else if (sort && sort.type === 'random') {
-				// For random sort just shuffle the entries
-				return Math.random() - 0.5
+		return _page
+			? {
+				..._page,
+				layers: _page.layers.map((layer): RowData => ({
+					...layer,
+					constraints: { values: layer.constraints, constraints: props.queryContext?.constraints ?? [] },
+				})),
 			}
-			// Default sort by insertion time if no sort specified
-			return (insertionTimes.current[a.id] ?? now) - (insertionTimes.current[b.id] ?? now)
-		})
-	}
+			: undefined
+	}, [layersRes.data, showSelectedLayers, props.selected, props.pageIndex, pageSize, sort, props.queryContext?.constraints, now])
 	React.useLayoutEffect(() => {
 		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
 			const layer = page.layers[0]
@@ -428,10 +438,7 @@ export default function LayerTable(props: {
 	}, [page, autoSelectIfSingleResult])
 
 	const table = useReactTable({
-		data: page?.layers.map((layer): RowData => ({
-			...layer,
-			constraints: { values: layer.constraints, constraints: props.queryContext?.constraints ?? [] },
-		})) ?? [],
+		data: page?.layers ?? [],
 		columns: COL_DEFS,
 		pageCount: page?.pageCount ?? -1,
 		state: {
