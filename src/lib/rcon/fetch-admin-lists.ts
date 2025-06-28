@@ -1,14 +1,13 @@
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import { OneToManyMap } from '@/lib/one-to-many-map.ts'
+import * as SM from '@/models/squad.models.ts'
+import * as C from '@/server/context.ts'
 import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
 
-import * as C from '@/server/context.ts'
-
-import * as SM from './squad-models.ts'
 import WritableBuffer from './writable-buffer.ts'
 
 const tracer = Otel.trace.getTracer('fetch-admin-lists')

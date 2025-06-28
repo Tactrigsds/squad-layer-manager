@@ -3,13 +3,15 @@ import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
-import * as SM from '@/lib/rcon/squad-models'
-import * as SME from '@/lib/rcon/squad-models.events.ts'
 import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
+import { assertNever } from '@/lib/type-guards.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
-import * as M from '@/models.ts'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models.ts'
+import * as SME from '@/models/squad-models.events.ts'
+import * as SM from '@/models/squad.models.ts'
+import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
 import { CONFIG } from '@/server/config'
@@ -28,9 +30,11 @@ import { procedure, router } from '../trpc.server.ts'
 type SquadServerState = {
 	// An ephemeral copy of the current matches layer queue item, taken just before the server rolls and the NEW_GAME squad event is emitted. in order for usages of this to be valid, the corresponding NEW_GAME event must be received after its details are buffered.
 	bufferedNextMatch?: {
-		layerListItem: M.LayerListItem
+		layerListItem: LL.LayerListItem
 	}
 	lastRoll: Date
+
+	debug__ticketOutcome?: SME.DebugTicketOutcome
 }
 
 const tracer = Otel.trace.getTracer('squad-server')
@@ -141,7 +145,7 @@ async function handleCommand(ctx: C.Log & C.Db, msg: SM.ChatMessage) {
 		return await showError(`Command "${cmd}" is disabled`)
 	}
 
-	const user: M.GuiOrChatUserId = { steamId: msg.steamID }
+	const user: USR.GuiOrChatUserId = { steamId: msg.steamID }
 	switch (cmd) {
 		case 'startVote': {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
@@ -228,8 +232,8 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 			if (statusRes.code === 'err:rcon') return
 			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
 			const currentMatch = MatchHistory.getCurrentMatch()
-			if (currentMatch && M.areLayerIdsCompatible(statusRes.data.currentLayer.id, currentMatch.layerId)) {
-				const currentLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentMatch.layerId))
+			if (currentMatch && L.areLayersCompatible(statusRes.data.currentLayer, currentMatch.layerId)) {
+				const currentLayer = L.toLayer(currentMatch.layerId)
 				if (currentLayer.Gamemode === 'FRAAS') await rcon.setFogOfWar(ctx, 'off')
 			}
 		})
@@ -279,13 +283,13 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 		if (statusRes.code !== 'ok') return statusRes
 		const res: SM.ServerStatusWithCurrentMatchRes = { code: 'ok' as const, data: { ...statusRes.data } }
 		const currentMatch = MatchHistory.getCurrentMatch()
-		if (currentMatch && M.areLayerIdsCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
+		if (currentMatch && L.areLayersCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
 			res.data.currentMatchId = currentMatch.historyEntryId
 		}
 		return res
 	}, { defaultTTL: 5000 })
 
-	C.getSpan()!.setStatus({ code: Otel.SpanStatusCode.OK })
+	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
 async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
@@ -303,7 +307,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 				}
 
 				if (state.bufferedNextMatch) {
-					newEntry.layerId = M.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
+					newEntry.layerId = LL.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
 					newEntry.lqItemId = state.bufferedNextMatch.layerListItem.itemId
 					newEntry.layerVote = state.bufferedNextMatch.layerListItem.vote
 					newEntry.setByType = state.bufferedNextMatch.layerListItem.source.type
@@ -333,7 +337,43 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 		case 'ROUND_ENDED': {
 			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
-			await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+			// -------- use debug ticketOutcome if one was set --------
+			if (state.debug__ticketOutcome) {
+				let winner: SM.TeamId | null
+				let loser: SM.TeamId | null
+				if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
+					winner = null
+					loser = null
+				} else {
+					winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
+					loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
+				}
+				const partial = L.toLayer(statusRes.data.currentLayer)
+				const teams: SM.SquadOutcomeTeam[] = [
+					{
+						faction: partial.Faction_1!,
+						unit: partial.Unit_1!,
+						team: 1,
+						tickets: state.debug__ticketOutcome.team1,
+					},
+					{
+						faction: partial.Faction_2!,
+						unit: partial.Unit_2!,
+						team: 2,
+						tickets: state.debug__ticketOutcome.team2,
+					},
+				]
+				const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
+				const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
+				event = {
+					...event,
+					loser: loserTeam,
+					winner: winnerTeam,
+				}
+				delete state.debug__ticketOutcome
+			}
+			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+			return res
 			break
 		}
 		default:
@@ -341,7 +381,7 @@ async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
 	}
 }
 
-export function bufferNextMatchLQItem(item: M.LayerListItem) {
+export function bufferNextMatchLQItem(item: LL.LayerListItem) {
 	state.bufferedNextMatch = { layerListItem: item }
 }
 

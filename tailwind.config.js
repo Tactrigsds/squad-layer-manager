@@ -53,6 +53,10 @@ export default {
 					DEFAULT: colors.yellow[800],
 					foreground: colors.yellow[50],
 				},
+				warning: {
+					DEFAULT: 'hsl(var(--warning))',
+					foreground: 'hsl(var(--warning-foreground))',
+				},
 				added: {
 					DEFAULT: colors.green[800],
 					foreground: colors.green[50],

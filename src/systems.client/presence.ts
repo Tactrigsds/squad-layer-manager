@@ -1,11 +1,11 @@
-import * as M from '@/models'
+import * as USR from '@/models/users.models'
 import * as PartsSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
 import { bind } from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import * as Rx from 'rxjs'
 
-export const userPresenceUpdate$ = new Rx.Observable<M.UserPresenceStateUpdate>((s) => {
+export const userPresenceUpdate$ = new Rx.Observable<USR.UserPresenceStateUpdate>((s) => {
 	const sub = trpc.layerQueue.watchUserPresence.subscribe(undefined, {
 		onData: (event) => {
 			switch (event.code) {
@@ -29,5 +29,5 @@ export const userPresenceUpdate$ = new Rx.Observable<M.UserPresenceStateUpdate>(
 }).pipe(Rx.share())
 userPresenceUpdate$.subscribe()
 
-const [userPresenceChange$, setUserPresence] = createSignal<M.UserPresenceState | null>()
-export const [useUserPresenceState, userPresenceState$] = bind<M.UserPresenceState | null>(userPresenceChange$, null)
+const [userPresenceChange$, setUserPresence] = createSignal<USR.UserPresenceState | null>()
+export const [useUserPresenceState, userPresenceState$] = bind<USR.UserPresenceState | null>(userPresenceChange$, null)

@@ -1,0 +1,1 @@
+ALTER TABLE `balanceTriggerEvents` RENAME COLUMN `version` TO `triggerVersion`;

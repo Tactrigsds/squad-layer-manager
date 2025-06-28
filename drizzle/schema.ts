@@ -1,82 +1,9 @@
+import { assertNever } from '@/lib/type-guards'
+import * as LC from '@/models/layer-columns'
+import * as ExtraColumns from '@/server/systems/extra-column-config'
 import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
-
-export const layers = mysqlTable(
-	'layers',
-	{
-		id: varchar('id', { length: 64 }).primaryKey().notNull(),
-
-		Map: varchar('Map', { length: 255 }).notNull(),
-		Layer: varchar('Layer', { length: 255 }).notNull(),
-		Size: varchar('Size', { length: 255 }).notNull(),
-		Gamemode: varchar('Gamemode', { length: 255 }).notNull(),
-		LayerVersion: varchar('LayerVersion', { length: 255 }),
-
-		Faction_1: varchar('Faction_1', { length: 255 }).notNull(),
-		Unit_1: varchar('Unit_1', { length: 255 }).notNull(),
-		Alliance_1: varchar('Alliance_1', { length: 255 }).notNull(),
-
-		Faction_2: varchar('Faction_2', { length: 255 }).notNull(),
-		Unit_2: varchar('Unit_2', { length: 255 }).notNull(),
-		Alliance_2: varchar('Alliance_2', { length: 255 }).notNull(),
-
-		Logistics_1: float('Logistics_1').default(NaN),
-		Transportation_1: float('Transportation_1').default(NaN),
-		'Anti-Infantry_1': float('Anti-Infantry_1').default(NaN),
-		Armor_1: float('Armor_1').default(NaN),
-		ZERO_Score_1: float('ZERO_Score_1').default(NaN),
-		Logistics_2: float('Logistics_2').default(NaN),
-		Transportation_2: float('Transportation_2').default(NaN),
-		'Anti-Infantry_2': float('Anti-Infantry_2').default(NaN),
-		Armor_2: float('Armor_2').default(NaN),
-		ZERO_Score_2: float('ZERO_Score_2').default(NaN),
-		Balance_Differential: float('Balance_Differential').default(NaN),
-		Asymmetry_Score: float('Asymmetry_Score').default(NaN),
-		Logistics_Diff: float('Logistics_Diff').default(NaN),
-		Transportation_Diff: float('Transportation_Diff').default(NaN),
-		'Anti-Infantry_Diff': float('Anti-Infantry_Diff').default(NaN),
-		Armor_Diff: float('Armor_Diff').default(NaN),
-		ZERO_Score_Diff: float('ZERO_Score_Diff').default(NaN),
-		Z_Pool: boolean('Z_Pool').notNull().default(false),
-		Scored: boolean('Scored').notNull().default(false),
-	},
-	(layers) => {
-		return {
-			mapIndex: index('mapIndex').on(layers.Map),
-			layerIndex: index('layerIndex').on(layers.Layer),
-			sizeIndex: index('sizeIndex').on(layers.Size),
-			gamemodeIndex: index('gamemodeIndex').on(layers.Gamemode),
-			layerVersionIndex: index('layerVersionIndex').on(layers.LayerVersion),
-			faction1Index: index('faction1Index').on(layers.Faction_1),
-			faction2Index: index('faction2Index').on(layers.Faction_2),
-			unit1Index: index('unit1Index').on(layers.Unit_1),
-			unit2Index: index('unit2Index').on(layers.Unit_2),
-			alliance1Index: index('alliance1Index').on(layers.Alliance_1),
-			alliance2Index: index('alliance2Index').on(layers.Alliance_2),
-			logistics1Index: index('logistics1Index').on(layers.Logistics_1),
-			transportation1Index: index('transportation1Index').on(layers.Transportation_1),
-			antiInfantry1Index: index('antiInfantry1Index').on(layers['Anti-Infantry_1']),
-			armor1Index: index('armor1Index').on(layers.Armor_1),
-			zeroScore1Index: index('zeroScore1Index').on(layers.ZERO_Score_1),
-			logistics2Index: index('logistics2Index').on(layers.Logistics_2),
-			transportation2Index: index('transportation2Index').on(layers.Transportation_2),
-			antiInfantry2Index: index('antiInfantry2Index').on(layers['Anti-Infantry_2']),
-			armor2Index: index('armor2Index').on(layers.Armor_2),
-			zeroScore2Index: index('zeroScore2Index').on(layers.ZERO_Score_2),
-			balanceDifferentialIndex: index('balanceDifferentialIndex').on(
-				layers.Balance_Differential,
-			),
-			asymmetryScoreIndex: index('asymmetryScoreIndex').on(layers['Asymmetry_Score']),
-			logisticsDiffIndex: index('logisticsDiffIndex').on(layers.Logistics_Diff),
-			transportationDiffIndex: index('transportationDiffIndex').on(layers.Transportation_Diff),
-			antiInfantryDiffIndex: index('antiInfantryDiffIndex').on(layers['Anti-Infantry_Diff']),
-			armorDiffIndex: index('armorDiffIndex').on(layers.Armor_Diff),
-			zeroScoreDiffIndex: index('zeroScoreDiffIndex').on(layers.ZERO_Score_Diff),
-			Z_PoolIndex: index('Z_PoolIndex').on(layers.Z_Pool),
-			Scored: index('ScoredIndex').on(layers.Scored),
-		}
-	},
-)
+import { z } from 'zod'
 
 export const matchHistory = mysqlTable(
 	'matchHistory',
@@ -108,6 +35,22 @@ export const matchHistory = mysqlTable(
 		endTimeIndex: index('endTimeIndex').on(table.endTime),
 		userIndex: index('userIndex').on(table.setByUserId),
 	}),
+)
+
+export const TRIGGER_LEVEL = z.enum(['info', 'warn', 'violation'])
+export const balanceTriggerEvents = mysqlTable(
+	'balanceTriggerEvents',
+	{
+		id: int('id').primaryKey().autoincrement(),
+		triggerId: varchar('triggerId', { length: 64 }).notNull(),
+		triggerVersion: int('triggerVersion').notNull(),
+		matchTriggeredId: int('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
+		// the generic form of the message
+		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
+		level: mysqlEnum(TRIGGER_LEVEL.options).notNull(),
+		input: json('input').notNull(),
+		evaulationResult: json('evaulationResult').notNull(),
+	},
 )
 
 export const filters = mysqlTable('filters', {
@@ -206,3 +149,72 @@ export const genLayerWeights = mysqlTable(
 		valueIndex: index('valueIndex').on(table.value),
 	}),
 )
+
+export const layers = mysqlTable(
+	'layers',
+	{
+		id: varchar('id', { length: 64 }).primaryKey().notNull(),
+
+		Map: varchar('Map', { length: 255 }).notNull(),
+		Layer: varchar('Layer', { length: 255 }).notNull(),
+		Size: varchar('Size', { length: 255 }).notNull(),
+		Gamemode: varchar('Gamemode', { length: 255 }).notNull(),
+		LayerVersion: varchar('LayerVersion', { length: 255 }),
+
+		Faction_1: varchar('Faction_1', { length: 255 }).notNull(),
+		Unit_1: varchar('Unit_1', { length: 255 }).notNull(),
+		Alliance_1: varchar('Alliance_1', { length: 255 }).notNull(),
+
+		Faction_2: varchar('Faction_2', { length: 255 }).notNull(),
+		Unit_2: varchar('Unit_2', { length: 255 }).notNull(),
+		Alliance_2: varchar('Alliance_2', { length: 255 }).notNull(),
+	},
+	(layers) => {
+		return {
+			mapIndex: index('mapIndex').on(layers.Map),
+			layerIndex: index('layerIndex').on(layers.Layer),
+			sizeIndex: index('sizeIndex').on(layers.Size),
+			gamemodeIndex: index('gamemodeIndex').on(layers.Gamemode),
+			layerVersionIndex: index('layerVersionIndex').on(layers.LayerVersion),
+			faction1Index: index('faction1Index').on(layers.Faction_1),
+			faction2Index: index('faction2Index').on(layers.Faction_2),
+			unit1Index: index('unit1Index').on(layers.Unit_1),
+			unit2Index: index('unit2Index').on(layers.Unit_2),
+			alliance1Index: index('alliance1Index').on(layers.Alliance_1),
+			alliance2Index: index('alliance2Index').on(layers.Alliance_2),
+		}
+	},
+)
+
+export let layersExtra!: ReturnType<typeof getExtraLayerColumnsSchema>
+export function setup() {
+	layersExtra = getExtraLayerColumnsSchema(ExtraColumns.EXTRA_COLS_CONFIG)
+}
+
+function getExtraLayerColumnsSchema(config: LC.ExtraColumnsConfig) {
+	const columns: Record<string, any> = {
+		id: varchar('id', { length: 64 }).primaryKey().notNull(),
+	}
+	for (const c of config.columns) {
+		switch (c.type) {
+			case 'string':
+				columns[c.name] = varchar(c.name, { length: c.length }).notNull()
+				break
+			case 'float':
+				columns[c.name] = float(c.name).notNull()
+				break
+			case 'integer':
+				columns[c.name] = int(c.name).notNull()
+				break
+			case 'boolean':
+				columns[c.name] = boolean(c.name).notNull()
+				break
+			default:
+				assertNever(c)
+		}
+	}
+	return mysqlTable('layersExtra', columns, (table) => (Object.fromEntries(config.columns.map(cols => {
+		const indexName = cols.name + 'Index'
+		return [indexName, index(indexName).on(table[cols.name])]
+	}))))
+}

@@ -1,11 +1,11 @@
 import { AsyncResource, sleep } from '@/lib/async'
-import * as M from '@/models'
+import * as L from '@/models/layer'
+import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Subject } from 'rxjs'
 import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
-import * as SM from './squad-models'
 
 export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | string | string[]
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase)
@@ -56,7 +56,7 @@ export default class SquadRcon {
 		if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
 		const layer = match[2]
 		const factions = match[3]
-		return { code: 'ok' as const, layer: M.parseRawLayerText(`${layer} ${factions}`) }
+		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
 	private async getNextLayer(ctx: C.Log) {
@@ -68,7 +68,7 @@ export default class SquadRcon {
 		const layer = match[2]
 		const factions = match[3]
 		if (!layer || !factions) return { code: 'ok' as const, layer: null }
-		return { code: 'ok' as const, layer: M.parseRawLayerText(`${layer} ${factions}`) }
+		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
 	async getPlayer(ctx: C.Log, anyID: string) {
@@ -218,21 +218,21 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: C.Log, id: M.LayerId) => {
-		const cmd = M.getSetNextLayerCommandFromId(id)
+	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: C.Log, idOrLayer: L.LayerId | L.UnvalidatedLayer) => {
+		const cmd = L.getAdminSetNextLayerCommand(idOrLayer)
 		await this.core.execute(ctx, cmd)
 		this.serverStatus.invalidate(ctx)
 		const newStatus = (await this.serverStatus.get(ctx)).value
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
-		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${id}, received undefined`)
+		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${idOrLayer}, received undefined`)
 
-		if (newStatus.data.nextLayer && !M.areLayerIdsCompatible(id, newStatus.data.nextLayer.id)) {
+		if (newStatus.data.nextLayer && !L.areLayersCompatible(idOrLayer, newStatus.data.nextLayer)) {
 			return {
 				code: 'err:unable-to-set-next-layer' as const,
 				unexpectedLayerId: newStatus.data.nextLayer.id,
-				msg: `Failed to set next layer. Expected ${id}, received ${newStatus.data.nextLayer.id}`,
+				msg: `Failed to set next layer. Expected ${idOrLayer}, received ${newStatus.data.nextLayer}`,
 			}
 		}
 		return { code: 'ok' as const }
@@ -278,7 +278,7 @@ export default class SquadRcon {
 
 		const serverStatus: SM.ServerStatus = {
 			name: rawInfo.ServerName_s,
-			currentLayer: currentLayerRes.layer,
+			currentLayer: currentLayerRes.layer!,
 			nextLayer: nextLayerRes.layer,
 			maxPlayerCount: rawInfo.MaxPlayers,
 			playerCount: rawInfo.PlayerCount_I,

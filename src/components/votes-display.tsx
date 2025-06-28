@@ -1,17 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as V from '@/models/vote.models'
 import { useSquadServerStatus } from '@/systems.client/squad-server.client'
 
 type VoteTallyProps = {
-	voteState: M.VoteStateWithVoteData
+	voteState: V.VoteStateWithVoteData
 	playerCount: number
 }
 
 export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyProps) {
-	const tally = M.tallyVotes(voteState, playerCount)
+	const tally = V.tallyVotes(voteState, playerCount)
 	const options = Array.from(tally.totals)
 		.map(([layerId, voteCount]) => {
 			const index = voteState.choices.findIndex((choice) => choice === layerId)

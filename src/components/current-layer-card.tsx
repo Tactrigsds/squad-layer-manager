@@ -7,8 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
-import { assertNever } from '@/lib/typeGuards.ts'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards.ts'
+import * as L from '@/models/layer'
 import * as RBAC from '@/rbac.models'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -57,10 +57,10 @@ export default function CurrentLayerCard() {
 
 	if (serverStatusRes.code !== 'ok') return null
 	const serverStatus = serverStatusRes.data
-	const currentLayerId = (currentMatch?.layerId && M.areLayerIdsCompatible(currentMatch.layerId, serverStatus.currentLayer.id))
+	const currentLayerId = (currentMatch?.layerId && L.areLayersCompatible(currentMatch.layerId, serverStatus.currentLayer.id))
 		? currentMatch.layerId
 		: serverStatus.currentLayer.id
-	const layerDetails = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentLayerId))
+	const layerDetails = L.toLayer(currentLayerId)
 	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, currentMatch?.ordinal, false)
 	const isEmpty = serverStatus.playerCount === 0
 

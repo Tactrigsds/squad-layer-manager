@@ -1,4 +1,4 @@
-import * as M from '@/models.ts'
+import * as L from '@/models/layer'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
@@ -42,7 +42,7 @@ test('Rcon should be connected', () => {
 
 test('can set next layer', async () => {
 	const ctx = C.includeLogProperties(baseCtx, { test: 'can set next layer' })
-	const layer1Id = M.getLayerId({
+	const layer1Id = L.getKnownLayerId({
 		Gamemode: 'RAAS',
 		Map: 'Fallujah',
 		LayerVersion: 'V1',
@@ -50,7 +50,7 @@ test('can set next layer', async () => {
 		Faction_2: 'USA',
 		Unit_1: 'CombinedArms',
 		Unit_2: 'CombinedArms',
-	})
+	})!
 	// make sure currently set next layer is not the same as the one we are going to set
 	await squadRcon.setNextLayer(ctx, layer1Id)
 
@@ -59,11 +59,11 @@ test('can set next layer', async () => {
 	if (status1.code !== 'ok') throw new Error('Failed to get server status')
 	const nextLayer1 = status1.data.nextLayer
 	expect(nextLayer1).toBeDefined()
-	if (nextLayer1!.code === 'raw') {
+	if (L.isRawLayer(nextLayer1!)) {
 		throw new Error('nextLayer1 is unknown')
 	}
 	expect(nextLayer1!.id).toBe(layer1Id)
-	const layer2Id = M.getLayerId({
+	const layer2Id = L.getKnownLayerId({
 		Gamemode: 'RAAS',
 		Map: 'GooseBay',
 		LayerVersion: 'V1',
@@ -71,7 +71,7 @@ test('can set next layer', async () => {
 		Unit_1: 'CombinedArms',
 		Faction_2: 'RGF',
 		Unit_2: 'CombinedArms',
-	})
+	})!
 	await squadRcon.setNextLayer(ctx, layer2Id)
 	const status2 = (await squadRcon.serverStatus.get(ctx)).value
 	expect(status2.code).toBe('ok')
@@ -79,7 +79,7 @@ test('can set next layer', async () => {
 	const nextLayer2 = status2.data.nextLayer
 	expect(nextLayer2).toBeDefined()
 
-	if (nextLayer2!.code === 'raw') {
+	if (L.isRawLayer(nextLayer2!)) {
 		throw new Error('nextLayer2 is unknown')
 	}
 	expect(nextLayer2!.id).toBe(layer2Id)

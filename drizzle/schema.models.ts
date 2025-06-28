@@ -16,7 +16,10 @@ export type NewServer = typeof Schema.servers.$inferInsert
 
 export type MatchHistory = typeof Schema.matchHistory.$inferSelect
 export type NewMatchHistory = typeof Schema.matchHistory.$inferInsert
+export type BalanceTriggerEvent = typeof Schema.balanceTriggerEvents.$inferSelect
+export type NewBalanceTriggerEvent = typeof Schema.balanceTriggerEvents.$inferInsert
 
+export const TRIGGER_LEVEL = Schema.TRIGGER_LEVEL
 export const MINI_LAYER_SELECT = {
 	id: Schema.layers.id,
 	Map: Schema.layers.Map,

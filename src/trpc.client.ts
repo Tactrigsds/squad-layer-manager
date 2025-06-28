@@ -9,6 +9,7 @@ import * as AR from '@/app-routes'
 import type { AppRouter } from '@/server/router'
 import { QueryClient } from '@tanstack/react-query'
 import { atom, getDefaultStore } from 'jotai'
+import { sleep } from './lib/async'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
@@ -49,6 +50,8 @@ const link = wsLink({
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
 			if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
+				await sleep(1000)
+				globalToast$.next({ variant: 'destructive', title: 'SLM is being upgraded, window will refresh shortly...' })
 				const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
 				const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
 				console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)

@@ -1,11 +1,13 @@
-import * as SM from '@/lib/rcon/squad-models'
-import { assertNever } from '@/lib/typeGuards'
+import * as Arr from '@/lib/array'
+import { assertNever } from '@/lib/type-guards'
 import { Parts } from '@/lib/types'
-import * as M from '@/models'
+import * as LQY from '@/models/layer-queries.models'
+import * as MH from '@/models/match-history.models'
+import * as USR from '@/models/users.models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = M.UserPart & M.LayerStatusPart & SM.MatchHistoryPart
+export type ClientParts = USR.UserPart & LQY.LayerStatusPart & MH.MatchHistoryPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
@@ -18,22 +20,17 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 				set((draft) => {
 					switch (key) {
 						case 'users': {
-							for (const user of entity as M.User[]) {
-								const existingIdx = draft.users.findIndex((u) => u.discordId === user.discordId)
-								if (existingIdx === -1) {
-									draft.users.push(user)
-								} else {
-									draft.users[existingIdx] = user
-								}
+							for (const user of entity as USR.User[]) {
+								Arr.upsertOn(draft.users, user, 'discordId')
 							}
 							break
 						}
 						case 'layerStatuses': {
-							draft.layerStatuses = entity as M.LayerStatuses
+							draft.layerStatuses = entity as LQY.LayerStatuses
 							break
 						}
 						case 'matchHistory': {
-							const matchHistory = entity as SM.MatchHistoryPart['matchHistory']
+							const matchHistory = entity as MH.MatchHistoryPart['matchHistory']
 							for (const entry of matchHistory.values()) {
 								draft.matchHistory.set(entry.historyEntryId, entry)
 							}

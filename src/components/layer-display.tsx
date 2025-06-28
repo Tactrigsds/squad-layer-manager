@@ -1,11 +1,14 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
-import { isNullOrUndef } from '@/lib/typeGuards.ts'
+import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as M from '@/models'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models.ts'
+import * as LQY from '@/models/layer-queries.models.ts'
+import * as SS from '@/models/server-state.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import { useLayerStatuses } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -16,18 +19,18 @@ import { ConstraintViolationDisplay } from './constraint-violation-display.tsx'
 
 export default function LayerDisplay(
 	props: {
-		layerId: M.LayerId
+		layerId: L.LayerId
 		itemId?: string
 		historyEntryId?: number
 		isVoteChoice?: boolean
 		badges?: React.ReactNode[]
 		teamParity?: number
-		backfillLayerId?: M.LayerId
+		backfillLayerId?: L.LayerId
 	},
 ) {
 	const layerStatusesRes = useLayerStatuses({ enabled: !!props.itemId })
 	const badges: React.ReactNode[] = []
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => M.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 	const allViolationDescriptors = layerStatusesRes.data?.violationDescriptors
 	// violations that this item has caused for the hovered item
@@ -38,21 +41,12 @@ export default function LayerDisplay(
 		})) || undefined
 	const localViolationDescriptors = (props.itemId && hoveredConstraintItemId === props.itemId && allViolationDescriptors?.get(props.itemId))
 		|| undefined
-	if (props.layerId?.startsWith('SM')) {
-		console.log({
-			layerId: props.layerId,
-			itemId: props.itemId,
-			hoveredItemId: hoveredConstraintItemId,
-			localViolationDescriptors,
-			hoveredReasonViolationDescriptors,
-			allViolationDescriptors,
-		})
-	}
+
 	if (props.badges) badges.push(...props.badges)
 
 	const blockingConstraintIds = props.itemId
 		? layerStatusesRes.data?.blocked.get(
-			M.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
+			LL.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
 		)
 		: undefined
 
@@ -70,7 +64,7 @@ export default function LayerDisplay(
 
 	if (layerStatusesRes.data && !!props.itemId) {
 		const exists = layerStatusesRes.data.present.has(props.layerId)
-		if (!exists && !M.isRawLayerId(props.layerId)) {
+		if (!exists && !L.isRawLayer(props.layerId)) {
 			badges.push(
 				<Tooltip key="layer doesn't exist">
 					<TooltipTrigger>
@@ -84,7 +78,7 @@ export default function LayerDisplay(
 		}
 	}
 
-	if (M.isRawLayerId(props.layerId)) {
+	if (L.isRawLayer(props.layerId)) {
 		badges.push(
 			<Tooltip key="is raw layer">
 				<TooltipTrigger>
@@ -118,29 +112,26 @@ export default function LayerDisplay(
 
 function ShortLayerName(
 	{ layerId, teamParity, backfillLayerId, violationDescriptors }: {
-		layerId: M.LayerId
+		layerId: L.LayerId
 		teamParity?: number
-		backfillLayerId?: M.LayerId
-		violationDescriptors?: M.ViolationDescriptor[]
+		backfillLayerId?: L.LayerId
+		violationDescriptors?: LQY.ViolationDescriptor[]
 	},
 ) {
 	const backfilledStyle = 'text-gray-500'
 
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	let partialLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(layerId))
+	let partialLayer = L.toLayer(layerId)
 	partialLayer = Obj.trimUndefined(partialLayer)
-	let backfillLayer: Partial<M.MiniLayer> | undefined
+	let backfillLayer: Partial<L.KnownLayer> | undefined
 	if (backfillLayerId) {
-		backfillLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(backfillLayerId))
+		backfillLayer = L.toLayer(backfillLayerId)
 	}
 
 	// Create violation field mapping
 	let violatedFields = new Set<string>()
 	if (violationDescriptors && !isNullOrUndef(teamParity)) {
-		violatedFields = M.resolveViolatedLayerProperties(violationDescriptors, teamParity)
-	}
-	if (violatedFields.size > 0) {
-		console.log({ violatedFields })
+		violatedFields = LQY.resolveViolatedLayerProperties(violationDescriptors, teamParity)
 	}
 
 	const combineStyles = (field: keyof typeof partialLayer) => {
@@ -159,7 +150,7 @@ function ShortLayerName(
 		return styles.length > 0 ? styles.join(' ') : undefined
 	}
 
-	const extraStyles: Record<keyof M.MiniLayer, string | undefined> = {
+	const extraStyles: Record<keyof L.KnownLayer, string | undefined> = {
 		id: undefined,
 		Layer: combineStyles('Layer'),
 		Size: combineStyles('Size'),
@@ -211,7 +202,7 @@ export function MapLayerDisplay(
 		className?: string
 	},
 ) {
-	const segments = M.parseLayerStringSegment(layer)
+	const segments = L.parseLayerStringSegment(layer)
 	if (!segments || segments.Gamemode === 'Training') return layer
 	return (
 		<span className={cn(backfilledStyles.Layer, className)}>

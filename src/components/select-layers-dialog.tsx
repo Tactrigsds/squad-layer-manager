@@ -1,16 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import * as M from '@/models'
-import * as QD from '@/systems.client/queue-dashboard'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models.ts'
+import * as LQY from '@/models/layer-queries.models.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import LayerFilterMenu, { useFilterMenuStore, useQueryContextWithMenuFilter } from './layer-filter-menu.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
-import { Checkbox } from './ui/checkbox.tsx'
-import { Label } from './ui/label.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
 type SelectMode = 'vote' | 'layers'
@@ -20,18 +17,18 @@ export default function SelectLayersDialog(props: {
 	description: React.ReactNode
 	pinMode?: SelectMode
 	children: React.ReactNode
-	selectQueueItems: (queueItems: M.NewLayerListItem[]) => void
-	defaultSelected?: M.LayerId[]
+	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
+	defaultSelected?: L.LayerId[]
 	selectingSingleLayerQueueItem?: boolean
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	layerQueryContext: M.LayerQueryContext
+	layerQueryContext: LQY.LayerQueryContext
 }) {
-	const defaultSelected: M.LayerId[] = props.defaultSelected ?? []
+	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 
 	const filterMenuStore = useFilterMenuStore()
 
-	const [selectedLayers, setSelectedLayers] = React.useState<M.LayerId[]>(defaultSelected)
+	const [selectedLayers, setSelectedLayers] = React.useState<L.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
 	function setAdditionType(newAdditionType: SelectMode) {
 		if (newAdditionType === 'vote') {
@@ -59,11 +56,11 @@ export default function SelectLayersDialog(props: {
 					({
 						layerId: layerId,
 						source: { type: 'manual', userId: user!.discordId },
-					}) satisfies M.NewLayerListItem,
+					}) satisfies LL.NewLayerListItem,
 			)
 			props.selectQueueItems(items)
 		} else if (selectMode === 'vote') {
-			const item: M.NewLayerListItem = {
+			const item: LL.NewLayerListItem = {
 				vote: {
 					choices: selectedLayers,
 					defaultChoice: selectedLayers[0],

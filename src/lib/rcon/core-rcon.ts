@@ -1,9 +1,9 @@
+import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Rx from 'rxjs'
-import * as SM from './squad-models.ts'
 
 export type DecodedPacket = {
 	type: number

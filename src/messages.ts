@@ -1,10 +1,15 @@
 import * as DH from '@/lib/display-helpers'
-import * as M from '@/models'
+import * as BAL from '@/models/balance-triggers.models'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
+import * as MH from '@/models/match-history.models'
+import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
-import { assertNever, isNullOrUndef } from './lib/typeGuards'
+import { assertNever, isNullOrUndef } from './lib/type-guards'
 import { CommandConfig } from './server/config'
 
 function formatInterval(interval: number) {
@@ -14,18 +19,18 @@ function formatInterval(interval: number) {
 
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
-	matchEnded(user: M.User) {
+	matchEnded(user: USR.User) {
 		return `${user.username} ended the match via squad-layer-manager`
 	},
 	queue: {},
 	vote: {
-		started(choices: M.LayerId[], defaultLayer: M.LayerId, duration: number) {
+		started(choices: L.LayerId[], defaultLayer: L.LayerId, duration: number) {
 			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
 				formatInterval(duration)
 			} to vote`
 			return fullText
 		},
-		winnerSelected(tally: M.Tally, winner: M.LayerId) {
+		winnerSelected(tally: V.Tally, winner: L.LayerId) {
 			const resultsText = Array.from(tally.totals.entries())
 				.sort((a, b) => b[1] - a[1])
 				.map(([choice, votes]) => {
@@ -37,13 +42,13 @@ export const BROADCASTS = {
 			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
 			return fullText
 		},
-		insufficientVotes: (defaultChoice: M.LayerId) => {
+		insufficientVotes: (defaultChoice: L.LayerId) => {
 			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
 		},
-		aborted(defaultLayer: M.LayerId) {
+		aborted(defaultLayer: L.LayerId) {
 			return `\nVote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
 		},
-		voteReminder(timeLeft: number, choices: M.LayerId[], finalReminder = false) {
+		voteReminder(timeLeft: number, choices: L.LayerId[], finalReminder = false) {
 			const durationStr = formatInterval(timeLeft)
 			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
 			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
@@ -57,10 +62,18 @@ export const WARNS = {
 	vote: {
 		noVoteInProgress: `No vote in progress`,
 		invalidChoice: `Invalid vote choice`,
-		voteCast: (choice: M.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}`,
+		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}`,
 		start: {
 			noVoteConfigured: `No vote is currently configured`,
 			voteAlreadyInProgress: `A vote is already in progress`,
+		},
+	},
+	balanceTrigger: {
+		showEvent(event: BAL.BalanceTriggerEvent, currentMatch: MH.MatchDetails, opts?: { repeat?: number }) {
+			return {
+				repeat: opts?.repeat ?? 1,
+				msg: GENERAL.balanceTrigger.showEvent(event, currentMatch),
+			}
 		},
 	},
 	queue: {
@@ -69,7 +82,7 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (layerQueue: M.LayerList, parts: M.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
+		showNext: (layerQueue: LL.LayerList, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -158,6 +171,40 @@ export const GENERAL = {
 	auth: {
 		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
 	},
+	balanceTrigger: {
+		showEvent(event: BAL.BalanceTriggerEvent, currentMatch: MH.MatchDetails) {
+			if (!BAL.isKnownEventInstance(event)) {
+				return (event.evaulationResult as BAL.EvaluationResultBase).genericMessage
+			}
+
+			const currentLayerPartial = L.toLayer(currentMatch.layerId)
+			let strongerTeamFormatted: string
+			let strongerTeamFaction: string | undefined
+			if (
+				!currentLayerPartial
+				|| !(strongerTeamFaction = currentLayerPartial[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, event.strongerTeam)])
+			) {
+				strongerTeamFormatted = DH.toFormattedNormalizedTeam(event.strongerTeam)
+			} else {
+				strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(current ${strongerTeamFaction})`
+			}
+
+			switch (event.triggerId) {
+				case '150x2': {
+					const ticketDiffs = event.input.map(match => {
+						const outcome = MH.getTeamNormalizedOutcome(match)
+						// should be impossible, we'll just return something benign
+						if (outcome.type === 'draw') return 0
+
+						return `${outcome.teamATickets}:${outcome.teamBTickets}`
+					}).join(', ')
+					return `${strongerTeamFormatted} has won the last two matches by more than 150+ tickets (${ticketDiffs})`
+				}
+				default:
+					assertNever(event.triggerId)
+			}
+		},
+	},
 }
 
 type WarnNode = {
@@ -169,7 +216,7 @@ type MessageNode = {
 	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }
 
-function voteChoicesLines(choices: M.LayerId[], defaultLayer: M.LayerId, you?: 1 | 2) {
+function voteChoicesLines(choices: L.LayerId[], defaultLayer: L.LayerId, you?: 1 | 2) {
 	return choices.map((c, index) => {
 		const isDefault = c === defaultLayer
 		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you)} ${isDefault ? '\n(Default)' : ''}`

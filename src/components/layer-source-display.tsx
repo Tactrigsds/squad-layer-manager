@@ -1,10 +1,10 @@
 import { Badge } from '@/components/ui/badge.tsx'
 import * as Text from '@/lib/text'
-import { assertNever } from '@/lib/typeGuards.ts'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as LL from '@/models/layer-list.models'
 import * as PartsSys from '@/systems.client/parts.ts'
 
-export default function LayerSourceDisplay(props: { source: M.LayerSource }) {
+export default function LayerSourceDisplay(props: { source: LL.LayerSource }) {
 	switch (props.source.type) {
 		case 'gameserver':
 			return <Badge variant="outline">Game Server</Badge>

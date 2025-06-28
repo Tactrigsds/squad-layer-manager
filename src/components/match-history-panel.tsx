@@ -5,15 +5,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from '@/hooks/use-toast'
 import * as Arr from '@/lib/array'
 import { getTeamsDisplay, teamColors } from '@/lib/display-helpers-teams'
-import * as SM from '@/lib/rcon/squad-models'
+import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
-import * as M from '@/models'
+import { cn } from '@/lib/utils'
+import { GENERAL } from '@/messages'
+import * as BAL from '@/models/balance-triggers.models'
+import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
+import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
-
-import { cn } from '@/lib/utils'
 import * as dateFns from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
@@ -21,12 +24,14 @@ import React from 'react'
 import * as Zus from 'zustand'
 import { MapLayerDisplay } from './layer-display'
 import LayerSourceDisplay from './layer-source-display'
+import { Alert, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatches()
 	const allEntries = React.useMemo(() => [...history].reverse(), [history])
+	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 	const violationDescriptors = LayerQueriesClient.useLayerStatuses().data?.violationDescriptors
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
@@ -45,111 +50,45 @@ export default function MatchHistoryPanel() {
 	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
 	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
 
-	// -------- calculate streaks --------
-	let streaker: 'teamA' | 'teamB' | null = null
-	let streak = 0
-	// console.table(currentEntries.map(SM.matchHistoryEntryFromMatchDetails))
-	for (let i = 0; i < allEntries.length; i++) {
-		const entry = allEntries[i]
-		if (M.isHistoryLookbackExcludedLayer(entry.layerId)) break
-		if (entry.status === 'in-progress' && i === 0) continue
-		if (entry.status === 'in-progress') break
-		const outcomeNorm = SM.getTeamNormalizedOutcome(entry)
-		if (outcomeNorm.type === 'draw') break
-		if (!streaker) {
-			streaker = outcomeNorm.type
-		}
-		if (outcomeNorm.type !== streaker) {
-			break
-		}
-		streak++
-	}
+	const triggerAlerts: React.ReactNode[] = []
 
-	let streakerElt: React.ReactNode
-	if (!streaker) {
-		streakerElt = null
-	} else {
-		const streakerTitle = streaker === 'teamA' ? 'Team A' : 'Team B'
-		let streakerFaction: string
-		if (!currentMatch) streakerFaction = ''
-		else {
-			const layer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentMatch.layerId))
-			streakerFaction = layer[M.getTeamNormalizedFactionProp(currentMatch.ordinal, streaker === 'teamA' ? 'A' : 'B')] ?? 'Unknown'
-			streakerFaction = `(${streakerFaction})`
-		}
-		streakerElt = (
-			<>
-				<span className="text-right">Current Streak{'  '}:{' '}</span>
-				<span className="text-lg font-bold">
-					<span>
-						{streakerTitle}
-					</span>
-					{streakerFaction}
-				</span>
-				<span>
-					{streak} Game{streak > 1 ? 's' : ''}
-				</span>
-			</>
-		)
-	}
+	if (currentMatch) {
+		for (const eventId of historyState.activeTriggerEvents) {
+			const event = historyState.recentBalanceTriggerEvents.find(e => e.id === eventId)
+			if (!event) continue
 
-	// -------- calculate ticket differences --------
-	let ticketDiff = 0
-	let matchCount = 0
-
-	{
-		const fiveHoursAgo = new Date()
-		fiveHoursAgo.setTime(fiveHoursAgo.getTime() - 5 * 60 * 60 * 1000)
-
-		for (let i = 0; i < allEntries.length && matchCount < 4; i++) {
-			const entry = allEntries[i]
-			if (M.isHistoryLookbackExcludedLayer(entry.layerId)) break
-			if (entry.status === 'post-game' && entry.endTime < fiveHoursAgo) break
-			if (entry.status !== 'post-game') continue
-			const outcome = SM.getTeamNormalizedOutcome(entry)
-			if (outcome.type !== 'draw') {
-				ticketDiff += outcome.teamATickets - outcome.teamBTickets
+			let variant: 'default' | 'destructive' | 'info' | 'warning'
+			switch (event.level) {
+				case 'info':
+					variant = 'info'
+					break
+				case 'violation':
+					variant = 'destructive'
+					break
+				case 'warn':
+					variant = 'warning'
+					break
+				default:
+					assertNever(event.level)
 			}
-			matchCount++
+
+			console.log(variant)
+			triggerAlerts.push(
+				<Alert variant={variant} key={eventId}>
+					<AlertTitle>
+						{GENERAL.balanceTrigger.showEvent(event, currentMatch)}
+					</AlertTitle>
+				</Alert>,
+			)
 		}
-	}
-
-	let diffFor: React.ReactNode
-	if (ticketDiff > 0) {
-		diffFor = 'Team A'
-	} else if (ticketDiff < 0) {
-		diffFor = 'Team B'
-	} else {
-		diffFor = null
-	}
-	let ticketDiffElt: React.ReactNode = null
-	if (matchCount > 0) {
-		ticketDiffElt = (
-			<>
-				<span className="text-right">Last {matchCount} games ticket diff :{' '}</span>
-				<span className="text-lg font-bold">{diffFor}</span>
-				<span>{Math.abs(ticketDiff)} ticket{Math.abs(ticketDiff) === 1 ? '' : 's'}</span>
-			</>
-		)
-	}
-
-	let leftTeamLabel: string
-	let rightTeamLabel: string
-	if (globalSettings.displayTeamsNormalized) {
-		leftTeamLabel = 'Team A'
-		rightTeamLabel = 'Team B'
-	} else {
-		leftTeamLabel = 'Team 1'
-		rightTeamLabel = 'Team 2'
 	}
 
 	return (
 		<Card>
 			<CardHeader className="flex flex-row justify-between items-center">
 				<CardTitle>Match History</CardTitle>
-				<div className="grid grid-cols-[auto,auto,auto] gap-x-2">
-					{streakerElt}
-					{ticketDiffElt}
+				<div className="flex flex-col space-x-2">
+					{triggerAlerts}
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -159,9 +98,9 @@ export default function MatchHistoryPanel() {
 							<TableHead></TableHead>
 							<TableHead></TableHead>
 							<TableHead>Layer</TableHead>
-							<TableHead>{leftTeamLabel}</TableHead>
+							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
-							<TableHead>{rightTeamLabel}</TableHead>
+							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}</TableHead>
 							<TableHead>Set By</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -175,7 +114,7 @@ export default function MatchHistoryPanel() {
 							)) || undefined
 							let violatedProperties: Set<string> | undefined
 							if (entryDescriptors) {
-								violatedProperties = M.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
+								violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
 							}
 
 							const extraLayerStyles: Record<string, string> = {}
@@ -184,7 +123,7 @@ export default function MatchHistoryPanel() {
 									extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
 								}
 							}
-							const layer = M.getLayerPartial(M.getUnvalidatedLayerFromId(entry.layerId))
+							const layer = L.toLayer(entry.layerId)
 							let outcomeDisp: React.ReactNode
 							if (entry.status === 'in-progress') {
 								outcomeDisp = '-'
@@ -235,7 +174,7 @@ export default function MatchHistoryPanel() {
 								})
 							}
 							const copyAdminSetNextLayerCommand = () => {
-								const cmd = M.getSetNextLayerCommandFromId(entry.layerId)
+								const cmd = L.getAdminSetNextLayerCommand(entry.layerId)
 								navigator.clipboard.writeText(cmd)
 								toast({
 									title: 'Copied Admin Set Next Layer Command',
@@ -350,6 +289,10 @@ function formatTimeLeftWithZeros(timeLeft: number) {
 	const hours = duration.hours || 0
 	const minutes = duration.minutes || 0
 	const seconds = String(duration.seconds || 0).padStart(2, '0')
+
+	if (hours === 0) {
+		return `${String(minutes).padStart(2, '0')}:${seconds}`
+	}
 
 	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${seconds}`
 }

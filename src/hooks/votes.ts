@@ -1,11 +1,11 @@
-import * as M from '@/models.ts'
+import * as V from '@/models/vote.models'
 import * as PartSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
 import { bind } from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { map, Observable, share } from 'rxjs'
 
-const voteStateCold$ = new Observable<M.VoteStateUpdateOrInitial>((s) => {
+const voteStateCold$ = new Observable<V.VoteStateUpdateOrInitial>((s) => {
 	const sub = trpc.layerQueue.watchVoteStateUpdates.subscribe(undefined, {
 		onData: (update) => {
 			if (update.code === 'initial-state' && update.state) {
@@ -21,10 +21,10 @@ const voteStateCold$ = new Observable<M.VoteStateUpdateOrInitial>((s) => {
 	return () => sub.unsubscribe()
 }).pipe(share())
 
-export const [useVoteStateUpdate, voteStateUpdate$] = bind(voteStateCold$ as Observable<M.VoteStateUpdateOrInitialWithParts | null>, null)
+export const [useVoteStateUpdate, voteStateUpdate$] = bind(voteStateCold$ as Observable<V.VoteStateUpdateOrInitialWithParts | null>, null)
 export const [useVoteState, voteState$] = bind(
 	voteStateUpdate$.pipe(
-		map((stateOrUpdate): null | M.VoteState => {
+		map((stateOrUpdate): null | V.VoteState => {
 			if (!stateOrUpdate) return null
 			return stateOrUpdate.code === 'initial-state' ? stateOrUpdate.state : stateOrUpdate.update.state
 		}),

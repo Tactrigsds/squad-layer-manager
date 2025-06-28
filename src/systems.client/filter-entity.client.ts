@@ -1,6 +1,7 @@
 import * as MapUtils from '@/lib/map'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models.ts'
+import { assertNever } from '@/lib/type-guards'
+import * as F from '@/models/filter.models'
+import * as USR from '@/models/users.models'
 import { type WatchFiltersOutput } from '@/server/systems/filter-entity'
 import * as PartsSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
@@ -19,10 +20,10 @@ export function useFilterContributors(filterId: string) {
 	})
 }
 
-export const filterEntities = new Map<string, M.FilterEntity>()
+export const filterEntities = new Map<string, F.FilterEntity>()
 export const filterEntityChanged$ = new Rx.Subject<void>()
 
-export const filterMutation$ = new Rx.Observable<M.UserEntityMutation<M.FilterEntityId, M.FilterEntity>>((s) => {
+export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
 	const sub = trpc.filters.watchFilters.subscribe(undefined, {
 		onData: (_output) => {
 			const output = PartsSys.stripParts(_output) as WatchFiltersOutput

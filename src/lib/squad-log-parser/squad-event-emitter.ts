@@ -1,10 +1,10 @@
-import * as SME from '@/lib/rcon/squad-models.events'
-import * as SM from '@/lib/rcon/squad-models.ts'
+import * as SME from '@/models/squad-models.events'
+import * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 import { SftpTail, SftpTailOptions } from '../sftp-tail'
-import { assertNever } from '../typeGuards'
+import { assertNever } from '../type-guards'
 import * as SLE from './squad-log-events.models'
 
 type EventCtx = C.Log
@@ -50,7 +50,7 @@ export class SquadEventEmitter {
 				const prop = logEvt.action === 'won' ? 'roundWinner' : 'roundLoser'
 				this.state[prop] = {
 					faction: logEvt.faction,
-					subfaction: logEvt.subfaction,
+					unit: logEvt.unit,
 					team: logEvt.team,
 					tickets: logEvt.tickets,
 				}
@@ -104,7 +104,7 @@ export class SquadEventEmitter {
 							C.recordGenericError('Failed to parse log line: ' + parsedRes.error.message)
 							continue
 						}
-						ctx.log.info(parsedRes.data, 'parsed log line into log event %s', parsedRes.data.type)
+						ctx.log.debug(parsedRes.data, 'parsed log line into log event %s', parsedRes.data.type)
 						const event = this.squadLogEventToSquadEvent(ctx, parsedRes.data)
 						if (event) {
 							ctx.log.info(event, 'Emitting Squad Event: %s', event.type)

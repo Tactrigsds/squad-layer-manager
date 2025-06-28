@@ -8,10 +8,12 @@ import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
-import { useRefConstructor } from '@/lib/react'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
+import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 export type { PostProcessedLayer } from '@/server/systems/layer-queries'
 import { useLoggedInUser } from '@/systems.client/users.client'
@@ -31,10 +33,10 @@ import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 
 type ConstraintRowDetails = {
-	constraints: M.LayerQueryConstraint[]
+	constraints: LQY.LayerQueryConstraint[]
 	values: boolean[]
 }
-type RowData = M.Layer & M.LayerComposite & { 'constraints': ConstraintRowDetails }
+type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails }
 const columnHelper = createColumnHelper<RowData>()
 
 const formatFloat = (value: number) => {
@@ -44,11 +46,9 @@ const formatFloat = (value: number) => {
 	return formatted
 }
 const noSortCols = ['Layer', 'Map', 'Gamemode', 'LayerVersion', 'Faction1', 'SubFaction1', 'Faction2', 'SubFaction2']
-function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
-	return columnHelper.accessor(key, {
+function buildColumn(colDef: LC.ColumnDef) {
+	return columnHelper.accessor(colDef.name, {
 		header: ({ column }) => {
-			// @ts-expect-error idc
-			const label = M.COLUMN_LABELS[column.id] ?? column.id
 			const sort = column.getIsSorted()
 			return (
 				<Button
@@ -57,7 +57,7 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 					variant="ghost"
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
-					{label}
+					{colDef.displayName}
 					{!noSortCols.includes(column.id) && (
 						<>
 							{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
@@ -71,24 +71,20 @@ function buildColumn(key: M.LayerColumnKey | M.LayerCompositeKey) {
 		cell: (info) => {
 			const value = info.getValue()
 			if (value === null) return DH.NULL_DISPLAY
-			const type = M.COLUMN_KEY_TO_TYPE[key]
 
-			switch (type) {
+			switch (colDef.type) {
 				case 'float':
 					if (value === null || value === undefined) return '-'
-					return formatFloat(value as number)
+					return formatFloat(value as unknown as number)
 				case 'string':
 					return value ?? '-'
-				case 'collection':
-					if (!Array.isArray(value)) return '-'
-					return (value as string[]).filter((v) => !!v).join(', ')
 				case 'integer':
 					return value?.toString() ?? '-'
 				case 'boolean':
 					if (value === null || value === undefined) return '-'
 					return value ? 'True' : 'False'
 				default:
-					assertNever(type)
+					assertNever(colDef)
 			}
 		},
 	})
@@ -107,101 +103,78 @@ function Cell({ row }: { row: Row<RowData> }) {
 	)
 }
 
-const COL_DEFS: ColumnDef<RowData>[] = [
+function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
+	const colDefs: ColumnDef<RowData>[] = [
+		{
+			id: 'select',
+			header: ({ table }) => (
+				<Checkbox
+					checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
+					onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+					aria-label="Select all"
+				/>
+			),
+			cell: ({ row }) => <Cell row={row} />,
+			enableSorting: false,
+			enableHiding: false,
+		},
+	]
+
 	{
-		id: 'select',
-		header: ({ table }) => (
-			<Checkbox
-				checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
-				onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-				aria-label="Select all"
-			/>
-		),
-		cell: ({ row }) => <Cell row={row} />,
-		enableSorting: false,
+		const sortedColKeys = Object.keys(cfg.orderedColumns).sort((a, b) => {
+			let aIndex = cfg.orderedColumns.findIndex(c => c.name === a)
+			if (aIndex === -1) aIndex = cfg.orderedColumns.length
+			let bIndex = cfg.orderedColumns.findIndex(c => c.name === b)
+			if (bIndex === -1) bIndex = cfg.orderedColumns.length
+			return aIndex - bIndex
+		})
+
+		for (const columnKey of sortedColKeys) {
+			colDefs.push(buildColumn(LC.getColumnDef(columnKey, cfg)!))
+		}
+	}
+
+	const constraintsCol = columnHelper.accessor('constraints', {
+		header: '',
 		enableHiding: false,
-	},
-]
-
-const COLS_ORDER = [
-	'id',
-	'Layer',
-	'Map',
-	'Gamemode',
-	'LayerVersion',
-	'Faction_1',
-	'Unit_1',
-	'Faction_2',
-	'Unit_2',
-	'Balance_Differential',
-	'Asymmetry_Score',
-] as (M.LayerColumnKey | M.LayerCompositeKey)[]
-
-{
-	const sortedColKeys = [...M.COLUMN_KEYS_WITH_COMPUTED].sort((a, b) => {
-		let aIndex = COLS_ORDER.indexOf(a)
-		if (aIndex === -1) aIndex = COLS_ORDER.length
-		let bIndex = COLS_ORDER.indexOf(b)
-		if (bIndex === -1) bIndex = COLS_ORDER.length
-		return aIndex - bIndex
+		cell: info => {
+			const { values, constraints, violationDescriptors } = info.getValue() as {
+				constraints?: LQY.LayerQueryConstraint[]
+				values?: boolean[]
+				violationDescriptors?: LQY.ViolationDescriptor[]
+			}
+			if (!constraints || !values) return null
+			const nodes: React.ReactNode[] = []
+			for (let i = 0; i < constraints.length; i++) {
+				if (constraints[i].applyAs === 'where-condition' || values[i]) continue
+				nodes.push(
+					<div key={constraints[i].name ?? i}>
+						{constraints[i].name ?? 'Constraint ' + i}
+					</div>,
+				)
+			}
+			const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
+			return (
+				<ConstraintViolationDisplay
+					padEmpty={true}
+					violated={namedConstraints}
+					layerId={info.row.id}
+					violationDescriptors={violationDescriptors}
+				/>
+			)
+		},
 	})
 
-	for (const columnKey of sortedColKeys) {
-		// @ts-expect-error idk
-		COL_DEFS.push(buildColumn(columnKey))
-	}
-}
+	colDefs.push(constraintsCol as any)
 
-const constraintsCol = columnHelper.accessor('constraints', {
-	header: '',
-	enableHiding: false,
-	cell: info => {
-		const { values, constraints, violationDescriptors } = info.getValue() as {
-			constraints?: M.LayerQueryConstraint[]
-			values?: boolean[]
-			violationDescriptors?: M.ViolationDescriptor[]
-		}
-		if (!constraints || !values) return null
-		const nodes: React.ReactNode[] = []
-		for (let i = 0; i < constraints.length; i++) {
-			if (constraints[i].applyAs === 'where-condition' || values[i]) continue
-			nodes.push(
-				<div key={constraints[i].name ?? i}>
-					{constraints[i].name ?? 'Constraint ' + i}
-				</div>,
-			)
-		}
-		const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as M.NamedQueryConstraint[]
-		return (
-			<ConstraintViolationDisplay
-				padEmpty={true}
-				violated={namedConstraints}
-				layerId={info.row.id}
-				violationDescriptors={violationDescriptors}
-			/>
-		)
-	},
-})
-
-// @ts-expect-error idk
-COL_DEFS.push(constraintsCol)
-
-const DEFAULT_VISIBLE_COLUMNS = ['Layer', 'Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Balance_Differential', 'Asymmetry_Score'] as (
-	| M.LayerColumnKey
-	| M.LayerCompositeKey
-)[]
-
-const DEFAULT_SORT: M.LayersQueryInput['sort'] = {
-	type: 'column',
-	sortBy: 'Asymmetry_Score',
-	sortDirection: 'ASC',
+	return colDefs
 }
 
 export default function LayerTable(props: {
-	queryContext?: M.LayerQueryContext
+	queryContext?: LQY.LayerQueryContext
 
-	selected: M.LayerId[]
-	setSelected: React.Dispatch<React.SetStateAction<M.LayerId[]>>
+	selected: L.LayerId[]
+	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>
 	resetSelected?: () => void
 	enableForceSelect?: boolean
 
@@ -209,9 +182,8 @@ export default function LayerTable(props: {
 	setPageIndex: (num: number) => void
 
 	defaultPageSize?: number
-	defaultSortBy?: M.LayerColumnKey | M.LayerCompositeKey | 'random'
-	defaultSortDirection?: 'ASC' | 'DESC'
-	defaultColumns?: (M.LayerColumnKey | M.LayerCompositeKey)[]
+	defaultSort?: LQY.LayersQueryInput['sort']
+	defaultColumns?: string[]
 
 	maxSelected?: number
 
@@ -227,6 +199,7 @@ export default function LayerTable(props: {
 
 	const canToggleColumns = props.canToggleColumns ?? true
 	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
+	const cfg = ConfigClient.useEffectiveColConfig()
 
 	{
 		const setPageIndex = props.setPageIndex
@@ -245,10 +218,10 @@ export default function LayerTable(props: {
 	}
 
 	let defaultSortingState: SortingState = []
-	if (props.defaultSortBy && props.defaultSortBy !== 'random') {
+	if (props.defaultSort && props.defaultSort.type === 'column') {
 		defaultSortingState = [{
-			id: props.defaultSortBy,
-			desc: props.defaultSortDirection === 'DESC',
+			id: props.defaultSort.sortBy,
+			desc: props.defaultSort.sortDirection === 'DESC',
 		}]
 	}
 
@@ -262,7 +235,7 @@ export default function LayerTable(props: {
 		setRandomize(false)
 		props.setPageIndex(0)
 	}
-	const [_randomize, setRandomize] = useState<boolean>(props.defaultSortBy === 'random')
+	const [_randomize, setRandomize] = useState<boolean>(props.defaultSort?.type === 'random')
 	const randomize = !showSelectedLayers && _randomize
 	const [seed, setSeed] = useState<number>(generateSeed())
 	function generateSeed() {
@@ -278,14 +251,10 @@ export default function LayerTable(props: {
 			return !prev
 		})
 	}
-	const defaultVisibility = useRefConstructor(() => {
-		if (!props.defaultColumns) {
-			return Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, DEFAULT_VISIBLE_COLUMNS.includes(key)]))
-		}
-		return Object.fromEntries(M.COLUMN_KEYS_WITH_COMPUTED.map((key) => [key, props.defaultColumns!.includes(key)]))
-	})
 
-	const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultVisibility.current)
+	const [_columnVisibility, setColumnVisibility] = useState<VisibilityState | undefined>()
+	const defaultVisibility = React.useMemo(() => cfg ? LQY.getColVisibilityState(cfg) : undefined, [cfg])
+	const columnVisibility = _columnVisibility ?? defaultVisibility
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
 	const rawSetDialogRef = useRef<SetRawDialogHandle>(null)
@@ -298,7 +267,7 @@ export default function LayerTable(props: {
 
 	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
 	const now = Date.now()
-	const insertionTimes = useRef<Record<M.LayerId, number | undefined>>(Object.fromEntries(props.selected.map((id) => [id, now])))
+	const insertionTimes = useRef<Record<L.LayerId, number | undefined>>(Object.fromEntries(props.selected.map((id) => [id, now])))
 	const onSetRowSelection: OnChangeFn<RowSelectionState> = (updated) => {
 		props.setSelected((selectedIds) => {
 			let newValues: RowSelectionState
@@ -358,14 +327,14 @@ export default function LayerTable(props: {
 		setPageSize(newState.pageSize)
 	}
 
-	let sort: M.LayersQueryInput['sort'] = DEFAULT_SORT
+	let sort: LQY.LayersQueryInput['sort'] = LQY.DEFAULT_SORT
 	if (randomize) {
 		sort = { type: 'random', seed: seed! }
 	} else if (sortingState.length > 0) {
 		const { id, desc } = sortingState[0]
 		sort = {
 			type: 'column',
-			sortBy: id as (typeof M.COLUMN_KEYS)[number],
+			sortBy: id,
 			sortDirection: desc ? 'DESC' : 'ASC',
 		}
 	}
@@ -390,17 +359,20 @@ export default function LayerTable(props: {
 				)
 			) {
 				if (returnedIds.has(selectedId)) continue
-				const unvalidated = M.getUnvalidatedLayerFromId(selectedId)
-				if (unvalidated.code === 'parsed') {
+				const unvalidated = L.fromPossibleRawId(selectedId)
+				if (L.isKnownLayer(unvalidated)) {
 					// @ts-expect-error idc
-					_page.layers.push(unvalidated.layer)
+					_page.layers.push(unvalidated)
 				} else {
 					// @ts-expect-error idc
 					_page.layers.push({ ...(unvalidated.partialLayer ?? {}), id: unvalidated.id })
 				}
 			}
-			_page.layers.sort((a, b) => {
-				if (sort && sort.type === 'column') {
+			;(_page.layers as Record<string, any>[]).sort((a: any, b: any) => {
+				if (sort && sort.type === 'random') {
+					// For random sort just shuffle the entries
+					return Math.random() - 0.5
+				} else if (sort && sort.type === 'column') {
 					const column = sort.sortBy
 					const direction = sort.sortDirection === 'ASC' ? 1 : -1
 
@@ -409,9 +381,6 @@ export default function LayerTable(props: {
 					if (b[column] === null || b[column] === undefined) return -direction
 
 					return a[column] < b[column] ? -direction : direction
-				} else if (sort && sort.type === 'random') {
-					// For random sort just shuffle the entries
-					return Math.random() - 0.5
 				}
 				// Default sort by insertion time if no sort specified
 				return (insertionTimes.current[a.id] ?? now) - (insertionTimes.current[b.id] ?? now)
@@ -439,7 +408,7 @@ export default function LayerTable(props: {
 
 	const table = useReactTable({
 		data: page?.layers ?? [],
-		columns: COL_DEFS,
+		columns: React.useMemo(() => cfg ? buildColDefs(cfg) : [], [cfg]),
 		pageCount: page?.pageCount ?? -1,
 		state: {
 			sorting: sortingState,
@@ -452,7 +421,7 @@ export default function LayerTable(props: {
 		},
 		getRowId: (row) => row.id,
 		onSortingChange: setSorting,
-		onColumnVisibilityChange: setColumnVisibility,
+		onColumnVisibilityChange: setColumnVisibility as React.Dispatch<React.SetStateAction<VisibilityState>>,
 		onRowSelectionChange: onSetRowSelection,
 		onPaginationChange,
 		getCoreRowModel: getCoreRowModel(),
@@ -467,7 +436,7 @@ export default function LayerTable(props: {
 	const loggedInUser = useLoggedInUser()
 	const userCanForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
-	function getChosenRows(row: Row<M.Layer>) {
+	function getChosenRows(row: Row<L.KnownLayer>) {
 		if (!props.selected.includes(row.original.id)) {
 			return [row.original]
 		} else {
@@ -478,7 +447,7 @@ export default function LayerTable(props: {
 		}
 	}
 
-	function onCopyIdCommand(row: Row<M.Layer>) {
+	function onCopyIdCommand(row: Row<L.KnownLayer>) {
 		const chosenRows = getChosenRows(row)
 		let text = ''
 		for (const row of chosenRows) {
@@ -489,12 +458,12 @@ export default function LayerTable(props: {
 		toast({ description: 'Layer ID copied to clipboard' })
 	}
 
-	function onCopySetNextLayerCommand(row: Row<M.Layer>) {
+	function onCopySetNextLayerCommand(row: Row<L.KnownLayer>) {
 		const chosenRows = getChosenRows(row)
 		let text = ''
 		for (const row of chosenRows) {
 			if (text !== '') text += '\n'
-			text += M.getAdminSetNextLayerCommand(row)
+			text += L.getAdminSetNextLayerCommand(row)
 		}
 		navigator.clipboard.writeText(text)
 		toast({ description: 'Command copied to clipboard' })
@@ -721,30 +690,26 @@ type SetRawDialogHandle = {
 
 const SetRawLayerDialog = React.forwardRef<
 	SetRawDialogHandle,
-	{ open: boolean; setOpen: (update: (value: boolean) => boolean) => void; onSubmit: (layer: M.UnvalidatedMiniLayer[]) => void }
+	{ open: boolean; setOpen: (update: (value: boolean) => boolean) => void; onSubmit: (layer: L.UnvalidatedLayer[]) => void }
 >(function SetRawLayerDialog(props, ref) {
 	const inputRef = React.useRef<HTMLInputElement>(null)
-	const [validLayer, setValidLayer] = React.useState<M.UnvalidatedMiniLayer | null>(null)
-	const [validLayerDebounced, setValidLayerDebounced] = React.useState<M.UnvalidatedMiniLayer | null>(null)
+	const [validLayer, setValidLayer] = React.useState<L.UnvalidatedLayer | null>(null)
+	const [validLayerDebounced, setValidLayerDebounced] = React.useState<L.UnvalidatedLayer | null>(null)
 	const [multiSetLayerDialogOpen, setMultiSetLayerDialogOpen] = React.useState<boolean>(false)
 	const [layerFound, setLayerFound] = React.useState<boolean>(false)
 	const validLayerDebouncer = useDebounced({
-		defaultValue: () => null as null | M.UnvalidatedMiniLayer,
+		defaultValue: () => null as null | L.UnvalidatedLayer,
 		onChange: (v) => setValidLayerDebounced(v),
 		delay: 400,
 	})
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
-	React.useImperativeHandle(
-		ref,
-		() => ({
-			focus: () => {
-				inputRef.current?.focus()
-			},
-		}),
-		[],
-	)
+	React.useImperativeHandle(ref, () => ({
+		focus: () => {
+			inputRef.current?.focus()
+		},
+	}), [])
 
 	React.useLayoutEffect(() => {
 		if (layersKnownRes.data) {
@@ -757,7 +722,7 @@ const SetRawLayerDialog = React.forwardRef<
 
 	function setInputText(value: string) {
 		value = value.trim()
-		const layerRes = M.parseRawLayerText(value)
+		const layerRes = L.parseRawLayerText(value)
 		validLayerDebouncer.setValue(layerRes)
 		setValidLayer(layerRes)
 	}
@@ -821,15 +786,15 @@ function MultiLayerSetDialog({
 	open,
 	setOpen,
 }: {
-	onSubmit: (value: M.UnvalidatedMiniLayer[]) => void
+	onSubmit: (value: L.UnvalidatedLayer[]) => void
 	open: boolean
 	setOpen: (open: boolean) => void
 }) {
-	const [possibleLayers, setPossibleLayers] = useState([] as M.UnvalidatedMiniLayer[])
+	const [possibleLayers, setPossibleLayers] = useState([] as L.UnvalidatedLayer[])
 	function onTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
 		const text = e.target.value
 		const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
-		const possibleLayers = lines.map(line => M.parseRawLayerText(line.trim()))
+		const possibleLayers = lines.map(line => L.parseRawLayerText(line.trim())).filter(l => l !== null)
 		setPossibleLayers(possibleLayers)
 	}
 

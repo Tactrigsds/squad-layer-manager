@@ -36,3 +36,13 @@ export function union<T>(arr1: T[], arr2: T[]): T[] {
 export function includes(arr: unknown[], value: unknown): boolean {
 	return arr.includes(value)
 }
+
+export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void {
+	for (let i = 0; i < arr.length; i++) {
+		if (arr[i][key] === item[key]) {
+			arr[i] = item
+			return
+		}
+	}
+	arr.push(item)
+}

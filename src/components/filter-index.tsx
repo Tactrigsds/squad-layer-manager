@@ -1,7 +1,7 @@
 import * as AR from '@/app-routes.ts'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import * as Typography from '@/lib/typography'
-import * as M from '@/models'
+import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
@@ -30,7 +30,7 @@ export default function FiltersIndex() {
 					const user = PartsSys.findUser(entity.owner)
 					const onHover = () => {
 						LayerQueriesClient.prefetchLayersQuery(
-							LayerQueriesClient.getLayerQueryInput({ constraints: [M.getEditedFilterConstraint(entity.filter)] }),
+							LayerQueriesClient.getLayerQueryInput({ constraints: [LQY.getEditedFilterConstraint(entity.filter)] }),
 						)
 					}
 					return (

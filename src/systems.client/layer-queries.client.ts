@@ -1,7 +1,8 @@
 import { sleep } from '@/lib/async'
-import * as FB from '@/lib/filter-builders'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as FB from '@/models/filter-builders'
+import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as PartsSys from '@/systems.client/parts'
@@ -10,10 +11,9 @@ import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
-import { z } from 'zod'
 import * as Zus from 'zustand'
 
-export function useLayersQuery(input: M.LayersQueryInput, options?: { enabled?: boolean }) {
+export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
 	options ??= {}
 	return useQuery({
 		...options,
@@ -24,7 +24,7 @@ export function useLayersQuery(input: M.LayersQueryInput, options?: { enabled?: 
 	})
 }
 
-export function prefetchLayersQuery(input: M.LayersQueryInput) {
+export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	return reactQueryClient.prefetchQuery({
 		queryKey: ['layers', 'queryLayers', superjson.serialize(input)],
 		queryFn: () => trpc.layers.queryLayers.query(input),
@@ -32,14 +32,14 @@ export function prefetchLayersQuery(input: M.LayersQueryInput) {
 	})
 }
 
-export function getLayerQueryInput(queryContext: M.LayerQueryContext, opts?: {
-	selectedLayers?: M.LayerId[]
-	sort?: M.LayersQueryInput['sort']
+export function getLayerQueryInput(queryContext: LQY.LayerQueryContext, opts?: {
+	selectedLayers?: L.LayerId[]
+	sort?: LQY.LayersQueryInput['sort']
 	pageSize?: number
 	pageIndex?: number
-}): M.LayersQueryInput {
-	const sort = opts?.sort ?? M.DEFAULT_SORT
-	const pageSize = opts?.pageSize ?? M.DEFAULT_PAGE_SIZE
+}): LQY.LayersQueryInput {
+	const sort = opts?.sort ?? LQY.DEFAULT_SORT
+	const pageSize = opts?.pageSize ?? LQY.DEFAULT_PAGE_SIZE
 	const pageIndex = opts?.pageIndex
 	const selectedLayers = opts?.selectedLayers
 

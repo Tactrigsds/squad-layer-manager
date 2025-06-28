@@ -1,10 +1,7 @@
-import type * as SM from '@/lib/rcon/squad-models.ts'
-import * as M from '@/models.ts'
-import * as Parts from '@/systems.client/parts'
+import type * as SM from '@/models/squad.models'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
-import React from 'react'
 import * as Rx from 'rxjs'
 
 export const [useSquadServerStatus, squadServerStatus$] = ReactRx.bind<SM.ServerStatusWithCurrentMatchRes>(

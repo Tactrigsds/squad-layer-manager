@@ -99,8 +99,9 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<str
 	return output
 }
 
-export function isPartial(obj: object, target: object) {
+export function isPartial(obj: object, target: object, exclude?: string[]) {
 	for (const key of Object.keys(trimUndefined(obj))) {
+		if (exclude && exclude.includes(key)) continue
 		// @ts-expect-error idgaf
 		if (obj[key] !== target[key]) return false
 	}

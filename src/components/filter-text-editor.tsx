@@ -8,7 +8,7 @@ import React from 'react'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'
 import * as Typography from '@/lib/typography.ts'
-import * as M from '@/models.ts'
+import * as F from '@/models/filter.models'
 
 export type FilterTextEditorHandle = {
 	format: () => void
@@ -17,8 +17,8 @@ export type FilterTextEditorHandle = {
 
 type Editor = Ace.Ace.Editor
 export type FilterTextEditorProps = {
-	node: M.EditableFilterNode
-	setNode: (node: M.FilterNode) => void
+	node: F.EditableFilterNode
+	setNode: (node: F.FilterNode) => void
 }
 export function FilterTextEditor(props: FilterTextEditorProps, ref: React.ForwardedRef<FilterTextEditorHandle>) {
 	const { setNode } = props
@@ -46,13 +46,13 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 				return
 			}
 			editorValueObjRef.current = obj
-			const res = M.FilterNodeSchema.safeParse(obj)
+			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
 				errorViewRef.current!.setValue(stringifyCompact(res.error.issues))
 				return
 			}
-			if (!M.isBlockType(res.data.type)) {
-				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${M.BLOCK_TYPES.join(', ')})`))
+			if (!F.isBlockType(res.data.type)) {
+				errorViewRef.current!.setValue(stringifyCompact(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`))
 				return
 			}
 
@@ -97,7 +97,7 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 		})
 		editorRef.current = editor
 		errorViewRef.current = errorView
-		const initialRes = M.FilterNodeSchema.safeParse(props.node)
+		const initialRes = F.FilterNodeSchema.safeParse(props.node)
 		if (!initialRes.success) {
 			errorView.setValue(stringifyCompact(initialRes.error))
 		}

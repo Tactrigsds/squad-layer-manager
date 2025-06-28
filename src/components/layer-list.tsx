@@ -6,11 +6,12 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
+import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as M from '@/models'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -108,8 +109,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
-	const unvalidatedLayer = editedItem.layerId ? M.getUnvalidatedLayerFromId(editedItem.layerId) : undefined
-	const filterMenuStore = useFilterMenuStore(unvalidatedLayer ? M.getLayerPartial(unvalidatedLayer) : undefined)
+	const filterMenuStore = useFilterMenuStore(editedItem.layerId ? L.toLayer(editedItem.layerId) : undefined)
 
 	const canSubmitSetLayer = Zus.useStore(
 		editedItemStore,
@@ -127,7 +127,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	function submit() {
 		if (!canSubmit) return
 		props.onOpenChange(false)
-		const source: M.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
+		const source: LL.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
 		if (itemType === 'vote') {
 			const itemState = editedItemStore.getState()
 			const choices = editedVoteChoiceStore.getState().layerList.map(item => item.layerId!)
@@ -138,7 +138,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				props.itemStore.getState().setItem({ ...itemState.item, vote: undefined, layerId: choices[0], source })
 				return
 			}
-			const defaultChoice = choices.length > 0 ? choices[0] : M.DEFAULT_LAYER_ID
+			const defaultChoice = choices.length > 0 ? choices[0] : L.DEFAULT_LAYER_ID
 
 			// ensure that if this vote has already been decideed then we overwrite it when the choice is remove
 			let layerId: string | undefined
@@ -179,7 +179,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 									case 'vote': {
 										const newState = QD.getVoteChoiceStateFromItem(editedItemStore.getState())
 										if (editedItem.layerId) {
-											newState.layerList = [M.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
+											newState.layerList = [LL.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
 										} else {
 											newState.layerList = []
 										}
@@ -195,7 +195,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 												itemId: prev.itemId,
 												layerId: selectedLayerIds[0],
 												vote: undefined,
-											} satisfies M.LayerListItem
+											} satisfies LL.LayerListItem
 										})
 										break
 									}
@@ -266,7 +266,7 @@ export type QueueItemAction =
 	}
 	| {
 		code: 'edit'
-		item: M.LayerListItem
+		item: LL.LayerListItem
 	}
 	| {
 		code: 'delete'
@@ -274,11 +274,11 @@ export type QueueItemAction =
 	}
 	| {
 		code: 'add-after' | 'add-before'
-		items: M.LayerListItem[]
+		items: LL.LayerListItem[]
 		id?: string
 	}
 
-function getIndexFromQueueItemId(items: M.LayerListItem[], id: string | null) {
+function getIndexFromQueueItemId(items: LL.LayerListItem[], id: string | null) {
 	if (id === null) return -1
 	return items.findIndex((item) => item.itemId === id)
 }
@@ -306,7 +306,7 @@ function LayerListItem(props: QueueItemProps) {
 		_setDropdownOpen(update)
 	}
 	const baseBackfillLayerId = Zus.useStore(props.llStore, s => s.nextLayerBackfillId)
-	const backfillLayerId = index === 0 && baseBackfillLayerId && M.areLayerIdsCompatible(M.getActiveItemLayerId(item), baseBackfillLayerId)
+	const backfillLayerId = index === 0 && baseBackfillLayerId && L.areLayersCompatible(LL.getActiveItemLayerId(item), baseBackfillLayerId)
 		? baseBackfillLayerId
 		: undefined
 
@@ -337,13 +337,11 @@ function LayerListItem(props: QueueItemProps) {
 	const queueItemStyles =
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
 	const serverStatus = SquadServerClient.useSquadServerStatus()
-	let squadServerNextLayer: M.UnvalidatedMiniLayer | null = null
+	let squadServerNextLayer: L.UnvalidatedLayer | null = null
 	if (serverStatus?.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
 
-	const activeUnvalidatedLayer = M.getUnvalidatedLayerFromId(M.getActiveItemLayerId(item))
-
 	if (
-		!isEditing && squadServerNextLayer && index === 0 && !M.areLayerIdsCompatible(activeUnvalidatedLayer.id, squadServerNextLayer.id, true)
+		!isEditing && squadServerNextLayer && index === 0 && !L.areLayersCompatible(LL.getActiveItemLayerId(item), squadServerNextLayer, true)
 	) {
 		badges.push(
 			<Tooltip key="not current next">
@@ -467,7 +465,7 @@ function ItemDropdown(props: {
 		props.itemStore,
 		state => QD.selectItemQueryContext({ baseQueryContext: state.baseQueryContext, index: state.index + 1 }),
 	)
-	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => M.getAllItemLayerIds(state.item))
+	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item))
 
 	const user = useLoggedInUser()
 	return (
@@ -487,7 +485,7 @@ function ItemDropdown(props: {
 						<DropdownMenuItem>Edit</DropdownMenuItem>
 					</EditLayerListItemDialogWrapper>
 					<DropdownMenuItem
-						disabled={props.allowVotes && !!layerId && layerIds?.has(M.swapFactionsInId(layerId))}
+						disabled={props.allowVotes && !!layerId && layerIds?.has(L.swapFactionsInId(layerId))}
 						onClick={() => props.itemStore.getState().swapFactions()}
 					>
 						Swap Factions
@@ -584,8 +582,8 @@ function QueueItemSeparator(props: {
 	)
 }
 
-function itemToLayerIds(item: M.LayerListItem): M.LayerId[] {
-	let layers: M.LayerId[]
+function itemToLayerIds(item: LL.LayerListItem): L.LayerId[] {
+	let layers: L.LayerId[]
 	if (item.vote) {
 		layers = item.vote.choices
 	} else if (item.layerId) {

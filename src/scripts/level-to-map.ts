@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as F from '@/models/filter.models'
 import * as Config from '@/server/config.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
@@ -14,26 +14,25 @@ Env.ensureEnvSetup()
 ensureLoggerSetup()
 await Config.ensureConfigSetup()
 await DB.setupDatabase()
+await Schema.setup()
 
 const ctx = DB.addPooledDb({ log: baseLogger })
 
 await DB.runTransaction(ctx, async (ctx) => {
 	for (const entity of await ctx.db().select().from(Schema.filters)) {
-		const updated = transformFilterNode(entity.filter as M.FilterNode)
+		const updated = transformFilterNode(entity.filter as F.FilterNode)
 
 		await ctx.db().update(Schema.filters).set({ filter: updated }).where(E.eq(Schema.filters.id, entity.id))
 	}
 
-	function transformFilterNode(node: M.FilterNode): M.FilterNode {
-		if (M.isBlockNode(node)) return { ...node, children: node.children.map(transformFilterNode) }
+	function transformFilterNode(node: F.FilterNode): F.FilterNode {
+		if (F.isBlockNode(node)) return { ...node, children: node.children.map(transformFilterNode) }
 
 		switch (node.type) {
 			case 'apply-filter':
 				return node
 			case 'comp':
-				// @ts-expect-error idc
 				if (node.comp.column === 'Level') {
-					// @ts-expect-error idc
 					node.comp.column = 'Map'
 				}
 				return node

@@ -1,12 +1,12 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
-import * as LC from '@/layer-components.models'
+import * as LCP from '@/layer-components.models'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
-import { isNullOrUndef } from '@/lib/typeGuards'
+import { isNullOrUndef } from '@/lib/type-guards'
 import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
-import * as M from '@/models'
+import * as L from '@/models/layer'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
@@ -119,7 +119,7 @@ async function main() {
 	await ensureAllSheetsDownloaded()
 
 	const data = await parseSquadLayerSheetData(ctx)
-	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
+	const components = LCP.toLayerComponentsJson(LCP.buildFullLayerComponents(data.components))
 	const fullLayers = await parseLayerScores(ctx, data, components)
 
 	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2))
@@ -129,7 +129,7 @@ async function main() {
 	}
 }
 
-async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.LayerComponentsJson) {
+async function parseLayerScores(ctx: C.Log, data: SheetData, components: LCP.LayerComponentsJson) {
 	return await new Promise<SchemaModels.NewLayer[]>((resolve, reject) => {
 		const fullLayers: SchemaModels.NewLayer[] = data.baseLayers.map((layer): SchemaModels.NewLayer => ({
 			...layer,
@@ -161,7 +161,7 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 					throw new Error(`Unit_2 ${row['Unit_2']} not found`)
 				}
 
-				const segments = M.parseLayerStringSegment(row['Layer'])
+				const segments = L.parseLayerStringSegment(row['Layer'])
 				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
 				const diffs: Record<string, number> = {}
 				for (const [key, value] of Object.entries(row)) {
@@ -185,10 +185,10 @@ async function parseLayerScores(ctx: C.Log, data: SheetData, components: LC.Laye
 					Unit_1: row['Unit_1'],
 					Unit_2: row['Unit_2'],
 				}
-				const ids = [M.getLayerId(idArgs, components)]
+				const ids = [L.getKnownLayerId(idArgs, components)!]
 				// for now we're just using the same data for FRAAS as RAAS
 				if (segments.Gamemode === 'RAAS') {
-					ids.push(M.getLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components))
+					ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
 				}
 				for (const layerId of ids) {
 					if (seenIds.has(layerId)) {
@@ -297,7 +297,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 
 	const baseLayers: BaseLayer[] = []
 	const idToIdx: Map<string, number> = new Map()
-	const components: LC.LayerComponents = LC.buildFullLayerComponents({
+	const components: LCP.LayerComponents = LCP.buildFullLayerComponents({
 		mapLayers,
 		allianceToFaction,
 		factionToAlliance,
@@ -339,7 +339,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 				if (availEntry1.Faction === availEntry2.Faction) continue
 				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 
-				const parsedSegments = M.parseLayerStringSegment(layer.Layer)
+				const parsedSegments = L.parseLayerStringSegment(layer.Layer)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
 				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
@@ -350,7 +350,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 				if (availEntry1.Unit) components.units.add(availEntry1.Unit)
 				if (availEntry2.Unit) components.units.add(availEntry2.Unit)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
-				const layerId = M.getLayerId({
+				const layerId = L.getKnownLayerId({
 					Map: layer.Map,
 					LayerVersion: parsedSegments.LayerVersion,
 					Gamemode: parsedSegments.Gamemode,
@@ -358,7 +358,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
 					Unit_2: availEntry2.Unit ?? null,
-				}, LC.toLayerComponentsJson(components))
+				}, LCP.toLayerComponentsJson(components))!
 				const baseLayer = {
 					id: layerId,
 					Map: layer.Map,
@@ -418,17 +418,25 @@ function parseBattlegroups(ctx: C.Log) {
 	})
 }
 
+function preprocessLevel(level: string) {
+	level = level.replace(/\s/g, '')
+	if (level.startsWith('Sanxian')) return 'Sanxian'
+	if (level.startsWith('Belaya')) return 'Belaya'
+	if (level.startsWith('Albasrah')) return level.replace('Albasrah', 'AlBasrah')
+	return level
+}
+
 function parseMapLayers() {
-	return new Promise<M.MapConfigLayer[]>((resolve, reject) => {
-		const layers: M.MapConfigLayer[] = []
+	return new Promise<LCP.MapConfigLayer[]>((resolve, reject) => {
+		const layers: LCP.MapConfigLayer[] = []
 		let currentMap: string | undefined
 		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
 			.pipe(parse({ columns: true }))
 			.on('data', (row: Record<string, string>) => {
 				if (!row['Layer Name']) return
-				if (row['Level']) currentMap = M.preprocessLevel(row['Level'])
-				const layer = { Map: M.preprocessLevel(currentMap!), Layer: row['Layer Name'], Size: row['Layer Size*'] }
-				const segments = M.parseLayerStringSegment(layer.Layer)
+				if (row['Level']) currentMap = preprocessLevel(row['Level'])
+				const layer = { Map: preprocessLevel(currentMap!), Layer: row['Layer Name'], Size: row['Layer Size*'] }
+				const segments = L.parseLayerStringSegment(layer.Layer)
 				if (!segments) throw new Error(`Invalid layer string: ${layer.Layer}`)
 				const withSegments = {
 					...layer,
@@ -508,7 +516,7 @@ function parseBgLayerAvailability(ctx: C.Log) {
 				if (row[col.TeamOptions].includes('2')) teams.push(2)
 				const entry = { Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
 				entries.push(entry)
-				const segments = M.parseLayerStringSegment(currentLayer!)
+				const segments = L.parseLayerStringSegment(currentLayer!)
 				if (!segments) throw new Error(`Invalid layer string segment: ${currentLayer}`)
 				if (segments.Gamemode === 'RAAS') {
 					entries.push({

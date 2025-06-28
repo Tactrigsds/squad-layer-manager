@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import * as SM from './squad-models'
+import * as SM from './squad.models'
 
 export type NewGame = {
 	type: 'NEW_GAME'
@@ -16,3 +15,5 @@ export type RoundEnded = {
 }
 
 export type Event = NewGame | RoundEnded
+
+export type DebugTicketOutcome = { team1: number; team2: number }

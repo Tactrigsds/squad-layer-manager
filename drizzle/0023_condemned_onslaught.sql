@@ -1,0 +1,1 @@
+ALTER TABLE `balanceTriggerEvents` MODIFY COLUMN `level` enum('info','warn','violation') NOT NULL;

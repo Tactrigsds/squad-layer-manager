@@ -1,9 +1,9 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { assertNever } from '@/lib/typeGuards'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems.client/rbac.client'
-import { useLoggedInUserBase } from '@/systems.client/users.client'
+import { useLoggedInUser, useLoggedInUserBase } from '@/systems.client/users.client'
 import React from 'react'
 import * as Zus from 'zustand'
 import { Badge } from './ui/badge'
@@ -16,14 +16,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 export default function UserPermissionsDialog(
 	props: { children: React.ReactNode; open: boolean; onOpenChange: (newState: boolean) => void },
 ) {
-	const user = useLoggedInUserBase()
+	const userBase = useLoggedInUserBase()
+	const user = useLoggedInUser()
 	const { simulateRoles, disabledRoles, enableRole, disableRole, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 
 	// Group permissions by role
 	const permissionsByRole = React.useMemo(() => user?.perms ? RBAC.getPermissionsByRole(user.perms) : undefined, [user?.perms])
 	const setSimulateRoleId = React.useId()
 
-	if (!user) {
+	if (!userBase || !user || !permissionsByRole) {
 		return (
 			<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 				{props.children}
@@ -39,6 +40,8 @@ export default function UserPermissionsDialog(
 			</Dialog>
 		)
 	}
+
+	const roles = new Set(userBase.perms?.flatMap(p => p.allowedByRoles))
 
 	const formatPermissionScope = (perm: RBAC.TracedPermission) => {
 		if (perm.scope === 'global') return 'Global'
@@ -80,7 +83,7 @@ export default function UserPermissionsDialog(
 					<TabsContent value="permissions" className="flex-1 overflow-auto">
 						<div className="space-y-4">
 							<div className="text-sm text-muted-foreground">
-								You have {user.perms.length} permission{user.perms.length !== 1 ? 's' : ''}
+								You have {userBase.perms.length} permission{userBase.perms.length !== 1 ? 's' : ''}
 							</div>
 
 							<Table>
@@ -97,8 +100,24 @@ export default function UserPermissionsDialog(
 										if (perm.type === 'site:authorized') return null
 										return (
 											<TableRow key={index}>
-												<TableCell className="font-mono text-sm">{perm.type}</TableCell>
-												<TableCell>{getPermissionDescription(perm.type)}</TableCell>
+												<TableCell className="font-mono text-sm">
+													<div className="flex items-center gap-2">
+														{perm.negated && (
+															<Badge variant="destructive" className="text-xs">
+																Negated
+															</Badge>
+														)}
+														{perm.negating && (
+															<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
+																Negating
+															</Badge>
+														)}
+														{perm.type}
+													</div>
+												</TableCell>
+												<TableCell>
+													{getPermissionDescription(perm.type)}
+												</TableCell>
 												<TableCell>{formatPermissionScope(perm)}</TableCell>
 												<TableCell>
 													<div className="flex flex-wrap gap-1">
@@ -134,7 +153,8 @@ export default function UserPermissionsDialog(
 							</div>
 
 							<div className="space-y-6">
-								{permissionsByRole?.map(([role, perms]) => {
+								{[...roles]?.map((role) => {
+									const perms = permissionsByRole.find(([r]) => r === role)?.[1] ?? []
 									const isRoleEnabled = !simulateRoles || !disabledRoles.some(r => JSON.stringify(r) === JSON.stringify(role))
 
 									const checkboxId = 'simulate-role-checkbox-' + JSON.stringify(role)
@@ -176,8 +196,24 @@ export default function UserPermissionsDialog(
 														return (
 															<div key={permIndex} className="flex items-start justify-between p-2 bg-muted/50 rounded text-sm">
 																<div className="space-y-1">
-																	<div className="font-mono">{perm.type}</div>
-																	<div className="text-muted-foreground">{getPermissionDescription(perm.type)}</div>
+																	<div className="flex items-center gap-2">
+																		{perm.negated && (
+																			<Badge variant="destructive" className="text-xs">
+																				negated
+																			</Badge>
+																		)}
+																		{perm.negating && (
+																			<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
+																				negating
+																			</Badge>
+																		)}
+																		<div className="font-mono">
+																			{perm.type}
+																		</div>
+																	</div>
+																	<div className="text-muted-foreground">
+																		{getPermissionDescription(perm.type)}
+																	</div>
 																</div>
 																<Badge variant="outline" className="text-xs">
 																	{formatPermissionScope(perm)}

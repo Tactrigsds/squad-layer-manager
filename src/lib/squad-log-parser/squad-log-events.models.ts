@@ -1,6 +1,5 @@
-import * as SM from '@/lib/rcon/squad-models'
+import * as SM from '@/models/squad.models'
 import * as dateFns from 'date-fns'
-import * as dateFnsTz from 'date-fns-tz'
 import { z } from 'zod'
 
 const BaseEventProperties = {
@@ -64,7 +63,7 @@ export const RoundDecidedSchema = z.object({
 	...BaseEventProperties,
 	type: z.literal('ROUND_DECIDED'),
 	team: SM.TeamIdSchema,
-	subfaction: z.string(),
+	unit: z.string(),
 	faction: z.string(),
 	action: z.enum(['won', 'lost']),
 	tickets: z.number().int(),
@@ -85,7 +84,7 @@ export const RoundDecidedMatcher: EventMatcher<RoundDecided> = {
 			time: parseTimestamp(args[1]),
 			chainID: args[2],
 			team: parseInt(args[3]) as 1 | 2,
-			subfaction: args[4],
+			unit: args[4],
 			faction: args[5],
 			action: args[6] as 'won' | 'lost',
 			tickets: parseInt(args[7]),

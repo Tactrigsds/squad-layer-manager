@@ -9,23 +9,15 @@ import * as E from 'drizzle-orm/expressions'
 import { CONFIG } from '../config'
 
 let roles!: RBAC.Role[]
-let globalRolePermissions!: Record<RBAC.Role, RBAC.Permission[]>
+let globalRolePermissionExpressions!: Record<RBAC.Role, RBAC.GlobalPermissionTypeExpression[]>
 let roleAssignments!: RBAC.RoleAssignment[]
 export function setup() {
+	globalRolePermissionExpressions = {}
 	roles = []
-	globalRolePermissions = {}
+
 	for (const role of objKeys(CONFIG.globalRolePermissions)) {
 		roles.push(role as RBAC.Role)
-		let permTypes: (RBAC.GlobalPermissionType | '*')[] = CONFIG.globalRolePermissions[role]
-		if (permTypes.includes('*')) {
-			permTypes = Object.values(RBAC.GLOBAL_PERMISSION_TYPE.Values)
-		}
-		const perms: RBAC.Permission[] = []
-		for (const permType of permTypes as RBAC.GlobalPermissionType[]) {
-			perms.push(RBAC.perm(permType))
-		}
-
-		globalRolePermissions[role] = perms
+		globalRolePermissionExpressions[role] = CONFIG.globalRolePermissions[role]
 	}
 
 	roleAssignments = []
@@ -104,24 +96,51 @@ export const getUserRbacPerms = C.spanOp(
 		const roles = await getRolesForDiscordUser(baseCtx, userId)
 		const userFilterContributorsPromise = getUserContributorFilters()
 		const roleFilterContributorsPromise = getRoleContributorFilters()
+
 		const perms: RBAC.TracedPermission[] = []
+		const allNegatedPerms: Set<RBAC.GlobalPermissionType> = new Set()
 		for (const role of roles) {
-			for (const perm of globalRolePermissions[role]) {
-				RBAC.addTracedPerms(perms, { ...perm, allowedByRoles: [role] })
+			for (const permExpr of globalRolePermissionExpressions[role]) {
+				const perm = RBAC.parseNegatingPermissionType(permExpr)
+				if (!perm) continue
+				allNegatedPerms.add(perm)
+				perms.push(RBAC.tracedPerm(perm, [role], { negating: true }))
+			}
+		}
+
+		const isNegated = (perm: RBAC.PermissionType) => allNegatedPerms.has(perm as RBAC.GlobalPermissionType)
+
+		for (const role of roles) {
+			if (globalRolePermissionExpressions[role].includes('*')) {
+				for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
+					perms.push(RBAC.tracedPerm(permType, [role], { negated: allNegatedPerms.has(permType) }))
+				}
+			}
+			for (const permExpr of globalRolePermissionExpressions[role]) {
+				if (!RBAC.isGlobalPermissionType(permExpr)) continue
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permExpr, [role], { negated: allNegatedPerms.has(permExpr) }))
 			}
 		}
 
 		for (const filter of (await ownedFiltersPromise)) {
-			RBAC.addTracedPerms(perms, RBAC.tracedPerm('filters:write', ['filter-owner'], { filterId: filter.id }))
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('filters:write', ['filter-owner'], { negated: isNegated('filters:write') }, { filterId: filter.id }),
+			)
 		}
 		for (const filterId of (await userFilterContributorsPromise)) {
-			RBAC.addTracedPerms(perms, RBAC.tracedPerm('filters:write', [`filter-user-contributor`], { filterId: filterId }))
+			RBAC.addTracedPerms(
+				perms,
+				RBAC.tracedPerm('filters:write', [`filter-user-contributor`], { negated: isNegated('filters:write') }, { filterId: filterId }),
+			)
 		}
 
 		for (const { filterId, roleId } of (await roleFilterContributorsPromise)) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('filters:write', [{ type: 'filter-role-contributor', roleId }], { filterId: filterId }),
+				RBAC.tracedPerm('filters:write', [{ type: 'filter-role-contributor', roleId }], { negated: isNegated('filters:write') }, {
+					filterId: filterId,
+				}),
 			)
 		}
 		return perms
@@ -168,7 +187,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	userId: bigint,
 	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
 ) {
-	const perms = await getUserRbacPerms(ctx, userId)
+	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx, userId))
 
 	const req: RBAC.PermissionReq<T> = 'check' in reqOrPerms
 		? reqOrPerms

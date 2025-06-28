@@ -1,31 +1,22 @@
-import * as M from '@/models'
+import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models.ts'
+import * as ConfigClient from '@/systems.client/config.client.ts'
 import React from 'react'
 import LayerTable from './layer-table.tsx'
 
 export default function TableStyleLayerPicker(props: {
-	queryContext: M.LayerQueryContext
-	selected: M.LayerId[]
-	onSelect: React.Dispatch<React.SetStateAction<M.LayerId[]>>
+	queryContext: LQY.LayerQueryContext
+	selected: L.LayerId[]
+	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>
 	maxSelected?: number
 	extraPanelItems?: React.ReactNode
 }) {
 	const [pageIndex, setPageIndex] = React.useState(0)
 
-	const defaultColumns: (M.LayerColumnKey | M.LayerCompositeKey)[] = [
-		'Layer',
-		'Faction_1',
-		'Unit_1',
-		'Faction_2',
-		'Unit_2',
-		'Asymmetry_Score',
-		'Balance_Differential',
-	]
-
 	return (
 		<div className="flex h-full">
 			<LayerTable
 				queryContext={props.queryContext}
-				defaultColumns={defaultColumns}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}
 				setPageIndex={setPageIndex}
@@ -33,8 +24,6 @@ export default function TableStyleLayerPicker(props: {
 				setSelected={props.onSelect}
 				maxSelected={props.maxSelected}
 				enableForceSelect={true}
-				defaultSortBy="Asymmetry_Score"
-				defaultSortDirection="ASC"
 				canChangeRowsPerPage={false}
 				canToggleColumns={false}
 				extraPanelItems={props.extraPanelItems}

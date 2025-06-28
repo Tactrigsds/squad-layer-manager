@@ -12,11 +12,15 @@ import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
+import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as M from '@/models'
+import * as F from '@/models/filter.models.ts'
+import * as LL from '@/models/layer-list.models.ts'
+import * as LQY from '@/models/layer-queries.models.ts'
+import * as SS from '@/models/server-state.models.ts'
+import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
@@ -488,7 +492,7 @@ function VoteState() {
 		<form onSubmit={onSubmit} className="flex flex-col space-y-2">
 			<startVoteForm.Field
 				name="durationSeconds"
-				validators={{ onChange: M.StartVoteInputSchema.shape.durationSeconds }}
+				validators={{ onChange: V.StartVoteInputSchema.shape.durationSeconds }}
 				children={(field) => (
 					<>
 						<Label htmlFor={voteDurationEltId}>Vote Duration (seconds)</Label>
@@ -646,7 +650,7 @@ function VoteState() {
 }
 
 type PoolConfigurationPopoverHandle = {
-	reset(settings: M.ServerSettings): void
+	reset(settings: SS.ServerSettings): void
 }
 const PoolConfigurationPopover = React.forwardRef(
 	function PoolConfigurationPopover(
@@ -805,7 +809,7 @@ function PoolFiltersConfigurationPanel({
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
-	const add = (filterId: M.FilterEntityId | null) => {
+	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
 		setSetting((s) => {
 			s.queue[poolId].filters.push(filterId)
@@ -877,8 +881,8 @@ function PoolFiltersConfigurationPanel({
 function PoolRepeatRulesConfigurationPanel(props: {
 	className?: string
 	poolId: 'mainPool' | 'generationPool'
-	rules: M.RepeatRule[]
-	setRules: React.Dispatch<React.SetStateAction<M.RepeatRule[]>>
+	rules: LQY.RepeatRule[]
+	setRules: React.Dispatch<React.SetStateAction<LQY.RepeatRule[]>>
 }) {
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -935,7 +939,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 						/>
 						<ComboBox
 							title={'Rule'}
-							options={M.RepeatRuleFieldSchema.options.filter(
+							options={LQY.RepeatRuleFieldSchema.options.filter(
 								(o) => o !== 'FactionAndUnit',
 							)}
 							value={rule.field}
@@ -944,7 +948,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 								if (!value) return
 								props.setRules(
 									Im.produce((draft) => {
-										draft[index].field = value as M.RepeatRuleField
+										draft[index].field = value as LQY.RepeatRuleField
 										draft[index].label = value
 										delete draft[index].targetValues
 									}),
@@ -1025,7 +1029,7 @@ function UnexpectedNextLayerAlert() {
 	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
 	const expectedNextLayer = Zus.useStore(
 		QD.QDStore,
-		state => state.serverState ? M.getNextLayerId(state.serverState?.layerQueue) : undefined,
+		state => state.serverState ? LL.getNextLayerId(state.serverState?.layerQueue) : undefined,
 	)
 
 	if (!unexpectedNextLayer) return null

@@ -1,0 +1,1 @@
+ALTER TABLE `balanceTriggerEvents` ADD `level` enum('info','warn','violation');

@@ -1,4 +1,4 @@
-import * as M from '@/models'
+import * as L from '@/models/layer'
 import * as DH from './display-helpers'
 
 export const teamColors = {
@@ -13,10 +13,10 @@ export function TeamIndicator(props: { team: keyof typeof teamColors }) {
 }
 
 export function getTeamsDisplay(
-	partialLayer: Partial<M.MiniLayer>,
+	partialLayer: Partial<L.KnownLayer>,
 	teamParity: number | undefined,
 	_displayLayersNormalized: boolean,
-	withBackfilledStyles?: Record<keyof M.MiniLayer, string | undefined>,
+	withBackfilledStyles?: Record<keyof L.KnownLayer, string | undefined>,
 ) {
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined

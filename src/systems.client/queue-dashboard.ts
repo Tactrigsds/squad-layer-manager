@@ -1,15 +1,19 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { useToast } from '@/hooks/use-toast'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
-import * as FB from '@/lib/filter-builders'
 import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
 import { deepClone, selectProps } from '@/lib/object'
-import * as SM from '@/lib/rcon/squad-models'
-import { assertNever } from '@/lib/typeGuards'
+import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as ZusUtils from '@/lib/zustand'
-import * as M from '@/models'
+import * as FB from '@/models/filter-builders'
+import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models'
+import * as MH from '@/models/match-history.models'
+import * as SS from '@/models/server-state.models'
 import * as RBAC from '@/rbac.models'
 import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -30,15 +34,15 @@ import { userPresenceState$, userPresenceUpdate$ } from './presence'
 import * as UsersClient from './users.client'
 
 // -------- types --------
-export type MutServerStateWithIds = M.UserModifiableServerState & {
-	layerQueue: M.LayerListItem[]
+export type MutServerStateWithIds = SS.UserModifiableServerState & {
+	layerQueue: LL.LayerListItem[]
 }
 
 /**
  * Layer List State
  */
 export type LLState = {
-	layerList: M.LayerListItem[]
+	layerList: LL.LayerListItem[]
 
 	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
 	nextLayerBackfillId?: string
@@ -50,38 +54,38 @@ export type LLState = {
 	isVoteChoice?: boolean
 
 	// this is usually just the main layer pool but for vote choice layer lists it could be more specific
-	baseQueryContext: M.LayerQueryContext
+	baseQueryContext: LQY.LayerQueryContext
 }
 
 export type LLStore = LLState & LLActions
 
 export type LLActions = {
 	move: (sourceIndex: number, targetIndex: number, modifiedBy: bigint) => void
-	add: (items: M.NewLayerListItem[], index?: number) => void
-	setItem: (id: string, update: React.SetStateAction<M.LayerListItem>) => void
+	add: (items: LL.NewLayerListItem[], index?: number) => void
+	setItem: (id: string, update: React.SetStateAction<LL.LayerListItem>) => void
 	remove: (id: string) => void
 	clear: () => void
 }
 
 export type LLItemState = {
 	index: number
-	item: M.LayerListItem
+	item: LL.LayerListItem
 	teamParity: number
 	mutationState: ItemMutationState
-	baseQueryContext: M.LayerQueryContext
+	baseQueryContext: LQY.LayerQueryContext
 }
 
 export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
-	setItem: React.Dispatch<React.SetStateAction<M.LayerListItem>>
+	setItem: React.Dispatch<React.SetStateAction<LL.LayerListItem>>
 	swapFactions: () => void
 	// if not present then removing is disabled
 	remove?: () => void
 }
 
 export type ExtraQueryFilter = {
-	filterId: M.FilterEntityId
+	filterId: F.FilterEntityId
 	active: boolean
 }
 
@@ -92,15 +96,15 @@ export type QDState = {
 	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us.
 	nextLayerBackfillId?: string
 	queueMutations: ItemMutations
-	serverState: M.LQServerState | null
+	serverState: SS.LQServerState | null
 	isEditing: boolean
 	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
 	queueTeamParity: number
 	poolApplyAs: {
-		dnr: M.LayerQueryConstraint['applyAs']
-		filter: M.LayerQueryConstraint['applyAs']
+		dnr: LQY.LayerQueryConstraint['applyAs']
+		filter: LQY.LayerQueryConstraint['applyAs']
 	}
 	extraQueryFilters: ExtraQueryFilter[]
 
@@ -109,20 +113,20 @@ export type QDState = {
 }
 
 export type QDStore = QDState & {
-	applyServerUpdate: (update: M.LQServerStateUpdate) => void
+	applyServerUpdate: (update: SS.LQServerStateUpdate) => void
 	reset: () => void
-	setSetting: (updater: (settings: Im.Draft<M.ServerSettings>) => void) => void
+	setSetting: (updater: (settings: Im.Draft<SS.ServerSettings>) => void) => void
 	setQueue: Setter<LLState>
 	tryStartEditing: () => void
 	tryEndEditing: () => void
 
-	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: M.LayerQueryConstraint['applyAs']) => void
+	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: LQY.LayerQueryConstraint['applyAs']) => void
 
 	extraQueryFilterActions: {
-		setActive: (filterId: M.FilterEntityId, active: boolean) => void
-		select: (newFilterId: M.FilterEntityId, oldFilterId: M.FilterEntityId) => void
-		add: (newFilterId: M.FilterEntityId, active: boolean) => void
-		remove: (filterId: M.FilterEntityId) => void
+		setActive: (filterId: F.FilterEntityId, active: boolean) => void
+		select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
+		add: (newFilterId: F.FilterEntityId, active: boolean) => void
+		remove: (filterId: F.FilterEntityId) => void
 	}
 
 	setHoveredConstraintItemId: React.Dispatch<React.SetStateAction<string | undefined>>
@@ -157,7 +161,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 			set(
 				Im.produce((state) => {
 					const layerList = state.layerList
-					const items = newItems.map(M.createLayerListItem)
+					const items = newItems.map(LL.createLayerListItem)
 					if (index === undefined) {
 						layerList.push(...items)
 					} else {
@@ -200,7 +204,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item' | 'teamParity' | 'baseQueryContext'>): LLState => {
 	return {
 		listMutations: ItemMut.initMutations(),
-		layerList: itemState.item.vote?.choices.map(choice => M.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
+		layerList: itemState.item.vote?.choices.map(choice => LL.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
 		isVoteChoice: true,
 		teamParity: itemState.teamParity,
 		baseQueryContext: itemState.baseQueryContext,
@@ -235,7 +239,7 @@ export const selectLLState = (state: QDState): LLState => ({
 	listMutations: state.queueMutations,
 	teamParity: state.queueTeamParity,
 	nextLayerBackfillId:
-		(state.serverState && M.getNextLayerId(state.serverState?.layerQueue) === M.getNextLayerId(state.editedServerState.layerQueue))
+		(state.serverState && LL.getNextLayerId(state.serverState?.layerQueue) === LL.getNextLayerId(state.editedServerState.layerQueue))
 			? state.nextLayerBackfillId
 			: undefined,
 	baseQueryContext: {
@@ -281,17 +285,17 @@ export const createLLItemStore = (
 	}
 }
 
-function swapFactions(existingItem: M.LayerListItem) {
-	const updated: M.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId! } }
+function swapFactions(existingItem: LL.LayerListItem) {
+	const updated: LL.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId! } }
 	if (existingItem.layerId) {
-		const layerId = M.swapFactionsInId(existingItem.layerId)
+		const layerId = L.swapFactionsInId(existingItem.layerId)
 		updated.layerId = layerId
 	}
 	if (existingItem.vote) {
 		updated.vote = {
 			...existingItem.vote,
-			choices: existingItem.vote.choices.map(M.swapFactionsInId),
-			defaultChoice: M.swapFactionsInId(existingItem.vote.defaultChoice),
+			choices: existingItem.vote.choices.map(L.swapFactionsInId),
+			defaultChoice: L.swapFactionsInId(existingItem.vote.defaultChoice),
 		}
 	}
 	return updated
@@ -329,7 +333,7 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 			item: layerList[index],
 			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
 			baseQueryContext,
-			teamParity: SM.getTeamParityForOffset({ ordinal: firstItemTeamParity }, index + 1),
+			teamParity: MH.getTeamParityForOffset({ ordinal: firstItemTeamParity }, index + 1),
 		}
 	})
 }
@@ -375,7 +379,7 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 	})
 }
 
-export function getEditableServerState(state: M.LQServerState): MutServerStateWithIds {
+export function getEditableServerState(state: SS.LQServerState): MutServerStateWithIds {
 	const layerQueue = state.layerQueue
 	return {
 		layerQueue,
@@ -385,7 +389,7 @@ export function getEditableServerState(state: M.LQServerState): MutServerStateWi
 }
 
 export const initialState: QDState = {
-	editedServerState: { layerQueue: [], layerQueueSeqId: 0, settings: M.ServerSettingsSchema.parse({ queue: {} }) },
+	editedServerState: { layerQueue: [], layerQueueSeqId: 0, settings: SS.ServerSettingsSchema.parse({ queue: {} }) },
 	queueMutations: ItemMut.initMutations(),
 	serverState: null,
 	isEditing: false,
@@ -514,7 +518,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	MatchHistoryClient.currentMatchDetails$().subscribe(details => {
 		if (!details) return
-		set({ queueTeamParity: SM.getTeamParityForOffset(details, 0) })
+		set({ queueTeamParity: MH.getTeamParityForOffset(details, 0) })
 	})
 
 	return {
@@ -628,8 +632,8 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
-export function selectQDQueryConstraints(state: QDState): M.LayerQueryConstraint[] {
-	const queryConstraints = M.getPoolConstraints(
+export function selectQDQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
+	const queryConstraints = SS.getPoolConstraints(
 		state.editedServerState.settings.queue.mainPool,
 		state.poolApplyAs.dnr,
 		state.poolApplyAs.filter,
@@ -652,14 +656,14 @@ export function selectLayerListQueryContext(
 	state: Pick<LLState, 'layerList' | 'baseQueryContext' | 'isVoteChoice'>,
 	// index can be up to and including the length of the list
 	atIndex?: number,
-): M.LayerQueryContext {
-	const queueLayerIds = M.getAllLayerIdsFromList(state.layerList, { excludeVoteChoices: true })
+): LQY.LayerQueryContext {
+	const queueLayerIds = LL.getAllLayerIdsFromList(state.layerList, { excludeVoteChoices: true })
 	// points to next layer in queue past existing one
 	atIndex = atIndex ?? state.layerList.length
 	if (state.isVoteChoice) {
 		let constraints = state.baseQueryContext.constraints
 		const filter = FB.comp(FB.inValues('id', queueLayerIds.filter((id, idx) => idx !== atIndex)), { neg: true })
-		constraints = [...(state.baseQueryContext.constraints ?? []), M.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + atIndex)]
+		constraints = [...(state.baseQueryContext.constraints ?? []), LQY.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + atIndex)]
 		return {
 			previousLayerIds: state.baseQueryContext.previousLayerIds ?? [],
 			constraints,
@@ -679,7 +683,7 @@ export function selectItemQueryContext(itemState: Pick<LLItemState, 'baseQueryCo
 	}
 }
 
-export function useLayerListItemQueryContext(itemStore: Zus.StoreApi<LLItemStore>): M.LayerQueryContext {
+export function useLayerListItemQueryContext(itemStore: Zus.StoreApi<LLItemStore>): LQY.LayerQueryContext {
 	const { baseQueryContext, index } = ZusUtils.useStoreDeep(itemStore, (s) => selectProps(s, ['baseQueryContext', 'index']))
 	return {
 		...baseQueryContext,

@@ -1,3 +1,4 @@
+import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -52,11 +53,12 @@ export function useLoggedInUser() {
 
 	if (!simulateRoles) return loggedInUser
 	const simulatedPerms = loggedInUser.perms.filter(p =>
-		!p.allowedByRoles.some(r => disabledRoles.some(toCompare => deepEqual(r, toCompare)))
+		p.allowedByRoles.some(r => !disabledRoles.some(toCompare => deepEqual(r, toCompare)))
 	)
+
 	return {
 		...loggedInUser,
-		perms: simulatedPerms,
+		perms: RBAC.recalculateNegations(simulatedPerms),
 	}
 }
 

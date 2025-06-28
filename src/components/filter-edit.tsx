@@ -4,10 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
-import { assertNever } from '@/lib/typeGuards'
+import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as M from '@/models.ts'
+import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
@@ -84,7 +87,7 @@ export default function FilterWrapper() {
 	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
 		return <FullPageSpinner />
 	}
-	let owner: M.User
+	let owner: USR.User
 	switch (userRes.data.code) {
 		case 'err:not-found':
 			return <div>Owner not found</div>
@@ -95,21 +98,21 @@ export default function FilterWrapper() {
 	return <FilterEdit entity={filterEntity} contributors={filterContributorRes.data} owner={owner} />
 }
 
-export function FilterEdit(props: { entity: M.FilterEntity; contributors: { users: M.User[]; roles: string[] }; owner: M.User }) {
+export function FilterEdit(props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User }) {
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const { toast } = useToast()
 
 	const navigate = useNavigate()
 
-	const [editedFilter, _setEditedFilter] = useState<M.EditableFilterNode>(props.entity.filter)
-	const [validFilter, setValidFilter] = useState<M.FilterNode | null>(props.entity.filter)
-	const setEditedFilter: React.Dispatch<React.SetStateAction<M.EditableFilterNode | undefined>> = (update) => {
+	const [editedFilter, _setEditedFilter] = useState<F.EditableFilterNode>(props.entity.filter)
+	const [validFilter, setValidFilter] = useState<F.FilterNode | null>(props.entity.filter)
+	const setEditedFilter: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = (update) => {
 		_setEditedFilter((filter) => {
 			const newFilter = typeof update === 'function' ? update(filter) : update
 			if (!newFilter) return props.entity.filter
-			if (newFilter && M.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
+			if (newFilter && F.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
 				setValidFilter(null)
-			} else if (newFilter && M.isValidFilterNode(newFilter)) {
+			} else if (newFilter && F.isValidFilterNode(newFilter)) {
 				setValidFilter(newFilter)
 			} else {
 				setValidFilter(null)
@@ -157,7 +160,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 	const [pageIndex, setPageIndex] = useState(0)
 	// const canSave = (editedFilterModified || (isDirty && isValid)) && !!validFilter && !updateFilterMutation.isPending
 
-	const [selectedLayers, setSelectedLayers] = React.useState([] as M.LayerId[])
+	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
 	const loggedInUser = UsersClient.useLoggedInUser()
 
 	async function onDelete() {
@@ -221,10 +224,10 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 		return 'none'
 	})()
 
-	const queryContext: M.LayerQueryContext | undefined = React.useMemo(() =>
+	const queryContext: LQY.LayerQueryContext | undefined = React.useMemo(() =>
 		validFilter
 			? ({
-				constraints: [M.getEditedFilterConstraint(validFilter)],
+				constraints: [LQY.getEditedFilterConstraint(validFilter)],
 			})
 			: undefined, [validFilter])
 
@@ -300,7 +303,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 					: (
 						<div className="flex space-x-2">
 							<div className="flex flex-col space-y-2">
-								<form.Field name="name" validators={{ onChange: M.NewFilterEntitySchema.shape.name }}>
+								<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
 									{(field) => {
 										return (
 											<div className="flex flex-col space-y-2">
@@ -322,7 +325,7 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 										)
 									}}
 								</form.Field>
-								<form.Field name="description" validators={{ onChange: z.union([M.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
+								<form.Field name="description" validators={{ onChange: z.union([F.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
 									{(field) => (
 										<div className="flex flex-grow space-x-2">
 											<div className="flex min-w-[900px] flex-col space-y-1">
@@ -389,8 +392,8 @@ export function FilterEdit(props: { entity: M.FilterEntity; contributors: { user
 }
 
 function FilterContributors(props: {
-	filterId: M.FilterEntityId
-	contributors: { users: M.User[]; roles: string[] }
+	filterId: F.FilterEntityId
+	contributors: { users: USR.User[]; roles: string[] }
 	children: React.ReactNode
 }) {
 	const { toast } = useToast()
@@ -434,7 +437,7 @@ function FilterContributors(props: {
 			queryClient.invalidateQueries({ queryKey: FilterEntityClient.getFilterContributorQueryKey(props.filterId) })
 		},
 	})
-	function addUser(user: M.User) {
+	function addUser(user: USR.User) {
 		addMutation.mutate({ filterId: props.filterId, userId: user.discordId })
 	}
 
@@ -525,10 +528,10 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 	)
 }
 
-function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user: M.User) => void }) {
+function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user: USR.User) => void }) {
 	const usersRes = UsersClient.useUsers()
 	const [isOpen, setIsOpen] = useState(false)
-	function onSelect(user: M.User) {
+	function onSelect(user: USR.User) {
 		props.selectUser(user)
 		setIsOpen(false)
 	}

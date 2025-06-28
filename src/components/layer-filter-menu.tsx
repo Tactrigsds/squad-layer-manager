@@ -1,10 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import * as EFB from '@/lib/editable-filter-builders'
-import * as FB from '@/lib/filter-builders.ts'
 import { selectProps } from '@/lib/object.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as M from '@/models'
+import * as EFB from '@/models/editable-filter-builders'
+import * as FB from '@/models/filter-builders.ts'
+import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
+import * as LQY from '@/models/layer-queries.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -13,24 +16,24 @@ import * as Zus from 'zustand'
 import ExtraFiltersPanel from './extra-filters-panel'
 import { Comparison } from './filter-card'
 
-function getDefaultFilterMenuItemState(defaultFields: Partial<M.MiniLayer>): Record<keyof M.MiniLayer, M.EditableComparison> {
+function getDefaultFilterMenuItemState(defaultFields: Partial<L.KnownLayer>): Record<keyof L.KnownLayer, F.EditableComparison> {
 	return {
 		Layer: EFB.eq('Layer', defaultFields['Layer']),
 		Map: EFB.eq('Map', defaultFields['Map']),
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
-		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion']),
+		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion'] ?? undefined),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
 		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
 		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
-	} as Record<keyof M.MiniLayer, M.EditableComparison>
+	} as Record<keyof L.KnownLayer, F.EditableComparison>
 }
 
-function getFilterFromComparisons(items: Record<keyof M.MiniLayer, M.EditableComparison>) {
-	const nodes: M.FilterNode[] = []
+function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableComparison>) {
+	const nodes: F.FilterNode[] = []
 	for (const key in items) {
-		const item = items[key as keyof M.MiniLayer]
-		if (!M.isValidComparison(item)) continue
+		const item = items[key as keyof L.KnownLayer]
+		if (!F.isValidComparison(item)) continue
 		nodes.push(FB.comp(item))
 	}
 
@@ -39,29 +42,29 @@ function getFilterFromComparisons(items: Record<keyof M.MiniLayer, M.EditableCom
 }
 
 type FilterMenuStore = {
-	filter?: M.FilterNode
-	menuItems: Record<keyof M.MiniLayer, M.EditableComparison>
-	siblingFilters: { [k in keyof M.MiniLayer]: M.FilterNode | undefined }
-	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof M.MiniLayer, M.EditableComparison>>>
+	filter?: F.FilterNode
+	menuItems: Record<keyof L.KnownLayer, F.EditableComparison>
+	siblingFilters: { [k in keyof L.KnownLayer]: F.FilterNode | undefined }
+	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof L.KnownLayer, F.EditableComparison>>>
 }
 
 /**
  * Derive filter nodes which
  */
-function getSiblingFiltersForMenuItems(items: Record<keyof M.MiniLayer, M.EditableComparison>) {
+function getSiblingFiltersForMenuItems(items: Record<keyof L.KnownLayer, F.EditableComparison>) {
 	// @ts-expect-error idc
-	const filtersExcludingFields: { [k in keyof M.MiniLayer]: M.FilterNode | undefined } = {}
+	const filtersExcludingFields: { [k in keyof L.KnownLayer]: F.FilterNode | undefined } = {}
 
 	for (const itemKey in items) {
-		const key = itemKey as keyof M.MiniLayer
+		const key = itemKey as keyof L.KnownLayer
 		const item = items[key]
 		if (!item.column) continue
 
-		const comparisonsToApply: M.FilterNode[] = []
+		const comparisonsToApply: F.FilterNode[] = []
 		for (const candKey in items) {
 			if (key === candKey) continue
-			const cand = items[candKey as keyof M.MiniLayer]
-			if (!M.isValidComparison(cand)) continue
+			const cand = items[candKey as keyof L.KnownLayer]
+			if (!F.isValidComparison(cand)) continue
 
 			// don't filter out the composite columns based on the filter with a combined value, because that would be annoying
 			if (item.column === 'Layer' && ['Map', 'Gamemode', 'LayerVersion'].includes(cand.column)) continue
@@ -78,7 +81,7 @@ function getSiblingFiltersForMenuItems(items: Record<keyof M.MiniLayer, M.Editab
 	return filtersExcludingFields
 }
 
-export function useFilterMenuStore(defaultFields: Partial<M.MiniLayer> = {}) {
+export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 	const store = React.useMemo(() => (
 		Zus.createStore<FilterMenuStore>((set, get) => {
 			const items = getDefaultFilterMenuItemState(defaultFields)
@@ -90,7 +93,7 @@ export function useFilterMenuStore(defaultFields: Partial<M.MiniLayer> = {}) {
 				filter,
 				siblingFilters: siblingFilters,
 				setMenuItems: (update) => {
-					let updated: Record<keyof M.MiniLayer, M.EditableComparison>
+					let updated: Record<keyof L.KnownLayer, F.EditableComparison>
 					const state = get()
 					if (typeof update === 'function') {
 						updated = update(state.menuItems)
@@ -113,26 +116,26 @@ export function useFilterMenuStore(defaultFields: Partial<M.MiniLayer> = {}) {
 	return store
 }
 
-export function useQueryContextWithMenuFilter(queryContext: M.LayerQueryContext, store: Zus.StoreApi<FilterMenuStore>) {
+export function useQueryContextWithMenuFilter(queryContext: LQY.LayerQueryContext, store: Zus.StoreApi<FilterMenuStore>) {
 	const filter = Zus.useStore(store, s => s.filter)
 	if (filter) {
 		return {
 			...queryContext,
-			constraints: [...(queryContext.constraints ?? []), M.filterToNamedConstrant(filter, 'filter-menu', 'Filter Menu')],
+			constraints: [...(queryContext.constraints ?? []), LQY.filterToNamedConstrant(filter, 'filter-menu', 'Filter Menu')],
 		}
 	} else {
 		return queryContext
 	}
 }
 
-export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<FilterMenuStore>; queryContext: M.LayerQueryContext }) {
+export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<FilterMenuStore>; queryContext: LQY.LayerQueryContext }) {
 	const storeState = ZusUtils.useStoreDeep(
 		props.filterMenuStore,
 		state => selectProps(state, ['menuItems', 'siblingFilters']),
 	)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
-	function applySetFilterFieldComparison(name: keyof M.MiniLayer): React.Dispatch<React.SetStateAction<M.EditableComparison>> {
+	function applySetFilterFieldComparison(name: keyof L.KnownLayer): React.Dispatch<React.SetStateAction<F.EditableComparison>> {
 		return (update) => {
 			props.filterMenuStore.getState().setMenuItems(
 				// TODO having this be inline is kinda gross
@@ -142,7 +145,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 
 					if (comp.column === 'Layer' && comp.value) {
 						// TODO this section doesn't handle training modes well
-						const parsedLayer = M.parseLayerStringSegment(comp.value as string)
+						const parsedLayer = L.parseLayerStringSegment(comp.value as string)
 						draft['Layer'].value = comp.value
 						if (!parsedLayer) {
 							return
@@ -163,17 +166,17 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 						delete draft['LayerVersion'].value
 					}
 
-					if ((M.LAYER_STRING_PROPERTIES as string[]).includes(comp.column as string) && comp.value) {
-						const excludingCurrent = M.LAYER_STRING_PROPERTIES.filter((p) => p !== comp.column)
-						if (excludingCurrent.every((p) => draft[p as keyof M.MiniLayer]?.value)) {
+					if ((L.LAYER_STRING_PROPERTIES as string[]).includes(comp.column as string) && comp.value) {
+						const excludingCurrent = L.LAYER_STRING_PROPERTIES.filter((p) => p !== comp.column)
+						if (excludingCurrent.every((p) => draft[p as keyof L.KnownLayer]?.value)) {
 							const args = {
 								Gamemode: draft['Gamemode'].value!,
 								Map: draft['Map'].value!,
 								LayerVersion: draft['LayerVersion'].value!,
-							} as Parameters<typeof M.getLayerString>[0]
+							} as Parameters<typeof L.getLayerString>[0]
 							// @ts-expect-error idc
 							args[comp.column] = comp.value!
-							draft['Layer'].value = M.getLayerString(args)
+							draft['Layer'].value = L.getLayerString(args)
 						} else {
 							delete draft['Layer'].value
 						}
@@ -200,7 +203,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
 				{Object.entries(storeState.menuItems).map(([key, comparison]) => {
-					const name = key as keyof M.MiniLayer
+					const name = key as keyof L.KnownLayer
 					const setComp = applySetFilterFieldComparison(name)
 					function clear() {
 						setComp(
@@ -209,7 +212,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 							}),
 						)
 						// @ts-expect-error idgaf
-						if (M.LAYER_STRING_PROPERTIES.includes(name)) {
+						if (L.LAYER_STRING_PROPERTIES.includes(name)) {
 							props.filterMenuStore.getState().setMenuItems(
 								Im.produce((draft) => {
 									delete draft['Layer'].value
@@ -227,7 +230,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					if (storeState.siblingFilters[name]) {
 						constraints = [
 							...constraints,
-							M.filterToConstraint(storeState.siblingFilters[name], 'sibling-' + name),
+							LQY.filterToConstraint(storeState.siblingFilters[name], 'sibling-' + name),
 						]
 					}
 
@@ -246,7 +249,7 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 							)}
 							<Comparison
 								columnEditable={false}
-								highlight={M.editableComparisonHasValue(comparison)}
+								highlight={F.editableComparisonHasValue(comparison)}
 								comp={comparison}
 								setComp={setComp}
 								layerQueryContext={{ ...props.queryContext, constraints }}

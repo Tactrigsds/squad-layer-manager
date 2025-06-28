@@ -1,14 +1,19 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, distinctDeepEquals, sleep, toAsyncGenerator } from '@/lib/async.ts'
+import { acquireInBlock, distinctDeepEquals, toAsyncGenerator, toCold } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
-import * as SM from '@/lib/rcon/squad-models'
-import { assertNever } from '@/lib/typeGuards'
+import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
-import * as M from '@/models.ts'
+import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models.ts'
+import * as SS from '@/models/server-state.models'
+import * as SM from '@/models/squad.models.ts'
+import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
@@ -16,6 +21,7 @@ import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as FilterEntity from '@/server/systems/filter-entity.ts'
 import * as LayerQueries from '@/server/systems/layer-queries.ts'
+import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
@@ -27,16 +33,18 @@ import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
-export let serverStateUpdate$!: Rx.BehaviorSubject<[M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>, C.Log & C.Db]>
+export let serverStateUpdate$!: Rx.BehaviorSubject<
+	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>, C.Log & C.Db]
+>
 
 let voteEndTask: Rx.Subscription | null = null
-let voteState: M.VoteState | null = null
-let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[C.Log & C.Db, M.LayerId | null]>
+let voteState: V.VoteState | null = null
+let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[C.Log & C.Db, L.LayerId | null]>
 
-const voteStateUpdate$ = new Rx.Subject<[C.Log & C.Db, M.VoteStateUpdate]>()
+const voteStateUpdate$ = new Rx.Subject<[C.Log & C.Db, V.VoteStateUpdate]>()
 
-const userPresence: M.UserPresenceState = {}
-const userPresenceUpdate$ = new Rx.Subject<M.UserPresenceStateUpdate & Parts<M.UserPart>>()
+const userPresence: USR.UserPresenceState = {}
+const userPresenceUpdate$ = new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>()
 
 let postRollEventsSub: Rx.Subscription | undefined
 
@@ -73,7 +81,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			server.displayName = CONFIG.serverDisplayName
 		}
 
-		const initialServerState = M.ServerStateSchema.parse(server)
+		const initialServerState = SS.ServerStateSchema.parse(server)
 
 		// -------- prune main pool filters when filter entities are deleted  --------
 		let mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
@@ -81,7 +89,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
 		initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
 
-		const initialStateUpdate: M.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
+		const initialStateUpdate: SS.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
 		const withParts = await includeLQServerUpdateParts(ctx, initialStateUpdate)
 		// idk why this cast on ctx is necessary
 		serverStateUpdate$ = new Rx.BehaviorSubject([withParts, ctx as C.Log & C.Db] as const)
@@ -110,7 +118,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 
 	// -------- schedule generic admin reminders --------
 	Rx.interval(CONFIG.reminders.adminQueueReminderInterval).pipe(
-		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async (i: number) => {
+		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
 			const serverState = await getServerState({}, ctx)
 			if (
 				serverState.layerQueue[0]?.vote
@@ -125,21 +133,21 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	).subscribe()
 
 	// -------- when SLM is not able to set a layer on the server, notify admins.
-	unexpectedNextLayerSet$ = new Rx.BehaviorSubject<[C.Log & C.Db, M.LayerId | null]>([ctx, null])
+	unexpectedNextLayerSet$ = new Rx.BehaviorSubject<[C.Log & C.Db, L.LayerId | null]>([ctx, null])
 	unexpectedNextLayerSet$
 		.pipe(
 			Rx.switchMap(([ctx, unexpectedNextLayer]) => {
 				if (unexpectedNextLayer) {
 					return Rx.interval(HumanTime.parse('2m')).pipe(
 						Rx.startWith(0),
-						Rx.map(() => [ctx, unexpectedNextLayer] as [C.Log & C.Db, M.LayerId]),
+						Rx.map(() => [ctx, unexpectedNextLayer] as [C.Log & C.Db, L.LayerId]),
 					)
 				}
 				return Rx.EMPTY
 			}),
 			C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async ([ctx, expectedNextLayerId]) => {
 				const serverState = await getServerState({}, ctx)
-				const expectedLayerName = DH.toFullLayerNameFromId(M.getNextLayerId(serverState.layerQueue)!)
+				const expectedLayerName = DH.toFullLayerNameFromId(LL.getNextLayerId(serverState.layerQueue)!)
 				const actualLayerName = DH.toFullLayerNameFromId(expectedNextLayerId)
 				await SquadServer.warnAllAdmins(
 					ctx,
@@ -149,7 +157,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		).subscribe()
 
 	// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
-	type LayerStatus = { currentLayer: M.UnvalidatedMiniLayer; nextLayer: M.UnvalidatedMiniLayer | null }
+	type LayerStatus = { currentLayer: L.UnvalidatedLayer; nextLayer: L.UnvalidatedLayer | null }
 	type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
 
 	SquadServer.rcon.serverStatus
@@ -181,7 +189,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				break
 			case 'layer-change-with-empty-queue:buffer-next-match-context': {
 				// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to so we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
-				const item = M.createLayerListItem({
+				const item = LL.createLayerListItem({
 					layerId: status.currentLayer.id,
 					source: { type: 'unknown' },
 				})
@@ -208,7 +216,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	const handleServerRoll = C.spanOp(
 		'layer-queue:handle-server-roll',
 		{ tracer, eventLogLevel: 'info' },
-		async (baseCtx: C.Log & C.Db & C.Tx, prevServerState: M.LQServerState) => {
+		async (baseCtx: C.Log & C.Db & C.Tx, prevServerState: SS.LQServerState) => {
 			baseCtx.log.info('Attempting to handle roll to next layer')
 			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -219,13 +227,13 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				return
 			}
 			const currentLayerItem = serverState.layerQueue.shift()
-			const currentLayerId = currentLayerItem ? M.getLayerIdToSetFromItem(currentLayerItem) : undefined
+			const currentLayerId = currentLayerItem ? LL.getLayerIdToSetFromItem(currentLayerItem) : undefined
 			postRollEventsSub?.unsubscribe()
 			postRollEventsSub = new Rx.Subscription()
 
 			// -------- schedule FRAAS auto fog-off --------
 			if (currentLayerItem && currentLayerId) {
-				const currentLayer = M.getLayerPartial(M.getUnvalidatedLayerFromId(currentLayerId))
+				const currentLayer = L.toLayer(currentLayerId)
 				if (currentLayer.Gamemode === 'FRAAS') {
 					postRollEventsSub.add(
 						Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
@@ -235,24 +243,38 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 					)
 				}
 			}
+			const announcementTasks: (Rx.Observable<void>)[] = []
+			announcementTasks.push(toCold(async () => {
+				const historyState = MatchHistory.getPublicMatchHistory()
+				const currentMatch = MatchHistory.getCurrentMatch()
+				if (!currentMatch) return
+				for (const eventId of historyState.activeTriggerEvents) {
+					const event = historyState.recentBalanceTriggerEvents.find(event => event.id === eventId)
+					if (!event) continue
+					await SquadServer.warnAllAdmins(ctx, WARNS.balanceTrigger.showEvent(event, currentMatch))
+				}
+			}))
 
-			// -------- schedule post-roll announcements --------
-			postRollEventsSub.add(
-				Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout)
-					.pipe(
-						Rx.concatMap(() => warnShowNext(ctx, 'all-admins')),
-						// we're doing this in a slightly funky way to allow for more granular cancellation
-						Rx.concatMap(() => Rx.timer(10_000)),
-						Rx.concatMap(async () => {
-							const serverState = await getServerState({}, ctx)
-							if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold) {
-								await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
-							}
-						}),
-						Rx.retry({ count: 5, resetOnSuccess: true }),
-					)
-					.subscribe(),
-			)
+			announcementTasks.push(toCold(async () => warnShowNext(ctx, 'all-admins')))
+
+			announcementTasks.push(toCold(async () => {
+				const serverState = await getServerState({}, ctx)
+				if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold) {
+					await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+				}
+			}))
+
+			const withWaits: Rx.Observable<unknown>[] = []
+			withWaits.push(Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout))
+
+			for (let i = 0; i < announcementTasks.length; i++) {
+				withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
+				if (i !== announcementTasks.length - 1) {
+					withWaits.push(Rx.timer(2000))
+				}
+			}
+
+			postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
 
 			SquadServer.bufferNextMatchLQItem(currentLayerItem!)
 			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
@@ -282,7 +304,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	const handleAdminChangeLayer = C.spanOp(
 		'layer-queue:handle-admin-change-layer',
 		{ tracer },
-		async (baseCtx: C.Log & C.Db & C.Tx, serverState: M.LQServerState) => {
+		async (baseCtx: C.Log & C.Db & C.Tx, serverState: SS.LQServerState) => {
 			C.setSpanOpAttrs({ serverState })
 			// the new current layer was set to something unexpected, so we just handle updating the next layer
 			const time = new Date()
@@ -308,14 +330,14 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	function checkforStatusChangeActions(
 		status: LayerStatus,
 		prevStatus: LayerStatus | null,
-		serverState: M.LQServerState,
+		serverState: SS.LQServerState,
 	) {
 		if (serverState.settings.updatesToSquadServerDisabled) return { code: 'sync-disabled:no-action' as const }
-		const lqNextLayerId = M.getNextLayerId(serverState.layerQueue)
+		const lqNextLayerId = LL.getNextLayerId(serverState.layerQueue)
 		if (prevStatus != null && !deepEqual(status.currentLayer, prevStatus.currentLayer)) {
 			if (!lqNextLayerId) {
 				return { code: 'layer-change-with-empty-queue:buffer-next-match-context' as const }
-			} else if (M.areLayerIdsCompatible(status.currentLayer.id, lqNextLayerId)) {
+			} else if (L.areLayersCompatible(status.currentLayer.id, lqNextLayerId)) {
 				// new current layer was expected, so we just need to roll
 				return { code: 'expected-new-current-layer:roll' as const }
 			} else {
@@ -327,7 +349,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		if (!status.nextLayer) return { code: 'unknown-layer-set:no-action' as const }
 
 		if (!lqNextLayerId) return { code: 'no-next-layer-set:no-action' as const }
-		if (M.areLayerIdsCompatible(status.nextLayer.id, lqNextLayerId)) return { code: 'correct-layer-set:no-action' as const }
+		if (L.areLayersCompatible(status.nextLayer, lqNextLayerId)) return { code: 'correct-layer-set:no-action' as const }
 		return { code: 'unexpected-layer-change:reset' as const, expectedNextLayerId: lqNextLayerId }
 	}
 
@@ -367,12 +389,12 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 // -------- voting --------
 //
 function getVoteStateUpdatesFromQueueUpdate(
-	lastQueue: M.LayerList,
-	newQueue: M.LayerList,
-	voteState: M.VoteState | null,
+	lastQueue: LL.LayerList,
+	newQueue: LL.LayerList,
+	voteState: V.VoteState | null,
 	force = false,
 ) {
-	const lastQueueItem = lastQueue[0] as M.LayerListItem | undefined
+	const lastQueueItem = lastQueue[0] as LL.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
 
 	if (!lastQueueItem?.vote && !newQueueItem?.vote) return { code: 'noop' as const }
@@ -384,12 +406,12 @@ function getVoteStateUpdatesFromQueueUpdate(
 	if (lastQueueItem?.vote && !newQueueItem?.vote) {
 		return {
 			code: 'ok' as const,
-			update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies M.VoteStateUpdate,
+			update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies V.VoteStateUpdate,
 		}
 	}
 
 	if (newQueueItem.vote && !deepEqual(lastQueueItem?.vote, newQueueItem.vote)) {
-		let newVoteState: M.VoteState
+		let newVoteState: V.VoteState
 		if (lastQueueItem?.itemId === newQueueItem.itemId) {
 			newVoteState = {
 				...(voteState ?? { code: 'ready' }),
@@ -408,7 +430,7 @@ function getVoteStateUpdatesFromQueueUpdate(
 			update: {
 				state: newVoteState,
 				source: { type: 'system', event: 'queue-change' },
-			} satisfies M.VoteStateUpdate,
+			} satisfies V.VoteStateUpdate,
 		}
 	}
 
@@ -422,16 +444,16 @@ async function* watchUnexpectedNextLayer() {
 }
 
 async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
-	let initialState: (M.VoteState & Parts<M.UserPart>) | null = null
+	let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 	if (voteState) {
 		const ids = getVoteStateDiscordIds(voteState)
 		const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
 		initialState = { ...voteState, parts: { users } }
 	}
-	yield { code: 'initial-state' as const, state: initialState } satisfies M.VoteStateUpdateOrInitialWithParts
+	yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
 	for await (const [ctx, update] of toAsyncGenerator(voteStateUpdate$)) {
 		const withParts = await includeVoteStateUpdatePart(ctx, update)
-		yield { code: 'update' as const, update: withParts } satisfies M.VoteStateUpdateOrInitialWithParts
+		yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
 	}
 }
 
@@ -440,7 +462,7 @@ export const startVote = C.spanOp(
 	{ tracer, eventLogLevel: 'info' },
 	async (
 		ctx: C.Log & C.Db & Partial<C.User>,
-		opts: { durationSeconds?: number; initiator: M.GuiOrChatUserId },
+		opts: { durationSeconds?: number; initiator: USR.GuiOrChatUserId },
 	) => {
 		C.setSpanOpAttrs(opts)
 		if (ctx.user) {
@@ -498,7 +520,7 @@ export const startVote = C.spanOp(
 				deadline: Date.now() + durationSeconds * 1000,
 				votes: {},
 				initiator: opts.initiator,
-			} satisfies M.VoteState
+			} satisfies V.VoteState
 
 			ctx.log.info('registering vote deadline')
 			const update = {
@@ -508,7 +530,7 @@ export const startVote = C.spanOp(
 					event: 'start-vote',
 					user: opts.initiator,
 				},
-			} satisfies M.VoteStateUpdate
+			} satisfies V.VoteStateUpdate
 
 			return { code: 'ok' as const, voteStateUpdate: update }
 		})
@@ -551,7 +573,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 
 	const choice = voteState.choices[choiceIdx - 1]
 	voteState.votes[msg.playerId] = choice
-	const update: M.VoteStateUpdate = {
+	const update: V.VoteStateUpdate = {
 		state: voteState,
 		source: {
 			type: 'manual',
@@ -568,7 +590,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Log & C.Db, opts: { aborter: M.GuiOrChatUserId }) => {
+	async (ctx: C.Log & C.Db, opts: { aborter: USR.GuiOrChatUserId }) => {
 		C.setSpanOpAttrs(opts)
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using acquired = await acquireInBlock(voteStateMtx)
@@ -579,7 +601,7 @@ export const abortVote = C.spanOp(
 			}
 		}
 
-		const newVoteState: M.VoteState = {
+		const newVoteState: V.VoteState = {
 			choices: voteState.choices,
 			defaultChoice: voteState.defaultChoice,
 			deadline: voteState.deadline,
@@ -588,7 +610,7 @@ export const abortVote = C.spanOp(
 			aborter: opts.aborter,
 		}
 
-		const update: M.VoteStateUpdate = {
+		const update: V.VoteStateUpdate = {
 			state: newVoteState,
 			source: { type: 'manual', user: opts.aborter, event: 'abort-vote' },
 		}
@@ -667,9 +689,9 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 				currentVote: voteState,
 			}
 		}
-		let newVoteState: M.VoteState
-		let voteUpdate: M.VoteStateUpdate
-		let tally: M.Tally | null = null
+		let newVoteState: V.VoteState
+		let voteUpdate: V.VoteStateUpdate
+		let tally: V.Tally | null = null
 		if (Object.values(voteState.votes).length === 0) {
 			serverState.layerQueue[0].layerId = voteState.defaultChoice
 			newVoteState = {
@@ -689,7 +711,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 
 			const status = statusRes.data
 
-			tally = M.tallyVotes(voteState, status.playerCount)
+			tally = V.tallyVotes(voteState, status.playerCount)
 			C.setSpanOpAttrs({ tally })
 
 			const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
@@ -716,7 +738,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 
 	if (res.code !== 'ok') return res
 
-	const update: M.LQServerStateUpdate = {
+	const update: SS.LQServerStateUpdate = {
 		state: res.serverState,
 		source: { type: 'system', event: 'vote-timeout' },
 	}
@@ -733,7 +755,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 	return res
 })
 
-async function includeVoteStateUpdatePart(ctx: C.Log & C.Db, update: M.VoteStateUpdate) {
+async function includeVoteStateUpdatePart(ctx: C.Log & C.Db, update: V.VoteStateUpdate) {
 	let discordIds: Set<bigint> = new Set()
 	if (update.source.type === 'manual') {
 		const discordId = update.source.user.discordId
@@ -746,10 +768,10 @@ async function includeVoteStateUpdatePart(ctx: C.Log & C.Db, update: M.VoteState
 	}
 	const discordIdsArray = Array.from(discordIds)
 	const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
-	const withParts: M.VoteStateUpdate & Parts<M.UserPart> = { ...update, parts: { users } }
+	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
 }
-function getVoteStateDiscordIds(state: M.VoteState) {
+function getVoteStateDiscordIds(state: V.VoteState) {
 	const discordIds: bigint[] = []
 	switch (state.code) {
 		case 'ended:winner':
@@ -783,7 +805,7 @@ export async function startEditing({ ctx }: { ctx: C.TrpcRequest }) {
 		userId: ctx.user.discordId,
 		wsClientId: ctx.wsClientId,
 	}
-	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
 		event: 'edit-start',
 		state: userPresence,
 		parts: {
@@ -802,7 +824,7 @@ export function endEditing({ ctx }: { ctx: C.TrpcRequest }) {
 	}
 
 	delete userPresence.editState
-	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
 		event: 'edit-end',
 		state: userPresence,
 		parts: {
@@ -820,7 +842,7 @@ async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 		return { code: 'err:no-editor' as const }
 	}
 	delete userPresence.editState
-	const update: M.UserPresenceStateUpdate & Parts<M.UserPart> = {
+	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
 		event: 'edit-kick',
 		state: userPresence,
 		parts: {
@@ -832,12 +854,12 @@ async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 }
 
 export async function* watchUserPresence({ ctx }: { ctx: C.Log & C.Db }) {
-	const users: M.User[] = []
+	const users: USR.User[] = []
 	if (userPresence.editState) {
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userPresence.editState.userId))
 		users.push(user)
 	}
-	yield { code: 'initial-state' as const, state: userPresence, parts: { users } } satisfies any & Parts<M.UserPart>
+	yield { code: 'initial-state' as const, state: userPresence, parts: { users } } satisfies any & Parts<USR.UserPart>
 	for await (const update of toAsyncGenerator(userPresenceUpdate$)) {
 		yield { code: 'update' as const, update }
 	}
@@ -855,7 +877,7 @@ async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
 	}
 }
 
-export async function updateQueue({ input, ctx }: { input: M.UserModifiableServerState; ctx: C.TrpcRequest }) {
+export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServerState; ctx: C.TrpcRequest }) {
 	C.setSpanOpAttrs({ input })
 	input = deepClone(input)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
@@ -952,7 +974,7 @@ export async function updateQueue({ input, ctx }: { input: M.UserModifiableServe
 	})
 	if (res.code !== 'ok') return res
 
-	const update: M.LQServerStateUpdate = {
+	const update: SS.LQServerStateUpdate = {
 		state: res.serverState,
 		source: { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' },
 	}
@@ -969,13 +991,13 @@ export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C
 	let serverRaw: any
 	if (lock) [serverRaw] = await query.for('update')
 	else [serverRaw] = await query
-	return M.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
 export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-admins', opts?: { repeat?: number }) {
 	const serverState = await getServerState({}, ctx)
 	const layerQueue = serverState.layerQueue
-	const parts: M.UserPart = { users: [] }
+	const parts: USR.UserPart = { users: [] }
 	const firstItem = layerQueue[0]
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
@@ -991,8 +1013,8 @@ export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-ad
 
 async function includeLQServerUpdateParts(
 	ctx: C.Db & C.Log,
-	_serverStateUpdate: M.LQServerStateUpdate,
-): Promise<M.LQServerStateUpdate & Partial<Parts<M.UserPart & M.LayerStatusPart>>> {
+	_serverStateUpdate: SS.LQServerStateUpdate,
+): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
 	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
 	return {
@@ -1004,8 +1026,8 @@ async function includeLQServerUpdateParts(
 	}
 }
 
-async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQServerStateUpdate) {
-	const part: M.UserPart = { users: [] as M.User[] }
+async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: SS.LQServerStateUpdate) {
+	const part: USR.UserPart = { users: [] as USR.User[] }
 	const state = update.state
 	const userIds: bigint[] = []
 	if (update.source.type === 'manual' && update.source.user.discordId) {
@@ -1025,7 +1047,7 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: M.LQS
 	return part
 }
 
-async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQServerStateUpdate) {
+async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: SS.LQServerStateUpdate) {
 	const queue = serverStateUpdate.state.layerQueue
 	const layerStatuses = await LayerQueries.getLayerStatusesForLayerQueue({
 		ctx,
@@ -1039,17 +1061,17 @@ async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: M.LQ
  */
 async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	ctx: C.Log & C.Db & (NoDbWrite extends true ? object : C.Tx),
-	serverState: M.LQServerState,
+	serverState: SS.LQServerState,
 	opts?: { noDbWrite: NoDbWrite },
 ) {
-	let nextLayerId = M.getNextLayerId(serverState.layerQueue)
+	let nextLayerId = LL.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextLayerId) {
-		const constraints: M.LayerQueryConstraint[] = []
+		const constraints: LQY.LayerQueryConstraint[] = []
 		if (serverState.settings.queue.applyMainPoolToGenerationPool) {
-			constraints.push(...M.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
+			constraints.push(...SS.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
 		}
-		constraints.push(...M.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
+		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
 		const { ids } = await LayerQueries.getRandomGeneratedLayers(
 			ctx,
 			1,
@@ -1059,7 +1081,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		)
 		;[nextLayerId] = ids
 		if (!nextLayerId) return false
-		const nextQueueItem = M.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })
+		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })
 		serverState.layerQueue.push(nextQueueItem)
 		serverState.layerQueueSeqId++
 		if (!opts?.noDbWrite) {
@@ -1107,7 +1129,7 @@ export const layerQueueRouter = router({
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	watchUnexpectedNextLayer: procedure.subscription(watchUnexpectedNextLayer),
 	startVote: procedure
-		.input(M.StartVoteInputSchema)
+		.input(V.StartVoteInputSchema)
 		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),
 	abortVote: procedure.mutation(async ({ ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
@@ -1121,6 +1143,6 @@ export const layerQueueRouter = router({
 
 	watchUserPresence: procedure.subscription(watchUserPresence),
 
-	updateQueue: procedure.input(M.GenericServerStateUpdateSchema).mutation(updateQueue),
+	updateQueue: procedure.input(SS.GenericServerStateUpdateSchema).mutation(updateQueue),
 	toggleUpdatesToSquadServer: procedure.input(z.object({ disabled: z.boolean() })).mutation(toggleUpdatesToSquadServer),
 })

@@ -1,17 +1,17 @@
 import { distinctDeepEquals } from '@/lib/async'
-import * as SM from '@/lib/rcon/squad-models'
+import * as MH from '@/models/match-history.models'
 import * as PartsSys from '@/systems.client/parts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Rx from 'rxjs'
 
-export const [useRecentMatches, recentMatches$] = ReactRx.bind(
-	new Rx.Observable<SM.MatchDetails[]>(s => {
-		const sub = trpc.matchHistory.watchRecentMatchHistory.subscribe(undefined, {
+export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
+	new Rx.Observable<MH.PublicMatchHistoryState>(s => {
+		const sub = trpc.matchHistory.watchMatchHistoryState.subscribe(undefined, {
 			onData: output => {
 				PartsSys.upsertParts(output.parts)
-				s.next(output.recentMatches)
+				s.next(output)
 			},
 			onComplete: () => {
 				console.trace('match history completed')
@@ -22,6 +22,11 @@ export const [useRecentMatches, recentMatches$] = ReactRx.bind(
 		})
 		return () => sub.unsubscribe()
 	}),
+	{ activeTriggerEvents: [], recentBalanceTriggerEvents: [], recentMatches: [] },
+)
+
+export const [useRecentMatches, recentMatches$] = ReactRx.bind(
+	matchHistoryState$.pipe(Rx.map((state) => state.recentMatches)),
 	[],
 )
 

@@ -17,7 +17,6 @@ export const routes = {
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),
 	...defRoute('/logout', [], { handle: 'custom' }),
-	...defRoute('/squadjs/forward', [], { handle: 'custom' }),
 
 	...defRoute('/trpc', [], { handle: 'custom', websocket: true }),
 } as const satisfies Record<string, RouteDefinition>

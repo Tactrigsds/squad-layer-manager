@@ -1,6 +1,6 @@
 import * as AR from '@/app-routes'
-import { assertNever } from '@/lib/typeGuards'
-import * as M from '@/models'
+import { assertNever } from '@/lib/type-guards'
+import * as LQY from '@/models/layer-queries.models'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -8,8 +8,8 @@ import { Link } from 'react-router-dom'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export type ConstraintViolationDisplayProps = {
-	violated: M.LayerQueryConstraint[]
-	violationDescriptors?: M.ViolationDescriptor[]
+	violated: LQY.LayerQueryConstraint[]
+	violationDescriptors?: LQY.ViolationDescriptor[]
 	teamParity?: number
 	children?: React.ReactNode
 	layerId: string

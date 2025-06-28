@@ -3,11 +3,10 @@ import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import * as M from '@/models'
+import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import * as ReactRx from '@react-rxjs/core'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Checkbox } from './ui/checkbox.tsx'
@@ -21,7 +20,7 @@ export default function FilterEntitySelect(props: {
 	allowToggle?: boolean
 	enabled?: boolean
 	setEnabled?: (enabled: boolean) => void
-	excludedFilterIds?: M.FilterEntityId[]
+	excludedFilterIds?: F.FilterEntityId[]
 	children?: React.ReactNode
 }) {
 	const filters = FilterEntityClient.useFilterEntities()

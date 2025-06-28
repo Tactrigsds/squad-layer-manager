@@ -1,5 +1,7 @@
 import * as Arr from '@/lib/array'
-import * as M from '@/models'
+import * as Obj from '@/lib/object'
+import * as F from '@/models/filter.models'
+import * as USR from '@/models/users.models'
 import deepEqual from 'fast-deep-equal'
 import { z } from 'zod'
 
@@ -24,20 +26,20 @@ export type Role = z.infer<typeof RoleSchema>
 export type CompositeRole = Role | InferredRole
 
 export const RoleAssignmentSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('discord-role'), discordRoleId: M.UserIdSchema, role: RoleSchema }),
-	z.object({ type: z.literal('discord-user'), discordUserId: M.UserIdSchema, role: RoleSchema }),
+	z.object({ type: z.literal('discord-role'), discordRoleId: USR.UserIdSchema, role: RoleSchema }),
+	z.object({ type: z.literal('discord-user'), discordUserId: USR.UserIdSchema, role: RoleSchema }),
 	z.object({ type: z.literal('discord-server-member'), role: RoleSchema }),
 ])
 export type RoleAssignment = z.infer<typeof RoleAssignmentSchema>
 
 export const PERM_SCOPE_ARGS = {
 	global: z.undefined(),
-	filter: z.object({ filterId: M.FilterEntityIdSchema }),
+	filter: z.object({ filterId: F.FilterEntityIdSchema }),
 }
 
 type PermScope = keyof typeof PERM_SCOPE_ARGS
 
-export type UserWithRbac = M.User & { perms: TracedPermission[] }
+export type UserWithRbac = USR.User & { perms: TracedPermission[] }
 
 function definePermission<T extends string, S extends PermScope>(type: T, args: { description: string; scope: S }) {
 	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as const
@@ -76,6 +78,40 @@ export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
 	'squad-server:turn-fog-off',
 ])
 
+export function isGlobalPermissionType(expr: GlobalPermissionTypeExpression): expr is GlobalPermissionType {
+	return GLOBAL_PERMISSION_TYPE.safeParse(expr).success
+}
+export function parseNegatingPermissionType(expr: string): GlobalPermissionType | undefined {
+	if (!expr.startsWith('!')) return undefined
+	const perm = expr.slice(1)
+	if (!isGlobalPermissionType(perm)) return undefined
+	return perm
+}
+
+export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
+	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']))
+}
+
+export function recalculateNegations(perms: TracedPermission[]) {
+	const recalculated = perms.map(perm => {
+		let negated: boolean
+		if (perm.negating) negated = false
+		else negated = perms.some(p => p.type === perm.type && deepEqual(p.args, perm.args) && p.negating)
+		return ({ ...perm, negated })
+	})
+	return recalculated
+}
+
+export const GLOBAL_PERMISSION_TYPE_EXPRESSION = z.union([
+	GLOBAL_PERMISSION_TYPE,
+	z.literal('*').describe('include all'),
+	z.string().regex(/^!/).refine((str) => GLOBAL_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
+		message: 'Negated permission must be a valid global permission type',
+	}).describe('negated permissions. takes precedence wherever present for a user'),
+])
+
+export type GlobalPermissionTypeExpression = z.infer<typeof GLOBAL_PERMISSION_TYPE_EXPRESSION>
+
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
 export type GlobalPermissionType = z.infer<typeof GLOBAL_PERMISSION_TYPE>
 
@@ -89,16 +125,26 @@ export function perm<T extends PermissionType>(type: T, scopeOpts?: z.infer<(typ
 export function tracedPerm<T extends PermissionType>(
 	type: T,
 	roles: CompositeRole[],
+	opts?: { negated?: boolean; negating?: boolean },
 	scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>,
 ) {
 	return {
 		...perm(type, scopeOpts),
 		allowedByRoles: roles,
+		negated: opts?.negated ?? false,
+		negating: opts?.negating ?? false,
 	}
 }
 
 export type Permission<T extends PermissionType = PermissionType> = ReturnType<typeof perm<T>>
-export type PermissionTrace = { allowedByRoles: CompositeRole[] }
+export type PermissionTrace = {
+	allowedByRoles: CompositeRole[]
+	// this perm has been negated by another
+	negated: boolean
+
+	// this perm is a negating perm (!<perm>)
+	negating: boolean
+}
 export type TracedPermission<T extends PermissionType = PermissionType> = Permission<T> & PermissionTrace
 export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedPermission[]) {
 	for (const permToAdd of permsToAdd) {
@@ -130,13 +176,13 @@ export function rbacUserHasPerms<T extends PermissionType>(
 	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
 ): boolean {
 	if ('check' in reqOrPerms) {
-		return userHasPerms(user.discordId, user.perms, reqOrPerms)
+		return userHasPerms(user.discordId, fromTracedPermissions(user.perms), reqOrPerms)
 	}
 	const req: PermissionReq<T> = {
 		check: 'all',
 		permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
 	}
-	return userHasPerms(user.discordId, user.perms, req)
+	return userHasPerms(user.discordId, fromTracedPermissions(user.perms), req)
 }
 
 // TODO technically incorrect when it comes to filters:write-all
@@ -148,6 +194,8 @@ export function userHasPerms<T extends PermissionType>(
 	userPerms: Permission[],
 	reqOrPerms: Permission<T> | Permission<T>[] | PermissionReq<T>,
 ): boolean {
+	// just in case
+	userPerms = fromTracedPermissions(userPerms as TracedPermission<T>[])
 	const req: PermissionReq<T> = 'check' in reqOrPerms
 		? reqOrPerms
 		: {
@@ -178,13 +226,17 @@ export function tryDenyPermissionForUser<T extends PermissionType>(userId: bigin
 
 export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
 	perm1 = { ...perm1 }
-	delete perm1.allowedByRoles
 	perm2 = { ...perm2 }
+	delete perm1.allowedByRoles
 	delete perm2.allowedByRoles
+	if (!perm1.negated === false) delete perm1.negated
+	if (!perm2.negated === false) delete perm2.negated
+	if (!perm1.negating === false) delete perm1.negating
+	if (!perm2.negating === false) delete perm2.negating
 	return deepEqual(perm1, perm2)
 }
 
-export function getWritePermReqForFilterEntity(id: M.FilterEntityId): PermissionReq {
+export function getWritePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
 	return {
 		check: 'any',
 		permits: [perm('filters:write', { filterId: id }), perm('filters:write-all')],

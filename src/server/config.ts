@@ -1,10 +1,13 @@
 import { selectProps } from '@/lib/object.ts'
-import * as SM from '@/lib/rcon/squad-models.ts'
 import { HumanTime, ParsedBigIntSchema } from '@/lib/zod'
+import * as BAL from '@/models/balance-triggers.models.ts'
+import * as LC from '@/models/layer-columns.ts'
+import * as LQY from '@/models/layer-queries.models.ts'
+import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Paths from '@/server/paths'
 import * as Cli from '@/server/systems/cli.ts'
-import { DEPRECATION_WARNING_PREFIX } from 'discord.js'
+import * as ExtraCols from '@/server/systems/extra-column-config.ts'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import fs from 'node:fs/promises'
@@ -64,7 +67,7 @@ export const ConfigSchema = z.object({
 	adminListAdminRole: z.string().describe("The role in the adminlist which identifies an admin for SLM's purposes"),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
-		.record(z.array(z.union([RBAC.GLOBAL_PERMISSION_TYPE, z.literal('*').describe('include all permissions')])))
+		.record(z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
 		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.RoleSchema) })).optional(),
@@ -72,6 +75,42 @@ export const ConfigSchema = z.object({
 		'discord-server-member': z.array(z.object({ roles: z.array(RBAC.RoleSchema) })).optional(),
 	}),
 	// TODO write refinement to make sure that all roles referenced in role assignments are defined in globalRolePermissions
+
+	balanceTriggerLevels: z.record(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
+		.default({ '150x2': 'warn' })
+		.refine((value) => {
+			const providedTriggerIds = new Set(Object.keys(value))
+			for (const triggerId of BAL.TRIGGER_IDS.options) {
+				if (!providedTriggerIds.has(triggerId)) {
+					return false
+				}
+			}
+
+			return true
+		}, {
+			message: 'All trigger IDs must be present in balanceTriggerLevels',
+		})
+		.describe('Configures the trigger warning levels for balance calculations'),
+
+	layerTable: LQY.LayerTableConfigSchema.default({
+		orderedColumns: [
+			{ name: 'id' },
+			{ name: 'Size' },
+			{ name: 'Layer' },
+			{ name: 'Map' },
+			{ name: 'Gamemode' },
+			{ name: 'LayerVersion' },
+
+			{ name: 'Faction_1' },
+			{ name: 'Unit_1' },
+			{ name: 'Alliance_1' },
+
+			{ name: 'Faction_2' },
+			{ name: 'Unit_2' },
+			{ name: 'Alliance_2' },
+		],
+		defaultSortBy: { type: 'column', sortBy: 'Layer', sortDirection: 'ASC' },
+	}),
 })
 
 export let CONFIG!: Config
@@ -106,10 +145,11 @@ export async function ensureConfigSetup() {
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
-		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor']),
+		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
+		extraColumnsConfig: ExtraCols.EXTRA_COLS_CONFIG,
 	}
 }
 

@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
-import { assertNever } from '@/lib/typeGuards.ts'
+import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'

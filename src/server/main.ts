@@ -1,3 +1,4 @@
+import * as Schema from '$root/drizzle/schema'
 import { sleep } from '@/lib/async.ts'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as Otel from '@opentelemetry/api'
@@ -9,6 +10,7 @@ import { baseLogger, ensureLoggerSetup } from './logger.ts'
 import * as TrpcRouter from './router'
 import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
+import * as ExtraCols from './systems/extra-column-config.ts'
 import * as Fastify from './systems/fastify.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as MatchHistory from './systems/match-history.ts'
@@ -25,24 +27,26 @@ await C.spanOp('main', { tracer }, async () => {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
-	await Config.ensureConfigSetup()
-	baseLogger.info('Starting SLM version %', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
-	await DB.setupDatabase()
+	baseLogger.info('-------- Starting SLM version % --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
+	await Promise.all([Config.ensureConfigSetup(), ExtraCols.ensureSetup(), DB.setupDatabase()])
+	Schema.setup()
 	Rbac.setup()
 	Sessions.setupSessions()
-	await MatchHistory.setup()
-	SquadServer.setupSquadServer()
-	await Discord.setupDiscordSystem()
 	TrpcRouter.setupTrpcRouter()
-	void LayerQueue.setup()
+	await MatchHistory.setup()
+	await Promise.all([SquadServer.setupSquadServer(), Discord.setupDiscordSystem()])
+	await LayerQueue.setup()
 	const { serverClosed } = await Fastify.setupFastify()
+	if (ENV.NODE_ENV === 'development') {
+		void import('./console.ts')
+	}
 	const closedMsg = await serverClosed
 	baseLogger.info('server closed: %s', closedMsg)
 	return 0
 })()
 	.catch((err) => {
 		if (baseLogger) baseLogger.fatal(err)
-		else console.error(err)
+		console.error(err)
 		return 1
 	})
 	.then(async (status) => {
