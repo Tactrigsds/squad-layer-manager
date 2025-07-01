@@ -34,10 +34,7 @@ export function useEffectiveColConfig(): LQY.EffectiveColumnAndTableConfig | und
 	if (!config) return
 
 	return {
-		defs: {
-			...LC.BASE_COLUMN_DEFS,
-			...Object.fromEntries(config.extraColumnsConfig.columns.map(col => [col.name, col])),
-		},
+		...LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		...config.layerTable,
 	}
 }

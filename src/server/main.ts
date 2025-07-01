@@ -1,6 +1,8 @@
 import * as Schema from '$root/drizzle/schema'
 import { sleep } from '@/lib/async.ts'
 import { formatVersion } from '@/lib/versioning.ts'
+import * as CS from '@/models/context-shared'
+import * as FilterEntity from '@/server/systems/filter-entity'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -10,8 +12,8 @@ import { baseLogger, ensureLoggerSetup } from './logger.ts'
 import * as TrpcRouter from './router'
 import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
-import * as ExtraCols from './systems/extra-column-config.ts'
 import * as Fastify from './systems/fastify.ts'
+import * as LayerDb from './systems/layer-db.server.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as MatchHistory from './systems/match-history.ts'
 import * as Rbac from './systems/rbac.system.ts'
@@ -28,8 +30,7 @@ await C.spanOp('main', { tracer }, async () => {
 	ENV = envBuilder()
 	ensureLoggerSetup()
 	baseLogger.info('-------- Starting SLM version % --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
-	await Promise.all([Config.ensureConfigSetup(), ExtraCols.ensureSetup(), DB.setupDatabase()])
-	Schema.setup()
+	await Promise.all([Config.ensureConfigSetup(), LayerDb.setup(), DB.setupDatabase(), FilterEntity.setup()])
 	Rbac.setup()
 	Sessions.setupSessions()
 	TrpcRouter.setupTrpcRouter()

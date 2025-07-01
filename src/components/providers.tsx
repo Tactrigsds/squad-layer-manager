@@ -10,7 +10,6 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import * as jotai from 'jotai'
 import { ReactNode } from 'react'
 import React from 'react'
-import { ThemeProvider } from './theme-provider'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 import { TooltipProvider } from './ui/tooltip'
 
@@ -33,14 +32,12 @@ function ProvidersInner(props: { children: ReactNode }) {
 		<>
 			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen={true} />}
 			<jotai.Provider>
-				<ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-					<TooltipProvider>
-						<DragContextProvider>
-							<AlertDialogProvider>{props.children}</AlertDialogProvider>
-						</DragContextProvider>
-					</TooltipProvider>
-					<Toaster />
-				</ThemeProvider>
+				<TooltipProvider>
+					<DragContextProvider>
+						<AlertDialogProvider>{props.children}</AlertDialogProvider>
+					</DragContextProvider>
+				</TooltipProvider>
+				<Toaster />
 			</jotai.Provider>
 		</>
 	)

@@ -5,12 +5,12 @@ import { acquireInBlock, toAsyncGenerator } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
 import * as BAL from '@/models/balance-triggers.models'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SME from '@/models/squad-models.events'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import * as V from '@/models/vote.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { baseLogger } from '@/server/logger'
@@ -51,7 +51,7 @@ export async function getRecentMatchHistory() {
 	return state.recentMatches
 }
 
-export const loadState = C.spanOp('match-history:load-state', { tracer }, async (ctx: C.Log & C.Db, opts?: { limit?: number }) => {
+export const loadState = C.spanOp('match-history:load-state', { tracer }, async (ctx: CS.Log & C.Db, opts?: { limit?: number }) => {
 	const limit = opts?.limit ?? MAX_RECENT_MATCHES
 	const rows = (await ctx.db().select().from(Schema.matchHistory)
 		.leftJoin(Schema.users, E.eq(Schema.matchHistory.setByUserId, Schema.users.discordId))
@@ -83,7 +83,7 @@ export function getCurrentMatch() {
 export const loadCurrentMatch = C.spanOp(
 	'match-history:get-previous-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Log & C.Db, opts?: { lock?: boolean }) => {
+	async (ctx: CS.Log & C.Db, opts?: { lock?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(1)
 		let match: SchemaModels.MatchHistory
 		if (opts?.lock) [match] = await query.for('update')
@@ -121,7 +121,7 @@ export const matchHistoryRouter = router({
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Log & C.Db, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
+	async (ctx: CS.Log & C.Db, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			await ctx.db().insert(Schema.matchHistory).values({ ...entry, ordinal: currentMatch ? currentMatch.ordinal + 1 : 0 }).$returningId()
@@ -133,7 +133,7 @@ export const addNewCurrentMatch = C.spanOp(
 )
 
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
-	ctx: C.Log & C.Db,
+	ctx: CS.Log & C.Db,
 	currentLayerId: string,
 	event: SME.RoundEnded,
 ) => {
@@ -214,7 +214,7 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	},
 )
 
-export async function getMatchHistoryCount(ctx: C.Log & C.Db): Promise<number> {
+export async function getMatchHistoryCount(ctx: CS.Log & C.Db): Promise<number> {
 	const [{ count }] = await ctx.db().select({ count: sql<string>`count(*)` }).from(Schema.matchHistory)
 	return parseInt(count)
 }

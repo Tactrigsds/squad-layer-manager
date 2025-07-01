@@ -2,7 +2,7 @@ import * as MapUtils from '@/lib/map'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as USR from '@/models/users.models'
-import { type WatchFiltersOutput } from '@/server/systems/filter-entity'
+import { type FilterEntityChange } from '@/server/systems/filter-entity'
 import * as PartsSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
@@ -26,7 +26,7 @@ export const filterEntityChanged$ = new Rx.Subject<void>()
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
 	const sub = trpc.filters.watchFilters.subscribe(undefined, {
 		onData: (_output) => {
-			const output = PartsSys.stripParts(_output) as WatchFiltersOutput
+			const output = PartsSys.stripParts(_output) as FilterEntityChange
 			switch (output.code) {
 				case 'initial-value': {
 					filterEntities.clear()

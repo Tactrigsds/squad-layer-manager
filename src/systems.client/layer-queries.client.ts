@@ -1,13 +1,18 @@
-import { sleep } from '@/lib/async'
-import { assertNever } from '@/lib/type-guards'
+import { globalToast$ } from '@/hooks/use-global-toast'
+import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import { baseLogger } from '@/server/systems/logger.client'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
+import * as LayerDbClient from '@/systems.client/layer-db.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
-import { reactQueryClient, trpc } from '@/trpc.client'
+import * as LayerQueries from '@/systems.shared/layer-queries.shared'
+import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
@@ -15,19 +20,24 @@ import * as Zus from 'zustand'
 
 export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
 	options ??= {}
+	const ctx = useCtx()
+	const args = ctx ? { ctx, input } : undefined
 	return useQuery({
 		...options,
-		queryKey: ['layers', 'queryLayers', superjson.serialize(input)],
+		queryKey: ['layers', 'queryLayers', getDepKey(args)],
 		placeholderData: (prev) => prev,
-		queryFn: () => trpc.layers.queryLayers.query(input),
+		enabled: !!args,
+		queryFn: async () => LayerQueries.queryLayers(args!),
 		staleTime: Infinity,
 	})
 }
 
-export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
+export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
+	const ctx = await fetchCtx()
+	const args = { ctx, input }
 	return reactQueryClient.prefetchQuery({
-		queryKey: ['layers', 'queryLayers', superjson.serialize(input)],
-		queryFn: () => trpc.layers.queryLayers.query(input),
+		queryKey: ['layers', 'queryLayers', getDepKey(args)],
+		queryFn: async () => LayerQueries.queryLayers(args),
 		staleTime: Infinity,
 	})
 }
@@ -63,21 +73,27 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryContext, opts?: {
 	}
 }
 
-export function useLayerComponents(input: Parameters<typeof trpc.layers.queryLayerComponents.query>[0], options?: { enabled?: boolean }) {
+export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { enabled?: boolean }) {
 	options ??= {}
+	const ctx = useCtx()
+	const args = ctx ? { ctx, input } : undefined
 	return useQuery({
 		...options,
-		queryKey: ['layers', 'queryLayerComponents', superjson.serialize(input)],
-		queryFn: () => trpc.layers.queryLayerComponents.query(input),
+		queryKey: ['layers', 'queryLayerComponents', getDepKey(args)],
+		enabled: !!args,
+		queryFn: async () => LayerQueries.queryLayerComponents(args!),
 		staleTime: Infinity,
 	})
 }
-export function useSearchIds(input: Parameters<typeof trpc.layers.searchIds.query>[0], options?: { enabled?: boolean }) {
+export function useSearchIds(input: LayerQueries.SearchIdsInput, options?: { enabled?: boolean }) {
 	options ??= {}
+	const ctx = useCtx()
+	const args = ctx ? { ctx, input } : undefined
 	return useQuery({
 		...options,
-		queryKey: ['layers', 'queryIds', superjson.serialize(input)],
-		queryFn: () => trpc.layers.searchIds.query(input),
+		queryKey: ['layers', 'queryIds', getDepKey(args)],
+		enabled: !!args,
+		queryFn: async () => LayerQueries.searchIds(args!),
 		staleTime: Infinity,
 	})
 }
@@ -90,64 +106,98 @@ export function useLayerStatuses(
 	const serverLayerQueue = Zus.useStore(QD.QDStore, s => s.serverState?.layerQueue)
 	const editedPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.mainPool)
 	const serverPool = Zus.useStore(QD.QDStore, s => s.serverState?.settings.queue.mainPool)
-	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
+	const ctx = useCtx()
+	const args = ctx
+		? {
+			ctx,
+			input: { queue: editedQueue, pool: editedPool },
+		}
+		: undefined
 	return useQuery({
 		...options,
 		queryKey: [
 			'layers',
 			'getLayerStatusesForLayerQueue',
-			superjson.serialize({
-				editedQueue,
-				serverlayerQueue: serverLayerQueue,
-				editedPool,
-				serverPool,
-				historyEntryId: currentMatch?.historyEntryId,
-			}),
+			getDepKey(args),
 		],
+		enabled: !!args,
 		queryFn: async () => {
 			if (serverLayerQueue && deepEqual(serverLayerQueue, editedQueue) && deepEqual(serverPool, editedPool)) {
 				return PartsSys.getLayerStatuses()
 			}
 
-			return await trpc.layers.getLayerStatusesForLayerQueue.query({ queue: editedQueue, pool: editedPool })
+			const res = await LayerQueries.getLayerStatusesForLayerQueue(args!)
+			if (res.code !== 'ok') {
+				globalToast$.next({ variant: 'destructive', description: res.msg, title: res.code })
+				throw new Error(res.msg)
+			}
+			return res.statuses
 		},
 		staleTime: Infinity,
 	})
 }
 
 export function useLayerExists(
-	input: Parameters<typeof trpc.layers.layerExists.query>[0],
+	input: LayerQueries.LayerExistsInput,
 	options?: { enabled?: boolean; usePlaceholderData?: boolean },
 ) {
 	options ??= {}
+	const ctx = useCtx()
+	const args = ctx
+		? {
+			ctx,
+			input,
+		}
+		: undefined
 	return useQuery({
 		...options,
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
-		queryKey: ['layers', 'layerExists', superjson.serialize(input)],
+		queryKey: ['layers', 'layerExists', getDepKey(args)],
+		enabled: !!args,
 		queryFn: async () => {
-			return await trpc.layers.layerExists.query(input)
+			return await LayerQueries.layerExists(args!)
 		},
 		staleTime: Infinity,
 	})
 }
 
-export function setup() {
-	FilterEntityClient.filterMutation$.subscribe((e) => {
-		switch (e.type) {
-			case 'add':
-				break
-			case 'update':
-			case 'delete':
-				invalidateLayerQueries()
-				break
-			default:
-				assertNever(e.type)
-		}
+// get context/input that may invalidate the query
+function getDepKey<I>(args?: { ctx: CS.LayerQuery; input: I }) {
+	if (!args) return
+	return superjson.serialize({
+		recentMatches: args.ctx.recentMatches,
+		filters: args.ctx.filters,
+		input: args.input,
 	})
 }
 
-export async function invalidateLayerQueries() {
-	// low tech way to prevent all clients from spamming the server all at once
-	await sleep(Math.random() * 2000)
-	reactQueryClient.invalidateQueries({ queryKey: ['layers'] })
+export async function fetchCtx(): Promise<CS.LayerQuery> {
+	const recentMatches = MatchHistoryClient.recentMatches$.getValue()
+	const filters = Array.from(FilterEntityClient.filterEntities$.getValue().values())
+	const config = await ConfigClient.fetchConfig()
+
+	const layerDb = await LayerDbClient.fetchLayerDb()
+	return {
+		layerDb: () => layerDb,
+		recentMatches,
+		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+		filters,
+		log: baseLogger,
+	}
+}
+
+function useCtx(): CS.LayerQuery | undefined {
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const effectiveColsConfig = ConfigClient.useEffectiveColConfig()
+	const filters = Array.from(FilterEntityClient.useFilterEntities().values())
+	const layerDb = LayerDbClient.useLayerDb()
+	if (!effectiveColsConfig) return
+	if (!layerDb) return
+	return {
+		layerDb: () => layerDb,
+		recentMatches,
+		effectiveColsConfig,
+		filters,
+		log: baseLogger,
+	}
 }

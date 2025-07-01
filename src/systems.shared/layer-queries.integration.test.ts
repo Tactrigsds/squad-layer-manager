@@ -1,22 +1,24 @@
+import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
-import * as L from '@/models/layer'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as LayerDb from '@/server/systems/layer-db.server'
 import * as MatchHistory from '@/server/systems/match-history'
+import { getRandomGeneratedLayers, queryLayers } from '@/systems.shared/layer-queries.shared'
 import { beforeAll, expect } from 'vitest'
 import { test } from 'vitest'
-import { ensureEnvSetup } from '../env'
-import * as Log from '../logger'
-import { getRandomGeneratedLayers, queryLayers } from './layer-queries'
+import { ensureEnvSetup } from '../server/env'
+import * as Log from '../server/logger'
 
-let ctx!: C.Db & C.Log
+let ctx!: CS.LayerQuery
 beforeAll(async () => {
 	ensureEnvSetup()
 	Log.ensureLoggerSetup()
 	await DB.setupDatabase()
 	await MatchHistory.setup()
+	await LayerDb.setup({ skipHash: true })
 
-	ctx = DB.addPooledDb({ log: Log.baseLogger })
+	ctx = C.resolveLayerQueryCtx({ log: Log.baseLogger })
 })
 
 test('can filter results', async () => {

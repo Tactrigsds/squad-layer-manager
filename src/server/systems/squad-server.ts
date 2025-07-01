@@ -7,6 +7,7 @@ import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as SME from '@/models/squad-models.events.ts'
@@ -54,7 +55,7 @@ let ENV!: ReturnType<typeof envBuilder>
 export const warnAllAdmins = C.spanOp(
 	'squad-server:warn-all-admins',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Log, options: WarnOptions) => {
+	async (ctx: CS.Log, options: WarnOptions) => {
 		const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
 		const ops: Promise<void>[] = []
 
@@ -68,7 +69,7 @@ export const warnAllAdmins = C.spanOp(
 	},
 )
 
-async function* watchServerStatus({ ctx }: { ctx: C.Log }) {
+async function* watchServerStatus({ ctx }: { ctx: CS.Log }) {
 	for await (const info of toAsyncGenerator(serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
 		yield info
 	}
@@ -102,7 +103,7 @@ function chatInScope(scopes: SM.CommandScope[], msgChat: SM.ChatChannel) {
 	return false
 }
 
-async function handleCommand(ctx: C.Log & C.Db, msg: SM.ChatMessage) {
+async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid chat channel')
 		return
@@ -292,7 +293,7 @@ export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLo
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
-async function handleSquadEvent(ctx: C.Log & C.Db, event: SME.Event) {
+async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
 			state.lastRoll = event.time
@@ -385,7 +386,7 @@ export function bufferNextMatchLQItem(item: LL.LayerListItem) {
 	state.bufferedNextMatch = { layerListItem: item }
 }
 
-export async function toggleFogOfWar({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {
+export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {
 	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
 	if (denyRes) return denyRes
 	const { value: serverStatusRes } = await rcon.serverStatus.get(ctx)

@@ -1,4 +1,5 @@
 import * as SchemaModels from '$root/drizzle/schema.models'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as C from '@/server/context'
@@ -26,7 +27,7 @@ export type BalanceTrigger<ID extends string, Input> = {
 	resolveInput: (input: BaseBalanceTriggerInput) => Input
 
 	// feel free to add more detail in the output
-	evaluate: (ctx: C.Log, input: Input) => EvaluationResultBase | undefined
+	evaluate: (ctx: CS.Log, input: Input) => EvaluationResultBase | undefined
 
 	// types only, for convenience
 	_: {

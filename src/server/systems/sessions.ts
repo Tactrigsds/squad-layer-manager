@@ -1,6 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
+import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
@@ -38,7 +39,7 @@ export async function setupSessions() {
 export const validateAndUpdate = C.spanOp(
 	'sessions:validate-and-update',
 	{ tracer },
-	async (ctx: C.Log & C.Db & Pick<C.HttpRequest, 'req'>, allowRefresh = false) => {
+	async (ctx: CS.Log & C.Db & Pick<C.HttpRequest, 'req'>, allowRefresh = false) => {
 		const cookie = ctx.req.headers.cookie
 		if (!cookie) {
 			return {

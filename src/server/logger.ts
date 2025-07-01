@@ -1,43 +1,16 @@
-import { sdk as otelSdk } from '@/server/systems/otel'
-import { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
-import { Logger as PinoLogger, LoggerOptions } from 'pino'
-
 import { flattenObjToAttrs } from '@/lib/object'
+import * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
+import { sdk as otelSdk } from '@/server/systems/otel'
 import * as Otel from '@opentelemetry/api'
+import { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
+import { LoggerOptions } from 'pino'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
 import * as Env from './env'
 
 import build from 'pino-abstract-transport'
-export type Logger = PinoLogger
-export let baseLogger!: Logger
-
-const serializers = {
-	bigint: (n: bigint) => n.toString() + 'n',
-}
-
-/**
- * If the source format has only a single severity that matches the meaning of the range
- * then it is recommended to assign that severity the smallest value of the range.
- * https://github.com/open-telemetry/opentelemetry-specification/blob/fc8289b8879f3a37e1eba5b4e445c94e74b20359/specification/logs/data-model.md#mapping-of-severitynumber
- */
-const SEVERITY_NUMBER_MAP = {
-	10: 1, // TRACE
-	20: 5, // DEBUG
-	30: 9, // INFO
-	40: 13, // WARN
-	50: 17, // ERROR
-	60: 21, // FATAL
-}
-
-const LEVELS = {
-	10: 'TRACE',
-	20: 'DEBUG',
-	30: 'INFO',
-	40: 'WARN',
-	50: 'ERROR',
-	60: 'FATAL',
-} as const
+export let baseLogger!: CS.Logger
 
 let otelLogger: OtelLogger | undefined
 
@@ -94,7 +67,7 @@ export function ensureLoggerSetup() {
 			}
 
 			// @ts-expect-error idk
-			otelLogger.emit({ body: msg, attributes: attrs, severityText: LEVELS[level], severityNumber: SEVERITY_NUMBER_MAP[level] })
+			otelLogger.emit({ body: msg, attributes: attrs, severityText: LOG.LEVELS[level], severityNumber: LOG.SEVERITY_NUMBER_MAP[level] })
 
 			return method.apply(this, _inputArgs)
 		},
@@ -102,14 +75,14 @@ export function ensureLoggerSetup() {
 	const envToLogger = {
 		development: {
 			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
-			serializers,
+			serializers: LOG.serializers,
 			base: undefined,
 			hooks,
 		},
 		production: {
-			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
+			level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
 			base: undefined,
-			serializers,
+			serializers: LOG.serializers,
 			hooks,
 		},
 	} satisfies { [env in (typeof ENV)['NODE_ENV']]: LoggerOptions }
@@ -122,59 +95,7 @@ export function ensureLoggerSetup() {
 export function createFormatPrettyPrintTransport() {
 	return build(async function(source) {
 		for await (const obj of source) {
-			// JSON stringifying the object to handle circular refs and bigints
-
-			// Format time with 24h time format (HH:MM:SS)
-			const dateObj = new Date(obj.time)
-			const time = dateObj.toLocaleTimeString([], { hour12: false })
-			const dimColor = '\x1b[2m' // Dim/reduced weight ANSI escape code
-			const resetColor = '\x1b[0m'
-
-			const level = obj.level as number
-			const levelLabel = Object.entries(LEVELS).find(([lvl]) => Number(lvl) === level)?.[1] || 'UNKNOWN'
-
-			// Color coding based on level
-			let levelColor = ''
-
-			switch (levelLabel) {
-				case 'TRACE':
-					levelColor = '\x1b[90m' // grey
-					break
-				case 'DEBUG':
-					levelColor = '\x1b[36m' // cyan
-					break
-				case 'INFO':
-					levelColor = '\x1b[32m' // green
-					break
-				case 'WARN':
-					levelColor = '\x1b[33m' // yellow
-					break
-				case 'ERROR':
-					levelColor = '\x1b[31m' // red
-					break
-				case 'FATAL':
-					levelColor = '\x1b[35m' // magenta
-					break
-			}
-
-			// Format message part
-			const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
-
-			// Extract additional properties
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			const { time: _, level: __, msg: ___, pid, hostname, ...props } = obj
-
-			// Format additional context if any
-			let context = ''
-			if (Object.keys(props).length > 0) {
-				context = `\n  ${
-					Object.entries(props)
-						.map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
-						.join('\n  ')
-				}`
-			}
-
-			console.log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)
+			LOG.showLogEvent(obj)
 		}
 	})
 }

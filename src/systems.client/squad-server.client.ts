@@ -36,3 +36,7 @@ export function useDisableFogOfWarMutation() {
 		},
 	})
 }
+
+export function setup() {
+	squadServerStatus$.subscribe()
+}

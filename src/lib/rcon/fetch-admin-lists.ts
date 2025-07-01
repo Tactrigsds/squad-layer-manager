@@ -1,5 +1,6 @@
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import { OneToManyMap } from '@/lib/one-to-many-map.ts'
+import * as CS from '@/models/context-shared'
 import * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 import * as Paths from '@/server/paths.ts'
@@ -11,7 +12,7 @@ import path from 'path'
 import WritableBuffer from './writable-buffer.ts'
 
 const tracer = Otel.trace.getTracer('fetch-admin-lists')
-export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: C.Log, sources: SM.AdminListSource[]): Promise<SM.AdminList> => {
+export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: CS.Log, sources: SM.AdminListSource[]): Promise<SM.AdminList> => {
 	// maps groups to their permissions
 	const groups: OneToManyMap<string, string> = new Map()
 

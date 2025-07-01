@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
+import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as Discord from '@/server/systems/discord'
@@ -55,7 +56,7 @@ export function setup() {
 
 const tracer = Otel.trace.getTracer('rbac')
 
-export const getRolesForDiscordUser = C.spanOp('rbac:get-roles-for-discord-user', { tracer }, async (baseCtx: C.Log, userId: bigint) => {
+export const getRolesForDiscordUser = C.spanOp('rbac:get-roles-for-discord-user', { tracer }, async (baseCtx: CS.Log, userId: bigint) => {
 	C.setSpanOpAttrs({ userId })
 	const roles: RBAC.Role[] = []
 	const tasks: Promise<void>[] = []
@@ -90,7 +91,7 @@ export const getRolesForDiscordUser = C.spanOp('rbac:get-roles-for-discord-user'
 export const getUserRbacPerms = C.spanOp(
 	'rbac:get-permissions-for-discord-user',
 	{ tracer },
-	async (baseCtx: C.Log & C.Db, userId: bigint): Promise<RBAC.TracedPermission[]> => {
+	async (baseCtx: CS.Log & C.Db, userId: bigint): Promise<RBAC.TracedPermission[]> => {
 		C.setSpanOpAttrs({ userId })
 		const ownedFiltersPromise = getOwnedFilters()
 		const roles = await getRolesForDiscordUser(baseCtx, userId)
@@ -168,22 +169,22 @@ export const getUserRbacPerms = C.spanOp(
 )
 
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: C.Log & C.Db,
+	baseCtx: CS.Log & C.Db,
 	userId: bigint,
 	perm: RBAC.Permission<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: C.Log & C.Db,
+	baseCtx: CS.Log & C.Db,
 	userId: bigint,
 	perms: RBAC.Permission<T>[],
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: C.Log & C.Db,
+	baseCtx: CS.Log & C.Db,
 	userId: bigint,
 	permissionReq: RBAC.PermissionReq<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	ctx: C.Log & C.Db,
+	ctx: CS.Log & C.Db,
 	userId: bigint,
 	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
 ) {

@@ -52,3 +52,5 @@ export const StrFlag = z
 	.transform((val) => val === 'true')
 
 export const StrOrNullIfEmptyOrWhitespace = z.string().trim().nullable().transform((val) => val || null)
+
+export const NormedUrl = z.string().url().transform((url) => url.replace(/\/$/, ''))

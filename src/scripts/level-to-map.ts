@@ -14,7 +14,6 @@ Env.ensureEnvSetup()
 ensureLoggerSetup()
 await Config.ensureConfigSetup()
 await DB.setupDatabase()
-await Schema.setup()
 
 const ctx = DB.addPooledDb({ log: baseLogger })
 

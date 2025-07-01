@@ -1,9 +1,9 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
-import * as LCP from '@/layer-components.models'
 import * as Obj from '@/lib/object'
+import * as LC from '@/models/layer-columns'
 import * as z from 'zod'
 
-export const StaticLayerComponents = _StaticLayerComponents as unknown as LCP.LayerComponentsJson
+export const StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
 
 export type KnownLayer = {
 	id: string
@@ -19,6 +19,8 @@ export type KnownLayer = {
 	Alliance_1: string
 	Alliance_2: string
 }
+
+export type LayerColumnKey = keyof KnownLayer
 
 export type LayerIdArgs = {
 	Map: string
@@ -90,9 +92,9 @@ export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayer
 	return true
 }
 
-export function getLayerString(details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'LayerVersion'>) {
-	if (details.Map === 'JensensRange') {
-		return `${details.Map}_Training`
+export function getLayerString(details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'LayerVersion' | 'Faction_1' | 'Faction_2'>) {
+	if (details.Gamemode === 'Training') {
+		return `${details.Map}_${details.Faction_1}-${details.Faction_2}`
 	}
 	let layer = `${details.Map}_${details.Gamemode}`
 	if (details.LayerVersion) layer += `_${details.LayerVersion.toLowerCase()}`
@@ -100,8 +102,11 @@ export function getLayerString(details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'L
 }
 
 export function lookupDefaultUnit(layer: string, faction: string, components = StaticLayerComponents) {
-	return components.layerFactionAvailability.find(l => {
-		return l.isDefaultUnit && l.Layer === layer && l.Faction === faction
+	if (!components.layerFactionAvailability[layer]) {
+		throw new Error(`Layer '${layer}' is missing in layerFactionAvailability`)
+	}
+	return components.layerFactionAvailability[layer]!.find(l => {
+		return l.isDefaultUnit && l.Faction === faction
 	})?.Unit
 }
 
@@ -410,7 +415,7 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 		parsedFactions[i] = {
 			faction: faction.trim(),
 			unit: unit?.trim()
-				?? components.layerFactionAvailability.find(l => l.Layer === layer && l.Faction === faction && l.isDefaultUnit)?.Unit,
+				?? components.layerFactionAvailability[layer]!.find(l => l.Faction === faction && l.isDefaultUnit)?.Unit,
 		}
 	}
 	return parsedFactions

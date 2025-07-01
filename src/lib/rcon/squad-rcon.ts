@@ -1,4 +1,5 @@
 import { AsyncResource, sleep } from '@/lib/async'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
@@ -19,7 +20,7 @@ export default class SquadRcon {
 	squadList: AsyncResource<SM.SquadListRes>
 
 	constructor(
-		ctx: C.Log,
+		ctx: CS.Log,
 		public core: Rcon,
 		private opts?: { warnPrefix?: string },
 	) {
@@ -49,7 +50,7 @@ export default class SquadRcon {
 
 	[Symbol.dispose]() {}
 
-	private async getCurrentLayer(ctx: C.Log) {
+	private async getCurrentLayer(ctx: CS.Log) {
 		const response = await this.core.execute(ctx, 'ShowCurrentMap')
 		if (response.code !== 'ok') return response
 		const match = response.data.match(/^Current level is (.*), layer is (.*), factions (.*)/)
@@ -59,7 +60,7 @@ export default class SquadRcon {
 		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
-	private async getNextLayer(ctx: C.Log) {
+	private async getNextLayer(ctx: CS.Log) {
 		const response = await this.core.execute(ctx, 'ShowNextMap')
 		if (response.code !== 'ok') return response
 		if (!response.data) return { code: 'ok' as const, layer: null }
@@ -71,7 +72,7 @@ export default class SquadRcon {
 		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 	}
 
-	async getPlayer(ctx: C.Log, anyID: string) {
+	async getPlayer(ctx: CS.Log, anyID: string) {
 		const { value: playersRes } = await this.playerList.get(ctx)
 		if (playersRes.code !== 'ok') return playersRes
 		const players = playersRes.players
@@ -80,7 +81,7 @@ export default class SquadRcon {
 		return { code: 'ok' as const, player }
 	}
 
-	private async getListPlayers(ctx: C.Log) {
+	private async getListPlayers(ctx: CS.Log) {
 		const res = await this.core.execute(ctx, 'ListPlayers')
 		if (res.code !== 'ok') return res
 
@@ -108,7 +109,7 @@ export default class SquadRcon {
 		return { code: 'ok' as const, players }
 	}
 
-	async getSquads(ctx: C.Log) {
+	async getSquads(ctx: CS.Log) {
 		const resSquad = await this.core.execute(ctx, 'ListSquads')
 		if (resSquad.code !== 'ok') return resSquad
 
@@ -148,7 +149,7 @@ export default class SquadRcon {
 		}
 	}
 
-	async broadcast(ctx: C.Log, message: string) {
+	async broadcast(ctx: CS.Log, message: string) {
 		let messages = [message]
 		if (message.length > SM.RCON_MAX_BUF_LEN) {
 			messages = []
@@ -170,11 +171,11 @@ export default class SquadRcon {
 		}
 	}
 
-	async setFogOfWar(ctx: C.Log, mode: 'on' | 'off') {
+	async setFogOfWar(ctx: CS.Log, mode: 'on' | 'off') {
 		await this.core.execute(ctx, `AdminSetFogOfWar ${mode}`)
 	}
 
-	async warn(ctx: C.Log, anyID: string, _opts: WarnOptions) {
+	async warn(ctx: CS.Log, anyID: string, _opts: WarnOptions) {
 		let opts: WarnOptionsBase
 		if (typeof _opts === 'function') {
 			const playerRes = await this.getPlayer(ctx, anyID)
@@ -208,17 +209,17 @@ export default class SquadRcon {
 	}
 
 	// 0 = Perm | 1m = 1 minute | 1d = 1 Day | 1M = 1 Month | etc...
-	async ban(ctx: C.Log, anyID: string, banLength: string, message: string) {
+	async ban(ctx: CS.Log, anyID: string, banLength: string, message: string) {
 		await this.core.execute(ctx, `AdminBan "${anyID}" ${banLength} ${message}`)
 	}
 
-	async switchTeam(ctx: C.Log, anyID: string) {
+	async switchTeam(ctx: CS.Log, anyID: string) {
 		await this.core.execute(ctx, `AdminForceTeamChange "${anyID}"`)
 		this.playerList.invalidate(ctx)
 		this.squadList.invalidate(ctx)
 	}
 
-	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: C.Log, idOrLayer: L.LayerId | L.UnvalidatedLayer) => {
+	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: CS.Log, idOrLayer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getAdminSetNextLayerCommand(idOrLayer)
 		await this.core.execute(ctx, cmd)
 		this.serverStatus.invalidate(ctx)
@@ -238,18 +239,18 @@ export default class SquadRcon {
 		return { code: 'ok' as const }
 	})
 
-	async endMatch(_ctx: C.Log) {
+	async endMatch(_ctx: CS.Log) {
 		_ctx.log.info(`Ending match`)
 		await this.core.execute(_ctx, 'AdminEndMatch')
 	}
 
-	async leaveSquad(ctx: C.Log, playerId: number) {
+	async leaveSquad(ctx: CS.Log, playerId: number) {
 		await this.core.execute(ctx, `AdminForceRemoveFromSquad ${playerId}`)
 		this.squadList.invalidate(ctx)
 		this.playerList.invalidate(ctx)
 	}
 
-	private async getPlayerQueueLength(ctx: C.Log) {
+	private async getPlayerQueueLength(ctx: CS.Log) {
 		const response = await this.core.execute(ctx, 'ListPlayers')
 		if (response.code !== 'ok') return response
 		const match = response.data.match(/\[Players in Queue: (\d+)\]/)
@@ -257,7 +258,7 @@ export default class SquadRcon {
 		return { code: 'ok' as const, length: match ? parseInt(match[1], 10) : 0 }
 	}
 
-	private getServerStatus = C.spanOp('squad-rcon:getServerstatus', { tracer }, async (_ctx: C.Log): Promise<SM.ServerStatusRes> => {
+	private getServerStatus = C.spanOp('squad-rcon:getServerstatus', { tracer }, async (_ctx: CS.Log): Promise<SM.ServerStatusRes> => {
 		const rawDataPromise = this.core.execute(_ctx, `ShowServerInfo`)
 		const currentLayerTask = this.getCurrentLayer(_ctx)
 		const nextLayerTask = this.getNextLayer(_ctx)
@@ -293,7 +294,7 @@ export default class SquadRcon {
 	})
 }
 
-function processChatPacket(ctx: C.Log, decodedPacket: DecodedPacket) {
+function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
 	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
 	if (matchChat) {
 		ctx.log.debug(`Matched chat message: %s`, decodedPacket.body)

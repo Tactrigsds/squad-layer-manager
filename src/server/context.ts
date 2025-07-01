@@ -1,21 +1,21 @@
 import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
 import { createId } from '@/lib/id.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
+import * as CS from '@/models/context-shared.ts'
+import * as LC from '@/models/layer-columns.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
+import * as FilterEntity from '@/server/systems/filter-entity.ts'
+import * as LayerDb from '@/server/systems/layer-db.server.ts'
+import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Otel from '@opentelemetry/api'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
 import * as Rx from 'rxjs'
 import * as ws from 'ws'
 import * as DB from './db.ts'
-import { baseLogger, Logger } from './logger.ts'
-
-// -------- Logging --------
-export type Log = {
-	log: Logger
-}
+import { baseLogger } from './logger.ts'
 
 export type OtelCtx = {
 	otelCtx: Otel.Context
@@ -25,15 +25,16 @@ export type SpanContext = {
 	span: Otel.Span
 }
 
-export function includeLogProperties<T extends Log>(ctx: T, fields: Record<string, any>): T {
+export function includeLogProperties<T extends CS.Log>(ctx: T, fields: Record<string, any>): T {
 	return { ...ctx, log: ctx.log.child(fields) }
 }
-export function setLogLevel<T extends Log>(ctx: T, level: Pino.Level): T {
+export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
 	const child = ctx.log.child({})
 	child.level = level
 	return { ...ctx, log: child }
 }
 
+console.log('SPAN OP', spanOp)
 export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
 	opts: {
@@ -141,7 +142,7 @@ export function recordGenericError(error: unknown, setStatus = true) {
 
 export type Db = {
 	db(opts?: { redactParams?: boolean }): DB.Db
-} & Log
+} & CS.Log
 
 // indicates the context is in a db transaction
 export type Tx = { tx: { rollback: () => void } }
@@ -172,7 +173,7 @@ export type WSSession = {
 
 export type AuthedUser = User & AuthSession
 
-export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & Log
+export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & CS.Log
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
@@ -199,7 +200,7 @@ export type AsyncResourceInvocation = {
 export function durableSub<T, O>(
 	name: string,
 	opts: {
-		ctx: Log
+		ctx: CS.Log
 		tracer: Otel.Tracer
 		eventLogLevel?: Pino.Level
 		numTaskRetries?: number
@@ -268,5 +269,15 @@ export function durableSub<T, O>(
 			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)
+	}
+}
+
+export function resolveLayerQueryCtx(ctx: CS.Log): CS.LayerQuery {
+	return {
+		...ctx,
+		layerDb: () => LayerDb.db,
+		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.EXTRA_COLS_CONFIG),
+		recentMatches: MatchHistory.state.recentMatches,
+		filters: FilterEntity.state.filters,
 	}
 }

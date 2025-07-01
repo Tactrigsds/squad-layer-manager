@@ -1,4 +1,5 @@
 import superjson from 'superjson'
+import { isNullOrUndef } from './type-guards'
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 	// @ts-expect-error it works
 	const reversed: { [key in T[keyof T]]: keyof T } = {}
@@ -96,6 +97,28 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<str
 		}
 	}
 
+	return output
+}
+
+export function map<O extends object>(obj: O, callback: (value: O[keyof O], key: keyof O) => any): any {
+	const output: any = {}
+	for (const [key, value] of Object.entries(obj)) {
+		output[key] = callback(value, key as keyof O)
+	}
+	return output
+}
+
+export function flattenShallow(obj: any): any {
+	const output: any = {}
+	for (const [key, value] of Object.entries(obj)) {
+		if (!isNullOrUndef(value) && typeof key === 'object') {
+			for (const [keyInner, valueInner] of Object.entries(key)) {
+				output[keyInner] = valueInner
+			}
+		} else if (!isNullOrUndef(value)) {
+			output[key] = value
+		}
+	}
 	return output
 }
 

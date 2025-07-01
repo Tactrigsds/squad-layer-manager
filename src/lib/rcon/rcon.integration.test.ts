@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as C from '@/server/context'
 import * as Env from '@/server/env'
@@ -10,7 +11,7 @@ import SquadRcon from './squad-rcon.ts'
 
 let squadRcon!: SquadRcon
 let rcon!: Rcon
-let baseCtx: C.Log
+let baseCtx: CS.Log
 
 beforeAll(async () => {
 	Env.ensureEnvSetup()

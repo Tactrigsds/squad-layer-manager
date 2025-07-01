@@ -1,23 +1,24 @@
-import * as Schema from '$root/drizzle/schema'
-import * as SchemaModels from '$root/drizzle/schema.models'
-import * as LCP from '@/layer-components.models'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
 import { isNullOrUndef } from '@/lib/type-guards'
-import { ParsedFloatSchema, StrFlag } from '@/lib/zod'
+import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as C from '@/server/context'
+import * as LC from '@/models/layer-columns'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
+import * as LayerDb from '@/server/systems/layer-db.server'
 import { parse } from 'csv-parse'
 import { sql } from 'drizzle-orm'
 import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
+import childProcess from 'node:child_process'
 import path from 'path'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 export const ParsedNanFloatSchema = z
@@ -26,82 +27,11 @@ export const ParsedNanFloatSchema = z
 	.transform((val) => parseFloat(val))
 	.pipe(z.number())
 
-const NullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
-
-const LayerScores = {
-	Logistics_1: NullableFloat.default('nan'),
-	Transportation_1: NullableFloat.default('nan'),
-	'Anti-Infantry_1': NullableFloat.default('nan'),
-	Armor_1: NullableFloat.default('nan'),
-	ZERO_Score_1: NullableFloat.default('nan'),
-	Logistics_2: NullableFloat.default('nan'),
-	Transportation_2: NullableFloat.default('nan'),
-	'Anti-Infantry_2': NullableFloat.default('nan'),
-	Armor_2: NullableFloat.default('nan'),
-	ZERO_Score_2: NullableFloat.default('nan'),
-	Balance_Differential: NullableFloat.default('nan'),
-	Asymmetry_Score: NullableFloat.default('nan'),
-	Z_Pool: StrFlag.default('false'),
-	Scored: StrFlag.default('false'),
-}
-
-// layout expected from csv
-export const ScoredLayerSchema = z
-	.object({
-		Layer: z.string(),
-		Size: z.string(),
-		Faction_1: z.string(),
-		Unit_1: z.string(),
-		Faction_2: z.string(),
-		Unit_2: z.string(),
-		...LayerScores,
-	})
-	.refine(
-		(layer) => {
-			const scoreCols = [
-				layer.Logistics_1,
-				layer.Transportation_1,
-				layer['Anti-Infantry_1'],
-				layer.Armor_1,
-				layer.ZERO_Score_1,
-				layer.Logistics_2,
-				layer.Transportation_2,
-				layer['Anti-Infantry_2'],
-				layer.Armor_2,
-				layer.ZERO_Score_2,
-				layer.Balance_Differential,
-				layer.Asymmetry_Score,
-			]
-			if (layer.Scored) return scoreCols.every((n) => n !== null)
-			return true
-		},
-		{ message: 'Scored layers must not have any NaNs in value columns' },
-	)
-	.refine(
-		(layer) => {
-			const scoreCols = [
-				layer.Logistics_1,
-				layer.Transportation_1,
-				layer['Anti-Infantry_1'],
-				layer.Armor_1,
-				layer.ZERO_Score_1,
-				layer.Logistics_2,
-				layer.Transportation_2,
-				layer['Anti-Infantry_2'],
-				layer.Armor_2,
-				layer.ZERO_Score_2,
-				layer.Balance_Differential,
-				layer.Asymmetry_Score,
-			]
-			if (!layer.Scored) return scoreCols.every((n) => n === null)
-			return true
-		},
-		{ message: 'un-scored layers must have all value columns as null' },
-	)
+const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
 const Steps = z.enum(['update-layers-table', 'download-csvs'])
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.sheets })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.sheets, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>
 
 async function main() {
@@ -112,157 +42,173 @@ async function main() {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
+	await LayerDb.setup({ skipHash: true, mode: 'populate' })
 	await DB.setupDatabase()
 
-	const ctx = DB.addPooledDb({ log: baseLogger, tasks: [] as Promise<any>[] })
+	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.EXTRA_COLS_CONFIG) }
 
 	await ensureAllSheetsDownloaded()
 
 	const data = await parseSquadLayerSheetData(ctx)
-	const components = LCP.toLayerComponentsJson(LCP.buildFullLayerComponents(data.components))
-	const fullLayers = await parseLayerScores(ctx, data, components)
+	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
 
 	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2))
 
+	ctx.log.info('executing drizzle-kit push')
+	childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
+
 	if (args.includes('update-layers-table')) {
-		await updateLayersTable(ctx, fullLayers)
+		const scoresExtracted = extractLayerScores(ctx, components)
+		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
+		await scoresExtracted
+		ctx.layerDb().run('PRAGMA wal_checkpoint')
+		ctx.layerDb().run('VACUUM')
+		ctx.layerDb().$client.close()
 	}
 }
 
-async function parseLayerScores(ctx: C.Log, data: SheetData, components: LCP.LayerComponentsJson) {
-	return await new Promise<SchemaModels.NewLayer[]>((resolve, reject) => {
-		const fullLayers: SchemaModels.NewLayer[] = data.baseLayers.map((layer): SchemaModels.NewLayer => ({
-			...layer,
-		}))
-		const seenIds = new Set<string>()
-		fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
-			.pipe(
-				parse({
-					columns: true,
-					skip_empty_lines: true,
-				}),
-			)
-			.on('data', (_row) => {
-				const row = ScoredLayerSchema.parse(_row)
-				if (!row.Scored) return
-				if (!data.components.mapLayers.find(l => l.Layer === row['Layer'])) {
-					throw new Error(`Layer ${row['Layer']} not found`)
-				}
-				if (!data.components.factions.has(row.Faction_1)) {
-					throw new Error(`Faction_1 ${row['Faction_1']} :  not found`)
-				}
-				if (!data.components.factions.has(row.Faction_2)) {
-					throw new Error(`Faction_2 ${row['Faction_2']} :  not found`)
-				}
-				if (!data.components.units.has(row.Unit_1)) {
-					throw new Error(`Unit_1 ${row['Unit_1']} not found`)
-				}
-				if (!data.components.units.has(row.Unit_2)) {
-					throw new Error(`Unit_2 ${row['Unit_2']} not found`)
-				}
+function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerComponentsJson): Promise<void> {
+	const extraColsZodProps: Record<string, z.ZodType> = {}
+	for (const col of LayerDb.EXTRA_COLS_CONFIG.columns) {
+		let schema: z.ZodType
+		switch (col.type) {
+			case 'string':
+				schema = z.string().optional()
+				break
+			case 'integer':
+				schema = ParsedIntSchema
+				break
+			case 'boolean':
+				schema = StrFlag.transform(v => Number(v))
+				break
+			case 'float':
+				schema = ParsedNullableFloat
+				break
+			default:
+				throw new Error(`Unsupported column type: ${(col as any).type}`)
+		}
+		extraColsZodProps[col.name] = schema
+	}
+	const extraColsZodSchema = z.object(extraColsZodProps)
+	const extraLayerColsSubject = new Rx.Subject<any>()
 
-				const segments = L.parseLayerStringSegment(row['Layer'])
-				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
-				const diffs: Record<string, number> = {}
-				for (const [key, value] of Object.entries(row)) {
-					if (!value) continue
-					if (!Object.keys(LayerScores).includes(key)) continue
-					if (!key.match(/.+1$/)) continue
-					if (typeof value !== 'number') throw new Error(`Value ${value} is not a number in col ${key}`)
-					// @ts-expect-error idgaf
-					const otherTeamValue = row[key.replace(/1$/, '2')]
-					const diffKey = key.replace(/1$/, 'Diff')
-					diffs[diffKey] = value - otherTeamValue
-				}
+	const seenIds = new Set<string>()
+	fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
+		.pipe(
+			parse({
+				columns: true,
+				skip_empty_lines: true,
+			}),
+		)
+		.on('data', (row) => {
+			if (row.Scored === 'False') return
 
-				if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
-				const idArgs = {
-					Map: segments.Map,
-					Gamemode: segments.Gamemode,
-					LayerVersion: segments.LayerVersion,
-					Faction_1: row['Faction_1'],
-					Faction_2: row['Faction_2'],
-					Unit_1: row['Unit_1'],
-					Unit_2: row['Unit_2'],
+			const segments = L.parseLayerStringSegment(row['Layer'])
+			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
+
+			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
+			const idArgs = {
+				Map: segments.Map,
+				Gamemode: segments.Gamemode,
+				LayerVersion: segments.LayerVersion,
+				Faction_1: row['Faction_1'],
+				Faction_2: row['Faction_2'],
+				Unit_1: row['Unit_1'],
+				Unit_2: row['Unit_2'],
+			}
+			const ids = [L.getKnownLayerId(idArgs, components)!]
+			// for now we're just using the same data for FRAAS as RAAS
+			if (segments.Gamemode === 'RAAS') {
+				ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
+			}
+			const extraColsRow = extraColsZodSchema.parse(row)
+			for (const layerId of ids) {
+				if (seenIds.has(layerId)) {
+					ctx.log.warn(`Duplicate extra layer ${layerId} found`)
+					continue
 				}
-				const ids = [L.getKnownLayerId(idArgs, components)!]
-				// for now we're just using the same data for FRAAS as RAAS
-				if (segments.Gamemode === 'RAAS') {
-					ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
-				}
-				for (const layerId of ids) {
-					if (seenIds.has(layerId)) {
-						ctx.log.warn(`Duplicate layer id ${layerId} found`)
-						return
+				seenIds.add(layerId)
+
+				extraLayerColsSubject.next({ ...extraColsRow, id: layerId })
+			}
+		})
+		.on('end', () => {
+			extraLayerColsSubject.complete()
+		})
+		.on('error', () => {
+			extraLayerColsSubject.complete()
+		})
+
+	ctx.layerDb().run(sql`DELETE FROM ${LC.extraColsSchema(ctx)} `)
+	let chunkCount = 1
+	extraLayerColsSubject.pipe(
+		Rx.bufferCount(500),
+		Rx.concatMap(async (buf) => {
+			for (const layer of buf) {
+				seenIds.add(layer.id)
+			}
+			for (const layer of buf) {
+				for (const [key, value] of Object.entries(layer)) {
+					if (
+						value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint' && !Buffer.isBuffer(value)
+					) {
+						ctx.log.error(`Invalid value type for key "${key}":`, typeof value, value)
+						throw new Error(`Invalid SQLite value type for key "${key}": ${typeof value} (${JSON.stringify(value)})`)
 					}
-					seenIds.add(layerId)
-
-					const index = data.idToIdx.get(layerId)
-					// availability sheet is out of date but based zero has a workaround that I don't want to bother to implement :shrug:
-					if (segments.Map === 'Sanxian' && isNullOrUndef(index)) {
-						fullLayers.push({
-							...row,
-							id: layerId,
-							Layer: layerId.includes('FRAAS') ? row.Layer.replace('RAAS', 'FRAAS') : row.Layer,
-							LayerVersion: segments.LayerVersion,
-							Size: row.Size,
-							Map: segments.Map,
-							Gamemode: layerId.includes('FRAAS') ? 'FRAAS' : segments.Gamemode,
-							Alliance_1: data.components.factionToAlliance.get(row['Faction_1'])!,
-							Alliance_2: data.components.factionToAlliance.get(row['Faction_2'])!,
-							...diffs,
-						})
-						return
-					} else if (isNullOrUndef(index)) {
-						ctx.log.warn(`Layer id ${layerId} not found`)
-						return
-					}
-					fullLayers[index] = { ...row, ...fullLayers[index], ...diffs }
 				}
-			})
-			.on('end', () => resolve(fullLayers))
-			.on('error', reject)
+			}
+			await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(buf.map(layer => ({ ...layer, id: LC.packLayer(layer.id) })))
+			ctx.log.info(`Inserted %s extraLayers`, buf.length * chunkCount)
+			chunkCount++
+		}),
+		Rx.tap({
+			complete: () => {
+				ctx.log.info('extraLayers insert completed')
+			},
+		}),
+	).subscribe()
+
+	return new Promise(resolve => {
+		extraLayerColsSubject.subscribe({
+			complete: () => {
+				resolve()
+			},
+		})
 	})
 }
 
-async function updateLayersTable(
-	ctx: C.Log & C.Db,
-	finalLayers: SchemaModels.NewLayer[],
+async function populateLayersTable(
+	ctx: CS.Log & CS.Layers,
+	components: LC.LayerComponentsJson,
+	finalLayers: Rx.Observable<L.KnownLayer>,
 ) {
 	const t0 = performance.now()
-	let rowsInserted = 0
 
-	await DB.runTransaction(ctx, async (ctx) => {
-		// -------- process layers --------
-		ctx.log.info('Truncating layers table')
-		await ctx.db().execute(sql`TRUNCATE TABLE ${Schema.layers} `)
-
-		// ------ disable keys for faster insert
-		await ctx.db().execute(sql`SET UNIQUE_CHECKS=0`)
-
-		const insertedIds = new Set<string>()
-		const chunkSize = 2500
-		let chunk: SchemaModels.NewLayer[] = []
-		for (const layer of finalLayers) {
-			if (insertedIds.has(layer.id)) continue
-			chunk.push(layer)
-			if (chunk.length >= chunkSize) {
-				await C.setLogLevel(ctx, 'warn').db({ redactParams: true }).insert(Schema.layers).values(chunk)
-				rowsInserted += chunk.length
-				ctx.log.info(`Inserted ${rowsInserted} rows`)
-				chunk = []
+	// -------- process layers --------
+	ctx.log.info('Truncating layers table')
+	ctx.layerDb().run(sql`DELETE FROM ${LC.layers} `)
+	ctx.layerDb().run(sql`DELETE FROM ${LC.layerStrIds} `)
+	let chunkCount = 1
+	const seenIds: Set<string> = new Set()
+	await Rx.lastValueFrom(finalLayers.pipe(
+		Rx.bufferCount(500),
+		Rx.concatMap(async (buf) => {
+			ctx.log.info(`Inserting %s rows`, buf.length * chunkCount)
+			for (const layer of buf) {
+				if (seenIds.has(layer.id)) {
+					throw new Error(`Duplicate layer ID: ${layer.id}`)
+				}
+				seenIds.add(layer.id)
 			}
-		}
+			await ctx.layerDb().insert(LC.layerStrIds).values(buf.map(layer => ({ id: LC.packLayer(layer), idStr: layer.id })))
+			await ctx.layerDb().insert(LC.layers).values(buf.map(layer => LC.toRow(layer, components)))
+			chunkCount++
+		}),
+	))
 
-		if (chunk.length > 0) {
-			await C.setLogLevel(ctx, 'warn').db({ redactParams: true }).insert(Schema.layers).values(chunk)
-			rowsInserted += chunk.length
-			ctx.log.info(`Inserted ${rowsInserted} rows`)
-		}
-	})
 	const t1 = performance.now()
 	const elapsedSecondsInsert = (t1 - t0) / 1000
-	ctx.log.info(`Inserting ${rowsInserted} rows took ${elapsedSecondsInsert} s`)
+	ctx.log.info(`Inserting ${chunkCount * 500} rows took ${elapsedSecondsInsert} s`)
 }
 
 type FactionUnit = `${string}:${string}`
@@ -272,54 +218,45 @@ type BattlegroupsData = {
 	factionUnitToUnitFullName: Map<FactionUnit, string>
 }
 
-type BaseLayer = {
-	id: string
-	Map: string
-	Layer: string
-	Size: string
-	Gamemode: string
-	LayerVersion: string | null
-	Faction_1: string
-	Unit_1: string
-	Faction_2: string
-	Unit_2: string
-	Alliance_1: string
-	Alliance_2: string
-}
+type BaseLayer = L.KnownLayer
 
 type SheetData = Awaited<ReturnType<typeof parseSquadLayerSheetData>>
-async function parseSquadLayerSheetData(ctx: C.Log) {
+async function parseSquadLayerSheetData(ctx: CS.Log) {
+	const availPromise = parseBgLayerAvailability(ctx)
 	const mapLayers = await parseMapLayers()
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = await parseBattlegroups(ctx)
 
-	const { availability } = await parseBgLayerAvailability(ctx)
+	const { availability } = await availPromise
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
 
 	const baseLayers: BaseLayer[] = []
 	const idToIdx: Map<string, number> = new Map()
-	const components: LCP.LayerComponents = LCP.buildFullLayerComponents({
-		mapLayers,
-		allianceToFaction,
-		factionToAlliance,
-		factionToUnit,
-		factionUnitToUnitFullName,
-		layerFactionAvailability: availability,
+	const components: LC.LayerComponents = LC.buildFullLayerComponents(
+		{
+			mapLayers,
+			allianceToFaction,
+			factionToAlliance,
+			factionToUnit,
+			factionUnitToUnitFullName,
+			layerFactionAvailability: availability,
 
-		gamemodes: new Set([]),
-		alliances: new Set(),
-		maps: new Set(),
-		layers: new Set(),
-		versions: new Set(),
-		factions: new Set(),
-		units: new Set(),
-		size: new Set(),
-	}, true)
+			gamemodes: new Set([]),
+			alliances: new Set(),
+			maps: new Set(),
+			layers: new Set(),
+			versions: new Set(),
+			factions: new Set(),
+			units: new Set(),
+			size: new Set(),
+		},
+		true,
+	)
 
 	// Validate that all layers in availability are in mapLayers
 	const layerNames = new Set(mapLayers.map(l => l.Layer))
-	for (const availEntry of availability) {
-		if (!layerNames.has(availEntry.Layer)) {
-			throw new Error(`Layer ${availEntry.Layer} from availability not found in mapLayers`)
+	for (const layer of availability.keys()) {
+		if (!layerNames.has(layer)) {
+			throw new Error(`Layer ${layer} from availability not found in mapLayers`)
 		}
 	}
 
@@ -327,12 +264,10 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 		components.maps.add(layer.Map)
 		components.size.add(layer.Size)
 		components.layers.add(layer.Layer)
-		for (const availEntry1 of availability) {
-			if (availEntry1.Layer !== layer.Layer) continue
+		for (const availEntry1 of availability.get(layer.Layer)!) {
 			if (!availEntry1.allowedTeams.includes(1)) continue
-			for (const availEntry2 of availability) {
+			for (const availEntry2 of availability.get(layer.Layer)!) {
 				if (!availEntry2.allowedTeams.includes(2)) continue
-				if (availEntry2.Layer !== layer.Layer) continue
 
 				const alliance1 = factionToAlliance.get(availEntry1.Faction)!
 				const alliance2 = factionToAlliance.get(availEntry2.Faction)!
@@ -358,7 +293,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
 					Unit_2: availEntry2.Unit ?? null,
-				}, LCP.toLayerComponentsJson(components))!
+				}, LC.toLayerComponentsJson(components))!
 				const baseLayer = {
 					id: layerId,
 					Map: layer.Map,
@@ -383,7 +318,7 @@ async function parseSquadLayerSheetData(ctx: C.Log) {
 	return { baseLayers, idToIdx, components, availability }
 }
 
-function parseBattlegroups(ctx: C.Log) {
+function parseBattlegroups(ctx: CS.Log) {
 	return new Promise<BattlegroupsData>((resolve, reject) => {
 		const allianceToFaction: OneToManyMap<string, string> = new Map()
 		const factionToUnit: OneToManyMap<string, string> = new Map()
@@ -427,8 +362,8 @@ function preprocessLevel(level: string) {
 }
 
 function parseMapLayers() {
-	return new Promise<LCP.MapConfigLayer[]>((resolve, reject) => {
-		const layers: LCP.MapConfigLayer[] = []
+	return new Promise<LC.MapConfigLayer[]>((resolve, reject) => {
+		const layers: LC.MapConfigLayer[] = []
 		let currentMap: string | undefined
 		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
 			.pipe(parse({ columns: true }))
@@ -459,16 +394,9 @@ function parseMapLayers() {
 	})
 }
 
-type LayerFactionAvailabilityEntry = {
-	Layer: string
-	Faction: string
-	Unit: string
-	allowedTeams: (1 | 2)[]
-	isDefaultUnit: boolean
-}
-function parseBgLayerAvailability(ctx: C.Log) {
-	return new Promise<{ availability: LayerFactionAvailabilityEntry[] }>((resolve, reject) => {
-		const entries: LayerFactionAvailabilityEntry[] = []
+function parseBgLayerAvailability(ctx: CS.Log) {
+	return new Promise<{ availability: Map<string, LC.LayerFactionAvailabilityEntry[]> }>((resolve, reject) => {
+		const entries: Map<string, LC.LayerFactionAvailabilityEntry[]> = new Map()
 		const col = {
 			Layer: 2,
 			Faction: 3,
@@ -478,7 +406,7 @@ function parseBgLayerAvailability(ctx: C.Log) {
 			sheetLink: 8,
 		}
 
-		let currentLayer: string | undefined
+		let currentLayers: string[] | undefined
 		let currentFaction: string | undefined
 		let i = 0
 		fs.createReadStream(path.join(Paths.DATA, 'bg-layer-availability.csv'))
@@ -490,43 +418,63 @@ function parseBgLayerAvailability(ctx: C.Log) {
 				}
 
 				if (row[col.Layer]) {
-					currentLayer = row[col.Layer]
+					if (row[col.Layer].toLowerCase().startsWith('tutorial')) {
+						currentLayers = undefined
+						return
+					}
+					currentLayers = [row[col.Layer]]
+					entries.set(row[col.Layer], [])
+					const segments = L.parseLayerStringSegment(row[col.Layer])
+					if (!segments) throw new Error(`Invalid layer string segment: ${currentLayers}`)
+					if (segments.Gamemode === 'RAAS') {
+						const fraasLayer = row[col.Layer].replace('RAAS', 'FRAAS')
+						entries.set(fraasLayer, [])
+						currentLayers.push(fraasLayer)
+					}
 					return
 				}
 				let unit: string | undefined
 				let isDefaultUnit = false
-				if (currentLayer?.startsWith('JensensRange')) {
-					currentFaction = row[col.UnitFullName]?.split(' ')?.[0]
-					unit = 'CombinedArms'
-				} else if (row[col.Faction]) {
-					currentFaction = row[col.Faction]
+				if (!currentLayers) return
+				for (const currentLayer of currentLayers) {
+					if (currentLayer.startsWith('JensensRange')) {
+						currentFaction = row[col.UnitFullName]?.split(' ')?.[0]
+						unit = 'CombinedArms'
+					} else if (row[col.Faction]) {
+						currentFaction = row[col.Faction]
 
-					const url = new URL(row[col.sheetLink])
-					const gid = parseInt(url.hash.replace('#gid=', '').replace(/\?range.+$/, ''))
-					unit = SHEETS.find(sheet => sheet.gid === gid)!.unit
-					if (!unit) throw new Error(`Unit ${row[col.UnitFullName]} not found for faction ${row[col.Faction]}`)
-					isDefaultUnit = true
-				} else if (row[col.Unit]) {
-					unit = row[col.Unit]
-				} else {
-					return
-				}
-				const teams: (1 | 2)[] = []
-				if (row[col.TeamOptions].includes('1')) teams.push(1)
-				if (row[col.TeamOptions].includes('2')) teams.push(2)
-				const entry = { Layer: currentLayer!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
-				entries.push(entry)
-				const segments = L.parseLayerStringSegment(currentLayer!)
-				if (!segments) throw new Error(`Invalid layer string segment: ${currentLayer}`)
-				if (segments.Gamemode === 'RAAS') {
-					entries.push({
-						...entry,
-						Layer: entry.Layer.replace('RAAS', 'FRAAS'),
-					})
+						const url = new URL(row[col.sheetLink])
+						const gid = parseInt(url.hash.replace('#gid=', '').replace(/\?range.+$/, ''))
+						unit = SHEETS.find(sheet => sheet.gid === gid)!.unit
+						if (!unit) throw new Error(`Unit ${row[col.UnitFullName]} not found for faction ${row[col.Faction]}`)
+						isDefaultUnit = true
+					} else if (row[col.Unit]) {
+						unit = row[col.Unit]
+					} else {
+						return
+					}
+					const teams: (1 | 2)[] = []
+					if (row[col.TeamOptions].includes('1')) teams.push(1)
+					if (row[col.TeamOptions].includes('2')) teams.push(2)
+					const entry = { Layer: currentLayers!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
+					entries.get(currentLayer)!.push(entry)
+					if (currentLayer.toLowerCase().includes('sanxian') || currentLayer.toLowerCase().includes('pacificprovinggrounds')) {
+						// RGF and PLA are excluded on sanxian, so we add them here. if we add them in addition to both a blufor and CCP faction we should get the correct availability
+						if (entry.Faction === 'PLA' || entry.Faction === 'USMC') {
+							for (const faction of ['RGF', 'VDV']) {
+								const existing = entries.get(currentLayer)!.find(e => e.Faction === faction && e.Unit === unit)
+								if (!existing) {
+									entries.get(currentLayer)!.push({ ...entry, Faction: faction })
+								} else {
+									existing.allowedTeams = Array.from(new Set([...existing.allowedTeams, ...teams]))
+								}
+							}
+						}
+					}
 				}
 			})
 			.on('end', () => {
-				ctx.log.info(`Parsed ${entries.length} layer availability entries`)
+				ctx.log.info(`Parsed ${entries.size} layers for availability`)
 				resolve({ availability: entries })
 			})
 			.on('error', (error) => {

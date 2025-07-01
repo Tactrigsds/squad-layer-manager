@@ -324,13 +324,13 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 	throw new Error('Invalid node type ' + node.type)
 }
-const LIMIT_AUTOCOMPLETE_COLS: LC.LayerColumnKey[] = ['id']
+const LIMIT_AUTOCOMPLETE_COLS: L.LayerColumnKey[] = ['id']
 
 export function Comparison(props: {
 	comp: F.EditableComparison
 	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
 	columnEditable?: boolean
-	allowedColumns?: LC.LayerColumnKey[]
+	allowedColumns?: L.LayerColumnKey[]
 	allowedComparisonCodes?: F.ComparisonCode[]
 	layerQueryContext?: LQY.LayerQueryContext
 	showValueDropdown?: boolean
@@ -636,9 +636,13 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const valuesRes = useLayerComponents({
-		...(props.queryContext ?? {}),
-	})
+	const queryContext = {
+		previousLayerIds: props.queryContext?.previousLayerIds ?? [],
+		...(
+			props.queryContext?.previousLayerIds ?? []
+		),
+	}
+	const valuesRes = useLayerComponents(queryContext)
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
 	return (
 		<ComboBox
@@ -733,7 +737,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 
 	const valuesRes = useLayerComponents(
 		{
-			previousLayerIds: queryContext?.previousLayerIds,
+			previousLayerIds: queryContext?.previousLayerIds ?? [],
 		},
 		{
 			enabled: debouncedInput !== '' && column !== 'id',
@@ -772,9 +776,7 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayerComponents({
-		...props.queryContext,
-	})
+	const valuesRes = useLayerComponents(props.queryContext ?? {})
 	return (
 		<ComboBoxMulti
 			title={props.column}

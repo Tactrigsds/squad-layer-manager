@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -20,12 +21,13 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as FilterEntity from '@/server/systems/filter-entity.ts'
-import * as LayerQueries from '@/server/systems/layer-queries.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
+import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
+import { TRPCError } from '@trpc/server'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
@@ -34,14 +36,14 @@ import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: Rx.BehaviorSubject<
-	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>, C.Log & C.Db]
+	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>, CS.Log & C.Db]
 >
 
 let voteEndTask: Rx.Subscription | null = null
 let voteState: V.VoteState | null = null
-let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[C.Log & C.Db, L.LayerId | null]>
+let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[CS.Log & C.Db, L.LayerId | null]>
 
-const voteStateUpdate$ = new Rx.Subject<[C.Log & C.Db, V.VoteStateUpdate]>()
+const voteStateUpdate$ = new Rx.Subject<[CS.Log & C.Db, V.VoteStateUpdate]>()
 
 const userPresence: USR.UserPresenceState = {}
 const userPresenceUpdate$ = new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>()
@@ -58,6 +60,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 
 	// -------- bring server up to date with configuration --------
 	await DB.runTransaction(ctx, async (ctx) => {
+		ctx.log.info('in transaction')
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using acquired = await acquireInBlock(voteStateMtx)
 		let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, CONFIG.serverId)).for('update')
@@ -82,6 +85,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		}
 
 		const initialServerState = SS.ServerStateSchema.parse(server)
+		ctx.log.info('initial servers tate parsed')
 
 		// -------- prune main pool filters when filter entities are deleted  --------
 		let mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
@@ -92,7 +96,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		const initialStateUpdate: SS.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
 		const withParts = await includeLQServerUpdateParts(ctx, initialStateUpdate)
 		// idk why this cast on ctx is necessary
-		serverStateUpdate$ = new Rx.BehaviorSubject([withParts, ctx as C.Log & C.Db] as const)
+		serverStateUpdate$ = new Rx.BehaviorSubject([withParts, ctx as CS.Log & C.Db] as const)
 
 		// -------- initialize vote state --------
 		const update = getVoteStateUpdatesFromQueueUpdate([], initialServerState.layerQueue, voteState)
@@ -100,17 +104,19 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			voteState = update.update.state
 			voteStateUpdate$.next([ctx, update.update])
 		}
-
-		// -------- set next layer on server when rcon is connected--------
-		SquadServer.rcon.core.connected$.pipe(
-			C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer, eventLogLevel: 'info' }, async (isConnected) => {
-				if (!isConnected) return
-				const serverState = await getServerState({}, ctx)
-				await syncNextLayerInPlace(ctx, serverState)
-				C.setSpanStatus(Otel.SpanStatusCode.OK)
-			}),
-		).subscribe()
+		ctx.log.info('vote state initialized')
 	})
+	ctx.log.info('initial update complete')
+
+	// -------- set next layer on server when rcon is connected--------
+	SquadServer.rcon.core.connected$.pipe(
+		C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer, eventLogLevel: 'info' }, async (isConnected) => {
+			if (!isConnected) return
+			const serverState = await getServerState({}, ctx)
+			await syncNextLayerInPlace(ctx, serverState)
+			C.setSpanStatus(Otel.SpanStatusCode.OK)
+		}),
+	).subscribe()
 
 	serverStateUpdate$.subscribe(([state, ctx]) => {
 		ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
@@ -133,14 +139,14 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	).subscribe()
 
 	// -------- when SLM is not able to set a layer on the server, notify admins.
-	unexpectedNextLayerSet$ = new Rx.BehaviorSubject<[C.Log & C.Db, L.LayerId | null]>([ctx, null])
+	unexpectedNextLayerSet$ = new Rx.BehaviorSubject<[CS.Log & C.Db, L.LayerId | null]>([ctx, null])
 	unexpectedNextLayerSet$
 		.pipe(
 			Rx.switchMap(([ctx, unexpectedNextLayer]) => {
 				if (unexpectedNextLayer) {
 					return Rx.interval(HumanTime.parse('2m')).pipe(
 						Rx.startWith(0),
-						Rx.map(() => [ctx, unexpectedNextLayer] as [C.Log & C.Db, L.LayerId]),
+						Rx.map(() => [ctx, unexpectedNextLayer] as [CS.Log & C.Db, L.LayerId]),
 					)
 				}
 				return Rx.EMPTY
@@ -176,7 +182,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		)
 		.subscribe()
 
-	async function processLayerStatusChange(ctx: C.Log & C.Db & C.Tx, status: LayerStatus, prevStatus: LayerStatus | null) {
+	async function processLayerStatusChange(ctx: CS.Log & C.Db & C.Tx, status: LayerStatus, prevStatus: LayerStatus | null) {
 		const serverState = await getServerState({ lock: true }, ctx)
 		const action = checkforStatusChangeActions(status, prevStatus, serverState)
 		switch (action.code) {
@@ -216,7 +222,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	const handleServerRoll = C.spanOp(
 		'layer-queue:handle-server-roll',
 		{ tracer, eventLogLevel: 'info' },
-		async (baseCtx: C.Log & C.Db & C.Tx, prevServerState: SS.LQServerState) => {
+		async (baseCtx: CS.Log & C.Db & C.Tx, prevServerState: SS.LQServerState) => {
 			baseCtx.log.info('Attempting to handle roll to next layer')
 			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -304,7 +310,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	const handleAdminChangeLayer = C.spanOp(
 		'layer-queue:handle-admin-change-layer',
 		{ tracer },
-		async (baseCtx: C.Log & C.Db & C.Tx, serverState: SS.LQServerState) => {
+		async (baseCtx: CS.Log & C.Db & C.Tx, serverState: SS.LQServerState) => {
 			C.setSpanOpAttrs({ serverState })
 			// the new current layer was set to something unexpected, so we just handle updating the next layer
 			const time = new Date()
@@ -443,7 +449,7 @@ async function* watchUnexpectedNextLayer() {
 	}
 }
 
-async function* watchVoteStateUpdates({ ctx }: { ctx: C.Log & C.Db }) {
+async function* watchVoteStateUpdates({ ctx }: { ctx: CS.Log & C.Db }) {
 	let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 	if (voteState) {
 		const ids = getVoteStateDiscordIds(voteState)
@@ -461,7 +467,7 @@ export const startVote = C.spanOp(
 	'layer-queue:vote:start',
 	{ tracer, eventLogLevel: 'info' },
 	async (
-		ctx: C.Log & C.Db & Partial<C.User>,
+		ctx: CS.Log & C.Db & Partial<C.User>,
 		opts: { durationSeconds?: number; initiator: USR.GuiOrChatUserId },
 	) => {
 		C.setSpanOpAttrs(opts)
@@ -551,7 +557,7 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (ctx: C.Log & C.Db, msg: SM.ChatMessage) => {
+export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (ctx: CS.Log & C.Db, msg: SM.ChatMessage) => {
 	// no need to acquire vote mutex here, this is a safe operation
 	C.setSpanOpAttrs({ messageId: msg.message, playerId: msg.playerId })
 
@@ -590,7 +596,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Log & C.Db, opts: { aborter: USR.GuiOrChatUserId }) => {
+	async (ctx: CS.Log & C.Db, opts: { aborter: USR.GuiOrChatUserId }) => {
 		C.setSpanOpAttrs(opts)
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using acquired = await acquireInBlock(voteStateMtx)
@@ -624,7 +630,7 @@ export const abortVote = C.spanOp(
 	},
 )
 
-function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
+function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 	voteEndTask?.unsubscribe()
 
 	if (!voteState || voteState.code !== 'in-progress') return
@@ -677,7 +683,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Log & C.Db) {
 	)
 }
 
-const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, eventLogLevel: 'info' }, async (ctx: C.Log & C.Db) => {
+const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, eventLogLevel: 'info' }, async (ctx: CS.Log & C.Db) => {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	using acquired = await acquireInBlock(voteStateMtx)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
@@ -755,7 +761,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 	return res
 })
 
-async function includeVoteStateUpdatePart(ctx: C.Log & C.Db, update: V.VoteStateUpdate) {
+async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStateUpdate) {
 	let discordIds: Set<bigint> = new Set()
 	if (update.source.type === 'manual') {
 		const discordId = update.source.user.discordId
@@ -853,7 +859,7 @@ async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 	return { code: 'ok' as const }
 }
 
-export async function* watchUserPresence({ ctx }: { ctx: C.Log & C.Db }) {
+export async function* watchUserPresence({ ctx }: { ctx: CS.Log & C.Db }) {
 	const users: USR.User[] = []
 	if (userPresence.editState) {
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userPresence.editState.userId))
@@ -866,7 +872,7 @@ export async function* watchUserPresence({ ctx }: { ctx: C.Log & C.Db }) {
 }
 
 // -------- generic actions & data  --------
-async function* watchLayerQueueStateUpdates(args: { ctx: C.Log & C.Db }) {
+async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db }) {
 	for await (const [update] of toAsyncGenerator(serverStateUpdate$)) {
 		if (update.parts) {
 			yield update
@@ -985,7 +991,7 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 }
 
 // -------- utility --------
-export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C.Log) {
+export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & CS.Log) {
 	lock ??= false
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, CONFIG.serverId))
 	let serverRaw: any
@@ -994,7 +1000,7 @@ export async function getServerState({ lock }: { lock?: boolean }, ctx: C.Db & C
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-admins', opts?: { repeat?: number }) {
+export async function warnShowNext(ctx: C.Db & CS.Log, playerId: string | 'all-admins', opts?: { repeat?: number }) {
 	const serverState = await getServerState({}, ctx)
 	const layerQueue = serverState.layerQueue
 	const parts: USR.UserPart = { users: [] }
@@ -1012,7 +1018,7 @@ export async function warnShowNext(ctx: C.Db & C.Log, playerId: string | 'all-ad
 }
 
 async function includeLQServerUpdateParts(
-	ctx: C.Db & C.Log,
+	ctx: C.Db & CS.Log,
 	_serverStateUpdate: SS.LQServerStateUpdate,
 ): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
@@ -1026,7 +1032,7 @@ async function includeLQServerUpdateParts(
 	}
 }
 
-async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: SS.LQServerStateUpdate) {
+async function includeUserPartForLQServerUpdate(ctx: C.Db & CS.Log, update: SS.LQServerStateUpdate) {
 	const part: USR.UserPart = { users: [] as USR.User[] }
 	const state = update.state
 	const userIds: bigint[] = []
@@ -1047,20 +1053,23 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & C.Log, update: SS.LQ
 	return part
 }
 
-async function includeLayerStatusPart(ctx: C.Db & C.Log, serverStateUpdate: SS.LQServerStateUpdate) {
+async function includeLayerStatusPart(ctx: CS.Log, serverStateUpdate: SS.LQServerStateUpdate) {
 	const queue = serverStateUpdate.state.layerQueue
-	const layerStatuses = await LayerQueries.getLayerStatusesForLayerQueue({
-		ctx,
+	const layerStatusesRes = await LayerQueries.getLayerStatusesForLayerQueue({
+		ctx: C.resolveLayerQueryCtx(ctx),
 		input: { queue, pool: serverStateUpdate.state.settings.queue.mainPool },
 	})
-	return { layerStatuses }
+	if (layerStatusesRes.code !== 'ok') {
+		throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', cause: layerStatusesRes.code, message: layerStatusesRes.msg })
+	}
+	return { layerStatuses: layerStatusesRes.statuses }
 }
 
 /**
  * sets next layer on server, generating a new queue item if needed. modifies serverState in place
  */
 async function syncNextLayerInPlace<NoDbWrite extends boolean>(
-	ctx: C.Log & C.Db & (NoDbWrite extends true ? object : C.Tx),
+	ctx: CS.Log & C.Db & (NoDbWrite extends true ? object : C.Tx),
 	serverState: SS.LQServerState,
 	opts?: { noDbWrite: NoDbWrite },
 ) {
@@ -1073,7 +1082,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		}
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
 		const { ids } = await LayerQueries.getRandomGeneratedLayers(
-			ctx,
+			C.resolveLayerQueryCtx(ctx),
 			1,
 			constraints,
 			[],
@@ -1110,7 +1119,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	return wroteServerState
 }
 
-export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: C.Log & C.Db & C.User; input: { disabled: boolean } }) {
+export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {
 	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
 	if (denyRes) return denyRes
 

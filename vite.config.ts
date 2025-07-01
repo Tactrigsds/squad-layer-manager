@@ -9,13 +9,21 @@ const prod = process.env.NODE_ENV === 'production'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-	plugins: [react(), tsconfigPaths()],
+	plugins: [react(), tsconfigPaths(), { name: 'configure-response-headers' }],
 	server: {
 		proxy: !prod ? buildProxy() : undefined,
+		headers: {
+			// required for sqlocal
+			'Cross-Origin-Embedder-Policy': 'require-corp',
+			'Cross-Origin-Opener-Policy': 'same-origin',
+		},
 	},
 	envPrefix: 'PUBLIC_',
 	build: {
 		sourcemap: true,
+	},
+	optimizeDeps: {
+		exclude: ['sqlocal'],
 	},
 })
 

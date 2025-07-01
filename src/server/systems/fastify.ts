@@ -3,14 +3,16 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
+import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
-import { baseLogger, Logger } from '@/server/logger.ts'
+import { baseLogger } from '@/server/logger.ts'
 import * as Paths from '@/server/paths'
 import * as TrpcRouter from '@/server/router'
 import * as Discord from '@/server/systems/discord.ts'
+import * as LayerDb from '@/server/systems/layer-db.server'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
@@ -60,7 +62,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			request.url,
 		)
 		if (path.startsWith('/trpc')) return
-		const ctx = DB.addPooledDb({ log: instance.log as Logger })
+		const ctx = DB.addPooledDb({ log: instance.log as CS.Logger })
 
 		request.log = ctx.log
 		// @ts-expect-error monkey patching
@@ -68,7 +70,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	function getCtx(req: FastifyRequest) {
-		return (req as any).ctx as C.Log & C.Db
+		return (req as any).ctx as CS.Log & C.Db
 	}
 
 	// --------  static file serving --------
@@ -177,6 +179,18 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		return await Sessions.logout({ ...authRes.ctx, res })
 	})
 
+	instance.get(AR.exists('/layers.sqlite'), async (req, res) => {
+		const hash = req.headers['x-hash']
+		res.header('X-Hash', LayerDb.hash)
+		if (hash && hash === LayerDb.hash) {
+			return res.status(304).send()
+		}
+
+		res.header('Content-Type', 'application/x-sqlite3')
+		const stream = LayerDb.readFilestream()
+		res.status(200).send(stream)
+	})
+
 	await instance.register(ws)
 	await instance.register(fastifyTRPCPlugin, {
 		prefix: AR.exists('/trpc'),
@@ -195,9 +209,8 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
 		res = res
-			// We shouldn't cache index.html so that our client version skew protection works well
 			.header('Cross-Origin-Opener-Policy', 'same-origin')
-			.header('Cross-Origin-Embedder-Policy', 'unsafe-none')
+			.header('Cross-Origin-Embedder-Policy', 'require-corp')
 		const ctx = getCtx(req)
 		const authRes = await createAuthorizedRequestContext({
 			...ctx,
@@ -257,7 +270,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 })
 
 export async function createAuthorizedRequestContext<
-	T extends C.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req'>,
+	T extends CS.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req'>,
 >(ctx: T) {
 	const validSessionRes = await Sessions.validateAndUpdate(ctx)
 	if (validSessionRes.code !== 'ok') {

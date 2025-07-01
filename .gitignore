@@ -29,6 +29,7 @@ dist-ssr
 .env*
 
 slm-config.json
+extra-columns.json
 google-credentials.json
 
 /data/layers.csv

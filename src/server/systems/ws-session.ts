@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import * as C from '@/server/context'
 import { Subject } from 'rxjs'
 const wsSessions = new Map<string, C.TrpcRequest>()
@@ -16,7 +17,7 @@ export function registerClient(ctx: C.TrpcRequest) {
 	})
 }
 
-export async function forceDisconnect(ctx: C.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
+export async function forceDisconnect(ctx: CS.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
 	if (Object.keys(ids).length === 0) throw new Error('Must provide at least one id')
 
 	let sessions: C.TrpcRequest[] | undefined

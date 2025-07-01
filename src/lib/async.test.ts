@@ -1,10 +1,10 @@
-import * as C from '@/server/context'
+import * as CS from '@/models/context-shared'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { AsyncResource, sleep } from './async'
 
-let ctx!: C.Log
+let ctx!: CS.Log
 
 beforeAll(() => {
 	ensureEnvSetup()

@@ -13,5 +13,6 @@
 		"moduleDetection": "force",
 		"noEmit": true
 	},
-	"include": ["vite.config.ts"]
+	"include": ["vite.config.ts"],
+	"external": ["fs"]
 }

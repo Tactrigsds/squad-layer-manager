@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import * as C from '@/server/context'
 import crypto from 'crypto'
 import EventEmitter from 'events'
@@ -42,7 +43,7 @@ export class SftpTail extends EventEmitter {
 	private isConnected = false
 
 	constructor(
-		private ctx: C.Log,
+		private ctx: CS.Log,
 		options: SftpTailOptions,
 	) {
 		super()

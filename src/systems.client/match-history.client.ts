@@ -58,3 +58,8 @@ export const [useCurrentMatchDetails, currentMatchDetails$] = ReactRx.bind(
 			),
 	null,
 )
+
+export function setup() {
+	recentMatchHistory$().subscribe()
+	currentMatchDetails$().subscribe()
+}

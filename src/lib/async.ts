@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
@@ -138,7 +139,7 @@ export type AsyncResourceInvocationOpts = {
 /**
  *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
  */
-export class AsyncResource<T, Ctx extends C.Log = C.Log> {
+export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	static tracer = Otel.trace.getTracer('async-resource')
 	mutex = new Mutex()
 	opts: AsyncResourceOpts

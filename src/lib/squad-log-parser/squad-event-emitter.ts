@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import * as SME from '@/models/squad-models.events'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
@@ -7,7 +8,7 @@ import { SftpTail, SftpTailOptions } from '../sftp-tail'
 import { assertNever } from '../type-guards'
 import * as SLE from './squad-log-events.models'
 
-type EventCtx = C.Log
+type EventCtx = CS.Log
 
 const tracer = Otel.trace.getTracer('squad-log-event-emitter')
 type LogState = {
@@ -26,7 +27,7 @@ export class SquadEventEmitter {
 	reader: SftpTail
 	event$: Rx.Subject<[EventCtx, SME.Event]> = new Rx.Subject()
 
-	constructor(private ctx: C.Log, options: { sftp: SftpTailOptions }) {
+	constructor(private ctx: CS.Log, options: { sftp: SftpTailOptions }) {
 		this.ctx = ctx
 		this.reader = new SftpTail(ctx, options.sftp)
 	}
@@ -44,7 +45,7 @@ export class SquadEventEmitter {
 	 * @param logEvt The log event to process.
 	 * @returns an event if one should be emitted
 	 */
-	squadLogEventToSquadEvent(ctx: C.Log, logEvt: SLE.Event): SME.Event | undefined {
+	squadLogEventToSquadEvent(ctx: CS.Log, logEvt: SLE.Event): SME.Event | undefined {
 		switch (logEvt.type) {
 			case 'ROUND_DECIDED': {
 				const prop = logEvt.action === 'won' ? 'roundWinner' : 'roundLoser'

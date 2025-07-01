@@ -1,19 +1,14 @@
+import * as LayerDb from '@/server/systems/layer-db.server.ts'
 import * as dotenv from 'dotenv'
 import { z } from 'zod'
-import { HumanTime, ParsedIntSchema } from '../lib/zod'
+import { HumanTime, NormedUrl, ParsedIntSchema } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {
 	general: {
 		NODE_ENV: z.enum(['development', 'production']),
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
-		OTLP_COLLECTOR_ENDPOINT: z
-			.string()
-			.url()
-			.default('http://localhost:4318')
-			// trim trailing whitespace
-			.transform((url) => url.replace(/\/$/, ''))
-			.describe('Endpoint for the OTLP collector'),
+		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
 
 		PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
 		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
@@ -42,12 +37,7 @@ export const groups = {
 	httpServer: {
 		PORT: ParsedIntSchema.default('3000'),
 		HOST: z.string().default('127.0.0.1'),
-		ORIGIN: z
-			.string()
-			.url()
-			.default('http://localhost:5173')
-			// trim trailing slash
-			.transform((url) => url.replace(/\/$/, '')),
+		ORIGIN: NormedUrl.default('http://localhost:5173'),
 	},
 
 	squadSftpLogs: {
@@ -57,6 +47,10 @@ export const groups = {
 		SQUAD_SFTP_USERNAME: z.string().default('squad'),
 		SQUAD_SFTP_PASSWORD: z.string().default('password'),
 		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().positive()),
+	},
+
+	layersDb: {
+		EXTRA_COLUMNS_CONFIG_PATH: z.string().default('./extra-columns.json'),
 	},
 
 	sheets: {

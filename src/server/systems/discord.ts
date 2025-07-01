@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
@@ -65,7 +66,7 @@ export async function getOauthUser(token: AccessToken) {
 	return DiscordUserSchema.parse(data)
 }
 
-const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: C.Log, guildId: bigint) => {
+const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: CS.Log, guildId: bigint) => {
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }
@@ -83,7 +84,7 @@ const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: C.Log
 	}
 })
 
-export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (ctx: C.Log, guildId: bigint, memberId: bigint) => {
+export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (ctx: CS.Log, guildId: bigint, memberId: bigint) => {
 	C.setSpanOpAttrs({ guildId: guildId.toString(), memberId: memberId.toString() })
 	const guildRes = await fetchGuild(ctx, guildId)
 	if (guildRes.code !== 'ok') return guildRes
@@ -104,7 +105,7 @@ export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (c
 	}
 })
 
-export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, async (baseCtx: C.Log) => {
+export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, async (baseCtx: CS.Log) => {
 	C.setSpanOpAttrs({ guildId: CONFIG.homeDiscordGuildId.toString() })
 	const res = await fetchGuild(baseCtx, CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
@@ -114,7 +115,7 @@ export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, a
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
 })
 
-// export async function getDiscordUserRoles(_ctx: C.Log, discordId: bigint) {
+// export async function getDiscordUserRoles(_ctx: CS.Log, discordId: bigint) {
 //   await using ctx = C.pushOperation(_ctx, 'discord:get-user-roles')
 //   const roles = new Set<string>()
 //   for (const authorized of CONFIG.authorizedDiscordRoles) {

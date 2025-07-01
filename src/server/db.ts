@@ -1,3 +1,4 @@
+import * as CS from '@/models/context-shared'
 import { baseLogger } from '@/server/logger.ts'
 import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
@@ -37,7 +38,7 @@ export async function setupDatabase() {
 }
 
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
-export function addPooledDb<T extends C.Log>(ctx: T) {
+export function addPooledDb<T extends CS.Log>(ctx: T) {
 	if ('db' in ctx) return ctx as T & C.Db
 	return {
 		...ctx,
@@ -95,7 +96,7 @@ export async function runTransaction<T extends C.Db, V>(
 // I hate OOP
 class TracedPool extends EventEmitter implements MySQL.Pool {
 	constructor(
-		private ctx: C.Log,
+		private ctx: CS.Log,
 		private basePool: MySQL.Pool,
 	) {
 		super()

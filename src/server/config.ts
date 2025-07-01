@@ -1,13 +1,12 @@
 import { selectProps } from '@/lib/object.ts'
 import { HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
-import * as LC from '@/models/layer-columns.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Paths from '@/server/paths'
 import * as Cli from '@/server/systems/cli.ts'
-import * as ExtraCols from '@/server/systems/extra-column-config.ts'
+import * as LayerDb from '@/server/systems/layer-db.server.ts'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import fs from 'node:fs/promises'
@@ -58,9 +57,6 @@ export const ConfigSchema = z.object({
 	}).default({}),
 	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
 	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
-	layerGenerationMaxBasePoolSizePerItem: z.number().int().positive().default(300).describe(
-		'Implementation detail which somewhat affects the performance of the random layer functionality.',
-	),
 	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
 
 	adminListSources: z.array(SM.AdminListSourceSchema),
@@ -149,7 +145,7 @@ export function getPublicConfig() {
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
-		extraColumnsConfig: ExtraCols.EXTRA_COLS_CONFIG,
+		extraColumnsConfig: LayerDb.EXTRA_COLS_CONFIG,
 	}
 }
 

@@ -7,7 +7,7 @@ import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
+import * as LayersDbClient from '@/systems.client/layer-db.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client.ts'
@@ -65,12 +65,11 @@ const router = createBrowserRouter([
 	},
 ])
 
-// -------- global server state setup --------
+// -------- system initialization --------
+void LayersDbClient.setup()
 FilterEntityClient.setup()
-MatchHistoryClient.recentMatchHistory$().subscribe()
-MatchHistoryClient.currentMatchDetails$().subscribe()
-SquadServerClient.squadServerStatus$.subscribe()
-LayerQueriesClient.setup()
+MatchHistoryClient.setup()
+SquadServerClient.setup()
 UsersClient.setup()
 ConfigClient.setup()
 

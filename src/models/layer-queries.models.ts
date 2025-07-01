@@ -106,29 +106,29 @@ export const DEFAULT_SORT: LayersQueryInput['sort'] = {
 }
 export const DEFAULT_PAGE_SIZE = 20
 
-export const LayersQueryInputSchema = z.object({
-	pageIndex: z.number().int().min(0).optional(),
-	pageSize: z.number().int().min(1).max(200).optional(),
-	sort: LayersQuerySortSchema.optional(),
-	constraints: z.array(LayerQueryConstraintSchema).optional(),
-	historyOffset: z
-		.number()
-		.int()
-		.min(0)
-		.optional()
-		.describe(
-			'Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc',
-		),
-	previousLayerIds: z
-		.array(L.LayerIdSchema)
-		.default([])
-		.describe(
-			'Layer Ids to be considered as part of the history for Repeat rules',
-		),
-})
+export type LayersQueryInput = {
+	pageIndex?: number
+	pageSize?: number
+	sort?: {
+		type: 'column'
+		sortBy: string
+		sortDirection?: 'ASC' | 'DESC'
+	} | {
+		type: 'random'
+		seed: number
+	}
+	constraints?: LayerQueryConstraint[]
+	// Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc,
+	historyOffset?: number
 
-export type LayersQueryInput = z.infer<typeof LayersQueryInputSchema>
+	// Layer Ids to be considered as part of the history for Repeat rules,
+	previousLayerIds: L.LayerId[]
+}
 
+export type LayerComponentsInput = {
+	constraints?: LayerQueryConstraint[]
+	previousLayerIds?: L.LayerId[]
+}
 export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]
 
@@ -139,14 +139,12 @@ export type LayerQueryContext = {
 	applyMatchHistory?: boolean
 }
 
-export const GenLayerQueueItemsOptionsSchema = z.object({
-	numToAdd: z.number().positive(),
-	numVoteChoices: z.number().positive(),
-	itemType: z.enum(['layer', 'vote']),
-	baseFilterId: F.FilterEntityIdSchema.optional(),
-})
-
-export type GenLayerQueueItemsOptions = z.infer<typeof GenLayerQueueItemsOptionsSchema>
+export type GenLayerQueueItemsOptions = {
+	numToAdd: number
+	numVoteChoices: number
+	itemType: 'layer' | 'vote'
+	baseFilterId?: F.FilterEntityId
+}
 
 export function getEditedFilterConstraint(filter: F.FilterNode): LayerQueryConstraint {
 	return { type: 'filter-anon', id: 'edited-filter', filter, applyAs: 'where-condition' }
@@ -230,6 +228,7 @@ export const LayerTableConfigSchema = z.object({
 	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
 	defaultSortBy: LayersQuerySortSchema,
 })
+
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>
 
 export type EffectiveColumnAndTableConfig = LayerTableConfig & LC.EffectiveColumnConfig
