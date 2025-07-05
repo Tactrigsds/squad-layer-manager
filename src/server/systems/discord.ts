@@ -30,7 +30,7 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.disc
 let ENV!: ReturnType<typeof envBuilder>
 
 const tracer = Otel.trace.getTracer('discord')
-export const setupDiscordSystem = C.spanOp('discord:setup', { tracer }, async () => {
+export const setup = C.spanOp('discord:setup', { tracer }, async () => {
 	ENV = envBuilder()
 	const ctx = { log: baseLogger }
 	client = new D.Client({

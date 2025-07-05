@@ -121,16 +121,16 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 	]
 
 	{
-		const sortedColKeys = Object.keys(cfg.orderedColumns).sort((a, b) => {
-			let aIndex = cfg.orderedColumns.findIndex(c => c.name === a)
+		const sortedColKeys = [...cfg.orderedColumns].sort((a, b) => {
+			let aIndex = cfg.orderedColumns.findIndex(c => c.name === a.name)
 			if (aIndex === -1) aIndex = cfg.orderedColumns.length
-			let bIndex = cfg.orderedColumns.findIndex(c => c.name === b)
+			let bIndex = cfg.orderedColumns.findIndex(c => c.name === b.name)
 			if (bIndex === -1) bIndex = cfg.orderedColumns.length
 			return aIndex - bIndex
 		})
 
-		for (const columnKey of sortedColKeys) {
-			colDefs.push(buildColumn(LC.getColumnDef(columnKey, cfg)!))
+		for (const col of sortedColKeys) {
+			colDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!))
 		}
 	}
 
@@ -237,15 +237,10 @@ export default function LayerTable(props: {
 	}
 	const [_randomize, setRandomize] = useState<boolean>(props.defaultSort?.type === 'random')
 	const randomize = !showSelectedLayers && _randomize
-	const [seed, setSeed] = useState<number>(generateSeed())
-	function generateSeed() {
-		return Math.ceil(Math.random() * Number.MAX_SAFE_INTEGER)
-	}
 
 	function toggleRandomize() {
 		setRandomize((prev) => {
 			if (!prev) {
-				setSeed(generateSeed())
 				_setSortingState([])
 			}
 			return !prev
@@ -329,7 +324,7 @@ export default function LayerTable(props: {
 
 	let sort: LQY.LayersQueryInput['sort'] = LQY.DEFAULT_SORT
 	if (randomize) {
-		sort = { type: 'random', seed: seed! }
+		sort = { type: 'random' }
 	} else if (sortingState.length > 0) {
 		const { id, desc } = sortingState[0]
 		sort = {
@@ -339,12 +334,14 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const layersRes = LayerQueriesClient.useLayersQuery(LayerQueriesClient.getLayerQueryInput(props.queryContext ?? {}, {
+	const queryInput = LayerQueriesClient.getLayerQueryInput(props.queryContext ?? {}, {
 		pageIndex: props.pageIndex,
 		selectedLayers: showSelectedLayers ? props.selected : undefined,
 		pageSize,
 		sort,
-	}))
+	})
+	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
+	console.log({ layersRes: layersRes.data, status: layersRes.status, error: layersRes.error })
 
 	const page = React.useMemo(() => {
 		let _page = layersRes.data
@@ -545,7 +542,7 @@ export default function LayerTable(props: {
 				<span className="flex h-10 items-center space-x-2">
 					{props.extraPanelItems}
 					<Button
-						onClick={() => setSeed(generateSeed())}
+						onClick={() => LayerQueriesClient.invalidateLayersQuery(queryInput)}
 						disabled={layersRes.isFetching}
 						variant="outline"
 						size="icon"

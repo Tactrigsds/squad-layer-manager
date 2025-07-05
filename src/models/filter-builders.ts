@@ -9,7 +9,6 @@ export const and = <T extends F.FilterNode>(children: T[], options: { neg?: bool
 }
 
 export const or = <T extends F.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
-	if (children.length === 0) return null
 	return {
 		type: 'or' as const,
 		children,
@@ -62,13 +61,6 @@ export const inValues = (column: string, values: string[]) =>
 export const eq = (column: string, value: string) =>
 	({
 		code: 'eq' as const,
-		column,
-		value,
-	}) satisfies F.Comparison
-
-export const like = (column: string, value: string) =>
-	({
-		code: 'like' as const,
 		column,
 		value,
 	}) satisfies F.Comparison

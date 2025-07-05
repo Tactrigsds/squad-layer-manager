@@ -9,6 +9,7 @@ import pino from 'pino'
 import format from 'quick-format-unescaped'
 import * as Env from './env'
 
+import { assertNever } from '@/lib/type-guards'
 import build from 'pino-abstract-transport'
 export let baseLogger!: CS.Logger
 
@@ -72,22 +73,30 @@ export function ensureLoggerSetup() {
 			return method.apply(this, _inputArgs)
 		},
 	}
-	const envToLogger = {
-		development: {
-			level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
-			serializers: LOG.serializers,
-			base: undefined,
-			hooks,
-		},
-		production: {
-			level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
-			base: undefined,
-			serializers: LOG.serializers,
-			hooks,
-		},
-	} satisfies { [env in (typeof ENV)['NODE_ENV']]: LoggerOptions }
 
-	const baseConfig = envToLogger[ENV.NODE_ENV]
+	let baseConfig: LoggerOptions
+
+	switch (ENV.NODE_ENV) {
+		case 'development':
+		case 'test':
+			baseConfig = {
+				level: ENV.LOG_LEVEL_OVERRIDE ?? 'debug',
+				serializers: LOG.serializers,
+				base: undefined,
+				hooks,
+			}
+			break
+		case 'production':
+			baseConfig = {
+				level: ENV.LOG_LEVEL_OVERRIDE ?? 'info',
+				base: undefined,
+				serializers: LOG.serializers,
+				hooks,
+			}
+			break
+		default:
+			assertNever(ENV.NODE_ENV)
+	}
 
 	baseLogger = pino(baseConfig, createFormatPrettyPrintTransport())
 }

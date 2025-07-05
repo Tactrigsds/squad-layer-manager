@@ -16,7 +16,7 @@ export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
 const tracer = Otel.trace.getTracer('sessions')
 
-export async function setupSessions() {
+export async function setup() {
 	// --------  cleanup old sessions  --------
 	const ctx = DB.addPooledDb({ log: baseLogger })
 	while (true) {

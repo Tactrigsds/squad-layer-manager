@@ -1,2 +1,11 @@
 onlyBuiltDependencies:
+  - "@vitejs/plugin-basic-ssl"
   - better-sqlite3
+  - bufferutil
+  - cpu-features
+  - dprint
+  - esbuild
+  - msw
+  - protobufjs
+  - sqlite3
+  - ssh2

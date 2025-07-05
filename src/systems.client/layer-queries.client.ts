@@ -9,19 +9,16 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as LayerDbClient from '@/systems.client/layer-db.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
-import deepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 
 export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
 	options ??= {}
-	const ctx = useCtx()
-	const args = ctx ? { ctx, input } : undefined
+	const args = useArgs(input)
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryLayers', getDepKey(args)],
@@ -31,10 +28,13 @@ export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?
 		staleTime: Infinity,
 	})
 }
+export async function invalidateLayersQuery(input: LQY.LayersQueryInput) {
+	const args = await fetchArgs(input)
+	return reactQueryClient.invalidateQueries({ queryKey: ['layers', 'queryLayers', getDepKey(args)] })
+}
 
 export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
-	const ctx = await fetchCtx()
-	const args = { ctx, input }
+	const args = await fetchArgs(input)
 	return reactQueryClient.prefetchQuery({
 		queryKey: ['layers', 'queryLayers', getDepKey(args)],
 		queryFn: async () => LayerQueries.queryLayers(args),
@@ -75,8 +75,7 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryContext, opts?: {
 
 export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { enabled?: boolean }) {
 	options ??= {}
-	const ctx = useCtx()
-	const args = ctx ? { ctx, input } : undefined
+	const args = useArgs(input)
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', getDepKey(args)],
@@ -87,8 +86,7 @@ export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { 
 }
 export function useSearchIds(input: LayerQueries.SearchIdsInput, options?: { enabled?: boolean }) {
 	options ??= {}
-	const ctx = useCtx()
-	const args = ctx ? { ctx, input } : undefined
+	const args = useArgs(input)
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryIds', getDepKey(args)],
@@ -103,16 +101,8 @@ export function useLayerStatuses(
 ) {
 	options ??= {}
 	const editedQueue = Zus.useStore(QD.QDStore, s => s.editedServerState.layerQueue)
-	const serverLayerQueue = Zus.useStore(QD.QDStore, s => s.serverState?.layerQueue)
 	const editedPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.mainPool)
-	const serverPool = Zus.useStore(QD.QDStore, s => s.serverState?.settings.queue.mainPool)
-	const ctx = useCtx()
-	const args = ctx
-		? {
-			ctx,
-			input: { queue: editedQueue, pool: editedPool },
-		}
-		: undefined
+	const args = useArgs({ queue: editedQueue, pool: editedPool })
 	return useQuery({
 		...options,
 		queryKey: [
@@ -122,10 +112,6 @@ export function useLayerStatuses(
 		],
 		enabled: !!args,
 		queryFn: async () => {
-			if (serverLayerQueue && deepEqual(serverLayerQueue, editedQueue) && deepEqual(serverPool, editedPool)) {
-				return PartsSys.getLayerStatuses()
-			}
-
 			const res = await LayerQueries.getLayerStatusesForLayerQueue(args!)
 			if (res.code !== 'ok') {
 				globalToast$.next({ variant: 'destructive', description: res.msg, title: res.code })
@@ -142,13 +128,7 @@ export function useLayerExists(
 	options?: { enabled?: boolean; usePlaceholderData?: boolean },
 ) {
 	options ??= {}
-	const ctx = useCtx()
-	const args = ctx
-		? {
-			ctx,
-			input,
-		}
-		: undefined
+	const args = useArgs(input)
 	return useQuery({
 		...options,
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
@@ -171,22 +151,25 @@ function getDepKey<I>(args?: { ctx: CS.LayerQuery; input: I }) {
 	})
 }
 
-export async function fetchCtx(): Promise<CS.LayerQuery> {
+export async function fetchArgs<T>(input: T): Promise<{ ctx: CS.LayerQuery; input: T }> {
 	const recentMatches = MatchHistoryClient.recentMatches$.getValue()
 	const filters = Array.from(FilterEntityClient.filterEntities$.getValue().values())
 	const config = await ConfigClient.fetchConfig()
 
 	const layerDb = await LayerDbClient.fetchLayerDb()
 	return {
-		layerDb: () => layerDb,
-		recentMatches,
-		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
-		filters,
-		log: baseLogger,
+		ctx: {
+			layerDb: () => layerDb,
+			recentMatches,
+			effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+			filters,
+			log: baseLogger,
+		},
+		input,
 	}
 }
 
-function useCtx(): CS.LayerQuery | undefined {
+function useArgs<T>(input: T): { ctx: CS.LayerQuery; input: T } | undefined {
 	const recentMatches = MatchHistoryClient.useRecentMatches()
 	const effectiveColsConfig = ConfigClient.useEffectiveColConfig()
 	const filters = Array.from(FilterEntityClient.useFilterEntities().values())
@@ -194,10 +177,13 @@ function useCtx(): CS.LayerQuery | undefined {
 	if (!effectiveColsConfig) return
 	if (!layerDb) return
 	return {
-		layerDb: () => layerDb,
-		recentMatches,
-		effectiveColsConfig,
-		filters,
-		log: baseLogger,
+		input,
+		ctx: {
+			layerDb: () => layerDb,
+			recentMatches,
+			effectiveColsConfig,
+			filters,
+			log: baseLogger,
+		},
 	}
 }

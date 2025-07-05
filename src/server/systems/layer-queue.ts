@@ -21,6 +21,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import * as FilterEntity from '@/server/systems/filter-entity.ts'
+import * as LayerQueriesServer from '@/server/systems/layer-queries.server.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadServer from '@/server/systems/squad-server'
@@ -36,7 +37,7 @@ import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
 export let serverStateUpdate$!: Rx.BehaviorSubject<
-	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>, CS.Log & C.Db]
+	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart>>, CS.Log & C.Db]
 >
 
 let voteEndTask: Rx.Subscription | null = null
@@ -1020,14 +1021,12 @@ export async function warnShowNext(ctx: C.Db & CS.Log, playerId: string | 'all-a
 async function includeLQServerUpdateParts(
 	ctx: C.Db & CS.Log,
 	_serverStateUpdate: SS.LQServerStateUpdate,
-): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerStatusPart>>> {
+): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
-	const layerStatusPartPromise = includeLayerStatusPart(ctx, _serverStateUpdate)
 	return {
 		..._serverStateUpdate,
 		parts: {
 			...(await userPartPromise),
-			...(await layerStatusPartPromise),
 		},
 	}
 }
@@ -1053,18 +1052,6 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & CS.Log, update: SS.L
 	return part
 }
 
-async function includeLayerStatusPart(ctx: CS.Log, serverStateUpdate: SS.LQServerStateUpdate) {
-	const queue = serverStateUpdate.state.layerQueue
-	const layerStatusesRes = await LayerQueries.getLayerStatusesForLayerQueue({
-		ctx: C.resolveLayerQueryCtx(ctx),
-		input: { queue, pool: serverStateUpdate.state.settings.queue.mainPool },
-	})
-	if (layerStatusesRes.code !== 'ok') {
-		throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', cause: layerStatusesRes.code, message: layerStatusesRes.msg })
-	}
-	return { layerStatuses: layerStatusesRes.statuses }
-}
-
 /**
  * sets next layer on server, generating a new queue item if needed. modifies serverState in place
  */
@@ -1082,7 +1069,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		}
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
 		const { ids } = await LayerQueries.getRandomGeneratedLayers(
-			C.resolveLayerQueryCtx(ctx),
+			LayerQueriesServer.resolveLayerQueryCtx(ctx),
 			1,
 			constraints,
 			[],

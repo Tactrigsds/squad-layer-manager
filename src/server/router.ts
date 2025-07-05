@@ -7,10 +7,10 @@ import * as SquadServer from './systems/squad-server.ts'
 import * as Users from './systems/users.ts'
 import { procedure, router } from './trpc.server.ts'
 
-export let appRouter: ReturnType<typeof setupTrpcRouter>
+export let appRouter: ReturnType<typeof setup>
 export type AppRouter = typeof appRouter
 
-export function setupTrpcRouter() {
+export function setup() {
 	const _appRouter = router({
 		layerQueue: LayerQueue.layerQueueRouter,
 		squadServer: SquadServer.squadServerRouter,

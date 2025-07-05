@@ -21,7 +21,7 @@ export let pool: MySQL.Pool
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>
 
-export async function setupDatabase() {
+export async function setup() {
 	ENV = envBuilder()
 	pool = MySQL.createPool({
 		host: ENV.DB_HOST,

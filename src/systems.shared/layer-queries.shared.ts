@@ -2,7 +2,7 @@ import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { weightedRandomSelection } from '@/lib/random'
-import { assertNever, isNullOrUndef } from '@/lib/type-guards'
+import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -75,10 +75,11 @@ export async function queryLayers(args: {
 		}
 		return query
 	}
+	const selectCols = { ...LC.selectAllViewCols(ctx), ...selectProperties }
 
 	let query: any = ctx
 		.layerDb()
-		.select({ ...LC.selectAllViewCols(ctx), ...selectProperties })
+		.select(selectCols)
 		.from(LC.layersView(ctx))
 	query = includeWhere(query)
 
@@ -103,8 +104,7 @@ export async function queryLayers(args: {
 		.from(LC.layersView(ctx))
 	countQuery = includeWhere(countQuery)
 
-	const queryPromise = query.execute().then(convertQueryOutput)
-	const rows = await queryPromise
+	const rows = await query
 	const layers = postProcessLayers(ctx, rows, constraints, historicLayers, oldestLayerTeamParity)
 	const [countResult] = await countQuery.execute()
 	const totalCount = Number(countResult.count)
@@ -128,19 +128,18 @@ export async function layerExists({
 	input: LayerExistsInput
 	ctx: CS.LayerQuery
 }) {
-	const results = convertQueryOutput(
-		await ctx
-			.layerDb()
-			.select(LC.selectViewCols(['id'], ctx))
-			.from(LC.layersView(ctx))
-			.where(E.inArray(LC.layers.id, LC.packLayers(input))),
-	)
+	const packedIds = LC.packLayers(input)
+	const results = await ctx
+		.layerDb()
+		.select(LC.selectViewCols(['id'], ctx))
+		.from(LC.layersView(ctx))
+		.where(E.inArray(LC.viewCol('id', ctx), packedIds))
 	const existsMap = new Map(results.map((result) => [result.id, true]))
 
 	return {
 		code: 'ok' as const,
-		results: input.map((id) => ({
-			id,
+		results: packedIds.map((id) => ({
+			id: LC.unpackId(id),
 			exists: existsMap.has(id),
 		})),
 	}
@@ -164,12 +163,10 @@ export async function queryLayerComponents({
 	const res = Object.fromEntries(
 		await Promise.all(LC.GROUP_BY_COLUMNS.map(
 			async (column) => {
-				const res = convertQueryOutput(
-					await ctx.layerDb().selectDistinct({ [column]: LC.layers[column] })
-						.from(LC.layersView(ctx))
-						.where(E.and(...whereConditions)),
-				)
-					.map((row: any) => row[column])
+				const res = (await ctx.layerDb().selectDistinct({ [column]: LC.viewCol(column, ctx) })
+					.from(LC.layersView(ctx))
+					.where(E.and(...whereConditions)))
+					.map((row: any) => LC.fromDbValue(column, row[column], ctx))
 				return [column, res]
 			},
 		)),
@@ -200,14 +197,13 @@ export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input
 		constraints ?? [],
 	)
 
-	const results = convertQueryOutput(
-		await ctx
-			.layerDb()
-			.select({ id: LC.layerStrIds.idStr })
-			.from(LC.layerStrIds)
-			.where(E.and(E.like(LC.layerStrIds.idStr, `%${queryString}%`), ...whereConditions))
-			.limit(15),
-	)
+	const results = await ctx
+		.layerDb()
+		.select({ id: LC.layerStrIds.idStr })
+		.from(LC.layerStrIds)
+		.leftJoin(LC.layersView(ctx), E.eq(LC.viewCol('id', ctx), LC.layerStrIds.id))
+		.where(E.and(E.like(LC.layerStrIds.idStr, `%${queryString}%`), ...whereConditions))
+		.limit(15)
 
 	return {
 		code: 'ok' as const,
@@ -254,25 +250,23 @@ export async function getFilterNodeSQLConditions(
 	if (node.type === 'comp') {
 		const comp = node.comp!
 		const column = LC.viewCol(comp.column, ctx)
+		const dbVal = (v: string | number | boolean | null) => LC.dbValue(comp.column, v, ctx)
+		const dbVals = (vs: (string | number | boolean | null)[]) => vs.map(v => dbVal(v))
 		switch (comp.code) {
 			case 'eq': {
-				condition = E.eq(column, comp.value)!
+				condition = E.eq(column, dbVal(comp.value))!
 				break
 			}
 			case 'in': {
-				condition = E.inArray(column, comp.values)!
-				break
-			}
-			case 'like': {
-				condition = E.like(column, comp.value)!
+				condition = E.inArray(column, dbVals(comp.values))!
 				break
 			}
 			case 'gt': {
-				condition = E.gt(column, comp.value)!
+				condition = E.gt(column, dbVal(comp.value))!
 				break
 			}
 			case 'lt': {
-				condition = E.lt(column, comp.value)!
+				condition = E.lt(column, dbVal(comp.value))!
 				break
 			}
 			case 'inrange': {
@@ -453,7 +447,7 @@ export async function getLayerStatusesForLayerQueue({
 
 	const queueLayerIds = LL.getAllLayerIdsFromList(queue)
 
-	const selectExpr: any = { _id: LC.layers.id }
+	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 	for (const [id, task] of filterConditionResults.entries()) {
 		// we'll fix this if it happens but unlikely
 		if (id === '_id') throw new Error('unexpected id for filter constraint')
@@ -462,18 +456,16 @@ export async function getLayerStatusesForLayerQueue({
 		selectExpr[id] = res.condition
 	}
 
-	const rows = convertQueryOutput(
-		await ctx
-			.layerDb()
-			.select(selectExpr)
-			.from(LC.layersView(ctx))
-			.where(E.inArray(LC.layers.id, LC.packLayers(queueLayerIds))),
-	)
+	const rows = await ctx
+		.layerDb()
+		.select(selectExpr)
+		.from(LC.layersView(ctx))
+		.where(E.inArray(LC.viewCol('id', ctx), LC.packLayers(queueLayerIds)))
 
 	const present = new Set<L.LayerId>()
 	for (const row of rows) {
-		present.add(row._id)
-		const layerId = row._id
+		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
+		present.add(layerId)
 		for (const key of LL.getAllLayerQueueKeysWithLayerId(layerId, queue)) {
 			for (const [constraintId, isConstraintBlocked] of Object.entries(row)) {
 				if (constraintId === '_id') continue
@@ -748,7 +740,7 @@ function getDoNotRepeatSQLConditions(
 			// TODO: getTeamNormalizedFactionProp and getTeamNormalizedUnitProp are in match-history.models.ts, need proper imports
 			const getExpr = (team: 'A' | 'B') =>
 				sql`CONCAT(${LC.viewCol(MH.getTeamNormalizedFactionProp(oldestLayerTeamParity, team), ctx)}, '_', ${
-					LC.layers[MH.getTeamNormalizedUnitProp(oldestLayerTeamParity, team)]
+					LC.viewCol(MH.getTeamNormalizedUnitProp(oldestLayerTeamParity, team), ctx)
 				})`
 
 			const factionAndUnitExpressionA = getExpr('A')
@@ -806,7 +798,7 @@ function getDoNotRepeatSQLConditions(
 
 export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	ctx: CS.LayerQuery,
-	number: number,
+	numLayers: number,
 	constraints: LQY.LayerQueryConstraint[],
 	previousLayerIds: string[],
 	returnLayers: ReturnLayers,
@@ -823,75 +815,72 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	)
 	const p_condition = conditions.length > 0 ? E.and(...conditions) : sql`1=1`
 
-	const colOrderRowsPromise = ctx.layerDb().select({ columnName: LC.genLayerColumnOrder.columnName }).from(LC.genLayerColumnOrder)
-		.orderBy(E.asc(LC.genLayerColumnOrder.ordinal)).execute()
-	const totalCountPromise = ctx.layerDb().select({ totalCount: count() }).from(LC.layersView(ctx)).where(p_condition).execute()
-	const allWeightsPromise = ctx.layerDb().select().from(LC.genLayerWeights).execute()
-
-	const colOrderRows = await colOrderRowsPromise
-	const orderedColumns = colOrderRows.map(row => row.columnName).filter(colName =>
-		(LC.WEIGHT_COLUMNS as unknown as string[]).includes(colName)
-	) as [LC.WeightColumn, ...LC.WeightColumn[]]
-
-	const baseLayerPoolPromise = ctx.layerDb().select(
-		Obj.selectProps(LC.layers, [...orderedColumns, 'id'] as [LC.WeightColumn, ...LC.WeightColumn[], 'id']),
-	).from(LC.layersView(ctx))
-		.where(p_condition).limit(300 * number).orderBy(E.asc(sql`random()`))
-		.execute().then(convertQueryOutput)
-
-	const totalCountResult = await totalCountPromise
+	const totalCountResult = await ctx.layerDb().select({ totalCount: count() }).from(LC.layersView(ctx))
 	const totalCount = Number(totalCountResult[0].totalCount)
-	const baseLayerPool = await baseLayerPoolPromise
-	const allWeights = await allWeightsPromise
 
-	if (baseLayerPool.length === 0) {
+	if (totalCount === 0) {
 		// @ts-expect-error idgaf
 		if (returnLayers) return { layers: [], totalCount } as { layers: PostProcessedLayer[]; totalCount: number }
 		// @ts-expect-error idgaf
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
 
-	const selected: number[] = []
-	for (let i = 0; i < number; i++) {
-		let layerPool = baseLayerPool
-		for (const columnName of orderedColumns) {
-			const weightsForColl = allWeights.filter(w => w.columnName === columnName)
-			const values: (number | null)[] = []
+	const selectedLayers: any[] = []
+	const selectedIds: number[] = []
+	// TODO this can be optimized by finding a lower bound under which it's more efficient we can just get all layers matching the current constraints and finishing the filtering without making additional queries. will require some experimentation
+	for (let i = 0; i < numLayers; i++) {
+		const selectedColValues: [LC.GroupByColumn, number | null][] = []
+		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
+			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
+			const availableValuesRows = await ctx.layerDb().selectDistinct({ [columnName]: LC.viewCol(columnName, ctx) }).from(
+				LC.layersView(ctx),
+			).where(
+				E.and(
+					p_condition,
+					...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value as number)),
+					E.notInArray(LC.viewCol('id', ctx), selectedIds),
+				),
+			)
+			const values = availableValuesRows.map(row => row[columnName]) as (number | null)[]
+			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn] ?? []
 			const weights: number[] = []
 			const defaultWeight = 1 / values.length
-			for (const layer of layerPool) {
-				if (values.includes(layer[columnName]) || selected.includes(layer.id)) continue
-				values.push(layer[columnName])
-				weights.push(weightsForColl.find(w => w.value === layer[columnName])?.weight ?? defaultWeight)
+			for (const value of values) {
+				weights.push(
+					weightsForCol.find(w => LC.dbValue(columnName, w.value, ctx) === (value ?? null))?.weight ?? defaultWeight,
+				)
 			}
-			if (values.length === 0) continue
-			const chosen = weightedRandomSelection(values, weights)
-			layerPool = layerPool.filter(l => l[columnName] === chosen)
-		}
-		if (layerPool.length === 0) {
-			for (const layer of baseLayerPool) {
-				if (!selected.includes(layer.id)) {
-					selected.push(layer.id)
+			if (values.length === 0) break
+			if (values.length === 1 || j + 1 === ctx.effectiveColsConfig.generation.columnOrder.length) {
+				const rows = await ctx.layerDb().select(
+					returnLayers ? { ...LC.selectAllViewCols(ctx), ...selectProperties } : { id: LC.viewCol('id', ctx) },
+				).from(
+					LC.layersView(ctx),
+				).where(
+					E.and(
+						p_condition,
+						...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value)),
+						E.notInArray(LC.viewCol('id', ctx), selectedIds),
+					),
+				)
+				selectedIds.push(rows[0].id)
+				if (returnLayers) {
+					selectedLayers.push(rows[0])
 				}
+				break
 			}
-		} else {
-			selected.push(layerPool[0].id)
+			const chosen = weightedRandomSelection(values, weights)
+
+			selectedColValues.push([columnName as LC.GroupByColumn, chosen])
 		}
 	}
 
-	const results = convertQueryOutput(
-		await ctx.layerDb().select({ ...LC.layers, ...selectProperties })
-			.from(LC.layersView(ctx))
-			.where(
-				E.inArray(LC.layers.id, selected),
-			).orderBy(sql`rand()`),
-	)
 	if (returnLayers) {
 		// @ts-expect-error idgaf
 		return {
 			layers: postProcessLayers(
 				ctx,
-				results as (L.KnownLayer & Record<string, string | number | boolean> & Record<string, boolean>)[],
+				selectedLayers,
 				constraints,
 				historicLayers,
 				oldestLayerTeamParity,
@@ -900,7 +889,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		}
 	}
 	// @ts-expect-error idgaf
-	return { ids: selected, totalCount }
+	return { ids: selectedIds, totalCount }
 }
 
 /**
@@ -937,8 +926,8 @@ export type PostProcessedLayer = Awaited<
 	ReturnType<typeof postProcessLayers>
 >[number]
 function postProcessLayers(
-	ctx: CS.Log,
-	layers: (L.KnownLayer & Record<string, string | number | boolean> & Record<string, boolean>)[],
+	ctx: CS.Log & CS.EffectiveColumnConfig,
+	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
 	constraints: LQY.LayerQueryConstraint[],
 	historicLayers: [L.LayerId, LQY.ViolationReasonItem | undefined][],
 	oldestLayerTeamParity: number,
@@ -947,7 +936,13 @@ function postProcessLayers(
 		// default to true because missing means the constraint is applied via a where condition
 		const constraintResults: boolean[] = Array(constraints.length).fill(true)
 		const violationDescriptors: LQY.ViolationDescriptor[] = []
+		const strId = LC.unpackId(layer.id)
+		const layersConverted: Record<string, string | number | boolean> = {}
 		for (const key of Object.keys(layer)) {
+			if (key in ctx.effectiveColsConfig.defs) {
+				layersConverted[key] = LC.fromDbValue(key, layer[key])!
+				continue
+			}
 			const groups = key.match(/^constraint_(\d+)$/)
 			if (!groups) continue
 			const idx = Number(groups[1])
@@ -959,7 +954,7 @@ function postProcessLayers(
 					ctx,
 					constraint.id,
 					constraint.rule,
-					layer.id,
+					strId,
 					historicLayers,
 					oldestLayerTeamParity,
 				)
@@ -970,27 +965,9 @@ function postProcessLayers(
 			}
 		}
 		return {
-			...layer,
+			...layersConverted as L.KnownLayer & Record<string, number | boolean | string | null>,
 			constraints: constraintResults,
 			violationDescriptors,
 		}
 	})
-}
-
-function convertQueryOutput(rows: Record<string, any>[]) {
-	const merged: any[] = []
-	for (const row of rows) {
-		const flattened = Obj.flattenShallow(row)
-		for (const [key, value] of Object.entries(flattened)) {
-			let valueNorm: string | undefined
-			if (key === 'id') {
-				valueNorm = LC.unpackId(value as number)
-			} else {
-				valueNorm = LC.fromEnum(key, value as number)
-			}
-			if (!isNullOrUndef(valueNorm)) flattened[key] = valueNorm
-		}
-		merged.push(flattened)
-	}
-	return merged
 }

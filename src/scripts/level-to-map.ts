@@ -12,8 +12,8 @@ import superjson from 'superjson'
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
 ensureLoggerSetup()
-await Config.ensureConfigSetup()
-await DB.setupDatabase()
+await Config.ensureSetup()
+await DB.setup()
 
 const ctx = DB.addPooledDb({ log: baseLogger })
 

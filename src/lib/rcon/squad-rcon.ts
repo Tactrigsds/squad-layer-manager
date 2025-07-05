@@ -233,7 +233,7 @@ export default class SquadRcon {
 			return {
 				code: 'err:unable-to-set-next-layer' as const,
 				unexpectedLayerId: newStatus.data.nextLayer.id,
-				msg: `Failed to set next layer. Expected ${idOrLayer}, received ${newStatus.data.nextLayer}`,
+				msg: `Failed to set next layer. Expected ${idOrLayer}, received ${newStatus.data.nextLayer.id}`,
 			}
 		}
 		return { code: 'ok' as const }

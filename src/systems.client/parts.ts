@@ -7,7 +7,7 @@ import * as USR from '@/models/users.models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = USR.UserPart & LQY.LayerStatusPart & MH.MatchHistoryPart
+export type ClientParts = USR.UserPart & MH.MatchHistoryPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
@@ -23,10 +23,6 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 							for (const user of entity as USR.User[]) {
 								Arr.upsertOn(draft.users, user, 'discordId')
 							}
-							break
-						}
-						case 'layerStatuses': {
-							draft.layerStatuses = entity as LQY.LayerStatuses
 							break
 						}
 						case 'matchHistory': {
@@ -61,12 +57,6 @@ export function upsertParts(parts: Partial<ClientParts>) {
 
 export function findUser(id: bigint) {
 	return PartsStore.getState().users.find((u) => u.discordId === id)
-}
-
-export function getLayerStatuses() {
-	const statuses = PartsStore.getState().layerStatuses
-	if (statuses.present.size === 0 && statuses.blocked.size === 0) return null
-	return statuses
 }
 
 export function findMatchHistoryEntry(id: number) {

@@ -207,7 +207,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	}
 }
 
-export const setupSquadServer = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'info' }, async () => {
+export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'info' }, async () => {
 	ENV = envBuilder()
 	// -------- set up admin list --------
 	const adminListTTL = 1000 * 60 * 60 * 60

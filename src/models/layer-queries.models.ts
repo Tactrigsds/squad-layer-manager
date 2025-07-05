@@ -94,7 +94,6 @@ export const LayersQuerySortSchema = z
 		}),
 		z.object({
 			type: z.literal('random'),
-			seed: z.number().int().positive(),
 		}),
 	])
 	.describe('if not provided, no sorting will be done')
@@ -115,14 +114,13 @@ export type LayersQueryInput = {
 		sortDirection?: 'ASC' | 'DESC'
 	} | {
 		type: 'random'
-		seed: number
 	}
 	constraints?: LayerQueryConstraint[]
 	// Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc,
 	historyOffset?: number
 
 	// Layer Ids to be considered as part of the history for Repeat rules,
-	previousLayerIds: L.LayerId[]
+	previousLayerIds?: L.LayerId[]
 }
 
 export type LayerComponentsInput = {
@@ -219,7 +217,6 @@ export function getFactionAndUnitValue(faction: string, unit: string | null | un
 	return faction + '_' + unit || ''
 }
 
-export type LayerStatusPart = { layerStatuses: LayerStatuses }
 export function getLayerStatusId(layerId: L.LayerId, filterEntityId: F.FilterEntityId) {
 	return `${layerId}::${filterEntityId}`
 }

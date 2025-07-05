@@ -13,6 +13,7 @@ type ThemeStore = {
 const THEME_STORAGE_KEY = 'ui-theme:v1'
 
 function applyTheme(theme: Theme) {
+	debugger
 	const root = window.document.documentElement
 
 	root.classList.remove('light', 'dark')

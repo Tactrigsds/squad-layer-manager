@@ -41,23 +41,25 @@ export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
 export type EffectiveColumnConfig = {
 	defs: Record<string | L.LayerColumnKey, CombinedColumnDef>
+	generation: LayerGenerationConfig
 }
 
 export const BASE_COLUMN_CONFIG: EffectiveColumnConfig = {
 	defs: BASE_COLUMN_DEFS,
+	generation: { columnOrder: [], weights: {} },
 }
-export function getEffectiveColumnConfig(config: ExtraColumnsConfig): EffectiveColumnConfig {
+export function getEffectiveColumnConfig(config: LayerDbConfig): EffectiveColumnConfig {
 	const defs: EffectiveColumnConfig['defs'] = {
 		...BASE_COLUMN_CONFIG.defs,
 	}
 	for (const def of Object.values(config.columns)) {
 		defs[def.name] = { ...def, table: 'extra-cols' }
 	}
-	return { ...BASE_COLUMN_CONFIG, defs }
+	return { ...BASE_COLUMN_CONFIG, defs, generation: config.generation }
 }
 
 export function getColumnDef(name: string, cfg = BASE_COLUMN_CONFIG) {
-	return cfg.defs[name] as ColumnDef | undefined
+	return cfg.defs[name] as CombinedColumnDef | undefined
 }
 
 export function getColumnLabel(name: string, cfg = BASE_COLUMN_CONFIG) {
@@ -79,38 +81,9 @@ export const GROUP_BY_COLUMNS = [
 ] as const satisfies L.LayerColumnKey[]
 export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
 
-export const WEIGHT_COLUMNS = [
-	'Map',
-	'Layer',
-	'Gamemode',
-	'Size',
-	'Faction_1',
-	'Faction_2',
-	'Unit_1',
-	'Unit_2',
-	'Alliance_1',
-	'Alliance_2',
-] as const satisfies L.LayerColumnKey[]
-export type WeightColumn = typeof WEIGHT_COLUMNS[number]
-
 export function isLayerColumnKey(key: string, cfg = BASE_COLUMN_CONFIG): key is L.LayerColumnKey {
 	return key in cfg.defs
 }
-
-export const genLayerColumnOrder = sqliteTable('genLayerColumnOrder', {
-	columnName: text('columnName').primaryKey().notNull(),
-	ordinal: int('ordinal').notNull(),
-})
-
-export const genLayerWeights = sqliteTable('genLayerWeights', {
-	columnName: text('columnName').notNull(),
-	value: int('value').notNull(),
-	weight: real('weight').notNull(),
-}, (table) => ({
-	pk: primaryKey({ columns: [table.columnName, table.value] }),
-	columnNameIndex: index('columnNameIndex').on(table.columnName),
-	valueIndex: index('valueIndex').on(table.value),
-}))
 
 export const layers = sqliteTable('layers', {
 	id: int('id').primaryKey().notNull(),
@@ -194,61 +167,125 @@ export function layersView(ctx: CS.EffectiveColumnConfig) {
 
 export function viewCol(name: string, ctx: CS.EffectiveColumnConfig) {
 	const view = layersView(ctx)
-	if (isLayerColumnKey(name, ctx.effectiveColsConfig)) {
-		return view.layers[name]
+	const def = getColumnDef(name, ctx.effectiveColsConfig)
+	if (!def) throw new Error(`Column "${name}" not found`)
+	switch (def.table) {
+		case 'layers':
+			return view.layers[name as keyof typeof view.layers]
+		case 'extra-cols':
+			return view.layersExtra[name]
+		default:
+			assertNever(def.table)
 	}
-	const col = view.layersExtra[name]
-	if (!col) throw new Error(`Column "${name}" not found`)
-	return col
 }
 
 export function selectViewCols(cols: string[], ctx: CS.EffectiveColumnConfig) {
 	return Object.fromEntries(cols.map((col) => [col, viewCol(col, ctx)]))
 }
 export function selectAllViewCols(ctx: CS.EffectiveColumnConfig) {
-	// const effectiveConfig =
-	return Object.fromEntries(Object.keys(viewCol('', ctx)).map((col) => [col, viewCol(col, ctx)]))
+	return selectViewCols(Object.keys(ctx.effectiveColsConfig.defs), ctx)
 }
 
 export type LayerRow = typeof layers.$inferSelect
 export type NewLayerRow = typeof layers.$inferInsert
 
-/**
- * Returns the index of a value in the corresponding array from layer-components,
- * or returns the value as-is if it's not found in any default arrays.
- */
-export function getColValueEnum(columnName: string, value?: string | number | boolean | null, components = L.StaticLayerComponents) {
-	const columnDef = getColumnDef(columnName)
-	if (typeof value !== 'string' || columnDef?.type !== 'string' || !columnDef.enumMapping) return
+export function dbValue<T extends string | number | boolean | null | undefined>(
+	columnName: string,
+	value: string | number | boolean | null | undefined,
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+): T {
+	const def = getColumnDef(columnName, ctx?.effectiveColsConfig)!
+	if (columnName === 'id') {
+		return packId(value as L.LayerId, components) as T
+	}
+	switch (def.type) {
+		case 'string': {
+			if (def.enumMapping) {
+				const targetArray = components[def.enumMapping as keyof typeof components]! as string[]
 
-	// Map column names to their corresponding arrays in layer-components
-	const targetArray = components[columnDef.enumMapping as keyof typeof components]! as string[]
+				const index = targetArray.indexOf(value as string)
+				if (index === -1) {
+					throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+				}
 
-	const index = targetArray.indexOf(value)
-	if (index === -1) {
-		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+				return index as T
+			} else {
+				return value as T
+			}
+		}
+		case 'integer':
+		case 'float':
+			return value as T
+		case 'boolean':
+			return Number(value) as T
+		default:
+			assertNever(def)
+	}
+}
+
+export function fromDbValue(
+	columnName: string,
+	value: string | number | boolean | null | undefined,
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+) {
+	const columnDef = getColumnDef(columnName, ctx?.effectiveColsConfig)
+	if (!columnDef) return value
+	if (columnName === 'id') {
+		return unpackId(value as number, components)
 	}
 
-	return index
+	switch (columnDef.type) {
+		case 'string': {
+			if (columnDef.enumMapping) {
+				const targetArray = components[columnDef.enumMapping as keyof typeof components]! as string[]
+				const index = targetArray[value as number]
+				if (value === undefined) {
+					throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+				}
+				return index
+			} else {
+				return value
+			}
+		}
+		case 'integer':
+		case 'float':
+			return value
+		case 'boolean':
+			return Boolean(value)
+		default:
+			assertNever(columnDef)
+	}
+}
+
+export function dbValues(
+	columnNames: string[],
+	values: (string | number | boolean | null)[],
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+) {
+	return columnNames.map((columnName, index) => dbValue(columnName, values[index], ctx, components))
 }
 
 /**
  * Packs a layer's identifying components into a compact integer encoding.
  * Uses enumeration indices to minimize the bits required for each component.
  */
-export function packLayer(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
+export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
 	const layer = typeof layerOrId === 'string' ? L.fromPossibleRawId(layerOrId) : layerOrId
 
 	if (!L.isKnownLayer(layer)) {
 		throw new Error('Cannot pack raw or invalid layer to integer')
 	}
 
+	const ctx: CS.EffectiveColumnConfig = { effectiveColsConfig: BASE_COLUMN_CONFIG }
 	// Get enumeration indices for each component
-	const layerIndex = getColValueEnum('Layer', layer.Layer, components)!
-	const faction1Index = getColValueEnum('Faction_1', layer.Faction_1, components)!
-	const unit1Index = getColValueEnum('Unit_1', layer.Unit_1, components)!
-	const faction2Index = getColValueEnum('Faction_2', layer.Faction_2, components)!
-	const unit2Index = getColValueEnum('Unit_2', layer.Unit_2, components)!
+	const layerIndex = dbValue('Layer', layer.Layer, ctx, components)! as number
+	const faction1Index = dbValue('Faction_1', layer.Faction_1, ctx, components)! as number
+	const unit1Index = dbValue('Unit_1', layer.Unit_1, ctx, components)! as number
+	const faction2Index = dbValue('Faction_2', layer.Faction_2, ctx, components)! as number
+	const unit2Index = dbValue('Unit_2', layer.Unit_2, ctx, components)! as number
 
 	// Calculate bits needed for each component based on array sizes
 	// const layerBits = Math.ceil(Math.log2(components.layers.length))
@@ -278,14 +315,7 @@ export function packLayer(layerOrId: L.LayerId | L.KnownLayer, components = L.St
 }
 
 export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.StaticLayerComponents) {
-	return layers.map(l => packLayer(l, components))
-}
-
-export function fromEnum(column: string, enumValue: number, components = L.StaticLayerComponents) {
-	const colDef = getColumnDef(column)
-	if (colDef?.type !== 'string' || !colDef.enumMapping) return
-
-	return (components as any)[colDef.enumMapping][enumValue] as string
+	return layers.map(l => packId(l, components))
 }
 
 /**
@@ -332,20 +362,20 @@ export function unpackId(
 	}, components)!
 }
 
-export function toRow(layer: L.KnownLayer, components = L.StaticLayerComponents): LayerRow {
+export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents): LayerRow {
 	return {
-		id: packLayer(layer, components) ?? 0,
-		Map: getColValueEnum('Map', layer.Map, components)!,
-		Layer: getColValueEnum('Layer', layer.Layer, components)!,
-		Size: getColValueEnum('Size', layer.Size, components)!,
-		Gamemode: getColValueEnum('Gamemode', layer.Gamemode, components)!,
-		LayerVersion: getColValueEnum('LayerVersion', layer.LayerVersion, components) ?? null,
-		Faction_1: getColValueEnum('Faction_1', layer.Faction_1, components)!,
-		Unit_1: getColValueEnum('Unit_1', layer.Unit_1, components)!,
-		Alliance_1: getColValueEnum('Alliance_1', layer.Alliance_1, components)!,
-		Faction_2: getColValueEnum('Faction_2', layer.Faction_2, components)!,
-		Unit_2: getColValueEnum('Unit_2', layer.Unit_2, components)!,
-		Alliance_2: getColValueEnum('Alliance_2', layer.Alliance_2, components)!,
+		id: packId(layer, components) ?? 0,
+		Map: dbValue('Map', layer.Map, ctx, components)!,
+		Layer: dbValue('Layer', layer.Layer, ctx, components)!,
+		Size: dbValue('Size', layer.Size, ctx, components)!,
+		Gamemode: dbValue('Gamemode', layer.Gamemode, ctx, components)!,
+		LayerVersion: dbValue('LayerVersion', layer.LayerVersion, ctx, components) ?? null,
+		Faction_1: dbValue('Faction_1', layer.Faction_1, ctx, components)!,
+		Unit_1: dbValue('Unit_1', layer.Unit_1, ctx, components)!,
+		Alliance_1: dbValue('Alliance_1', layer.Alliance_1, ctx, components)!,
+		Faction_2: dbValue('Faction_2', layer.Faction_2, ctx, components)!,
+		Unit_2: dbValue('Unit_2', layer.Unit_2, ctx, components)!,
+		Alliance_2: dbValue('Alliance_2', layer.Alliance_2, ctx, components)!,
 	}
 }
 
@@ -548,22 +578,45 @@ export const ColumnDefSchema = z.discriminatedUnion('type', [
 export type ColumnDef = z.infer<typeof ColumnDefSchema>
 export type CombinedColumnDef = ColumnDef & { table: 'layers' | 'extra-cols' }
 
-export const ExtraColumnsConfigSchema = z.object({
-	columns: z.array(ColumnDefSchema),
-}).refine(config => {
-	const allCols = new Set(COLUMN_KEYS) as Set<string>
-	for (const col of config.columns) {
-		if (allCols.has(col.name)) {
-			const msg = `Duplicate/Preexisting column name: ${col.name}`
-			console.error(msg)
-			return false
-		}
-		allCols.add(col.name)
-	}
-	return true
-}, { message: 'Duplicate/Preexisting column name' })
+export const WEIGHT_COLUMNS = z.enum(
+	[
+		'Map',
+		'Layer',
+		'Gamemode',
+		'Size',
+		'Faction_1',
+		'Faction_2',
+		'Unit_1',
+		'Unit_2',
+		'Alliance_1',
+		'Alliance_2',
+	],
+)
 
-export type ExtraColumnsConfig = z.infer<typeof ExtraColumnsConfigSchema>
+export type WeightColumn = z.infer<typeof WEIGHT_COLUMNS>
+
+export const LayerDbConfigSchema = z.object({
+	columns: z.array(ColumnDefSchema),
+	generation: z.object({
+		columnOrder: z.array(WEIGHT_COLUMNS),
+		weights: z.record(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() }))),
+	}),
+})
+	.refine(config => {
+		const allCols = new Set(COLUMN_KEYS) as Set<string>
+		for (const col of config.columns) {
+			if (allCols.has(col.name)) {
+				const msg = `Duplicate/Preexisting column name: ${col.name}`
+				console.error(msg)
+				return false
+			}
+			allCols.add(col.name)
+		}
+		return true
+	}, { message: 'Duplicate/Preexisting column name' })
+
+export type LayerDbConfig = z.infer<typeof LayerDbConfigSchema>
+export type LayerGenerationConfig = LayerDbConfig['generation']
 
 export function buildFullLayerComponents(
 	components: BaseLayerComponents,

@@ -114,7 +114,7 @@ export let CONFIG!: Config
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 
-export async function ensureConfigSetup() {
+export async function ensureSetup() {
 	if (CONFIG) return
 
 	ENV = envBuilder()
@@ -145,7 +145,7 @@ export function getPublicConfig() {
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
-		extraColumnsConfig: LayerDb.EXTRA_COLS_CONFIG,
+		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 	}
 }
 

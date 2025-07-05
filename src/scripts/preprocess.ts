@@ -1,7 +1,6 @@
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
-import { isNullOrUndef } from '@/lib/type-guards'
 import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -43,9 +42,9 @@ async function main() {
 	ENV = envBuilder()
 	ensureLoggerSetup()
 	await LayerDb.setup({ skipHash: true, mode: 'populate' })
-	await DB.setupDatabase()
+	await DB.setup()
 
-	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.EXTRA_COLS_CONFIG) }
+	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
 
 	await ensureAllSheetsDownloaded()
 
@@ -61,6 +60,7 @@ async function main() {
 		const scoresExtracted = extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
 		await scoresExtracted
+
 		ctx.layerDb().run('PRAGMA wal_checkpoint')
 		ctx.layerDb().run('VACUUM')
 		ctx.layerDb().$client.close()
@@ -69,7 +69,7 @@ async function main() {
 
 function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerComponentsJson): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
-	for (const col of LayerDb.EXTRA_COLS_CONFIG.columns) {
+	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
 		switch (col.type) {
 			case 'string':
@@ -157,7 +157,7 @@ function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerCompone
 					}
 				}
 			}
-			await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(buf.map(layer => ({ ...layer, id: LC.packLayer(layer.id) })))
+			await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(buf.map(layer => ({ ...layer, id: LC.packId(layer.id) })))
 			ctx.log.info(`Inserted %s extraLayers`, buf.length * chunkCount)
 			chunkCount++
 		}),
@@ -200,8 +200,8 @@ async function populateLayersTable(
 				}
 				seenIds.add(layer.id)
 			}
-			await ctx.layerDb().insert(LC.layerStrIds).values(buf.map(layer => ({ id: LC.packLayer(layer), idStr: layer.id })))
-			await ctx.layerDb().insert(LC.layers).values(buf.map(layer => LC.toRow(layer, components)))
+			await ctx.layerDb().insert(LC.layerStrIds).values(buf.map(layer => ({ id: LC.packId(layer), idStr: layer.id })))
+			await ctx.layerDb().insert(LC.layers).values(buf.map(layer => LC.toRow(layer, ctx, components)))
 			chunkCount++
 		}),
 	))
@@ -220,7 +220,6 @@ type BattlegroupsData = {
 
 type BaseLayer = L.KnownLayer
 
-type SheetData = Awaited<ReturnType<typeof parseSquadLayerSheetData>>
 async function parseSquadLayerSheetData(ctx: CS.Log) {
 	const availPromise = parseBgLayerAvailability(ctx)
 	const mapLayers = await parseMapLayers()

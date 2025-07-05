@@ -6,9 +6,7 @@ import * as LC from '@/models/layer-columns.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as FilterEntity from '@/server/systems/filter-entity.ts'
 import * as LayerDb from '@/server/systems/layer-db.server.ts'
-import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Otel from '@opentelemetry/api'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
@@ -34,7 +32,6 @@ export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
 	return { ...ctx, log: child }
 }
 
-console.log('SPAN OP', spanOp)
 export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
 	opts: {
@@ -269,15 +266,5 @@ export function durableSub<T, O>(
 			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)
-	}
-}
-
-export function resolveLayerQueryCtx(ctx: CS.Log): CS.LayerQuery {
-	return {
-		...ctx,
-		layerDb: () => LayerDb.db,
-		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.EXTRA_COLS_CONFIG),
-		recentMatches: MatchHistory.state.recentMatches,
-		filters: FilterEntity.state.filters,
 	}
 }

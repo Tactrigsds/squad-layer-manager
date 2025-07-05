@@ -64,10 +64,3 @@ export const eq = (column?: string, value?: string) =>
 		column,
 		value,
 	}) satisfies F.EditableComparison
-
-export const like = (column?: string, value?: string) =>
-	({
-		code: 'like' as const,
-		column,
-		value,
-	}) satisfies F.EditableComparison

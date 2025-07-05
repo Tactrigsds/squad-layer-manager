@@ -309,11 +309,8 @@
             },
             {
               "type": "object",
-              "properties": {
-                "type": {"type": "string", "const": "random"},
-                "seed": {"type": "integer", "exclusiveMinimum": 0}
-              },
-              "required": ["type", "seed"],
+              "properties": {"type": {"type": "string", "const": "random"}},
+              "required": ["type"],
               "additionalProperties": false
             }
           ],

@@ -15,7 +15,6 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'inrange', displayName: 'In Range' },
 	{ coltype: 'string', code: 'in', displayName: 'In' },
 	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
-	{ coltype: 'string', code: 'like', displayName: 'Like' },
 	{ coltype: 'boolean', code: 'is-true', displayName: 'Is True' },
 ] as const satisfies ComparisonType[]
 
@@ -139,15 +138,7 @@ export const EqualComparison = z.object({
 })
 export type EqualComparison = z.infer<typeof EqualComparison>
 
-export const LikeComparison = z.object({
-	code: z.literal('like'),
-	value: z.string(),
-	column: z.string(),
-})
-
-export type LikeComparison = z.infer<typeof LikeComparison>
-
-export type StringComparison = InComparison | EqualComparison | LikeComparison
+export type StringComparison = InComparison | EqualComparison
 // --------  string end --------
 
 const IsTrueComparison = z.object({
@@ -163,7 +154,6 @@ export const ComparisonSchema = z
 		InRangeComparison,
 		InComparison,
 		EqualComparison,
-		LikeComparison,
 		IsTrueComparison,
 	])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {

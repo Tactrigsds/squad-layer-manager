@@ -6,7 +6,7 @@ import * as Cli from './systems/cli.ts'
 
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
-await Config.ensureConfigSetup()
+await Config.ensureSetup()
 
 setupOtel()
 

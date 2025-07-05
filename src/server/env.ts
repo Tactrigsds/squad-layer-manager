@@ -6,7 +6,7 @@ import * as Cli from './systems/cli.ts'
 
 export const groups = {
 	general: {
-		NODE_ENV: z.enum(['development', 'production']),
+		NODE_ENV: z.enum(['development', 'production', 'test']),
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
 
@@ -49,8 +49,9 @@ export const groups = {
 		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().positive()),
 	},
 
-	layersDb: {
-		EXTRA_COLUMNS_CONFIG_PATH: z.string().default('./extra-columns.json'),
+	layerDb: {
+		LAYER_DB_CONFIG_PATH: z.string().default('./layer-db.json'),
+		LAYERS_DB_PATH: z.string().default('./data/layers.sqlite3'),
 	},
 
 	sheets: {

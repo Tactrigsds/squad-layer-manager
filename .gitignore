@@ -36,3 +36,5 @@ google-credentials.json
 
 broken-layers.csv
 drizzle/seed_weights.sql
+
+layer-db.json

@@ -42,7 +42,7 @@ async function getFastifyBase() {
 	})
 }
 
-export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
+export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	ENV = envBuilder()
 	instance = await getFastifyBase()
 
@@ -50,7 +50,7 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
-		request.log.info(
+		baseLogger.info(
 			{
 				method: request.method,
 				url: request.url,
@@ -78,14 +78,12 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		case 'production':
 			instance.register(fastifyStatic, {
 				root: path.join(Paths.PROJECT_ROOT, 'dist'),
-				// setHeaders: (res) => {
-				// 	res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-				// 	res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
-				// },
 			})
 			break
 		case 'development':
 			break
+		case 'test':
+			throw new Error('test environment not supported')
 		default:
 			assertNever(ENV.NODE_ENV)
 	}
@@ -179,16 +177,17 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 		return await Sessions.logout({ ...authRes.ctx, res })
 	})
 
-	instance.get(AR.exists('/layers.sqlite'), async (req, res) => {
+	instance.get(AR.exists('/layers.sqlite3'), async (req, res) => {
+		console.log('in get layers')
 		const hash = req.headers['x-hash']
 		res.header('X-Hash', LayerDb.hash)
 		if (hash && hash === LayerDb.hash) {
-			return res.status(304).send()
+			return res.code(304).send()
 		}
 
 		res.header('Content-Type', 'application/x-sqlite3')
 		const stream = LayerDb.readFilestream()
-		res.status(200).send(stream)
+		return res.send(stream)
 	})
 
 	await instance.register(ws)
@@ -246,6 +245,9 @@ export const setupFastify = C.spanOp('fastify:setup', { tracer }, async () => {
 			}
 			case 'production': {
 				return res.sendFile('index.html')
+			}
+			case 'test': {
+				throw new Error('Not implemented')
 			}
 			default:
 				assertNever(ENV.NODE_ENV)

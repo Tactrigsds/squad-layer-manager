@@ -556,22 +556,6 @@ export function Comparison(props: {
 			break
 		}
 
-		case 'like': {
-			valueBox = (
-				<StringLikeConfig
-					className={componentStyles}
-					setValue={(newValue) => {
-						setComp(
-							produce((c) => {
-								c.value = newValue
-							}),
-						)
-					}}
-					value={(comp.value as string)!}
-				/>
-			)
-			break
-		}
 		default:
 			comp.code satisfies undefined
 			valueBox = <span />
@@ -684,30 +668,6 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 	)
 })
 
-const StringLikeConfig = React.forwardRef(function StringLikeConfig(
-	props: { value: string; setValue: (value: string) => void; className?: string },
-	ref: React.ForwardedRef<Focusable>,
-) {
-	const debouncer = useDebounced({
-		defaultValue: () => props.value,
-		onChange: props.setValue,
-		delay: 500,
-	})
-	function setInputValue(value: string) {
-		debouncer.setValue(value)
-	}
-	const inputRef = React.useRef<HTMLInputElement>(null)
-
-	React.useImperativeHandle(ref, () => ({
-		focus: () => inputRef.current?.focus(),
-		get isFocused() {
-			return inputRef.current === document.activeElement
-		},
-	}))
-
-	return <Input className={props.className} ref={inputRef} onChange={(e) => setInputValue(e.target.value)} />
-})
-
 function useDynamicColumnAutocomplete<T extends string | null>(
 	column: string,
 	value: T | undefined,
@@ -728,12 +688,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 		_setInputValue(value)
 		debouncer.setValue(value)
 	}
-	let constraints = queryContext?.constraints ?? []
-
-	if (debouncedInput !== '') {
-		const filter = buildLikeFilter(column, debouncedInput)
-		constraints = [...constraints, LQY.filterToConstraint(filter, 'autocomplete-' + column)]
-	}
+	const constraints = queryContext?.constraints ?? []
 
 	const valuesRes = useLayerComponents(
 		{
@@ -760,10 +715,6 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 		setInputValue,
 		options,
 	}
-}
-
-function buildLikeFilter(column: string, input: string): F.FilterNode {
-	return FB.comp(FB.like(column, `%${input}%`))
 }
 
 const StringInConfig = React.forwardRef(function StringInConfig(
