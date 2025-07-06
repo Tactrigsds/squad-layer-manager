@@ -1,4 +1,5 @@
 import * as Arr from '@/lib/array'
+import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { weightedRandomSelection } from '@/lib/random'
@@ -45,7 +46,6 @@ export async function queryLayers(args: {
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		input.previousLayerIds ?? [],
-		input.historyOffset,
 	)
 	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
@@ -441,7 +441,7 @@ export async function getLayerStatusesForLayerQueue({
 		}
 	}
 
-	return {
+	const res = {
 		code: 'ok' as const,
 		statuses: {
 			blocked: blockedState,
@@ -449,6 +449,7 @@ export async function getLayerStatusesForLayerQueue({
 			violationDescriptors: violationDescriptorsState,
 		},
 	}
+	return res
 }
 
 function getisBlockedByDoNotRepeatRuleDirect(
@@ -460,7 +461,9 @@ function getisBlockedByDoNotRepeatRuleDirect(
 	oldestPrevLayerTeamParity: number,
 ) {
 	ctx.log.debug(
-		`getisBlockedByDoNotRepeatRuleDirect: Checking rule ${rule.field} for target layer ${targetLayerId}, constraint ${constraintId}`,
+		`getisBlockedByDoNotRepeatRuleDirect: Checking rule ${rule.field} for target layer ${
+			DH.displayUnvalidatedLayer(targetLayerId)
+		}, constraint ${constraintId}`,
 	)
 	ctx.log.debug(`Rule details: within=${rule.within}, targetValues=${JSON.stringify(rule.targetValues)}`)
 
@@ -483,7 +486,9 @@ function getisBlockedByDoNotRepeatRuleDirect(
 		const layerId = previousLayerIds[i][0]
 		const layer = L.toLayer(layerId)
 
-		ctx.log.debug(`Checking previous layer ${i}: ${layer.Layer} (ID: ${layerId}), team parity: ${layerTeamParity}`)
+		ctx.log.debug(
+			`Checking previous layer ${i}: ${layer.Layer} (ID: ${DH.displayUnvalidatedLayer(layerId)}), team parity: ${layerTeamParity}`,
+		)
 		switch (rule.field) {
 			case 'Map':
 			case 'Gamemode':
@@ -839,26 +844,39 @@ async function generateRandomLayersLowRowCount(
 function resolveRelevantLayerHistory(
 	ctx: CS.Log & CS.MatchHistory,
 	previousLayerIds: ([L.LayerId, LQY.ViolationReasonItem | undefined] | L.LayerId)[],
-	startWithOffset?: number,
 ) {
-	const historicMatches = ctx.recentMatches.slice(0, ctx.recentMatches.length - (startWithOffset ?? 0))
 	const historicLayers: [string, LQY.ViolationReasonItem | undefined][] = []
-	for (const match of historicMatches) {
+	let oldestLayerTeamParity = 0
+	for (let i = ctx.recentMatches.length - 1; i >= 0; i--) {
+		const match = ctx.recentMatches[i]
 		const details = L.toLayer(match.layerId)
 		// don't consider jensens or seeding layers
 		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
-		historicLayers.push([match.layerId, { type: 'history-entry', historyEntryId: match.historyEntryId }])
+		historicLayers.unshift([match.layerId, { type: 'history-entry', historyEntryId: match.historyEntryId }])
+		oldestLayerTeamParity = match.ordinal
 	}
 	for (const entry of previousLayerIds) {
 		if (typeof entry === 'string') historicLayers.push([entry, undefined])
 		else historicLayers.push(entry)
 	}
 
-	ctx.log.debug('previous layer ids: %s', JSON.stringify(previousLayerIds))
-	ctx.log.debug('Resolved relevant layer history: %s', JSON.stringify(historicLayers))
+	ctx.log.debug(
+		'previous layer ids: %s',
+		JSON.stringify(previousLayerIds.map(entry =>
+			typeof entry === 'string'
+				? DH.displayUnvalidatedLayer(entry)
+				: [DH.displayUnvalidatedLayer(entry[0]), entry[1]]
+		)),
+	)
+	ctx.log.debug(
+		'Resolved relevant layer history:',
+	)
+	for (const [layerId, reasonItem] of historicLayers) {
+		ctx.log.debug('- ' + DH.displayUnvalidatedLayer(layerId))
+	}
 	return {
 		historicLayers,
-		oldestLayerTeamParity: (historicMatches?.[0]?.ordinal ?? 0) % 2,
+		oldestLayerTeamParity,
 	}
 }
 

@@ -1,3 +1,5 @@
+import { assertNever } from '@/lib/type-guards'
+
 export const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',
 }
@@ -37,26 +39,38 @@ export function showLogEvent(obj: any & { level: number }) {
 
 	// Color coding based on level
 	let levelColor = ''
+	let log: typeof console.log
 
 	switch (levelLabel) {
 		case 'TRACE':
 			levelColor = '\x1b[90m' // grey
+			log = console.debug
 			break
 		case 'DEBUG':
 			levelColor = '\x1b[36m' // cyan
+			log = console.debug
 			break
 		case 'INFO':
 			levelColor = '\x1b[32m' // green
+			log = console.log
 			break
 		case 'WARN':
 			levelColor = '\x1b[33m' // yellow
+			log = console.warn
 			break
 		case 'ERROR':
 			levelColor = '\x1b[31m' // red
+			log = console.error
 			break
 		case 'FATAL':
 			levelColor = '\x1b[35m' // magenta
+			log = console.error
 			break
+		case 'UNKNOWN':
+			log = console.log
+			break
+		default:
+			assertNever(levelLabel)
 	}
 
 	// Format message part
@@ -76,5 +90,5 @@ export function showLogEvent(obj: any & { level: number }) {
 		}`
 	}
 
-	console.log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)
+	log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)
 }

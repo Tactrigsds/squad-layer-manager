@@ -110,8 +110,6 @@ export type LayersQueryInput = {
 	pageSize?: number
 	sort?: LayersQuerySort
 	constraints?: LayerQueryConstraint[]
-	// Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc,
-	historyOffset?: number
 
 	// Layer Ids to be considered as part of the history for Repeat rules,
 	previousLayerIds?: L.LayerId[]
