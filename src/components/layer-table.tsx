@@ -533,6 +533,7 @@ export default function LayerTable(props: {
 								onClick={() => {
 									if (props.resetSelected) props.resetSelected()
 									else props.setSelected([])
+									setShowSelectedLayers(false)
 								}}
 							>
 								Reset

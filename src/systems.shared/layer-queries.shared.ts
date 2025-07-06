@@ -348,7 +348,6 @@ export async function getLayerStatusesForLayerQueue({
 	ctx: CS.LayerQuery
 	input: LQY.LayerStatusesForLayerQueueInput
 }) {
-	ctx.log.info('getting layer statuses')
 	const constraints = SS.getPoolConstraints(pool)
 	// eslint-disable-next-line prefer-const
 	let { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
