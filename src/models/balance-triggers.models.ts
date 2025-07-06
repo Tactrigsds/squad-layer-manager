@@ -2,7 +2,6 @@ import * as SchemaModels from '$root/drizzle/schema.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
-import * as C from '@/server/context'
 import { z } from 'zod'
 import { isNullOrUndef } from '../lib/type-guards'
 
@@ -15,7 +14,7 @@ type BaseBalanceTriggerInput = {
 export const TRIGGER_LEVEL = SchemaModels.TRIGGER_LEVEL
 export type TriggerWarnLevel = z.infer<typeof TRIGGER_LEVEL>
 export type BalanceTriggerEvent = SchemaModels.BalanceTriggerEvent
-export type EvaluationResultBase = { code: 'triggered'; strongerTeam: 'teamA' | 'teamB'; genericMessage: string }
+export type EvaluationResultBase = { code: 'triggered'; strongerTeam: 'teamA' | 'teamB'; messageTemplate: string }
 export type BalanceTrigger<ID extends string, Input> = {
 	id: ID
 	name: string
@@ -26,7 +25,7 @@ export type BalanceTrigger<ID extends string, Input> = {
 	// the result of resolveInput will be serialized and included in the event log
 	resolveInput: (input: BaseBalanceTriggerInput) => Input
 
-	// feel free to add more detail in the output
+	// feel free to add more detail in the input
 	evaluate: (ctx: CS.Log, input: Input) => EvaluationResultBase | undefined
 
 	// types only, for convenience
@@ -53,32 +52,124 @@ const trig150x2 = createTrigger<'150x2', MH.PostGameMatchDetails[]>({
 	version: 1,
 	name: '150 tickets x2',
 	description: '2 consecutive games of a Team winning by 150+ tickets',
-	resolveInput: (input) => input.history.slice(input.history.length - 2, input.history.length).filter(m => m.status === 'post-game'),
-	evaluate: (_ctx, matchDetails) => {
+	resolveInput: lastNResolvedMatchesForSession(2),
+	evaluate: resolveBasicTicketStreak(150),
+})
+
+const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
+	id: '200x2',
+	version: 1,
+	name: '200 tickets x2',
+	description: '2 consecutive games of a Team winning by 200+ tickets',
+	resolveInput: lastNResolvedMatchesForSession(2),
+	evaluate: resolveBasicTicketStreak(200),
+})
+
+function resolveBasicTicketStreak(threshold: number) {
+	return (_ctx: CS.Log, matchDetails: MH.PostGameMatchDetails[]) => {
 		let prevWinner: 'teamA' | 'teamB' | undefined
 		if (matchDetails.length < 2) return
 		let match!: MH.PostGameMatchDetails
-		let matchLayerDetails!: ReturnType<typeof L.toLayer>
-		for (let i = matchDetails.length - 1; i >= matchDetails.length - 2; i--) {
+		for (let i = matchDetails.length - 1; i >= 0; i--) {
 			match = matchDetails[i]
-			matchLayerDetails = L.toLayer(match.layerId)
-			if (['Seed', 'Training', 'Invasion'].includes(matchLayerDetails.Gamemode as string)) return
 			const outcome = MH.getTeamNormalizedOutcome(match)
 			if (outcome.type === 'draw') return
 
 			if (prevWinner && prevWinner !== outcome.type) return
-			if (Math.abs(outcome.teamATickets - outcome.teamBTickets) < 150) return
+			if (Math.abs(outcome.teamATickets - outcome.teamBTickets) < threshold) return
 			if (isNullOrUndef(prevWinner)) prevWinner = outcome.type
 		}
-		return { code: 'triggered' as const, strongerTeam: prevWinner!, genericMessage: `${prevWinner} has won two games by 150+ tickets.` }
+		return {
+			code: 'triggered' as const,
+			strongerTeam: prevWinner!,
+			messageTemplate: `{{strongerTeam}} has won two games by ${threshold}+ tickets.`,
+		}
+	}
+}
+
+const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
+	id: 'RWS5',
+	version: 1,
+	name: 'Raw Win Streak Across 5',
+	description: '5 consecutive games of a team winning by any number of tickets',
+	resolveInput: lastNResolvedMatchesForSession(5),
+	evaluate: (_ctx, matchDetails) => {
+		let streaker: 'teamA' | 'teamB' | undefined
+		let match!: MH.PostGameMatchDetails
+		let streakLength = 0
+		for (let i = matchDetails.length - 1; i >= 0; i--) {
+			match = matchDetails[i]
+			const outcome = MH.getTeamNormalizedOutcome(match)
+			if (outcome.type === 'draw') break
+			if (streaker && streaker !== outcome.type) break
+			if (isNullOrUndef(streaker)) streaker = outcome.type
+			streakLength++
+			if (streakLength === 5) {
+				return { code: 'triggered' as const, strongerTeam: streaker!, messageTemplate: `{{strongerTeam}} has won five games in a row.` }
+			}
+		}
+	},
+})
+
+const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
+	id: 'RAM3+',
+	version: 1,
+	name: 'Maximum Rolling Average Across 3+',
+	description: 'a rolling average of 100+ tickets across any streak of 3 or more games (utilizing the max of all options.)',
+	resolveInput: lastNResolvedMatchesForSession(20),
+	evaluate: (_ctx, matchDetails) => {
+		console.log(matchDetails)
+		let streaker: 'teamA' | 'teamB' | undefined
+		let match!: MH.PostGameMatchDetails
+		let streakLength = 0
+		for (let i = matchDetails.length - 1; i >= 0; i--) {
+			match = matchDetails[i]
+			const outcome = MH.getTeamNormalizedOutcome(match)
+			if (outcome.type === 'draw') break
+			if (streaker && streaker !== outcome.type) break
+			if (isNullOrUndef(streaker)) streaker = outcome.type
+			streakLength++
+		}
+
+		if (streakLength < 3 || !streaker) return
+		for (let currentWindow = 3; currentWindow <= streakLength; currentWindow++) {
+			let totalA = 0
+			let totalB = 0
+
+			for (let i = matchDetails.length - currentWindow; i < matchDetails.length; i++) {
+				const match = matchDetails[i]
+				const outcome = MH.getTeamNormalizedOutcome(match)
+				if (outcome.type === 'draw') throw new Error('Draw outcome')
+				totalA += outcome.teamATickets
+				totalB += outcome.teamBTickets
+			}
+
+			const avgA = totalA / currentWindow
+			const avgB = totalB / currentWindow
+
+			const avgWinner = streaker === 'teamA' ? avgA : avgB
+			const avgLoser = streaker === 'teamA' ? avgB : avgA
+			const avgDiff = avgWinner - avgLoser
+
+			if (avgDiff >= 100) {
+				return {
+					code: 'triggered' as const,
+					strongerTeam: streaker!,
+					messageTemplate: `{{strongerTeam}} has been winning for ${currentWindow} games with an average of +${avgDiff} tickets`,
+				}
+			}
+		}
 	},
 })
 
 export const TRIGGERS = {
 	[trig150x2.id]: trig150x2,
+	[trig200x2.id]: trig200x2,
+	[trigRWS5.id]: trigRWS5,
+	[trigRAM3Plus.id]: trigRAM3Plus,
 } satisfies { [key: string]: BalanceTrigger<string, any> }
 
-type TriggerId = keyof typeof TRIGGERS
+export type TriggerId = keyof typeof TRIGGERS
 export const TRIGGER_IDS = z.enum(Object.keys(TRIGGERS) as unknown as [TriggerId, ...TriggerId[]])
 
 // -------- helpers --------
@@ -95,4 +186,19 @@ export function isKnownEventInstance(event: BalanceTriggerEvent): event is Balan
 		if (isEventForTrigger(trigger, event)) return true
 	}
 	return false
+}
+
+function lastNResolvedMatchesForSession(n: number) {
+	const terminatingGamemodes = ['Training', 'Seed', 'Invasion', 'Destruction', 'Insurgency']
+	return (input: BaseBalanceTriggerInput): MH.PostGameMatchDetails[] => {
+		const matches: MH.PostGameMatchDetails[] = []
+		for (let i = input.history.length - 1; i >= 0 && matches.length < n; i--) {
+			const match = input.history[i]
+			if (match.status !== 'post-game') break
+			const layer = L.toLayer(match.layerId)
+			if (terminatingGamemodes.includes(layer.Gamemode as string)) break
+			matches.unshift(match)
+		}
+		return matches
+	}
 }

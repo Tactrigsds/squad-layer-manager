@@ -164,8 +164,9 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		await loadState(ctx, { limit: 1 })
 
 		// -------- look for tripped balance triggers --------
-		for (const trig of Object.values(BAL.TRIGGERS)) {
+		for (const [trigId, level] of Object.entries(CONFIG.balanceTriggerLevels)) {
 			let inputStored: any
+			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {
 				const input = trig.resolveInput({ history: state.recentMatches })
 				inputStored = input
@@ -174,11 +175,11 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 				await ctx.db().insert(Schema.balanceTriggerEvents).values(superjsonify(Schema.balanceTriggerEvents, {
 					input: input,
 					strongerTeam: res.strongerTeam,
-					level: CONFIG.balanceTriggerLevels[trig.id]!,
+					level: level,
 					triggerId: trig.id,
 					triggerVersion: trig.version,
 					matchTriggeredId: currentMatch.historyEntryId,
-					evaulationResult: res,
+					evaluationResult: res,
 				}))
 			} catch (err) {
 				ctx.log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
@@ -220,16 +221,17 @@ export async function getMatchHistoryCount(ctx: CS.Log & C.Db): Promise<number> 
 }
 
 export function getActiveTriggerEvents() {
-	const currentMatch = getCurrentMatch()
+	const currentMatch = state.recentMatches[state.recentMatches.length - 1] as MH.MatchDetails | undefined
 	const previousMatch = state.recentMatches[state.recentMatches.length - 2] as MH.MatchDetails | undefined
 	const active = new Set<number>()
 	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
 		const event = state.recentBalanceTriggerEvents[i]
-		if (currentMatch.historyEntryId === event.matchTriggeredId) active.add(event.id)
-		if (previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'in-progress') {
+		if (
+			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game')
+			|| (previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
+		) {
 			active.add(event.id)
 		}
-		break
 	}
 	return Array.from(active)
 }

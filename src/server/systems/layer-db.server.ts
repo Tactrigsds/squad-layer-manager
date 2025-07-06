@@ -1,10 +1,13 @@
 import * as LC from '@/models/layer-columns'
 import { LayerDb } from '@/models/layer-db'
 import * as Env from '@/server/env'
+import * as Paths from '@/server/paths'
 import Database from 'better-sqlite3'
 import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import fs from 'node:fs'
+import path from 'node:path'
+import zodToJsonSchema from 'zod-to-json-schema'
 import { baseLogger } from '../logger'
 
 export let db!: LayerDb
@@ -12,13 +15,16 @@ export let db!: LayerDb
 export const DEFAULT_EXTRA_COLUMNS_CONFIG_PATH = './layer-db.json'
 
 export let LAYER_DB_CONFIG!: LC.LayerDbConfig
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.layerDb })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.layerDb, ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 
 export let hash!: string
 
 export function setupExtraColsConfig() {
 	if (!ENV) ENV = envBuilder()
+	if (ENV.NODE_ENV === 'development') {
+		generateJsonSchema()
+	}
 	let canAccess: boolean
 	try {
 		fs.accessSync(ENV.LAYER_DB_CONFIG_PATH)
@@ -26,7 +32,7 @@ export function setupExtraColsConfig() {
 	} catch {
 		canAccess = false
 	}
-	if (!canAccess && ENV.LAYER_DB_CONFIG_PATH === DEFAULT_EXTRA_COLUMNS_CONFIG_PATH) {
+	if (!canAccess && ENV.LAYER_DB_CONFIG_PATH !== DEFAULT_EXTRA_COLUMNS_CONFIG_PATH) {
 		throw new Error(`Cannot access ${ENV.LAYER_DB_CONFIG_PATH}`)
 	} else if (!canAccess) {
 		LAYER_DB_CONFIG = {
@@ -81,4 +87,10 @@ export function readFilestream() {
 	}
 
 	return fs.createReadStream(ENV.LAYERS_DB_PATH)
+}
+
+function generateJsonSchema() {
+	const schemaPath = path.join(Paths.ASSETS, 'db-config-schema.json')
+	const schema = zodToJsonSchema(LC.LayerDbConfigSchema)
+	fs.writeFileSync(schemaPath, JSON.stringify(schema, null, 2))
 }

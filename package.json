@@ -12,7 +12,7 @@
 		"format:check": "dprint check",
 		"build:prod": "vite build",
 		"server:prod": "NODE_ENV=production tsx --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
-		"server:dev": "NODE_ENV=development tsx --inspect --watch --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
+		"server:dev": "NODE_OPTIONS=--use-openssl-ca NODE_ENV=development tsx --inspect --watch --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",
 		"rcon:test": "NODE_ENV=development vitest 'src/lib/rcon'",

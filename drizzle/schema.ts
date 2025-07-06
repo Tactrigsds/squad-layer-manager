@@ -46,7 +46,7 @@ export const balanceTriggerEvents = mysqlTable(
 		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
 		level: mysqlEnum(TRIGGER_LEVEL.options).notNull(),
 		input: json('input').notNull(),
-		evaulationResult: json('evaulationResult').notNull(),
+		evaluationResult: json('evaluationResult').notNull(),
 	},
 )
 

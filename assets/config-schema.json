@@ -272,7 +272,7 @@
         "type": "string",
         "enum": ["info", "warn", "violation"]
       },
-      "propertyNames": {"enum": ["150x2"]},
+      "propertyNames": {"enum": ["150x2", "200x2", "RWS5", "RAM3+"]},
       "default": {"150x2": "warn"},
       "description": "Configures the trigger warning levels for balance calculations"
     },

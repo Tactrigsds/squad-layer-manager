@@ -1,36 +1,34 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
-import * as Arr from '@/lib/array'
-import { getTeamsDisplay, teamColors } from '@/lib/display-helpers-teams'
+import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
-import { cn } from '@/lib/utils'
 import { GENERAL } from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
-import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as dateFns from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { AlertOctagon, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { MapLayerDisplay } from './layer-display'
 import LayerSourceDisplay from './layer-source-display'
-import { Alert, AlertTitle } from './ui/alert'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const history = MatchHistoryClient.useRecentMatches() ?? []
-	const allEntries = React.useMemo(() => [...history].reverse(), [history])
+	const history = MatchHistoryClient.useRecentMatchHistory()
+	const allEntries = React.useMemo(() => [...(history ?? [])].reverse(), [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 	const violationDescriptors = LayerQueriesClient.useLayerStatuses().data?.violationDescriptors
@@ -50,9 +48,29 @@ export default function MatchHistoryPanel() {
 	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
 	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
 
+	// Process trigger alerts
 	const triggerAlerts: React.ReactNode[] = []
 
+	// Helper function to get alert priority (destructive > warning > info)
+	const getTriggerPriority = (level: string): number => {
+		switch (level) {
+			case 'violation':
+				return 3
+			case 'warn':
+				return 2
+			case 'info':
+				return 1
+			default:
+				return 0
+		}
+	}
+
 	if (currentMatch) {
+		// Map events with their variants
+		const eventAlerts: Array<
+			{ event: BAL.BalanceTriggerEvent; variant: 'default' | 'destructive' | 'info' | 'warning'; priority: number }
+		> = []
+
 		for (const eventId of historyState.activeTriggerEvents) {
 			const event = historyState.recentBalanceTriggerEvents.find(e => e.id === eventId)
 			if (!event) continue
@@ -72,24 +90,109 @@ export default function MatchHistoryPanel() {
 					assertNever(event.level)
 			}
 
-			console.log(variant)
+			eventAlerts.push({
+				event,
+				variant,
+				priority: getTriggerPriority(event.level),
+			})
+		}
+
+		// Sort alerts by priority (highest first)
+		eventAlerts.sort((a, b) => b.priority - a.priority)
+
+		// Create alert nodes
+		for (const { event, variant } of eventAlerts) {
+			let AlertIcon
+			switch (event.level) {
+				case 'violation':
+					AlertIcon = AlertOctagon
+					break
+				case 'warn':
+					AlertIcon = AlertTriangle
+					break
+				case 'info':
+					AlertIcon = Info
+					break
+				default:
+					AlertIcon = Info
+			}
+			if (!BAL.isKnownEventInstance(event)) continue
+			const trigger = BAL.TRIGGERS[event.triggerId]
+
 			triggerAlerts.push(
-				<Alert variant={variant} key={eventId}>
-					<AlertTitle>
-						{GENERAL.balanceTrigger.showEvent(event, currentMatch)}
+				<Alert variant={variant} key={event.id} className="w-full">
+					<AlertTitle className="flex items-center space-x-2">
+						<AlertIcon title={event.level} className="h-4 w-4 mr-2" />
+						{trigger.name}
 					</AlertTitle>
+					<AlertDescription>
+						{GENERAL.balanceTrigger.showEvent(event, currentMatch)}
+					</AlertDescription>
 				</Alert>,
 			)
 		}
 	}
 
+	// Determine what to display
+	const hasTriggers = triggerAlerts.length > 0
+	const hasMultipleTriggers = triggerAlerts.length > 1
+	const mostUrgentTrigger = triggerAlerts[0]
+
 	return (
 		<Card>
-			<CardHeader className="flex flex-row justify-between items-center">
+			<CardHeader className="flex flex-row justify-between items-start">
 				<CardTitle>Match History</CardTitle>
-				<div className="flex flex-col space-x-2">
-					{triggerAlerts}
-				</div>
+				{hasTriggers && (
+					<div className="flex flex-col space-y-1">
+						{hasMultipleTriggers
+							? (
+								<Popover>
+									<div className="flex flex-col space-y-1">
+										{mostUrgentTrigger}
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												size="sm"
+												className="flex items-center justify-center"
+											>
+												Show {triggerAlerts.length - 1} more
+												<ChevronDown className="ml-1 h-4 w-4" />
+											</Button>
+										</PopoverTrigger>
+									</div>
+									<PopoverContent className="w-auto p-2 max-h-80 overflow-y-auto">
+										<div className="flex flex-col space-y-2">
+											{triggerAlerts.slice(1).map((trigger, i) => <div key={i}>{trigger}</div>)}
+										</div>
+									</PopoverContent>
+								</Popover>
+							)
+							: mostUrgentTrigger}
+					</div>
+				)}
+				{totalPages > 1 && (
+					<div className="flex items-center justify-center space-x-2 mt-4">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToPrevPage}
+							disabled={currentPage === 1}
+						>
+							<ChevronLeft className="h-4 w-4" />
+						</Button>
+						<span className="text-sm">
+							Page {currentPage} of {totalPages}
+						</span>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToNextPage}
+							disabled={currentPage === totalPages}
+						>
+							<ChevronRight className="h-4 w-4" />
+						</Button>
+					</div>
+				)}
 			</CardHeader>
 			<CardContent>
 				<Table>
@@ -255,30 +358,6 @@ export default function MatchHistoryPanel() {
 						})}
 					</TableBody>
 				</Table>
-
-				{totalPages > 1 && (
-					<div className="flex items-center justify-center space-x-2 mt-4">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToPrevPage}
-							disabled={currentPage === 1}
-						>
-							<ChevronLeft className="h-4 w-4" />
-						</Button>
-						<span className="text-sm">
-							Page {currentPage} of {totalPages}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToNextPage}
-							disabled={currentPage === totalPages}
-						>
-							<ChevronRight className="h-4 w-4" />
-						</Button>
-					</div>
-				)}
 			</CardContent>
 		</Card>
 	)

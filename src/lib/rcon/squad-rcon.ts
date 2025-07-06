@@ -219,21 +219,22 @@ export default class SquadRcon {
 		this.squadList.invalidate(ctx)
 	}
 
-	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: CS.Log, idOrLayer: L.LayerId | L.UnvalidatedLayer) => {
-		const cmd = L.getAdminSetNextLayerCommand(idOrLayer)
+	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: CS.Log, layer: L.LayerId | L.UnvalidatedLayer) => {
+		const cmd = L.getAdminSetNextLayerCommand(layer)
+		ctx.log.info(`Setting next layer: %s, `, cmd)
 		await this.core.execute(ctx, cmd)
 		this.serverStatus.invalidate(ctx)
 		const newStatus = (await this.serverStatus.get(ctx)).value
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
-		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${idOrLayer}, received undefined`)
+		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${layer}, received undefined`)
 
-		if (newStatus.data.nextLayer && !L.areLayersCompatible(idOrLayer, newStatus.data.nextLayer)) {
+		if (newStatus.data.nextLayer && !L.areLayersCompatible(layer, newStatus.data.nextLayer)) {
 			return {
 				code: 'err:unable-to-set-next-layer' as const,
 				unexpectedLayerId: newStatus.data.nextLayer.id,
-				msg: `Failed to set next layer. Expected ${idOrLayer}, received ${newStatus.data.nextLayer.id}`,
+				msg: `Failed to set next layer. Expected ${L.toLayer(layer).id}, received ${newStatus.data.nextLayer.id}`,
 			}
 		}
 		return { code: 'ok' as const }

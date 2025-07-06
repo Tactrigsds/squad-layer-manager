@@ -9,7 +9,7 @@ import * as SS from './server-state.models'
 
 export type QueriedLayer = L.KnownLayer & { constraints: boolean[] }
 
-export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'FactionAndUnit', 'Alliance', 'Size'])
+export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
 	field: RepeatRuleFieldSchema,

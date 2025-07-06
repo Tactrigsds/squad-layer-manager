@@ -18,4 +18,4 @@ w.SquadServer = SquadServer
 w.debug__setTicketOutcome = (team1: number, team2: number) => {
 	SquadServer.state.debug__ticketOutcome = { team1, team2 }
 }
-console.log('-------- modules loaded into `global` --------')
+console.log('-------- DEVELOPER CONSOLE LOADED --------')

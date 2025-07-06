@@ -520,42 +520,6 @@ function getisBlockedByDoNotRepeatRuleDirect(
 				checkFaction('B')
 				break
 			}
-			case 'FactionAndUnit': {
-				const checkFactionAndUnit = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp and getTeamNormalizedUnitProp are in match-history.models.ts, need proper imports
-					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
-					const targetUnit = targetLayer[MH.getTeamNormalizedUnitProp(targetLayerTeamParity, team)]
-					const targetFactionAndUnit = LQY.getFactionAndUnitValue(
-						targetFaction,
-						targetUnit,
-					)
-
-					const faction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					const unit = layer[MH.getTeamNormalizedUnitProp(layerTeamParity, team)]
-
-					ctx.log.debug(
-						`Checking FactionAndUnit team ${team}: target=${targetFactionAndUnit}, previous=${
-							faction ? LQY.getFactionAndUnitValue(faction, unit) : 'null'
-						}`,
-					)
-
-					if (targetFaction && faction) {
-						const factionAndUnit = LQY.getFactionAndUnitValue(faction, unit)
-						if (
-							factionAndUnit === targetFactionAndUnit
-							&& (rule.targetValues?.includes(factionAndUnit) ?? true)
-						) {
-							ctx.log.debug(`VIOLATION: FactionAndUnit team ${team} matches - ${factionAndUnit}`)
-							descriptors.push(getViolationDescriptor(`FactionAndUnit_${team}`))
-							isBlocked = true
-						}
-					}
-				}
-
-				checkFactionAndUnit('A')
-				checkFactionAndUnit('B')
-				break
-			}
 			case 'Alliance': {
 				const checkAlliance = (team: 'A' | 'B') => {
 					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
@@ -629,24 +593,6 @@ function getDoNotRepeatSQLConditions(
 				addApplicable('B')
 				break
 			}
-			case 'FactionAndUnit': {
-				const addApplicable = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp and getTeamNormalizedUnitProp are in match-history.models.ts, need proper imports
-					const faction = layer[MH.getTeamNormalizedFactionProp(teamParity, team)]
-					if (!faction) return
-					const subFac = layer[MH.getTeamNormalizedUnitProp(teamParity, team)]
-					const factionAndUnit = LQY.getFactionAndUnitValue(faction, subFac)
-					if (
-						factionAndUnit
-						&& (rule.targetValues?.includes(factionAndUnit) ?? true)
-					) {
-						values.add(team + ':' + factionAndUnit)
-					}
-				}
-				addApplicable('A')
-				addApplicable('B')
-				break
-			}
 			case 'Alliance': {
 				const addApplicable = (team: 'A' | 'B') => {
 					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
@@ -680,7 +626,7 @@ function getDoNotRepeatSQLConditions(
 		case 'Gamemode':
 		case 'Size':
 		case 'Layer':
-			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), valuesArr)
+			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), LC.dbValues(rule.field, valuesArr, ctx))
 			break
 		case 'Faction': {
 			const valuesArrA = valuesArr
@@ -689,38 +635,17 @@ function getDoNotRepeatSQLConditions(
 			const valuesArrB = valuesArr
 				.filter((v) => v.startsWith('B:'))
 				.map((v) => v.slice(2))
+			const teamACol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')
+			const teamBCol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')
 			resultSql = E.and(
 				E.notInArray(
-					LC.viewCol(MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A'), ctx),
-					valuesArrA,
+					LC.viewCol(teamACol, ctx),
+					LC.dbValues(teamACol, valuesArrA, ctx),
 				),
 				E.notInArray(
-					LC.viewCol(MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B'), ctx),
-					valuesArrB,
+					LC.viewCol(teamBCol, ctx),
+					LC.dbValues(teamBCol, valuesArrB, ctx),
 				),
-			)!
-			break
-		}
-		case 'FactionAndUnit': {
-			// TODO: getTeamNormalizedFactionProp and getTeamNormalizedUnitProp are in match-history.models.ts, need proper imports
-			const getExpr = (team: 'A' | 'B') =>
-				sql`CONCAT(${LC.viewCol(MH.getTeamNormalizedFactionProp(oldestLayerTeamParity, team), ctx)}, '_', ${
-					LC.viewCol(MH.getTeamNormalizedUnitProp(oldestLayerTeamParity, team), ctx)
-				})`
-
-			const factionAndUnitExpressionA = getExpr('A')
-			const valuesArrA = valuesArr
-				.filter((v) => v.startsWith('A:'))
-				.map((v) => v.slice(2))
-
-			const factionAndUnitExpressionB = getExpr('B')
-			const valuesArrB = valuesArr
-				.filter((v) => v.startsWith('B:'))
-				.map((v) => v.slice(2))
-
-			resultSql = E.and(
-				E.notInArray(factionAndUnitExpressionA, valuesArrA),
-				E.notInArray(factionAndUnitExpressionB, valuesArrB),
 			)!
 			break
 		}

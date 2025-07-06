@@ -260,11 +260,12 @@ export function fromDbValue(
 }
 
 export function dbValues(
-	columnNames: string[],
+	columnNames: string[] | string,
 	values: (string | number | boolean | null)[],
 	ctx?: CS.EffectiveColumnConfig,
 	components = L.StaticLayerComponents,
 ) {
+	columnNames = Array.isArray(columnNames) ? columnNames : [columnNames]
 	return columnNames.map((columnName, index) => dbValue(columnName, values[index], ctx, components))
 }
 

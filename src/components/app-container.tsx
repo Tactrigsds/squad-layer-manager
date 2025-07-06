@@ -75,7 +75,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						<DropdownMenu open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar className="hover:cursor-pointer select-none">
-									<AvatarImage src={avatarUrl} />
+									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
 									<AvatarFallback>{user.username}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>

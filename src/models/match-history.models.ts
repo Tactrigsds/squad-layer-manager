@@ -25,16 +25,25 @@ export type MatchDetails =
 		& {
 			status: 'post-game'
 			endTime: Date
-			outcome: {
-				type: 'team1' | 'team2'
-				team1Tickets: number
-				team2Tickets: number
-			} | {
-				type: 'draw'
-			}
+			outcome: MatchOutcome
 		}
 		& MatchDetailsCommon
 	)
+
+export type MatchOutcome = {
+	type: 'team1' | 'team2'
+	team1Tickets: number
+	team2Tickets: number
+} | {
+	type: 'draw'
+}
+export type NormalizedMatchOutcome = {
+	type: 'teamA' | 'teamB'
+	teamATickets: number
+	teamBTickets: number
+} | {
+	type: 'draw'
+}
 
 export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }>
 
@@ -54,7 +63,9 @@ export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal
 	return (matchDetails.ordinal + offset) % 2
 }
 
-export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { status: 'post-game' }>) {
+export function getTeamNormalizedOutcome(
+	matchDetails: Extract<MatchDetails, { status: 'post-game' }>,
+): NormalizedMatchOutcome {
 	if (matchDetails.outcome.type === 'draw') {
 		return matchDetails.outcome
 	}
@@ -75,6 +86,36 @@ export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { s
 			}
 		default:
 			assertNever(matchDetails.outcome)
+	}
+}
+
+export function getTeamDenormalizedOutcome(
+	matchDetails: { ordinal: number },
+	normalizedOutcome: NormalizedMatchOutcome,
+): MatchOutcome {
+	if (normalizedOutcome.type === 'draw') {
+		return normalizedOutcome
+	}
+
+	const [team1Tickets, team2Tickets] = matchDetails.ordinal % 2 === 0
+		? [normalizedOutcome.teamATickets, normalizedOutcome.teamBTickets]
+		: [normalizedOutcome.teamBTickets, normalizedOutcome.teamATickets]
+
+	switch (normalizedOutcome.type) {
+		case 'teamA':
+			return {
+				type: matchDetails.ordinal % 2 === 0 ? 'team1' as const : 'team2' as const,
+				team1Tickets: team1Tickets!,
+				team2Tickets: team2Tickets!,
+			}
+		case 'teamB':
+			return {
+				type: matchDetails.ordinal % 2 === 0 ? 'team2' as const : 'team1' as const,
+				team1Tickets: team1Tickets!,
+				team2Tickets: team2Tickets!,
+			}
+		default:
+			assertNever(normalizedOutcome)
 	}
 }
 

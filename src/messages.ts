@@ -175,7 +175,8 @@ export const GENERAL = {
 	balanceTrigger: {
 		showEvent(event: BAL.BalanceTriggerEvent, currentMatch: MH.MatchDetails) {
 			if (!BAL.isKnownEventInstance(event)) {
-				return (event.evaulationResult as BAL.EvaluationResultBase).genericMessage
+				const result = event.evaluationResult as BAL.EvaluationResultBase
+				return result.messageTemplate.replace('{{strongerTeam}}', result.strongerTeam)
 			}
 
 			const currentLayerPartial = L.toLayer(currentMatch.layerId)
@@ -190,20 +191,7 @@ export const GENERAL = {
 				strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(current ${strongerTeamFaction})`
 			}
 
-			switch (event.triggerId) {
-				case '150x2': {
-					const ticketDiffs = event.input.map(match => {
-						const outcome = MH.getTeamNormalizedOutcome(match)
-						// should be impossible, we'll just return something benign
-						if (outcome.type === 'draw') return 0
-
-						return `${outcome.teamATickets}:${outcome.teamBTickets}`
-					}).join(', ')
-					return `${strongerTeamFormatted} has won the last two matches by more than 150+ tickets (${ticketDiffs})`
-				}
-				default:
-					assertNever(event.triggerId)
-			}
+			return event.evaluationResult!.messageTemplate.replace('{{strongerTeam}}', strongerTeamFormatted)
 		},
 	},
 }

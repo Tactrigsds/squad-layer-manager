@@ -74,18 +74,6 @@ export const ConfigSchema = z.object({
 
 	balanceTriggerLevels: z.record(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
 		.default({ '150x2': 'warn' })
-		.refine((value) => {
-			const providedTriggerIds = new Set(Object.keys(value))
-			for (const triggerId of BAL.TRIGGER_IDS.options) {
-				if (!providedTriggerIds.has(triggerId)) {
-					return false
-				}
-			}
-
-			return true
-		}, {
-			message: 'All trigger IDs must be present in balanceTriggerLevels',
-		})
 		.describe('Configures the trigger warning levels for balance calculations'),
 
 	layerTable: LQY.LayerTableConfigSchema.default({
@@ -149,7 +137,7 @@ export function getPublicConfig() {
 	}
 }
 
-export async function generateConfigJsonSchema() {
+async function generateConfigJsonSchema() {
 	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
 	const schema = zodToJsonSchema(ConfigSchema.extend({ ['$schema']: z.string() }))
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
