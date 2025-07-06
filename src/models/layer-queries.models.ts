@@ -187,8 +187,6 @@ export type ViolationDescriptor = {
 		| 'Faction_B'
 		| 'Alliance_A'
 		| 'Alliance_B'
-		| 'FactionAndUnit_A'
-		| 'FactionAndUnit_B'
 	reasonItem?: ViolationReasonItem
 }
 
@@ -208,14 +206,6 @@ export function resolveViolatedLayerProperties(descriptors: ViolationDescriptor[
 				break
 			case 'Alliance_B':
 				violatedFields.add(MH.getTeamNormalizedAllianceProp(teamParity, 'B'))
-				break
-			case 'FactionAndUnit_A':
-				violatedFields.add(MH.getTeamNormalizedFactionProp(teamParity, 'A'))
-				violatedFields.add(MH.getTeamNormalizedUnitProp(teamParity, 'A'))
-				break
-			case 'FactionAndUnit_B':
-				violatedFields.add(MH.getTeamNormalizedFactionProp(teamParity, 'B'))
-				violatedFields.add(MH.getTeamNormalizedUnitProp(teamParity, 'B'))
 				break
 			default:
 				violatedFields.add(descriptor.field)
