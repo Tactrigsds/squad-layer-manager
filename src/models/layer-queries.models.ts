@@ -7,8 +7,6 @@ import * as LL from './layer-list.models'
 import * as MH from './match-history.models'
 import * as SS from './server-state.models'
 
-export type QueriedLayer = L.KnownLayer & { constraints: boolean[] }
-
 export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
@@ -19,31 +17,28 @@ export const RepeatRuleSchema = z.object({
 })
 export type RepeatRule = z.infer<typeof RepeatRuleSchema>
 
-export const LayerQueryConstraintSchema = z.discriminatedUnion('type', [
-	z.object({
-		type: z.literal('filter-anon'),
-		filter: F.FilterNodeSchema,
-		applyAs: z.enum(['field', 'where-condition']),
-		name: z.string().optional(),
-		id: z.string(),
-	}),
-	z.object({
-		type: z.literal('filter-entity'),
-		filterEntityId: F.FilterEntityIdSchema,
-		applyAs: z.enum(['field', 'where-condition']),
-		name: z.string().optional(),
-		id: z.string(),
-	}),
-	z.object({
-		type: z.literal('do-not-repeat'),
-		rule: RepeatRuleSchema,
-		applyAs: z.enum(['field', 'where-condition']),
-		name: z.string().optional(),
-		id: z.string(),
-	}),
-])
-
-export type LayerQueryConstraint = z.infer<typeof LayerQueryConstraintSchema>
+export type LayerQueryConstraint =
+	| {
+		type: 'filter-anon'
+		filter: F.FilterNode
+		applyAs: 'field' | 'where-condition'
+		name?: string
+		id: string
+	}
+	| {
+		type: 'filter-entity'
+		filterEntityId: F.FilterEntityId
+		applyAs: 'field' | 'where-condition'
+		name?: string
+		id: string
+	}
+	| {
+		type: 'do-not-repeat'
+		rule: RepeatRule
+		applyAs: 'field' | 'where-condition'
+		name?: string
+		id: string
+	}
 export type NamedQueryConstraint = LayerQueryConstraint & { name: string }
 
 export function filterToNamedConstrant(
