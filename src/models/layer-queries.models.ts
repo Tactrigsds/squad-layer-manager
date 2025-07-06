@@ -3,7 +3,9 @@ import { z } from 'zod'
 import * as F from './filter.models'
 import * as L from './layer'
 import * as LC from './layer-columns'
+import * as LL from './layer-list.models'
 import * as MH from './match-history.models'
+import * as SS from './server-state.models'
 
 export type QueriedLayer = L.KnownLayer & { constraints: boolean[] }
 
@@ -94,11 +96,14 @@ export const LayersQuerySortSchema = z
 		}),
 		z.object({
 			type: z.literal('random'),
+			seed: z.number().int().positive(),
 		}),
 	])
 	.describe('if not provided, no sorting will be done')
 
-export const DEFAULT_SORT: LayersQueryInput['sort'] = {
+export type LayersQuerySort = z.infer<typeof LayersQuerySortSchema>
+
+export const DEFAULT_SORT: LayersQuerySort = {
 	type: 'column',
 	sortBy: 'Asymmetry_Score',
 	sortDirection: 'ASC',
@@ -108,13 +113,7 @@ export const DEFAULT_PAGE_SIZE = 20
 export type LayersQueryInput = {
 	pageIndex?: number
 	pageSize?: number
-	sort?: {
-		type: 'column'
-		sortBy: string
-		sortDirection?: 'ASC' | 'DESC'
-	} | {
-		type: 'random'
-	}
+	sort?: LayersQuerySort
 	constraints?: LayerQueryConstraint[]
 	// Offset of history entries to consider for Repeat rules, where 0 is current layer, 1 is the previous layer, etc,
 	historyOffset?: number
@@ -126,6 +125,19 @@ export type LayersQueryInput = {
 export type LayerComponentsInput = {
 	constraints?: LayerQueryConstraint[]
 	previousLayerIds?: L.LayerId[]
+}
+
+export type LayerExistsInput = L.LayerId[]
+
+export type SearchIdsInput = {
+	queryString: string
+	constraints?: LayerQueryConstraint[]
+	previousLayerIds?: string[]
+}
+
+export type LayerStatusesForLayerQueueInput = {
+	queue: LL.LayerList
+	pool: SS.PoolConfiguration
 }
 export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]

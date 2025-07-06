@@ -393,7 +393,7 @@ export type BaseLayerComponents = {
 	alliances: Set<string>
 	gamemodes: Set<string>
 	layers: Set<string>
-	versions: Set<string>
+	versions: Set<string | null>
 	size: Set<string>
 	mapLayers: MapConfigLayer[]
 	factions: Set<string>
@@ -410,7 +410,7 @@ export type BaseLayerComponentsJson = {
 	alliances: string[]
 	gamemodes: string[]
 	layers: string[]
-	versions: string[]
+	versions: (string | null)[]
 	size: string[]
 	mapLayers: MapConfigLayer[]
 	factions: string[]

@@ -12,23 +12,8 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
-import { count, SQL, sql } from 'drizzle-orm'
+import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import { z } from 'zod'
-
-export const LayersQuerySortSchema = z
-	.discriminatedUnion('type', [
-		z.object({
-			type: z.literal('column'),
-			sortBy: z.string(),
-			sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
-		}),
-		z.object({
-			type: z.literal('random'),
-			seed: z.number().int().positive(),
-		}),
-	])
-	.describe('if not provided, no sorting will be done')
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -116,16 +101,11 @@ export async function queryLayers(args: {
 	}
 }
 
-export const AreLayersInPoolInputSchema = z.object({ layers: z.array(L.LayerIdSchema) })
-
-export const LayerExistsInputSchema = z.array(L.LayerIdSchema)
-export type LayerExistsInput = L.LayerId[]
-
 export async function layerExists({
 	input,
 	ctx,
 }: {
-	input: LayerExistsInput
+	input: LQY.LayerExistsInput
 	ctx: CS.LayerQuery
 }) {
 	const packedIds = LC.packLayers(input)
@@ -175,14 +155,7 @@ export async function queryLayerComponents({
 	return res as Record<LC.GroupByColumn, string[]>
 }
 
-export const SearchIdsInputSchema = z.object({
-	queryString: z.string().min(1).max(100),
-	constraints: z.array(LQY.LayerQueryConstraintSchema).optional(),
-	previousLayerIds: z.array(z.string()).optional(),
-})
-export type SearchIdsInput = z.infer<typeof SearchIdsInputSchema>
-
-export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: SearchIdsInput }) {
+export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: LQY.SearchIdsInput }) {
 	const { queryString, constraints, previousLayerIds } = input
 
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
@@ -292,9 +265,10 @@ export async function getFilterNodeSQLConditions(
 		const entity = ctx.filters.find(fe => fe.id === node.filterId)
 		if (!entity) {
 			// TODO too lazy to return an error here right now
+			console.trace('unknown filter ', node.filterId, ctx.filters)
 			return {
 				code: 'err:unknown-filter',
-				msg: `Filter ${node.filterId} Doesn't exist`,
+				msg: `Filter ${node.filterId} doesn't exist`,
 			}
 		}
 		const filter = F.FilterNodeSchema.parse(entity.filter)
@@ -367,20 +341,12 @@ async function buildConstraintSqlCondition(
 	return { conditions, selectProperties }
 }
 
-export const LayerStatusesForLayerQueueInputSchema = z.object({
-	queue: LL.LayerListSchema,
-	pool: SS.PoolConfigurationSchema,
-})
-export type LayerStatusesForLayerQueueInput = z.infer<
-	typeof LayerStatusesForLayerQueueInputSchema
->
-
 export async function getLayerStatusesForLayerQueue({
 	ctx,
 	input: { queue, pool },
 }: {
 	ctx: CS.LayerQuery
-	input: LayerStatusesForLayerQueueInput
+	input: LQY.LayerStatusesForLayerQueueInput
 }) {
 	ctx.log.info('getting layer statuses')
 	const constraints = SS.getPoolConstraints(pool)
@@ -796,13 +762,15 @@ function getDoNotRepeatSQLConditions(
 	}
 }
 
+type GenLayerOutput<ReturnLayers extends boolean> = ReturnLayers extends true ? { layers: PostProcessedLayer[]; totalCount: number }
+	: { ids: L.LayerId[]; totalCount: number }
 export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	ctx: CS.LayerQuery,
 	numLayers: number,
 	constraints: LQY.LayerQueryConstraint[],
 	previousLayerIds: string[],
 	returnLayers: ReturnLayers,
-): Promise<ReturnLayers extends true ? { layers: PostProcessedLayer[]; totalCount: number } : { ids: string[]; totalCount: number }> {
+): Promise<GenLayerOutput<ReturnLayers>> {
 	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
 		ctx,
 		previousLayerIds,
@@ -813,10 +781,9 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		oldestLayerTeamParity,
 		constraints,
 	)
-	const p_condition = conditions.length > 0 ? E.and(...conditions) : sql`1=1`
+	const p_condition = conditions.length > 0 ? E.and(...conditions) as SQL<unknown> : sql`1=1`
 
-	const totalCountResult = await ctx.layerDb().select({ totalCount: count() }).from(LC.layersView(ctx))
-	const totalCount = Number(totalCountResult[0].totalCount)
+	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
 
 	if (totalCount === 0) {
 		// @ts-expect-error idgaf
@@ -825,23 +792,43 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
 
-	const selectedLayers: any[] = []
+	async function getResultLayers<ReturnLayers extends boolean>(
+		selectedIds: number[],
+		returnLayers: ReturnLayers,
+	): Promise<GenLayerOutput<ReturnLayers>> {
+		if (returnLayers) {
+			const rows = await ctx.layerDb().select({ ...LC.selectAllViewCols(ctx), ...selectProperties }).from(LC.layersView(ctx)).where(
+				E.inArray(LC.viewCol('id', ctx), selectedIds),
+			)
+			const res = { layers: postProcessLayers(ctx, rows as any[], constraints, historicLayers, oldestLayerTeamParity), totalCount }
+			// @ts-expect-error idgaf
+			return res
+		} else {
+			// @ts-expect-error idgaf
+			return { ids: selectedIds.map(id => LC.unpackId(id)), totalCount }
+		}
+	}
+
+	if (totalCount <= 20_000) {
+		return await getResultLayers(await generateRandomLayersLowRowCount(ctx, numLayers, p_condition), returnLayers)
+	}
+
 	const selectedIds: number[] = []
-	// TODO this can be optimized by finding a lower bound under which it's more efficient we can just get all layers matching the current constraints and finishing the filtering without making additional queries. will require some experimentation
 	for (let i = 0; i < numLayers; i++) {
 		const selectedColValues: [LC.GroupByColumn, number | null][] = []
 		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
 			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
+			const condition = E.and(
+				p_condition,
+				...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value as number)),
+				E.notInArray(LC.viewCol('id', ctx), selectedIds),
+			) as SQL<unknown>
 			const availableValuesRows = await ctx.layerDb().selectDistinct({ [columnName]: LC.viewCol(columnName, ctx) }).from(
 				LC.layersView(ctx),
-			).where(
-				E.and(
-					p_condition,
-					...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value as number)),
-					E.notInArray(LC.viewCol('id', ctx), selectedIds),
-				),
-			)
+			).where(condition)
 			const values = availableValuesRows.map(row => row[columnName]) as (number | null)[]
+			if (values.length === 0) break
+
 			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn] ?? []
 			const weights: number[] = []
 			const defaultWeight = 1 / values.length
@@ -853,7 +840,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			if (values.length === 0) break
 			if (values.length === 1 || j + 1 === ctx.effectiveColsConfig.generation.columnOrder.length) {
 				const rows = await ctx.layerDb().select(
-					returnLayers ? { ...LC.selectAllViewCols(ctx), ...selectProperties } : { id: LC.viewCol('id', ctx) },
+					{ id: LC.viewCol('id', ctx) },
 				).from(
 					LC.layersView(ctx),
 				).where(
@@ -863,33 +850,62 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 						E.notInArray(LC.viewCol('id', ctx), selectedIds),
 					),
 				)
-				selectedIds.push(rows[0].id)
-				if (returnLayers) {
-					selectedLayers.push(rows[0])
-				}
+				selectedIds.push(rows[0].id as number)
 				break
 			}
+
 			const chosen = weightedRandomSelection(values, weights)
 
 			selectedColValues.push([columnName as LC.GroupByColumn, chosen])
 		}
 	}
 
-	if (returnLayers) {
-		// @ts-expect-error idgaf
-		return {
-			layers: postProcessLayers(
-				ctx,
-				selectedLayers,
-				constraints,
-				historicLayers,
-				oldestLayerTeamParity,
-			),
-			totalCount,
+	return await getResultLayers(selectedIds, returnLayers)
+}
+
+async function generateRandomLayersLowRowCount(
+	ctx: CS.LayerQuery,
+	numLayers: number,
+	p_condition: SQL<unknown>,
+) {
+	const baseLayers = await ctx.layerDb()
+		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
+		.from(LC.layersView(ctx)).where(p_condition)
+	const selectedIds: number[] = []
+
+	for (let i = 0; i < numLayers; i++) {
+		let layerPool = baseLayers
+		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
+			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
+			const values: (number | null)[] = []
+			const weights: number[] = []
+			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn]?.map(w => ({
+				value: LC.dbValue(columnName, w.value),
+				weight: w.weight,
+			})) ?? []
+			const defaultWeight = 1 / values.length
+			const selectableIds: number[] = []
+			for (const layer of layerPool) {
+				const value = layer[columnName] as number | null
+				if (values.includes(value) || selectedIds.includes(layer.id as number)) continue
+				values.push(value)
+				selectableIds.push(layer.id as number)
+				weights.push(
+					weightsForCol.find(w => w.value === (value ?? null))?.weight ?? defaultWeight,
+				)
+			}
+			if (values.length === 0) break
+			const selected = weightedRandomSelection(values, weights)
+			layerPool = layerPool.filter(l => l[columnName] === selected)
+			if (layerPool.length === 1 || j + 1 === ctx.effectiveColsConfig.generation.columnOrder.length) {
+				const selectedId = layerPool[0].id as number
+				selectedIds.push(selectedId)
+				break
+			}
 		}
 	}
-	// @ts-expect-error idgaf
-	return { ids: selectedIds, totalCount }
+
+	return selectedIds
 }
 
 /**
@@ -970,4 +986,12 @@ function postProcessLayers(
 			violationDescriptors,
 		}
 	})
+}
+
+export const queries = {
+	queryLayers,
+	layerExists,
+	queryLayerComponents,
+	searchIds,
+	getLayerStatusesForLayerQueue,
 }

@@ -13,7 +13,6 @@ type ThemeStore = {
 const THEME_STORAGE_KEY = 'ui-theme:v1'
 
 function applyTheme(theme: Theme) {
-	debugger
 	const root = window.document.documentElement
 
 	root.classList.remove('light', 'dark')
@@ -27,18 +26,22 @@ function applyTheme(theme: Theme) {
 	}
 }
 
-const ThemeStore = Zus.createStore<ThemeStore>((set) => {
-	const theme = THEME.parse(localStorage.getItem(THEME_STORAGE_KEY) ?? 'dark')
-	applyTheme(theme)
-	return {
-		theme,
-		setTheme: (theme: Theme) => {
-			applyTheme(theme)
-			localStorage.setItem(THEME_STORAGE_KEY, theme)
-			return set({ theme })
-		},
-	}
-})
+let ThemeStore!: Zus.StoreApi<ThemeStore>
+
+export function setup() {
+	Zus.createStore<ThemeStore>((set) => {
+		const theme = THEME.parse(localStorage.getItem(THEME_STORAGE_KEY) ?? 'dark')
+		applyTheme(theme)
+		return {
+			theme,
+			setTheme: (theme: Theme) => {
+				applyTheme(theme)
+				localStorage.setItem(THEME_STORAGE_KEY, theme)
+				return set({ theme })
+			},
+		}
+	})
+}
 
 export function useTheme() {
 	return Zus.useStore(ThemeStore)

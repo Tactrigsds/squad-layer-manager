@@ -4,7 +4,10 @@ import * as PartsSys from '@/systems.client/parts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
 import * as Rx from 'rxjs'
+
+const [initialized$, setInitialized] = createSignal<boolean>()
 
 export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
 	new Rx.Observable<MH.PublicMatchHistoryState>(s => {
@@ -12,6 +15,7 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
 			onData: output => {
 				PartsSys.upsertParts(output.parts)
 				s.next(output)
+				setInitialized(true)
 			},
 			onComplete: () => {
 				console.trace('match history completed')
@@ -29,6 +33,19 @@ export const [useRecentMatches, recentMatches$] = ReactRx.bind(
 	matchHistoryState$.pipe(Rx.map((state) => state.recentMatches)),
 	[],
 )
+
+export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
+	() =>
+		initialized$.pipe(
+			Rx.map(() => recentMatches$.getValue()),
+		),
+	null,
+)
+
+export async function resolveInitializedRecentMatches() {
+	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$().pipe(Rx.filter(v => !!v)))
+	return recentMatches
+}
 
 export const [useRecentMatchHistory, recentMatchHistory$] = ReactRx.bind(
 	() =>
@@ -62,4 +79,5 @@ export const [useCurrentMatchDetails, currentMatchDetails$] = ReactRx.bind(
 export function setup() {
 	recentMatchHistory$().subscribe()
 	currentMatchDetails$().subscribe()
+	initializedRecentMatches$().subscribe()
 }

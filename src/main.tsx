@@ -1,15 +1,16 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { exists } from './app-routes.ts'
+import { route } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
 import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import * as LayersDbClient from '@/systems.client/layer-db.client.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
+import * as ThemeSys from '@/systems.client/theme.system.ts'
 import * as UsersClient from '@/systems.client/users.client.ts'
 import { enableMapSet } from 'immer'
 import FilterEdit from './components/filter-edit.tsx'
@@ -24,7 +25,7 @@ console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH,
 
 const router = createBrowserRouter([
 	{
-		path: exists('/filters'),
+		path: route('/filters'),
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
@@ -34,7 +35,7 @@ const router = createBrowserRouter([
 		),
 	},
 	{
-		path: exists('/filters/:id'),
+		path: route('/filters/:id'),
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
@@ -44,7 +45,7 @@ const router = createBrowserRouter([
 		),
 	},
 	{
-		path: exists('/filters/new'),
+		path: route('/filters/new'),
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
@@ -54,7 +55,7 @@ const router = createBrowserRouter([
 		),
 	},
 	{
-		path: exists('/'),
+		path: route('/'),
 		element: (
 			<InnerRouterProviders>
 				<AppContainer>
@@ -65,8 +66,11 @@ const router = createBrowserRouter([
 	},
 ])
 
+console.log('running system initialization')
+
 // -------- system initialization --------
-void LayersDbClient.setup()
+ThemeSys.setup()
+void LayerQueriesClient.ensureSetup()
 FilterEntityClient.setup()
 MatchHistoryClient.setup()
 SquadServerClient.setup()

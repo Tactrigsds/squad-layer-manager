@@ -1,5 +1,7 @@
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import * as AR from './src/app-routes.ts'
@@ -10,9 +12,13 @@ const prod = process.env.NODE_ENV === 'production'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-	plugins: [react(), tsconfigPaths(), { name: 'configure-response-headers' }],
+	plugins: [react(), tsconfigPaths()],
 	server: {
 		proxy: !prod ? buildProxy() : undefined,
+		https: {
+			key: fs.readFileSync(path.resolve('.', 'certs/localhost-key.pem')),
+			cert: fs.readFileSync(path.join('.', 'certs/localhost.pem')),
+		},
 		headers: {
 			// required for sqlocal
 			'Cross-Origin-Embedder-Policy': 'require-corp',

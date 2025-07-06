@@ -90,20 +90,20 @@ export const ConfigSchema = z.object({
 
 	layerTable: LQY.LayerTableConfigSchema.default({
 		orderedColumns: [
-			{ name: 'id' },
+			{ name: 'id', visible: false },
 			{ name: 'Size' },
 			{ name: 'Layer' },
-			{ name: 'Map' },
-			{ name: 'Gamemode' },
-			{ name: 'LayerVersion' },
+			{ name: 'Map', visible: false },
+			{ name: 'Gamemode', visible: false },
+			{ name: 'LayerVersion', visible: false },
 
 			{ name: 'Faction_1' },
 			{ name: 'Unit_1' },
-			{ name: 'Alliance_1' },
+			{ name: 'Alliance_1', visible: false },
 
 			{ name: 'Faction_2' },
 			{ name: 'Unit_2' },
-			{ name: 'Alliance_2' },
+			{ name: 'Alliance_2', visible: false },
 		],
 		defaultSortBy: { type: 'column', sortBy: 'Layer', sortDirection: 'ASC' },
 	}),

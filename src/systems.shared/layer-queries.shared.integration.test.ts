@@ -39,7 +39,7 @@ beforeAll(async () => {
 			previousLayerIds: [],
 			pageSize: 10,
 			pageIndex: 0,
-			sort: { type: 'random' },
+			sort: { type: 'random', seed: 123 },
 		},
 		ctx: baseCtx,
 	})
@@ -182,6 +182,7 @@ describe('queryLayers', () => {
 				pageIndex: 0,
 				sort: {
 					type: 'random',
+					seed: 456,
 				},
 			},
 			ctx: baseCtx,
@@ -559,7 +560,11 @@ describe('getRandomGeneratedLayers', () => {
 	})
 
 	test('respects multiple constraints together', async () => {
-		const filter = FB.comp(FB.eq('Gamemode', 'TC'))
+		const filter = FB.and([
+			FB.comp(FB.eq('Gamemode', 'TC')),
+			// FB.comp(FB.inValues('Map', ['Narva', 'Skorpo', 'Chora'])),
+			FB.comp(FB.eq('Faction_1', 'USMC')),
+		])
 		const constraints: LQY.LayerQueryConstraint[] = [
 			{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-only' },
 			{
@@ -577,6 +582,7 @@ describe('getRandomGeneratedLayers', () => {
 			sampleLayerIds.slice(0, 1),
 			true,
 		)
+		expect(res.layers.length).toBe(3)
 
 		// All generated layers should be TC if they exist
 		for (const layer of res.layers) {

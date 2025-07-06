@@ -241,6 +241,7 @@ export default function LayerTable(props: {
 	function toggleRandomize() {
 		setRandomize((prev) => {
 			if (!prev) {
+				refreshSeed()
 				_setSortingState([])
 			}
 			return !prev
@@ -321,10 +322,14 @@ export default function LayerTable(props: {
 		props.setPageIndex(newState.pageIndex)
 		setPageSize(newState.pageSize)
 	}
+	const [seed, setSeed] = useState(Math.random() * Number.MAX_SAFE_INTEGER)
+	function refreshSeed() {
+		setSeed(Math.random() * Number.MAX_SAFE_INTEGER)
+	}
 
 	let sort: LQY.LayersQueryInput['sort'] = LQY.DEFAULT_SORT
 	if (randomize) {
-		sort = { type: 'random' }
+		sort = { type: 'random', seed }
 	} else if (sortingState.length > 0) {
 		const { id, desc } = sortingState[0]
 		sort = {
@@ -341,7 +346,6 @@ export default function LayerTable(props: {
 		sort,
 	})
 	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
-	console.log({ layersRes: layersRes.data, status: layersRes.status, error: layersRes.error })
 
 	const page = React.useMemo(() => {
 		let _page = layersRes.data
@@ -542,7 +546,7 @@ export default function LayerTable(props: {
 				<span className="flex h-10 items-center space-x-2">
 					{props.extraPanelItems}
 					<Button
-						onClick={() => LayerQueriesClient.invalidateLayersQuery(queryInput)}
+						onClick={() => refreshSeed()}
 						disabled={layersRes.isFetching}
 						variant="outline"
 						size="icon"

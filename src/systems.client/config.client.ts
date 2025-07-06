@@ -5,7 +5,9 @@ import { useQuery } from '@tanstack/react-query'
 
 const baseQuery = {
 	queryKey: ['config'],
-	queryFn: () => trpc.config.query(),
+	queryFn: () => {
+		return trpc.config.query()
+	},
 }
 
 export function useConfig() {

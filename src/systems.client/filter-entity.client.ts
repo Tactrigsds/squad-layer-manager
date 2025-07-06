@@ -6,6 +6,7 @@ import { type FilterEntityChange } from '@/server/systems/filter-entity'
 import * as PartsSys from '@/systems.client/parts'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
@@ -23,6 +24,8 @@ export function useFilterContributors(filterId: string) {
 export const filterEntities = new Map<string, F.FilterEntity>()
 export const filterEntityChanged$ = new Rx.Subject<void>()
 
+const [initialized$, setInitialized] = createSignal<true>()
+
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
 	const sub = trpc.filters.watchFilters.subscribe(undefined, {
 		onData: (_output) => {
@@ -33,6 +36,7 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 					for (const entity of output.entities) {
 						filterEntities.set(entity.id, entity)
 					}
+					setInitialized(true)
 					break
 				}
 				case 'mutation': {
@@ -64,12 +68,22 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
+	initializedFilterEntities$().subscribe()
 }
 
 export const [useFilterEntities, filterEntities$] = ReactRx.bind(
 	filterEntityChanged$.pipe(Rx.map(() => MapUtils.deepClone(filterEntities))),
 	filterEntities,
 )
+
+export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactRx.bind(
+	() => initialized$.pipe(Rx.map(() => filterEntities)),
+	null,
+)
+
+export async function resolveInitializedFilterEntities() {
+	return await Rx.firstValueFrom(initializedFilterEntities$().pipe(Rx.filter((e) => !!e)))
+}
 
 export function useFilterCreate() {
 	return useMutation({

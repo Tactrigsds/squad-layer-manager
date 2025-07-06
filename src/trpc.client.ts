@@ -12,7 +12,7 @@ import { atom, getDefaultStore } from 'jotai'
 import { sleep } from './lib/async'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
-const wsUrl = `${wsHostname}${AR.exists('/trpc')}`
+const wsUrl = `${wsHostname}${AR.route('/trpc')}`
 
 export const trpcConnectedAtom = atom(null as boolean | null)
 const defaultStore = getDefaultStore()

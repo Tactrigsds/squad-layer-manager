@@ -71,7 +71,7 @@ export default function FilterWrapper() {
 					toast({
 						title: `Filter ${mutation.value.name} was deleted by ${mutation.username}`,
 					})
-					navigate(AR.exists('/filters'))
+					navigate(AR.route('/filters'))
 					break
 				}
 				default:

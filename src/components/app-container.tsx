@@ -81,7 +81,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
 								<DropdownMenuLabel>{user.username}</DropdownMenuLabel>
-								<form action={AR.exists('/logout')} method="POST">
+								<form action={AR.route('/logout')} method="POST">
 									<DropdownMenuItem asChild>
 										<button className="w-full" type="submit">
 											Log Out

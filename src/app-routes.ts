@@ -41,7 +41,7 @@ function defRoute<T extends string, GetLink extends RouteDefinition['link'], Par
 	}
 }
 
-export function exists<P extends Platform>(path: Route<P>) {
+export function route<P extends Platform>(path: Route<P>) {
 	if (!routes[path]) {
 		throw new Error(`Route ${path} is not defined in the routes object`)
 	}

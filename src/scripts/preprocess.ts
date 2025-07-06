@@ -41,7 +41,7 @@ async function main() {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
-	await LayerDb.setup({ skipHash: true, mode: 'populate' })
+	await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
 	await DB.setup()
 
 	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
@@ -62,6 +62,7 @@ async function main() {
 		await scoresExtracted
 
 		ctx.layerDb().run('PRAGMA wal_checkpoint')
+		ctx.layerDb().run('PRAGMA optimize')
 		ctx.layerDb().run('VACUUM')
 		ctx.layerDb().$client.close()
 	}
@@ -277,7 +278,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
 				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
-				if (parsedSegments.LayerVersion) components.versions.add(parsedSegments.LayerVersion)
+				components.versions.add(parsedSegments.LayerVersion)
 				components.gamemodes.add(parsedSegments.Gamemode)
 				components.factions.add(availEntry1.Faction)
 				components.factions.add(availEntry2.Faction)

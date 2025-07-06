@@ -100,13 +100,13 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			},
 			auth: oauthPlugin.DISCORD_CONFIGURATION,
 		},
-		startRedirectPath: AR.exists('/login'),
+		startRedirectPath: AR.route('/login'),
 
-		callbackUri: `${ENV.ORIGIN}${AR.exists('/login/callback')}`,
+		callbackUri: `${ENV.ORIGIN}${AR.route('/login/callback')}`,
 		scope: ['identify'],
 	})
 
-	instance.get(AR.exists('/login/callback'), async function(req, reply) {
+	instance.get(AR.route('/login/callback'), async function(req, reply) {
 		const tokenResult = await (this as any).discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
 			access_token: string
@@ -159,10 +159,10 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			})
 		})
 
-		await Sessions.setSessionCookie({ ...ctx, req, res: reply }, sessionId).redirect(AR.exists('/'))
+		await Sessions.setSessionCookie({ ...ctx, req, res: reply }, sessionId).redirect(AR.route('/'))
 	})
 
-	instance.post(AR.exists('/logout'), async function(req, res) {
+	instance.post(AR.route('/logout'), async function(req, res) {
 		const ctx = getCtx(req)
 		const authRes = await createAuthorizedRequestContext({
 			...ctx,
@@ -177,11 +177,10 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		return await Sessions.logout({ ...authRes.ctx, res })
 	})
 
-	instance.get(AR.exists('/layers.sqlite3'), async (req, res) => {
-		console.log('in get layers')
-		const hash = req.headers['x-hash']
-		res.header('X-Hash', LayerDb.hash)
-		if (hash && hash === LayerDb.hash) {
+	instance.get(AR.route('/layers.sqlite3'), async (req, res) => {
+		const ifNoneMatch = req.headers['If-None-Match']
+		res.header('ETag', `"${LayerDb.hash}"`)
+		if (ifNoneMatch && ifNoneMatch === `"${LayerDb.hash}"`) {
 			return res.code(304).send()
 		}
 
@@ -192,7 +191,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	await instance.register(ws)
 	await instance.register(fastifyTRPCPlugin, {
-		prefix: AR.exists('/trpc'),
+		prefix: AR.route('/trpc'),
 		useWSS: true,
 		keepAlive: {
 			enabled: false,
@@ -234,14 +233,19 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'development': {
 				// --------  dev server proxy setup --------
 				// When running in dev mode, we're proxying all html routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
-				const htmlRes = await fetch(`${ENV.ORIGIN}/idk`)
+				const htmlRes = await fetch(`${ENV.ORIGIN}/idk`).catch(err => {
+					console.error('ERROR while getting /idk')
+					console.error(err)
+					return err
+				})
+				const body = await htmlRes.text()
 				return res
 					.type('text/html')
 					.header('Access-Control-Allow-Origin', '*')
 					.header('Access-Control-Allow-Methods', '*')
 					.header('Access-Control-Allow-Headers', '*')
 					.header('Cross-Origin-Resource-Policy', 'cross-origin')
-					.send(htmlRes.body)
+					.send(body)
 			}
 			case 'production': {
 				return res.sendFile('index.html')

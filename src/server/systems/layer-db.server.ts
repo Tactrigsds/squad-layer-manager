@@ -52,7 +52,6 @@ export async function setup(opts?: { skipHash?: boolean; mode?: 'populate' | 're
 	let driver = Database(ENV.LAYERS_DB_PATH, {
 		readonly: opts.mode === 'read',
 		fileMustExist: opts.mode === 'read',
-		verbose: console.log,
 	})
 	let buf: Buffer | undefined
 	if (opts.mode === 'read') {
@@ -69,7 +68,7 @@ export async function setup(opts?: { skipHash?: boolean; mode?: 'populate' | 're
 			},
 		},
 	})
-
+	db.run('PRAGMA optimize')
 	if (!opts?.skipHash) {
 		const fileBuffer = buf ?? driver.serialize()
 		hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')

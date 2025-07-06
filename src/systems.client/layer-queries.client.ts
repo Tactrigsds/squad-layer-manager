@@ -7,24 +7,30 @@ import * as LQY from '@/models/layer-queries.models'
 import { baseLogger } from '@/server/systems/logger.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
-import * as LayerDbClient from '@/systems.client/layer-db.client'
+import type * as WorkerTypes from '@/systems.client/layer-queries.worker'
+import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
-import * as LayerQueries from '@/systems.shared/layer-queries.shared'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
+import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 
+let lqWorker!: Worker
+
 export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
-	options ??= {}
+	options = options ? { ...options } : {}
+	options.enabled = options.enabled ?? true
 	const args = useArgs(input)
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryLayers', getDepKey(args)],
 		placeholderData: (prev) => prev,
-		enabled: !!args,
-		queryFn: async () => LayerQueries.queryLayers(args!),
+		enabled: !!args && options.enabled,
+		queryFn: async () => {
+			return await send('queryLayers', args!)
+		},
 		staleTime: Infinity,
 	})
 }
@@ -37,7 +43,7 @@ export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	const args = await fetchArgs(input)
 	return reactQueryClient.prefetchQuery({
 		queryKey: ['layers', 'queryLayers', getDepKey(args)],
-		queryFn: async () => LayerQueries.queryLayers(args),
+		queryFn: async () => send('queryLayers', args),
 		staleTime: Infinity,
 	})
 }
@@ -80,18 +86,18 @@ export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { 
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', getDepKey(args)],
 		enabled: !!args,
-		queryFn: async () => LayerQueries.queryLayerComponents(args!),
+		queryFn: async () => send('queryLayerComponents', args!),
 		staleTime: Infinity,
 	})
 }
-export function useSearchIds(input: LayerQueries.SearchIdsInput, options?: { enabled?: boolean }) {
+export function useSearchIds(input: LQY.SearchIdsInput, options?: { enabled?: boolean }) {
 	options ??= {}
 	const args = useArgs(input)
 	return useQuery({
 		...options,
-		queryKey: ['layers', 'queryIds', getDepKey(args)],
+		queryKey: ['layers', 'searchIds', getDepKey(args)],
 		enabled: !!args,
-		queryFn: async () => LayerQueries.searchIds(args!),
+		queryFn: async () => await send('searchIds', args!),
 		staleTime: Infinity,
 	})
 }
@@ -112,7 +118,7 @@ export function useLayerStatuses(
 		],
 		enabled: !!args,
 		queryFn: async () => {
-			const res = await LayerQueries.getLayerStatusesForLayerQueue(args!)
+			const res = await send('getLayerStatusesForLayerQueue', args!)
 			if (res.code !== 'ok') {
 				globalToast$.next({ variant: 'destructive', description: res.msg, title: res.code })
 				throw new Error(res.msg)
@@ -124,66 +130,80 @@ export function useLayerStatuses(
 }
 
 export function useLayerExists(
-	input: LayerQueries.LayerExistsInput,
+	input: LQY.LayerExistsInput,
 	options?: { enabled?: boolean; usePlaceholderData?: boolean },
 ) {
 	options ??= {}
 	const args = useArgs(input)
 	return useQuery({
-		...options,
+		enabled: !!options.enabled,
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', getDepKey(args)],
-		enabled: !!args,
 		queryFn: async () => {
-			return await LayerQueries.layerExists(args!)
+			return await send('layerExists', args!)
 		},
 		staleTime: Infinity,
 	})
 }
 
 // get context/input that may invalidate the query
-function getDepKey<I>(args?: { ctx: CS.LayerQuery; input: I }) {
+function getDepKey<I>(args?: { ctx: WorkerTypes.DynamicQueryCtx; input: I }) {
 	if (!args) return
-	return superjson.serialize({
-		recentMatches: args.ctx.recentMatches,
-		filters: args.ctx.filters,
-		input: args.input,
-	})
+	return superjson.serialize(args)
 }
 
-export async function fetchArgs<T>(input: T): Promise<{ ctx: CS.LayerQuery; input: T }> {
-	const recentMatches = MatchHistoryClient.recentMatches$.getValue()
-	const filters = Array.from(FilterEntityClient.filterEntities$.getValue().values())
-	const config = await ConfigClient.fetchConfig()
-
-	const layerDb = await LayerDbClient.fetchLayerDb()
+export async function fetchArgs<T>(input: T): Promise<{ ctx: WorkerTypes.DynamicQueryCtx; input: T }> {
+	const recentMatches = await MatchHistoryClient.resolveInitializedRecentMatches()
+	const filters = await FilterEntityClient.resolveInitializedFilterEntities()
 	return {
 		ctx: {
-			layerDb: () => layerDb,
 			recentMatches,
-			effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
-			filters,
-			log: baseLogger,
+			filters: Array.from(filters.values()),
 		},
 		input,
 	}
 }
 
-function useArgs<T>(input: T): { ctx: CS.LayerQuery; input: T } | undefined {
-	const recentMatches = MatchHistoryClient.useRecentMatches()
-	const effectiveColsConfig = ConfigClient.useEffectiveColConfig()
-	const filters = Array.from(FilterEntityClient.useFilterEntities().values())
-	const layerDb = LayerDbClient.useLayerDb()
-	if (!effectiveColsConfig) return
-	if (!layerDb) return
+function useArgs<T>(input: T): { ctx: WorkerTypes.DynamicQueryCtx; input: T } | undefined {
+	const recentMatches = MatchHistoryClient.useInitializedRecentMatches()
+	const filters = FilterEntityClient.useInitializedFilterEntities()
+	if (!recentMatches || !filters) return
 	return {
 		input,
 		ctx: {
-			layerDb: () => layerDb,
 			recentMatches,
-			effectiveColsConfig,
-			filters,
-			log: baseLogger,
+			filters: Array.from(filters.values()),
 		},
 	}
+}
+
+let nextSeqId = 1
+const out$ = new Rx.Subject<WorkerTypes.Outbound>()
+async function send<T extends WorkerTypes.QueryType>(type: T, args: WorkerTypes.Incoming<T>['args']) {
+	await ensureSetup()
+	const seqId = nextSeqId
+	nextSeqId++
+	const msg = { type, args, seqId: seqId }
+	lqWorker.postMessage(msg)
+	return (await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === seqId)))).response as WorkerTypes.Outbound<T>['response']
+}
+
+let setup$: Promise<void> | null = null
+export async function ensureSetup() {
+	if (setup$) return await setup$
+	setup$ = (async () => {
+		lqWorker = new LQWorker()
+		lqWorker.onmessage = async (event) => {
+			out$.next(event.data)
+		}
+		const config = await ConfigClient.fetchConfig()
+		const msg = {
+			type: 'init',
+			seqId: 0,
+			args: { ...LC.getEffectiveColumnConfig(config.extraColumnsConfig), ...config.layerTable },
+		}
+		lqWorker.postMessage(msg)
+		await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === 0)))
+	})()
+	return await setup$
 }

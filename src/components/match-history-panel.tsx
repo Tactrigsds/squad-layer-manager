@@ -29,7 +29,7 @@ import { Badge } from './ui/badge'
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const history = MatchHistoryClient.useRecentMatches()
+	const history = MatchHistoryClient.useRecentMatches() ?? []
 	const allEntries = React.useMemo(() => [...history].reverse(), [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
