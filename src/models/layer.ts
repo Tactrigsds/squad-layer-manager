@@ -264,7 +264,7 @@ export function getAdminSetNextLayerCommand(layerOrId: UnvalidatedLayer | LayerI
 	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId) : layerOrId
 	if (isRawLayer(layer)) return layer.id.slice('RAW:'.length)
 	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
-		return ` ${faction}${subFac ? `+${subFac}` : ''}`
+		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
 	if (layer.Layer.startsWith('JensensRange')) {
 		return `AdminSetNextLayer ${layer.Layer}`
