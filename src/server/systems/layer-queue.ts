@@ -7,10 +7,12 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import { BROADCASTS, WARNS } from '@/messages.ts'
+import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models'
@@ -252,14 +254,12 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			}
 			const announcementTasks: (Rx.Observable<void>)[] = []
 			announcementTasks.push(toCold(async () => {
-				const historyState = MatchHistory.getPublicMatchHistory()
+				const historyState = MatchHistory.getPublicMatchHistoryState()
 				const currentMatch = MatchHistory.getCurrentMatch()
 				if (!currentMatch) return
-				for (const eventId of historyState.activeTriggerEvents) {
-					const event = historyState.recentBalanceTriggerEvents.find(event => event.id === eventId)
-					if (!event) continue
-					await SquadServer.warnAllAdmins(ctx, WARNS.balanceTrigger.showEvent(event, currentMatch))
-				}
+				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
+				if (!mostRelevantEvent) return
+				await SquadServer.warnAllAdmins(ctx, WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
 			}))
 
 			announcementTasks.push(toCold(async () => warnShowNext(ctx, 'all-admins')))

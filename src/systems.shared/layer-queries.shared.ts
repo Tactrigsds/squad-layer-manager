@@ -248,7 +248,7 @@ export async function getFilterNodeSQLConditions(
 				break
 			}
 			case 'is-true': {
-				condition = E.eq(column, true)!
+				condition = E.eq(column, 1)!
 				break
 			}
 			default:

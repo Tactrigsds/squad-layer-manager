@@ -1,6 +1,5 @@
 import * as DH from '@/lib/display-helpers'
 import * as BAL from '@/models/balance-triggers.models'
-import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
@@ -70,10 +69,10 @@ export const WARNS = {
 		},
 	},
 	balanceTrigger: {
-		showEvent(event: BAL.BalanceTriggerEvent, currentMatch: MH.MatchDetails, opts?: { repeat?: number }) {
+		showEvent(event: BAL.BalanceTriggerEvent, match: MH.MatchDetails, opts?: { repeat?: number; isCurrent?: boolean }) {
 			return {
 				repeat: opts?.repeat ?? 1,
-				msg: GENERAL.balanceTrigger.showEvent(event, currentMatch),
+				msg: GENERAL.balanceTrigger.showEvent(event, match, !!opts?.isCurrent),
 			}
 		},
 	},
@@ -173,22 +172,24 @@ export const GENERAL = {
 		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
 	},
 	balanceTrigger: {
-		showEvent(event: BAL.BalanceTriggerEvent, currentMatch: MH.MatchDetails) {
+		showEvent(event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, referenceIsCurrentMatch: boolean) {
 			if (!BAL.isKnownEventInstance(event)) {
-				const result = event.evaluationResult as BAL.EvaluationResultBase
+				const result = event.evaluationResult as BAL.EvaluationResultBase<any>
 				return result.messageTemplate.replace('{{strongerTeam}}', result.strongerTeam)
 			}
 
-			const currentLayerPartial = L.toLayer(currentMatch.layerId)
+			const currentLayerPartial = L.toLayer(referenceMatch.layerId)
 			let strongerTeamFormatted: string
 			let strongerTeamFaction: string | undefined
 			if (
 				!currentLayerPartial
-				|| !(strongerTeamFaction = currentLayerPartial[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, event.strongerTeam)])
+				|| !(strongerTeamFaction = currentLayerPartial[MH.getTeamNormalizedFactionProp(referenceMatch.ordinal, event.strongerTeam)])
 			) {
 				strongerTeamFormatted = DH.toFormattedNormalizedTeam(event.strongerTeam)
 			} else {
-				strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(current ${strongerTeamFaction})`
+				strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(${
+					referenceIsCurrentMatch ? 'current ' : ''
+				}${strongerTeamFaction})`
 			}
 
 			return event.evaluationResult!.messageTemplate.replace('{{strongerTeam}}', strongerTeamFormatted)

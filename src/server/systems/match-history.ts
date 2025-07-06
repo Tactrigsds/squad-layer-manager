@@ -30,13 +30,12 @@ export let state!: {
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
-const stateUpdated$ = new Rx.Subject<void>()
+export const stateUpdated$ = new Rx.Subject<CS.Log>()
 
-export function getPublicMatchHistory(): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
+export function getPublicMatchHistoryState(): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
 	return {
 		recentMatches: state.recentMatches,
 		recentBalanceTriggerEvents: state.recentBalanceTriggerEvents,
-		activeTriggerEvents: getActiveTriggerEvents(),
 		parts: state.parts,
 	}
 }
@@ -111,9 +110,9 @@ export const setup = C.spanOp('match-history:setup', { tracer, eventLogLevel: 'i
 
 export const matchHistoryRouter = router({
 	watchMatchHistoryState: procedure.subscription(async function*() {
-		yield getPublicMatchHistory()
+		yield getPublicMatchHistoryState()
 		for await (const _ of toAsyncGenerator(stateUpdated$)) {
-			yield getPublicMatchHistory()
+			yield getPublicMatchHistoryState()
 		}
 	}),
 })
@@ -173,7 +172,6 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 				const res = trig.evaluate(ctx, input)
 				if (!res) continue
 				await ctx.db().insert(Schema.balanceTriggerEvents).values(superjsonify(Schema.balanceTriggerEvents, {
-					input: input,
 					strongerTeam: res.strongerTeam,
 					level: level,
 					triggerId: trig.id,
@@ -189,7 +187,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	stateUpdated$.next()
+	stateUpdated$.next(ctx)
 	return { ...res }
 })
 
@@ -211,27 +209,11 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 			})
 			await loadState(ctx, { limit: 1 })
 		})
-		stateUpdated$.next()
+		stateUpdated$.next(ctx)
 	},
 )
 
 export async function getMatchHistoryCount(ctx: CS.Log & C.Db): Promise<number> {
 	const [{ count }] = await ctx.db().select({ count: sql<string>`count(*)` }).from(Schema.matchHistory)
 	return parseInt(count)
-}
-
-export function getActiveTriggerEvents() {
-	const currentMatch = state.recentMatches[state.recentMatches.length - 1] as MH.MatchDetails | undefined
-	const previousMatch = state.recentMatches[state.recentMatches.length - 2] as MH.MatchDetails | undefined
-	const active = new Set<number>()
-	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
-		const event = state.recentBalanceTriggerEvents[i]
-		if (
-			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game')
-			|| (previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
-		) {
-			active.add(event.id)
-		}
-	}
-	return Array.from(active)
 }

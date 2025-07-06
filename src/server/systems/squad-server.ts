@@ -284,13 +284,16 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 		if (statusRes.code !== 'ok') return statusRes
 		const res: SM.ServerStatusWithCurrentMatchRes = { code: 'ok' as const, data: { ...statusRes.data } }
 		const currentMatch = MatchHistory.getCurrentMatch()
-		if (currentMatch && L.areLayersCompatible(currentMatch.layerId, statusRes.data.currentLayer.id)) {
+		if (currentMatch && L.areLayersCompatible(currentMatch.layerId, statusRes.data.currentLayer)) {
 			res.data.currentMatchId = currentMatch.historyEntryId
 		}
 		return res
 	}, { defaultTTL: 5000 })
 
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
+})
+MatchHistory.stateUpdated$.subscribe((ctx) => {
+	serverStatus.invalidate(ctx)
 })
 
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {

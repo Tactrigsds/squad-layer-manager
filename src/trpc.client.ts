@@ -17,7 +17,7 @@ const wsUrl = `${wsHostname}${AR.route('/trpc')}`
 export const trpcConnectedAtom = atom(null as boolean | null)
 const defaultStore = getDefaultStore()
 
-const link = wsLink({
+const link = wsLink<AppRouter>({
 	client: createWSClient({
 		keepAlive: {
 			enabled: false,

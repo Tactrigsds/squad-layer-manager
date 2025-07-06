@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { assertNever } from '@/lib/type-guards'
@@ -10,6 +11,7 @@ import { GENERAL } from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
+import * as MH from '@/models/match-history.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
@@ -51,18 +53,78 @@ export default function MatchHistoryPanel() {
 	// Process trigger alerts
 	const triggerAlerts: React.ReactNode[] = []
 
-	// Helper function to get alert priority (destructive > warning > info)
-	const getTriggerPriority = (level: string): number => {
-		switch (level) {
-			case 'violation':
-				return 3
-			case 'warn':
-				return 2
-			case 'info':
-				return 1
-			default:
-				return 0
+	// Helper function to create trigger alerts for a specific entry
+	const createTriggerAlertsForEntry = (
+		events: BAL.BalanceTriggerEvent[],
+		entry: MH.MatchDetails,
+		isCurrent: boolean,
+	): React.ReactNode[] => {
+		if (events.length === 0) return []
+
+		const eventAlerts: Array<
+			{ event: BAL.BalanceTriggerEvent; variant: 'default' | 'destructive' | 'info' | 'warning'; priority: number }
+		> = []
+
+		for (const event of events) {
+			let variant: 'default' | 'destructive' | 'info' | 'warning'
+			switch (event.level) {
+				case 'info':
+					variant = 'info'
+					break
+				case 'violation':
+					variant = 'destructive'
+					break
+				case 'warn':
+					variant = 'warning'
+					break
+				default:
+					variant = 'default'
+			}
+
+			eventAlerts.push({
+				event,
+				variant,
+				priority: BAL.getTriggerPriority(event.level),
+			})
 		}
+
+		// Sort alerts by priority (highest first)
+		eventAlerts.sort((a, b) => b.priority - a.priority)
+
+		// Create alert nodes
+		const alerts: React.ReactNode[] = []
+		for (const { event, variant } of eventAlerts) {
+			let AlertIcon
+			switch (event.level) {
+				case 'violation':
+					AlertIcon = AlertOctagon
+					break
+				case 'warn':
+					AlertIcon = AlertTriangle
+					break
+				case 'info':
+					AlertIcon = Info
+					break
+				default:
+					AlertIcon = Info
+			}
+			if (!BAL.isKnownEventInstance(event)) continue
+			const trigger = BAL.TRIGGERS[event.triggerId]
+
+			alerts.push(
+				<Alert variant={variant} key={event.id} className="w-full">
+					<AlertTitle className="flex items-center space-x-2">
+						<AlertIcon className="h-4 w-4 mr-2" />
+						{trigger.name}
+					</AlertTitle>
+					<AlertDescription>
+						{GENERAL.balanceTrigger.showEvent(event, entry, isCurrent)}
+					</AlertDescription>
+				</Alert>,
+			)
+		}
+
+		return alerts
 	}
 
 	if (currentMatch) {
@@ -71,10 +133,7 @@ export default function MatchHistoryPanel() {
 			{ event: BAL.BalanceTriggerEvent; variant: 'default' | 'destructive' | 'info' | 'warning'; priority: number }
 		> = []
 
-		for (const eventId of historyState.activeTriggerEvents) {
-			const event = historyState.recentBalanceTriggerEvents.find(e => e.id === eventId)
-			if (!event) continue
-
+		for (const event of MH.getActiveTriggerEvents(historyState)) {
 			let variant: 'default' | 'destructive' | 'info' | 'warning'
 			switch (event.level) {
 				case 'info':
@@ -93,7 +152,7 @@ export default function MatchHistoryPanel() {
 			eventAlerts.push({
 				event,
 				variant,
-				priority: getTriggerPriority(event.level),
+				priority: BAL.getTriggerPriority(event.level),
 			})
 		}
 
@@ -122,11 +181,11 @@ export default function MatchHistoryPanel() {
 			triggerAlerts.push(
 				<Alert variant={variant} key={event.id} className="w-full">
 					<AlertTitle className="flex items-center space-x-2">
-						<AlertIcon title={event.level} className="h-4 w-4 mr-2" />
+						<AlertIcon className="h-4 w-4 mr-2" />
 						{trigger.name}
 					</AlertTitle>
 					<AlertDescription>
-						{GENERAL.balanceTrigger.showEvent(event, currentMatch)}
+						{GENERAL.balanceTrigger.showEvent(event, currentMatch, true)}
 					</AlertDescription>
 				</Alert>,
 			)
@@ -199,12 +258,13 @@ export default function MatchHistoryPanel() {
 					<TableHeader>
 						<TableRow className="font-medium">
 							<TableHead></TableHead>
-							<TableHead></TableHead>
+							<TableHead>Time</TableHead>
 							<TableHead>Layer</TableHead>
 							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
 							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}</TableHead>
 							<TableHead>Set By</TableHead>
+							<TableHead className="text-center">Alerts</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -289,15 +349,6 @@ export default function MatchHistoryPanel() {
 									),
 								})
 							}
-							let differenceDisp: React.ReactNode = null
-							if (entry.status === 'post-game') {
-								const difference = dateFns.differenceInHours(new Date(), entry.endTime)
-								if (difference === 0) {
-									differenceDisp = `(-${Math.floor(dateFns.differenceInMinutes(new Date(), entry.endTime)).toString()}m)`
-								} else {
-									differenceDisp = `(-${Math.floor(difference).toString()}h)`
-								}
-							}
 
 							const [leftTeam, rightTeam] = getTeamsDisplay(
 								layer,
@@ -306,18 +357,42 @@ export default function MatchHistoryPanel() {
 								extraLayerStyles,
 							)
 
+							const events = historyState.recentBalanceTriggerEvents.filter(event =>
+								event.matchTriggeredId === entry.historyEntryId
+							)
+							// Get trigger info for this entry
+							const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
+							const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry, false)
+
+							// Determine trigger icon
+							let TriggerIcon = null
+							let triggerIconColor = ''
+							if (triggerLevel) {
+								switch (triggerLevel) {
+									case 'violation':
+										TriggerIcon = AlertOctagon
+										triggerIconColor = 'text-red-500'
+										break
+									case 'warn':
+										TriggerIcon = AlertTriangle
+										triggerIconColor = 'text-yellow-500'
+										break
+									case 'info':
+										TriggerIcon = Info
+										triggerIconColor = 'text-blue-500'
+										break
+								}
+							}
+
 							return (
 								<ContextMenu key={entry.historyEntryId}>
 									<ContextMenuTrigger asChild>
 										<TableRow>
 											<TableCell className="font-mono text-xs">{idx.toString().padStart(2, '0')}</TableCell>
 											<TableCell className="text-xs ">
-												{gameRuntime
-													? <span className="font-mono font-light">{formatTimeLeftWithZeros(gameRuntime)}</span>
+												{entry.startTime
+													? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
 													: <Badge variant="secondary">incomplete</Badge>}
-												<span className="ml-1 text-muted-foreground font-mono font-light">
-													{differenceDisp}
-												</span>
 											</TableCell>
 											<TableCell>
 												<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
@@ -332,18 +407,36 @@ export default function MatchHistoryPanel() {
 											<TableCell>
 												<LayerSourceDisplay source={entry.layerSource} />
 											</TableCell>
+											<TableCell className="text-center">
+												{TriggerIcon && entryTriggerAlerts.length > 0 && (
+													<Tooltip delayDuration={0}>
+														<TooltipTrigger asChild>
+															<Button
+																variant="ghost"
+																size="sm"
+																className={`h-6 w-6 p-0 ${triggerIconColor}`}
+															>
+																<TriggerIcon className="h-4 w-4" />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background">
+															<div className="flex flex-col space-y-2">
+																{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
+															</div>
+														</TooltipContent>
+													</Tooltip>
+												)}
+											</TableCell>
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent>
 										<ContextMenuItem
-											onClick={() =>
-												copyHistoryEntryId()}
+											onClick={() => copyHistoryEntryId()}
 										>
 											copy history entry id
 										</ContextMenuItem>
 										<ContextMenuItem
-											onClick={() =>
-												copyLayerId()}
+											onClick={() => copyLayerId()}
 										>
 											copy layer id
 										</ContextMenuItem>
@@ -363,15 +456,30 @@ export default function MatchHistoryPanel() {
 	)
 }
 
-function formatTimeLeftWithZeros(timeLeft: number) {
-	const duration = dateFns.intervalToDuration({ start: 0, end: timeLeft })
-	const hours = duration.hours || 0
-	const minutes = duration.minutes || 0
-	const seconds = String(duration.seconds || 0).padStart(2, '0')
+function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
+	// Format the start time as HH:mm:ss (24-hour format)
+	const formattedStartTime = dateFns.format(startTime, 'HH:mm:ss')
 
-	if (hours === 0) {
-		return `${String(minutes).padStart(2, '0')}:${seconds}`
+	// Calculate time difference from now
+	const difference = dateFns.differenceInHours(new Date(), startTime)
+	let timeDifferenceText = ''
+	if (difference === 0) {
+		timeDifferenceText = `${Math.floor(dateFns.differenceInMinutes(new Date(), startTime))} minutes ago`
+	} else {
+		timeDifferenceText = `${Math.floor(difference)} hours ago`
 	}
 
-	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${seconds}`
+	// Calculate match length in minutes if runtime is available
+	if (gameRuntime) {
+		// Convert milliseconds to minutes and round to nearest whole number
+		const matchLengthMinutes = Math.round(gameRuntime / (1000 * 60))
+		return (
+			<span title={timeDifferenceText}>
+				{`${formattedStartTime}`}
+				<span className="text-muted-foreground">({`${matchLengthMinutes}m`})</span>
+			</span>
+		)
+	}
+
+	return <span title={timeDifferenceText}>{formattedStartTime}</span>
 }

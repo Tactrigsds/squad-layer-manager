@@ -14,7 +14,12 @@ type BaseBalanceTriggerInput = {
 export const TRIGGER_LEVEL = SchemaModels.TRIGGER_LEVEL
 export type TriggerWarnLevel = z.infer<typeof TRIGGER_LEVEL>
 export type BalanceTriggerEvent = SchemaModels.BalanceTriggerEvent
-export type EvaluationResultBase = { code: 'triggered'; strongerTeam: 'teamA' | 'teamB'; messageTemplate: string }
+export type EvaluationResultBase<Input> = {
+	code: 'triggered'
+	strongerTeam: 'teamA' | 'teamB'
+	messageTemplate: string
+	relevantInput: Input
+}
 export type BalanceTrigger<ID extends string, Input> = {
 	id: ID
 	name: string
@@ -26,7 +31,7 @@ export type BalanceTrigger<ID extends string, Input> = {
 	resolveInput: (input: BaseBalanceTriggerInput) => Input
 
 	// feel free to add more detail in the input
-	evaluate: (ctx: CS.Log, input: Input) => EvaluationResultBase | undefined
+	evaluate: (ctx: CS.Log, input: Input) => EvaluationResultBase<Input> | undefined
 
 	// types only, for convenience
 	_: {
@@ -53,7 +58,7 @@ const trig150x2 = createTrigger<'150x2', MH.PostGameMatchDetails[]>({
 	name: '150 tickets x2',
 	description: '2 consecutive games of a Team winning by 150+ tickets',
 	resolveInput: lastNResolvedMatchesForSession(2),
-	evaluate: resolveBasicTicketStreak(150),
+	evaluate: resolveBasicTicketStreak(150, 2),
 })
 
 const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
@@ -62,13 +67,13 @@ const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
 	name: '200 tickets x2',
 	description: '2 consecutive games of a Team winning by 200+ tickets',
 	resolveInput: lastNResolvedMatchesForSession(2),
-	evaluate: resolveBasicTicketStreak(200),
+	evaluate: resolveBasicTicketStreak(200, 2),
 })
 
-function resolveBasicTicketStreak(threshold: number) {
+function resolveBasicTicketStreak(threshold: number, length: number) {
 	return (_ctx: CS.Log, matchDetails: MH.PostGameMatchDetails[]) => {
 		let prevWinner: 'teamA' | 'teamB' | undefined
-		if (matchDetails.length < 2) return
+		if (matchDetails.length < length) return
 		let match!: MH.PostGameMatchDetails
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
 			match = matchDetails[i]
@@ -82,7 +87,8 @@ function resolveBasicTicketStreak(threshold: number) {
 		return {
 			code: 'triggered' as const,
 			strongerTeam: prevWinner!,
-			messageTemplate: `{{strongerTeam}} has won two games by ${threshold}+ tickets.`,
+			messageTemplate: `{{strongerTeam}} has won ${length} games by ${threshold}+ tickets.`,
+			relevantInput: matchDetails,
 		}
 	}
 }
@@ -105,7 +111,12 @@ const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
 			if (isNullOrUndef(streaker)) streaker = outcome.type
 			streakLength++
 			if (streakLength === 5) {
-				return { code: 'triggered' as const, strongerTeam: streaker!, messageTemplate: `{{strongerTeam}} has won five games in a row.` }
+				return {
+					code: 'triggered' as const,
+					strongerTeam: streaker!,
+					messageTemplate: `{{strongerTeam}} has won five games in a row.`,
+					relevantInput: matchDetails,
+				}
 			}
 		}
 	},
@@ -156,6 +167,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 					code: 'triggered' as const,
 					strongerTeam: streaker!,
 					messageTemplate: `{{strongerTeam}} has been winning for ${currentWindow} games with an average of +${avgDiff} tickets`,
+					relevantInput: matchDetails.slice(matchDetails.length - currentWindow),
 				}
 			}
 		}
@@ -201,4 +213,34 @@ function lastNResolvedMatchesForSession(n: number) {
 		}
 		return matches
 	}
+}
+
+export function getTriggerPriority(level: string): number {
+	switch (level) {
+		case 'violation':
+			return 3
+		case 'warn':
+			return 2
+		case 'info':
+			return 1
+		default:
+			return 0
+	}
+}
+
+export function getHighestPriorityTriggerEvent(events: BalanceTriggerEvent[]): BalanceTriggerEvent | null {
+	if (events.length === 0) return null
+
+	let highestPriority = 0
+	let highestEvent = null
+
+	for (const event of events) {
+		const priority = getTriggerPriority(event.level)
+		if (priority > highestPriority) {
+			highestPriority = priority
+			highestEvent = event
+		}
+	}
+
+	return highestEvent
 }

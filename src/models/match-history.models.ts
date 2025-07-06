@@ -50,13 +50,6 @@ export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
-	activeTriggerEvents: number[]
-}
-
-export function isHistoryLookbackExcludedLayer(layerId: L.LayerId | L.UnvalidatedLayer) {
-	const layer = L.toLayer(layerId)
-	return layer.Layer?.includes('Jensens') || layer.Layer?.includes('PacificProvingGrounds')
-		|| layer.Gamemode && Arr.includes(['Training', 'Seed'], layer.Gamemode)
 }
 
 export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal'>, offset: number) {
@@ -244,4 +237,20 @@ export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B' | 'tea
 export function getTeamNormalizedAllianceProp(offset: number, team: 'A' | 'B' | 'teamA' | 'teamB') {
 	const props = ['Alliance_1', 'Alliance_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
+}
+
+export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
+	const currentMatch = state.recentMatches[state.recentMatches.length - 1] as MatchDetails | undefined
+	const previousMatch = state.recentMatches[state.recentMatches.length - 2] as MatchDetails | undefined
+	const active: BAL.BalanceTriggerEvent[] = []
+	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
+		const event = state.recentBalanceTriggerEvents[i]
+		if (
+			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game')
+			|| (previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
+		) {
+			active.push(event)
+		}
+	}
+	return Array.from(active)
 }

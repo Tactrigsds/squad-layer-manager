@@ -9,12 +9,13 @@ import * as Rx from 'rxjs'
 
 const [initialized$, setInitialized] = createSignal<boolean>()
 
-export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
+export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.PublicMatchHistoryState>(
 	new Rx.Observable<MH.PublicMatchHistoryState>(s => {
 		const sub = trpc.matchHistory.watchMatchHistoryState.subscribe(undefined, {
 			onData: output => {
 				PartsSys.upsertParts(output.parts)
 				s.next(output)
+				console.log({ output })
 				setInitialized(true)
 			},
 			onComplete: () => {
@@ -26,7 +27,7 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
 		})
 		return () => sub.unsubscribe()
 	}),
-	{ activeTriggerEvents: [], recentBalanceTriggerEvents: [], recentMatches: [] },
+	{ recentBalanceTriggerEvents: [], recentMatches: [] },
 )
 
 export const [useRecentMatches, recentMatches$] = ReactRx.bind(
@@ -78,6 +79,5 @@ export const [useCurrentMatchDetails, currentMatchDetails$] = ReactRx.bind(
 
 export function setup() {
 	recentMatchHistory$().subscribe()
-	currentMatchDetails$().subscribe()
 	initializedRecentMatches$().subscribe()
 }

@@ -910,9 +910,6 @@ function PoolRepeatRulesConfigurationPanel(props: {
 					case 'Faction':
 						targetValueOptions = LayerComponents.factions
 						break
-					case 'FactionAndUnit':
-						throw new Error('FactionAndUnit is not a valid field')
-						break
 					case 'Alliance':
 						targetValueOptions = LayerComponents.alliances
 						break
@@ -939,9 +936,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 						/>
 						<ComboBox
 							title={'Rule'}
-							options={LQY.RepeatRuleFieldSchema.options.filter(
-								(o) => o !== 'FactionAndUnit',
-							)}
+							options={LQY.RepeatRuleFieldSchema.options}
 							value={rule.field}
 							allowEmpty={false}
 							onSelect={(value) => {
