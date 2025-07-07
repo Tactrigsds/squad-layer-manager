@@ -1,7 +1,9 @@
 import * as Schema from '$root/drizzle/schema'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as Config from '@/server/config.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
@@ -46,7 +48,8 @@ await DB.runTransaction(ctx, async (ctx) => {
 					mode = values.length > 1 ? 'split' : 'either'
 				} else {
 					masks = values.map((v: string) => {
-						const [faction, unit] = v.split('-')
+						const [faction, unitAbbrev] = v.split('-')
+						const unit = unitAbbrev ? Obj.revLookup(L.StaticLayerComponents.unitAbbreviations, unitAbbrev) : undefined
 						return [{ faction: faction ? [faction] : undefined, unit: unit ? [unit] : undefined }]
 					})
 					mode = comp.values.length > 1 ? 'split' : 'either'
