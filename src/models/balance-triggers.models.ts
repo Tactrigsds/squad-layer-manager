@@ -7,7 +7,7 @@ import { isNullOrUndef } from '../lib/type-guards'
 
 // -------- types --------
 type BaseBalanceTriggerInput = {
-	// includes current match
+	// last entry will the match for the current trigger event
 	history: MH.MatchDetails[]
 }
 
