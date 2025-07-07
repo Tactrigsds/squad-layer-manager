@@ -126,7 +126,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	id: 'RAM3+',
 	version: 1,
 	name: 'Maximum Rolling Average Across 3+',
-	description: 'a rolling average of 100+ tickets across any streak of 3 or more games (utilizing the max of all options.)',
+	description: 'a rolling average of 150+ tickets across any streak of 3 or more games (utilizing the max of all options.)',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
 		console.log(matchDetails)
@@ -162,7 +162,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 			const avgLoser = streaker === 'teamA' ? avgB : avgA
 			const avgDiff = avgWinner - avgLoser
 
-			if (avgDiff >= 100) {
+			if (avgDiff >= 150) {
 				return {
 					code: 'triggered' as const,
 					strongerTeam: streaker!,
