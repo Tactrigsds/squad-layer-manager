@@ -30,7 +30,7 @@ const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? n
 
 const Steps = z.enum(['update-layers-table', 'download-csvs'])
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.sheets, ...Env.groups.db })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>
 
 async function main() {
@@ -94,7 +94,7 @@ function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerCompone
 	const extraLayerColsSubject = new Rx.Subject<any>()
 
 	const seenIds = new Set<string>()
-	fs.createReadStream(path.join(Paths.DATA, 'layers.csv'), 'utf8')
+	fs.createReadStream(ENV.EXTRA_COLS_CSV_PATH, 'utf8')
 		.pipe(
 			parse({
 				columns: true,

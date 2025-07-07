@@ -32,7 +32,7 @@ slm-config.json
 extra-columns.json
 google-credentials.json
 
-/data/layers.csv
+/data/layers*.csv
 
 broken-layers.csv
 drizzle/seed_weights.sql

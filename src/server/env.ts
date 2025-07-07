@@ -1,5 +1,6 @@
-import * as LayerDb from '@/server/systems/layer-db.server.ts'
+import * as Paths from '@/server/paths'
 import * as dotenv from 'dotenv'
+import path from 'node:path'
 import { z } from 'zod'
 import { HumanTime, NormedUrl, ParsedIntSchema } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
@@ -54,8 +55,9 @@ export const groups = {
 		LAYERS_DB_PATH: z.string().default('./data/layers.sqlite3'),
 	},
 
-	sheets: {
+	preprocess: {
 		SPREADHSEET_ID: z.string().default('1A3D4zeOS8YxoEYrWcXa8edBCG_EUueZK9cX2oFMLY9U'),
+		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers.csv')),
 	},
 } satisfies { [key: string]: Record<string, z.ZodTypeAny> }
 
