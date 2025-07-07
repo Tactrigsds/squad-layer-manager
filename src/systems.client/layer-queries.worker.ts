@@ -93,11 +93,9 @@ async function init(config: LC.EffectiveColumnConfig) {
 	let buffer: ArrayBuffer
 
 	if (res.status === 304) {
-		// Not modified, use cached version
 		const cachedFile = await dbHandle.getFile()
 		buffer = await cachedFile.arrayBuffer()
 	} else {
-		// New or updated data
 		buffer = await res.arrayBuffer()
 
 		// Store in OPFS

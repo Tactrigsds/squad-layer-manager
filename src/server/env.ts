@@ -1,8 +1,8 @@
-import * as Paths from '@/server/paths'
 import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import { HumanTime, NormedUrl, ParsedIntSchema } from '../lib/zod'
+import * as Paths from './paths'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {

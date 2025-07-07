@@ -222,32 +222,84 @@ export async function getFilterNodeSQLConditions(
 	let condition: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
-		const column = LC.viewCol(comp.column, ctx)
 		const dbVal = (v: string | number | boolean | null) => LC.dbValue(comp.column, v, ctx)
 		const dbVals = (vs: (string | number | boolean | null)[]) => vs.map(v => dbVal(v))
 		switch (comp.code) {
 			case 'eq': {
+				const column = LC.viewCol(comp.column, ctx)
 				condition = E.eq(column, dbVal(comp.value))!
 				break
 			}
 			case 'in': {
+				const column = LC.viewCol(comp.column, ctx)
 				condition = E.inArray(column, dbVals(comp.values))!
 				break
 			}
+			case 'factions:allow-matchups': {
+				const mode = comp.mode ?? 'either' as const
+				switch (mode) {
+					case 'both': {
+						if (comp.allMasks[0].length > 0) {
+							condition = E.and(
+								E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
+								E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
+							)
+						} else {
+							condition = sql`1 = 1`
+						}
+						break
+					}
+					case 'either': {
+						if (comp.allMasks[0].length > 0) {
+							condition = E.or(
+								E.and(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
+								E.and(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
+							)
+						} else {
+							condition = sql`1 = 1`
+						}
+						break
+					}
+					case 'split': {
+						if (comp.allMasks[0].length > 0 && comp.allMasks[1].length > 0) {
+							condition = E.or(
+								E.and(
+									E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
+									E.or(...comp.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
+								),
+								E.and(
+									E.or(...comp.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
+									E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
+								),
+							)
+						} else {
+							condition = sql`1 = 1`
+						}
+						break
+					}
+					default:
+						assertNever(mode)
+				}
+				break
+			}
 			case 'gt': {
+				const column = LC.viewCol(comp.column, ctx)
 				condition = E.gt(column, dbVal(comp.value))!
 				break
 			}
 			case 'lt': {
+				const column = LC.viewCol(comp.column, ctx)
 				condition = E.lt(column, dbVal(comp.value))!
 				break
 			}
 			case 'inrange': {
+				const column = LC.viewCol(comp.column, ctx)
 				const [min, max] = [...comp.range].sort((a, b) => a - b)
 				condition = E.and(E.gte(column, min), E.lte(column, max))!
 				break
 			}
 			case 'is-true': {
+				const column = LC.viewCol(comp.column, ctx)
 				condition = E.eq(column, 1)!
 				break
 			}
@@ -936,4 +988,22 @@ export const queries = {
 	queryLayerComponents,
 	searchIds,
 	getLayerStatusesForLayerQueue,
+}
+
+function factionMaskToSqlCondition(mask: F.FactionMask, team: 1 | 2, ctx: CS.EffectiveColumnConfig) {
+	const conditions: (SQL<unknown> | undefined)[] = []
+	if (mask.alliance && mask.alliance.length > 0) {
+		const colName = `Alliance_${team}`
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.alliance, ctx)))
+	}
+	if (mask.faction && mask.faction.length > 0) {
+		const colName = `Faction_${team}`
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.faction, ctx)))
+	}
+	if (mask.unit && mask.unit.length > 0) {
+		const colName = `Unit_${team}`
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.unit, ctx)))
+	}
+
+	return conditions.length > 0 ? E.and(...conditions) : sql`1=1`
 }

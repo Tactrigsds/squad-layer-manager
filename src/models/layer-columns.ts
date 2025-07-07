@@ -265,6 +265,7 @@ export function dbValues(
 	ctx?: CS.EffectiveColumnConfig,
 	components = L.StaticLayerComponents,
 ) {
+	if (values.length === 0) return []
 	columnNames = Array.isArray(columnNames) ? columnNames : [columnNames]
 	return columnNames.map((columnName, index) => dbValue(columnName, values[index], ctx, components))
 }

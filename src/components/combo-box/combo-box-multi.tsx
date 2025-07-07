@@ -26,7 +26,7 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	const { values, selectionLimit, disabled } = props
-	const [open, setOpen] = useState(false)
+	const [open, setOpen] = useState(true)
 	const openRef = useRef(open)
 	openRef.current = open
 	useImperativeHandle(ref, () => ({
