@@ -46,30 +46,36 @@ export default function SelectLayersDialog(props: {
 		_setSelectMode(newAdditionType)
 	}
 	const user = useLoggedInUser()
+	const [submitted, setSubmitted] = React.useState(false)
 
-	const canSubmit = selectedLayers.length > 0
+	const canSubmit = selectedLayers.length > 0 && !submitted
 	function submit() {
 		if (!canSubmit) return
-		if (selectMode === 'layers' || selectedLayers.length === 1) {
-			const items = selectedLayers.map(
-				(layerId) =>
-					({
-						layerId: layerId,
-						source: { type: 'manual', userId: user!.discordId },
-					}) satisfies LL.NewLayerListItem,
-			)
-			props.selectQueueItems(items)
-		} else if (selectMode === 'vote') {
-			const item: LL.NewLayerListItem = {
-				vote: {
-					choices: selectedLayers,
-					defaultChoice: selectedLayers[0],
-				},
-				source: { type: 'manual', userId: user!.discordId },
+		setSubmitted(true)
+		try {
+			if (selectMode === 'layers' || selectedLayers.length === 1) {
+				const items = selectedLayers.map(
+					(layerId) =>
+						({
+							layerId: layerId,
+							source: { type: 'manual', userId: user!.discordId },
+						}) satisfies LL.NewLayerListItem,
+				)
+				props.selectQueueItems(items)
+			} else if (selectMode === 'vote') {
+				const item: LL.NewLayerListItem = {
+					vote: {
+						choices: selectedLayers,
+						defaultChoice: selectedLayers[0],
+					},
+					source: { type: 'manual', userId: user!.discordId },
+				}
+				props.selectQueueItems([item])
 			}
-			props.selectQueueItems([item])
+			onOpenChange(false)
+		} finally {
+			setSubmitted(false)
 		}
-		onOpenChange(false)
 	}
 
 	function onOpenChange(open: boolean) {

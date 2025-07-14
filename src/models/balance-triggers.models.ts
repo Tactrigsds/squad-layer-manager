@@ -129,7 +129,6 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	description: 'a rolling average of 150+ tickets across any streak of 3 or more games (utilizing the max of all options.)',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
-		console.log(matchDetails)
 		let streaker: 'teamA' | 'teamB' | undefined
 		let match!: MH.PostGameMatchDetails
 		let streakLength = 0

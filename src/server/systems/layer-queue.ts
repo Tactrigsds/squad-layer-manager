@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireInBlock, distinctDeepEquals, toAsyncGenerator, toCold } from '@/lib/async.ts'
+import { acquireInBlock, distinctDeepEquals, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { deepClone } from '@/lib/object'
@@ -30,7 +30,6 @@ import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
-import { TRPCError } from '@trpc/server'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
@@ -169,7 +168,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 	type LayerStatus = { currentLayer: L.UnvalidatedLayer; nextLayer: L.UnvalidatedLayer | null }
 	type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
 
-	SquadServer.rcon.serverStatus
+	SquadServer.rcon.layersStatus
 		.observe(ctx)
 		.pipe(
 			Rx.filter((statusRes) => statusRes.code === 'ok'),
@@ -444,13 +443,13 @@ function getVoteStateUpdatesFromQueueUpdate(
 	return { code: 'noop' as const }
 }
 
-async function* watchUnexpectedNextLayer() {
-	for await (const [_ctx, unexpectedLayerId] of toAsyncGenerator(unexpectedNextLayerSet$)) {
+async function* watchUnexpectedNextLayer({ signal }: { signal?: AbortSignal }) {
+	for await (const [_ctx, unexpectedLayerId] of toAsyncGenerator(unexpectedNextLayerSet$.pipe(withAbortSignal(signal!)))) {
 		yield unexpectedLayerId
 	}
 }
 
-async function* watchVoteStateUpdates({ ctx }: { ctx: CS.Log & C.Db }) {
+async function* watchVoteStateUpdates({ ctx, signal }: { ctx: CS.Log & C.Db; signal?: AbortSignal }) {
 	let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 	if (voteState) {
 		const ids = getVoteStateDiscordIds(voteState)
@@ -458,7 +457,7 @@ async function* watchVoteStateUpdates({ ctx }: { ctx: CS.Log & C.Db }) {
 		initialState = { ...voteState, parts: { users } }
 	}
 	yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
-	for await (const [ctx, update] of toAsyncGenerator(voteStateUpdate$)) {
+	for await (const [ctx, update] of toAsyncGenerator(voteStateUpdate$.pipe(withAbortSignal(signal!)))) {
 		const withParts = await includeVoteStateUpdatePart(ctx, update)
 		yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
 	}
@@ -485,7 +484,7 @@ export const startVote = C.spanOp(
 
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using acquired = await acquireInBlock(voteStateMtx)
-		const { value: statusRes } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
+		const { value: statusRes } = await SquadServer.rcon.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
 			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Failed to get server status')
 			return statusRes
@@ -713,12 +712,12 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 				state: newVoteState,
 			}
 		} else {
-			const { value: statusRes } = await SquadServer.rcon.serverStatus.get(ctx, { ttl: 10_000 })
-			if (statusRes.code !== 'ok') return statusRes
+			const { value: serverInfoRes } = await SquadServer.rcon.serverInfo.get(ctx, { ttl: 10_000 })
+			if (serverInfoRes.code !== 'ok') return serverInfoRes
 
-			const status = statusRes.data
+			const serverInfo = serverInfoRes.data
 
-			tally = V.tallyVotes(voteState, status.playerCount)
+			tally = V.tallyVotes(voteState, serverInfo.playerCount)
 			C.setSpanOpAttrs({ tally })
 
 			const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
@@ -860,21 +859,21 @@ async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 	return { code: 'ok' as const }
 }
 
-export async function* watchUserPresence({ ctx }: { ctx: CS.Log & C.Db }) {
+export async function* watchUserPresence({ ctx, signal }: { ctx: CS.Log & C.Db; signal?: AbortSignal }) {
 	const users: USR.User[] = []
 	if (userPresence.editState) {
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userPresence.editState.userId))
 		users.push(user)
 	}
 	yield { code: 'initial-state' as const, state: userPresence, parts: { users } } satisfies any & Parts<USR.UserPart>
-	for await (const update of toAsyncGenerator(userPresenceUpdate$)) {
+	for await (const update of toAsyncGenerator(userPresenceUpdate$.pipe(withAbortSignal(signal!)))) {
 		yield { code: 'update' as const, update }
 	}
 }
 
 // -------- generic actions & data  --------
-async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db }) {
-	for await (const [update] of toAsyncGenerator(serverStateUpdate$)) {
+async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db; signal?: AbortSignal }) {
+	for await (const [update] of toAsyncGenerator(serverStateUpdate$.pipe(withAbortSignal(args.signal!)))) {
 		if (update.parts) {
 			yield update
 		} else {
@@ -1068,13 +1067,11 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			constraints.push(...SS.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
 		}
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
-		const { ids } = await LayerQueries.getRandomGeneratedLayers(
-			LayerQueriesServer.resolveLayerQueryCtx(ctx),
-			1,
+		const queryContext: LQY.LayerQueryContext = {
 			constraints,
-			[],
-			false,
-		)
+			...LQY.resolveAllOrderedLayerItems([], MatchHistory.state.recentMatches),
+		}
+		const { ids } = await LayerQueries.getRandomGeneratedLayers(LayerQueriesServer.resolveLayerQueryCtx(ctx), 1, queryContext, false)
 		;[nextLayerId] = ids
 		if (!nextLayerId) return false
 		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })

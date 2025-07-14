@@ -23,7 +23,7 @@ import UserPermissionsDialog from './user-permissions-dialog'
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useAtomValue(trpcConnectedAtom)
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
-	const statusRes = SquadServerClient.useSquadServerStatus()
+	const serverInfoRes = SquadServerClient.useServerInfo()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
@@ -60,17 +60,17 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 							</Button>
 						</span>
 					)}
-					{statusRes?.code === 'ok' && (
+					{serverInfoRes?.code === 'ok' && (
 						<>
 							{trpcConnected === false && (
 								<Alert variant="destructive" className="flex items-center space-x-2">
 									<AlertTitle>Websocket is Disconnected</AlertTitle>
 								</Alert>
 							)}
-							<h3 className={Typography.H4}>{statusRes.data.name}</h3>
+							<h3 className={Typography.H4}>{serverInfoRes.data.name}</h3>
 						</>
 					)}
-					{statusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={statusRes} />}
+					{serverInfoRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverInfoRes} />}
 					{user && (
 						<DropdownMenu open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>

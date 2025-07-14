@@ -3,7 +3,7 @@ import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as V from '@/models/vote.models'
-import { useSquadServerStatus } from '@/systems.client/squad-server.client'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 
 type VoteTallyProps = {
 	voteState: V.VoteStateWithVoteData
@@ -26,9 +26,9 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 		})
 		.sort((a, b) => a.index - b.index)
 
-	const statusRes = useSquadServerStatus()
-	if (statusRes?.code !== 'ok') return null
-	const status = statusRes.data
+	const serverInfoRes = SquadServerClient.useServerInfo()
+	if (serverInfoRes?.code !== 'ok') return null
+	const serverInfo = serverInfoRes.data
 	const totalVoteDisplay = tally.turnoutPercentage !== null ? ` (${tally.turnoutPercentage.toFixed(1)}%)` : null
 	let statusDisplay: string
 	switch (voteState.code) {
@@ -65,7 +65,7 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 					</div>
 				))}
 				<div className="mt-4 text-center text-sm text-gray-500">
-					Received: {tally.totalVotes} of {status?.playerCount} votes{totalVoteDisplay}
+					Received: {tally.totalVotes} of {serverInfo?.playerCount} votes{totalVoteDisplay}
 				</div>
 			</CardContent>
 		</Card>

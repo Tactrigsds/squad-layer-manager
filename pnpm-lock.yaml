@@ -200,6 +200,9 @@ importers:
       '@react-rxjs/utils':
         specifier: ^0.9.7
         version: 0.9.7(@react-rxjs/core@0.10.8(react@18.3.1)(rxjs@7.8.2))(react@18.3.1)(rxjs@7.8.2)
+      '@rx-state/core':
+        specifier: ^0.1.4
+        version: 0.1.4(rxjs@7.8.2)
       '@tanstack/react-form':
         specifier: ^0.41.4
         version: 0.41.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.7.2)
@@ -410,6 +413,9 @@ importers:
       zustand:
         specifier: ^5.0.6
         version: 5.0.6(@types/react@18.3.23)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.5.0(react@18.3.1))
+      zustand-rx:
+        specifier: ^2.1.0
+        version: 2.1.0(rxjs@7.8.2)(zustand@5.0.6(@types/react@18.3.23)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.5.0(react@18.3.1)))
     devDependencies:
       '@babel/plugin-proposal-explicit-resource-management':
         specifier: ^7.27.4
@@ -5801,6 +5807,12 @@ packages:
 
   zod@3.25.67:
     resolution: {integrity: sha512-idA2YXwpCdqUSKRCACDE6ItZD9TZzy3OZMtpfLoh6oPR47lipysRrJfjzMqFxQ3uJuUPyUeWe1r9vLH33xO/Qw==}
+
+  zustand-rx@2.1.0:
+    resolution: {integrity: sha512-ceszeq1PO9SeJFz8bQs+nRFsXZjjPbjETR6oKHMKUeniYag223H8QN89I++pKlBhDShnrlTowpfD3nFLdDLZyQ==}
+    peerDependencies:
+      rxjs: '*'
+      zustand: '*'
 
   zustand@5.0.6:
     resolution: {integrity: sha512-ihAqNeUVhe0MAD+X8M5UzqyZ9k3FFZLBTtqo6JLPwV53cbRB/mJwBI0PxcIgqhBBHlEs8G45OTDTMq3gNcLq3A==}
@@ -11707,6 +11719,11 @@ snapshots:
       zod: 3.25.67
 
   zod@3.25.67: {}
+
+  zustand-rx@2.1.0(rxjs@7.8.2)(zustand@5.0.6(@types/react@18.3.23)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.5.0(react@18.3.1))):
+    dependencies:
+      rxjs: 7.8.2
+      zustand: 5.0.6(@types/react@18.3.23)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.5.0(react@18.3.1))
 
   zustand@5.0.6(@types/react@18.3.23)(immer@10.1.1)(react@18.3.1)(use-sync-external-store@1.5.0(react@18.3.1)):
     optionalDependencies:

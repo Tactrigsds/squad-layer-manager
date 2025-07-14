@@ -1,5 +1,6 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
-import { AsyncResource, distinctDeepEquals, toAsyncGenerator } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as DH from '@/lib/display-helpers.ts'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -10,6 +11,7 @@ import { BROADCASTS, WARNS } from '@/messages.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
+import * as MH from '@/models/match-history.models.ts'
 import * as SME from '@/models/squad-models.events.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
@@ -23,6 +25,7 @@ import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Otel from '@opentelemetry/api'
+import * as Rx from 'rxjs'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 import * as Env from '../env'
@@ -44,7 +47,7 @@ export let rcon!: SquadRcon
 export let squadLogEvents!: SquadEventEmitter
 
 export let adminList!: AsyncResource<SM.AdminList>
-export let serverStatus!: AsyncResource<SM.ServerStatusWithCurrentMatchRes>
+let layersStatusExt$!: Rx.Observable<SM.LayersStatusResExt>
 
 // be a good citizen and don't update this from outside of squad-server
 export let state!: SquadServerState
@@ -69,10 +72,17 @@ export const warnAllAdmins = C.spanOp(
 	},
 )
 
-async function* watchServerStatus({ ctx }: { ctx: CS.Log }) {
-	for await (const info of toAsyncGenerator(serverStatus.observe(ctx, { ttl: 3000 }).pipe(distinctDeepEquals()))) {
-		yield info
+async function* watchLayersStatus({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
+	yield await fetchLayersStatusExt(ctx)
+	ctx.log.info('aborted: %s', signal!.aborted)
+	for await (const res of toAsyncGenerator(layersStatusExt$.pipe(withAbortSignal(signal!)))) {
+		yield res
 	}
+	ctx.log.info('watchlayerStatus ended')
+}
+
+async function* watchServerInfo({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
+	yield* toAsyncGenerator(rcon.serverInfo.observe(ctx).pipe(withAbortSignal(signal!)))
 }
 
 async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
@@ -229,7 +239,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 
 	void coreRcon.connect(ctx)
 		.then(async () => {
-			const { value: statusRes } = await rcon.serverStatus.get(ctx)
+			const { value: statusRes } = await rcon.layersStatus.get(ctx)
 			if (statusRes.code === 'err:rcon') return
 			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
 			const currentMatch = MatchHistory.getCurrentMatch()
@@ -275,25 +285,11 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 			([ctx, event]) => handleSquadEvent(DB.addPooledDb(ctx), event),
 		),
 	).subscribe()
+
 	void squadLogEvents.connect()
 
-	serverStatus = new AsyncResource('serverStatusWithCurrentMatch', async (ctx): Promise<SM.ServerStatusWithCurrentMatchRes> => {
-		const { value: statusRes } = await rcon.serverStatus.get(ctx, {
-			ttl: Math.max(ctx.resOpts.ttl, 5000 / 2),
-		})
-		if (statusRes.code !== 'ok') return statusRes
-		const res: SM.ServerStatusWithCurrentMatchRes = { code: 'ok' as const, data: { ...statusRes.data } }
-		const currentMatch = MatchHistory.getCurrentMatch()
-		if (currentMatch && L.areLayersCompatible(currentMatch.layerId, statusRes.data.currentLayer)) {
-			res.data.currentMatchId = currentMatch.historyEntryId
-		}
-		return res
-	}, { defaultTTL: 5000 })
-
+	layersStatusExt$ = getLayersStatusExt$(ctx)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
-})
-MatchHistory.stateUpdated$.subscribe((ctx) => {
-	serverStatus.invalidate(ctx)
 })
 
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
@@ -301,7 +297,7 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 		case 'NEW_GAME': {
 			state.lastRoll = event.time
 			const res = await DB.runTransaction(ctx, async (ctx) => {
-				const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
+				const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes
 
 				const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
@@ -339,7 +335,7 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 		}
 
 		case 'ROUND_ENDED': {
-			const { value: statusRes } = await rcon.serverStatus.get(ctx, { ttl: 200 })
+			const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
 			// -------- use debug ticketOutcome if one was set --------
 			if (state.debug__ticketOutcome) {
@@ -392,7 +388,7 @@ export function bufferNextMatchLQItem(item: LL.LayerListItem) {
 export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {
 	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
 	if (denyRes) return denyRes
-	const { value: serverStatusRes } = await rcon.serverStatus.get(ctx)
+	const { value: serverStatusRes } = await rcon.layersStatus.get(ctx)
 	if (serverStatusRes.code !== 'ok') return serverStatusRes
 	await rcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
 	if (input.disabled) {
@@ -402,7 +398,45 @@ export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.Us
 }
 
 export const squadServerRouter = router({
-	watchServerStatus: procedure.subscription(watchServerStatus),
+	watchLayersStatus: procedure.subscription(watchLayersStatus),
+	watchServerInfo: procedure.subscription(watchServerInfo),
 	endMatch: procedure.mutation(endMatch),
 	toggleFogOfWar: procedure.input(z.object({ disabled: z.boolean() })).mutation(toggleFogOfWar),
 })
+
+function getLayersStatusExt$(ctx: CS.Log) {
+	return new Rx.Observable<SM.LayersStatusResExt>(s => {
+		const sub = new Rx.Subscription()
+		sub.add(
+			rcon.layersStatus.observe(ctx).subscribe({
+				next: async () => {
+					s.next(await fetchLayersStatusExt(ctx))
+				},
+				error: (err) => s.error(err),
+				complete: () => s.complete(),
+			}),
+		)
+		sub.add(MatchHistory.stateUpdated$.subscribe({
+			next: async () => {
+				s.next(await fetchLayersStatusExt(ctx))
+			},
+			error: (err) => s.error(err),
+			complete: () => s.complete(),
+		}))
+		return () => sub.unsubscribe()
+	}).pipe(Rx.share())
+}
+
+async function fetchLayersStatusExt(ctx: CS.Log) {
+	const { value: statusRes } = await rcon.layersStatus.get(ctx)
+	if (statusRes.code !== 'ok') return statusRes
+	return buildServerStatusRes(statusRes.data, MatchHistory.getCurrentMatch())
+}
+
+function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.MatchDetails) {
+	const res: SM.LayersStatusResExt = { code: 'ok' as const, data: { ...rconStatus } }
+	if (currentMatch && L.areLayersCompatible(currentMatch.layerId, rconStatus.currentLayer)) {
+		res.data.currentMatch = currentMatch
+	}
+	return res
+}

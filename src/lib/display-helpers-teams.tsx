@@ -13,18 +13,19 @@ export function TeamIndicator(props: { team: keyof typeof teamColors }) {
 }
 
 export function getTeamsDisplay(
-	partialLayer: Partial<L.KnownLayer>,
+	_partialLayer: Partial<L.KnownLayer> | L.LayerId,
 	teamParity: number | undefined,
 	_displayLayersNormalized: boolean,
 	withBackfilledStyles?: Record<keyof L.KnownLayer, string | undefined>,
 ) {
+	const partialLayer = typeof _partialLayer === 'string' ? L.toLayer(_partialLayer) : _partialLayer
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
 	const displayLayersNormalized = teamParity !== undefined && _displayLayersNormalized
 	teamParity ??= 0
 	if (!displayLayersNormalized) {
 		const colors = [teamColors.teamA, teamColors.teamB]
-		team1Color = colors[teamParity]
+		team1Color = colors[teamParity % 2]
 		team2Color = colors[(teamParity + 1) % 2]
 	} else if (displayLayersNormalized) {
 		// Colors specifically for (1) and (2) normalized team labels
@@ -46,11 +47,11 @@ export function getTeamsDisplay(
 				)
 				: ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '1' : teamParity === 1 ? 'B' : 'A'}`}
+				title={`Team ${displayLayersNormalized ? '1' : teamParity % 2 === 1 ? 'B' : 'A'}`}
 				className="font-mono text-sm"
 				style={{ color: team1Color }}
 			>
-				{displayLayersNormalized ? '(1)' : teamParity === 1 ? '(B)' : '(A)'}
+				{displayLayersNormalized ? '(1)' : teamParity % 2 === 1 ? '(B)' : '(A)'}
 			</span>
 		</span>,
 		<span>
@@ -63,16 +64,16 @@ export function getTeamsDisplay(
 				)
 				: ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '2' : teamParity === 1 ? 'A' : 'B'}`}
+				title={`Team ${displayLayersNormalized ? '2' : teamParity % 2 === 1 ? 'A' : 'B'}`}
 				className="font-mono text-sm"
 				style={{ color: team2Color }}
 			>
-				{displayLayersNormalized ? '(2)' : teamParity === 1 ? '(A)' : '(B)'}
+				{displayLayersNormalized ? '(2)' : teamParity % 2 === 1 ? '(A)' : '(B)'}
 			</span>
 		</span>,
 	]
 
-	const swapTeamOffset = Number(displayLayersNormalized && teamParity === 1)
+	const swapTeamOffset = Number(displayLayersNormalized && teamParity % 2 === 1)
 
 	return [
 		teamElts[swapTeamOffset],

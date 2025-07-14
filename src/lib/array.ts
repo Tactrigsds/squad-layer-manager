@@ -46,3 +46,8 @@ export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void 
 	}
 	arr.push(item)
 }
+
+export function coalesceArr<T>(input: T | T[]): T[] {
+	if (Array.isArray(input)) return input
+	return [input]
+}

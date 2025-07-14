@@ -1,17 +1,19 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
+import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as MH from '@/models/match-history.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import { useLayerStatuses } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
+import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -19,52 +21,48 @@ import { ConstraintViolationDisplay } from './constraint-violation-display.tsx'
 
 export default function LayerDisplay(
 	props: {
-		layerId: L.LayerId
-		itemId?: string
-		historyEntryId?: number
-		isVoteChoice?: boolean
+		item: LQY.LayerItem
 		badges?: React.ReactNode[]
-		teamParity?: number
 		backfillLayerId?: L.LayerId
 	},
 ) {
-	const layerStatusesRes = useLayerStatuses({ enabled: !!props.itemId })
+	const layerStatusesRes = useLayerStatuses()
 	const badges: React.ReactNode[] = []
 	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 	const allViolationDescriptors = layerStatusesRes.data?.violationDescriptors
+	const teamParity = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),
+	) ?? 0
+
+	const layerItemId = LQY.toLayerItemId(props.item)
 	// violations that this item has caused for the hovered item
-	const hoveredReasonViolationDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== props.itemId
-		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => {
-			if (props.historyEntryId) return vd.reasonItem?.type === 'history-entry' && vd.reasonItem.historyEntryId === props.historyEntryId
-			if (props.itemId) return vd.reasonItem?.type === 'layer-list-item' && vd.reasonItem.layerListItemId === props.itemId
-		})) || undefined
-	const localViolationDescriptors = (props.itemId && hoveredConstraintItemId === props.itemId && allViolationDescriptors?.get(props.itemId))
+	const hoveredReasonViolationDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== layerItemId
+		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.reasonItem && deepEqual(vd.reasonItem, props.item)))
+		|| undefined
+
+	const localViolationDescriptors = hoveredConstraintItemId === layerItemId && allViolationDescriptors?.get(layerItemId)
 		|| undefined
 
 	if (props.badges) badges.push(...props.badges)
 
-	const blockingConstraintIds = props.itemId
-		? layerStatusesRes.data?.blocked.get(
-			LL.toQueueLayerKey(props.itemId, props.isVoteChoice ? props.layerId : undefined),
-		)
-		: undefined
+	const blockingConstraintIds = layerStatusesRes.data?.blocked.get(layerItemId)
 
 	if (blockingConstraintIds) {
 		badges.push(
 			<ConstraintViolationDisplay
 				key="constraint violation display"
 				violated={Array.from(blockingConstraintIds).map(id => constraints.find(c => c.id === id)).filter(c => c !== undefined)}
-				violationDescriptors={props.itemId ? layerStatusesRes.data?.violationDescriptors.get(props.itemId) : undefined}
-				itemId={props.itemId}
-				layerId={props.layerId}
+				violationDescriptors={layerStatusesRes.data?.violationDescriptors.get(layerItemId)}
+				itemId={layerItemId}
 			/>,
 		)
 	}
 
-	if (layerStatusesRes.data && !!props.itemId) {
-		const exists = layerStatusesRes.data.present.has(props.layerId)
-		if (!exists && !L.isRawLayer(props.layerId)) {
+	if (layerStatusesRes.data) {
+		const exists = layerStatusesRes.data.present.has(props.item.layerId)
+		if (!exists && !L.isRawLayerId(props.item.layerId)) {
 			badges.push(
 				<Tooltip key="layer doesn't exist">
 					<TooltipTrigger>
@@ -78,7 +76,7 @@ export default function LayerDisplay(
 		}
 	}
 
-	if (L.isRawLayer(props.layerId)) {
+	if (L.isRawLayerId(props.item.layerId)) {
 		badges.push(
 			<Tooltip key="is raw layer">
 				<TooltipTrigger>
@@ -86,7 +84,7 @@ export default function LayerDisplay(
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						This layer is unknown and was not able to be fully parsed (<b>{props.layerId.slice('RAW:'.length)}</b>)
+						This layer is unknown and was not able to be fully parsed (<b>{props.item.layerId.slice('RAW:'.length)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,
@@ -97,8 +95,8 @@ export default function LayerDisplay(
 		<div className="flex space-x-2 items-center">
 			<span className="flex-1 text-nowrap">
 				<ShortLayerName
-					layerId={props.layerId}
-					teamParity={props.teamParity}
+					layerId={props.item.layerId}
+					teamParity={teamParity}
 					backfillLayerId={props.backfillLayerId}
 					violationDescriptors={localViolationDescriptors || hoveredReasonViolationDescriptors || undefined}
 				/>

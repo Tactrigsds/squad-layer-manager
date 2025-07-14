@@ -254,3 +254,5 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	}
 	return Array.from(active)
 }
+
+export const RECENT_HISTORY_ITEMS_PER_PAGE = 10

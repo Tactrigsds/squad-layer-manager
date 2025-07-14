@@ -15,7 +15,8 @@ const tracer = Otel.trace.getTracer('squad-rcon')
 export default class SquadRcon {
 	event$: Subject<SM.SquadEvent> = new Subject()
 
-	serverStatus: AsyncResource<SM.ServerStatusRes>
+	layersStatus: AsyncResource<SM.LayerStatusRes>
+	serverInfo: AsyncResource<SM.ServerInfoRes>
 	playerList: AsyncResource<SM.PlayerListRes>
 	squadList: AsyncResource<SM.SquadListRes>
 
@@ -24,7 +25,8 @@ export default class SquadRcon {
 		public core: Rcon,
 		private opts?: { warnPrefix?: string },
 	) {
-		this.serverStatus = new AsyncResource('serverStatus', (ctx) => this.getServerStatus(ctx), { defaultTTL: 5000 })
+		this.layersStatus = new AsyncResource('serverStatus', (ctx) => this.getServerLayerStatus(ctx), { defaultTTL: 5000 })
+		this.serverInfo = new AsyncResource('serverInfo', (ctx) => this.getServerInfo(ctx), { defaultTTL: 10_000 })
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
 		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx), { defaultTTL: 5000 })
 
@@ -37,7 +39,7 @@ export default class SquadRcon {
 
 		// immediately reset the state of all resources when the connection state changes
 		const sub = core.connected$.subscribe(() => {
-			this.serverStatus.invalidate(ctx)
+			this.layersStatus.invalidate(ctx)
 			this.playerList.invalidate(ctx)
 			this.squadList.invalidate(ctx)
 		})
@@ -57,7 +59,7 @@ export default class SquadRcon {
 		if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
 		const layer = match[2]
 		const factions = match[3]
-		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
+		return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`)! }
 	}
 
 	private async getNextLayer(ctx: CS.Log) {
@@ -223,8 +225,8 @@ export default class SquadRcon {
 		const cmd = L.getAdminSetNextLayerCommand(layer)
 		ctx.log.info(`Setting next layer: %s, `, cmd)
 		await this.core.execute(ctx, cmd)
-		this.serverStatus.invalidate(ctx)
-		const newStatus = (await this.serverStatus.get(ctx)).value
+		this.layersStatus.invalidate(ctx)
+		const newStatus = (await this.layersStatus.get(ctx)).value
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
@@ -259,29 +261,19 @@ export default class SquadRcon {
 		return { code: 'ok' as const, length: match ? parseInt(match[1], 10) : 0 }
 	}
 
-	private getServerStatus = C.spanOp('squad-rcon:getServerstatus', { tracer }, async (_ctx: CS.Log): Promise<SM.ServerStatusRes> => {
-		const rawDataPromise = this.core.execute(_ctx, `ShowServerInfo`)
-		const currentLayerTask = this.getCurrentLayer(_ctx)
-		const nextLayerTask = this.getNextLayer(_ctx)
-		const rawDataRes = await rawDataPromise
+	private async getServerInfo(ctx: CS.Log): Promise<SM.ServerInfoRes> {
+		const rawDataRes = await this.core.execute(ctx, `ShowServerInfo`)
 		if (rawDataRes.code !== 'ok') return rawDataRes
 		const data = JSON.parse(rawDataRes.data)
 		const res = SM.ServerRawInfoSchema.safeParse(data)
 		if (!res.success) {
-			_ctx.log.error(res.error, `Failed to parse server info: %O`, data)
+			ctx.log.error(res.error, `Failed to parse server info: %O`, data)
 			return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
 		}
 
 		const rawInfo = res.data
-		const currentLayerRes = await currentLayerTask
-		const nextLayerRes = await nextLayerTask
-		if (currentLayerRes.code !== 'ok') return currentLayerRes
-		if (nextLayerRes.code !== 'ok') return nextLayerRes
-
-		const serverStatus: SM.ServerStatus = {
+		const serverStatus: SM.ServerInfo = {
 			name: rawInfo.ServerName_s,
-			currentLayer: currentLayerRes.layer!,
-			nextLayer: nextLayerRes.layer,
 			maxPlayerCount: rawInfo.MaxPlayers,
 			playerCount: rawInfo.PlayerCount_I,
 			queueLength: rawInfo.PublicQueue_I,
@@ -292,7 +284,30 @@ export default class SquadRcon {
 			code: 'ok' as const,
 			data: serverStatus,
 		}
-	})
+	}
+
+	private getServerLayerStatus = C.spanOp(
+		'squad-rcon:getServerLayerstatus',
+		{ tracer },
+		async (_ctx: CS.Log): Promise<SM.LayerStatusRes> => {
+			const currentLayerTask = this.getCurrentLayer(_ctx)
+			const nextLayerTask = this.getNextLayer(_ctx)
+			const currentLayerRes = await currentLayerTask
+			const nextLayerRes = await nextLayerTask
+			if (currentLayerRes.code !== 'ok') return currentLayerRes
+			if (nextLayerRes.code !== 'ok') return nextLayerRes
+
+			const serverStatus: SM.LayersStatus = {
+				currentLayer: currentLayerRes.layer,
+				nextLayer: nextLayerRes.layer,
+			}
+
+			return {
+				code: 'ok' as const,
+				data: serverStatus,
+			}
+		},
+	)
 }
 
 function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {

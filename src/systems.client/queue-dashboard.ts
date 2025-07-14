@@ -1,9 +1,10 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { useToast } from '@/hooks/use-toast'
+import * as Arr from '@/lib/array'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
-import { deepClone, selectProps } from '@/lib/object'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as ZusUtils from '@/lib/zustand'
@@ -16,9 +17,10 @@ import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as RBAC from '@/rbac.models'
 import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
+import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as RbacClient from '@/systems.client/rbac.client'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
+import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
@@ -27,10 +29,11 @@ import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
+import * as ZusRx from 'zustand-rx'
 import { fetchConfig } from './config.client'
 import * as FilterEntityClient from './filter-entity.client'
-import * as MatchHistoryClient from './match-history.client'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
+import * as SquadServerClient from './squad-server.client'
 import * as UsersClient from './users.client'
 
 // -------- types --------
@@ -48,13 +51,7 @@ export type LLState = {
 	nextLayerBackfillId?: string
 	listMutations: ItemMutations
 
-	// the parity of the first item in a regular layer list, but if vote choice it's all items
-	teamParity: number
-
 	isVoteChoice?: boolean
-
-	// this is usually just the main layer pool but for vote choice layer lists it could be more specific
-	baseQueryContext: LQY.LayerQueryContext
 }
 
 export type LLStore = LLState & LLActions
@@ -70,9 +67,7 @@ export type LLActions = {
 export type LLItemState = {
 	index: number
 	item: LL.LayerListItem
-	teamParity: number
 	mutationState: ItemMutationState
-	baseQueryContext: LQY.LayerQueryContext
 }
 
 export type LLItemStore = LLItemState & LLItemActions
@@ -101,7 +96,6 @@ export type QDState = {
 	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
-	queueTeamParity: number
 	poolApplyAs: {
 		dnr: LQY.LayerQueryConstraint['applyAs']
 		filter: LQY.LayerQueryConstraint['applyAs']
@@ -201,17 +195,15 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 	}
 }
 
-export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item' | 'teamParity' | 'baseQueryContext'>): LLState => {
+export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item'>): LLState => {
 	return {
 		listMutations: ItemMut.initMutations(),
 		layerList: itemState.item.vote?.choices.map(choice => LL.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
 		isVoteChoice: true,
-		teamParity: itemState.teamParity,
-		baseQueryContext: itemState.baseQueryContext,
 	}
 }
 
-export const getVoteChoiceStore = (itemState: Pick<LLItemState, 'item' | 'teamParity' | 'baseQueryContext'>) => {
+export const getVoteChoiceStore = (itemState: Pick<LLItemState, 'item'>) => {
 	const initialState = getVoteChoiceStateFromItem(itemState)
 	return Zus.createStore<LLStore>((set, get) => ({
 		...createLLActions(set, get),
@@ -237,16 +229,10 @@ export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
 export const selectLLState = (state: QDState): LLState => ({
 	layerList: state.editedServerState.layerQueue,
 	listMutations: state.queueMutations,
-	teamParity: state.queueTeamParity,
 	nextLayerBackfillId:
 		(state.serverState && LL.getNextLayerId(state.serverState?.layerQueue) === LL.getNextLayerId(state.editedServerState.layerQueue))
 			? state.nextLayerBackfillId
 			: undefined,
-	baseQueryContext: {
-		constraints: state.serverState
-			? selectQDQueryConstraints(state)
-			: undefined,
-	},
 })
 
 export const deriveLLStore = (store: Zus.StoreApi<QDStore>) => {
@@ -315,16 +301,12 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 		const layerList = get(store).layerList
 		const index = layerList.findIndex((item) => item.itemId === itemId)
 		const isVoteChoice = get(store).isVoteChoice
-		const baseQueryContext = get(store).baseQueryContext
-		const firstItemTeamParity = get(store).teamParity
 		if (isVoteChoice) {
 			return {
 				...actions,
 				index,
 				item: layerList[index],
 				mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
-				teamParity: firstItemTeamParity,
-				baseQueryContext: { previousLayerIds: [], ...baseQueryContext },
 			}
 		}
 		return {
@@ -332,8 +314,6 @@ export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) 
 			index,
 			item: layerList[index],
 			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
-			baseQueryContext,
-			teamParity: MH.getTeamParityForOffset({ ordinal: firstItemTeamParity }, index + 1),
 		}
 	})
 }
@@ -345,8 +325,6 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 			listMutations: mutState,
 			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: { type: 'gameserver' } })) ?? [],
 			isVoteChoice: true,
-			baseQueryContext: state.baseQueryContext,
-			teamParity: state.teamParity,
 		}
 	}
 	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
@@ -395,7 +373,6 @@ export const initialState: QDState = {
 	isEditing: false,
 	canEditQueue: false,
 	canEditSettings: false,
-	queueTeamParity: 0,
 	stopEditingInProgress: false,
 	extraQueryFilters: [],
 	poolApplyAs: {
@@ -419,7 +396,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		distinctDeepEquals(),
 	)
 
-	SquadServerClient.squadServerStatus$.subscribe(status => {
+	SquadServerClient.layersStatus$.subscribe(status => {
 		set({ nextLayerBackfillId: (status.code === 'ok' && status.data.nextLayer) ? status.data.nextLayer.id : undefined })
 	})
 
@@ -490,7 +467,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	const getInitialStateToReset = (): Partial<QDState> => {
 		return {
-			editedServerState: deepClone(initialState.editedServerState),
+			editedServerState: Obj.deepClone(initialState.editedServerState),
 			queueMutations: ItemMut.initMutations(),
 		}
 	}
@@ -514,11 +491,6 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	let maxQueueSize: number = 10
 	fetchConfig().then(config => {
 		maxQueueSize = config.maxQueueSize ?? 10
-	})
-
-	MatchHistoryClient.currentMatchDetails$().subscribe(details => {
-		if (!details) return
-		set({ queueTeamParity: MH.getTeamParityForOffset(details, 0) })
 	})
 
 	return {
@@ -632,6 +604,50 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
+export const [useFullLayerQueryContext, fullLayerQueryContext$] = ReactRx.bind(
+	Rx.combineLatest([
+		MatchHistoryClient.recentMatches$,
+		ZusRx.toStream(QDStore, state => Obj.selectProps(state, ['poolApplyAs', 'extraQueryFilters', 'editedServerState'])).pipe(
+			distinctDeepEquals(),
+		),
+	]).pipe(Rx.map(([history, state]) => {
+		return selectFullQueryContext(
+			state.editedServerState.layerQueue,
+			history,
+			state.editedServerState.settings.queue.mainPool,
+			state,
+		)
+	})),
+	{},
+)
+
+function selectFullQueryContext(
+	layerQueue: LL.LayerList,
+	history: MH.MatchDetails[],
+	mainPool: SS.PoolConfiguration,
+	state: Pick<QDStore, 'poolApplyAs' | 'extraQueryFilters'>,
+): LQY.LayerQueryContext {
+	const constraints = SS.getPoolConstraints(mainPool, state.poolApplyAs.dnr, state.poolApplyAs.filter)
+	for (const { filterId, active } of state.extraQueryFilters) {
+		if (!active) continue
+		constraints.push({
+			type: 'filter-entity',
+			id: 'extra-filter:' + filterId,
+			filterEntityId: filterId,
+			applyAs: 'where-condition',
+		})
+	}
+
+	return {
+		constraints,
+		...LQY.resolveAllOrderedLayerItems(layerQueue, history),
+	}
+}
+
+export function setup() {
+	fullLayerQueryContext$.subscribe()
+}
+
 export function selectQDQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
 	const queryConstraints = SS.getPoolConstraints(
 		state.editedServerState.settings.queue.mainPool,
@@ -650,45 +666,6 @@ export function selectQDQueryConstraints(state: QDState): LQY.LayerQueryConstrai
 	}
 
 	return queryConstraints
-}
-
-export function selectLayerListQueryContext(
-	state: Pick<LLState, 'layerList' | 'baseQueryContext' | 'isVoteChoice'>,
-	// index can be up to and including the length of the list
-	atIndex?: number,
-): LQY.LayerQueryContext {
-	const queueLayerIds = LL.getAllLayerIdsFromList(state.layerList, { excludeVoteChoices: true })
-	// points to next layer in queue past existing one
-	atIndex = atIndex ?? state.layerList.length
-	if (state.isVoteChoice) {
-		let constraints = state.baseQueryContext.constraints
-		const filter = FB.comp(FB.inValues('id', queueLayerIds.filter((id, idx) => idx !== atIndex)), { neg: true })
-		constraints = [...(state.baseQueryContext.constraints ?? []), LQY.filterToConstraint(filter, 'vote-choice-sibling-exclusion' + atIndex)]
-		return {
-			previousLayerIds: state.baseQueryContext.previousLayerIds ?? [],
-			constraints,
-		}
-	}
-
-	return {
-		...state.baseQueryContext,
-		previousLayerIds: [...(state.baseQueryContext.previousLayerIds ?? []), ...queueLayerIds.slice(0, atIndex)],
-	}
-}
-
-export function selectItemQueryContext(itemState: Pick<LLItemState, 'baseQueryContext' | 'index'>) {
-	return {
-		...itemState.baseQueryContext,
-		previousLayerIds: itemState.baseQueryContext.previousLayerIds?.slice(0, itemState.index) ?? [],
-	}
-}
-
-export function useLayerListItemQueryContext(itemStore: Zus.StoreApi<LLItemStore>): LQY.LayerQueryContext {
-	const { baseQueryContext, index } = ZusUtils.useStoreDeep(itemStore, (s) => selectProps(s, ['baseQueryContext', 'index']))
-	return {
-		...baseQueryContext,
-		previousLayerIds: baseQueryContext.previousLayerIds?.slice(0, index) ?? [],
-	}
 }
 
 /**

@@ -1,11 +1,15 @@
+import * as Arr from '@/lib/array'
 import * as OneToMany from '@/lib/one-to-many-map'
+import { isNullOrUndef } from '@/lib/type-guards'
+import * as FB from '@/models/filter-builders'
+import * as SS from '@/models/server-state.models'
+import deepEqual from 'fast-deep-equal'
 import { z } from 'zod'
 import * as F from './filter.models'
 import * as L from './layer'
 import * as LC from './layer-columns'
 import * as LL from './layer-list.models'
 import * as MH from './match-history.models'
-import * as SS from './server-state.models'
 
 export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
@@ -109,37 +113,28 @@ export type LayersQueryInput = {
 	pageIndex?: number
 	pageSize?: number
 	sort?: LayersQuerySort
-	constraints?: LayerQueryConstraint[]
+} & LayerQueryContext
 
-	// Layer Ids to be considered as part of the history for Repeat rules,
-	previousLayerIds?: L.LayerId[]
-}
-
-export type LayerComponentsInput = {
-	constraints?: LayerQueryConstraint[]
-	previousLayerIds?: L.LayerId[]
-}
+export type LayerComponentsInput = LayerQueryContext
 
 export type LayerExistsInput = L.LayerId[]
 
 export type SearchIdsInput = {
 	queryString: string
 	constraints?: LayerQueryConstraint[]
-	previousLayerIds?: string[]
 }
 
-export type LayerStatusesForLayerQueueInput = {
-	queue: LL.LayerList
-	pool: SS.PoolConfiguration
+export type LayerStatusesForLayerQueueInput = LayerQueryContext & {
+	// the number of history entries to resolve statuses for before the layer queue
+	numHistoryEntriesToResolve?: number
 }
+
 export type LayerQueryContext = {
 	constraints?: LayerQueryConstraint[]
 
-	// ids previous to this one but after any relevant layer history, in the order they would appear in the queue/list
-	previousLayerIds?: L.LayerId[]
-
-	// whether to consider stored match history for layers previous to previousLayerIds. defaults to true
-	applyMatchHistory?: boolean
+	// "layer items" to be considered as part of the history
+	previousLayerItems?: OrderedLayerItems
+	firstLayerItemParity?: number
 }
 
 export type GenLayerQueueItemsOptions = {
@@ -160,14 +155,6 @@ export type LayerStatuses = {
 	violationDescriptors: Map<string, ViolationDescriptor[]>
 }
 
-export type ViolationReasonItem = {
-	type: 'layer-list-item'
-	layerListItemId: string
-} | {
-	type: 'history-entry'
-	historyEntryId: number
-}
-
 export type ViolationDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
@@ -180,7 +167,7 @@ export type ViolationDescriptor = {
 		| 'Faction_B'
 		| 'Alliance_A'
 		| 'Alliance_B'
-	reasonItem?: ViolationReasonItem
+	reasonItem?: LayerItem
 }
 
 export function resolveViolatedLayerProperties(descriptors: ViolationDescriptor[], teamParity: number) {
@@ -212,8 +199,271 @@ export function getFactionAndUnitValue(faction: string, unit: string | null | un
 	return faction + '_' + unit || ''
 }
 
-export function getLayerStatusId(layerId: L.LayerId, filterEntityId: F.FilterEntityId) {
-	return `${layerId}::${filterEntityId}`
+type LayerItemPartsCommon = {
+	layerId: L.LayerId
+}
+
+// uniquely identifies positions layers can appear within the application's state
+export type LayerItem =
+	| LayerItemPartsCommon & {
+		type: 'list-item'
+		itemId: string
+	}
+	| VoteChoiceLayerItem
+	| LayerItemPartsCommon & {
+		type: 'match-history-entry'
+		historyEntryId: number
+	}
+
+type VoteChoiceLayerItem = LayerItemPartsCommon & {
+	type: 'vote-item'
+	itemId: string
+	choiceIndex: number
+}
+
+type ParentVoteItem = { parentItemId: string; choices: VoteChoiceLayerItem[] }
+export type OrderedLayerItems = (LayerItem | ParentVoteItem)[]
+export function isParentVoteItem(item: ParentVoteItem | LayerItem): item is ParentVoteItem {
+	return !!(item as any).parentItemId
+}
+
+export function coalesceLayerItems(item: ParentVoteItem | LayerItem) {
+	return isParentVoteItem(item) ? item.choices : [item]
+}
+
+export function* iterLayerItems(items: OrderedLayerItems): Generator<LayerItem> {
+	for (const item of items) {
+		if (isParentVoteItem(item)) {
+			yield* iterLayerItems(item.choices)
+		} else {
+			yield item
+		}
+	}
+}
+
+export type LayerItemId = string
+export function toLayerItemId(item: LayerItem) {
+	switch (item.type) {
+		case 'list-item':
+			return `l:${item.layerId}:${item.itemId}`
+		case 'vote-item':
+			return `v:${item.layerId}:${item.itemId}:${item.choiceIndex}`
+		case 'match-history-entry':
+			return `h:${item.layerId}:${item.historyEntryId}`
+	}
+}
+
+export function fromLayerItemId(id: LayerItemId): LayerItem {
+	const parts = id.split(':')
+	if (parts[0] === 'l') {
+		return {
+			type: 'list-item',
+			layerId: parts[1] as L.LayerId,
+			itemId: parts[2],
+		}
+	} else if (parts[0] === 'v') {
+		return {
+			type: 'vote-item',
+			layerId: parts[1] as L.LayerId,
+			itemId: parts[2],
+			choiceIndex: parseInt(parts[3]),
+		}
+	} else if (parts[0] === 'h') {
+		return {
+			type: 'match-history-entry',
+			layerId: parts[1] as L.LayerId,
+			historyEntryId: parseInt(parts[2]),
+		}
+	}
+	throw new Error(`Invalid LayerItemId: ${id}`)
+}
+
+export function resolveAllOrderedLayerItems(layerList: LL.LayerList, history: MH.MatchDetails[]) {
+	const orderedItems: OrderedLayerItems = []
+	const firstLayerItemParity = history[0]?.ordinal ?? 0
+	for (const entry of history) {
+		orderedItems.push(getLayerItemForMatchHistoryEntry(entry))
+	}
+
+	for (const listItem of layerList) {
+		if (listItem.vote) {
+			const choiceItems: VoteChoiceLayerItem[] = []
+			for (let i = 0; i < listItem.vote.choices.length; i++) {
+				choiceItems.push(getLayerItemForVoteItem(listItem, i))
+			}
+			const parent: ParentVoteItem = { parentItemId: listItem.itemId, choices: choiceItems }
+			orderedItems.push(parent)
+		} else {
+			orderedItems.push(getLayerItemForListItem(listItem))
+		}
+	}
+	return { previousLayerItems: orderedItems, firstLayerItemParity }
+}
+
+export function resolveRelevantOrderedItemsForQuery(
+	orderedItems?: OrderedLayerItems,
+	constraints?: LayerQueryConstraint[],
+	opts?: { onlyCheckingWhere?: boolean },
+) {
+	opts ??= {}
+	opts.onlyCheckingWhere ??= false
+	orderedItems ??= []
+	constraints ??= []
+	const relevantItems: OrderedLayerItems = []
+	let maxLookback = 0
+	for (const constraint of constraints) {
+		if (constraint.type !== 'do-not-repeat') continue
+		if (opts.onlyCheckingWhere && constraint.applyAs !== 'where-condition') continue
+		maxLookback = Math.max(maxLookback, constraint.rule.within)
+	}
+
+	for (let i = orderedItems.length - 1; i >= 0; i--) {
+		const item = orderedItems[i]
+
+		if (maxLookback < (orderedItems.length - i)) {
+			break
+		}
+
+		const layer = !isParentVoteItem(item) ? L.toLayer(item.layerId) : undefined
+		if (!isParentVoteItem(item) && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer!.Gamemode as string)) {
+			break
+		}
+		relevantItems.push(item)
+	}
+
+	return relevantItems.reverse()
+}
+
+export function getAllLayerIds(items: OrderedLayerItems) {
+	const ids: L.LayerId[] = []
+	for (const item of iterLayerItems(items)) {
+		ids.push(item.layerId)
+	}
+	return ids
+}
+
+export function getLayerItemForListItem(item: LL.LayerListItem): LayerItem {
+	return {
+		type: 'list-item',
+		itemId: item.itemId,
+		layerId: LL.getActiveItemLayerId(item),
+	}
+}
+
+export function getLayerItemForVoteItem(item: LL.LayerListItem, choiceIndex: number): VoteChoiceLayerItem {
+	return {
+		type: 'vote-item',
+		itemId: item.itemId,
+		layerId: item.vote!.choices[choiceIndex],
+		choiceIndex: choiceIndex,
+	}
+}
+
+export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerItem {
+	return {
+		type: 'match-history-entry',
+		historyEntryId: entry.historyEntryId,
+		layerId: entry.layerId,
+	}
+}
+
+export function getParityForLayerItem(context: LayerQueryContext, _item: LayerItem | LayerItemId) {
+	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
+
+	if (!context.previousLayerItems) return 0
+	const itemIndex = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
+	if (isNullOrUndef(itemIndex)) throw new Error('Item not found')
+	const parity = itemIndex + (context.firstLayerItemParity ?? 0)
+	return parity
+}
+
+/**
+ * Gets the query context for editing a particular layer item
+ */
+export function getQueryContextForEditedItem(
+	context: LayerQueryContext,
+	_item: LayerItem | LayerItemId,
+): LayerQueryContext {
+	if (!context.previousLayerItems) return context
+	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
+	const index = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
+	const constraints = context.constraints ?? []
+	if (index === -1) return context
+	if (item.type === 'vote-item') {
+		const parentItem = context.previousLayerItems[index]
+		if (isParentVoteItem(parentItem)) {
+			const layerIds: LayerItemId[] = []
+			for (const currentItem of parentItem.choices) {
+				layerIds.push(currentItem.layerId)
+			}
+			const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
+			constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion-' + index))
+		}
+	}
+	return {
+		...context,
+		previousLayerItems: context.previousLayerItems?.slice(0, index),
+	}
+}
+
+// assumes current item at index will be shifted to the right if one exists
+export function getQueryContextForInsertAtQueueIndex(context: LayerQueryContext, index: number) {
+	if (!context.previousLayerItems) return context
+	const layerItems = [...context.previousLayerItems]
+	let firstQueueItemIdx = -1
+	for (let i = 0; i < layerItems.length; i++) {
+		const item = layerItems[i]
+		if (!isParentVoteItem(item) && item.type === 'match-history-entry') continue
+		firstQueueItemIdx = i
+		break
+	}
+	let insertAtIndex: number
+	if (firstQueueItemIdx === -1) insertAtIndex = layerItems.length
+	else insertAtIndex = insertAtIndex = index
+
+	return {
+		...context,
+		previousLayerItems: layerItems.slice(0, insertAtIndex),
+	}
+}
+
+export function getQueryContextForAddingVoteChoice(
+	context: LayerQueryContext,
+	editedItemId: string,
+) {
+	if (!context.previousLayerItems) return context
+	const index = context.previousLayerItems.findIndex(item => isParentVoteItem(item) && item.parentItemId === editedItemId)
+	if (index === -1) return context
+	const parentItem = context.previousLayerItems[index] as ParentVoteItem
+
+	const constraints = context.constraints ? [...context.constraints] : []
+	const layerIds: L.LayerId[] = []
+	for (const currentItem of parentItem.choices) {
+		layerIds.push(currentItem.layerId)
+	}
+	const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
+	constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion-' + index))
+	return {
+		...context,
+		previousLayerItems: context.previousLayerItems?.slice(0, index),
+	}
+}
+
+export function getQueryContextForAfterItem(
+	context: LayerQueryContext,
+	_item: LayerItem | LayerItemId,
+): LayerQueryContext {
+	if (!context.previousLayerItems) return context
+	const layerItem = typeof _item === 'string' ? fromLayerItemId(_item) : _item
+	let index = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, layerItem)))
+	if (index === undefined) {
+		console.warn('Item not found in previousLayerItems: ', layerItem)
+		index = context.previousLayerItems.length - 1
+	}
+	return {
+		...context,
+		previousLayerItems: context.previousLayerItems.slice(0, index + 1),
+	}
 }
 
 export const LayerTableConfigSchema = z.object({

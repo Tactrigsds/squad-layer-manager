@@ -1,5 +1,6 @@
 import * as zUtils from '@/lib/zod'
 import * as L from '@/models/layer'
+import * as MH from '@/models/match-history.models'
 import { z } from 'zod'
 import { OneToManyMap } from '../lib/one-to-many-map'
 
@@ -27,19 +28,27 @@ export const ServerRawInfoSchema = z.object({
 	TeamTwo_s: z.string().optional(),
 })
 
-export type ServerStatus = {
+export type LayersStatus = {
+	currentLayer: L.UnvalidatedLayer
+	nextLayer: L.UnvalidatedLayer | null
+}
+
+export type ServerInfo = {
 	name: string
 	maxPlayerCount: number
 	playerCount: number
 	queueLength: number
 	maxQueueLength: number
-	currentLayer: L.UnvalidatedLayer
-	nextLayer: L.UnvalidatedLayer | null
 }
 
-export type ServerStatusWithCurrentMatch = ServerStatus & {
-	currentMatchId?: number
+export type LayersStatusExt = LayersStatus & {
+	currentMatch?: MH.MatchDetails
 }
+
+export type RconError = { code: 'err:rcon'; msg: string }
+export type ServerInfoRes = { code: 'ok'; data: ServerInfo } | RconError
+export type LayerStatusRes = { code: 'ok'; data: LayersStatus } | RconError
+export type LayersStatusResExt = { code: 'ok'; data: LayersStatusExt } | RconError
 
 export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
@@ -66,6 +75,9 @@ export const SquadSchema = z.object({
 })
 
 export type Squad = z.infer<typeof SquadSchema>
+
+export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
+export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
 export const COMMAND_SCOPES = z.enum(['admin', 'public'])
 export type CommandScope = z.infer<typeof COMMAND_SCOPES>
@@ -164,38 +176,6 @@ export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type SquadAdmins = OneToManyMap<bigint, string>
 export type SquadGroups = OneToManyMap<string, string>
 export type AdminList = { admins: SquadAdmins; groups: SquadGroups }
-
-export const BiomeSchema = z.object({
-	name: z.string(),
-	maps: z.array(z.string()),
-	factions: z.array(z.string()),
-})
-export type Biome = z.infer<typeof BiomeSchema>
-
-export const AllianceSchema = z.object({
-	name: z.string(),
-	factions: z.array(z.string()),
-})
-export type Alliance = z.infer<typeof AllianceSchema>
-
-const bluefor = ['ADF', 'BAF', 'CAF', 'USA', 'USMC'] as const
-const pac = ['PLA', 'PLAAGF', 'PLANMC'] as const
-const redfor = ['RGF', 'VDV'] as const
-export const BIOME_FACTIONS = {
-	'Afghanistan / Central Asia': [...bluefor, 'MEA', 'INS', 'TLF', 'WPMC', ...redfor, ...pac],
-	'Middle East': [...bluefor, 'MEA', 'INS', 'TLF', 'WPMC', ...redfor, ...pac],
-	// https://docs.google.com/spreadsheets/d/1uRUfh-HvOncjHo36uciChQn4MD2oK78g3WLoHLtTREk/edit?pli=1&gid=1025614852#gid=1025614852 sheet appears to be wrong, no  IMF
-	'Eastern Europe': [...bluefor, 'MEA', 'TLF', 'WPMC', 'IMF', ...redfor, ...pac],
-	'Northern Europe': [...bluefor, 'WPMC', 'IMF', ...redfor],
-	'North America': [...bluefor, 'WPMC', ...redfor, ...pac],
-	Asia: [...bluefor, 'WPMC', ...pac],
-}
-
-export type RconError = { code: 'err:rcon'; msg: string }
-export type ServerStatusRes = { code: 'ok'; data: ServerStatus } | RconError
-export type ServerStatusWithCurrentMatchRes = { code: 'ok'; data: ServerStatusWithCurrentMatch } | RconError
-export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
-export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
 export const RCON_MAX_BUF_LEN = 4152
 

@@ -12,6 +12,7 @@ import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
+import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
@@ -56,7 +57,7 @@ import TabsList from './ui/tabs-list.tsx'
 import VoteTallyDisplay from './votes-display.tsx'
 
 export default function LayerQueueDashboard() {
-	const serverStatusRes = SquadServerClient.useSquadServerStatus()
+	const serverStatusRes = SquadServerClient.useServerInfo()
 
 	// -------- set title --------
 	React.useEffect(() => {
@@ -169,8 +170,11 @@ function QueueControlPanel() {
 	}
 	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
 
-	const addToQueueQueryContext = ZusUtils.useStoreDeep(QD.LQStore, (state) => QD.selectLayerListQueryContext(state, state.layerList.length))
-	const playNextQueryContext = ZusUtils.useStoreDeep(QD.LQStore, (state) => QD.selectLayerListQueryContext(state, 0))
+	const addToQueueQueryContext = QD.useFullLayerQueryContext()
+	const playNextQueryContext = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback(context => LQY.getQueryContextForInsertAtQueueIndex(context, 0), []),
+	)
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -413,7 +417,7 @@ function VoteState() {
 	const abortVoteMutation = useAbortVote()
 	const toaster = useToast()
 	const voteState = useVoteState()
-	const squadServerStatus = SquadServerClient.useSquadServerStatus()
+	const serverInfoRes = SquadServerClient.useServerInfo()
 	const loggedInUser = useLoggedInUser()
 
 	const userPresence = useUserPresenceState()
@@ -479,7 +483,7 @@ function VoteState() {
 		})
 		&& !editInProgress
 
-	if (!voteState || !squadServerStatus || squadServerStatus.code !== 'ok') {
+	if (!voteState || !serverInfoRes || serverInfoRes.code !== 'ok') {
 		return null
 	}
 	function onSubmit(e: React.FormEvent) {
@@ -582,7 +586,7 @@ function VoteState() {
 						/>
 						<VoteTallyDisplay
 							voteState={voteState}
-							playerCount={squadServerStatus.data.playerCount}
+							playerCount={serverInfoRes.data.playerCount}
 						/>
 						{cancelBtn}
 					</>
@@ -594,7 +598,7 @@ function VoteState() {
 				<>
 					<VoteTallyDisplay
 						voteState={voteState}
-						playerCount={squadServerStatus.data.playerCount}
+						playerCount={serverInfoRes.data.playerCount}
 					/>
 					{rerunVoteBtn}
 					{voteConfigElt}
@@ -611,7 +615,7 @@ function VoteState() {
 				<>
 					<VoteTallyDisplay
 						voteState={voteState}
-						playerCount={squadServerStatus.data.playerCount}
+						playerCount={serverInfoRes.data.playerCount}
 					/>
 					<Alert variant="destructive">
 						<AlertTitle>Vote Aborted</AlertTitle>
@@ -1044,13 +1048,14 @@ function UnexpectedNextLayerAlert() {
 
 function SyncToSquadServerDisabledAlert() {
 	const { enableUpdates } = QD.useToggleSquadServerUpdates()
-	const serverStatusRes = SquadServerClient.useSquadServerStatus()
+	const layerStatusRes = SquadServerClient.useLayersStatus()
+	const serverInfoRes = SquadServerClient.useServerInfo()
 	const loggedInUser = useLoggedInUser()
 	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
-	const nextLayerDisplay = (serverStatusRes.code === 'ok' && serverStatusRes.data.nextLayer)
+	const nextLayerDisplay = (layerStatusRes.code === 'ok' && layerStatusRes.data.nextLayer)
 		? (
 			<>
-				Next Layer is set to: <b>{DH.displayUnvalidatedLayer(serverStatusRes.data.nextLayer)}</b>t
+				Next Layer is set to: <b>{DH.displayUnvalidatedLayer(layerStatusRes.data.nextLayer)}</b>t
 			</>
 		)
 		: ''
@@ -1061,7 +1066,7 @@ function SyncToSquadServerDisabledAlert() {
 				<AlertDescription>
 					<p>
 						SLM is not currently syncing layers in the queue to{' '}
-						<b>{serverStatusRes.code === 'ok' ? serverStatusRes.data.name : 'Squad Server'}</b>.
+						<b>{serverInfoRes.code === 'ok' ? serverInfoRes.data.name : 'Squad Server'}</b>.
 					</p>
 					<p>
 						{nextLayerDisplay}

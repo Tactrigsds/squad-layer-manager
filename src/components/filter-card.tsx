@@ -7,7 +7,6 @@ import * as Obj from '@/lib/object.ts'
 import { eltToFocusable, Focusable } from '@/lib/react'
 import { cn } from '@/lib/utils.ts'
 import * as EFB from '@/models/editable-filter-builders.ts'
-import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -531,14 +530,16 @@ export function Comparison(props: {
 		case 'gt':
 		case 'lt': {
 			valueBox = (
-				<NumericSingleValueConfig
-					ref={valueBoxRef}
-					className={cn('w-[200px]', componentStyles)}
-					value={comp.value as number | undefined}
-					setValue={(value) => {
-						return setComp((c) => ({ ...c, value }))
-					}}
-				/>
+				<div className="w-[100px]">
+					<NumericSingleValueConfig
+						ref={valueBoxRef}
+						className={componentStyles}
+						value={comp.value as number | undefined}
+						setValue={(value) => {
+							return setComp((c) => ({ ...c, value }))
+						}}
+					/>
+				</div>
 			)
 			break
 		}
@@ -629,13 +630,7 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const queryContext = {
-		previousLayerIds: props.queryContext?.previousLayerIds ?? [],
-		...(
-			props.queryContext?.previousLayerIds ?? []
-		),
-	}
-	const valuesRes = useLayerComponents(queryContext)
+	const valuesRes = useLayerComponents(props.queryContext ?? {})
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
 	return (
 		<ComboBox
@@ -697,17 +692,14 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 		_setInputValue(value)
 		debouncer.setValue(value)
 	}
-	const constraints = queryContext?.constraints ?? []
 
 	const valuesRes = useLayerComponents(
-		{
-			previousLayerIds: queryContext?.previousLayerIds ?? [],
-		},
+		queryContext ?? {},
 		{
 			enabled: debouncedInput !== '' && column !== 'id',
 		},
 	)
-	const idsRes = useSearchIds({ constraints, previousLayerIds: queryContext?.previousLayerIds, queryString: debouncedInput }, {
+	const idsRes = useSearchIds({ constraints: queryContext?.constraints, queryString: debouncedInput }, {
 		enabled: debouncedInput !== '' && column === 'id',
 	})
 
@@ -1068,9 +1060,6 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 					)
 					: (
 						<div className="space-y-2">
-							<h4 className="text-sm font-medium">
-								{currentMode === 'both' ? 'Both Teams' : 'Either Team'}
-							</h4>
 							<FactionMaskListConfig
 								ref={ref}
 								value={getTeam1Masks()}

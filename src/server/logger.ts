@@ -98,13 +98,5 @@ export function ensureLoggerSetup() {
 			assertNever(ENV.NODE_ENV)
 	}
 
-	baseLogger = pino(baseConfig, createFormatPrettyPrintTransport())
-}
-
-export function createFormatPrettyPrintTransport() {
-	return build(async function(source) {
-		for await (const obj of source) {
-			LOG.showLogEvent(obj)
-		}
-	})
+	baseLogger = pino(baseConfig, { write: (msg) => LOG.showLogEvent(JSON.parse(msg)) })
 }

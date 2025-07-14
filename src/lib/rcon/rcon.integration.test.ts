@@ -55,7 +55,7 @@ test('can set next layer', async () => {
 	// make sure currently set next layer is not the same as the one we are going to set
 	await squadRcon.setNextLayer(ctx, layer1Id)
 
-	const status1 = (await squadRcon.serverStatus.get(ctx)).value
+	const status1 = (await squadRcon.layersStatus.get(ctx)).value
 	expect(status1.code).toBe('ok')
 	if (status1.code !== 'ok') throw new Error('Failed to get server status')
 	const nextLayer1 = status1.data.nextLayer
@@ -74,7 +74,7 @@ test('can set next layer', async () => {
 		Unit_2: 'CombinedArms',
 	})!
 	await squadRcon.setNextLayer(ctx, layer2Id)
-	const status2 = (await squadRcon.serverStatus.get(ctx)).value
+	const status2 = (await squadRcon.layersStatus.get(ctx)).value
 	expect(status2.code).toBe('ok')
 	if (status2.code !== 'ok') throw new Error('Failed to get server status')
 	const nextLayer2 = status2.data.nextLayer
@@ -90,7 +90,7 @@ test('can get server status', async () => {
 	const ctx = C.includeLogProperties(baseCtx, {
 		test: 'can get server status',
 	})
-	const status = await squadRcon.serverStatus.get(ctx)
+	const status = await squadRcon.layersStatus.get(ctx)
 	ctx.log.info('server status %o', status)
 	expect(status).toBeDefined()
 })

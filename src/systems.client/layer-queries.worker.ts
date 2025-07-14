@@ -10,7 +10,7 @@ import initSqlJs from 'sql.js'
 
 export type QueryType = keyof typeof queries
 
-export type DynamicQueryCtx = CS.Filters & CS.MatchHistory
+export type DynamicQueryCtx = CS.Filters
 
 export type Incoming<Q extends QueryType = QueryType> = Sequenced & {
 	type: Q

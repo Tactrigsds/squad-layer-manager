@@ -154,9 +154,12 @@ export function getKnownLayer(layer: LayerIdArgs): KnownLayer | null {
 	return res.layer
 }
 
-export function isRawLayer(layer: UnvalidatedLayer | LayerId): layer is RawLayer {
+export function isRawLayer(layer: UnvalidatedLayer): layer is RawLayer {
 	const id = typeof layer === 'string' ? layer : layer.id
 	return id !== undefined && id.startsWith('RAW:')
+}
+export function isRawLayerId(layerId: LayerId) {
+	return layerId.startsWith('RAW:')
 }
 
 export function parseKnownLayerId(id: string, components = StaticLayerComponents) {

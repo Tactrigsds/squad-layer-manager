@@ -158,7 +158,6 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 				<ConstraintViolationDisplay
 					padEmpty={true}
 					violated={namedConstraints}
-					layerId={info.row.id}
 					violationDescriptors={violationDescriptors}
 				/>
 			)

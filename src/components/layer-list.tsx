@@ -6,12 +6,15 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards.ts'
+import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -19,6 +22,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as DndKit from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
+import * as ReactRx from '@react-rxjs/core'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -90,16 +94,16 @@ function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	const allowVotes = props.allowVotes ?? true
 
-	const [initialItem, index, baseQueryContext, teamParity] = ZusUtils.useStoreDeep(
+	const [initialItem, index] = ZusUtils.useStoreDeep(
 		props.itemStore,
-		(s) => [s.item, s.index, s.baseQueryContext, s.teamParity],
+		(s) => [s.item, s.index],
 	)
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<QD.LLItemStore>((set, get) =>
-			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState(), baseQueryContext, index, teamParity })
+			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState(), index })
 		)
-	}, [initialItem, baseQueryContext, index, teamParity])
+	}, [initialItem, index])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
 	const editedVoteChoiceStore = QD.useVoteChoiceStore(editedItemStore)
@@ -118,11 +122,18 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const canSubmitVoteChoices = Zus.useStore(editedVoteChoiceStore, s => s.layerList.length > 0)
 	const canSubmit = itemType === 'set-layer' ? canSubmitSetLayer : canSubmitVoteChoices
 
-	const voteChoiceAddLayersQueryContext = ZusUtils.useStoreDeep(
-		editedVoteChoiceStore,
-		state => QD.selectLayerListQueryContext(state, state.layerList.length),
+	// const voteChoiceAddLayersQueryContext = React.useMemo(() => (
+	// 	LQY.getQueryContextForAddingVoteChoice(fullQueryContext, editedItem.itemId)
+	// ), [editedItem.itemId, fullQueryContext])
+	const voteChoiceAddLayersQueryContext = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback(context => LQY.getQueryContextForAddingVoteChoice(context, editedItem.itemId), [editedItem.itemId]),
 	)
-	const editedItemQueryContext = QD.useLayerListItemQueryContext(editedItemStore)
+
+	const editedItemQueryContext = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback(context => LQY.getQueryContextForEditedItem(context, LQY.getLayerItemForListItem(editedItem)), [editedItem]),
+	)
 
 	function submit() {
 		if (!canSubmit) return
@@ -298,7 +309,7 @@ function LayerListItem(props: QueueItemProps) {
 	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable({
 		id: draggableItemId,
 	})
-	const [teamParity, index] = Zus.useStore(itemStore, useShallow((s) => [s.teamParity, s.index]))
+	const index = Zus.useStore(itemStore, (s) => s.index)
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
@@ -336,12 +347,11 @@ function LayerListItem(props: QueueItemProps) {
 
 	const queueItemStyles =
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
-	const serverStatus = SquadServerClient.useSquadServerStatus()
-	let squadServerNextLayer: L.UnvalidatedLayer | null = null
-	if (serverStatus?.code === 'ok') squadServerNextLayer = serverStatus?.data.nextLayer ?? null
+	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
 
 	if (
-		!isEditing && squadServerNextLayer && index === 0 && !L.areLayersCompatible(LL.getActiveItemLayerId(item), squadServerNextLayer, true)
+		!isEditing && layersStatus?.nextLayer && index === 0
+		&& !L.areLayersCompatible(LL.getActiveItemLayerId(item), layersStatus.nextLayer, true)
 	) {
 		badges.push(
 			<Tooltip key="not current next">
@@ -391,12 +401,8 @@ function LayerListItem(props: QueueItemProps) {
 									<li key={choice} className="flex items-center ">
 										<span className="mr-2">{index + 1}.</span>
 										<LayerDisplay
-											itemId={props.itemId}
-											layerId={choice}
-											isVoteChoice={true}
+											item={{ type: 'vote-item', itemId: item.itemId, layerId: choice, choiceIndex: index }}
 											badges={badges}
-											teamParity={teamParity}
-											backfillLayerId={backfillLayerId}
 										/>
 									</li>
 								)
@@ -427,7 +433,7 @@ function LayerListItem(props: QueueItemProps) {
 					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay layerId={item.layerId} itemId={item.itemId} teamParity={teamParity} backfillLayerId={backfillLayerId} />
+							<LayerDisplay item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }} backfillLayerId={backfillLayerId} />
 						</div>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
@@ -459,12 +465,18 @@ function ItemDropdown(props: {
 		props.onStartEdit?.()
 		_setSubDropdownState(state)
 	}
-	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)
-	const addLayersBeforeQueryContext = ZusUtils.useStoreDeep(props.itemStore, QD.selectItemQueryContext)
-	const addLayersAfterQueryContext = ZusUtils.useStoreDeep(
-		props.itemStore,
-		state => QD.selectItemQueryContext({ baseQueryContext: state.baseQueryContext, index: state.index + 1 }),
+	const [layerId, itemIndex] = Zus.useStore(props.itemStore, useShallow(s => [s.item.layerId, s.index]))
+
+	const addLayersBeforeQueryContext = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback((context) => LQY.getQueryContextForInsertAtQueueIndex(context, itemIndex), [itemIndex]),
 	)
+
+	const addLayersAfterQueryContext = ReactRxHelpers.useStateObservableSelection(
+		QD.fullLayerQueryContext$,
+		React.useCallback((context) => LQY.getQueryContextForInsertAtQueueIndex(context, itemIndex + 1), [itemIndex]),
+	)
+
 	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item))
 
 	const user = useLoggedInUser()

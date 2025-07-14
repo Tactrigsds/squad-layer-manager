@@ -50,12 +50,11 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
-		baseLogger.info(
+		baseLogger.debug(
 			{
 				method: request.method,
 				url: request.url,
 				ip: request.ip,
-				userAgent: request.headers['user-agent'],
 			},
 			'incoming request %s %s',
 			request.method,

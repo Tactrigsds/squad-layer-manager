@@ -1,21 +1,17 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
-import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
-import { baseLogger } from '@/server/systems/logger.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import type * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
-import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
-import * as Zus from 'zustand'
 
 let lqWorker!: Worker
 
@@ -71,8 +67,7 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryContext, opts?: {
 	}
 
 	return {
-		previousLayerIds: queryContext.previousLayerIds ?? [],
-		constraints: queryContext.constraints ?? [],
+		...queryContext,
 		pageIndex,
 		sort,
 		pageSize,
@@ -106,9 +101,7 @@ export function useLayerStatuses(
 	options?: { enabled?: boolean },
 ) {
 	options ??= {}
-	const editedQueue = Zus.useStore(QD.QDStore, s => s.editedServerState.layerQueue)
-	const editedPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.mainPool)
-	const args = useArgs({ queue: editedQueue, pool: editedPool })
+	const args = useArgs({ ...QD.useFullLayerQueryContext() })
 	return useQuery({
 		...options,
 		queryKey: [
@@ -149,15 +142,19 @@ export function useLayerExists(
 // get context/input that may invalidate the query
 function getDepKey<I>(args?: { ctx: WorkerTypes.DynamicQueryCtx; input: I }) {
 	if (!args) return
-	return superjson.serialize(args)
+	return {
+		...args,
+		ctx: {
+			...args.ctx,
+			filters: args.ctx.filters.map(f => ({ ...f, owner: f.owner.toString() })),
+		},
+	}
 }
 
 export async function fetchArgs<T>(input: T): Promise<{ ctx: WorkerTypes.DynamicQueryCtx; input: T }> {
-	const recentMatches = await MatchHistoryClient.resolveInitializedRecentMatches()
 	const filters = await FilterEntityClient.resolveInitializedFilterEntities()
 	return {
 		ctx: {
-			recentMatches,
 			filters: Array.from(filters.values()),
 		},
 		input,
@@ -165,13 +162,11 @@ export async function fetchArgs<T>(input: T): Promise<{ ctx: WorkerTypes.Dynamic
 }
 
 function useArgs<T>(input: T): { ctx: WorkerTypes.DynamicQueryCtx; input: T } | undefined {
-	const recentMatches = MatchHistoryClient.useInitializedRecentMatches()
 	const filters = FilterEntityClient.useInitializedFilterEntities()
-	if (!recentMatches || !filters) return
+	if (!filters) return
 	return {
 		input,
 		ctx: {
-			recentMatches,
 			filters: Array.from(filters.values()),
 		},
 	}

@@ -7,10 +7,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
+import * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
-import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
@@ -24,9 +24,9 @@ import { Timer } from './timer.tsx'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
 export default function CurrentLayerCard() {
-	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
 	const loggedInUser = useLoggedInUser()
-	const serverStatusRes = SquadServerClient.useSquadServerStatus()
+	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
+	const serverInfoStatusRes = SquadServerClient.useServerInfo()
 
 	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
 	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
@@ -55,14 +55,13 @@ export default function CurrentLayerCard() {
 		}
 	}
 
-	if (serverStatusRes.code !== 'ok') return null
-	const serverStatus = serverStatusRes.data
-	const currentLayerId = (currentMatch?.layerId && L.areLayersCompatible(currentMatch.layerId, serverStatus.currentLayer.id))
-		? currentMatch.layerId
-		: serverStatus.currentLayer.id
-	const layerDetails = L.toLayer(currentLayerId)
-	const [team1Elt, team2Elt] = getTeamsDisplay(layerDetails, currentMatch?.ordinal, false)
-	const isEmpty = serverStatus.playerCount === 0
+	if (serverLayerStatusRes.code !== 'ok') return null
+	if (serverInfoStatusRes.code !== 'ok') return null
+	const layersStatus = serverLayerStatusRes.data
+	const currentMatch = serverLayerStatusRes.data.currentMatch
+	const serverInfo = serverInfoStatusRes.data
+	const [team1Elt, team2Elt] = getTeamsDisplay(layersStatus.currentLayer.id, currentMatch?.ordinal, false)
+	const isEmpty = serverInfo.playerCount === 0
 
 	let postGameElt: React.ReactNode = null
 	if (!isEmpty && currentMatch?.status === 'post-game') {
@@ -103,13 +102,9 @@ export default function CurrentLayerCard() {
 						Current Layer:
 					</CardTitle>
 					<div>
-						{currentLayerId && (
-							<LayerDisplay
-								layerId={currentLayerId}
-								historyEntryId={currentMatch?.historyEntryId}
-								teamParity={currentMatch ? currentMatch?.ordinal % 2 : undefined}
-							/>
-						)}
+						{currentMatch
+							? <LayerDisplay item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
+							: (DH.displayUnvalidatedLayer(layersStatus.currentLayer))}
 					</div>
 				</span>
 				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}
@@ -117,8 +112,8 @@ export default function CurrentLayerCard() {
 			<CardContent className="flex justify-between">
 				<div className="flex items-center space-x-2">
 					<div className="flex space-x-2 items-center">
-						<div>{serverStatus.playerCount} / {serverStatus.maxPlayerCount} online</div>
-						<div>{serverStatus.queueLength} / {serverStatus.maxQueueLength} in queue</div>
+						<div>{serverInfo.playerCount} / {serverInfo.maxPlayerCount} online</div>
+						<div>{serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue</div>
 					</div>
 					<div className="w-max">
 						{isEmpty && (
@@ -177,9 +172,9 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 
 	const loggedInUser = useLoggedInUser()
 	const endMatchMutation = SquadServerClient.useEndMatch()
-	const serverStatusRes = SquadServerClient.useSquadServerStatus()
-	if (!serverStatusRes || serverStatusRes?.code === 'err:rcon') return null
-	const serverStatus = serverStatusRes.data
+	const serverInfoRes = SquadServerClient.useServerInfo()
+	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
+	const serverInfo = serverInfoRes.data
 
 	async function endMatch() {
 		setIsOpen(false)
@@ -205,7 +200,7 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 					<DialogTitle>End Match</DialogTitle>
 				</DialogHeader>
 				<DialogDescription>
-					Are you sure you want to end the match for <b>{serverStatus?.name}</b>?
+					Are you sure you want to end the match for <b>{serverInfo?.name}</b>?
 				</DialogDescription>
 				<DialogFooter>
 					<Button disabled={!canEndMatch} onClick={endMatch} variant="destructive">

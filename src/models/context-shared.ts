@@ -23,4 +23,4 @@ export type MatchHistory = {
 	recentMatches: MH.MatchDetails[]
 }
 
-export type LayerQuery = Layers & Log & Filters & MatchHistory
+export type LayerQuery = Layers & Log & Filters

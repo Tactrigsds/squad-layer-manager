@@ -6,9 +6,7 @@ import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
-import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -22,8 +20,10 @@ function getDefaultFilterMenuItemState(defaultFields: Partial<L.KnownLayer>): Re
 		Map: EFB.eq('Map', defaultFields['Map']),
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion'] ?? undefined),
+		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
 		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
+		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_1'] ?? undefined),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
 		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 	} as Record<keyof L.KnownLayer, F.EditableComparison>
@@ -133,7 +133,6 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 		props.filterMenuStore,
 		state => selectProps(state, ['menuItems', 'siblingFilters']),
 	)
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	function applySetFilterFieldComparison(name: keyof L.KnownLayer): React.Dispatch<React.SetStateAction<F.EditableComparison>> {
 		return (update) => {
@@ -191,10 +190,13 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 			Im.produce((draft) => {
 				const faction1 = draft['Faction_1'].value
 				const subFac1 = draft['Unit_1'].value
+				const alliance1 = draft['Alliance_1'].value
 				draft['Faction_1'].value = draft['Faction_2'].value
 				draft['Unit_1'].value = draft['Unit_2'].value
+				draft['Alliance_1'].value = draft['Alliance_2'].value
 				draft['Faction_2'].value = faction1
 				draft['Unit_2'].value = subFac1
+				draft['Alliance_2'].value = alliance1
 			}),
 		)
 	}
@@ -222,8 +224,9 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 					}
 
 					const swapFactionsDisabled = !(
-						(storeState.menuItems['Faction_1'].value !== undefined || storeState.menuItems['Unit_1'].value !== undefined)
-						|| (storeState.menuItems['Faction_2'].value !== undefined || storeState.menuItems['Unit_2'].value !== undefined)
+						['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(key =>
+							storeState.menuItems[key as keyof L.KnownLayer].value !== undefined
+						)
 					)
 
 					let constraints = props.queryContext.constraints ?? []
@@ -236,8 +239,8 @@ export default function LayerFilterMenu(props: { filterMenuStore: Zus.StoreApi<F
 
 					return (
 						<React.Fragment key={name}>
-							{(name === 'Map' || name === 'Faction_1') && <Separator className="col-span-4 my-2" />}
-							{name === 'Faction_2' && (
+							{(name === 'Map' || name === 'Alliance_1') && <Separator className="col-span-4 my-2" />}
+							{name === 'Alliance_2' && (
 								<>
 									<Button title="Swap Factions" disabled={swapFactionsDisabled} onClick={swapFactions} size="icon" variant="outline">
 										<Icons.FlipVertical2 />

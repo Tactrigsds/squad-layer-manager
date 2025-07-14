@@ -1,6 +1,7 @@
 import * as CS from '@/models/context-shared'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
+import { Observable } from '@trpc/server/observable'
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
@@ -51,18 +52,18 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 			n?.resolve(data)
 		},
 		error(err) {
-			if (err) nextData?.reject(err)
+			const n = nextData
+			nextData = defer()
+			n?.reject(err)
 		},
 		complete() {
 			nextData?.resolve(DeferredEmpty)
-			nextData = null
 		},
 	})
 	try {
 		while (true) {
 			const value = await nextData
-			if (!nextData) break
-			if (value === DeferredEmpty) continue
+			if (value === DeferredEmpty) break
 			yield value as T
 		}
 	} finally {
@@ -299,4 +300,9 @@ export async function acquireInBlock(mutex: Mutex, opts?: { bypass?: boolean }) 
 		},
 		mutex,
 	}
+}
+
+export function withAbortSignal<T>(signal: AbortSignal) {
+	const abort$: Rx.Observable<any> = signal.aborted ? Rx.of(1) : Rx.fromEvent(signal, 'abort')
+	return (o: Rx.Observable<T>) => o.pipe(Rx.takeUntil(abort$))
 }

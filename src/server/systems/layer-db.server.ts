@@ -67,6 +67,7 @@ export async function setup(opts?: { skipHash?: boolean; mode?: 'populate' | 're
 	} else if (opts.mode === 'populate') {
 		driver.pragma('journal_mode = WAL')
 	}
+	// IMPORTANT: While the pattern for running queries with this object appears async, it's actually synchronous/blocking. If this becomes an issue on the server we'll need to address it, but for now we're only running queries to autogenerate layers when the queue is empty.
 	db = drizzle(ENV.LAYERS_DB_PATH, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {

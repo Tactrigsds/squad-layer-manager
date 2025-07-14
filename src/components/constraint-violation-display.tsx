@@ -12,19 +12,13 @@ export type ConstraintViolationDisplayProps = {
 	violationDescriptors?: LQY.ViolationDescriptor[]
 	teamParity?: number
 	children?: React.ReactNode
-	layerId: string
-	itemId?: string
+	itemId?: LQY.LayerItemId
 	padEmpty?: boolean
 }
 
 export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProps) {
 	const onMouseOver = () => {
-		QD.QDStore.getState().setHoveredConstraintItemId(original => {
-			if (original !== props.itemId) {
-				return props.itemId
-			}
-			return original
-		})
+		QD.QDStore.getState().setHoveredConstraintItemId(props.itemId)
 	}
 	const onMouseOut = () => {
 		QD.QDStore.getState().setHoveredConstraintItemId(original => {

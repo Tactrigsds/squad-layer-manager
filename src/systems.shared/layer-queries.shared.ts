@@ -1,6 +1,4 @@
-import * as Arr from '@/lib/array'
-import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
+import { sleep } from '@/lib/async'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
@@ -9,10 +7,8 @@ import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import * as SS from '@/models/server-state.models'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 
@@ -27,32 +23,24 @@ export async function queryLayers(args: {
 }) {
 	const ctx = args.ctx
 	let input = args.input
-	input = { ...input }
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
-	input.previousLayerIds ??= []
 	if (input.sort && input.sort.type === 'random') {
 		const { layers, totalCount } = await getRandomGeneratedLayers(
 			ctx,
 			input.pageSize,
-			input.constraints ?? [],
-			input.previousLayerIds ?? [],
+			input,
 			true,
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}
-	const constraints = input.constraints ?? []
+	input = {
+		...input,
+		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(input.previousLayerItems, input.constraints),
+	}
+	if (input.sort?.type === 'random') throw new Error('type narrowing')
 
-	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
-		ctx,
-		input.previousLayerIds ?? [],
-	)
-	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(
-		ctx,
-		historicLayers,
-		oldestLayerTeamParity,
-		input.constraints ?? [],
-	)
+	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(ctx, input)
 
 	const includeWhere = (query: any) => {
 		if (whereConditions.length > 0) {
@@ -81,7 +69,7 @@ export async function queryLayers(args: {
 				assertNever(input.sort)
 		}
 	}
-	query = query.offset(input.pageIndex * input.pageSize).limit(input.pageSize)
+	query = query.offset(input.pageIndex! * input.pageSize!).limit(input.pageSize)
 
 	let countQuery = ctx
 		.layerDb()
@@ -90,14 +78,14 @@ export async function queryLayers(args: {
 	countQuery = includeWhere(countQuery)
 
 	const rows = await query
-	const layers = postProcessLayers(ctx, rows, constraints, historicLayers, oldestLayerTeamParity)
+	const layers = postProcessLayers(ctx, rows, input)
 	const [countResult] = await countQuery.execute()
 	const totalCount = Number(countResult.count)
 	return {
 		code: 'ok' as const,
 		layers: layers,
 		totalCount,
-		pageCount: Math.ceil(totalCount / input.pageSize),
+		pageCount: Math.ceil(totalCount / input.pageSize!),
 	}
 }
 
@@ -132,13 +120,11 @@ export async function queryLayerComponents({
 	ctx: CS.LayerQuery
 	input: LQY.LayerComponentsInput
 }) {
-	input = { ...input }
-	const constraints = input.constraints ?? []
-	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
-		ctx,
-		input.previousLayerIds ?? [],
-	)
-	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, historicLayers, oldestLayerTeamParity, constraints)
+	input = {
+		...input,
+		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(input.previousLayerItems, input.constraints, { onlyCheckingWhere: true }),
+	}
+	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, input)
 
 	const res = Object.fromEntries(
 		await Promise.all(LC.GROUP_BY_COLUMNS.map(
@@ -156,26 +142,14 @@ export async function queryLayerComponents({
 }
 
 export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: LQY.SearchIdsInput }) {
-	const { queryString, constraints, previousLayerIds } = input
-
-	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
-		ctx,
-		previousLayerIds ?? [],
-	)
-
-	const { conditions: whereConditions } = await buildConstraintSqlCondition(
-		ctx,
-		historicLayers,
-		oldestLayerTeamParity,
-		constraints ?? [],
-	)
+	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, input)
 
 	const results = await ctx
 		.layerDb()
 		.select({ id: LC.layerStrIds.idStr })
 		.from(LC.layerStrIds)
 		.leftJoin(LC.layersView(ctx), E.eq(LC.viewCol('id', ctx), LC.layerStrIds.id))
-		.where(E.and(E.like(LC.layerStrIds.idStr, `%${queryString}%`), ...whereConditions))
+		.where(E.and(E.like(LC.layerStrIds.idStr, `%${input.queryString}%`), ...whereConditions))
 		.limit(15)
 
 	return {
@@ -184,17 +158,16 @@ export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input
 	}
 }
 
-export async function getConstraintSQLConditions(
+export function getConstraintSQLConditions(
 	ctx: CS.Log & CS.Layers & CS.Filters,
 	constraint: LQY.LayerQueryConstraint,
-	previousLayerIds: [L.LayerId, LQY.ViolationReasonItem | undefined][],
-	teamParity: number,
+	layerQueryContext: LQY.LayerQueryContext,
 ) {
 	switch (constraint.type) {
 		case 'filter-anon':
-			return await getFilterNodeSQLConditions(ctx, constraint.filter, [])
+			return getFilterNodeSQLConditions(ctx, constraint.filter, [])
 		case 'filter-entity':
-			return await getFilterNodeSQLConditions(
+			return getFilterNodeSQLConditions(
 				ctx,
 				FB.applyFilter(constraint.filterEntityId),
 				[],
@@ -203,8 +176,7 @@ export async function getConstraintSQLConditions(
 			return getDoNotRepeatSQLConditions(
 				ctx,
 				constraint.rule,
-				previousLayerIds,
-				teamParity,
+				layerQueryContext,
 			)
 			break
 		default:
@@ -214,11 +186,11 @@ export async function getConstraintSQLConditions(
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
-export async function getFilterNodeSQLConditions(
+export function getFilterNodeSQLConditions(
 	ctx: CS.Log & CS.Filters & CS.Layers,
 	node: F.FilterNode,
 	reentrantFilterIds: string[],
-): Promise<{ code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string }> {
+): { code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string } {
 	let condition: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
@@ -324,7 +296,7 @@ export async function getFilterNodeSQLConditions(
 			}
 		}
 		const filter = F.FilterNodeSchema.parse(entity.filter)
-		const res = await getFilterNodeSQLConditions(ctx, filter, [
+		const res = getFilterNodeSQLConditions(ctx, filter, [
 			...reentrantFilterIds,
 			node.filterId,
 		])
@@ -334,9 +306,7 @@ export async function getFilterNodeSQLConditions(
 
 	if (F.isBlockNode(node)) {
 		const childConditions: SQL<unknown>[] = []
-		const childResults = await Promise.all(
-			node.children.map((node) => getFilterNodeSQLConditions(ctx, node, reentrantFilterIds)),
-		)
+		const childResults = node.children.map((node) => getFilterNodeSQLConditions(ctx, node, reentrantFilterIds))
 		for (const childResult of childResults) {
 			if (childResult.code !== 'ok') return childResult
 			childConditions.push(childResult.condition)
@@ -354,140 +324,123 @@ export async function getFilterNodeSQLConditions(
 
 async function buildConstraintSqlCondition(
 	ctx: CS.Log & CS.Filters & CS.Layers,
-	previousLayerIds: [L.LayerId, LQY.ViolationReasonItem | undefined][],
-	oldestLayerTeamParity: number,
-	constraints: LQY.LayerQueryConstraint[],
+	layerQueryContext: LQY.LayerQueryContext,
 ) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
-	const constraintBuildingTasks: Promise<any>[] = []
+	const constraints = layerQueryContext.constraints ?? []
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
-		constraintBuildingTasks.push(
-			(async () => {
-				const res = await getConstraintSQLConditions(
-					ctx,
-					constraint,
-					previousLayerIds,
-					oldestLayerTeamParity,
-				)
-				if (res.code !== 'ok') {
-					return res
-				}
-				switch (constraint.applyAs) {
-					case 'field':
-						selectProperties[`constraint_${i}`] = res.condition
-						break
-					case 'where-condition':
-						conditions.push(res.condition)
-						break
-					default:
-						assertNever(constraint.applyAs)
-				}
-				return { code: 'ok' as const }
-			})(),
+		const res = getConstraintSQLConditions(
+			ctx,
+			constraint,
+			layerQueryContext,
 		)
+		if (res.code !== 'ok') {
+			// TODO: pass error back instead
+			throw new Error('error building constraint SQL condition: ' + JSON.stringify(res))
+		}
+		switch (constraint.applyAs) {
+			case 'field':
+				selectProperties[`constraint_${i}`] = res.condition
+				break
+			case 'where-condition':
+				conditions.push(res.condition)
+				break
+			default:
+				assertNever(constraint.applyAs)
+		}
 	}
-	await Promise.all(constraintBuildingTasks)
 	return { conditions, selectProperties }
 }
 
 export async function getLayerStatusesForLayerQueue({
 	ctx,
-	input: { queue, pool },
+	input,
 }: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerStatusesForLayerQueueInput
 }) {
-	const constraints = SS.getPoolConstraints(pool)
+	const constraints = input.constraints ?? []
 	// eslint-disable-next-line prefer-const
-	let { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
-		ctx,
-		[],
-	)
-	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const violationDescriptorsState = new Map<
 		string,
 		LQY.ViolationDescriptor[]
 	>()
-	const filterConditionResults: Map<string, ReturnType<typeof getFilterNodeSQLConditions>> = new Map()
-	for (let i = 0; i < queue.length; i++) {
-		const item = queue[i]
-		for (
-			const [queuedLayerKey, layerId] of LL.getAllLayerIdsWithQueueKey(
-				item,
-			)
-		) {
+	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
+	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
+	const layerItems = input.previousLayerItems ?? []
+	const numEntriesToResolve = input.numHistoryEntriesToResolve ?? 15
+	let lookbackLeft = numEntriesToResolve
+	let maxLookbackIndex = 0
+	for (let i = layerItems.length - 1; i >= 0; i--) {
+		const item = layerItems[i]
+		if (LQY.isParentVoteItem(item)) continue
+		if (item.type !== 'match-history-entry') continue
+		if (lookbackLeft <= 0) break
+		lookbackLeft--
+		maxLookbackIndex = i
+	}
+
+	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
+	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
+		const queryContextForItem: LQY.LayerQueryContext = {
+			...input,
+			previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(layerItems.slice(0, i), input.constraints),
+		}
+		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const violationDescriptors: LQY.ViolationDescriptor[] = []
+			const itemId = LQY.toLayerItemId(item)
 			for (const constraint of constraints) {
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+						const descriptors = getisBlockedByDoNotRepeatRuleDirect(
 							ctx,
 							constraint.id,
 							constraint.rule,
-							layerId,
-							historicLayers,
-							oldestLayerTeamParity,
+							item.layerId,
+							queryContextForItem,
 						)
-						if (!isBlocked) break
-						OneToMany.set(blockedState, queuedLayerKey, constraint.id)
-						if (descriptors) violationDescriptors.push(...descriptors)
+						if (!descriptors) continue
+						OneToMany.set(blockedState, itemId, constraint.id)
+						violationDescriptors.push(...descriptors)
 						break
 					}
-					case 'filter-anon':
-						filterConditionResults.set(
-							constraint.id,
-							getFilterNodeSQLConditions(ctx, constraint.filter, []),
-						)
+					case 'filter-anon': {
+						const res = getFilterNodeSQLConditions(ctx, constraint.filter, [])
+						if (res.code !== 'ok') return res
+						selectExpr[constraint.id] = res.condition
 						break
+					}
 					case 'filter-entity': {
-						filterConditionResults.set(
-							constraint.id,
-							getFilterNodeSQLConditions(
-								ctx,
-								FB.applyFilter(constraint.filterEntityId),
-								[],
-							),
-						)
+						const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [])
+						if (res.code !== 'ok') return res
+						filterConditionResults.set(constraint.id, res.condition)
+						selectExpr[constraint.id] = res.condition
 						break
 					}
 				}
 			}
-			violationDescriptorsState.set(queuedLayerKey, violationDescriptors)
+			violationDescriptorsState.set(LQY.toLayerItemId(item), violationDescriptors)
 		}
-		if (item.layerId) {
-			historicLayers.push([item.layerId, { type: 'layer-list-item', layerListItemId: item.itemId }])
-		}
-	}
-
-	const queueLayerIds = LL.getAllLayerIdsFromList(queue)
-
-	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
-	for (const [id, task] of filterConditionResults.entries()) {
-		// we'll fix this if it happens but unlikely
-		if (id === '_id') throw new Error('unexpected id for filter constraint')
-		const res = await task
-		if (res.code !== 'ok') return res
-		selectExpr[id] = res.condition
 	}
 
 	const rows = await ctx
 		.layerDb()
 		.select(selectExpr)
 		.from(LC.layersView(ctx))
-		.where(E.inArray(LC.viewCol('id', ctx), LC.packLayers(queueLayerIds)))
+		.where(E.inArray(LC.viewCol('id', ctx), LC.packLayers(LQY.getAllLayerIds(layerItems.slice(maxLookbackIndex)))))
 
 	const present = new Set<L.LayerId>()
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const key of LL.getAllLayerQueueKeysWithLayerId(layerId, queue)) {
+		for (const item of LQY.iterLayerItems(layerItems)) {
 			for (const [constraintId, isConstraintBlocked] of Object.entries(row)) {
 				if (constraintId === '_id') continue
 				if (Number(isConstraintBlocked) === 0) {
-					OneToMany.set(blockedState, key, constraintId)
+					OneToMany.set(blockedState, LQY.toLayerItemId(item), constraintId)
 				}
 			}
 		}
@@ -509,227 +462,175 @@ function getisBlockedByDoNotRepeatRuleDirect(
 	constraintId: string,
 	rule: LQY.RepeatRule,
 	targetLayerId: L.LayerId,
-	previousLayerIds: [L.LayerId, LQY.ViolationReasonItem | undefined][],
-	oldestPrevLayerTeamParity: number,
+	layerQueryContext: LQY.LayerQueryContext,
 ) {
-	ctx.log.debug(
-		`getisBlockedByDoNotRepeatRuleDirect: Checking rule ${rule.field} for target layer ${
-			DH.displayUnvalidatedLayer(targetLayerId)
-		}, constraint ${constraintId}`,
-	)
-	ctx.log.debug(`Rule details: within=${rule.within}, targetValues=${JSON.stringify(rule.targetValues)}`)
-
 	const targetLayer = L.toLayer(targetLayerId)
-	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, previousLayerIds.length)
+	const firestLayerItemParity = layerQueryContext.firstLayerItemParity ?? 0
+	const previousLayers = layerQueryContext.previousLayerItems ?? []
+	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: firestLayerItemParity }, previousLayers.length)
 
-	ctx.log.debug(`Target layer: ${targetLayer.Layer}, team parity: ${targetLayerTeamParity}`)
-	ctx.log.debug(`Checking against ${previousLayerIds.length} previous layers`)
-
-	let isBlocked = false
 	const descriptors: LQY.ViolationDescriptor[] = []
-	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
-		let layerTeamParity = MH.getTeamParityForOffset({ ordinal: oldestPrevLayerTeamParity }, i)
-		const getViolationDescriptor = (field: LQY.ViolationDescriptor['field']): LQY.ViolationDescriptor => ({
-			constraintId,
-			type: 'repeat-rule',
-			field: field,
-			reasonItem: previousLayerIds[i][1],
-		})
-		const layerId = previousLayerIds[i][0]
-		const layer = L.toLayer(layerId)
+	for (let i = previousLayers.length - 1; i >= Math.max(previousLayers.length - rule.within, 0); i--) {
+		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: firestLayerItemParity }, i)
+		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
+			const layer = L.toLayer(layerItem.layerId)
+			const getViolationDescriptor = (field: LQY.ViolationDescriptor['field']): LQY.ViolationDescriptor => ({
+				constraintId,
+				type: 'repeat-rule',
+				field: field,
+				reasonItem: layerItem,
+			})
 
-		ctx.log.debug(
-			`Checking previous layer ${i}: ${layer.Layer} (ID: ${DH.displayUnvalidatedLayer(layerId)}), team parity: ${layerTeamParity}`,
-		)
-		switch (rule.field) {
-			case 'Map':
-			case 'Gamemode':
-			case 'Layer':
-			case 'Size':
-				ctx.log.debug(`Checking ${rule.field}: target=${targetLayer[rule.field]}, previous=${layer[rule.field]}`)
-				if (
-					layer[rule.field]
-					&& targetLayer[rule.field] === layer[rule.field]
-					&& (rule.targetValues?.includes(layer[rule.field] as string) ?? true)
-				) {
-					ctx.log.debug(`VIOLATION: ${rule.field} matches - ${layer[rule.field]}`)
-					descriptors.push(getViolationDescriptor(rule.field))
-					isBlocked = true
-				}
-				break
-			case 'Faction': {
-				const checkFaction = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
-					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					ctx.log.debug(`Checking Faction team ${team}: target=${targetFaction}, previous=${previousFaction}`)
+			switch (rule.field) {
+				case 'Map':
+				case 'Gamemode':
+				case 'Layer':
+				case 'Size':
 					if (
-						targetFaction
-						&& previousFaction === targetFaction
-						&& (rule.targetValues?.includes(targetFaction) ?? true)
+						layer[rule.field]
+						&& targetLayer[rule.field] === layer[rule.field]
+						&& (rule.targetValues?.includes(layer[rule.field] as string) ?? true)
 					) {
-						ctx.log.debug(`VIOLATION: Faction team ${team} matches - ${targetFaction}`)
-						descriptors.push(getViolationDescriptor(`Faction_${team}`))
-						isBlocked = true
+						descriptors.push(getViolationDescriptor(rule.field))
 					}
-				}
-				checkFaction('A')
-				checkFaction('B')
-				break
-			}
-			case 'Alliance': {
-				const checkAlliance = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]
-					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-
-					if (!targetFaction || !previousFaction) return
-
-					const targetAlliance = L.StaticLayerComponents.factionToAlliance[targetFaction]
-					const previousAlliance = L.StaticLayerComponents.factionToAlliance[previousFaction]
-
-					ctx.log.debug(
-						`Checking Alliance team ${team}: target=${targetAlliance} (${targetFaction}), previous=${previousAlliance} (${previousFaction})`,
-					)
-
-					if (!targetAlliance || !previousAlliance) return
-
-					if (targetAlliance === previousAlliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
-						ctx.log.debug(`VIOLATION: Alliance team ${team} matches - ${targetAlliance}`)
-						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
-						isBlocked = true
+					break
+				case 'Faction': {
+					const checkFaction = (team: 'A' | 'B') => {
+						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+						const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
+						const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
+						if (
+							targetFaction
+							&& previousFaction === targetFaction
+							&& (rule.targetValues?.includes(targetFaction) ?? true)
+						) {
+							descriptors.push(getViolationDescriptor(`Faction_${team}`))
+						}
 					}
+					checkFaction('A')
+					checkFaction('B')
+					break
 				}
+				case 'Alliance': {
+					const checkAlliance = (team: 'A' | 'B') => {
+						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+						const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]
+						const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
 
-				checkAlliance('A')
-				checkAlliance('B')
-				break
+						if (!targetFaction || !previousFaction) return
+
+						const targetAlliance = L.StaticLayerComponents.factionToAlliance[targetFaction]
+						const previousAlliance = L.StaticLayerComponents.factionToAlliance[previousFaction]
+
+						if (!targetAlliance || !previousAlliance) return
+
+						if (targetAlliance === previousAlliance && (rule.targetValues?.includes(targetAlliance) ?? true)) {
+							descriptors.push(getViolationDescriptor(`Alliance_${team}`))
+						}
+					}
+
+					checkAlliance('A')
+					checkAlliance('B')
+					break
+				}
+				default:
+					assertNever(rule.field)
 			}
-			default:
-				assertNever(rule.field)
 		}
-		layerTeamParity--
 	}
-	ctx.log.debug(`getisBlockedByDoNotRepeatRuleDirect result: isBlocked=${isBlocked}, violations=${descriptors.length}`)
-	return { isBlocked, descriptors }
+	return descriptors.length > 0 ? descriptors : undefined
 }
 
 function getDoNotRepeatSQLConditions(
 	ctx: CS.EffectiveColumnConfig,
 	rule: LQY.RepeatRule,
-	previousLayerIds: [L.LayerId, LQY.ViolationReasonItem | undefined][],
-	oldestLayerTeamParity: number,
+	queryContext: LQY.LayerQueryContext,
 ) {
-	const values = new Set<string>()
+	const values = new Set<number>()
+	const valuesA = new Set<number>()
+	const valuesB = new Set<number>()
 	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`1=1` }
 
-	let teamParity = MH.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length - 1)
-	for (let i = previousLayerIds.length - 1; i >= Math.max(previousLayerIds.length - rule.within, 0); i--) {
-		const layer = L.toLayer(previousLayerIds[i][0])
-		switch (rule.field) {
-			case 'Map':
-			case 'Gamemode':
-			case 'Size':
-			case 'Layer':
-				if (
-					layer[rule.field]
-					&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
-				) {
-					values.add(layer[rule.field]!)
-				}
-				break
-			case 'Faction': {
-				const addApplicable = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-					const value = layer[MH.getTeamNormalizedFactionProp(teamParity, team)]
-					if (value && (rule.targetValues?.includes(value) ?? true)) {
-						values.add(team + ':' + value)
+	const previousLayers = queryContext.previousLayerItems ?? []
+
+	const firstLayerParity = queryContext.firstLayerItemParity ?? 0
+	for (let i = previousLayers.length - 1; i >= Math.max(previousLayers.length - rule.within, 0); i--) {
+		const teamParity = MH.getTeamParityForOffset({ ordinal: firstLayerParity + i }, previousLayers.length - 1)
+		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
+			const layer = L.toLayer(layerItem.layerId)
+			switch (rule.field) {
+				case 'Map':
+				case 'Gamemode':
+				case 'Size':
+				case 'Layer':
+					if (
+						layer[rule.field]
+						&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
+					) {
+						values.add(LC.dbValue(rule.field, layer[rule.field]!, ctx))
 					}
-				}
-				addApplicable('A')
-				addApplicable('B')
-				break
-			}
-			case 'Alliance': {
-				const addApplicable = (team: 'A' | 'B') => {
-					// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-					const faction = layer[MH.getTeamNormalizedFactionProp(teamParity, team)]
-					if (!faction) return
-					const alliance = L.StaticLayerComponents.factionToAlliance[faction]
-					if (!alliance) return
-					if (rule.targetValues?.includes(alliance) ?? true) {
-						values.add(team + ':' + alliance)
+					break
+				case 'Faction': {
+					const addApplicable = (team: 'A' | 'B') => {
+						// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
+						const column = MH.getTeamNormalizedFactionProp(teamParity, team)
+						const value = layer[column]
+						const values = team === 'A' ? valuesA : valuesB
+						if (value && (rule.targetValues?.includes(value) ?? true)) {
+							values.add(LC.dbValue(column, value, ctx))
+						}
 					}
+					addApplicable('A')
+					addApplicable('B')
+					break
 				}
-				addApplicable('A')
-				addApplicable('B')
-				break
+				case 'Alliance': {
+					const addApplicable = (team: 'A' | 'B') => {
+						const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
+						const alliance = layer[column]
+						const values = team === 'A' ? valuesA : valuesB
+						if (rule.targetValues?.includes(alliance as string) ?? true) {
+							values.add(LC.dbValue(column, alliance, ctx))
+						}
+					}
+					addApplicable('A')
+					addApplicable('B')
+					break
+				}
+				default:
+					assertNever(rule.field)
 			}
-			default:
-				assertNever(rule.field)
 		}
-		teamParity = (teamParity - 1) % 2
 	}
 
-	const valuesArr = Array.from(values)
-	if (valuesArr.length === 0) {
+	if ((Array.from(values)).length === 0) {
 		return { code: 'ok' as const, condition: sql`1=1` }
 	}
 
-	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: oldestLayerTeamParity }, previousLayerIds.length)
+	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: firstLayerParity }, previousLayers.length)
 	let resultSql: SQL
 	switch (rule.field) {
 		case 'Map':
 		case 'Gamemode':
 		case 'Size':
 		case 'Layer':
-			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), LC.dbValues(rule.field, valuesArr, ctx))
+			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), Array.from(values))
 			break
 		case 'Faction': {
-			const valuesArrA = valuesArr
-				.filter((v) => v.startsWith('A:'))
-				.map((v) => v.slice(2))
-			const valuesArrB = valuesArr
-				.filter((v) => v.startsWith('B:'))
-				.map((v) => v.slice(2))
 			const teamACol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')
 			const teamBCol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')
 			resultSql = E.and(
-				E.notInArray(
-					LC.viewCol(teamACol, ctx),
-					LC.dbValues(teamACol, valuesArrA, ctx),
-				),
-				E.notInArray(
-					LC.viewCol(teamBCol, ctx),
-					LC.dbValues(teamBCol, valuesArrB, ctx),
-				),
+				E.notInArray(LC.viewCol(teamACol, ctx), Array.from(valuesA)),
+				E.notInArray(LC.viewCol(teamBCol, ctx), Array.from(valuesB)),
 			)!
 			break
 		}
 		case 'Alliance': {
-			const getAllianceExpr = (team: 'A' | 'B') => {
-				// TODO: getTeamNormalizedFactionProp is in match-history.models.ts, needs proper import
-				const factionColumn = LC.viewCol(MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team), ctx)
-				// Create a CASE expression to map factions to alliances
-				const allianceMapping = Object.entries(L.StaticLayerComponents.factionToAlliance)
-					.map(([faction, alliance]) => `WHEN ${factionColumn.name} = '${faction}' THEN '${alliance}'`)
-					.join(' ')
-				return sql`CASE ${allianceMapping} END`
-			}
-
-			const allianceExpressionA = getAllianceExpr('A')
-			const valuesArrA = valuesArr
-				.filter((v) => v.startsWith('A:'))
-				.map((v) => v.slice(2))
-
-			const allianceExpressionB = getAllianceExpr('B')
-			const valuesArrB = valuesArr
-				.filter((v) => v.startsWith('B:'))
-				.map((v) => v.slice(2))
-
+			const allianceACol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'A')
+			const allianceBCol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'B')
 			resultSql = E.and(
-				E.notInArray(allianceExpressionA, valuesArrA),
-				E.notInArray(allianceExpressionB, valuesArrB),
+				E.notInArray(LC.viewCol(allianceACol, ctx), Array.from(valuesA)),
+				E.notInArray(LC.viewCol(allianceBCol, ctx), Array.from(valuesB)),
 			)!
 			break
 		}
@@ -748,19 +649,16 @@ type GenLayerOutput<ReturnLayers extends boolean> = ReturnLayers extends true ? 
 export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	ctx: CS.LayerQuery,
 	numLayers: number,
-	constraints: LQY.LayerQueryConstraint[],
-	previousLayerIds: string[],
+	layerQueryContext: LQY.LayerQueryContext,
 	returnLayers: ReturnLayers,
 ): Promise<GenLayerOutput<ReturnLayers>> {
-	const { historicLayers, oldestLayerTeamParity } = resolveRelevantLayerHistory(
-		ctx,
-		previousLayerIds,
-	)
+	layerQueryContext = {
+		...layerQueryContext,
+		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(layerQueryContext.previousLayerItems, layerQueryContext.constraints),
+	}
 	const { conditions, selectProperties } = await buildConstraintSqlCondition(
 		ctx,
-		historicLayers,
-		oldestLayerTeamParity,
-		constraints,
+		layerQueryContext,
 	)
 	const p_condition = conditions.length > 0 ? E.and(...conditions) as SQL<unknown> : sql`1=1`
 
@@ -781,7 +679,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			const rows = await ctx.layerDb().select({ ...LC.selectAllViewCols(ctx), ...selectProperties }).from(LC.layersView(ctx)).where(
 				E.inArray(LC.viewCol('id', ctx), selectedIds),
 			)
-			const res = { layers: postProcessLayers(ctx, rows as any[], constraints, historicLayers, oldestLayerTeamParity), totalCount }
+			const res = { layers: postProcessLayers(ctx, rows as any[], layerQueryContext), totalCount }
 			// @ts-expect-error idgaf
 			return res
 		} else {
@@ -807,6 +705,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			const availableValuesRows = await ctx.layerDb().selectDistinct({ [columnName]: LC.viewCol(columnName, ctx) }).from(
 				LC.layersView(ctx),
 			).where(condition)
+			await sleep(0)
 			const values = availableValuesRows.map(row => row[columnName]) as (number | null)[]
 			if (values.length === 0) break
 
@@ -831,6 +730,7 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 						E.notInArray(LC.viewCol('id', ctx), selectedIds),
 					),
 				)
+				await sleep(0)
 				selectedIds.push(rows[0].id as number)
 				break
 			}
@@ -889,62 +789,18 @@ async function generateRandomLayersLowRowCount(
 	return selectedIds
 }
 
-/**
- * @param constraints The constraints to apply
- * @param previousLayerIds Other IDs which should be considered as being at the front of the history, in the order they appear in the queue/list
- */
-function resolveRelevantLayerHistory(
-	ctx: CS.Log & CS.MatchHistory,
-	previousLayerIds: ([L.LayerId, LQY.ViolationReasonItem | undefined] | L.LayerId)[],
-) {
-	const historicLayers: [string, LQY.ViolationReasonItem | undefined][] = []
-	let oldestLayerTeamParity = 0
-	for (let i = ctx.recentMatches.length - 1; i >= 0; i--) {
-		const match = ctx.recentMatches[i]
-		const details = L.toLayer(match.layerId)
-		// don't consider jensens or seeding layers
-		if (details.Layer?.includes('Jensens') || details.Gamemode && Arr.includes(['Training', 'Seed'], details.Gamemode)) break
-		historicLayers.unshift([match.layerId, { type: 'history-entry', historyEntryId: match.historyEntryId }])
-		oldestLayerTeamParity = match.ordinal
-	}
-	for (const entry of previousLayerIds) {
-		if (typeof entry === 'string') historicLayers.push([entry, undefined])
-		else historicLayers.push(entry)
-	}
-
-	ctx.log.debug(
-		'previous layer ids: %s',
-		JSON.stringify(previousLayerIds.map(entry =>
-			typeof entry === 'string'
-				? DH.displayUnvalidatedLayer(entry)
-				: [DH.displayUnvalidatedLayer(entry[0]), entry[1]]
-		)),
-	)
-	ctx.log.debug(
-		'Resolved relevant layer history:',
-	)
-	for (const [layerId, reasonItem] of historicLayers) {
-		ctx.log.debug('- ' + DH.displayUnvalidatedLayer(layerId))
-	}
-	return {
-		historicLayers,
-		oldestLayerTeamParity,
-	}
-}
-
 export type PostProcessedLayer = Awaited<
 	ReturnType<typeof postProcessLayers>
 >[number]
 function postProcessLayers(
 	ctx: CS.Log & CS.EffectiveColumnConfig,
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
-	constraints: LQY.LayerQueryConstraint[],
-	historicLayers: [L.LayerId, LQY.ViolationReasonItem | undefined][],
-	oldestLayerTeamParity: number,
+	layerQueryContext: LQY.LayerQueryContext,
 ) {
+	const constraints = layerQueryContext.constraints ?? []
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
-		const constraintResults: boolean[] = Array(constraints.length).fill(true)
+		const constraintResults: boolean[] = new Array(constraints.length).fill(true)
 		const violationDescriptors: LQY.ViolationDescriptor[] = []
 		const strId = LC.unpackId(layer.id)
 		const layersConverted: Record<string, string | number | boolean> = {}
@@ -960,15 +816,14 @@ function postProcessLayers(
 			const constraint = constraints[idx]
 			if (constraint.type === 'do-not-repeat') {
 				// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
-				const { isBlocked, descriptors } = getisBlockedByDoNotRepeatRuleDirect(
+				const descriptors = getisBlockedByDoNotRepeatRuleDirect(
 					ctx,
 					constraint.id,
 					constraint.rule,
 					strId,
-					historicLayers,
-					oldestLayerTeamParity,
+					layerQueryContext,
 				)
-				if (isBlocked) constraintResults[idx] = false
+				if (descriptors) constraintResults[idx] = false
 				if (descriptors && descriptors.length > 0) {
 					violationDescriptors.push(...descriptors)
 				}

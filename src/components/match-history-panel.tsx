@@ -16,7 +16,9 @@ import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
+import deepEqual from 'fast-deep-equal'
 import { AlertOctagon, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
@@ -32,13 +34,13 @@ export default function MatchHistoryPanel() {
 	const history = MatchHistoryClient.useRecentMatchHistory()
 	const allEntries = React.useMemo(() => [...(history ?? [])].reverse(), [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
-	const currentMatch = MatchHistoryClient.useCurrentMatchDetails()
+	const currentMatch = SquadServerClient.useCurrentMatch()
 	const violationDescriptors = LayerQueriesClient.useLayerStatuses().data?.violationDescriptors
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 
 	// -------- Pagination state --------
 	const [currentPage, setCurrentPage] = useState(1)
-	const itemsPerPage = 15
+	const itemsPerPage = MH.RECENT_HISTORY_ITEMS_PER_PAGE
 	const totalPages = Math.ceil(allEntries.length / itemsPerPage)
 
 	// -------- Get current entries --------
@@ -272,9 +274,14 @@ export default function MatchHistoryPanel() {
 							if (entry.historyEntryId === currentMatch?.historyEntryId) {
 								return
 							}
-							const entryDescriptors = (hoveredConstraintItemId && violationDescriptors?.get(hoveredConstraintItemId)?.filter(d =>
-								d.reasonItem?.type === 'history-entry' && d.reasonItem.historyEntryId === entry.historyEntryId
-							)) || undefined
+							const layerItem: LQY.LayerItem = {
+								type: 'match-history-entry',
+								historyEntryId: entry.historyEntryId,
+								layerId: entry.layerId,
+							}
+							const entryDescriptors = (hoveredConstraintItemId
+								&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
+
 							let violatedProperties: Set<string> | undefined
 							if (entryDescriptors) {
 								violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
@@ -357,9 +364,7 @@ export default function MatchHistoryPanel() {
 								extraLayerStyles,
 							)
 
-							const events = historyState.recentBalanceTriggerEvents.filter(event =>
-								event.matchTriggeredId === entry.historyEntryId
-							)
+							const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
 							// Get trigger info for this entry
 							const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
 							const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry, false)

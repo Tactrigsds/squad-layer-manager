@@ -6,3 +6,13 @@ export type RecursivePartial<T> = {
 }
 
 export type Deferred = (() => Promise<void> | void)[]
+
+export function resToNullable<R extends { code: 'ok' | string }>(res: R) {
+	if (res.code !== 'ok') return null
+	return res as Extract<R, { code: 'ok' }>
+}
+
+export function resToOptional<R extends { code: 'ok' | string }>(res: R) {
+	if (res.code !== 'ok') return undefined
+	return res as Extract<R, { code: 'ok' }>
+}

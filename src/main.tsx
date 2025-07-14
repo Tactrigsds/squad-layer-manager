@@ -1,3 +1,4 @@
+import * as QueueDashboard from '@/systems.client/queue-dashboard'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
@@ -76,6 +77,7 @@ MatchHistoryClient.setup()
 SquadServerClient.setup()
 UsersClient.setup()
 ConfigClient.setup()
+QueueDashboard.setup()
 
 createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

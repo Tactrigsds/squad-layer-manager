@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { acquireInBlock, toAsyncGenerator } from '@/lib/async'
+import { acquireInBlock, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
 import * as BAL from '@/models/balance-triggers.models'
@@ -109,9 +109,9 @@ export const setup = C.spanOp('match-history:setup', { tracer, eventLogLevel: 'i
 })
 
 export const matchHistoryRouter = router({
-	watchMatchHistoryState: procedure.subscription(async function*() {
+	watchMatchHistoryState: procedure.subscription(async function*({ signal }) {
 		yield getPublicMatchHistoryState()
-		for await (const _ of toAsyncGenerator(stateUpdated$)) {
+		for await (const _ of toAsyncGenerator(stateUpdated$.pipe(withAbortSignal(signal!)))) {
 			yield getPublicMatchHistoryState()
 		}
 	}),

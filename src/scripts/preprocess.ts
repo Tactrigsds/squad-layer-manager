@@ -1,3 +1,4 @@
+import { sleep } from '@/lib/async'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
@@ -30,7 +31,7 @@ const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? n
 
 const Steps = z.enum(['update-layers-table', 'download-csvs'])
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.db })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
 let ENV!: ReturnType<typeof envBuilder>
 
 async function main() {
@@ -46,13 +47,15 @@ async function main() {
 
 	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
 
-	await ensureAllSheetsDownloaded()
+	await ensureAllSheetsDownloaded(ctx)
 
 	const data = await parseSquadLayerSheetData(ctx)
 	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
 
 	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2))
 
+	// drizzle-kit push doesn't appear to account for views
+	ctx.layerDb().run(sql`drop view if exists ${LC.layersView(ctx)}`)
 	ctx.log.info('executing drizzle-kit push')
 	childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
 
@@ -66,6 +69,7 @@ async function main() {
 		ctx.layerDb().run('VACUUM')
 		ctx.layerDb().$client.close()
 	}
+	ctx.log.info('Done! Wrote layers to %s', ENV.LAYER_DB_CONFIG_PATH)
 }
 
 function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerComponentsJson): Promise<void> {
@@ -484,19 +488,19 @@ function parseBgLayerAvailability(ctx: CS.Log) {
 	})
 }
 
-async function ensureAllSheetsDownloaded(opts?: { invalidate?: boolean }) {
+async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: boolean }) {
 	const invalidate = opts?.invalidate ?? false
 	const ops: Promise<void>[] = []
 	for (const sheet of SHEETS) {
 		const sheetPath = path.join(Paths.DATA, sheet.filename)
 		if (invalidate || !fs.existsSync(sheetPath)) {
-			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheetPath))
+			ops.push(downloadPublicSheetAsCSV(ctx, sheet.gid, sheetPath))
 		}
 	}
 	await Promise.all(ops)
 }
 
-function downloadPublicSheetAsCSV(gid: number, filepath: string) {
+function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
 	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADHSEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
 
 	return new Promise<void>((resolve, reject) => {
@@ -507,17 +511,17 @@ function downloadPublicSheetAsCSV(gid: number, filepath: string) {
 
 			file.on('finish', () => {
 				file.close()
-				console.log(`CSV downloaded successfully to ${filepath}!`)
+				ctx.log.info(`CSV downloaded successfully to %s`, filepath)
 				resolve()
 			})
 
 			file.on('error', (error) => {
 				file.close()
-				console.error(`Error downloading CSV from ${url} to ${filepath}:`, error)
+				ctx.log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
 				reject(error)
 			})
 		}).on('error', (error) => {
-			console.error('Error:', error)
+			ctx.log.error(error, 'Error downloading CSV:')
 			reject(error)
 		})
 	})

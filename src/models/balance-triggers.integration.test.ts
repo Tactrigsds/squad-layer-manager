@@ -4,7 +4,6 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import * as C from '@/server/context'
 import { ensureEnvSetup } from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as LayerDb from '@/server/systems/layer-db.server'
@@ -27,16 +26,13 @@ beforeAll(async () => {
 		layerDb: () => LayerDb.db,
 		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
 		filters: [],
-		recentMatches: [],
 	}
 
 	// Get RAAS layers
 	const raasQuery = await queryLayers({
 		input: {
 			constraints: [LQY.filterToConstraint(FB.comp(FB.eq('Gamemode', 'RAAS')), 'only-raas')],
-			previousLayerIds: [],
 			pageSize: 10,
-			pageIndex: 0,
 		},
 		ctx: baseQueryCtx,
 	})
@@ -46,9 +42,7 @@ beforeAll(async () => {
 	const seedQuery = await queryLayers({
 		input: {
 			constraints: [LQY.filterToConstraint(FB.comp(FB.eq('Gamemode', 'Seed')), 'only-seed')],
-			previousLayerIds: [],
 			pageSize: 3,
-			pageIndex: 0,
 		},
 		ctx: baseQueryCtx,
 	})

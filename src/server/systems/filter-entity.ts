@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator } from '@/lib/async'
+import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import { assertNever } from '@/lib/type-guards'
 import { Parts } from '@/lib/types'
@@ -220,7 +220,7 @@ export let state!: {
 }
 
 export async function* watchFilters(
-	{ ctx }: { ctx: CS.Log & C.Db },
+	{ ctx, signal }: { ctx: CS.Log & C.Db; signal?: AbortSignal },
 ): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
 	const ids = [...new Set(state.filters.map(f => f.owner))]
 
@@ -233,8 +233,7 @@ export async function* watchFilters(
 			users: users,
 		},
 	}
-	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$)) {
-		// TODO could cache users
+	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$.pipe(withAbortSignal(signal!)))) {
 		const users = await ctx.db().select().from(Schema.users).where(
 			E.or(E.eq(Schema.users.discordId, mutation.value.owner), E.eq(Schema.users.username, mutation.username)),
 		)
