@@ -295,6 +295,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
+			console.log('handling squad event:', new Date().toISOString())
 			state.lastRoll = event.time
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
@@ -374,7 +375,6 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 			}
 			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
 			return res
-			break
 		}
 		default:
 			assertNever(event)

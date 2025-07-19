@@ -371,8 +371,7 @@ export async function getLayerStatusesForLayerQueue({
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const layerItems = input.previousLayerItems ?? []
-	const numEntriesToResolve = input.numHistoryEntriesToResolve ?? 15
-	let lookbackLeft = numEntriesToResolve
+	let lookbackLeft = input.numHistoryEntriesToResolve ?? 15
 	let maxLookbackIndex = 0
 	for (let i = layerItems.length - 1; i >= 0; i--) {
 		const item = layerItems[i]

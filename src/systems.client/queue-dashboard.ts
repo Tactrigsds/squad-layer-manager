@@ -620,6 +620,7 @@ export const [useFullLayerQueryContext, fullLayerQueryContext$] = ReactRx.bind(
 	})),
 	{},
 )
+window.__fullLayerQueryContext$ = fullLayerQueryContext$
 
 function selectFullQueryContext(
 	layerQueue: LL.LayerList,

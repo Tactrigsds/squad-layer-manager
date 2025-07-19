@@ -14,7 +14,9 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.Public
 )
 
 export const [useRecentMatches, recentMatches$] = ReactRx.bind(
-	matchHistoryState$.pipe(Rx.map((state) => state.recentMatches)),
+	matchHistoryState$.pipe(Rx.map((state) => {
+		return state.recentMatches
+	})),
 )
 
 export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(

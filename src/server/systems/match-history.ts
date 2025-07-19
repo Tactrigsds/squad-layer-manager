@@ -127,6 +127,8 @@ export const addNewCurrentMatch = C.spanOp(
 			await loadState(ctx, { limit: 1 })
 		})
 
+		stateUpdated$.next(ctx)
+
 		return { code: 'ok' as const, match: getCurrentMatch() }
 	},
 )

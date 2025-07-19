@@ -108,7 +108,9 @@ export class SquadEventEmitter {
 						ctx.log.debug(parsedRes.data, 'parsed log line into log event %s', parsedRes.data.type)
 						const event = this.squadLogEventToSquadEvent(ctx, parsedRes.data)
 						if (event) {
+							console.log('emitting before log msg', new Date().toISOString())
 							ctx.log.info(event, 'Emitting Squad Event: %s', event.type)
+							console.log('emitting squad event:', new Date().toISOString())
 							this.event$.next([this.ctx, event])
 						}
 						return { code: 'ok' as const }
