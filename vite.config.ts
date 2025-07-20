@@ -2,7 +2,6 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig } from 'vite'
-import tsconfigPaths from 'vite-tsconfig-paths'
 import * as AR from './src/app-routes.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
@@ -11,7 +10,7 @@ const prod = process.env.NODE_ENV === 'production'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-	plugins: [react(), tsconfigPaths()],
+	plugins: [react()],
 	server: {
 		proxy: !prod ? buildProxy() : undefined,
 		https: {
@@ -30,6 +29,12 @@ export default defineConfig({
 	},
 	optimizeDeps: {
 		exclude: ['sqlocal'],
+	},
+	resolve: {
+		alias: {
+			'@': path.resolve(__dirname, 'src'),
+			'$root': path.resolve(__dirname),
+		},
 	},
 })
 
