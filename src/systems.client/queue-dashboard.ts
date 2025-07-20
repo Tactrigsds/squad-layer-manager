@@ -1,14 +1,11 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { useToast } from '@/hooks/use-toast'
-import * as Arr from '@/lib/array'
 import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
-import * as ZusUtils from '@/lib/zustand'
-import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -604,52 +601,21 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
-export const [useFullLayerQueryContext, fullLayerQueryContext$] = ReactRx.bind(
+export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
 	Rx.combineLatest([
+		ZusRx.toStream(QDStore),
 		MatchHistoryClient.recentMatches$,
-		ZusRx.toStream(QDStore, state => Obj.selectProps(state, ['poolApplyAs', 'extraQueryFilters', 'editedServerState'])).pipe(
-			distinctDeepEquals(),
-		),
-	]).pipe(Rx.map(([history, state]) => {
-		return selectFullQueryContext(
-			state.editedServerState.layerQueue,
-			history,
-			state.editedServerState.settings.queue.mainPool,
-			state,
-		)
-	})),
-	{},
+	]).pipe(
+		Rx.map(([qdState, history]) => LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)),
+		distinctDeepEquals(),
+	),
 )
-window.__fullLayerQueryContext$ = fullLayerQueryContext$
-
-function selectFullQueryContext(
-	layerQueue: LL.LayerList,
-	history: MH.MatchDetails[],
-	mainPool: SS.PoolConfiguration,
-	state: Pick<QDStore, 'poolApplyAs' | 'extraQueryFilters'>,
-): LQY.LayerQueryContext {
-	const constraints = SS.getPoolConstraints(mainPool, state.poolApplyAs.dnr, state.poolApplyAs.filter)
-	for (const { filterId, active } of state.extraQueryFilters) {
-		if (!active) continue
-		constraints.push({
-			type: 'filter-entity',
-			id: 'extra-filter:' + filterId,
-			filterEntityId: filterId,
-			applyAs: 'where-condition',
-		})
-	}
-
-	return {
-		constraints,
-		...LQY.resolveAllOrderedLayerItems(layerQueue, history),
-	}
-}
 
 export function setup() {
-	fullLayerQueryContext$.subscribe()
+	layerItemsState$.subscribe()
 }
 
-export function selectQDQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
+export function selectBaseQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
 	const queryConstraints = SS.getPoolConstraints(
 		state.editedServerState.settings.queue.mainPool,
 		state.poolApplyAs.dnr,

@@ -336,7 +336,7 @@ export function Comparison(props: {
 	columnEditable?: boolean
 	allowedColumns?: L.LayerColumnKey[]
 	allowedComparisonCodes?: F.ComparisonCode[]
-	layerQueryContext?: LQY.LayerQueryContext
+	baseQueryInput?: LQY.LayerQueryBaseInput
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
@@ -360,17 +360,22 @@ export function Comparison(props: {
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
-	React.useEffect(() => {
-		console.log('comp updated', JSON.stringify(comp, null, 2))
-	}, [comp])
+
 	const columnOptions = (props.allowedColumns ? props.allowedColumns : [...F.COMPOSITE_COLUMNS.options, ...LC.COLUMN_KEYS]).map((c) => ({
 		value: c,
 	}))
-	let codeOptions = (comp.column && cfg)
-		? (F.getComparisonTypesForColumn(comp.column, cfg)?.map((c) => ({ value: c.code })) ?? [])
-		: []
+
+	let codeOptions: ComboBoxOption<string>[] = []
+	if (comp.column && cfg) {
+		const res = F.getComparisonTypesForColumn(comp.column, cfg)
+		if (res.code !== 'ok') {
+			return <div>{comp.column} {comp.code} : {res.code} : {res.message}</div>
+		}
+		codeOptions = res.comparisonTypes.map((c) => ({ value: c.code }))
+	}
+
 	if (props.allowedComparisonCodes) {
-		codeOptions = codeOptions.filter((c) => props.allowedComparisonCodes!.includes(c.value))
+		codeOptions = codeOptions.filter((c) => Arr.includes(props.allowedComparisonCodes!, c.value))
 	}
 
 	const componentStyles = props.highlight ? 'bg-accent' : undefined
@@ -449,7 +454,7 @@ export function Comparison(props: {
 						setValue={(value) => {
 							return setComp((c) => ({ ...c, value }))
 						}}
-						queryContext={props.layerQueryContext}
+						baseQueryInput={props.baseQueryInput}
 					/>
 				)
 			} else {
@@ -460,7 +465,7 @@ export function Comparison(props: {
 						column={comp.column}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => setComp((c) => ({ ...c, value }))}
-						queryContext={props.layerQueryContext}
+						baseQueryInput={props.baseQueryInput}
 					/>
 				)
 			}
@@ -475,7 +480,7 @@ export function Comparison(props: {
 						ref={valueBoxRef}
 						column={comp.column as LC.GroupByColumn}
 						values={(comp.values ?? []) as string[]}
-						queryContext={props.layerQueryContext}
+						baseQueryInput={props.baseQueryInput}
 						setValues={(action) => {
 							setComp(
 								Im.produce((c) => {
@@ -496,7 +501,7 @@ export function Comparison(props: {
 							// @ts-expect-error idc
 							return setComp((c) => ({ ...c, values }))
 						}}
-						queryContext={props.layerQueryContext}
+						baseQueryInput={props.baseQueryInput}
 						className={componentStyles}
 					/>
 				)
@@ -509,7 +514,7 @@ export function Comparison(props: {
 				<FactionsAllowMatchupsConfig
 					className={componentStyles}
 					ref={valueBoxRef}
-					queryContext={props.layerQueryContext}
+					baseQueryInput={props.baseQueryInput}
 					masks={comp.allMasks}
 					setMode={(mode) => {
 						return setComp((c) => ({ ...c, mode }))
@@ -623,14 +628,14 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		value: T | undefined
 		column: LC.GroupByColumn
 		setValue: (value: T | undefined) => void
-		queryContext?: LQY.LayerQueryContext
+		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 		lockOnSingleOption?: boolean
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const valuesRes = useLayerComponents(props.queryContext ?? {})
+	const valuesRes = useLayerComponents(props.baseQueryInput ?? {})
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
 	return (
 		<ComboBox
@@ -651,12 +656,12 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 		value: T | undefined
 		column: string
 		setValue: (value: T | undefined) => void
-		queryContext?: LQY.LayerQueryContext
+		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.queryContext)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.baseQueryInput)
 	return (
 		<ComboBox
 			ref={ref}
@@ -675,7 +680,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 function useDynamicColumnAutocomplete<T extends string | null>(
 	column: string,
 	value: T | undefined,
-	queryContext?: LQY.LayerQueryContext,
+	queryContext?: LQY.LayerQueryBaseInput,
 ) {
 	const [debouncedInput, _setDebouncedInput] = useState('')
 	const [inputValue, _setInputValue] = useState<string>(value?.split?.(',')?.[0] ?? '')
@@ -706,9 +711,9 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
 	else if (debouncedInput && valuesRes.isSuccess && column !== 'id') {
-		options = valuesRes.data[column as LC.GroupByColumn] as T[]
+		options = valuesRes.data![column as LC.GroupByColumn] as T[]
 	} else if (debouncedInput && idsRes.isSuccess) {
-		options = idsRes.data.ids as unknown as T[]
+		options = idsRes.data!.ids as unknown as T[]
 	}
 
 	return {
@@ -723,12 +728,12 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 		values: (string | null)[]
 		column: LC.GroupByColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		queryContext?: LQY.LayerQueryContext
+		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayerComponents(props.queryContext ?? {})
+	const valuesRes = useLayerComponents(props.baseQueryInput ?? {})
 	return (
 		<ComboBoxMulti
 			title={props.column}
@@ -746,12 +751,12 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 		values: (string | null)[]
 		column: string
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		queryContext?: LQY.LayerQueryContext
+		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.queryContext)
+	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.baseQueryInput)
 	return (
 		<ComboBoxMulti
 			title={props.column}
@@ -825,7 +830,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][] | undefined>>
 	mode?: 'split' | 'both' | 'either'
 	setMode?: (mode: 'split' | 'both' | 'either') => void
-	queryContext?: LQY.LayerQueryContext
+	baseQueryInput?: LQY.LayerQueryBaseInput
 	className?: string
 }, ref: React.ForwardedRef<Focusable>) {
 	const masks = props.masks ?? []
@@ -1019,7 +1024,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 									ref={ref}
 									value={getTeam1Masks()}
 									setValue={update => updateTeam(1, update)}
-									queryContext={props.queryContext}
+									queryContext={props.baseQueryInput}
 									className="w-full"
 									onSwitchMaskTeam={(mask, index) => {
 										props.setMasks(currentMasks => {
@@ -1040,7 +1045,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 								<FactionMaskListConfig
 									value={getTeam2Masks()}
 									setValue={update => updateTeam(2, update)}
-									queryContext={props.queryContext}
+									queryContext={props.baseQueryInput}
 									className="w-full"
 									onSwitchMaskTeam={(mask, index) => {
 										props.setMasks(currentMasks => {
@@ -1064,7 +1069,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 								ref={ref}
 								value={getTeam1Masks()}
 								setValue={update => updateTeam(1, update)}
-								queryContext={props.queryContext}
+								queryContext={props.baseQueryInput}
 								className="w-full"
 							/>
 						</div>
@@ -1090,7 +1095,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 	value: F.FactionMask | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask | undefined>>
-	queryContext?: LQY.LayerQueryContext
+	queryContext?: LQY.LayerQueryBaseInput
 	className?: string
 }, ref: React.ForwardedRef<Focusable>) {
 	const res = useLayerComponents(props.queryContext ?? {})
@@ -1164,7 +1169,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 const FactionMaskListConfig = React.forwardRef(function FactionMaskListConfig(props: {
 	value: F.FactionMask[] | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask[] | undefined>>
-	queryContext?: LQY.LayerQueryContext
+	queryContext?: LQY.LayerQueryBaseInput
 	className?: string
 	onSwitchMaskTeam?: (mask: F.FactionMask, index: number) => void
 	showTeamSwitch?: boolean

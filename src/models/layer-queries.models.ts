@@ -113,9 +113,9 @@ export type LayersQueryInput = {
 	pageIndex?: number
 	pageSize?: number
 	sort?: LayersQuerySort
-} & LayerQueryContext
+} & LayerQueryBaseInput
 
-export type LayerComponentsInput = LayerQueryContext
+export type LayerComponentsInput = LayerQueryBaseInput
 
 export type LayerExistsInput = L.LayerId[]
 
@@ -124,17 +124,28 @@ export type SearchIdsInput = {
 	constraints?: LayerQueryConstraint[]
 }
 
-export type LayerStatusesForLayerQueueInput = LayerQueryContext & {
+export type LayerStatusesForLayerQueueInput = LayerQueryBaseInput & {
 	// the number of history entries to resolve statuses for before the layer queue
 	numHistoryEntriesToResolve?: number
 }
 
-export type LayerQueryContext = {
+export type LayerQueryBaseInput = {
 	constraints?: LayerQueryConstraint[]
+	cursor?: LayerQueryCursor
+}
 
-	// "layer items" to be considered as part of the history
-	previousLayerItems?: OrderedLayerItems
-	firstLayerItemParity?: number
+type LayerVoteItemCursorAction = 'add-after' | 'edit' | 'add-vote-choice'
+export type LayerQueryCursor = {
+	type: 'id'
+	// could be LayerItemId or itemId for parent layer queue item
+	itemId: LayerItemId | string
+	action: LayerVoteItemCursorAction
+} | {
+	type: 'layer-queue-index'
+	index: number
+} | {
+	type: 'layer-item-index'
+	index: number
 }
 
 export type GenLayerQueueItemsOptions = {
@@ -220,8 +231,12 @@ type VoteChoiceLayerItem = LayerItemPartsCommon & {
 	itemId: string
 	choiceIndex: number
 }
+export type LayerItemsState = {
+	layerItems: OrderedLayerItems
+	firstLayerItemParity: number
+}
 
-type ParentVoteItem = { parentItemId: string; choices: VoteChoiceLayerItem[] }
+type ParentVoteItem = { type: 'parent-vote-item'; parentItemId: string; choices: VoteChoiceLayerItem[] }
 export type OrderedLayerItems = (LayerItem | ParentVoteItem)[]
 export function isParentVoteItem(item: ParentVoteItem | LayerItem): item is ParentVoteItem {
 	return !!(item as any).parentItemId
@@ -229,6 +244,11 @@ export function isParentVoteItem(item: ParentVoteItem | LayerItem): item is Pare
 
 export function coalesceLayerItems(item: ParentVoteItem | LayerItem) {
 	return isParentVoteItem(item) ? item.choices : [item]
+}
+function layerItemsEqual(a: LayerItem | string | ParentVoteItem, b: LayerItem | string | ParentVoteItem) {
+	const aStr = typeof a === 'string' ? a : a.type === 'parent-vote-item' ? a.parentItemId : toLayerItemId(a)
+	const bStr = typeof b === 'string' ? b : b.type === 'parent-vote-item' ? b.parentItemId : toLayerItemId(b)
+	return aStr === bStr
 }
 
 export function* iterLayerItems(items: OrderedLayerItems): Generator<LayerItem> {
@@ -278,11 +298,11 @@ export function fromLayerItemId(id: LayerItemId): LayerItem {
 	throw new Error(`Invalid LayerItemId: ${id}`)
 }
 
-export function resolveAllOrderedLayerItems(layerList: LL.LayerList, history: MH.MatchDetails[]) {
-	const orderedItems: OrderedLayerItems = []
+export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.MatchDetails[]): LayerItemsState {
+	const layerItems: OrderedLayerItems = []
 	const firstLayerItemParity = history[0]?.ordinal ?? 0
 	for (const entry of history) {
-		orderedItems.push(getLayerItemForMatchHistoryEntry(entry))
+		layerItems.push(getLayerItemForMatchHistoryEntry(entry))
 	}
 
 	for (const listItem of layerList) {
@@ -291,25 +311,27 @@ export function resolveAllOrderedLayerItems(layerList: LL.LayerList, history: MH
 			for (let i = 0; i < listItem.vote.choices.length; i++) {
 				choiceItems.push(getLayerItemForVoteItem(listItem, i))
 			}
-			const parent: ParentVoteItem = { parentItemId: listItem.itemId, choices: choiceItems }
-			orderedItems.push(parent)
+			const parent: ParentVoteItem = { type: 'parent-vote-item', parentItemId: listItem.itemId, choices: choiceItems }
+			layerItems.push(parent)
 		} else {
-			orderedItems.push(getLayerItemForListItem(listItem))
+			layerItems.push(getLayerItemForListItem(listItem))
 		}
 	}
-	return { previousLayerItems: orderedItems, firstLayerItemParity }
+	return { layerItems, firstLayerItemParity }
 }
 
 export function resolveRelevantOrderedItemsForQuery(
-	orderedItems?: OrderedLayerItems,
-	constraints?: LayerQueryConstraint[],
+	orderedItemsState: Pick<LayerItemsState, 'layerItems'>,
+	queryContext: LayerQueryBaseInput,
 	opts?: { onlyCheckingWhere?: boolean },
 ) {
 	opts ??= {}
 	opts.onlyCheckingWhere ??= false
-	orderedItems ??= []
-	constraints ??= []
+	const constraints = queryContext.constraints ?? []
+	const orderedItems = orderedItemsState.layerItems
+
 	const relevantItems: OrderedLayerItems = []
+
 	let maxLookback = 0
 	for (const constraint of constraints) {
 		if (constraint.type !== 'do-not-repeat') continue
@@ -317,7 +339,39 @@ export function resolveRelevantOrderedItemsForQuery(
 		maxLookback = Math.max(maxLookback, constraint.rule.within)
 	}
 
-	for (let i = orderedItems.length - 1; i >= 0; i--) {
+	let cursorIndex = orderedItems.length
+	if (queryContext.cursor?.type === 'id') {
+		const id = queryContext.cursor.itemId
+		const itemIndex = orderedItems.findIndex(item =>
+			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
+		)
+		if (itemIndex !== -1) {
+			if (queryContext.cursor.action === 'add-after') {
+				cursorIndex = itemIndex + 1
+			}
+		} else if (queryContext.cursor.action === 'edit' || queryContext.cursor.action === 'add-vote-choice') {
+			cursorIndex = itemIndex
+		}
+	}
+	if (queryContext.cursor?.type === 'layer-queue-index') {
+		let lastHistoryEntryIndex = -1
+		for (let i = orderedItems.length - 1; i >= 0; i--) {
+			const item = orderedItems[i]
+			if (item.type === 'match-history-entry') {
+				lastHistoryEntryIndex = i
+				break
+			}
+		}
+		if (lastHistoryEntryIndex !== -1) {
+			cursorIndex = lastHistoryEntryIndex + 1 + queryContext.cursor.index
+		}
+	}
+
+	if (queryContext.cursor?.type === 'layer-item-index') {
+		cursorIndex = queryContext.cursor.index
+	}
+
+	for (let i = cursorIndex - 1; i >= 0; i--) {
 		const item = orderedItems[i]
 
 		if (maxLookback < (orderedItems.length - i)) {
@@ -367,102 +421,68 @@ export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerI
 	}
 }
 
-export function getParityForLayerItem(context: LayerQueryContext, _item: LayerItem | LayerItemId) {
+export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem | LayerItemId) {
 	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
 
-	if (!context.previousLayerItems) return 0
-	const itemIndex = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
+	if (!state.layerItems) return 0
+	const itemIndex = state.layerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
 	if (isNullOrUndef(itemIndex)) throw new Error('Item not found')
-	const parity = itemIndex + (context.firstLayerItemParity ?? 0)
+	const parity = itemIndex + (state.firstLayerItemParity ?? 0)
 	return parity
 }
 
 /**
  * Gets the query context for editing a particular layer item
  */
-export function getQueryContextForEditedItem(
-	context: LayerQueryContext,
-	_item: LayerItem | LayerItemId,
-): LayerQueryContext {
-	if (!context.previousLayerItems) return context
-	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
-	const index = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
-	const constraints = context.constraints ?? []
-	if (index === -1) return context
-	if (item.type === 'vote-item') {
-		const parentItem = context.previousLayerItems[index]
-		if (isParentVoteItem(parentItem)) {
-			const layerIds: LayerItemId[] = []
-			for (const currentItem of parentItem.choices) {
-				layerIds.push(currentItem.layerId)
-			}
-			const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
-			constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion-' + index))
-		}
-	}
+export function getQueryCursorForLayerItem(
+	_item: ParentVoteItem | LayerItem | LayerItemId,
+	action: LayerVoteItemCursorAction,
+): LayerQueryCursor {
+	const itemId = typeof _item === 'string' ? _item : isParentVoteItem(_item) ? _item.parentItemId : toLayerItemId(_item)
 	return {
-		...context,
-		previousLayerItems: context.previousLayerItems?.slice(0, index),
+		type: 'id',
+		action: action,
+		itemId,
+	}
+}
+
+export function getBaseQueryInputForVoteChoice(
+	layerItemsState: LayerItemsState,
+	constraints: LayerQueryConstraint[],
+	parentItemId: string,
+): LayerQueryBaseInput {
+	const parentItem = layerItemsState.layerItems.find(item => item.type === 'parent-vote-item' && item.parentItemId === parentItemId)
+	const cursor: LayerQueryCursor = {
+		type: 'id',
+		action: 'edit',
+		itemId: parentItemId,
+	}
+	if (!parentItem) return { constraints, cursor }
+	const layerIds: L.LayerId[] = []
+	for (const currentItem of (parentItem as ParentVoteItem).choices) {
+		layerIds.push(currentItem.layerId)
+	}
+	const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
+	constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion:' + parentItemId))
+
+	return {
+		constraints,
+		cursor,
 	}
 }
 
 // assumes current item at index will be shifted to the right if one exists
-export function getQueryContextForInsertAtQueueIndex(context: LayerQueryContext, index: number) {
-	if (!context.previousLayerItems) return context
-	const layerItems = [...context.previousLayerItems]
-	let firstQueueItemIdx = -1
-	for (let i = 0; i < layerItems.length; i++) {
-		const item = layerItems[i]
-		if (!isParentVoteItem(item) && item.type === 'match-history-entry') continue
-		firstQueueItemIdx = i
-		break
-	}
-	let insertAtIndex: number
-	if (firstQueueItemIdx === -1) insertAtIndex = layerItems.length
-	else insertAtIndex = insertAtIndex = index
-
+export function getQueryCursorForQueueIndex(index: number): LayerQueryCursor {
 	return {
-		...context,
-		previousLayerItems: layerItems.slice(0, insertAtIndex),
+		type: 'layer-queue-index',
+		index,
 	}
 }
 
-export function getQueryContextForAddingVoteChoice(
-	context: LayerQueryContext,
-	editedItemId: string,
-) {
-	if (!context.previousLayerItems) return context
-	const index = context.previousLayerItems.findIndex(item => isParentVoteItem(item) && item.parentItemId === editedItemId)
-	if (index === -1) return context
-	const parentItem = context.previousLayerItems[index] as ParentVoteItem
-
-	const constraints = context.constraints ? [...context.constraints] : []
-	const layerIds: L.LayerId[] = []
-	for (const currentItem of parentItem.choices) {
-		layerIds.push(currentItem.layerId)
-	}
-	const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
-	constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion-' + index))
+export function getQueryCursorForItemIndex(index: number): LayerQueryCursor {
 	return {
-		...context,
-		previousLayerItems: context.previousLayerItems?.slice(0, index),
-	}
-}
-
-export function getQueryContextForAfterItem(
-	context: LayerQueryContext,
-	_item: LayerItem | LayerItemId,
-): LayerQueryContext {
-	if (!context.previousLayerItems) return context
-	const layerItem = typeof _item === 'string' ? fromLayerItemId(_item) : _item
-	let index = context.previousLayerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, layerItem)))
-	if (index === undefined) {
-		console.warn('Item not found in previousLayerItems: ', layerItem)
-		index = context.previousLayerItems.length - 1
-	}
-	return {
-		...context,
-		previousLayerItems: context.previousLayerItems.slice(0, index + 1),
+		type: 'layer-item-index',
+		index,
 	}
 }
 

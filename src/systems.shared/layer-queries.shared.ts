@@ -1,4 +1,3 @@
-import { sleep } from '@/lib/async'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
@@ -11,6 +10,7 @@ import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
+import { unionAll } from 'drizzle-orm/sqlite-core'
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -21,26 +21,22 @@ export async function queryLayers(args: {
 	input: LQY.LayersQueryInput
 	ctx: CS.LayerQuery
 }) {
-	const ctx = args.ctx
-	let input = args.input
+	const input = args.input
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
 	if (input.sort && input.sort.type === 'random') {
 		const { layers, totalCount } = await getRandomGeneratedLayers(
-			ctx,
+			args.ctx,
 			input.pageSize,
 			input,
 			true,
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}
-	input = {
-		...input,
-		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(input.previousLayerItems, input.constraints),
-	}
-	if (input.sort?.type === 'random') throw new Error('type narrowing')
 
-	const { conditions: whereConditions, selectProperties } = await buildConstraintSqlCondition(ctx, input)
+	const ctx = resolveCtxForInput(args.ctx, input)
+
+	const { conditions: whereConditions, selectProperties } = buildConstraintSqlCondition(ctx, input)
 
 	const includeWhere = (query: any) => {
 		if (whereConditions.length > 0) {
@@ -120,11 +116,8 @@ export async function queryLayerComponents({
 	ctx: CS.LayerQuery
 	input: LQY.LayerComponentsInput
 }) {
-	input = {
-		...input,
-		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(input.previousLayerItems, input.constraints, { onlyCheckingWhere: true }),
-	}
-	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, input)
+	ctx = resolveCtxForInput(ctx, input)
+	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
 
 	const res = Object.fromEntries(
 		await Promise.all(LC.GROUP_BY_COLUMNS.map(
@@ -142,7 +135,7 @@ export async function queryLayerComponents({
 }
 
 export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: LQY.SearchIdsInput }) {
-	const { conditions: whereConditions } = await buildConstraintSqlCondition(ctx, input)
+	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
 
 	const results = await ctx
 		.layerDb()
@@ -158,11 +151,10 @@ export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input
 	}
 }
 
-export function getConstraintSQLConditions(
-	ctx: CS.Log & CS.Layers & CS.Filters,
+export const getConstraintSQLConditions = LC.coalesceLookupErrors((
+	ctx: CS.Log & CS.LayerDb & CS.Filters & CS.LayerItemsState,
 	constraint: LQY.LayerQueryConstraint,
-	layerQueryContext: LQY.LayerQueryContext,
-) {
+) => {
 	switch (constraint.type) {
 		case 'filter-anon':
 			return getFilterNodeSQLConditions(ctx, constraint.filter, [])
@@ -173,21 +165,16 @@ export function getConstraintSQLConditions(
 				[],
 			)
 		case 'do-not-repeat':
-			return getDoNotRepeatSQLConditions(
-				ctx,
-				constraint.rule,
-				layerQueryContext,
-			)
-			break
+			return getDoNotRepeatSQLConditions(ctx, constraint.rule)
 		default:
 			assertNever(constraint)
 	}
-}
+})
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
 export function getFilterNodeSQLConditions(
-	ctx: CS.Log & CS.Filters & CS.Layers,
+	ctx: CS.Log & CS.Filters & CS.LayerDb,
 	node: F.FilterNode,
 	reentrantFilterIds: string[],
 ): { code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string } {
@@ -286,9 +273,8 @@ export function getFilterNodeSQLConditions(
 				msg: 'Filter is mutually recursive via filter: ' + node.filterId,
 			}
 		}
-		const entity = ctx.filters.find(fe => fe.id === node.filterId)
+		const entity = ctx.filters.get(node.filterId)
 		if (!entity) {
-			// TODO too lazy to return an error here right now
 			console.trace('unknown filter ', node.filterId, ctx.filters)
 			return {
 				code: 'err:unknown-filter',
@@ -322,9 +308,9 @@ export function getFilterNodeSQLConditions(
 	return { code: 'ok' as const, condition: condition! }
 }
 
-async function buildConstraintSqlCondition(
-	ctx: CS.Log & CS.Filters & CS.Layers,
-	layerQueryContext: LQY.LayerQueryContext,
+function buildConstraintSqlCondition(
+	ctx: CS.Log & CS.Filters & CS.LayerDb & CS.LayerItemsState,
+	layerQueryContext: LQY.LayerQueryBaseInput,
 ) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
@@ -332,11 +318,7 @@ async function buildConstraintSqlCondition(
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
-		const res = getConstraintSQLConditions(
-			ctx,
-			constraint,
-			layerQueryContext,
-		)
+		const res = getConstraintSQLConditions(ctx, constraint)
 		if (res.code !== 'ok') {
 			// TODO: pass error back instead
 			throw new Error('error building constraint SQL condition: ' + JSON.stringify(res))
@@ -363,14 +345,13 @@ export async function getLayerStatusesForLayerQueue({
 	input: LQY.LayerStatusesForLayerQueueInput
 }) {
 	const constraints = input.constraints ?? []
-	// eslint-disable-next-line prefer-const
 	const violationDescriptorsState = new Map<
 		string,
 		LQY.ViolationDescriptor[]
 	>()
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
 	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
-	const layerItems = input.previousLayerItems ?? []
+	const layerItems = ctx.layerItemsState.layerItems ?? []
 	let lookbackLeft = input.numHistoryEntriesToResolve ?? 15
 	let maxLookbackIndex = 0
 	for (let i = layerItems.length - 1; i >= 0; i--) {
@@ -384,10 +365,12 @@ export async function getLayerStatusesForLayerQueue({
 
 	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
-		const queryContextForItem: LQY.LayerQueryContext = {
-			...input,
-			previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(layerItems.slice(0, i), input.constraints),
+		const inputForItem = {
+			cursor: LQY.getQueryCursorForItemIndex(i),
+			constraints: input.constraints ?? [],
 		}
+		const ctxForItem = resolveCtxForInput(ctx, inputForItem)
+
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const violationDescriptors: LQY.ViolationDescriptor[] = []
 			const itemId = LQY.toLayerItemId(item)
@@ -395,11 +378,10 @@ export async function getLayerStatusesForLayerQueue({
 				switch (constraint.type) {
 					case 'do-not-repeat': {
 						const descriptors = getisBlockedByDoNotRepeatRuleDirect(
-							ctx,
+							ctxForItem,
 							constraint.id,
 							constraint.rule,
 							item.layerId,
-							queryContextForItem,
 						)
 						if (!descriptors) continue
 						OneToMany.set(blockedState, itemId, constraint.id)
@@ -457,15 +439,14 @@ export async function getLayerStatusesForLayerQueue({
 }
 
 function getisBlockedByDoNotRepeatRuleDirect(
-	ctx: CS.Log,
+	ctx: CS.Log & CS.LayerItemsState,
 	constraintId: string,
 	rule: LQY.RepeatRule,
 	targetLayerId: L.LayerId,
-	layerQueryContext: LQY.LayerQueryContext,
 ) {
 	const targetLayer = L.toLayer(targetLayerId)
-	const firestLayerItemParity = layerQueryContext.firstLayerItemParity ?? 0
-	const previousLayers = layerQueryContext.previousLayerItems ?? []
+	const firestLayerItemParity = ctx.layerItemsState.firstLayerItemParity
+	const previousLayers = ctx.layerItemsState.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: firestLayerItemParity }, previousLayers.length)
 
 	const descriptors: LQY.ViolationDescriptor[] = []
@@ -541,18 +522,17 @@ function getisBlockedByDoNotRepeatRuleDirect(
 }
 
 function getDoNotRepeatSQLConditions(
-	ctx: CS.EffectiveColumnConfig,
+	ctx: CS.EffectiveColumnConfig & CS.LayerItemsState,
 	rule: LQY.RepeatRule,
-	queryContext: LQY.LayerQueryContext,
 ) {
 	const values = new Set<number>()
 	const valuesA = new Set<number>()
 	const valuesB = new Set<number>()
 	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`1=1` }
 
-	const previousLayers = queryContext.previousLayerItems ?? []
+	const previousLayers = ctx.layerItemsState.layerItems
+	const firstLayerParity = ctx.layerItemsState.firstLayerItemParity
 
-	const firstLayerParity = queryContext.firstLayerItemParity ?? 0
 	for (let i = previousLayers.length - 1; i >= Math.max(previousLayers.length - rule.within, 0); i--) {
 		const teamParity = MH.getTeamParityForOffset({ ordinal: firstLayerParity + i }, previousLayers.length - 1)
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
@@ -648,17 +628,11 @@ type GenLayerOutput<ReturnLayers extends boolean> = ReturnLayers extends true ? 
 export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	ctx: CS.LayerQuery,
 	numLayers: number,
-	layerQueryContext: LQY.LayerQueryContext,
+	layerQueryContext: LQY.LayerQueryBaseInput,
 	returnLayers: ReturnLayers,
 ): Promise<GenLayerOutput<ReturnLayers>> {
-	layerQueryContext = {
-		...layerQueryContext,
-		previousLayerItems: LQY.resolveRelevantOrderedItemsForQuery(layerQueryContext.previousLayerItems, layerQueryContext.constraints),
-	}
-	const { conditions, selectProperties } = await buildConstraintSqlCondition(
-		ctx,
-		layerQueryContext,
-	)
+	ctx = resolveCtxForInput(ctx, layerQueryContext)
+	const { conditions, selectProperties } = buildConstraintSqlCondition(ctx, layerQueryContext)
 	const p_condition = conditions.length > 0 ? E.and(...conditions) as SQL<unknown> : sql`1=1`
 
 	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
@@ -669,88 +643,14 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		// @ts-expect-error idgaf
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
-
-	async function getResultLayers<ReturnLayers extends boolean>(
-		selectedIds: number[],
-		returnLayers: ReturnLayers,
-	): Promise<GenLayerOutput<ReturnLayers>> {
-		if (returnLayers) {
-			const rows = await ctx.layerDb().select({ ...LC.selectAllViewCols(ctx), ...selectProperties }).from(LC.layersView(ctx)).where(
-				E.inArray(LC.viewCol('id', ctx), selectedIds),
-			)
-			const res = { layers: postProcessLayers(ctx, rows as any[], layerQueryContext), totalCount }
-			// @ts-expect-error idgaf
-			return res
-		} else {
-			// @ts-expect-error idgaf
-			return { ids: selectedIds.map(id => LC.unpackId(id)), totalCount }
-		}
-	}
-
-	if (totalCount <= 20_000) {
-		return await getResultLayers(await generateRandomLayersLowRowCount(ctx, numLayers, p_condition), returnLayers)
-	}
-
-	const selectedIds: number[] = []
-	for (let i = 0; i < numLayers; i++) {
-		const selectedColValues: [LC.GroupByColumn, number | null][] = []
-		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
-			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
-			const condition = E.and(
-				p_condition,
-				...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value as number)),
-				E.notInArray(LC.viewCol('id', ctx), selectedIds),
-			) as SQL<unknown>
-			const availableValuesRows = await ctx.layerDb().selectDistinct({ [columnName]: LC.viewCol(columnName, ctx) }).from(
-				LC.layersView(ctx),
-			).where(condition)
-			await sleep(0)
-			const values = availableValuesRows.map(row => row[columnName]) as (number | null)[]
-			if (values.length === 0) break
-
-			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn] ?? []
-			const weights: number[] = []
-			const defaultWeight = 1 / values.length
-			for (const value of values) {
-				weights.push(
-					weightsForCol.find(w => LC.dbValue(columnName, w.value, ctx) === (value ?? null))?.weight ?? defaultWeight,
-				)
-			}
-			if (values.length === 0) break
-			if (values.length === 1 || j + 1 === ctx.effectiveColsConfig.generation.columnOrder.length) {
-				const rows = await ctx.layerDb().select(
-					{ id: LC.viewCol('id', ctx) },
-				).from(
-					LC.layersView(ctx),
-				).where(
-					E.and(
-						p_condition,
-						...selectedColValues.map(([key, value]) => E.eq(LC.viewCol(key, ctx), value)),
-						E.notInArray(LC.viewCol('id', ctx), selectedIds),
-					),
-				)
-				await sleep(0)
-				selectedIds.push(rows[0].id as number)
-				break
-			}
-
-			const chosen = weightedRandomSelection(values, weights)
-
-			selectedColValues.push([columnName as LC.GroupByColumn, chosen])
-		}
-	}
-
-	return await getResultLayers(selectedIds, returnLayers)
-}
-
-async function generateRandomLayersLowRowCount(
-	ctx: CS.LayerQuery,
-	numLayers: number,
-	p_condition: SQL<unknown>,
-) {
-	const baseLayers = await ctx.layerDb()
+	let baseLayersQuery = ctx.layerDb()
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
 		.from(LC.layersView(ctx)).where(p_condition)
+	if (totalCount > 5000) {
+		// @ts-expect-error close enough
+		baseLayersQuery = baseLayersQuery.orderBy(sql`RANDOM()`).limit(Math.min(numLayers * 500, 5000))
+	}
+	const baseLayers = await baseLayersQuery
 	const selectedIds: number[] = []
 
 	for (let i = 0; i < numLayers; i++) {
@@ -759,10 +659,11 @@ async function generateRandomLayersLowRowCount(
 			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
 			const values: (number | null)[] = []
 			const weights: number[] = []
-			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn]?.map(w => ({
-				value: LC.dbValue(columnName, w.value),
-				weight: w.weight,
-			})) ?? []
+			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn]
+				?.map(w => ({
+					value: LC.dbValue(columnName, w.value),
+					weight: w.weight,
+				})) ?? []
 			const defaultWeight = 1 / values.length
 			const selectableIds: number[] = []
 			for (const layer of layerPool) {
@@ -785,16 +686,33 @@ async function generateRandomLayersLowRowCount(
 		}
 	}
 
-	return selectedIds
+	return await getResultLayers(selectedIds, returnLayers)
+
+	async function getResultLayers<ReturnLayers extends boolean>(
+		selectedIds: number[],
+		returnLayers: ReturnLayers,
+	): Promise<GenLayerOutput<ReturnLayers>> {
+		if (returnLayers) {
+			const rows = await ctx.layerDb().select({ ...LC.selectAllViewCols(ctx), ...selectProperties }).from(LC.layersView(ctx)).where(
+				E.inArray(LC.viewCol('id', ctx), selectedIds),
+			)
+			const res = { layers: postProcessLayers(ctx, rows as any[], layerQueryContext), totalCount }
+			// @ts-expect-error idgaf
+			return res
+		} else {
+			// @ts-expect-error idgaf
+			return { ids: selectedIds.map(id => LC.unpackId(id)), totalCount }
+		}
+	}
 }
 
 export type PostProcessedLayer = Awaited<
 	ReturnType<typeof postProcessLayers>
 >[number]
 function postProcessLayers(
-	ctx: CS.Log & CS.EffectiveColumnConfig,
+	ctx: CS.Log & CS.EffectiveColumnConfig & CS.LayerItemsState,
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
-	layerQueryContext: LQY.LayerQueryContext,
+	layerQueryContext: LQY.LayerQueryBaseInput,
 ) {
 	const constraints = layerQueryContext.constraints ?? []
 	return layers.map((layer) => {
@@ -805,7 +723,7 @@ function postProcessLayers(
 		const layersConverted: Record<string, string | number | boolean> = {}
 		for (const key of Object.keys(layer)) {
 			if (key in ctx.effectiveColsConfig.defs) {
-				layersConverted[key] = LC.fromDbValue(key, layer[key])!
+				layersConverted[key] = LC.fromDbValue(key, layer[key], ctx)!
 				continue
 			}
 			const groups = key.match(/^constraint_(\d+)$/)
@@ -820,7 +738,6 @@ function postProcessLayers(
 					constraint.id,
 					constraint.rule,
 					strId,
-					layerQueryContext,
 				)
 				if (descriptors) constraintResults[idx] = false
 				if (descriptors && descriptors.length > 0) {
@@ -834,6 +751,16 @@ function postProcessLayers(
 			violationDescriptors,
 		}
 	})
+}
+
+function resolveCtxForInput<Ctx extends CS.LayerItemsState>(ctx: Ctx, input: LQY.LayerQueryBaseInput) {
+	return {
+		...ctx,
+		layerItemsState: {
+			...ctx.layerItemsState,
+			layerItems: LQY.resolveRelevantOrderedItemsForQuery(ctx.layerItemsState, input),
+		},
+	}
 }
 
 export const queries = {

@@ -12,7 +12,6 @@ import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
-import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
@@ -170,11 +169,14 @@ function QueueControlPanel() {
 	}
 	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
 
-	const addToQueueQueryContext = QD.useFullLayerQueryContext()
-	const playNextQueryContext = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
-		React.useCallback(context => LQY.getQueryContextForInsertAtQueueIndex(context, 0), []),
-	)
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints)
+	const queryInputs = {
+		addtoQueue: { constraints },
+		playNext: {
+			constraints,
+			cursor: LQY.getQueryCursorForQueueIndex(0),
+		},
+	} satisfies Record<string, LQY.LayerQueryBaseInput>
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -201,7 +203,7 @@ function QueueControlPanel() {
 				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
-				layerQueryContext={addToQueueQueryContext}
+				layerQueryBaseInput={queryInputs.addtoQueue}
 			>
 				<Button
 					disabled={!canEdit}
@@ -218,7 +220,7 @@ function QueueControlPanel() {
 				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}
-				layerQueryContext={playNextQueryContext}
+				layerQueryBaseInput={queryInputs.playNext}
 			>
 				<Button
 					disabled={!canEdit}

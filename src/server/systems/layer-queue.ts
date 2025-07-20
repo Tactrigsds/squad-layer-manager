@@ -1067,11 +1067,12 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			constraints.push(...SS.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
 		}
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
-		const queryContext: LQY.LayerQueryContext = {
-			constraints,
-			...LQY.resolveAllOrderedLayerItems([], MatchHistory.state.recentMatches),
-		}
-		const { ids } = await LayerQueries.getRandomGeneratedLayers(LayerQueriesServer.resolveLayerQueryCtx(ctx), 1, queryContext, false)
+		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx({
+			log: ctx.log,
+			layerItemsState: LQY.resolveLayerItemsState([], MatchHistory.state.recentMatches),
+		})
+
+		const { ids } = await LayerQueries.getRandomGeneratedLayers(layerCtx, 1, { constraints }, false)
 		;[nextLayerId] = ids
 		if (!nextLayerId) return false
 		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })

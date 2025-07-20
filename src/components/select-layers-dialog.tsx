@@ -1,11 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
+import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
-import LayerFilterMenu, { useFilterMenuStore, useQueryContextWithMenuFilter } from './layer-filter-menu.tsx'
+import LayerFilterMenu from './layer-filter-menu.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 import TabsList from './ui/tabs-list.tsx'
@@ -22,11 +24,11 @@ export default function SelectLayersDialog(props: {
 	selectingSingleLayerQueueItem?: boolean
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	layerQueryContext: LQY.LayerQueryContext
+	layerQueryBaseInput: LQY.LayerQueryBaseInput
 }) {
 	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 
-	const filterMenuStore = useFilterMenuStore()
+	const filterMenuStore = LFM.useFilterMenuStore()
 
 	const [selectedLayers, setSelectedLayers] = React.useState<L.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -85,7 +87,11 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
-	const queryContextWithFilter = useQueryContextWithMenuFilter(props.layerQueryContext, filterMenuStore)
+	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, LFM.selectFilterMenuConstraints)
+	const queryContextWithFilter: LQY.LayerQueryBaseInput = {
+		...props.layerQueryBaseInput,
+		constraints: [...(props.layerQueryBaseInput.constraints ?? []), ...filterMenuConstraints],
+	}
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
@@ -112,7 +118,7 @@ export default function SelectLayersDialog(props: {
 				</DialogHeader>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu queryContext={props.layerQueryContext} filterMenuStore={filterMenuStore} />
+					<LayerFilterMenu queryContext={props.layerQueryBaseInput} filterMenuStore={filterMenuStore} />
 					<TableStyleLayerPicker
 						queryContext={queryContextWithFilter}
 						selected={selectedLayers}

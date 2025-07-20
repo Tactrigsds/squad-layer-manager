@@ -1,13 +1,14 @@
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import type pino from 'pino'
-import { LayerDb } from './layer-db'
+import * as LDB from './layer-db'
 
 export type EffectiveColumnConfig = { effectiveColsConfig: LC.EffectiveColumnConfig }
 
-export type Layers = { layerDb: () => LayerDb } & EffectiveColumnConfig
+export type LayerDb = { layerDb: () => LDB.LayerDb } & EffectiveColumnConfig
 
 export type Logger = pino.Logger
 
@@ -16,11 +17,14 @@ export type Log = {
 }
 
 export type Filters = {
-	filters: F.FilterEntity[]
+	filters: Map<string, F.FilterEntity>
 }
 
 export type MatchHistory = {
 	recentMatches: MH.MatchDetails[]
 }
+export type LayerItemsState = {
+	layerItemsState: LQY.LayerItemsState
+}
 
-export type LayerQuery = Layers & Log & Filters
+export type LayerQuery = LayerDb & Log & Filters & LayerItemsState

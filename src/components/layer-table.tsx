@@ -170,7 +170,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 }
 
 export default function LayerTable(props: {
-	queryContext?: LQY.LayerQueryContext
+	queryContext?: LQY.LayerQueryBaseInput
 
 	selected: L.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>

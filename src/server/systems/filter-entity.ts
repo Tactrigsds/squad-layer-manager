@@ -216,19 +216,19 @@ export const filtersRouter = router({
 })
 
 export let state!: {
-	filters: F.FilterEntity[]
+	filters: Map<string, F.FilterEntity>
 }
 
 export async function* watchFilters(
 	{ ctx, signal }: { ctx: CS.Log & C.Db; signal?: AbortSignal },
 ): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
-	const ids = [...new Set(state.filters.map(f => f.owner))]
+	const ids = [...new Set(Array.from(state.filters.values()).map(f => f.owner))]
 
 	const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
 
 	yield {
 		code: 'initial-value' as const,
-		entities: state.filters,
+		entities: Array.from(state.filters.values()),
 		parts: {
 			users: users,
 		},
@@ -250,21 +250,21 @@ export async function* watchFilters(
 
 export async function setup() {
 	const ctx = DB.addPooledDb({ log: baseLogger })
+	const filterRows = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
 	state = {
-		filters: (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row)),
+		filters: new Map(filterRows.map(filter => [filter.id, filter])),
 	}
 	filterMutation$.subscribe(mutation => {
-		// don't mutate filters array in place please
 		const [, mut] = mutation
 		switch (mut.type) {
 			case 'add':
-				state.filters = [...state.filters, mut.value]
+				state.filters.set(mut.key, mut.value)
 				break
 			case 'update':
-				state.filters = state.filters.map(f => f.id === mut.key ? mut.value : f)
+				state.filters.set(mut.key, mut.value)
 				break
 			case 'delete':
-				state.filters = state.filters.filter(f => f.id !== mut.key)
+				state.filters.delete(mut.key)
 				break
 			default:
 				assertNever(mut.type)

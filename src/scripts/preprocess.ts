@@ -72,7 +72,7 @@ async function main() {
 	ctx.log.info('Done! Wrote layers to %s', ENV.LAYER_DB_CONFIG_PATH)
 }
 
-function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerComponentsJson): Promise<void> {
+function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
 	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
@@ -183,7 +183,7 @@ function extractLayerScores(ctx: CS.Log & CS.Layers, components: LC.LayerCompone
 }
 
 async function populateLayersTable(
-	ctx: CS.Log & CS.Layers,
+	ctx: CS.Log & CS.LayerDb,
 	components: LC.LayerComponentsJson,
 	finalLayers: Rx.Observable<L.KnownLayer>,
 ) {

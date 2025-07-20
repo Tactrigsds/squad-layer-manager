@@ -6,13 +6,13 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
-import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
+import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
@@ -22,14 +22,13 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as DndKit from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import * as ReactRx from '@react-rxjs/core'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import LayerDisplay from './layer-display.tsx'
-import LayerFilterMenu, { useFilterMenuStore, useQueryContextWithMenuFilter } from './layer-filter-menu.tsx'
+import LayerFilterMenu from './layer-filter-menu.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -113,7 +112,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
-	const filterMenuStore = useFilterMenuStore(editedItem.layerId ? L.toLayer(editedItem.layerId) : undefined)
+	const filterMenuStore = LFM.useFilterMenuStore(editedItem.layerId ? L.toLayer(editedItem.layerId) : undefined)
 
 	const canSubmitSetLayer = Zus.useStore(
 		editedItemStore,
@@ -125,15 +124,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	// const voteChoiceAddLayersQueryContext = React.useMemo(() => (
 	// 	LQY.getQueryContextForAddingVoteChoice(fullQueryContext, editedItem.itemId)
 	// ), [editedItem.itemId, fullQueryContext])
-	const voteChoiceAddLayersQueryContext = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
-		React.useCallback(context => LQY.getQueryContextForAddingVoteChoice(context, editedItem.itemId), [editedItem.itemId]),
-	)
-
-	const editedItemQueryContext = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
-		React.useCallback(context => LQY.getQueryContextForEditedItem(context, LQY.getLayerItemForListItem(editedItem)), [editedItem]),
-	)
+	//
 
 	function submit() {
 		if (!canSubmit) return
@@ -167,7 +158,28 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		}
 	}
 
-	const queryContextWithMenuFilter = useQueryContextWithMenuFilter(editedItemQueryContext, filterMenuStore)
+	const queryInputs = ZusUtils.useStoreDeepMultiple(
+		[QD.QDStore, filterMenuStore, editedItemStore, QD.layerItemsState$],
+		([qdState, filterMenuState, editedItemState, layerItemsState]) => {
+			const constraints = QD.selectBaseQueryConstraints(qdState)
+			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForVoteChoice(
+				layerItemsState,
+				constraints,
+				editedItemState.item.itemId,
+			)
+			const editItem: LQY.LayerQueryBaseInput = { constraints, cursor: LQY.getQueryCursorForLayerItem(editedItemState.item.itemId, 'edit') }
+			const editItemWithFilterMenu: LQY.LayerQueryBaseInput = {
+				cursor: editItem.cursor,
+				constraints: [...constraints, ...LFM.selectFilterMenuConstraints(filterMenuState)],
+			}
+			return {
+				addVoteChoice,
+				editItem,
+				editItemWithFilterMenu,
+			}
+		},
+		{ selectorDeps: [] },
+	)
 
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
@@ -230,9 +242,9 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				)
 				: (
 					<div className="flex items-start space-x-2 min-h-0">
-						<LayerFilterMenu queryContext={editedItemQueryContext} filterMenuStore={filterMenuStore} />
+						<LayerFilterMenu queryContext={queryInputs.editItem} filterMenuStore={filterMenuStore} />
 						<TableStyleLayerPicker
-							queryContext={queryContextWithMenuFilter}
+							queryContext={queryInputs.editItemWithFilterMenu}
 							maxSelected={1}
 							selected={[editedItem.layerId!]}
 							onSelect={(update) => {
@@ -253,7 +265,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 						open={addLayersOpen}
 						pinMode="layers"
 						onOpenChange={setAddLayersOpen}
-						layerQueryContext={voteChoiceAddLayersQueryContext}
+						layerQueryBaseInput={queryInputs.addVoteChoice}
 						selectQueueItems={(items) => {
 							editedVoteChoiceStore.getState().add(items)
 						}}
@@ -465,17 +477,21 @@ function ItemDropdown(props: {
 		props.onStartEdit?.()
 		_setSubDropdownState(state)
 	}
-	const [layerId, itemIndex] = Zus.useStore(props.itemStore, useShallow(s => [s.item.layerId, s.index]))
+	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)
 
-	const addLayersBeforeQueryContext = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
-		React.useCallback((context) => LQY.getQueryContextForInsertAtQueueIndex(context, itemIndex), [itemIndex]),
-	)
-
-	const addLayersAfterQueryContext = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
-		React.useCallback((context) => LQY.getQueryContextForInsertAtQueueIndex(context, itemIndex + 1), [itemIndex]),
-	)
+	const queryContexts = ZusUtils.useStoreDeepMultiple([QD.QDStore, props.itemStore], ([qdStore, itemStore]) => {
+		const constraints = QD.selectBaseQueryConstraints(qdStore)
+		return {
+			addLayersBefore: {
+				constraints,
+				cursor: LQY.getQueryCursorForQueueIndex(itemStore.index),
+			},
+			addLayersAfter: {
+				constraints,
+				cursor: LQY.getQueryCursorForQueueIndex(itemStore.index + 1),
+			},
+		}
+	}, { selectorDeps: [] })
 
 	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item))
 
@@ -527,7 +543,7 @@ function ItemDropdown(props: {
 							const state = props.listStore.getState()
 							state.add(items, props.itemStore.getState().index)
 						}}
-						layerQueryContext={addLayersBeforeQueryContext}
+						layerQueryBaseInput={queryContexts.addLayersBefore}
 					>
 						<DropdownMenuItem>Add layers before</DropdownMenuItem>
 					</SelectLayersDialog>
@@ -542,7 +558,7 @@ function ItemDropdown(props: {
 							const state = props.listStore.getState()
 							state.add(items, props.itemStore.getState().index + 1)
 						}}
-						layerQueryContext={addLayersAfterQueryContext}
+						layerQueryBaseInput={queryContexts.addLayersAfter}
 					>
 						<DropdownMenuItem>Add layers after</DropdownMenuItem>
 					</SelectLayersDialog>

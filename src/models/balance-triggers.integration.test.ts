@@ -4,7 +4,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import { ensureEnvSetup } from '@/server/env'
+import * as env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import { queryLayers } from '@/systems.shared/layer-queries.shared'
@@ -17,7 +17,7 @@ let sampleLayers: L.KnownLayer[] = []
 let terminatingLayers!: L.KnownLayer[]
 
 beforeAll(async () => {
-	ensureEnvSetup()
+	env.ensureEnvSetup()
 	ensureLoggerSetup()
 	await LayerDb.setup({ skipHash: true })
 
@@ -25,7 +25,11 @@ beforeAll(async () => {
 		log: baseLogger,
 		layerDb: () => LayerDb.db,
 		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
-		filters: [],
+		filters: new Map(),
+		layerItemsState: {
+			layerItems: [],
+			firstLayerItemParity: 0,
+		},
 	}
 
 	// Get RAAS layers

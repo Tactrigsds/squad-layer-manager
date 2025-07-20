@@ -1,3 +1,4 @@
+import deepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
 import { isNullOrUndef } from './type-guards'
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
@@ -139,4 +140,13 @@ export function trimUndefined<T extends object>(obj: T) {
 		}
 	}
 	return result
+}
+
+export function deepMemo() {
+	let stored: any = null
+	return <T>(obj: T) => {
+		if (deepEqual(stored, obj)) return stored
+		stored = obj
+		return stored as T
+	}
 }

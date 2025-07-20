@@ -224,7 +224,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		return 'none'
 	})()
 
-	const queryContext: LQY.LayerQueryContext | undefined = React.useMemo(() =>
+	const queryContext: LQY.LayerQueryBaseInput | undefined = React.useMemo(() =>
 		validFilter
 			? ({
 				constraints: [LQY.getEditedFilterConstraint(validFilter)],

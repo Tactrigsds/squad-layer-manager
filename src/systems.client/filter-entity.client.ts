@@ -78,12 +78,7 @@ export const [useFilterEntities, filterEntities$] = ReactRx.bind(
 
 export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactRx.bind(
 	() => initialized$.pipe(Rx.map(() => filterEntities)),
-	null,
 )
-
-export async function resolveInitializedFilterEntities() {
-	return await Rx.firstValueFrom(initializedFilterEntities$().pipe(Rx.filter((e) => !!e)))
-}
 
 export function useFilterCreate() {
 	return useMutation({

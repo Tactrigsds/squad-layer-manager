@@ -32,7 +32,7 @@ export default function LayerDisplay(
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 	const allViolationDescriptors = layerStatusesRes.data?.violationDescriptors
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
-		QD.fullLayerQueryContext$,
+		QD.layerItemsState$,
 		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),
 	) ?? 0
 

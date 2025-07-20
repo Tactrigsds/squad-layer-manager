@@ -44,7 +44,7 @@ await DB.runTransaction(ctx, async (ctx) => {
 					masks = values.map((v: any) => [{ faction: [v] }])
 					mode = values.length > 1 ? 'split' : 'either'
 				} else if (comp.column === 'SubFacMatchup') {
-					masks = values.map((v: any) => [{ faction: [v] }])
+					masks = values.map((v: any) => [{ unit: [v] }])
 					mode = values.length > 1 ? 'split' : 'either'
 				} else {
 					masks = values.map((v: string) => {

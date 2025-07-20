@@ -1,11 +1,10 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
-import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm/expressions'
-import { index, int, numeric, primaryKey, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
+import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import * as L from './layer'
 
@@ -59,11 +58,12 @@ export function getEffectiveColumnConfig(config: LayerDbConfig): EffectiveColumn
 }
 
 export function getColumnDef(name: string, cfg = BASE_COLUMN_CONFIG) {
-	return cfg.defs[name] as CombinedColumnDef | undefined
-}
-
-export function getColumnLabel(name: string, cfg = BASE_COLUMN_CONFIG) {
-	return cfg.defs[name]?.displayName ?? name
+	const column = cfg.defs[name] as CombinedColumnDef | undefined
+	if (!column) {
+		console.log(cfg)
+		throw new ColumnNotFoundError(`Column '${name}' not found`)
+	}
+	return column
 }
 
 export const GROUP_BY_COLUMNS = [
@@ -189,6 +189,9 @@ export function selectAllViewCols(ctx: CS.EffectiveColumnConfig) {
 export type LayerRow = typeof layers.$inferSelect
 export type NewLayerRow = typeof layers.$inferInsert
 
+export class ValueNotFoundError extends Error {}
+export class ColumnNotFoundError extends Error {}
+
 export function dbValue<T extends string | number | boolean | null | undefined>(
 	columnName: string,
 	value: string | number | boolean | null | undefined,
@@ -206,7 +209,7 @@ export function dbValue<T extends string | number | boolean | null | undefined>(
 
 				const index = targetArray.indexOf(value as string)
 				if (index === -1) {
-					throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+					throw new ValueNotFoundError(`Value "${value}" not found in array for column "${columnName}"`)
 				}
 
 				return index as T
@@ -650,4 +653,26 @@ export function buildFullLayerComponents(
 	}
 
 	return layerComponents
+}
+
+export function coalesceLookupErrors<Args extends any[], V>(cb: (...args: Args) => V) {
+	return (...args: Args) => {
+		try {
+			return cb(...args)
+		} catch (error) {
+			if (error instanceof ColumnNotFoundError) {
+				return {
+					code: 'err:column-not-found' as const,
+					message: error.message,
+				}
+			}
+			if (error instanceof ValueNotFoundError) {
+				return {
+					code: 'err:value-not-found' as const,
+					message: error.message,
+				}
+			}
+			throw error
+		}
+	}
 }

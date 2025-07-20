@@ -3,7 +3,7 @@ import * as LC from '@/models/layer-columns'
 import * as FilterEntity from '@/server/systems/filter-entity'
 import * as LayerDb from '@/server/systems/layer-db.server'
 
-export function resolveLayerQueryCtx(ctx: CS.Log): CS.LayerQuery {
+export function resolveLayerQueryCtx(ctx: CS.Log & CS.LayerItemsState): CS.LayerQuery {
 	return {
 		...ctx,
 		layerDb: () => LayerDb.db,

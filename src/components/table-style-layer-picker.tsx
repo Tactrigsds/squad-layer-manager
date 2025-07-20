@@ -1,11 +1,10 @@
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as ConfigClient from '@/systems.client/config.client.ts'
 import React from 'react'
 import LayerTable from './layer-table.tsx'
 
 export default function TableStyleLayerPicker(props: {
-	queryContext: LQY.LayerQueryContext
+	queryContext: LQY.LayerQueryBaseInput
 	selected: L.LayerId[]
 	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>
 	maxSelected?: number

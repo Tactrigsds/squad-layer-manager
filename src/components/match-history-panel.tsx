@@ -317,7 +317,7 @@ export default function MatchHistoryPanel() {
 							const gameRuntime = (entry.startTime && entry.status === 'post-game')
 								? entry.endTime.getTime() - entry.startTime.getTime()
 								: undefined
-							const idx = index + (currentPage - 1) * itemsPerPage
+							const visibleIndex = index + 1 + (currentPage - 1) * itemsPerPage
 
 							const copyHistoryEntryId = () => {
 								navigator.clipboard.writeText(entry.historyEntryId.toString())
@@ -393,7 +393,7 @@ export default function MatchHistoryPanel() {
 								<ContextMenu key={entry.historyEntryId}>
 									<ContextMenuTrigger asChild>
 										<TableRow>
-											<TableCell className="font-mono text-xs">{idx.toString().padStart(2, '0')}</TableCell>
+											<TableCell className="font-mono text-xs">{visibleIndex.toString().padStart(2, '0')}</TableCell>
 											<TableCell className="text-xs ">
 												{entry.startTime
 													? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
