@@ -13,9 +13,9 @@ import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
-import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 
 type LayerCtxModifiedCounters = { [k in keyof WorkerTypes.DynamicQueryCtx]: number }
 
@@ -32,7 +32,7 @@ const layerCtxVersionStore = Zus.createStore<LayerCtxModifiedState>((set, get) =
 	},
 	increment(ctx) {
 		for (const key of Obj.objKeys(ctx)) {
-			set({ counters: { ...get().counters, [key]: get().counters[key]++ } })
+			set({ counters: { ...get().counters, [key]: get().counters[key] + 1 } })
 		}
 	},
 }))
@@ -95,7 +95,7 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts?:
 	}
 }
 
-export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { enabled?: boolean }) {
+export function useLayerComponents(input: LQY.LayerComponentInput, options?: { enabled?: boolean }) {
 	options ??= {}
 	return useQuery({
 		...options,
@@ -108,7 +108,6 @@ export function useLayerComponents(input: LQY.LayerComponentsInput, options?: { 
 export function useSearchIds(input: LQY.SearchIdsInput, options?: { enabled?: boolean }) {
 	options ??= {}
 	return useQuery({
-		...options,
 		queryKey: ['layers', 'searchIds', useDepKey(input)],
 		enabled: options.enabled,
 		queryFn: async () => await sendQuery('searchIds', input),
@@ -151,7 +150,7 @@ export function useLayerExists(
 ) {
 	options ??= {}
 	return useQuery({
-		enabled: !!options.enabled,
+		enabled: input && options?.enabled !== false,
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
 		queryFn: async () => {
@@ -162,15 +161,15 @@ export function useLayerExists(
 }
 
 export function useDepKey(input?: unknown) {
-	const ctxModified = Zus.useStore(layerCtxVersionStore, s => s.counters)
-	return getDepKey(input, ctxModified)
+	const ctxCounters = Zus.useStore(layerCtxVersionStore, useShallow(s => s.counters))
+	return getDepKey(input, ctxCounters)
 }
 
 // get context/input that may invalidate the query
-function getDepKey(input: unknown, ctxModified: LayerCtxModifiedCounters) {
+function getDepKey(input: unknown, ctxCounters: LayerCtxModifiedCounters) {
 	return {
 		input,
-		ctxModified,
+		ctxCounters,
 	}
 }
 
@@ -315,7 +314,6 @@ class LayerQueryWorkerPool {
 	}
 
 	getStats() {
-		const hardwareConcurrency = navigator.hardwareConcurrency || 4
 		return {
 			poolSize: this.poolSize,
 			initialized: this.initialized,
@@ -325,16 +323,6 @@ class LayerQueryWorkerPool {
 				queriesHandled: count,
 			})),
 			averageQueriesPerWorker: this.queryCount / this.poolSize,
-			configuration: {
-				hardwareConcurrency,
-				optimalWorkerCount: getOptimalWorkerCount(),
-				strategy: 'Conservative scaling based on CPU cores with max limit of 5',
-				reasoning: this.poolSize <= 2
-					? 'Minimum parallelism for low-core devices'
-					: this.poolSize <= 3
-					? 'Conservative scaling for typical laptops'
-					: 'Optimal scaling for powerful machines',
-			},
 		}
 	}
 }
@@ -349,7 +337,7 @@ async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input: Worker
 	nextSeqId++
 	const msg: WorkerTypes.QueryRequest<T> = { type, input, seqId: seqId }
 	workerPool.postMessage(msg)
-	const res = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === seqId)))
+	const res = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === seqId))) as WorkerTypes.QueryResponse<T>
 	if (res.error) {
 		globalToast$.next({ variant: 'destructive', description: res.error })
 		throw new Error(res.error)
@@ -384,6 +372,7 @@ async function setup() {
 	})
 
 	contextUpdate$.subscribe(ctx => {
+		console.log('context update', ctx)
 		const msg: WorkerTypes.ContextUpdateRequest = {
 			type: 'context-update',
 			ctx,

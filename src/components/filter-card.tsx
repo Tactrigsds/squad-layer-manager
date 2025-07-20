@@ -13,7 +13,7 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import { useLayerComponents, useSearchIds } from '@/systems.client/layer-queries.client.ts'
+import { useLayerComponents as useLayerComponent, useSearchIds } from '@/systems.client/layer-queries.client.ts'
 import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -635,8 +635,8 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const valuesRes = useLayerComponents(props.baseQueryInput ?? {})
-	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data[props.column] : LOADING
+	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
+	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data : LOADING
 	return (
 		<ComboBox
 			ref={ref}
@@ -698,8 +698,8 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 		debouncer.setValue(value)
 	}
 
-	const valuesRes = useLayerComponents(
-		queryContext ?? {},
+	const valuesRes = useLayerComponent(
+		{ ...(queryContext ?? {}), column: column as LC.GroupByColumn },
 		{
 			enabled: debouncedInput !== '' && column !== 'id',
 		},
@@ -711,7 +711,7 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 	let options: T[] | typeof LOADING = LOADING
 	if (debouncedInput === '') options = []
 	else if (debouncedInput && valuesRes.isSuccess && column !== 'id') {
-		options = valuesRes.data![column as LC.GroupByColumn] as T[]
+		options = valuesRes.data as T[]
 	} else if (debouncedInput && idsRes.isSuccess) {
 		options = idsRes.data!.ids as unknown as T[]
 	}
@@ -733,13 +733,13 @@ const StringInConfig = React.forwardRef(function StringInConfig(
 	},
 	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
-	const valuesRes = useLayerComponents(props.baseQueryInput ?? {})
+	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
 	return (
 		<ComboBoxMulti
 			title={props.column}
 			ref={ref}
 			values={props.values}
-			options={valuesRes.data ? valuesRes.data[props.column] : []}
+			options={valuesRes.data ? valuesRes.data : []}
 			onSelect={props.setValues}
 			className={props.className}
 		/>
@@ -1098,18 +1098,28 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 	queryContext?: LQY.LayerQueryBaseInput
 	className?: string
 }, ref: React.ForwardedRef<Focusable>) {
-	const res = useLayerComponents(props.queryContext ?? {})
+	const responses = {
+		alliance1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_1' }),
+		alliance2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_2' }),
+		faction1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Faction_1' }),
+		faction2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Faction_2' }),
+		unit1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Unit_1' }),
+		unit2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Unit_2' }),
+	}
+
 	const mask = props.value ?? {}
 
 	// Get available options from the query context
 	const { alliances, factions, units } = React.useMemo(() => {
-		if (!res.data) return { alliances: [], factions: [], units: [] }
+		const allPopulated = Object.values(responses).every(res => !!res.data)
+		if (!allPopulated) return { alliances: [], factions: [], units: [] }
 		return {
-			alliances: Arr.union(res.data.Alliance_1, res.data.Alliance_2),
-			factions: Arr.union(res.data.Faction_1, res.data.Faction_2),
-			units: Arr.union(res.data.Unit_1, res.data.Unit_2),
+			alliances: Arr.union(responses.alliance1Res.data!, responses.alliance2Res.data!),
+			factions: Arr.union(responses.faction1Res.data!, responses.faction2Res.data!),
+			units: Arr.union(responses.unit1Res.data!, responses.unit2Res.data!),
 		}
-	}, [res.data])
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, Object.values(responses))
 
 	// Helper function to update the mask
 	function updateMask(field: keyof F.FactionMask, update: React.SetStateAction<(string | null)[]>) {

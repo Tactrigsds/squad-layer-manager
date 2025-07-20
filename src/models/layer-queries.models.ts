@@ -115,7 +115,7 @@ export type LayersQueryInput = {
 	sort?: LayersQuerySort
 } & LayerQueryBaseInput
 
-export type LayerComponentsInput = LayerQueryBaseInput
+export type LayerComponentInput = LayerQueryBaseInput & { column: LC.GroupByColumn }
 
 export type LayerExistsInput = L.LayerId[]
 
@@ -320,14 +320,14 @@ export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.Matc
 	return { layerItems, firstLayerItemParity }
 }
 
-export function resolveRelevantOrderedItemsForQuery(
-	orderedItemsState: Pick<LayerItemsState, 'layerItems'>,
-	queryContext: LayerQueryBaseInput,
+export function resolveRelevantLayerItemsStateForQuery(
+	orderedItemsState: LayerItemsState,
+	input: LayerQueryBaseInput,
 	opts?: { onlyCheckingWhere?: boolean },
 ) {
 	opts ??= {}
 	opts.onlyCheckingWhere ??= false
-	const constraints = queryContext.constraints ?? []
+	const constraints = input.constraints ?? []
 	const orderedItems = orderedItemsState.layerItems
 
 	const relevantItems: OrderedLayerItems = []
@@ -340,20 +340,20 @@ export function resolveRelevantOrderedItemsForQuery(
 	}
 
 	let cursorIndex = orderedItems.length
-	if (queryContext.cursor?.type === 'id') {
-		const id = queryContext.cursor.itemId
+	if (input.cursor?.type === 'id') {
+		const id = input.cursor.itemId
 		const itemIndex = orderedItems.findIndex(item =>
 			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
 		)
 		if (itemIndex !== -1) {
-			if (queryContext.cursor.action === 'add-after') {
+			if (input.cursor.action === 'add-after') {
 				cursorIndex = itemIndex + 1
 			}
-		} else if (queryContext.cursor.action === 'edit' || queryContext.cursor.action === 'add-vote-choice') {
+		} else if (input.cursor.action === 'edit' || input.cursor.action === 'add-vote-choice') {
 			cursorIndex = itemIndex
 		}
 	}
-	if (queryContext.cursor?.type === 'layer-queue-index') {
+	if (input.cursor?.type === 'layer-queue-index') {
 		let lastHistoryEntryIndex = -1
 		for (let i = orderedItems.length - 1; i >= 0; i--) {
 			const item = orderedItems[i]
@@ -362,15 +362,14 @@ export function resolveRelevantOrderedItemsForQuery(
 				break
 			}
 		}
-		if (lastHistoryEntryIndex !== -1) {
-			cursorIndex = lastHistoryEntryIndex + 1 + queryContext.cursor.index
-		}
+		cursorIndex = lastHistoryEntryIndex + 1 + input.cursor.index
 	}
 
-	if (queryContext.cursor?.type === 'layer-item-index') {
-		cursorIndex = queryContext.cursor.index
+	if (input.cursor?.type === 'layer-item-index') {
+		cursorIndex = input.cursor.index
 	}
 
+	let firstItemIndex = 0
 	for (let i = cursorIndex - 1; i >= 0; i--) {
 		const item = orderedItems[i]
 
@@ -383,9 +382,13 @@ export function resolveRelevantOrderedItemsForQuery(
 			break
 		}
 		relevantItems.push(item)
+		firstItemIndex = i
 	}
 
-	return relevantItems.reverse()
+	return {
+		layerItems: relevantItems.reverse(),
+		firstLayerItemTeamParity: MH.getTeamParityForOffset({ ordinal: orderedItemsState.firstLayerItemParity }, Math.max(firstItemIndex, 0)),
+	}
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {

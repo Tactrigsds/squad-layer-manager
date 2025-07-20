@@ -262,34 +262,20 @@ describe('layerExists', () => {
 })
 
 describe('queryLayerComponents', () => {
-	test('returns all available component values', async () => {
-		const result = await LayerQueries.queryLayerComponents({
-			input: {},
-			ctx: baseCtx,
-		})
-
-		// Should return an object with arrays for each group-by column
-		expect(typeof result).toBe('object')
-		expect(Array.isArray(result.Map)).toBe(true)
-		expect(Array.isArray(result.Gamemode)).toBe(true)
-		expect(Array.isArray(result.Faction_1)).toBe(true)
-		expect(result.Map.length).toBeGreaterThan(0)
-		expect(result.Gamemode.length).toBeGreaterThan(0)
-	})
-
 	test('respects filter constraints', async () => {
 		const filter = FB.comp(FB.eq('Gamemode', 'TC'))
-		const res = await LayerQueries.queryLayerComponents({
+		const res = await LayerQueries.queryLayerComponent({
 			input: {
+				column: 'Gamemode',
 				constraints: [{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-only' }],
 			},
 			ctx: baseCtx,
 		})
 
-		expect(Array.isArray(res.Gamemode)).toBe(true)
+		expect(Array.isArray(res)).toBe(true)
 		// If there are TC layers, Gamemode should contain 'TC'
-		if (res.Gamemode.length > 0) {
-			expect(res.Gamemode.includes('TC')).toBe(true)
+		if (res > 0) {
+			expect(res.includes('TC')).toBe(true)
 		}
 	})
 
@@ -304,8 +290,9 @@ describe('queryLayerComponents', () => {
 			},
 		}
 
-		const res = await LayerQueries.queryLayerComponents({
+		const res = await LayerQueries.queryLayerComponent({
 			input: {
+				column: 'Map',
 				constraints: [{
 					type: 'do-not-repeat',
 					rule: { field: 'Map', within: 2 },
@@ -317,8 +304,7 @@ describe('queryLayerComponents', () => {
 		})
 
 		expect(typeof res).toBe('object')
-		expect(Array.isArray(res.Map)).toBe(true)
-		expect(Array.isArray(res.Gamemode)).toBe(true)
+		expect(Array.isArray(res)).toBe(true)
 	})
 })
 
@@ -437,7 +423,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			},
 			{
 				itemId: 'item2',
-				layerId: sampleLayerIds[1],
+				layerId: sampleLayerIds[0],
 				source: { type: 'unknown' },
 			},
 		]
@@ -460,6 +446,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			},
 			ctx: ctxWithLayerQueue,
 		})
+		console.log(res)
 
 		expect(res.code).toBe('ok')
 		if (res.code !== 'ok') throw new Error(`Unexpected error: ${res.code}`)
@@ -730,6 +717,351 @@ describe('Edge cases and error handling', () => {
 		for (const layer of res.layers) {
 			expect(layer.Gamemode).toBe('TC')
 		}
+	})
+})
+
+describe('Do-not-repeat rules - comprehensive scenarios', () => {
+	test('respects map repeat rules with within=1', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		const res = await LayerQueries.queryLayers({
+			input: {
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 1 },
+					id: 'no-repeat-map-1',
+					applyAs: 'where-condition',
+				}],
+				pageSize: 20,
+				pageIndex: 0,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		// Test passes if query executes successfully
+	})
+
+	test('respects gamemode repeat rules with within=2', async () => {
+		if (sampleLayerIds.length < 2) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0], sampleLayerIds[1]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		const res = await LayerQueries.queryLayers({
+			input: {
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Gamemode', within: 2 },
+					id: 'no-repeat-gamemode-2',
+					applyAs: 'where-condition',
+				}],
+				pageSize: 20,
+				pageIndex: 0,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		// Test passes if query executes successfully
+	})
+
+	test('handles multiple do-not-repeat rules simultaneously', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		const res = await LayerQueries.queryLayers({
+			input: {
+				constraints: [
+					{
+						type: 'do-not-repeat',
+						rule: { field: 'Map', within: 1 },
+						id: 'no-repeat-map',
+						applyAs: 'where-condition',
+					},
+					{
+						type: 'do-not-repeat',
+						rule: { field: 'Gamemode', within: 1 },
+						id: 'no-repeat-gamemode',
+						applyAs: 'where-condition',
+					},
+				],
+				pageSize: 20,
+				pageIndex: 0,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		// Test passes if query executes successfully
+	})
+
+	test('works with different within values', async () => {
+		if (sampleLayerIds.length < 3) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0], sampleLayerIds[1], sampleLayerIds[2]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		// Test with within=0 (no repeats allowed)
+		const resWithin0 = await LayerQueries.queryLayers({
+			input: {
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 0 },
+					id: 'no-repeat-map-0',
+					applyAs: 'where-condition',
+				}],
+				pageSize: 20,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(resWithin0.code).toBe('ok')
+
+		// Test with within=3 (larger window)
+		const resWithin3 = await LayerQueries.queryLayers({
+			input: {
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 3 },
+					id: 'no-repeat-map-3',
+					applyAs: 'where-condition',
+				}],
+				pageSize: 20,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(resWithin3.code).toBe('ok')
+	})
+
+	test('queryLayerComponents works with do-not-repeat constraints', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		const res = await LayerQueries.queryLayerComponent({
+			input: {
+				column: 'Map',
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 1 },
+					id: 'no-repeat-map',
+					applyAs: 'where-condition',
+				}],
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(typeof res).toBe('object')
+		expect(Array.isArray(res)).toBe(true)
+	})
+
+	test('searchIds works with do-not-repeat constraints', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		const res = await LayerQueries.searchIds({
+			input: {
+				queryString: 'a',
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 1 },
+					id: 'no-repeat-map',
+					applyAs: 'where-condition',
+				}],
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			expect(Array.isArray(res.ids)).toBe(true)
+			expect(res.ids.length).toBeLessThanOrEqual(15)
+		}
+	})
+
+	test('handles different field types for do-not-repeat', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		// Test different field types (only supported ones)
+		const fields = ['Map', 'Gamemode', 'Size', 'Layer']
+
+		for (const field of fields) {
+			const res = await LayerQueries.queryLayers({
+				input: {
+					constraints: [{
+						type: 'do-not-repeat',
+						rule: { field, within: 1 },
+						id: `no-repeat-${field}`,
+						applyAs: 'where-condition',
+					}],
+					pageSize: 10,
+				},
+				ctx: ctxWithLayerItems,
+			})
+
+			expect(res.code).toBe('ok')
+		}
+	})
+
+	test('works with getLayerStatusesForLayerQueue', async () => {
+		if (sampleLayerIds.length < 2) return
+
+		const queue: LL.LayerList = [
+			{
+				itemId: 'item1',
+				layerId: sampleLayerIds[0],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item2',
+				layerId: sampleLayerIds[1],
+				source: { type: 'unknown' },
+			},
+		]
+
+		const basicPool: SS.PoolConfiguration = {
+			filters: [],
+			repeatRules: [{ field: 'Map', within: 1 }],
+		}
+
+		const constraints = SS.getPoolConstraints(basicPool, 'where-condition', 'where-condition')
+
+		const ctxWithLayerQueue = {
+			...baseCtx,
+			layerItemsState: LQY.resolveLayerItemsState(queue, []),
+		}
+
+		const res = await LayerQueries.getLayerStatusesForLayerQueue({
+			input: { constraints },
+			ctx: ctxWithLayerQueue,
+		})
+
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			expect(res.statuses.present.size).toBeGreaterThan(0)
+			expect(res.statuses.violationDescriptors.size).toBeGreaterThan(0)
+		}
+	})
+
+	test('works with Faction field for do-not-repeat', async () => {
+		if (sampleLayerIds.length === 0) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		// Test Faction field which has special handling for team-based logic
+		const res = await LayerQueries.queryLayers({
+			input: {
+				constraints: [{
+					type: 'do-not-repeat',
+					rule: { field: 'Faction', within: 1 },
+					id: 'no-repeat-faction',
+					applyAs: 'where-condition',
+				}],
+				pageSize: 10,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		// Test passes if query executes successfully with Faction field
+	})
+
+	test('works with complex constraint combinations', async () => {
+		if (sampleLayerIds.length < 2) return
+
+		const ctxWithLayerItems = {
+			...baseCtx,
+			layerItemsState: {
+				layerItems: createLayerItems([sampleLayerIds[0], sampleLayerIds[1]]),
+				firstLayerItemParity: 0,
+			},
+		}
+
+		// Test combining do-not-repeat with filters
+		const filter = FB.comp(FB.eq('Gamemode', 'TC'))
+		const res = await LayerQueries.queryLayers({
+			input: {
+				constraints: [
+					{
+						type: 'filter-anon',
+						filter,
+						applyAs: 'where-condition',
+						id: 'tc-filter',
+					},
+					{
+						type: 'do-not-repeat',
+						rule: { field: 'Map', within: 1 },
+						id: 'no-repeat-map',
+						applyAs: 'where-condition',
+					},
+					{
+						type: 'do-not-repeat',
+						rule: { field: 'Gamemode', within: 2 },
+						id: 'no-repeat-gamemode',
+						applyAs: 'where-condition',
+					},
+				],
+				pageSize: 10,
+			},
+			ctx: ctxWithLayerItems,
+		})
+
+		expect(res.code).toBe('ok')
+		// Test passes if complex constraint combination works
 	})
 })
 

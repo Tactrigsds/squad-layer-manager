@@ -109,29 +109,21 @@ export async function layerExists({
 	}
 }
 
-export async function queryLayerComponents({
+export async function queryLayerComponent({
 	ctx,
 	input,
 }: {
 	ctx: CS.LayerQuery
-	input: LQY.LayerComponentsInput
+	input: LQY.LayerComponentInput
 }) {
 	ctx = resolveCtxForInput(ctx, input)
+	const column = input.column
 	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
-
-	const res = Object.fromEntries(
-		await Promise.all(LC.GROUP_BY_COLUMNS.map(
-			async (column) => {
-				const res = (await ctx.layerDb().selectDistinct({ [column]: LC.viewCol(column, ctx) })
-					.from(LC.layersView(ctx))
-					.where(E.and(...whereConditions)))
-					.map((row: any) => LC.fromDbValue(column, row[column], ctx))
-				return [column, res]
-			},
-		)),
-	)
-
-	return res as Record<LC.GroupByColumn, string[]>
+	const res = (await ctx.layerDb().selectDistinct({ [column]: LC.viewCol(column, ctx) })
+		.from(LC.layersView(ctx))
+		.where(E.and(...whereConditions)))
+		.map((row: any) => LC.fromDbValue(column, row[column], ctx))
+	return res as string[]
 }
 
 export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: LQY.SearchIdsInput }) {
@@ -756,17 +748,14 @@ function postProcessLayers(
 function resolveCtxForInput<Ctx extends CS.LayerItemsState>(ctx: Ctx, input: LQY.LayerQueryBaseInput) {
 	return {
 		...ctx,
-		layerItemsState: {
-			...ctx.layerItemsState,
-			layerItems: LQY.resolveRelevantOrderedItemsForQuery(ctx.layerItemsState, input),
-		},
+		layerItemsState: LQY.resolveRelevantLayerItemsStateForQuery(ctx.layerItemsState, input),
 	}
 }
 
 export const queries = {
 	queryLayers,
 	layerExists,
-	queryLayerComponents,
+	queryLayerComponents: queryLayerComponent,
 	searchIds,
 	getLayerStatusesForLayerQueue,
 }
