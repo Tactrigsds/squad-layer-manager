@@ -28,7 +28,7 @@ export default defineConfig({
 		sourcemap: true,
 	},
 	optimizeDeps: {
-		exclude: ['sqlocal'],
+		exclude: [],
 	},
 	resolve: {
 		alias: {
