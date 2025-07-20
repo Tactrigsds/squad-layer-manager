@@ -1,4 +1,3 @@
-import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
 import * as CS from '@/models/context-shared'
 import { LayerDb } from '@/models/layer-db'
@@ -28,6 +27,7 @@ export type QueryResponse<Q extends QueryType = QueryType> = Response<{ type: Q 
 export type InitRequest = Sequenced & {
 	type: 'init'
 	ctx: CS.EffectiveColumnConfig & DynamicQueryCtx
+	dbBuffer: ArrayBuffer
 }
 
 export type InitResponse = Response<InitRequest>
@@ -78,58 +78,11 @@ onmessage = withErrorResponse(async (e) => {
 })
 
 async function init(initRequest: InitRequest) {
-	const opfsRoot = await navigator.storage.getDirectory()
-	const dbFileName = 'layers.sqlite3'
-	const hashFileName = 'layers.sqlite3.hash'
+	const SQL = await initSqlJs({
+		locateFile: (file) => `https://sql.js.org/dist/${file}`,
+	})
 
-	let dbHandle: FileSystemFileHandle
-	let hashHandle: FileSystemFileHandle
-	let storedHash: string | null = null
-
-	try {
-		const dbHandlePromise = opfsRoot.getFileHandle(dbFileName)
-		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName)
-		const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text())
-		;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
-	} catch {
-		;[dbHandle, hashHandle] = await Promise.all([
-			opfsRoot.getFileHandle(dbFileName, { create: true }),
-			opfsRoot.getFileHandle(hashFileName, { create: true }),
-		])
-	}
-
-	const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
-
-	const [res, SQL] = await Promise.all([
-		fetch(AR.link('/layers.sqlite3'), { headers }),
-		initSqlJs({
-			locateFile: (file) => `https://sql.js.org/dist/${file}`,
-		}),
-	])
-
-	let buffer: ArrayBuffer
-
-	if (res.status === 304) {
-		const cachedFile = await dbHandle.getFile()
-		buffer = await cachedFile.arrayBuffer()
-	} else {
-		buffer = await res.arrayBuffer()
-
-		// Store in OPFS
-		const writable = await dbHandle.createWritable()
-		await writable.write(buffer)
-		await writable.close()
-
-		// Store hash
-		const etag = res.headers.get('ETag')
-		if (etag) {
-			const hashWritable = await hashHandle.createWritable()
-			await hashWritable.write(etag)
-			await hashWritable.close()
-		}
-	}
-
-	const driver = new SQL.Database(new Uint8Array(buffer))
+	const driver = new SQL.Database(new Uint8Array(initRequest.dbBuffer))
 	const db = drizzle(driver, {
 		logger: {
 			logQuery(query, params) {

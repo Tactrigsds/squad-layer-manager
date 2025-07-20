@@ -1,3 +1,4 @@
+import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
@@ -173,7 +174,172 @@ function getDepKey(input: unknown, ctxModified: LayerCtxModifiedCounters) {
 	}
 }
 
-let lqWorker!: Worker
+/**
+ * Determines the optimal number of workers based on browser's reported concurrency.
+ * Uses navigator.hardwareConcurrency with a maximum limit of 5 workers.
+ */
+function getOptimalWorkerCount(): number {
+	// Get the number of logical processors available
+	const hardwareConcurrency = navigator.hardwareConcurrency || 4 // fallback to 4 if not available
+
+	// Strategy: Use a conservative approach to avoid overwhelming the system
+	// - For 1-2 cores: Use 2 workers (minimum viable parallelism)
+	// - For 3-4 cores: Use 2-3 workers (conservative for typical laptops)
+	// - For 5+ cores: Use 3-5 workers (scale up for powerful machines)
+	let optimalCount: number
+
+	if (hardwareConcurrency <= 2) {
+		optimalCount = 2 // Minimum for basic parallelism
+	} else if (hardwareConcurrency <= 4) {
+		optimalCount = Math.min(3, hardwareConcurrency - 1) // Leave one core for main thread
+	} else {
+		optimalCount = Math.min(5, Math.floor(hardwareConcurrency * 0.6)) // Use 60% of cores, max 5
+	}
+
+	console.log(
+		`Hardware concurrency: ${hardwareConcurrency} cores, `
+			+ `selected ${optimalCount} workers for optimal database query performance`,
+	)
+
+	return optimalCount
+}
+
+/**
+ * WorkerPool manages a pool of Web Workers for layer queries
+ */
+class LayerQueryWorkerPool {
+	private workers: Worker[] = []
+	private nextWorkerIndex = 0
+	private readonly poolSize: number
+	private initialized = false
+	private initializing = false
+	private queryCount = 0
+	private workerUsageCount: number[] = []
+
+	constructor(poolSize: number = getOptimalWorkerCount()) {
+		this.poolSize = poolSize
+	}
+
+	async initialize(dbBuffer: ArrayBuffer, ctx: WorkerTypes.InitRequest['ctx']) {
+		if (this.initialized) return
+		if (this.initializing) {
+			throw new Error('Worker pool is already initializing')
+		}
+
+		this.initializing = true
+
+		try {
+			// Create workers
+			for (let i = 0; i < this.poolSize; i++) {
+				const worker = new LQWorker()
+				worker.onmessage = (event) => {
+					out$.next(event.data)
+				}
+				worker.onerror = (error) => {
+					console.error(`Worker ${i} error:`, error)
+					globalToast$.next({
+						variant: 'destructive',
+						description: `Worker ${i} encountered an error: ${error.message}`,
+					})
+				}
+				this.workers.push(worker)
+				this.workerUsageCount.push(0)
+			}
+
+			// Initialize all workers
+			const initPromises = this.workers.map(async (worker, index) => {
+				const msg: WorkerTypes.InitRequest = {
+					type: 'init',
+					seqId: -(index + 1), // Use negative seqIds for init to avoid conflicts
+					ctx,
+					dbBuffer,
+				}
+				worker.postMessage(msg)
+				const response = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === -(index + 1))))
+				if (response.error) {
+					throw new Error(`Worker ${index} initialization failed: ${response.error}`)
+				}
+			})
+
+			await Promise.all(initPromises)
+			this.initialized = true
+			console.log(`Worker pool initialized with ${this.poolSize} workers`)
+		} catch (error) {
+			// Clean up on failure
+			this.terminate()
+			throw error
+		} finally {
+			this.initializing = false
+		}
+	}
+
+	getNextWorker(): Worker {
+		if (!this.initialized) {
+			throw new Error('Worker pool not initialized')
+		}
+		if (this.workers.length === 0) {
+			throw new Error('No workers available in pool')
+		}
+		const worker = this.workers[this.nextWorkerIndex]
+		this.workerUsageCount[this.nextWorkerIndex]++
+		this.nextWorkerIndex = (this.nextWorkerIndex + 1) % this.poolSize
+		return worker
+	}
+
+	postMessage(message: any) {
+		const worker = this.getNextWorker()
+		this.queryCount++
+		worker.postMessage(message)
+	}
+
+	updateContext(message: WorkerTypes.ContextUpdateRequest) {
+		// Send context updates to all workers
+		for (const worker of this.workers) {
+			worker.postMessage(message)
+		}
+	}
+
+	terminate() {
+		for (const worker of this.workers) {
+			try {
+				worker.terminate()
+			} catch (error) {
+				console.warn('Error terminating worker:', error)
+			}
+		}
+		this.workers = []
+		this.initialized = false
+		this.initializing = false
+		this.queryCount = 0
+		this.workerUsageCount = []
+	}
+
+	getStats() {
+		const hardwareConcurrency = navigator.hardwareConcurrency || 4
+		return {
+			poolSize: this.poolSize,
+			initialized: this.initialized,
+			totalQueries: this.queryCount,
+			workerUsage: this.workerUsageCount.map((count, index) => ({
+				workerId: index,
+				queriesHandled: count,
+			})),
+			averageQueriesPerWorker: this.queryCount / this.poolSize,
+			configuration: {
+				hardwareConcurrency,
+				optimalWorkerCount: getOptimalWorkerCount(),
+				strategy: 'Conservative scaling based on CPU cores with max limit of 5',
+				reasoning: this.poolSize <= 2
+					? 'Minimum parallelism for low-core devices'
+					: this.poolSize <= 3
+					? 'Conservative scaling for typical laptops'
+					: 'Optimal scaling for powerful machines',
+			},
+		}
+	}
+}
+
+let workerPool!: LayerQueryWorkerPool
 let nextSeqId = 1
 const out$ = new Rx.Subject<WorkerTypes.QueryResponse>()
 
@@ -182,7 +348,7 @@ async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input: Worker
 	const seqId = nextSeqId
 	nextSeqId++
 	const msg: WorkerTypes.QueryRequest<T> = { type, input, seqId: seqId }
-	lqWorker.postMessage(msg)
+	workerPool.postMessage(msg)
 	const res = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === seqId)))
 	if (res.error) {
 		globalToast$.next({ variant: 'destructive', description: res.error })
@@ -199,10 +365,10 @@ export async function ensureSetup() {
 }
 
 async function setup() {
-	lqWorker = new LQWorker()
-	lqWorker.onmessage = async (event) => {
-		out$.next(event.data)
-	}
+	// Initialize worker pool with optimal number of workers based on browser concurrency
+	// This allows for concurrent database queries while respecting hardware limitations
+	workerPool = new LayerQueryWorkerPool()
+
 	const config = await ConfigClient.fetchConfig()
 
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
@@ -223,20 +389,76 @@ async function setup() {
 			ctx,
 			seqId: nextSeqId++,
 		}
-		lqWorker.postMessage(msg)
+		workerPool.updateContext(msg)
 		layerCtxVersionStore.getState().increment(ctx)
 	})
+
+	// Fetch database buffer in main thread
+	const dbBuffer = await fetchDatabaseBuffer()
+
 	const ctx: WorkerTypes.InitRequest['ctx'] = {
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		filters,
 		layerItemsState: itemsState,
 	}
 
-	const msg: WorkerTypes.InitRequest = {
-		type: 'init',
-		seqId: 0,
-		ctx,
+	await workerPool.initialize(dbBuffer, ctx)
+}
+
+export function cleanupWorkerPool() {
+	if (workerPool) {
+		console.log('Worker pool stats before cleanup:', workerPool.getStats())
+		workerPool.terminate()
 	}
-	lqWorker.postMessage(msg)
-	await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === 0)))
+	setup$ = null
+}
+
+async function fetchDatabaseBuffer(): Promise<ArrayBuffer> {
+	const opfsRoot = await navigator.storage.getDirectory()
+	const dbFileName = 'layers.sqlite3'
+	const hashFileName = 'layers.sqlite3.hash'
+
+	let dbHandle: FileSystemFileHandle
+	let hashHandle: FileSystemFileHandle
+	let storedHash: string | null = null
+
+	try {
+		const dbHandlePromise = opfsRoot.getFileHandle(dbFileName)
+		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName)
+		const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text())
+		;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
+	} catch {
+		;[dbHandle, hashHandle] = await Promise.all([
+			opfsRoot.getFileHandle(dbFileName, { create: true }),
+			opfsRoot.getFileHandle(hashFileName, { create: true }),
+		])
+	}
+
+	const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
+
+	const res = await fetch(AR.link('/layers.sqlite3'), { headers })
+
+	let buffer: ArrayBuffer
+
+	if (res.status === 304) {
+		const cachedFile = await dbHandle.getFile()
+		buffer = await cachedFile.arrayBuffer()
+	} else {
+		buffer = await res.arrayBuffer()
+
+		// Store in OPFS
+		const writable = await dbHandle.createWritable()
+		await writable.write(buffer)
+		await writable.close()
+
+		// Store hash
+		const etag = res.headers.get('ETag')
+		if (etag) {
+			const hashWritable = await hashHandle.createWritable()
+			await hashWritable.write(etag)
+			await hashWritable.close()
+		}
+	}
+
+	return buffer
 }

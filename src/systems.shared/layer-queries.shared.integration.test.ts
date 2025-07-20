@@ -261,7 +261,7 @@ describe('layerExists', () => {
 	})
 })
 
-describe.only('queryLayerComponents', () => {
+describe('queryLayerComponents', () => {
 	test('returns all available component values', async () => {
 		const result = await LayerQueries.queryLayerComponents({
 			input: {},
