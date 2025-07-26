@@ -15,7 +15,7 @@ export default function TableStyleLayerPicker(props: {
 	return (
 		<div className="flex h-full">
 			<LayerTable
-				queryContext={props.queryContext}
+				baseInput={props.queryContext}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}
 				setPageIndex={setPageIndex}

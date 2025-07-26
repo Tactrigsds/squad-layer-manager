@@ -739,7 +739,7 @@ function postProcessLayers(
 export const queries = {
 	queryLayers,
 	layerExists,
-	queryLayerComponents: queryLayerComponent,
+	queryLayerComponent: queryLayerComponent,
 	searchIds,
 	getLayerItemStatuses,
 }

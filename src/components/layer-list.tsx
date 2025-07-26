@@ -160,14 +160,17 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const queryInputs = ZusUtils.useStoreDeepMultiple(
 		[QD.QDStore, filterMenuStore, editedItemStore, QD.layerItemsState$],
-		([qdState, filterMenuState, editedItemState, layerItemsState]) => {
+		([qdState, filterMenuState, editedLayerListItemState, layerItemsState]) => {
 			const constraints = QD.selectBaseQueryConstraints(qdState)
 			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForVoteChoice(
 				layerItemsState,
 				constraints,
-				editedItemState.item.itemId,
+				editedLayerListItemState.item.itemId,
 			)
-			const editItem: LQY.LayerQueryBaseInput = { constraints, cursor: LQY.getQueryCursorForLayerItem(editedItemState.item.itemId, 'edit') }
+			const editItem: LQY.LayerQueryBaseInput = {
+				constraints,
+				cursor: LQY.getQueryCursorForLayerItem(LQY.getLayerItemForLayerListItem(editedLayerListItemState.item), 'edit'),
+			}
 			const editItemWithFilterMenu: LQY.LayerQueryBaseInput = {
 				cursor: editItem.cursor,
 				constraints: [...constraints, ...LFM.selectFilterMenuConstraints(filterMenuState)],

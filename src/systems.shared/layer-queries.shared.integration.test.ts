@@ -1070,7 +1070,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			expect(res.statuses.violationDescriptors.size).toBeGreaterThan(0)
 
 			// The duplicate layer should be blocked
-			expect(res.statuses.blocked.has(LQY.toLayerItemId(LQY.getLayerItemForListItem(queue[2])))).toBe(true)
+			expect(res.statuses.blocked.has(LQY.toLayerItemId(LQY.getLayerItemForLayerListItem(queue[2])))).toBe(true)
 		}
 	})
 

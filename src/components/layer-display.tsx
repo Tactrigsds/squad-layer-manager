@@ -1,6 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
+import { OneToManyMap } from '@/lib/one-to-many-map.ts'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
@@ -127,7 +128,7 @@ function ShortLayerName(
 	}
 
 	// Create violation field mapping
-	let violatedFields = new Set<string>()
+	let violatedFields: OneToManyMap<string, LQY.ViolationDescriptor> = new Map()
 	if (violationDescriptors && !isNullOrUndef(teamParity)) {
 		violatedFields = LQY.resolveViolatedLayerProperties(violationDescriptors, teamParity)
 	}

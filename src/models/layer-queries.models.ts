@@ -189,25 +189,30 @@ export type ViolationDescriptor = {
 }
 
 export function resolveViolatedLayerProperties(descriptors: ViolationDescriptor[], teamParity: number) {
-	const violatedFields = new Set<string>()
+	const violatedFields: OneToMany.OneToManyMap<string, ViolationDescriptor> = new Map()
 	for (const descriptor of descriptors) {
 		// Map ViolationDescriptor fields to KnownLayer fields
 		switch (descriptor.field) {
+			case 'Map':
+			case 'Layer':
+			case 'Size':
+			case 'Gamemode':
+				OneToMany.set(violatedFields, descriptor.field, descriptor)
+				break
 			case 'Faction_A':
-				violatedFields.add(MH.getTeamNormalizedFactionProp(teamParity, 'A'))
+				OneToMany.set(violatedFields, MH.getTeamNormalizedFactionProp(teamParity, 'A'), descriptor)
 				break
 			case 'Faction_B':
-				violatedFields.add(MH.getTeamNormalizedFactionProp(teamParity, 'B'))
+				OneToMany.set(violatedFields, MH.getTeamNormalizedFactionProp(teamParity, 'B'), descriptor)
 				break
 			case 'Alliance_A':
-				violatedFields.add(MH.getTeamNormalizedAllianceProp(teamParity, 'A'))
+				OneToMany.set(violatedFields, MH.getTeamNormalizedAllianceProp(teamParity, 'A'), descriptor)
 				break
 			case 'Alliance_B':
-				violatedFields.add(MH.getTeamNormalizedAllianceProp(teamParity, 'B'))
+				OneToMany.set(violatedFields, MH.getTeamNormalizedAllianceProp(teamParity, 'B'), descriptor)
 				break
 			default:
-				violatedFields.add(descriptor.field)
-				break
+				assertNever(descriptor.field)
 		}
 	}
 	return violatedFields
@@ -321,7 +326,7 @@ export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.Matc
 			const parent: ParentVoteItem = { type: 'parent-vote-item', parentItemId: listItem.itemId, choices: choiceItems }
 			layerItems.push(parent)
 		} else {
-			layerItems.push(getLayerItemForListItem(listItem))
+			layerItems.push(getLayerItemForLayerListItem(listItem))
 		}
 	}
 	return { layerItems, firstLayerItemParity }
@@ -341,6 +346,7 @@ export function resolveCursorIndex(
 			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
 		)
 		if (itemIndex === -1) {
+			debugger
 			throw new Error(`Item with ID ${id} not found`)
 		}
 		if (cursor.action === 'add-after') {
@@ -369,6 +375,11 @@ export function resolveCursorIndex(
 	assertNever(cursor)
 }
 
+export function resolveTeamParityForCursor(state: LayerItemsState, input: LayerQueryBaseInput) {
+	const index = resolveCursorIndex(state, input)
+	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index)
+}
+
 export function isLookbackTerminatingLayerItem(item: LayerItem | ParentVoteItem): boolean {
 	if (isParentVoteItem(item)) return false
 	const layer = L.toLayer(item.layerId)
@@ -383,7 +394,7 @@ export function getAllLayerIds(items: OrderedLayerItems) {
 	return ids
 }
 
-export function getLayerItemForListItem(item: LL.LayerListItem): LayerItem {
+export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem {
 	return {
 		type: 'list-item',
 		itemId: item.itemId,
@@ -476,6 +487,7 @@ export function getQueryCursorForItemIndex(index: number): LayerQueryCursor {
 export const LayerTableConfigSchema = z.object({
 	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
 	defaultSortBy: LayersQuerySortSchema,
+	extraFilterMenuItem: z.enum(F.COMPARISON_CODES).optional(),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>

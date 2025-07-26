@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
+import { OneToManyMap } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { GENERAL } from '@/messages'
@@ -282,14 +283,14 @@ export default function MatchHistoryPanel() {
 							const entryDescriptors = (hoveredConstraintItemId
 								&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
 
-							let violatedProperties: Set<string> | undefined
+							let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
 							if (entryDescriptors) {
 								violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
 							}
 
 							const extraLayerStyles: Record<string, string> = {}
 							if (violatedProperties) {
-								for (const v of violatedProperties.values()) {
+								for (const v of violatedProperties.keys()) {
 									extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
 								}
 							}

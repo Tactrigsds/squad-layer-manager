@@ -198,8 +198,7 @@ function QueueControlPanel() {
 				</TooltipContent>
 			</Tooltip>
 			<SelectLayersDialog
-				title="Add to Queue"
-				description="Select layers to add to the queue"
+				title="Play After"
 				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
@@ -216,7 +215,6 @@ function QueueControlPanel() {
 			</SelectLayersDialog>
 			<SelectLayersDialog
 				title="Play Next"
-				description="Select layers to play next"
 				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}

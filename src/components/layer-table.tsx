@@ -8,14 +8,22 @@ import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
+import * as ReactHelpers from '@/lib/react'
+import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as Typo from '@/lib/typography'
+import * as ZusHelpers from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as GlobalSettings from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
+import * as QD from '@/systems.client/queue-dashboard'
+import * as Zus from 'zustand'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
+import { cn } from '@/lib/utils'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
@@ -25,6 +33,7 @@ import { useRef, useState } from 'react'
 import React from 'react'
 import { flushSync } from 'react-dom'
 import { ConstraintViolationDisplay } from './constraint-violation-display'
+import { MapLayerDisplay } from './layer-display'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -33,8 +42,8 @@ import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 
 type ConstraintRowDetails = {
-	constraints: LQY.LayerQueryConstraint[]
 	values: boolean[]
+	violationDescriptors: LQY.ViolationDescriptor[]
 }
 type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails }
 const columnHelper = createColumnHelper<RowData>()
@@ -46,7 +55,11 @@ const formatFloat = (value: number) => {
 	return formatted
 }
 const noSortCols = ['Layer', 'Map', 'Gamemode', 'LayerVersion', 'Faction1', 'SubFaction1', 'Faction2', 'SubFaction2']
-function buildColumn(colDef: LC.ColumnDef) {
+function buildColumn(
+	colDef: LC.ColumnDef,
+	teamParity: number,
+	displayLayersNormalized: boolean,
+) {
 	return columnHelper.accessor(colDef.name, {
 		header: ({ column }) => {
 			const sort = column.getIsSorted()
@@ -72,38 +85,78 @@ function buildColumn(colDef: LC.ColumnDef) {
 			const value = info.getValue()
 			if (value === null) return DH.NULL_DISPLAY
 
+			let text: string
 			switch (colDef.type) {
 				case 'float':
-					if (value === null || value === undefined) return '-'
-					return formatFloat(value as unknown as number)
+					if (value === null || value === undefined) {
+						text = '-'
+						break
+					}
+					text = formatFloat(value as unknown as number)
+					break
 				case 'string':
-					return value ?? '-'
+					text = value ?? '-'
+					break
 				case 'integer':
-					return value?.toString() ?? '-'
+					text = value?.toString() ?? '-'
+					break
 				case 'boolean':
-					if (value === null || value === undefined) return '-'
-					return value ? 'True' : 'False'
+					if (value === null || value === undefined) {
+						text = '-'
+						break
+					}
+					text = value ? 'True' : 'False'
+					break
 				default:
 					assertNever(colDef)
 			}
+			const violationDescriptors = info.row.original.violationDescriptors
+			if (colDef.name === 'Layer') {
+				return (
+					<MapLayerDisplay
+						layer={L.toLayer(info.row.original.id).Layer}
+						extraLayerStyles={{
+							Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
+							Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
+							Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
+						}}
+					/>
+				)
+			}
+
+			return (
+				<div
+					className={cn(
+						'px-4',
+						DH.getColumnExtraStyles(colDef.name as keyof L.KnownLayer, teamParity, displayLayersNormalized, violationDescriptors),
+					)}
+				>
+					{text}
+				</div>
+			)
 		},
 	})
 }
 
-function Cell({ row }: { row: Row<RowData> }) {
+function Cell({ row, constraints }: { row: Row<RowData>; constraints: LQY.LayerQueryConstraint[] }) {
 	const loggedInUser = useLoggedInUser()
 	const canForceWrite = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
 	return (
 		<Checkbox
 			checked={row.getIsSelected()}
-			className={getIsRowDisabled(row, canForceWrite) ? 'invisible' : ''}
+			className={getIsRowDisabled(row, canForceWrite, constraints) ? 'invisible' : ''}
 			aria-label="Select row"
 		/>
 	)
 }
 
-function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
+function buildColDefs(
+	cfg: LQY.EffectiveColumnAndTableConfig,
+	teamParity: number,
+	displayLayersNormalized: boolean,
+	constraints: LQY.LayerQueryConstraint[],
+) {
 	const colDefs: ColumnDef<RowData>[] = [
 		{
 			id: 'select',
@@ -114,7 +167,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 					aria-label="Select all"
 				/>
 			),
-			cell: ({ row }) => <Cell row={row} />,
+			cell: ({ row }) => <Cell row={row} constraints={constraints} />,
 			enableSorting: false,
 			enableHiding: false,
 		},
@@ -130,7 +183,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 		})
 
 		for (const col of sortedColKeys) {
-			colDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!))
+			colDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!, teamParity, displayLayersNormalized))
 		}
 	}
 
@@ -138,21 +191,8 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 		header: '',
 		enableHiding: false,
 		cell: info => {
-			const { values, constraints, violationDescriptors } = info.getValue() as {
-				constraints?: LQY.LayerQueryConstraint[]
-				values?: boolean[]
-				violationDescriptors?: LQY.ViolationDescriptor[]
-			}
-			if (!constraints || !values) return null
-			const nodes: React.ReactNode[] = []
-			for (let i = 0; i < constraints.length; i++) {
-				if (constraints[i].applyAs === 'where-condition' || values[i]) continue
-				nodes.push(
-					<div key={constraints[i].name ?? i}>
-						{constraints[i].name ?? 'Constraint ' + i}
-					</div>,
-				)
-			}
+			const { values, violationDescriptors } = info.getValue()
+			if (!violationDescriptors || !values) return null
 			const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
 			return (
 				<ConstraintViolationDisplay
@@ -170,7 +210,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig) {
 }
 
 export default function LayerTable(props: {
-	queryContext?: LQY.LayerQueryBaseInput
+	baseInput?: LQY.LayerQueryBaseInput
 
 	selected: L.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>
@@ -204,7 +244,7 @@ export default function LayerTable(props: {
 		const setPageIndex = props.setPageIndex
 		React.useEffect(() => {
 			setPageIndex(0)
-		}, [props.queryContext?.constraints, setPageIndex])
+		}, [props.baseInput?.constraints, setPageIndex])
 	}
 
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
@@ -276,7 +316,7 @@ export default function LayerTable(props: {
 			if (!userCanForceSelect) {
 				for (const id of Object.keys(newValues)) {
 					const layer = page?.layers.find(layer => layer.id === id)
-					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect)) {
+					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect, props.baseInput?.constraints ?? [])) {
 						newValues[id] = false
 					}
 				}
@@ -338,7 +378,7 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const queryInput = LayerQueriesClient.getLayerQueryInput(props.queryContext ?? {}, {
+	const queryInput = LayerQueriesClient.getLayerQueryInput(props.baseInput ?? {}, {
 		pageIndex: props.pageIndex,
 		selectedLayers: showSelectedLayers ? props.selected : undefined,
 		pageSize,
@@ -391,11 +431,12 @@ export default function LayerTable(props: {
 				..._page,
 				layers: _page.layers.map((layer): RowData => ({
 					...layer,
-					constraints: { values: layer.constraints, constraints: props.queryContext?.constraints ?? [] },
+					constraints: { values: layer.constraints, violationDescriptors: layer.violationDescriptors },
 				})),
 			}
 			: undefined
-	}, [layersRes.data, showSelectedLayers, props.selected, props.pageIndex, pageSize, sort, props.queryContext?.constraints, now])
+	}, [layersRes.data, showSelectedLayers, props.selected, props.pageIndex, pageSize, sort, now])
+
 	React.useLayoutEffect(() => {
 		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
 			const layer = page.layers[0]
@@ -406,9 +447,23 @@ export default function LayerTable(props: {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [page, autoSelectIfSingleResult])
 
+	const teamParity = ReactRxHelpers.useStateObservableSelection(
+		QD.layerItemsState$,
+		React.useCallback((state) => props.baseInput ? LQY.resolveTeamParityForCursor(state, props.baseInput) : undefined, [props.baseInput]),
+	)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+
 	const table = useReactTable({
 		data: page?.layers ?? [],
-		columns: React.useMemo(() => cfg ? buildColDefs(cfg) : [], [cfg]),
+		columns: React.useMemo(
+			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints ?? []) : [],
+			[
+				cfg,
+				teamParity,
+				displayTeamsNormalized,
+				props.baseInput?.constraints,
+			],
+		),
 		pageCount: page?.pageCount ?? -1,
 		state: {
 			sorting: sortingState,
@@ -628,9 +683,9 @@ export default function LayerTable(props: {
 									<ContextMenuTrigger asChild>
 										<TableRow
 											key={row.id}
-											className={getIsRowDisabled(row, userCanForceSelect) ? disabled : ''}
+											className={getIsRowDisabled(row, userCanForceSelect, props.baseInput?.constraints ?? []) ? disabled : ''}
 											onClick={() => {
-												if (getIsRowDisabled(row, userCanForceSelect)) return
+												if (getIsRowDisabled(row, userCanForceSelect, props.baseInput?.constraints ?? [])) return
 												onSetRowSelection(
 													Im.produce(rowSelection, (draft) => {
 														draft[id] = !draft[id]
@@ -832,11 +887,10 @@ function MultiLayerSetDialog({
 		</Dialog>
 	)
 }
-function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean) {
-	const constraints = layerData.constraints
-	return !canForceSelect && constraints.values?.some((v, i) => !v && constraints.constraints[i].type !== 'do-not-repeat')
+function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.LayerQueryConstraint[]) {
+	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
 }
 
-function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean) {
-	return !row.getIsSelected() && getIsLayerDisabled(row.original, canForceSelect)
+function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean, constraints: LQY.LayerQueryConstraint[]) {
+	return !row.getIsSelected() && getIsLayerDisabled(row.original, canForceSelect, constraints)
 }

@@ -7,6 +7,7 @@ import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
+import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
@@ -16,7 +17,7 @@ type SelectMode = 'vote' | 'layers'
 
 export default function SelectLayersDialog(props: {
 	title: string
-	description: React.ReactNode
+	description?: React.ReactNode
 	pinMode?: SelectMode
 	children: React.ReactNode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
@@ -100,10 +101,16 @@ export default function SelectLayersDialog(props: {
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center space-x-2">
 						<DialogTitle>{props.title}</DialogTitle>
-						<div className="mx-8 font-light">-</div>
-						<DialogDescription>{props.description}</DialogDescription>
+						{props.description
+							&& (
+								<>
+									<div className="mx-8 font-light">-</div>
+									<DialogDescription>{props.description}</DialogDescription>
+								</>
+							)}
 					</div>
-					<div className="flex items-center space-x-2">
+					<div className="flex justify-end items-center space-x-2 flex-grow">
+						<ExtraFiltersPanel />
 						{!props.pinMode && (
 							<TabsList
 								options={[

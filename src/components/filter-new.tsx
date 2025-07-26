@@ -190,7 +190,7 @@ export default function FilterNew() {
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				queryContext={{
+				baseInput={{
 					constraints: validFilter
 						? [{ type: 'filter-anon', filter: validFilter, applyAs: 'where-condition', id: 'filter-new' }]
 						: undefined,

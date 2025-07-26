@@ -10,7 +10,6 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as RBAC from '@/rbac.models'
 import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
@@ -356,9 +355,8 @@ export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) 
 }
 
 export function getEditableServerState(state: SS.LQServerState): MutServerStateWithIds {
-	const layerQueue = state.layerQueue
 	return {
-		layerQueue,
+		layerQueue: state.layerQueue,
 		layerQueueSeqId: state.layerQueueSeqId,
 		settings: state.settings,
 	}
@@ -502,7 +500,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 			})
 		},
 		reset: async () => {
-			const serverStateUpdate = lqServerStateUpdate$.getValue()
+			const serverStateUpdate = await lqServerStateUpdate$.getValue()
 			await tryEndEditing()
 			if (!serverStateUpdate) {
 				set({ ...getInitialStateToReset(), canEditQueue: get().canEditQueue, isEditing: get().isEditing })
@@ -610,7 +608,9 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
 		ZusRx.toStream(QDStore),
 		MatchHistoryClient.recentMatches$,
 	]).pipe(
-		Rx.filter(([qdState]) => qdState.initialized),
+		Rx.filter(([qdState]) => {
+			return qdState.initialized
+		}),
 		Rx.map(([qdState, history]) => LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)),
 		distinctDeepEquals(),
 	),

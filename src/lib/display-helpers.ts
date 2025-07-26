@@ -1,5 +1,7 @@
 import LayerComponents from '$root/assets/layer-components.json'
+import * as Typo from '@/lib/typography'
 import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
 
 export function toShortUnit(unit: string | null) {
 	if (unit === null) return ''
@@ -61,4 +63,17 @@ export function toShortTeamsDisplay(layer: Partial<L.KnownLayer>, you?: 1 | 2) {
 export function toShortLayerNameFromId(id: string, you?: 1 | 2) {
 	const res = L.fromPossibleRawId(id)
 	return displayUnvalidatedLayer(res, you)
+}
+
+export function getColumnExtraStyles(
+	column: keyof L.KnownLayer,
+	teamParity: number | undefined,
+	_displayLayersNormalized: boolean,
+	descriptors?: LQY.ViolationDescriptor[],
+) {
+	if (!descriptors) return
+	const properties = LQY.resolveViolatedLayerProperties(descriptors, teamParity ?? 0)
+	if (properties.has(column)) {
+		return Typo.ConstraintViolationDescriptor
+	}
 }

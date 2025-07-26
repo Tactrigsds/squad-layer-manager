@@ -330,7 +330,8 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 			if (res.code !== 'ok') return res
 
 			// Kind of a hack -- we need to refresh the server state to recalculate the relevant parts
-			LayerQueue.serverStateUpdate$.next([LayerQueue.lastServerStateUpdate, ctx])
+			const lastUpdate = await Rx.firstValueFrom(LayerQueue.serverStateUpdateWithParts$)
+			LayerQueue.serverStateUpdate$.next([lastUpdate, ctx])
 			return res
 		}
 

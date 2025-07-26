@@ -15,30 +15,27 @@ export default function ExtraFiltersPanel() {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 
 	return (
-		<div className="flex flex-col space-x-2">
-			<h3 className={cn(Typography.H4, 'whitespace-nowrap')}>Extra filters:</h3>
-			<div className="flex items-center flex-wrap">
-				{extraFilters.map(({ filterId, active }) => {
-					const htmlId = 'filter-list:' + filterId
-					return (
-						<div key={filterId} className="flex items-center space-x-0.5 p-2">
-							<Label htmlFor={htmlId}>{filterEntities.get(filterId)?.name}</Label>
-							<Checkbox
-								id={htmlId}
-								checked={active}
-								onCheckedChange={checked => {
-									if (checked === 'indeterminate') return
-									const actions = QD.QDStore.getState().extraQueryFilterActions
-									actions.setActive(filterId, checked)
-								}}
-							/>
-						</div>
-					)
-				})}
-			</div>
+		<div className="flex items-center">
+			{extraFilters.map(({ filterId, active }) => {
+				const htmlId = 'filter-list:' + filterId
+				return (
+					<div key={filterId} className="flex items-center space-x-0.5 p-2">
+						<Label htmlFor={htmlId}>{filterEntities.get(filterId)?.name}</Label>
+						<Checkbox
+							id={htmlId}
+							checked={active}
+							onCheckedChange={checked => {
+								if (checked === 'indeterminate') return
+								const actions = QD.QDStore.getState().extraQueryFilterActions
+								actions.setActive(filterId, checked)
+							}}
+						/>
+					</div>
+				)
+			})}
 			<Popover>
 				<PopoverTrigger asChild>
-					<Button variant="outline" size="icon">
+					<Button title="Edit extra filters" variant="ghost">
 						<Icons.Edit />
 					</Button>
 				</PopoverTrigger>

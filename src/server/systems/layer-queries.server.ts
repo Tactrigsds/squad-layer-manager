@@ -12,6 +12,9 @@ export function resolveLayerQueryCtx(ctx: CS.Log, serverState: SS.LQServerState)
 		layerDb: () => LayerDb.db,
 		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
 		filters: FilterEntity.state.filters,
-		layerItemsState: LQY.resolveLayerItemsState(serverState.layerQueue, MatchHistory.state.recentMatches),
+		layerItemsState: LQY.resolveLayerItemsState(
+			serverState.layerQueue,
+			MatchHistory.state.recentMatches,
+		),
 	}
 }

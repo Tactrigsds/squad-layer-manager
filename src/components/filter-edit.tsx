@@ -383,7 +383,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				queryContext={queryContext}
+				baseInput={queryContext}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

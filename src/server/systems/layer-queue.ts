@@ -37,11 +37,10 @@ import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
-export let lastServerStateUpdate!: SS.LQServerStateUpdate
-export const serverStateUpdate$ = new Rx.Subject<[SS.LQServerStateUpdate, CS.Log & C.Db]>()
-const serverStateUpdateWithParts$ = serverStateUpdate$.pipe(
+export const serverStateUpdate$ = new Rx.ReplaySubject<[SS.LQServerStateUpdate, CS.Log & C.Db]>()
+export const serverStateUpdateWithParts$ = serverStateUpdate$.pipe(
 	Rx.concatMap(async ([update, ctx]) => includeLQServerUpdateParts(ctx, update)),
-	Rx.share(),
+	Rx.shareReplay(1),
 )
 
 let voteEndTask: Rx.Subscription | null = null
@@ -98,7 +97,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
 		initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
 
-		lastServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
+		serverStateUpdate$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx])
 
 		// -------- initialize vote state --------
 		const update = getVoteStateUpdatesFromQueueUpdate([], initialServerState.layerQueue, voteState)
@@ -873,7 +872,6 @@ export async function* watchUserPresence({ ctx, signal }: { ctx: CS.Log & C.Db; 
 
 // -------- generic actions & data  --------
 async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db; signal?: AbortSignal }) {
-	yield await (includeLQServerUpdateParts(args.ctx, lastServerStateUpdate))
 	for await (const update of toAsyncGenerator(serverStateUpdateWithParts$.pipe(withAbortSignal(args.signal!)))) {
 		yield update
 	}

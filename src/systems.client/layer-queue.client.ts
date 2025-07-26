@@ -17,9 +17,8 @@ const lqServerStateUpdateCold$ = new Observable<SS.LQServerStateUpdate>((s) => {
 	return () => sub.unsubscribe()
 })
 
-export const [useLqServerStateUpdate, lqServerStateUpdate$] = ReactRx.bind<SS.LQServerStateUpdate | null>(
-	lqServerStateUpdateCold$ as Observable<SS.LQServerStateUpdate | null>,
-	null,
+export const [useLqServerStateUpdate, lqServerStateUpdate$] = ReactRx.bind<SS.LQServerStateUpdate>(
+	lqServerStateUpdateCold$ as Observable<SS.LQServerStateUpdate>,
 )
 
 const unexpectedNextLayerCold$ = new Observable<L.LayerId | null>((s) => {

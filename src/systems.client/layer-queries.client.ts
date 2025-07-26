@@ -47,7 +47,8 @@ export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?
 		placeholderData: (prev) => prev,
 		enabled: options.enabled,
 		queryFn: async () => {
-			return await sendQuery('queryLayers', input)
+			const res = await sendQuery('queryLayers', input)
+			return res
 		},
 		staleTime: Infinity,
 	})
@@ -60,8 +61,8 @@ export async function invalidateLayersQuery(input: LQY.LayersQueryInput) {
 
 export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	return reactQueryClient.prefetchQuery({
-		queryKey: ['layers', 'queryLayers', getDepKey(input, layerCtxVersionStore.getState().counters)],
-		queryFn: async () => sendQuery('queryLayers', input),
+		queryKey: ['layers', 'queryLayers', getDepKey({ ...input }, layerCtxVersionStore.getState().counters)],
+		queryFn: async () => sendQuery('queryLayers', input, 0),
 		staleTime: Infinity,
 	})
 }
@@ -102,7 +103,7 @@ export function useLayerComponents(input: LQY.LayerComponentInput, options?: { e
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
 		enabled: options?.enabled,
-		queryFn: async () => sendQuery('queryLayerComponents', input),
+		queryFn: async () => sendQuery('queryLayerComponent', input),
 		staleTime: Infinity,
 	})
 }
@@ -124,18 +125,19 @@ export function useLayerItemStatuses(
 		constraints: ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints),
 		numHistoryEntriesToResolve: 10,
 	}
+	const isEditing = QD.QDStore.getState().isEditing
 	return useQuery({
 		...options,
 		queryKey: [
 			'layers',
 			'getLayerStatusesForLayerQueue',
-			useDepKey(input),
+			useDepKey({ ...input, isEditing }),
 		],
 		enabled: options?.enabled,
 		queryFn: async () => {
-			// if (!QD.QDStore.getState().isEditing) {
-			// 	return PartsSys.getServerLayerItemStatuses()
-			// }
+			if (!QD.QDStore.getState().isEditing) {
+				return PartsSys.getServerLayerItemStatuses()
+			}
 			const res = await sendQuery('getLayerItemStatuses', input)
 			if (!res) return
 			if (res.code !== 'ok') {
@@ -178,10 +180,40 @@ function getDepKey(input: unknown, ctxCounters: LayerCtxModifiedCounters) {
 }
 
 /**
+ * Static configuration for query priorities.
+ * Lower numbers = higher priority (processed first).
+ */
+export const QUERY_PRIORITIES = {
+	queryLayers: 1,
+	layerExists: 2,
+	queryLayerComponent: 3,
+	searchIds: 0,
+	getLayerItemStatuses: 1,
+} as const
+
+type PendingQuery = {
+	message: any
+	priority: number
+	resolve: (value: any) => void
+	reject: (error: Error) => void
+	seqId: number
+}
+
+/**
+ * Configuration for window focus management
+ */
+const FOCUS_CONFIG = {
+	// Delay before terminating workers when window loses focus (in milliseconds)
+	BLUR_TERMINATION_DELAY: 5000,
+} as const
+
+/**
  * Determines the optimal number of workers based on browser's reported concurrency.
  * Uses navigator.hardwareConcurrency with a maximum limit of 5 workers.
  */
 function getOptimalWorkerCount(): number {
+	// TODO due to memory usage concerns we're just setting this to 1 for now -- seems to be fast enough anyway
+	return 1
 	// Get the number of logical processors available
 	const hardwareConcurrency = navigator.hardwareConcurrency || 4 // fallback to 4 if not available
 
@@ -208,16 +240,18 @@ function getOptimalWorkerCount(): number {
 }
 
 /**
- * WorkerPool manages a pool of Web Workers for layer queries
+ * WorkerPool manages a pool of Web Workers for layer queries with priority queue functionality
  */
 class LayerQueryWorkerPool {
 	private workers: Worker[] = []
-	private nextWorkerIndex = 0
 	private readonly poolSize: number
 	private initialized = false
 	private initializing = false
 	private queryCount = 0
 	private workerUsageCount: number[] = []
+	private pendingQueries: PendingQuery[] = []
+	private availableWorkers: Worker[] = []
+	private activeQueries = new Map<number, PendingQuery>()
 
 	constructor(poolSize: number = getOptimalWorkerCount()) {
 		this.poolSize = poolSize
@@ -236,7 +270,7 @@ class LayerQueryWorkerPool {
 			for (let i = 0; i < this.poolSize; i++) {
 				const worker = new LQWorker()
 				worker.onmessage = (event) => {
-					out$.next(event.data)
+					this.handleWorkerMessage(event, worker)
 				}
 				worker.onerror = (error) => {
 					console.error(`Worker ${i} error:`, error)
@@ -246,6 +280,7 @@ class LayerQueryWorkerPool {
 					})
 				}
 				this.workers.push(worker)
+				this.availableWorkers.push(worker)
 				this.workerUsageCount.push(0)
 			}
 
@@ -266,33 +301,80 @@ class LayerQueryWorkerPool {
 
 			await Promise.all(initPromises)
 			this.initialized = true
-			console.log(`Worker pool initialized with ${this.poolSize} workers`)
+			console.debug(`Worker pool initialized with ${this.poolSize} workers`)
 		} catch (error) {
 			// Clean up on failure
-			this.terminate()
+			debugger
+			this.dispose()
 			throw error
 		} finally {
 			this.initializing = false
 		}
 	}
 
-	getNextWorker(): Worker {
-		if (!this.initialized) {
-			throw new Error('Worker pool not initialized')
+	private handleWorkerMessage(event: MessageEvent, worker: Worker) {
+		const response = event.data as WorkerTypes.QueryResponse
+
+		// Handle query responses
+		if (this.activeQueries.has(response.seqId)) {
+			const query = this.activeQueries.get(response.seqId)!
+			this.activeQueries.delete(response.seqId)
+
+			// Make worker available again
+			this.availableWorkers.push(worker)
+
+			if (response.error) {
+				query.reject(new Error(response.error))
+			} else {
+				query.resolve(response.payload)
+			}
+
+			// Process next query in queue
+			this.processQueue()
+		} else {
+			// Forward other messages (like init responses) to the original observable
+			out$.next(response)
 		}
-		if (this.workers.length === 0) {
-			throw new Error('No workers available in pool')
-		}
-		const worker = this.workers[this.nextWorkerIndex]
-		this.workerUsageCount[this.nextWorkerIndex]++
-		this.nextWorkerIndex = (this.nextWorkerIndex + 1) % this.poolSize
-		return worker
 	}
 
-	postMessage(message: any) {
-		const worker = this.getNextWorker()
-		this.queryCount++
-		worker.postMessage(message)
+	private processQueue() {
+		while (this.availableWorkers.length > 0 && this.pendingQueries.length > 0) {
+			// Sort by priority (lower number = higher priority)
+			this.pendingQueries.sort((a, b) => a.priority - b.priority)
+
+			const query = this.pendingQueries.shift()!
+			const worker = this.availableWorkers.shift()!
+
+			this.activeQueries.set(query.seqId, query)
+
+			// Track worker usage
+			const workerIndex = this.workers.indexOf(worker)
+			this.workerUsageCount[workerIndex]++
+			this.queryCount++
+
+			worker.postMessage(query.message)
+		}
+	}
+
+	postMessage(message: any, priority: number = 0): Promise<any> {
+		if (!this.initialized) {
+			return Promise.reject(
+				new Error('Worker pool not initialized. This may happen when the window loses focus and workers are terminated to save memory.'),
+			)
+		}
+
+		return new Promise((resolve, reject) => {
+			const query: PendingQuery = {
+				message,
+				priority,
+				resolve,
+				reject,
+				seqId: message.seqId,
+			}
+
+			this.pendingQueries.push(query)
+			this.processQueue()
+		})
 	}
 
 	updateContext(message: WorkerTypes.ContextUpdateRequest) {
@@ -302,7 +384,50 @@ class LayerQueryWorkerPool {
 		}
 	}
 
-	terminate() {
+	async dispose() {
+		// Wait for all active queries to complete with a timeout
+		const activeQueryPromises = Array.from(this.activeQueries.values()).map(query =>
+			new Promise<void>((resolve) => {
+				const originalResolve = query.resolve
+				const originalReject = query.reject
+
+				query.resolve = (value: any) => {
+					originalResolve(value)
+					resolve()
+				}
+				query.reject = (error: Error) => {
+					originalReject(error)
+					resolve()
+				}
+			})
+		)
+
+		// Set up timeout
+		const timeoutPromise = new Promise<void>((resolve) => {
+			setTimeout(() => {
+				console.warn('Worker pool disposal timeout reached, forcing termination')
+				resolve()
+			}, 30000) // 30 seconds
+		})
+
+		// Wait for either all queries to complete or timeout
+		if (activeQueryPromises.length > 0) {
+			console.debug(`Waiting for ${activeQueryPromises.length} active queries to complete before disposing worker pool...`)
+			await Promise.race([
+				Promise.all(activeQueryPromises),
+				timeoutPromise,
+			])
+		}
+
+		// Reject all remaining pending queries
+		for (const query of this.pendingQueries) {
+			query.reject(new Error('Worker pool terminated'))
+		}
+		// Reject any remaining active queries (in case of timeout)
+		for (const query of this.activeQueries.values()) {
+			query.reject(new Error('Worker pool terminated'))
+		}
+
 		for (const worker of this.workers) {
 			try {
 				worker.terminate()
@@ -310,11 +435,19 @@ class LayerQueryWorkerPool {
 				console.warn('Error terminating worker:', error)
 			}
 		}
+
 		this.workers = []
+		this.availableWorkers = []
+		this.pendingQueries = []
+		this.activeQueries.clear()
 		this.initialized = false
 		this.initializing = false
 		this.queryCount = 0
 		this.workerUsageCount = []
+	}
+
+	isInitialized(): boolean {
+		return this.initialized
 	}
 
 	getStats() {
@@ -334,19 +467,30 @@ class LayerQueryWorkerPool {
 let workerPool!: LayerQueryWorkerPool
 let nextSeqId = 1
 const out$ = new Rx.Subject<WorkerTypes.QueryResponse>()
+let windowFocusCleanupFn: (() => void) | null = null
 
-async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input: WorkerTypes.QueryRequest<T>['input']) {
+export async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input: WorkerTypes.QueryRequest<T>['input'], priority?: number) {
 	await ensureSetup()
+
 	const seqId = nextSeqId
 	nextSeqId++
 	const msg: WorkerTypes.QueryRequest<T> = { type, input, seqId: seqId }
-	workerPool.postMessage(msg)
-	const res = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === seqId))) as WorkerTypes.QueryResponse<T>
-	if (res.error) {
-		globalToast$.next({ variant: 'destructive', description: res.error })
-		throw new Error(res.error)
+
+	// Get priority from configuration
+	priority ??= QUERY_PRIORITIES[type] ?? 0
+
+	try {
+		const payload = await workerPool.postMessage(msg, priority)
+		return payload as WorkerTypes.QueryResponse<T>['payload']
+	} catch (error) {
+		if (error instanceof Error) {
+			globalToast$.next({ variant: 'destructive', description: error.message })
+			throw error
+		}
+		const errorMessage = String(error)
+		globalToast$.next({ variant: 'destructive', description: errorMessage })
+		throw new Error(errorMessage)
 	}
-	return res.payload
 }
 
 let setup$: Promise<void> | null = null
@@ -354,6 +498,71 @@ export async function ensureSetup() {
 	if (setup$) return await setup$
 	setup$ = setup()
 	await setup$
+}
+
+/**
+ * Sets up window focus and page visibility handlers to manage worker pool lifecycle.
+ *
+ * When the window loses focus or becomes hidden:
+ * - Schedules worker termination after a delay to save memory
+ *
+ * When the window regains focus or becomes visible:
+ * - Cancels scheduled termination
+ * - Reinitializes workers if they were previously terminated
+ * - Refetches the database buffer to ensure data freshness
+ */
+function setupWindowFocusHandlers() {
+	if (windowFocusCleanupFn) return // Already set up
+
+	let blurTimeout: number | null = null
+
+	const scheduleTermination = () => {
+		// Clear any existing timeout
+		if (blurTimeout) {
+			clearTimeout(blurTimeout)
+		}
+
+		// Delay termination to avoid flickering when switching between browser windows/tabs quickly
+		console.debug(`Window lost focus/visibility, will terminate worker pool in ${FOCUS_CONFIG.BLUR_TERMINATION_DELAY}ms to save memory`)
+		blurTimeout = window.setTimeout(() => {
+			if (workerPool && workerPool.isInitialized()) {
+				console.debug('Terminating worker pool due to window losing focus/visibility')
+				const stats = workerPool.getStats()
+				console.log('Worker pool stats before focus termination:', stats)
+				workerPool.dispose()
+			}
+		}, FOCUS_CONFIG.BLUR_TERMINATION_DELAY)
+	}
+
+	const handleVisibilityChange = async () => {
+		if (document.hidden) {
+			scheduleTermination()
+		} else {
+			// Cancel pending termination if window regains focus quickly
+			if (blurTimeout) {
+				console.debug('Window regained focus, cancelling scheduled worker pool termination')
+				clearTimeout(blurTimeout)
+				blurTimeout = null
+			}
+		}
+	}
+
+	document.addEventListener('visibilitychange', handleVisibilityChange)
+
+	windowFocusCleanupFn = () => {
+		document.removeEventListener('visibilitychange', handleVisibilityChange)
+		if (blurTimeout) {
+			clearTimeout(blurTimeout)
+			blurTimeout = null
+		}
+		windowFocusCleanupFn = null
+	}
+
+	// Store handlers for manual triggering (useful for testing)
+	return {
+		handleVisibilityChange,
+		cleanup: windowFocusCleanupFn,
+	}
 }
 
 async function setup() {
@@ -364,7 +573,6 @@ async function setup() {
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
-	// Fetch database buffer in main thread
 	const dbBuffer = await fetchDatabaseBuffer()
 
 	const ctx: WorkerTypes.InitRequest['ctx'] = {
@@ -373,7 +581,6 @@ async function setup() {
 		layerItemsState: itemsState,
 	}
 
-	console.log('initializing', ctx)
 	const initPromise = workerPool.initialize(dbBuffer, ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
 	const contextUpdate$ = new Rx.Subject<Partial<WorkerTypes.DynamicQueryCtx>>()
@@ -391,19 +598,60 @@ async function setup() {
 			ctx,
 			seqId: nextSeqId++,
 		}
-		console.log('Updating worker pool context:', msg)
 		workerPool.updateContext(msg)
 		layerCtxVersionStore.getState().increment(ctx)
 	})
 	await initPromise
+	// Set up window focus handlers after successful initialization
+	// const focusHandlers = setupWindowFocusHandlers()
 }
 
-export function cleanupWorkerPool() {
+/**
+ * Manually trigger window blur behavior (useful for testing or manual memory management)
+ */
+export function manuallyBlurWindow() {
+	const event = new Event('blur')
+	window.dispatchEvent(event)
+}
+
+/**
+ * Manually trigger window focus behavior (useful for testing or manual reinitialization)
+ */
+export function manuallyFocusWindow() {
+	const event = new Event('focus')
+	window.dispatchEvent(event)
+}
+
+/**
+ * Get current worker pool statistics
+ */
+export function getWorkerPoolStats() {
+	return workerPool?.getStats() ?? null
+}
+
+/**
+ * Check if the window is currently focused and visible
+ */
+export function isWindowFocused(): boolean {
+	return document.hasFocus() && !document.hidden
+}
+
+/**
+ * Check if the page is currently visible (not minimized or in background tab)
+ */
+export function isPageVisible(): boolean {
+	return !document.hidden
+}
+
+export async function cleanupWorkerPool() {
+	setup$ = null
 	if (workerPool) {
 		console.log('Worker pool stats before cleanup:', workerPool.getStats())
-		workerPool.terminate()
+		await workerPool.dispose()
 	}
-	setup$ = null
+	if (windowFocusCleanupFn) {
+		windowFocusCleanupFn()
+	}
 }
 
 async function fetchDatabaseBuffer(): Promise<ArrayBuffer> {
@@ -416,9 +664,15 @@ async function fetchDatabaseBuffer(): Promise<ArrayBuffer> {
 	let storedHash: string | null = null
 
 	try {
-		const dbHandlePromise = opfsRoot.getFileHandle(dbFileName)
-		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName)
-		const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text())
+		const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
+			return handle
+		})
+		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
+			return handle
+		})
+		const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
+			return text
+		})
 		;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
 	} catch {
 		;[dbHandle, hashHandle] = await Promise.all([

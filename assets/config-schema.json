@@ -318,6 +318,18 @@
             }
           ],
           "description": "if not provided, no sorting will be done"
+        },
+        "extraFilterMenuItem": {
+          "type": "string",
+          "enum": [
+            "lt",
+            "gt",
+            "inrange",
+            "in",
+            "eq",
+            "is-true",
+            "factions:allow-matchups"
+          ]
         }
       },
       "required": ["orderedColumns", "defaultSortBy"],

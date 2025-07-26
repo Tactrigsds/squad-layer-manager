@@ -342,7 +342,7 @@ export const BaseFilterEntitySchema = z.object({
 })
 
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
-export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code)
+export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]]
 
 export function filterContainsId(id: string, node: FilterNode): boolean {
 	switch (node.type) {

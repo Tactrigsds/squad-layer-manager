@@ -13,7 +13,7 @@ export default function PoolCheckboxes() {
 	return (
 		<>
 			<div className="flex items-center flex-nowrap whitespace-nowrap space-x-0.5">
-				<Label title="Hide layers which violate Do-Not-Repeat rules" htmlFor={dnrCheckboxId}>Hide Reruns</Label>
+				<Label title="Hide layers which violate Repeat rules" htmlFor={dnrCheckboxId}>Hide Repeats</Label>
 				<Checkbox
 					id={dnrCheckboxId}
 					onCheckedChange={v => {
