@@ -11,7 +11,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import { useLayerStatuses } from '@/systems.client/layer-queries.client.ts'
+import { useLayerItemStatuses } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
@@ -26,7 +26,7 @@ export default function LayerDisplay(
 		backfillLayerId?: L.LayerId
 	},
 ) {
-	const layerStatusesRes = useLayerStatuses()
+	const layerStatusesRes = useLayerItemStatuses()
 	const badges: React.ReactNode[] = []
 	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)

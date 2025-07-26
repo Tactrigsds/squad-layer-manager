@@ -37,9 +37,12 @@ import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
 
-export let serverStateUpdate$!: Rx.BehaviorSubject<
-	[SS.LQServerStateUpdate & Partial<Parts<USR.UserPart>>, CS.Log & C.Db]
->
+export let lastServerStateUpdate!: SS.LQServerStateUpdate
+export const serverStateUpdate$ = new Rx.Subject<[SS.LQServerStateUpdate, CS.Log & C.Db]>()
+const serverStateUpdateWithParts$ = serverStateUpdate$.pipe(
+	Rx.concatMap(async ([update, ctx]) => includeLQServerUpdateParts(ctx, update)),
+	Rx.share(),
+)
 
 let voteEndTask: Rx.Subscription | null = null
 let voteState: V.VoteState | null = null
@@ -95,10 +98,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
 		initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
 
-		const initialStateUpdate: SS.LQServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
-		const withParts = await includeLQServerUpdateParts(ctx, initialStateUpdate)
-		// idk why this cast on ctx is necessary
-		serverStateUpdate$ = new Rx.BehaviorSubject([withParts, ctx as CS.Log & C.Db] as const)
+		lastServerStateUpdate = { state: initialServerState, source: { type: 'system', event: 'app-startup' } }
 
 		// -------- initialize vote state --------
 		const update = getVoteStateUpdatesFromQueueUpdate([], initialServerState.layerQueue, voteState)
@@ -873,13 +873,9 @@ export async function* watchUserPresence({ ctx, signal }: { ctx: CS.Log & C.Db; 
 
 // -------- generic actions & data  --------
 async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db; signal?: AbortSignal }) {
-	for await (const [update] of toAsyncGenerator(serverStateUpdate$.pipe(withAbortSignal(args.signal!)))) {
-		if (update.parts) {
-			yield update
-		} else {
-			const withParts = await includeLQServerUpdateParts(args.ctx, update)
-			yield withParts
-		}
+	yield await (includeLQServerUpdateParts(args.ctx, lastServerStateUpdate))
+	for await (const update of toAsyncGenerator(serverStateUpdateWithParts$.pipe(withAbortSignal(args.signal!)))) {
+		yield update
 	}
 }
 
@@ -984,10 +980,9 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 		state: res.serverState,
 		source: { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' },
 	}
-	const withParts = await includeLQServerUpdateParts(ctx, update)
-	serverStateUpdate$.next([withParts, ctx])
+	serverStateUpdate$.next([update, ctx])
 
-	return { code: 'ok' as const, serverStateUpdate: withParts }
+	return { code: 'ok' as const, serverStateUpdate: update }
 }
 
 // -------- utility --------
@@ -1020,12 +1015,14 @@ export async function warnShowNext(ctx: C.Db & CS.Log, playerId: string | 'all-a
 async function includeLQServerUpdateParts(
 	ctx: C.Db & CS.Log,
 	_serverStateUpdate: SS.LQServerStateUpdate,
-): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart>>> {
+): Promise<SS.LQServerStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerItemStatusesPart>>> {
 	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
+	const layerItemStatusesPromise = includeLayerItemStatusesForLQServerUpdate(ctx, _serverStateUpdate)
 	return {
 		..._serverStateUpdate,
 		parts: {
 			...(await userPartPromise),
+			...(await layerItemStatusesPromise),
 		},
 	}
 }
@@ -1051,6 +1048,16 @@ async function includeUserPartForLQServerUpdate(ctx: C.Db & CS.Log, update: SS.L
 	return part
 }
 
+async function includeLayerItemStatusesForLQServerUpdate(ctx: CS.Log, update: SS.LQServerStateUpdate): Promise<LQY.LayerItemStatusesPart> {
+	const queryCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, update.state)
+	const constraints = SS.getPoolConstraints(update.state.settings.queue.mainPool)
+	const statusRes = await LayerQueries.getLayerItemStatuses({ ctx: queryCtx, input: { constraints } })
+	if (statusRes.code !== 'ok') {
+		throw new Error(`Failed to get layer item statuses: ${statusRes}`)
+	}
+	return { layerItemStatuses: statusRes.statuses }
+}
+
 /**
  * sets next layer on server, generating a new queue item if needed. modifies serverState in place
  */
@@ -1067,10 +1074,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			constraints.push(...SS.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
 		}
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
-		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx({
-			log: ctx.log,
-			layerItemsState: LQY.resolveLayerItemsState([], MatchHistory.state.recentMatches),
-		})
+		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 
 		const { ids } = await LayerQueries.getRandomGeneratedLayers(layerCtx, 1, { constraints }, false)
 		;[nextLayerId] = ids

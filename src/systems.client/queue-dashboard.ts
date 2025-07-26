@@ -83,6 +83,7 @@ export type ExtraQueryFilter = {
 
 // Queue Dashboard state
 export type QDState = {
+	initialized: boolean
 	editedServerState: MutServerStateWithIds
 
 	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us.
@@ -105,7 +106,7 @@ export type QDState = {
 
 export type QDStore = QDState & {
 	applyServerUpdate: (update: SS.LQServerStateUpdate) => void
-	reset: () => void
+	reset: () => Promise<void>
 	setSetting: (updater: (settings: Im.Draft<SS.ServerSettings>) => void) => void
 	setQueue: Setter<LLState>
 	tryStartEditing: () => void
@@ -363,7 +364,8 @@ export function getEditableServerState(state: SS.LQServerState): MutServerStateW
 	}
 }
 
-export const initialState: QDState = {
+export const initialQDState: QDState = {
+	initialized: false,
 	editedServerState: { layerQueue: [], layerQueueSeqId: 0, settings: SS.ServerSettingsSchema.parse({ queue: {} }) },
 	queueMutations: ItemMut.initMutations(),
 	serverState: null,
@@ -464,7 +466,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 	const getInitialStateToReset = (): Partial<QDState> => {
 		return {
-			editedServerState: Obj.deepClone(initialState.editedServerState),
+			editedServerState: Obj.deepClone(initialQDState.editedServerState),
 			queueMutations: ItemMut.initMutations(),
 		}
 	}
@@ -491,11 +493,13 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 	})
 
 	return {
-		...initialState,
+		...initialQDState,
 		extraQueryFilters,
 		applyServerUpdate: (update) => {
 			set({ serverState: update.state })
-			get().reset()
+			get().reset().then(() => {
+				set({ initialized: true })
+			})
 		},
 		reset: async () => {
 			const serverStateUpdate = lqServerStateUpdate$.getValue()
@@ -507,7 +511,7 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 
 			set({
 				...getInitialStateToReset(),
-				editedServerState: getEditableServerState(serverStateUpdate.state) ?? initialState.editedServerState,
+				editedServerState: getEditableServerState(serverStateUpdate.state) ?? initialQDState.editedServerState,
 			})
 		},
 		setSetting: (handler) => {
@@ -606,6 +610,7 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
 		ZusRx.toStream(QDStore),
 		MatchHistoryClient.recentMatches$,
 	]).pipe(
+		Rx.filter(([qdState]) => qdState.initialized),
 		Rx.map(([qdState, history]) => LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)),
 		distinctDeepEquals(),
 	),

@@ -1,5 +1,4 @@
 import * as Obj from '@/lib/object'
-import * as ReactHelpers from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
 import { derive } from 'derive-zustand'
@@ -7,7 +6,6 @@ import deepEqual from 'fast-deep-equal'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import { StoreApi, StoreMutatorIdentifier, StoreMutators, useStore } from 'zustand'
-import * as ZusRx from 'zustand-rx'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 
 // ripped from zustand types
@@ -51,9 +49,10 @@ export function useStoreDeepMultiple<States extends unknown[], Selector extends 
 		subRef.current = new Rx.Subscription()
 		const stores = _stores.map(storeOr$ => {
 			if (!Rx.isObservable(storeOr$)) return storeOr$ as StoreApi<States[number]>
-			return ReactRxHelpers.storeFromStateObservable(storeOr$, { sub: subRef.current })
+			return ReactRxHelpers.storeFromStateObservable(storeOr$, { sub: subRef.current! })
 		})
 		const memo = Obj.deepMemo()
+		// TODO this code is a bit sussy baka -- may be a memory leak
 		return derive<ReturnType<Selector>>(get => {
 			const states = stores.map(store => get(store)) as States
 			return memo(selector(states))

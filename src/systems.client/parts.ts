@@ -7,14 +7,14 @@ import * as USR from '@/models/users.models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
-export type ClientParts = USR.UserPart & MH.MatchHistoryPart
+export type ClientParts = USR.UserPart & MH.MatchHistoryPart & LQY.LayerItemStatusesPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }
 export const PartsStore = Zus.createStore<PartsStore>()(
 	zustandImmerMiddleware<PartsStore>((set) => {
 		return {
 			users: [],
 			layerInPoolState: new Map(),
-			layerStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
+			layerItemStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
 			matchHistory: new Map(),
 			upsert(key, entity) {
 				set((draft) => {
@@ -30,6 +30,10 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 							for (const entry of matchHistory.values()) {
 								draft.matchHistory.set(entry.historyEntryId, entry)
 							}
+							break
+						}
+						case 'layerItemStatuses': {
+							draft.layerItemStatuses = entity as LQY.LayerItemStatusesPart['layerItemStatuses']
 							break
 						}
 						default:
@@ -61,4 +65,8 @@ export function findUser(id: bigint) {
 
 export function findMatchHistoryEntry(id: number) {
 	return PartsStore.getState().matchHistory.get(id)
+}
+
+export function getServerLayerItemStatuses() {
+	return PartsStore.getState().layerItemStatuses
 }

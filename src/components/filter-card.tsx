@@ -1109,9 +1109,10 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 
 	const mask = props.value ?? {}
 
+	const allPopulated = Object.values(responses).every(res => !!res.data)
+
 	// Get available options from the query context
 	const { alliances, factions, units } = React.useMemo(() => {
-		const allPopulated = Object.values(responses).every(res => !!res.data)
 		if (!allPopulated) return { alliances: [], factions: [], units: [] }
 		return {
 			alliances: Arr.union(responses.alliance1Res.data!, responses.alliance2Res.data!),
@@ -1119,7 +1120,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 			units: Arr.union(responses.unit1Res.data!, responses.unit2Res.data!),
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, Object.values(responses))
+	}, [...Object.values(responses), allPopulated])
 
 	// Helper function to update the mask
 	function updateMask(field: keyof F.FactionMask, update: React.SetStateAction<(string | null)[]>) {
@@ -1147,7 +1148,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 					className="flex-1"
 					title="Alliance"
 					values={mask.alliance ?? []}
-					options={res.isSuccess ? alliances : LOADING}
+					options={allPopulated ? alliances : LOADING}
 					onSelect={(v) => updateMask('alliance', v)}
 				/>
 			</div>
@@ -1157,7 +1158,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 					className="flex-1"
 					title="Faction"
 					values={mask.faction ?? []}
-					options={res.isSuccess ? factions : LOADING}
+					options={allPopulated ? factions : LOADING}
 					onSelect={(v) => updateMask('faction', v)}
 				/>
 			</div>
@@ -1168,7 +1169,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 					className="flex-1"
 					title="Unit"
 					values={mask.unit ?? []}
-					options={res.isSuccess ? units : LOADING}
+					options={allPopulated ? units : LOADING}
 					onSelect={(v) => updateMask('unit', v)}
 				/>
 			</div>

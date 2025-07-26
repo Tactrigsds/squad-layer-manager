@@ -10,6 +10,7 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
+import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
@@ -115,11 +116,11 @@ export function useSearchIds(input: LQY.SearchIdsInput, options?: { enabled?: bo
 	})
 }
 
-export function useLayerStatuses(
+export function useLayerItemStatuses(
 	options?: { enabled?: boolean },
 ) {
 	options ??= {}
-	const input: LQY.LayerStatusesForLayerQueueInput = {
+	const input: LQY.LayerItemStatusesInput = {
 		constraints: ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints),
 		numHistoryEntriesToResolve: 10,
 	}
@@ -132,7 +133,10 @@ export function useLayerStatuses(
 		],
 		enabled: options?.enabled,
 		queryFn: async () => {
-			const res = await sendQuery('getLayerStatusesForLayerQueue', input)
+			// if (!QD.QDStore.getState().isEditing) {
+			// 	return PartsSys.getServerLayerItemStatuses()
+			// }
+			const res = await sendQuery('getLayerItemStatuses', input)
 			if (!res) return
 			if (res.code !== 'ok') {
 				globalToast$.next({ variant: 'destructive', description: res.msg, title: res.code })
@@ -353,34 +357,12 @@ export async function ensureSetup() {
 }
 
 async function setup() {
-	// Initialize worker pool with optimal number of workers based on browser concurrency
-	// This allows for concurrent database queries while respecting hardware limitations
 	workerPool = new LayerQueryWorkerPool()
 
 	const config = await ConfigClient.fetchConfig()
 
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
-
-	const contextUpdate$ = new Rx.Subject<Partial<WorkerTypes.DynamicQueryCtx>>()
-	FilterEntityClient.initializedFilterEntities$().subscribe(filters => {
-		contextUpdate$.next({ filters })
-	})
-
-	QD.layerItemsState$.subscribe(itemsState => {
-		contextUpdate$.next({ layerItemsState: itemsState })
-	})
-
-	contextUpdate$.subscribe(ctx => {
-		console.log('context update', ctx)
-		const msg: WorkerTypes.ContextUpdateRequest = {
-			type: 'context-update',
-			ctx,
-			seqId: nextSeqId++,
-		}
-		workerPool.updateContext(msg)
-		layerCtxVersionStore.getState().increment(ctx)
-	})
 
 	// Fetch database buffer in main thread
 	const dbBuffer = await fetchDatabaseBuffer()
@@ -391,7 +373,29 @@ async function setup() {
 		layerItemsState: itemsState,
 	}
 
-	await workerPool.initialize(dbBuffer, ctx)
+	console.log('initializing', ctx)
+	const initPromise = workerPool.initialize(dbBuffer, ctx)
+	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
+	const contextUpdate$ = new Rx.Subject<Partial<WorkerTypes.DynamicQueryCtx>>()
+	FilterEntityClient.initializedFilterEntities$().subscribe(filters => {
+		contextUpdate$.next({ filters })
+	})
+
+	QD.layerItemsState$.subscribe(itemsState => {
+		contextUpdate$.next({ layerItemsState: itemsState })
+	})
+
+	contextUpdate$.subscribe(ctx => {
+		const msg: WorkerTypes.ContextUpdateRequest = {
+			type: 'context-update',
+			ctx,
+			seqId: nextSeqId++,
+		}
+		console.log('Updating worker pool context:', msg)
+		workerPool.updateContext(msg)
+		layerCtxVersionStore.getState().increment(ctx)
+	})
+	await initPromise
 }
 
 export function cleanupWorkerPool() {

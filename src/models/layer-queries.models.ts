@@ -1,8 +1,6 @@
-import * as Arr from '@/lib/array'
 import * as OneToMany from '@/lib/one-to-many-map'
-import { isNullOrUndef } from '@/lib/type-guards'
+import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
-import * as SS from '@/models/server-state.models'
 import deepEqual from 'fast-deep-equal'
 import { z } from 'zod'
 import * as F from './filter.models'
@@ -20,6 +18,10 @@ export const RepeatRuleSchema = z.object({
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
 export type RepeatRule = z.infer<typeof RepeatRuleSchema>
+export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): boolean {
+	if (!rule.targetValues || rule.targetValues.length === 0) return false
+	return !rule.targetValues.includes(value as string)
+}
 
 export type LayerQueryConstraint =
 	| {
@@ -124,10 +126,15 @@ export type SearchIdsInput = {
 	constraints?: LayerQueryConstraint[]
 }
 
-export type LayerStatusesForLayerQueueInput = LayerQueryBaseInput & {
-	// the number of history entries to resolve statuses for before the layer queue
-	numHistoryEntriesToResolve?: number
+export type LayerItemStatusesInput = LayerQueryBaseInput & { numHistoryEntriesToResolve?: number }
+
+export type LayerItemStatuses = {
+	blocked: OneToMany.OneToManyMap<string, string>
+	present: Set<string>
+	violationDescriptors: Map<string, ViolationDescriptor[]>
 }
+
+export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
 
 export type LayerQueryBaseInput = {
 	constraints?: LayerQueryConstraint[]
@@ -320,40 +327,31 @@ export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.Matc
 	return { layerItems, firstLayerItemParity }
 }
 
-export function resolveRelevantLayerItemsStateForQuery(
+export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
 	input: LayerQueryBaseInput,
-	opts?: { onlyCheckingWhere?: boolean },
 ) {
-	opts ??= {}
-	opts.onlyCheckingWhere ??= false
-	const constraints = input.constraints ?? []
 	const orderedItems = orderedItemsState.layerItems
+	const cursor = input.cursor
+	if (!cursor) return orderedItemsState.layerItems.length
 
-	const relevantItems: OrderedLayerItems = []
-
-	let maxLookback = 0
-	for (const constraint of constraints) {
-		if (constraint.type !== 'do-not-repeat') continue
-		if (opts.onlyCheckingWhere && constraint.applyAs !== 'where-condition') continue
-		maxLookback = Math.max(maxLookback, constraint.rule.within)
-	}
-
-	let cursorIndex = orderedItems.length
-	if (input.cursor?.type === 'id') {
-		const id = input.cursor.itemId
+	if (cursor.type === 'id') {
+		const id = cursor.itemId
 		const itemIndex = orderedItems.findIndex(item =>
 			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
 		)
-		if (itemIndex !== -1) {
-			if (input.cursor.action === 'add-after') {
-				cursorIndex = itemIndex + 1
-			}
-		} else if (input.cursor.action === 'edit' || input.cursor.action === 'add-vote-choice') {
-			cursorIndex = itemIndex
+		if (itemIndex === -1) {
+			throw new Error(`Item with ID ${id} not found`)
+		}
+		if (cursor.action === 'add-after') {
+			return itemIndex + 1
+		} else if (cursor.action === 'edit' || cursor.action === 'add-vote-choice') {
+			return itemIndex
+		} else {
+			assertNever(cursor.action)
 		}
 	}
-	if (input.cursor?.type === 'layer-queue-index') {
+	if (cursor.type === 'layer-queue-index') {
 		let lastHistoryEntryIndex = -1
 		for (let i = orderedItems.length - 1; i >= 0; i--) {
 			const item = orderedItems[i]
@@ -362,33 +360,19 @@ export function resolveRelevantLayerItemsStateForQuery(
 				break
 			}
 		}
-		cursorIndex = lastHistoryEntryIndex + 1 + input.cursor.index
+		return lastHistoryEntryIndex + 1 + cursor.index
 	}
 
-	if (input.cursor?.type === 'layer-item-index') {
-		cursorIndex = input.cursor.index
+	if (cursor.type === 'layer-item-index') {
+		return cursor.index
 	}
+	assertNever(cursor)
+}
 
-	let firstItemIndex = 0
-	for (let i = cursorIndex - 1; i >= 0; i--) {
-		const item = orderedItems[i]
-
-		if (maxLookback < (orderedItems.length - i)) {
-			break
-		}
-
-		const layer = !isParentVoteItem(item) ? L.toLayer(item.layerId) : undefined
-		if (!isParentVoteItem(item) && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer!.Gamemode as string)) {
-			break
-		}
-		relevantItems.push(item)
-		firstItemIndex = i
-	}
-
-	return {
-		layerItems: relevantItems.reverse(),
-		firstLayerItemTeamParity: MH.getTeamParityForOffset({ ordinal: orderedItemsState.firstLayerItemParity }, Math.max(firstItemIndex, 0)),
-	}
+export function isLookbackTerminatingLayerItem(item: LayerItem | ParentVoteItem): boolean {
+	if (isParentVoteItem(item)) return false
+	const layer = L.toLayer(item.layerId)
+	return layer && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer.Gamemode as string)
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {

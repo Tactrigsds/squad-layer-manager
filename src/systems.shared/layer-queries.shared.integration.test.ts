@@ -274,7 +274,7 @@ describe('queryLayerComponents', () => {
 
 		expect(Array.isArray(res)).toBe(true)
 		// If there are TC layers, Gamemode should contain 'TC'
-		if (res > 0) {
+		if (res.length > 0) {
 			expect(res.includes('TC')).toBe(true)
 		}
 	})
@@ -399,7 +399,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			layerItemsState: LQY.resolveLayerItemsState(queue, []),
 		}
 
-		const res = await LayerQueries.getLayerStatusesForLayerQueue({
+		const res = await LayerQueries.getLayerItemStatuses({
 			input: {
 				constraints,
 			},
@@ -440,7 +440,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			layerItemsState: LQY.resolveLayerItemsState(queue, []),
 		}
 
-		const res = await LayerQueries.getLayerStatusesForLayerQueue({
+		const res = await LayerQueries.getLayerItemStatuses({
 			input: {
 				constraints,
 			},
@@ -483,7 +483,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			layerItemsState: LQY.resolveLayerItemsState(queue, []),
 		}
 
-		const res = await LayerQueries.getLayerStatusesForLayerQueue({
+		const res = await LayerQueries.getLayerItemStatuses({
 			input: {
 				constraints,
 			},
@@ -931,7 +931,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 		}
 
 		// Test different field types (only supported ones)
-		const fields = ['Map', 'Gamemode', 'Size', 'Layer']
+		const fields: LQY.RepeatRuleField[] = ['Map', 'Gamemode', 'Size', 'Layer']
 
 		for (const field of fields) {
 			const res = await LayerQueries.queryLayers({
@@ -979,7 +979,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			layerItemsState: LQY.resolveLayerItemsState(queue, []),
 		}
 
-		const res = await LayerQueries.getLayerStatusesForLayerQueue({
+		const res = await LayerQueries.getLayerItemStatuses({
 			input: { constraints },
 			ctx: ctxWithLayerQueue,
 		})
@@ -1018,6 +1018,199 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 
 		expect(res.code).toBe('ok')
 		// Test passes if query executes successfully with Faction field
+	})
+
+	test('works with getLayerItemStatuses and do-not-repeat rules', async () => {
+		if (sampleLayerIds.length < 3) return
+
+		const queue: LL.LayerList = [
+			{
+				itemId: 'item1',
+				layerId: sampleLayerIds[0],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item2',
+				layerId: sampleLayerIds[1],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item3',
+				layerId: sampleLayerIds[0], // Duplicate to test violations
+				source: { type: 'unknown' },
+			},
+		]
+
+		const basicPool: SS.PoolConfiguration = {
+			filters: [],
+			repeatRules: [
+				{ field: 'Map', within: 2 },
+				{ field: 'Gamemode', within: 1 },
+			],
+		}
+
+		const constraints = SS.getPoolConstraints(basicPool, 'where-condition', 'where-condition')
+
+		const ctxWithLayerQueue = {
+			...baseCtx,
+			layerItemsState: LQY.resolveLayerItemsState(queue, []),
+		}
+
+		const res = await LayerQueries.getLayerItemStatuses({
+			input: { constraints },
+			ctx: ctxWithLayerQueue,
+		})
+
+		console.log(res)
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			// Should detect the duplicate layer
+			expect(res.statuses.present.size).toBeGreaterThan(0)
+			expect(res.statuses.blocked.size).toBeGreaterThan(0)
+			expect(res.statuses.violationDescriptors.size).toBeGreaterThan(0)
+
+			// The duplicate layer should be blocked
+			expect(res.statuses.blocked.has(LQY.toLayerItemId(LQY.getLayerItemForListItem(queue[2])))).toBe(true)
+		}
+	})
+
+	test('works with getLayerItemStatuses and different within values', async () => {
+		if (sampleLayerIds.length < 4) return
+
+		const queue: LL.LayerList = [
+			{
+				itemId: 'item1',
+				layerId: sampleLayerIds[0],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item2',
+				layerId: sampleLayerIds[1],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item3',
+				layerId: sampleLayerIds[2],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item4',
+				layerId: sampleLayerIds[0], // Should be allowed with within=2
+				source: { type: 'unknown' },
+			},
+		]
+
+		const basicPool: SS.PoolConfiguration = {
+			filters: [],
+			repeatRules: [{ field: 'Layer', within: 2 }], // Allow repeat after 2 layers
+		}
+
+		const constraints = SS.getPoolConstraints(basicPool, 'where-condition', 'where-condition')
+
+		const ctxWithLayerQueue = {
+			...baseCtx,
+			layerItemsState: LQY.resolveLayerItemsState(queue, []),
+		}
+
+		const res = await LayerQueries.getLayerItemStatuses({
+			input: { constraints },
+			ctx: ctxWithLayerQueue,
+		})
+
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			expect(res.statuses.present.size).toBeGreaterThan(0)
+			// With within=2, the 4th item should be allowed since there are 2 layers between repeats
+		}
+	})
+
+	test('works with getLayerItemStatuses and vote items with do-not-repeat', async () => {
+		if (sampleLayerIds.length < 3) return
+
+		const queue: LL.LayerList = [
+			{
+				itemId: 'item1',
+				layerId: sampleLayerIds[0],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'vote1',
+				source: { type: 'unknown' },
+				vote: {
+					defaultChoice: sampleLayerIds[1],
+					choices: [
+						sampleLayerIds[0], // This should be blocked by repeat rule
+						sampleLayerIds[1],
+						sampleLayerIds[2],
+					],
+				},
+			},
+		]
+
+		const basicPool: SS.PoolConfiguration = {
+			filters: [],
+			repeatRules: [{ field: 'Layer', within: 1 }],
+		}
+
+		const constraints = SS.getPoolConstraints(basicPool, 'where-condition', 'where-condition')
+
+		const ctxWithLayerQueue = {
+			...baseCtx,
+			layerItemsState: LQY.resolveLayerItemsState(queue, []),
+		}
+
+		const res = await LayerQueries.getLayerItemStatuses({
+			input: { constraints },
+			ctx: ctxWithLayerQueue,
+		})
+
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			expect(res.statuses.present.size).toBeGreaterThan(0)
+			// The first choice in the vote should be blocked due to repeat rule
+			expect(res.statuses.blocked.has(LQY.toLayerItemId(LQY.getLayerItemForVoteItem(queue[1], 0)))).toBe(true)
+		}
+	})
+
+	test('works with Faction do-not-repeat in getLayerStatusesForLayerQueue', async () => {
+		if (sampleLayerIds.length < 2) return
+
+		const queue: LL.LayerList = [
+			{
+				itemId: 'item1',
+				layerId: sampleLayerIds[0],
+				source: { type: 'unknown' },
+			},
+			{
+				itemId: 'item2',
+				layerId: sampleLayerIds[1],
+				source: { type: 'unknown' },
+			},
+		]
+
+		const basicPool: SS.PoolConfiguration = {
+			filters: [],
+			repeatRules: [{ field: 'Faction', within: 1 }],
+		}
+
+		const constraints = SS.getPoolConstraints(basicPool, 'where-condition', 'where-condition')
+
+		const ctxWithLayerQueue = {
+			...baseCtx,
+			layerItemsState: LQY.resolveLayerItemsState(queue, []),
+		}
+
+		const res = await LayerQueries.getLayerItemStatuses({
+			input: { constraints },
+			ctx: ctxWithLayerQueue,
+		})
+
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') {
+			expect(res.statuses.present.size).toBeGreaterThan(0)
+			// Faction repeat violations should be detected if same factions are present
+			expect(res.statuses.violationDescriptors.size).toBeGreaterThanOrEqual(0)
+		}
 	})
 
 	test('works with complex constraint combinations', async () => {

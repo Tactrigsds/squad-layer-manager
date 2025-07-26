@@ -35,7 +35,7 @@ export default function MatchHistoryPanel() {
 	const allEntries = React.useMemo(() => [...(history ?? [])].reverse(), [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = SquadServerClient.useCurrentMatch()
-	const violationDescriptors = LayerQueriesClient.useLayerStatuses().data?.violationDescriptors
+	const violationDescriptors = LayerQueriesClient.useLayerItemStatuses().data?.violationDescriptors
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 
 	// -------- Pagination state --------
