@@ -424,7 +424,7 @@ function getLayersStatusExt$(ctx: CS.Log) {
 			complete: () => s.complete(),
 		}))
 		return () => sub.unsubscribe()
-	}).pipe(Rx.share())
+	}).pipe(distinctDeepEquals(), Rx.share())
 }
 
 async function fetchLayersStatusExt(ctx: CS.Log) {

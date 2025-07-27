@@ -179,6 +179,11 @@ export function getFilterNodeSQLConditions(
 				condition = E.eq(column, dbVal(comp.value))!
 				break
 			}
+			case 'neq': {
+				const column = LC.viewCol(comp.column, ctx)
+				condition = E.ne(column, dbVal(comp.value))!
+				break
+			}
 			case 'in': {
 				const column = LC.viewCol(comp.column, ctx)
 				condition = E.inArray(column, dbVals(comp.values))!

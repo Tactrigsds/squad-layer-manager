@@ -327,6 +327,7 @@
             "inrange",
             "in",
             "eq",
+            "neq",
             "is-true",
             "factions:allow-matchups"
           ]

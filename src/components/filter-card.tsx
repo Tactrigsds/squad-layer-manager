@@ -371,7 +371,7 @@ export function Comparison(props: {
 		if (res.code !== 'ok') {
 			return <div>{comp.column} {comp.code} : {res.code} : {res.message}</div>
 		}
-		codeOptions = res.comparisonTypes.map((c) => ({ value: c.code }))
+		codeOptions = res.comparisonTypes.map((c) => ({ value: c.code, label: c.displayName }))
 	}
 
 	if (props.allowedComparisonCodes) {
@@ -442,6 +442,7 @@ export function Comparison(props: {
 
 	let valueBox: React.ReactNode = undefined
 	switch (comp.code) {
+		case 'neq':
 		case 'eq': {
 			if (!Arr.includes(LIMIT_AUTOCOMPLETE_COLS, comp.column)) {
 				valueBox = (

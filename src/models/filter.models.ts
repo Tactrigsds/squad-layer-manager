@@ -23,11 +23,12 @@ export function getColumnTypeWithComposite(
 }
 
 export const COMPARISON_TYPES = [
-	{ coltype: 'float', code: 'lt', displayName: 'Less Than' },
-	{ coltype: 'float', code: 'gt', displayName: 'Greater Than' },
+	{ coltype: 'float', code: 'lt', displayName: '<' },
+	{ coltype: 'float', code: 'gt', displayName: '>' },
 	{ coltype: 'float', code: 'inrange', displayName: 'In Range' },
 	{ coltype: 'string', code: 'in', displayName: 'In' },
-	{ coltype: 'string', code: 'eq', displayName: 'Equals' },
+	{ coltype: 'string', code: 'eq', displayName: '=' },
+	{ coltype: 'string', code: 'neq', displayName: '!=' },
 	{ coltype: 'boolean', code: 'is-true', displayName: 'Is True' },
 	{
 		coltype: 'factions',
@@ -201,6 +202,13 @@ export const EqualComparison = z.object({
 })
 export type EqualComparison = z.infer<typeof EqualComparison>
 
+export const NotEqualComparison = z.object({
+	code: z.literal('neq'),
+	value: z.string().nullable(),
+	column: z.string(),
+})
+export type NotEqualComparison = z.infer<typeof NotEqualComparison>
+
 export type StringComparison = InComparison | EqualComparison
 // --------  string end --------
 
@@ -247,6 +255,7 @@ export const ComparisonSchema = z
 		InRangeComparison,
 		InComparison,
 		EqualComparison,
+		NotEqualComparison,
 		IsTrueComparison,
 		FactionsAllowMatchupsComparisonSchema,
 	])

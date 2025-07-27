@@ -52,7 +52,6 @@ let state!: State
 const mutex = new Mutex()
 
 onmessage = withErrorResponse(async (e) => {
-	using _lock = await acquireInBlock(mutex)
 	const msg = e.data as GenericRequest
 	if (msg.type === 'init') {
 		await init(msg)
@@ -78,9 +77,7 @@ onmessage = withErrorResponse(async (e) => {
 })
 
 async function init(initRequest: InitRequest) {
-	const SQL = await initSqlJs({
-		locateFile: (file) => `https://sql.js.org/dist/${file}`,
-	})
+	const SQL = await initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` })
 
 	const driver = new SQL.Database(new Uint8Array(initRequest.dbBuffer))
 	const db = drizzle(driver, {

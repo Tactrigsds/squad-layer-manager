@@ -269,6 +269,9 @@ class LayerQueryWorkerPool {
 			// Create workers
 			for (let i = 0; i < this.poolSize; i++) {
 				const worker = new LQWorker()
+				worker.onmessageerror = (event) => {
+					console.error(`Worker ${i} message error:`, event)
+				}
 				worker.onmessage = (event) => {
 					this.handleWorkerMessage(event, worker)
 				}
@@ -303,8 +306,6 @@ class LayerQueryWorkerPool {
 			this.initialized = true
 			console.debug(`Worker pool initialized with ${this.poolSize} workers`)
 		} catch (error) {
-			// Clean up on failure
-			debugger
 			this.dispose()
 			throw error
 		} finally {

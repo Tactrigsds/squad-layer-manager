@@ -4,6 +4,7 @@ import React from 'react'
 import LayerTable from './layer-table.tsx'
 
 export default function TableStyleLayerPicker(props: {
+	// make sure this reference is stable
 	queryContext: LQY.LayerQueryBaseInput
 	selected: L.LayerId[]
 	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>

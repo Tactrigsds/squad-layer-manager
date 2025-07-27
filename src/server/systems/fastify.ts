@@ -30,6 +30,12 @@ import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
 import { WebSocket } from 'ws'
 
+const BASE_HEADERS = {
+	'Cross-Origin-Embedder-Policy': 'require-corp',
+	'Cross-Origin-Opener-Policy': 'same-origin',
+	'Cross-Origin-Resource-Policy': 'cross-origin',
+}
+
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 const tracer = Otel.trace.getTracer('fastify')
@@ -77,6 +83,11 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		case 'production':
 			instance.register(fastifyStatic, {
 				root: path.join(Paths.PROJECT_ROOT, 'dist'),
+				setHeaders: (header) => {
+					for (const [key, value] of Object.entries(BASE_HEADERS)) {
+						header.setHeader(key, value)
+					}
+				},
 			})
 			break
 		case 'development':
@@ -177,9 +188,13 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	instance.get(AR.route('/layers.sqlite3'), async (req, res) => {
-		const ifNoneMatch = req.headers['If-None-Match']
-		res.header('ETag', `"${LayerDb.hash}"`)
-		if (ifNoneMatch && ifNoneMatch === `"${LayerDb.hash}"`) {
+		for (const [key, value] of Object.entries(BASE_HEADERS)) {
+			res = res.header(key, value)
+		}
+		const ifNoneMatch = req.headers['if-none-match']
+		const etag = `"${LayerDb.hash}"`
+		res.header('ETag', etag)
+		if (ifNoneMatch && ifNoneMatch === etag) {
 			return res.code(304).send()
 		}
 
@@ -205,9 +220,9 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		res = res
-			.header('Cross-Origin-Opener-Policy', 'same-origin')
-			.header('Cross-Origin-Embedder-Policy', 'require-corp')
+		for (const [key, value] of Object.entries(BASE_HEADERS)) {
+			res.header(key, value)
+		}
 		const ctx = getCtx(req)
 		const authRes = await createAuthorizedRequestContext({
 			...ctx,
@@ -243,7 +258,6 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 					.header('Access-Control-Allow-Origin', '*')
 					.header('Access-Control-Allow-Methods', '*')
 					.header('Access-Control-Allow-Headers', '*')
-					.header('Cross-Origin-Resource-Policy', 'cross-origin')
 					.send(body)
 			}
 			case 'production': {

@@ -1,7 +1,6 @@
 import * as CS from '@/models/context-shared'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-import { Observable } from '@trpc/server/observable'
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'

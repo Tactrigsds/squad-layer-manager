@@ -8,11 +8,8 @@ import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
-import * as ReactHelpers from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
-import * as Typo from '@/lib/typography'
-import * as ZusHelpers from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -26,6 +23,7 @@ export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
 import { cn } from '@/lib/utils'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
@@ -210,6 +208,7 @@ function buildColDefs(
 }
 
 export default function LayerTable(props: {
+	// make sure this reference is stable
 	baseInput?: LQY.LayerQueryBaseInput
 
 	selected: L.LayerId[]
@@ -218,6 +217,7 @@ export default function LayerTable(props: {
 	enableForceSelect?: boolean
 
 	pageIndex: number
+	// make sure this reference is stable
 	setPageIndex: (num: number) => void
 
 	defaultPageSize?: number
@@ -242,8 +242,11 @@ export default function LayerTable(props: {
 
 	{
 		const setPageIndex = props.setPageIndex
+		const constraintsRef = React.useRef(props.baseInput?.constraints)
 		React.useEffect(() => {
-			setPageIndex(0)
+			if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
+				setPageIndex(0)
+			}
 		}, [props.baseInput?.constraints, setPageIndex])
 	}
 
