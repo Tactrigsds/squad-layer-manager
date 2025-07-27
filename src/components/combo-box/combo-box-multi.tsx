@@ -36,6 +36,10 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 		get isFocused() {
 			return openRef.current
 		},
+		clear: () => {
+			setOpen(false)
+			props.onSelect([])
+		},
 	}))
 
 	function onSelect(updater: React.SetStateAction<T[]>) {

@@ -25,9 +25,10 @@ export default function LayerDisplay(
 		item: LQY.LayerItem
 		badges?: React.ReactNode[]
 		backfillLayerId?: L.LayerId
+		addedLayerQueryInput?: Pick<LQY.LayerQueryBaseInput, 'patches'>
 	},
 ) {
-	const layerStatusesRes = useLayerItemStatuses()
+	const layerStatusesRes = useLayerItemStatuses({ addedInput: props.addedLayerQueryInput })
 	const badges: React.ReactNode[] = []
 	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
@@ -204,7 +205,7 @@ export function MapLayerDisplay(
 	const segments = L.parseLayerStringSegment(layer)
 	if (!segments || segments.Gamemode === 'Training') return layer
 	return (
-		<span className={cn(backfilledStyles.Layer, className)}>
+		<span className={cn(backfilledStyles.Layer, backfilledStyles.Size, className)}>
 			<span className={backfilledStyles.Map}>{segments.Map}</span>
 			{segments.Gamemode && '_'}
 			<span className={backfilledStyles.Gamemode}>{segments.Gamemode}</span>

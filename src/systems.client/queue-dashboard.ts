@@ -124,7 +124,7 @@ export type QDStore = QDState & {
 }
 
 // -------- store initialization --------
-export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLActions => {
+export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMutate?: () => void): LLActions => {
 	const remove = (id: string) => {
 		set((state) =>
 			Im.produce(state, (state) => {
@@ -132,6 +132,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 				const index = layerList.findIndex((item) => item.itemId === id)
 				if (index === -1) return
 				layerList.splice(index, 1)
+				onMutate?.()
 				ItemMut.tryApplyMutation('removed', id, state.listMutations)
 			})
 		)
@@ -144,6 +145,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 					if (index === -1) return
 					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
 					draft.layerList[index].itemId = id
+					onMutate?.()
 					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
 				})
 			)
@@ -158,6 +160,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 					} else {
 						layerList.splice(index, 0, ...items)
 					}
+					onMutate?.()
 					for (const item of items) {
 						ItemMut.tryApplyMutation('added', item.itemId, state.listMutations)
 					}
@@ -179,6 +182,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 					}
 					layerList.splice(sourceIndex, 1)
 					layerList.splice(targetIndex, 0, item)
+					onMutate?.()
 					ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
 				})
 			)
@@ -186,6 +190,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>): LLA
 		remove,
 		clear: () => {
 			for (const item of get().layerList) {
+				onMutate?.()
 				remove(item.itemId)
 			}
 		},
@@ -235,7 +240,10 @@ export const selectLLState = (state: QDState): LLState => ({
 export const deriveLLStore = (store: Zus.StoreApi<QDStore>) => {
 	const setLL = store.getState().setQueue
 	const getLL = () => selectLLState(store.getState())
-	const actions = createLLActions(setLL, getLL)
+	const onMutate = () => {
+		store.getState().tryStartEditing()
+	}
+	const actions = createLLActions(setLL, getLL, onMutate)
 
 	return derive<LLStore>((get) => {
 		return {

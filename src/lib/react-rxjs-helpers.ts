@@ -1,6 +1,4 @@
 import * as ReactRx from '@react-rxjs/core'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 import React from 'react'
 
@@ -29,11 +27,4 @@ import React from 'react'
 export function useStateObservableSelection<T, O>(o: ReactRx.StateObservable<T>, select: (value: T) => O) {
 	const valueRaw = ReactRx.useStateObservable(o)
 	return React.useMemo(() => select(valueRaw), [select, valueRaw])
-}
-
-export function storeFromStateObservable<T>(o: ReactRx.StateObservable<T>, opts: { sub: Rx.Subscription }) {
-	return Zus.createStore((set) => {
-		opts.sub.add(o.subscribe(s => set(s)))
-		return o.getValue()
-	})
 }

@@ -4,7 +4,7 @@ import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import { sleepUntil } from '@/lib/async'
 import * as Obj from '@/lib/object.ts'
-import { eltToFocusable, Focusable } from '@/lib/react'
+import { Clearable, eltToFocusable, Focusable } from '@/lib/react'
 import { cn } from '@/lib/utils.ts'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
@@ -330,11 +330,12 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 }
 const LIMIT_AUTOCOMPLETE_COLS: L.LayerColumnKey[] = ['id']
 
-export function Comparison(props: {
+export type ComparisonHandle = Clearable & Focusable
+export const Comparison = React.forwardRef(function Comparison(props: {
 	comp: F.EditableComparison
 	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
 	columnEditable?: boolean
-	allowedColumns?: L.LayerColumnKey[]
+	allowedColumns?: string[]
 	allowedComparisonCodes?: F.ComparisonCode[]
 	baseQueryInput?: LQY.LayerQueryBaseInput
 	showValueDropdown?: boolean
@@ -342,15 +343,26 @@ export function Comparison(props: {
 	defaultEditing?: boolean
 	highlight?: boolean
 	columnLabel?: string
-}) {
+}, ref: React.ForwardedRef<ComparisonHandle>) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
-	const columnBoxRef = useRef<Focusable>(null)
-	const codeBoxRef = useRef<Focusable>(null)
-	const valueBoxRef = useRef<Focusable>(null)
+	const columnBoxRef = useRef<ComboBoxHandle>(null)
+	const codeBoxRef = useRef<ComboBoxHandle>(null)
+	const valueBoxRef = useRef<Focusable & Clearable>(null)
+
+	React.useImperativeHandle(ref, () => ({
+		clear: (ephemeral) => {
+			valueBoxRef.current?.clear(ephemeral)
+		},
+		focus: () => {
+			columnBoxRef.current?.focus()
+		},
+		isFocused: false,
+	}))
+
 	const alreadyOpenedRef = useRef(false)
 	const cfg = ConfigClient.useEffectiveColConfig()
 	useEffect(() => {
@@ -473,6 +485,7 @@ export function Comparison(props: {
 			break
 		}
 
+		case 'notin':
 		case 'in': {
 			if (!Arr.includes(LIMIT_AUTOCOMPLETE_COLS, comp.column)) {
 				valueBox = (
@@ -537,7 +550,7 @@ export function Comparison(props: {
 		case 'lt': {
 			valueBox = (
 				<div className="w-[100px]">
-					<NumericSingleValueConfig
+					<NumericValueConfig
 						ref={valueBoxRef}
 						className={componentStyles}
 						value={comp.value as number | undefined}
@@ -583,7 +596,7 @@ export function Comparison(props: {
 			{valueBox}
 		</>
 	)
-}
+})
 
 type ApplyFilterProps = {
 	filterId: string | undefined
@@ -772,7 +785,7 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 	)
 })
 
-const NumericSingleValueConfig = React.forwardRef(
+const NumericValueConfig = React.forwardRef(
 	(
 		props: {
 			placeholder?: string
@@ -780,11 +793,17 @@ const NumericSingleValueConfig = React.forwardRef(
 			value?: number
 			setValue: (value?: number) => void
 		},
-		forwardedRef: React.ForwardedRef<Focusable>,
+		forwardedRef: React.ForwardedRef<Focusable & Clearable>,
 	) => {
 		const [value, setValue] = useState(props.value?.toString() ?? '')
 		const inputRef = React.useRef<HTMLInputElement>(null)
-		React.useImperativeHandle(forwardedRef, () => eltToFocusable(inputRef.current!))
+		React.useImperativeHandle(forwardedRef, () => ({
+			...eltToFocusable(inputRef.current!),
+			clear: (ephemeral) => {
+				if (!ephemeral) props.setValue()
+				setValue('')
+			},
+		}))
 		return (
 			<Input
 				ref={inputRef}
@@ -808,7 +827,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
 		className?: string
 	},
-	ref: React.ForwardedRef<Focusable>,
+	ref: React.ForwardedRef<Focusable & Clearable>,
 ) {
 	function setFirst(value: number | undefined) {
 		props.setValues((values) => [value, values[1]])
@@ -816,12 +835,23 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	function setSecond(value: number | undefined) {
 		props.setValues((values) => [values[0], value])
 	}
+	const secondValueRef = React.useRef<Focusable & Clearable>(null)
+	const firstValueRef = React.useRef<Focusable & Clearable>(null)
+	React.useImperativeHandle(ref, () => ({
+		isFocused: false,
+		clear: (ephemeral) => {
+			firstValueRef.current?.clear(true)
+			secondValueRef.current?.clear(true)
+			if (!ephemeral) props.setValues([undefined, undefined])
+		},
+		focus: () => firstValueRef.current?.focus(),
+	}))
 
 	return (
 		<div className={cn(props.className, 'flex w-[200px] items-center space-x-2')}>
-			<NumericSingleValueConfig value={props.range[0]} setValue={setFirst} />
+			<NumericValueConfig ref={firstValueRef} value={props.range[0]} setValue={setFirst} />
 			<span>to</span>
-			<NumericSingleValueConfig ref={ref} value={props.range[1]} setValue={setSecond} />
+			<NumericValueConfig ref={secondValueRef} value={props.range[1]} setValue={setSecond} />
 		</div>
 	)
 })

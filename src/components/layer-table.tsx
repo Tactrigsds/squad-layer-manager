@@ -239,15 +239,15 @@ export default function LayerTable(props: {
 	const canToggleColumns = props.canToggleColumns ?? true
 	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
 	const cfg = ConfigClient.useEffectiveColConfig()
+	let pageIndex = props.pageIndex
 
 	{
-		const setPageIndex = props.setPageIndex
 		const constraintsRef = React.useRef(props.baseInput?.constraints)
-		React.useEffect(() => {
-			if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
-				setPageIndex(0)
-			}
-		}, [props.baseInput?.constraints, setPageIndex])
+		if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
+			props.setPageIndex(0)
+			pageIndex = 0
+		}
+		constraintsRef.current = props.baseInput?.constraints
 	}
 
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
@@ -353,11 +353,11 @@ export default function LayerTable(props: {
 		})
 	}
 
-	const [pageSize, setPageSize] = useState(10)
+	const [pageSize, setPageSize] = useState(props.defaultPageSize ?? 10)
 	const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
 		let newState: PaginationState
 		if (typeof updater === 'function') {
-			newState = updater({ pageIndex: props.pageIndex, pageSize })
+			newState = updater({ pageIndex, pageSize })
 		} else {
 			newState = updater
 		}
@@ -382,11 +382,16 @@ export default function LayerTable(props: {
 	}
 
 	const queryInput = LayerQueriesClient.getLayerQueryInput(props.baseInput ?? {}, {
-		pageIndex: props.pageIndex,
+		pageIndex,
 		selectedLayers: showSelectedLayers ? props.selected : undefined,
 		pageSize,
 		sort,
 	})
+	// const prevQueryInput = React.useRef(queryInput)
+	// if (!deepEqual(prevQueryInput.current, queryInput)) {
+	// 	debugger
+	// 	prevQueryInput.current = queryInput
+	// }
 	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
 
 	const page = React.useMemo(() => {
@@ -396,9 +401,9 @@ export default function LayerTable(props: {
 			const returnedIds = new Set(_page.layers.map(layer => layer.id))
 			for (
 				const selectedId of props.selected.slice(
-					props.pageIndex * pageSize,
+					pageIndex * pageSize,
 					// no need to bounds-check slice in js
-					(props.pageIndex * pageSize) + pageSize,
+					(pageIndex * pageSize) + pageSize,
 				)
 			) {
 				if (returnedIds.has(selectedId)) continue
@@ -438,7 +443,7 @@ export default function LayerTable(props: {
 				})),
 			}
 			: undefined
-	}, [layersRes.data, showSelectedLayers, props.selected, props.pageIndex, pageSize, sort, now])
+	}, [layersRes.data, showSelectedLayers, props.selected, pageIndex, pageSize, sort, now])
 
 	React.useLayoutEffect(() => {
 		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
@@ -473,7 +478,7 @@ export default function LayerTable(props: {
 			columnVisibility,
 			rowSelection,
 			pagination: {
-				pageIndex: props.pageIndex,
+				pageIndex: pageIndex,
 				pageSize,
 			},
 		},
@@ -487,7 +492,7 @@ export default function LayerTable(props: {
 		manualPagination: true,
 	})
 
-	const currentPage = Math.min(props.pageIndex, page?.pageCount ?? 0)
+	const currentPage = Math.min(pageIndex, page?.pageCount ?? 0)
 	const firstRowInPage = currentPage * (page?.layers.length ?? 0) + 1
 	const lastRowInPage = Math.min(firstRowInPage + pageSize - 1, page?.totalCount ?? 0)
 

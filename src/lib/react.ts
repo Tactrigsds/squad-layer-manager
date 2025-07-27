@@ -31,6 +31,10 @@ export type Focusable = {
 	focus: () => void
 	isFocused: boolean
 }
+export type Clearable = {
+	// if ephemeralOnly then just the element state should be cleared(input values, etc)
+	clear: (ephemeralOnly?: boolean) => void
+}
 
 export function eltToFocusable(elt: HTMLElement): Focusable {
 	return {

@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
+import deepEqual from 'fast-deep-equal'
 import { z } from 'zod'
 import * as LC from './layer-columns'
 
@@ -25,11 +26,12 @@ export function getColumnTypeWithComposite(
 export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'lt', displayName: '<' },
 	{ coltype: 'float', code: 'gt', displayName: '>' },
-	{ coltype: 'float', code: 'inrange', displayName: 'In Range' },
-	{ coltype: 'string', code: 'in', displayName: 'In' },
+	{ coltype: 'float', code: 'inrange', displayName: '[..]' },
+	{ coltype: 'string', code: 'in', displayName: 'in' },
+	{ coltype: 'string', code: 'notin', displayName: 'not in' },
 	{ coltype: 'string', code: 'eq', displayName: '=' },
 	{ coltype: 'string', code: 'neq', displayName: '!=' },
-	{ coltype: 'boolean', code: 'is-true', displayName: 'Is True' },
+	{ coltype: 'boolean', code: 'is-true', displayName: 'true' },
 	{
 		coltype: 'factions',
 		code: 'factions:allow-matchups',
@@ -115,43 +117,6 @@ export function isBlockNode<T extends FilterNode>(
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
 
-export function isEditableBlockNode(
-	node: EditableFilterNode,
-): node is Extract<EditableFilterNode, { type: BlockType }> {
-	return BLOCK_TYPES.includes(node.type as BlockType)
-}
-export type BlockType = (typeof BLOCK_TYPES)[number]
-
-export const getComparisonTypesForColumn = LC.coalesceLookupErrors((
-	column: string,
-	cfg = LC.BASE_COLUMN_CONFIG,
-) => {
-	if (Arr.includes(COMPOSITE_COLUMNS.options, column)) {
-		return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === column) }
-	}
-	const colType = LC.getColumnDef(column, cfg)!.type
-	return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === colType) }
-})
-
-export type EditableComparison = {
-	column?: string
-	code?: (typeof COMPARISON_TYPES)[number]['code']
-	value?: number | string | null
-	values?: (string | null)[]
-	range?: [number | undefined, number | undefined]
-	allMasks?: FactionMask[][]
-	mode?: 'split' | 'both' | 'either'
-}
-
-export function editableComparisonHasValue(comp: EditableComparison) {
-	return (
-		comp.code === 'is-true'
-		|| comp.value !== undefined
-		|| comp.values !== undefined
-		|| comp.range !== undefined
-	)
-}
-
 // --------  numeric --------
 export const LessThanComparison = z.object({
 	code: z.literal('lt'),
@@ -167,19 +132,22 @@ export const GreaterThanComparison = z.object({
 })
 export type GreaterThanComparison = z.infer<typeof GreaterThanComparison>
 
-export const InRangeComparison = z
+export const InRangeComparisonSchema = z
 	.object({
 		code: z.literal('inrange'),
 		range: z
-			.tuple([z.number(), z.number()])
+			.tuple([z.number().optional(), z.number().optional()])
 			.describe(
 				"smallest value is always the start of the range, even if it's larger",
-			),
+			)
+			.refine((range) => {
+				return range.some(value => value !== undefined)
+			}, { message: 'Range must have at least one value' }),
 		column: z.string(),
 	})
 	.describe('Inclusive Range')
 
-export type InRangeComparison = z.infer<typeof InRangeComparison>
+export type InRangeComparison = z.infer<typeof InRangeComparisonSchema>
 
 export type NumericComparison =
 	| LessThanComparison
@@ -194,6 +162,13 @@ export const InComparison = z.object({
 	column: z.string(),
 })
 export type InComparison = z.infer<typeof InComparison>
+
+export const NotInComparison = z.object({
+	code: z.literal('notin'),
+	values: z.array(z.string().nullable()),
+	column: z.string(),
+})
+export type NotInComparison = z.infer<typeof NotInComparison>
 
 export const EqualComparison = z.object({
 	code: z.literal('eq'),
@@ -252,8 +227,9 @@ export const ComparisonSchema = z
 	.discriminatedUnion('code', [
 		LessThanComparison,
 		GreaterThanComparison,
-		InRangeComparison,
+		InRangeComparisonSchema,
 		InComparison,
+		NotInComparison,
 		EqualComparison,
 		NotEqualComparison,
 		IsTrueComparison,
@@ -327,6 +303,45 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	throw new Error('Invalid node type')
 }
 
+export function isEditableBlockNode(
+	node: EditableFilterNode,
+): node is Extract<EditableFilterNode, { type: BlockType }> {
+	return BLOCK_TYPES.includes(node.type as BlockType)
+}
+export type BlockType = (typeof BLOCK_TYPES)[number]
+
+export const getComparisonTypesForColumn = LC.coalesceLookupErrors((
+	column: string,
+	cfg = LC.BASE_COLUMN_CONFIG,
+) => {
+	if (Arr.includes(COMPOSITE_COLUMNS.options, column)) {
+		return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === column) }
+	}
+	const colType = LC.getColumnDef(column, cfg)!.type
+	return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === colType) }
+})
+
+export const EditableComparisonSchema = z.object({
+	column: z.string().optional(),
+	code: z.enum(COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]]).optional(),
+	value: z.union([z.number(), z.string(), z.null()]).optional(),
+	values: z.array(z.string().nullable()).optional(),
+	range: z.tuple([z.number().optional(), z.number().optional()]).optional(),
+	allMasks: z.array(z.array(FactionMaskSchema)).optional(),
+	mode: z.enum(['split', 'both', 'either']).optional(),
+})
+export type EditableComparison = z.infer<typeof EditableComparisonSchema>
+
+export function editableComparisonHasValue(comp: EditableComparison) {
+	return (
+		comp.code === 'is-true'
+		|| comp.value !== undefined
+		|| comp.values !== undefined
+		|| (comp.range !== undefined && !deepEqual(comp.range, [undefined, undefined]))
+		|| comp.allMasks?.some(side => side.length > 0)
+	)
+}
+
 export const FilterEntityIdSchema = z
 	.string()
 	.trim()
@@ -351,7 +366,7 @@ export const BaseFilterEntitySchema = z.object({
 })
 
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
-export const COMPARISON_CODES = COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]]
+export const COMPARISON_CODES = z.enum(COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]])
 
 export function filterContainsId(id: string, node: FilterNode): boolean {
 	switch (node.type) {

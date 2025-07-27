@@ -36,7 +36,7 @@ import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
 
 export function LayerList(
-	props: { store: Zus.StoreApi<QD.LLStore>; onStartEdit?: () => void },
+	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
 	const user = useLoggedInUser()
 	const queueIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId))
@@ -57,7 +57,6 @@ export function LayerList(
 					key={id}
 					itemId={id}
 					isLast={index + 1 === queueIds.length}
-					onStartEdit={props.onStartEdit}
 				/>
 			))}
 		</ul>
@@ -81,7 +80,7 @@ function EditLayerListItemDialogWrapper(props: EditLayerQueueItemDialogProps) {
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0">
+			<DialogContent className="w-auto max-w-full min-w-0 pb-2">
 				<DragContextProvider>
 					<EditLayerListItemDialog {...props} />
 				</DragContextProvider>
@@ -160,9 +159,10 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const queryInputs = ZusUtils.useStoreDeepMultiple(
 		[QD.QDStore, filterMenuStore, editedItemStore, QD.layerItemsState$],
-		([qdState, filterMenuState, editedLayerListItemState, layerItemsState]) => {
+		(args) => {
+			const [qdState, filterMenuState, editedLayerListItemState, layerItemsState] = args
 			const constraints = QD.selectBaseQueryConstraints(qdState)
-			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForVoteChoice(
+			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForAddingVoteChoice(
 				layerItemsState,
 				constraints,
 				editedLayerListItemState.item.itemId,
@@ -184,10 +184,47 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		{ selectorDeps: [] },
 	)
 
+	function toggleItemType() {
+		if (!allowVotes) return
+		const newItemType = itemType === 'vote' ? 'set-layer' : 'vote'
+		setItemType(newItemType)
+		switch (newItemType) {
+			case 'vote': {
+				const newState = QD.getVoteChoiceStateFromItem(editedItemStore.getState())
+				if (editedItem.layerId) {
+					newState.layerList = [LL.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
+				} else {
+					newState.layerList = []
+				}
+				editedVoteChoiceStore.setState(newState)
+				editedItemStore.getState().setItem({
+					itemId: editedItem.itemId,
+					vote: { choices: [editedItem.layerId!], defaultChoice: editedItem.layerId! },
+					source: editedItem.source,
+				})
+				break
+			}
+			case 'set-layer': {
+				editedItemStore.getState().setItem(prev => {
+					const selectedLayerIds = itemToLayerIds(prev)
+					return {
+						...prev,
+						itemId: prev.itemId,
+						layerId: selectedLayerIds[0],
+						vote: undefined,
+					} satisfies LL.LayerListItem
+				})
+				break
+			}
+			default:
+				assertNever(newItemType)
+		}
+	}
+
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
-		<div className="w-full h-full">
+		<>
 			<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
 					<DialogTitle>Edit</DialogTitle>
@@ -198,37 +235,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 					{allowVotes && (
 						<Button
 							variant="outline"
-							onClick={() => {
-								const newItemType = itemType === 'vote' ? 'set-layer' : 'vote'
-								setItemType(newItemType)
-								switch (newItemType) {
-									case 'vote': {
-										const newState = QD.getVoteChoiceStateFromItem(editedItemStore.getState())
-										if (editedItem.layerId) {
-											newState.layerList = [LL.createLayerListItem({ layerId: editedItem.layerId, source: editedItem.source })]
-										} else {
-											newState.layerList = []
-										}
-										editedVoteChoiceStore.setState(newState)
-										editedItemStore.getState().setItem({ ...editedItemStore.getState().item, layerId: undefined })
-										break
-									}
-									case 'set-layer': {
-										editedItemStore.getState().setItem(prev => {
-											const selectedLayerIds = itemToLayerIds(prev)
-											return {
-												...prev,
-												itemId: prev.itemId,
-												layerId: selectedLayerIds[0],
-												vote: undefined,
-											} satisfies LL.LayerListItem
-										})
-										break
-									}
-									default:
-										assertNever(newItemType)
-								}
-							}}
+							onClick={toggleItemType}
 						>
 							{itemType === 'vote' ? 'Convert to Set Layer' : 'Convert to Vote'}
 						</Button>
@@ -240,47 +247,56 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				? (
 					<div className="flex flex-col">
 						<div className="flex w-min"></div>
-						<LayerList store={editedVoteChoiceStore} />
+						<div>
+							<LayerList store={editedVoteChoiceStore} />
+							<div>
+								<div className="flex justify-end space-x-2">
+									<SelectLayersDialog
+										title="Add"
+										description="Select layers to add to the voting pool"
+										open={addLayersOpen}
+										pinMode="layers"
+										onOpenChange={setAddLayersOpen}
+										layerQueryBaseInput={queryInputs.addVoteChoice}
+										selectQueueItems={(items) => {
+											editedVoteChoiceStore.getState().add(items)
+										}}
+									>
+										<Button variant="secondary" size="sm" onClick={() => setAddLayersOpen(true)}>Add layers</Button>
+									</SelectLayersDialog>
+									<Button disabled={!canSubmit} onClick={submit}>
+										Submit
+									</Button>
+								</div>
+							</div>
+						</div>
 					</div>
 				)
 				: (
 					<div className="flex items-start space-x-2 min-h-0">
-						<LayerFilterMenu queryContext={queryInputs.editItem} filterMenuStore={filterMenuStore} />
-						<TableStyleLayerPicker
-							queryContext={queryInputs.editItemWithFilterMenu}
-							maxSelected={1}
-							selected={[editedItem.layerId!]}
-							onSelect={(update) => {
-								const id = (typeof update === 'function' ? update([]) : update)[0]
-								if (!id) return
-								return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
-							}}
-							extraPanelItems={<PoolCheckboxes />}
-						/>
+						<LayerFilterMenu layerQueryBaseInput={queryInputs.editItem} filterMenuStore={filterMenuStore} />
+						<div className="flex flex-col h-full justify-between">
+							<TableStyleLayerPicker
+								defaultPageSize={12}
+								queryContext={queryInputs.editItemWithFilterMenu}
+								maxSelected={1}
+								selected={[editedItem.layerId!]}
+								onSelect={(update) => {
+									const id = (typeof update === 'function' ? update([]) : update)[0]
+									if (!id) return
+									return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
+								}}
+								extraPanelItems={<PoolCheckboxes />}
+							/>
+							<div className="flex justify-end">
+								<Button disabled={!canSubmit} onClick={submit}>
+									Submit
+								</Button>
+							</div>
+						</div>
 					</div>
 				)}
-
-			<DialogFooter>
-				{itemType === 'vote' && (
-					<SelectLayersDialog
-						title="Add"
-						description="Select layers to add to the voting pool"
-						open={addLayersOpen}
-						pinMode="layers"
-						onOpenChange={setAddLayersOpen}
-						layerQueryBaseInput={queryInputs.addVoteChoice}
-						selectQueueItems={(items) => {
-							editedVoteChoiceStore.getState().add(items)
-						}}
-					>
-						<DropdownMenuItem>Add layers</DropdownMenuItem>
-					</SelectLayersDialog>
-				)}
-				<Button disabled={!canSubmit} onClick={submit}>
-					Submit
-				</Button>
-			</DialogFooter>
-		</div>
+		</>
 	)
 }
 
@@ -313,7 +329,6 @@ type QueueItemProps = {
 	isLast: boolean
 	itemId: string
 	llStore: Zus.StoreApi<QD.LLStore>
-	onStartEdit?: () => void
 }
 
 function LayerListItem(props: QueueItemProps) {
@@ -331,7 +346,7 @@ function LayerListItem(props: QueueItemProps) {
 		if (!canEdit) _setDropdownOpen(false)
 		_setDropdownOpen(update)
 	}
-	const baseBackfillLayerId = Zus.useStore(props.llStore, s => s.nextLayerBackfillId)
+	const [baseBackfillLayerId, isVoteChoice] = Zus.useStore(props.llStore, useShallow(s => [s.nextLayerBackfillId, s.isVoteChoice]))
 	const backfillLayerId = index === 0 && baseBackfillLayerId && L.areLayersCompatible(LL.getActiveItemLayerId(item), baseBackfillLayerId)
 		? baseBackfillLayerId
 		: undefined
@@ -343,7 +358,6 @@ function LayerListItem(props: QueueItemProps) {
 			setOpen={setDropdownOpen}
 			listStore={props.llStore}
 			itemStore={itemStore}
-			onStartEdit={props.onStartEdit}
 		>
 			<Button
 				disabled={!canEdit}
@@ -365,7 +379,7 @@ function LayerListItem(props: QueueItemProps) {
 	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
 
 	if (
-		!isEditing && layersStatus?.nextLayer && index === 0
+		!isEditing && layersStatus?.nextLayer && index === 0 && !isVoteChoice
 		&& !L.areLayersCompatible(LL.getActiveItemLayerId(item), layersStatus.nextLayer, true)
 	) {
 		badges.push(
@@ -433,6 +447,13 @@ function LayerListItem(props: QueueItemProps) {
 	}
 
 	if (item.layerId) {
+		let addedLayerQueryInput: LQY.LayerQueryBaseInput | undefined
+		if (isVoteChoice) {
+			const cursor = LQY.getQueryCursorForItemIndex(index)
+			addedLayerQueryInput = {
+				patches: [{ type: 'splice', cursor, deleteCount: 1, insertions: [] }],
+			}
+		}
 		return (
 			<>
 				{index === 0 && <QueueItemSeparator itemId={QD.toDraggableItemId(null)} isLast={false} />}
@@ -448,7 +469,11 @@ function LayerListItem(props: QueueItemProps) {
 					{indexElt}
 					<div className="flex flex-col w-max flex-grow">
 						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }} backfillLayerId={backfillLayerId} />
+							<LayerDisplay
+								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
+								backfillLayerId={backfillLayerId}
+								addedLayerQueryInput={addedLayerQueryInput}
+							/>
 						</div>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
@@ -468,7 +493,6 @@ function ItemDropdown(props: {
 	itemStore: Zus.StoreApi<QD.LLItemStore>
 	listStore: Zus.StoreApi<QD.LLStore>
 	allowVotes?: boolean
-	onStartEdit?: () => void
 }) {
 	const allowVotes = props.allowVotes ?? true
 
@@ -477,7 +501,6 @@ function ItemDropdown(props: {
 
 	function setSubDropdownState(state: SubDropdownState) {
 		if (state === null) props.setOpen(false)
-		props.onStartEdit?.()
 		_setSubDropdownState(state)
 	}
 	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)

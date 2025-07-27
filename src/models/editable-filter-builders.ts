@@ -64,3 +64,28 @@ export const eq = (column?: string, value?: string) =>
 		column,
 		value,
 	}) satisfies F.EditableComparison
+
+export const neq = (column?: string, value?: string) =>
+	({
+		code: 'neq' as const,
+		column,
+		value,
+	}) satisfies F.EditableComparison
+
+export const factionsAllowMatchups = (column?: string, allMasks?: F.FactionMask[][]) =>
+	({
+		code: 'factions:allow-matchups' as const,
+		column,
+		allMasks,
+	}) satisfies F.EditableComparison
+
+export const CODE_TO_EFB = {
+	lt,
+	gt,
+	inrange,
+	inValues,
+	eq,
+	neq,
+	in: inValues,
+	'factions:allow-matchups': factionsAllowMatchups,
+}

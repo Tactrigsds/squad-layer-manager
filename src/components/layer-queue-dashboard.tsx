@@ -109,7 +109,6 @@ export default function LayerQueueDashboard() {
 						<CardContent>
 							<LayerList
 								store={QD.LQStore}
-								onStartEdit={() => QD.QDStore.getState().tryStartEditing()}
 							/>
 						</CardContent>
 					</Card>
@@ -158,13 +157,11 @@ function NormTeamsSwitch() {
 function QueueControlPanel() {
 	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
 	function setPlayNextPopoverOpen(v: boolean) {
-		QD.QDStore.getState().tryStartEditing()
 		_setPlayNextPopoverOpen(v)
 	}
 
 	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = React.useState(false)
 	function setAppendLayersPopoverOpen(v: boolean) {
-		QD.QDStore.getState().tryStartEditing()
 		_setAppendLayersPopoverOpen(v)
 	}
 	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
@@ -717,6 +714,7 @@ const PoolConfigurationPopover = React.forwardRef(
 		])
 
 		function saveRules() {
+			if (!settingsChanged) return
 			QD.QDStore.getState().setSetting((settings) => {
 				settings.queue.mainPool.repeatRules = [...mainPoolRules]
 				settings.queue.generationPool.repeatRules = [...generationPoolRules]

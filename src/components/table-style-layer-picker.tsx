@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import React from 'react'
@@ -10,12 +11,15 @@ export default function TableStyleLayerPicker(props: {
 	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>
 	maxSelected?: number
 	extraPanelItems?: React.ReactNode
+	className?: string
+	defaultPageSize?: number
 }) {
 	const [pageIndex, setPageIndex] = React.useState(0)
 
 	return (
-		<div className="flex h-full">
+		<div className={cn('flex h-full', props.className)}>
 			<LayerTable
+				defaultPageSize={props.defaultPageSize}
 				baseInput={props.queryContext}
 				pageIndex={pageIndex}
 				autoSelectIfSingleResult={props.maxSelected === 1}

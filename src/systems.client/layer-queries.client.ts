@@ -118,12 +118,13 @@ export function useSearchIds(input: LQY.SearchIdsInput, options?: { enabled?: bo
 }
 
 export function useLayerItemStatuses(
-	options?: { enabled?: boolean },
+	options?: { enabled?: boolean; addedInput?: LQY.LayerQueryBaseInput },
 ) {
 	options ??= {}
 	const input: LQY.LayerItemStatusesInput = {
 		constraints: ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints),
 		numHistoryEntriesToResolve: 10,
+		...(options.addedInput ?? {}),
 	}
 	const isEditing = QD.QDStore.getState().isEditing
 	return useQuery({
@@ -212,8 +213,8 @@ const FOCUS_CONFIG = {
  * Uses navigator.hardwareConcurrency with a maximum limit of 5 workers.
  */
 function getOptimalWorkerCount(): number {
-	// TODO due to memory usage concerns we're just setting this to 1 for now -- seems to be fast enough anyway
-	return 1
+	// TODO due to memory usage concerns we're just setting this to 2 for now -- seems to be fast enough anyway
+	return 2
 	// Get the number of logical processors available
 	const hardwareConcurrency = navigator.hardwareConcurrency || 4 // fallback to 4 if not available
 

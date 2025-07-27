@@ -88,7 +88,9 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
-	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, LFM.selectFilterMenuConstraints)
+	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, state => {
+		return LFM.selectFilterMenuConstraints(state)
+	})
 	const queryContextWithFilter: LQY.LayerQueryBaseInput = {
 		...props.layerQueryBaseInput,
 		constraints: [...(props.layerQueryBaseInput.constraints ?? []), ...filterMenuConstraints],
@@ -97,7 +99,7 @@ export default function SelectLayersDialog(props: {
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0">
+			<DialogContent className="w-auto max-w-full min-w-0 pb-2">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center space-x-2">
 						<DialogTitle>{props.title}</DialogTitle>
@@ -125,19 +127,26 @@ export default function SelectLayersDialog(props: {
 				</DialogHeader>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu queryContext={props.layerQueryBaseInput} filterMenuStore={filterMenuStore} />
-					<TableStyleLayerPicker
-						queryContext={queryContextWithFilter}
-						selected={selectedLayers}
-						onSelect={setSelectedLayers}
-						extraPanelItems={<PoolCheckboxes />}
-					/>
+					<LayerFilterMenu layerQueryBaseInput={props.layerQueryBaseInput} filterMenuStore={filterMenuStore} />
+					<div className="flex flex-col space-y-2 justify-between h-full">
+						<TableStyleLayerPicker
+							defaultPageSize={12}
+							queryContext={queryContextWithFilter}
+							selected={selectedLayers}
+							onSelect={setSelectedLayers}
+							extraPanelItems={<PoolCheckboxes />}
+							className="flex-grow"
+						/>
+
+						<div className="grow self-end">
+							<Button disabled={!canSubmit} onClick={submit}>
+								Submit
+							</Button>
+						</div>
+					</div>
 				</div>
 
 				<DialogFooter>
-					<Button disabled={!canSubmit} onClick={submit}>
-						Submit
-					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

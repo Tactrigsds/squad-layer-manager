@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
-import { Focusable } from '@/lib/react.ts'
+import { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
 
-export type ComboBoxHandle = Focusable
+export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
 	allowEmpty?: boolean
 	className?: string
@@ -50,6 +50,10 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 		},
 		get isFocused() {
 			return openRef.current
+		},
+		clear: (ephemeral) => {
+			setOpen(false)
+			if (!ephemeral) props.onSelect(undefined)
 		},
 	}))
 	function onSelect(value: T | undefined) {

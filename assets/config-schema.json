@@ -319,18 +319,74 @@
           ],
           "description": "if not provided, no sorting will be done"
         },
-        "extraFilterMenuItem": {
-          "type": "string",
-          "enum": [
-            "lt",
-            "gt",
-            "inrange",
-            "in",
-            "eq",
-            "neq",
-            "is-true",
-            "factions:allow-matchups"
-          ]
+        "extraFilterMenuItems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "column": {"type": "string"},
+              "code": {
+                "type": "string",
+                "enum": [
+                  "lt",
+                  "gt",
+                  "inrange",
+                  "in",
+                  "notin",
+                  "eq",
+                  "neq",
+                  "is-true",
+                  "factions:allow-matchups"
+                ]
+              },
+              "value": {"type": ["number", "string", "null"]},
+              "values": {
+                "type": "array",
+                "items": {"type": ["string", "null"]}
+              },
+              "range": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": [
+                  {"anyOf": [{"not": {}}, {"type": "number"}]},
+                  {"anyOf": [{"not": {}}, {"type": "number"}]}
+                ]
+              },
+              "allMasks": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "alliance": {
+                        "anyOf": [
+                          {"type": "array", "items": {"type": "string"}},
+                          {"type": "null"}
+                        ]
+                      },
+                      "faction": {
+                        "anyOf": [
+                          {"type": "array", "items": {"type": "string"}},
+                          {"type": "null"}
+                        ]
+                      },
+                      "unit": {
+                        "anyOf": [
+                          {"type": "array", "items": {"type": "string"}},
+                          {"type": "null"}
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "mode": {"type": "string", "enum": ["split", "both", "either"]}
+            },
+            "additionalProperties": false
+          }
         }
       },
       "required": ["orderedColumns", "defaultSortBy"],

@@ -2,6 +2,7 @@ import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
 import deepEqual from 'fast-deep-equal'
+import * as Im from 'immer'
 import { z } from 'zod'
 import * as F from './filter.models'
 import * as L from './layer'
@@ -136,9 +137,17 @@ export type LayerItemStatuses = {
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
 
+type LayerItemPatch = {
+	type: 'splice'
+	cursor: LayerQueryCursor
+	deleteCount: number
+	insertions?: LayerItem[]
+}
+
 export type LayerQueryBaseInput = {
 	constraints?: LayerQueryConstraint[]
 	cursor?: LayerQueryCursor
+	patches?: LayerItemPatch[]
 }
 
 type LayerVoteItemCursorAction = 'add-after' | 'edit' | 'add-vote-choice'
@@ -332,9 +341,25 @@ export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.Matc
 	return { layerItems, firstLayerItemParity }
 }
 
+export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<LayerQueryBaseInput, 'patches'>) {
+	if (!input.patches || input.patches.length === 0) return baseState
+	return Im.produce(baseState, (draft) => {
+		for (const patch of input.patches!) {
+			const index = resolveCursorIndex(draft, { cursor: patch.cursor })
+			switch (patch.type) {
+				case 'splice':
+					draft.layerItems.splice(index, patch.deleteCount, ...(patch.insertions ?? []))
+					break
+				default:
+					assertNever(patch.type)
+			}
+		}
+	})
+}
+
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
-	input: LayerQueryBaseInput,
+	input: Pick<LayerQueryBaseInput, 'cursor'>,
 ) {
 	const orderedItems = orderedItemsState.layerItems
 	const cursor = input.cursor
@@ -342,6 +367,10 @@ export function resolveCursorIndex(
 
 	if (cursor.type === 'id') {
 		const id = cursor.itemId
+		if (cursor.action === 'add-vote-choice') {
+			const itemIndex = orderedItems.findIndex(item => item.type === 'vote-item' && item.itemId === cursor.itemId)
+			return itemIndex + 1
+		}
 		const itemIndex = orderedItems.findIndex(item =>
 			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
 		)
@@ -393,7 +422,14 @@ export function getAllLayerIds(items: OrderedLayerItems) {
 	return ids
 }
 
-export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem {
+export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem | ParentVoteItem {
+	if (item.vote) {
+		return {
+			type: 'parent-vote-item',
+			choices: item.vote.choices.map((_, index) => (getLayerItemForVoteItem(item, index))),
+			parentItemId: item.itemId,
+		}
+	}
 	return {
 		type: 'list-item',
 		itemId: item.itemId,
@@ -443,7 +479,7 @@ export function getQueryCursorForLayerItem(
 	}
 }
 
-export function getBaseQueryInputForVoteChoice(
+export function getBaseQueryInputForAddingVoteChoice(
 	layerItemsState: LayerItemsState,
 	constraints: LayerQueryConstraint[],
 	parentItemId: string,
@@ -451,7 +487,7 @@ export function getBaseQueryInputForVoteChoice(
 	const parentItem = layerItemsState.layerItems.find(item => item.type === 'parent-vote-item' && item.parentItemId === parentItemId)
 	const cursor: LayerQueryCursor = {
 		type: 'id',
-		action: 'edit',
+		action: 'add-vote-choice',
 		itemId: parentItemId,
 	}
 	if (!parentItem) return { constraints, cursor }
@@ -486,7 +522,7 @@ export function getQueryCursorForItemIndex(index: number): LayerQueryCursor {
 export const LayerTableConfigSchema = z.object({
 	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
 	defaultSortBy: LayersQuerySortSchema,
-	extraFilterMenuItem: z.enum(F.COMPARISON_CODES).optional(),
+	extraFilterMenuItems: z.array(F.EditableComparisonSchema).optional(),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>

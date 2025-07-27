@@ -20,7 +20,8 @@ export async function queryLayers(args: {
 	input: LQY.LayersQueryInput
 	ctx: CS.LayerQuery
 }) {
-	const input = args.input
+	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const input = { ...args.input }
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
 	if (input.sort && input.sort.type === 'random') {
@@ -32,7 +33,6 @@ export async function queryLayers(args: {
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}
-	const ctx = args.ctx
 
 	const { conditions: whereConditions, selectProperties } = buildConstraintSqlCondition(ctx, input)
 
@@ -107,19 +107,17 @@ export async function layerExists({
 	}
 }
 
-export async function queryLayerComponent({
-	ctx,
-	input,
-}: {
+export async function queryLayerComponent(args: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerComponentInput
 }) {
-	const column = input.column
+	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const input = args.input
 	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
-	const res = (await ctx.layerDb().selectDistinct({ [column]: LC.viewCol(column, ctx) })
+	const res = (await ctx.layerDb().selectDistinct({ [input.column]: LC.viewCol(input.column, ctx) })
 		.from(LC.layersView(ctx))
 		.where(E.and(...whereConditions)))
-		.map((row: any) => LC.fromDbValue(column, row[column], ctx))
+		.map((row: any) => LC.fromDbValue(input.column, row[input.column], ctx))
 	return res as string[]
 }
 
@@ -189,6 +187,11 @@ export function getFilterNodeSQLConditions(
 				condition = E.inArray(column, dbVals(comp.values))!
 				break
 			}
+			case 'notin': {
+				const column = LC.viewCol(comp.column, ctx)
+				condition = E.notInArray(column, dbVals(comp.values))!
+				break
+			}
 			case 'factions:allow-matchups': {
 				const mode = comp.mode ?? 'either' as const
 				switch (mode) {
@@ -248,8 +251,12 @@ export function getFilterNodeSQLConditions(
 			}
 			case 'inrange': {
 				const column = LC.viewCol(comp.column, ctx)
-				const [min, max] = [...comp.range].sort((a, b) => a - b)
-				condition = E.and(E.gte(column, min), E.lte(column, max))!
+				if (comp.range[0] === undefined) condition = E.lte(column, comp.range[1]!)
+				else if (comp.range[1] === undefined) condition = E.gte(column, comp.range[0]!)
+				else {
+					const [min, max] = [...comp.range].sort((a, b) => a! - b!)
+					condition = E.and(E.gte(column, min), E.lte(column, max))!
+				}
 				break
 			}
 			case 'is-true': {
@@ -334,13 +341,12 @@ function buildConstraintSqlCondition(
 	return { conditions, selectProperties }
 }
 
-export async function getLayerItemStatuses({
-	ctx,
-	input,
-}: {
+export async function getLayerItemStatuses(args: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerItemStatusesInput
 }) {
+	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const input = args.input
 	const constraints = input.constraints ?? []
 	const violationDescriptorsState = new Map<
 		string,
@@ -443,7 +449,7 @@ function getisBlockedByRepeatRuleDirect(
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, cursorIndex)
 
 	const descriptors: LQY.ViolationDescriptor[] = []
-	for (let i = cursorIndex - 1; i >= Math.max(previousLayers.length - rule.within, 0); i--) {
+	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
@@ -520,7 +526,7 @@ function getRepeatSQLConditions(
 
 	const previousLayers = ctx.layerItemsState.layerItems
 
-	for (let i = cursorIndex - 1; i >= Math.max(previousLayers.length - rule.within, 0); i--) {
+	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		const teamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
 			const layer = L.toLayer(layerItem.layerId)
