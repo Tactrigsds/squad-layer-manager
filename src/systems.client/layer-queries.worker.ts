@@ -27,7 +27,7 @@ export type QueryResponse<Q extends QueryType = QueryType> = Response<{ type: Q 
 export type InitRequest = Sequenced & {
 	type: 'init'
 	ctx: CS.EffectiveColumnConfig & DynamicQueryCtx
-	dbBuffer: ArrayBuffer
+	dbBuffer: SharedArrayBuffer
 }
 
 export type InitResponse = Response<InitRequest>
@@ -79,6 +79,8 @@ onmessage = withErrorResponse(async (e) => {
 async function init(initRequest: InitRequest) {
 	const SQL = await initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` })
 
+	// Create a Uint8Array view of the SharedArrayBuffer
+	console.debug(`Worker received SharedArrayBuffer: ${initRequest.dbBuffer.byteLength} bytes`)
 	const driver = new SQL.Database(new Uint8Array(initRequest.dbBuffer))
 	const db = drizzle(driver, {
 		logger: {

@@ -1,5 +1,5 @@
 import * as OneToMany from '@/lib/one-to-many-map'
-import { weightedRandomSelection } from '@/lib/random'
+import { shuffled, weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
@@ -637,47 +637,64 @@ export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	}
 	let baseLayersQuery = ctx.layerDb()
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
-		.from(LC.layersView(ctx)).where(p_condition)
+		.from(LC.layersView(ctx)).where(p_condition).orderBy(sql`RANDOM()`)
 	if (totalCount > 5000) {
 		// @ts-expect-error close enough
 		baseLayersQuery = baseLayersQuery.orderBy(sql`RANDOM()`).limit(Math.min(numLayers * 500, 5000))
 	}
 	const baseLayers = await baseLayersQuery
-	const selectedIds: number[] = []
+	const indexedBaseLayers = baseLayers.map((layer, index): Record<string, number | null> & { index: number } => ({ ...layer, index }))
+	const selectedIndexes: number[] = []
 
 	for (let i = 0; i < numLayers; i++) {
-		let layerPool = baseLayers
+		const filtered = new Set<number>(selectedIndexes)
+		function pickLayerIndex() {
+			if (filtered.size === indexedBaseLayers.length) return
+			for (const layer of shuffled(indexedBaseLayers)) {
+				if (!filtered.has(layer.index)) {
+					return layer.index
+				}
+			}
+		}
+		let currentSelectedIndex = pickLayerIndex()
 		for (let j = 0; j < ctx.effectiveColsConfig.generation.columnOrder.length; j++) {
+			if (filtered.size === indexedBaseLayers.length) break
 			const columnName = ctx.effectiveColsConfig.generation.columnOrder[j]
-			const values: (number | null)[] = []
-			const weights: number[] = []
+			const valuesMap: OneToMany.OneToManyMap<number | null, number> = new Map()
+			const weightsMap = new Map<number | null, number>()
 			const weightsForCol = ctx.effectiveColsConfig.generation.weights[columnName as LC.WeightColumn]
 				?.map(w => ({
 					value: LC.dbValue(columnName, w.value),
 					weight: w.weight,
 				})) ?? []
-			const defaultWeight = 1 / values.length
-			const selectableIds: number[] = []
-			for (const layer of layerPool) {
+			for (const layer of indexedBaseLayers) {
+				if (filtered.has(layer.index)) continue
 				const value = layer[columnName] as number | null
-				if (values.includes(value) || selectedIds.includes(layer.id as number)) continue
-				values.push(value)
-				selectableIds.push(layer.id as number)
-				weights.push(
-					weightsForCol.find(w => w.value === (value ?? null))?.weight ?? defaultWeight,
+				OneToMany.set(valuesMap, value, layer.index)
+				weightsMap.set(
+					value,
+					weightsForCol.find(w => w.value === (value ?? null))?.weight ?? .1,
 				)
 			}
-			if (values.length === 0) break
+			if (valuesMap.size === 0) break
+			const values = Array.from(valuesMap.keys())
+			const weights = values.map(value => weightsMap.get(value)!)
 			const selected = weightedRandomSelection(values, weights)
-			layerPool = layerPool.filter(l => l[columnName] === selected)
-			if (layerPool.length === 1 || j + 1 === ctx.effectiveColsConfig.generation.columnOrder.length) {
-				const selectedId = layerPool[0].id as number
-				selectedIds.push(selectedId)
-				break
+			for (const [value, indexes] of valuesMap.entries()) {
+				if (value === selected) continue
+				for (const index of indexes) {
+					filtered.add(index)
+				}
 			}
+			currentSelectedIndex = pickLayerIndex()
+		}
+		if (currentSelectedIndex !== undefined) {
+			selectedIndexes.push(currentSelectedIndex)
+			filtered.add(currentSelectedIndex)
 		}
 	}
 
+	const selectedIds = selectedIndexes.map(index => baseLayers[index].id as number)
 	return await getResultLayers(selectedIds, returnLayers)
 
 	async function getResultLayers<ReturnLayers extends boolean>(

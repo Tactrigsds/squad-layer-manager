@@ -36,3 +36,21 @@ export function weightedRandomSelection<T>(values: T[], weights: number[]): T {
 	// Fallback (should never reach here if weightSum > 0)
 	return values[values.length - 1]
 }
+
+export function* shuffled<T>(array: T[]): Generator<T, void, unknown> {
+	const indices = Array.from({ length: array.length }, (_, i) => i)
+	let currentIndex = indices.length, randomIndex
+
+	// While there remain elements to shuffle.
+	while (currentIndex != 0) {
+		// Pick a remaining element.
+		randomIndex = Math.floor(Math.random() * currentIndex)
+		currentIndex-- // And swap it with the current element.
+		;[indices[currentIndex], indices[randomIndex]] = [
+			indices[randomIndex],
+			indices[currentIndex],
+		]
+
+		yield array[indices[currentIndex]]
+	}
+}

@@ -258,7 +258,7 @@ class LayerQueryWorkerPool {
 		this.poolSize = poolSize
 	}
 
-	async initialize(dbBuffer: ArrayBuffer, ctx: WorkerTypes.InitRequest['ctx']) {
+	async initialize(dbBuffer: SharedArrayBuffer, ctx: WorkerTypes.InitRequest['ctx']) {
 		if (this.initialized) return
 		if (this.initializing) {
 			throw new Error('Worker pool is already initializing')
@@ -462,6 +462,7 @@ class LayerQueryWorkerPool {
 				queriesHandled: count,
 			})),
 			averageQueriesPerWorker: this.queryCount / this.poolSize,
+			usingSharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
 		}
 	}
 }
@@ -576,6 +577,7 @@ async function setup() {
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
 	const dbBuffer = await fetchDatabaseBuffer()
+	console.debug(`Using SharedArrayBuffer for database: ${dbBuffer.byteLength} bytes`)
 
 	const ctx: WorkerTypes.InitRequest['ctx'] = {
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
@@ -656,7 +658,12 @@ export async function cleanupWorkerPool() {
 	}
 }
 
-async function fetchDatabaseBuffer(): Promise<ArrayBuffer> {
+async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
+	// Check if SharedArrayBuffer is available
+	if (typeof SharedArrayBuffer === 'undefined') {
+		throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
+	}
+
 	const opfsRoot = await navigator.storage.getDirectory()
 	const dbFileName = 'layers.sqlite3'
 	const hashFileName = 'layers.sqlite3.hash'
@@ -709,5 +716,14 @@ async function fetchDatabaseBuffer(): Promise<ArrayBuffer> {
 		}
 	}
 
-	return buffer
+	// Convert ArrayBuffer to SharedArrayBuffer to minimize cloning overhead
+	// This ensures workers can access the database without cloning the entire buffer
+	console.debug(`Converting ${buffer.byteLength} byte database buffer to SharedArrayBuffer`)
+	const sharedBuffer = new SharedArrayBuffer(buffer.byteLength)
+	const sharedView = new Uint8Array(sharedBuffer)
+	const bufferView = new Uint8Array(buffer)
+	sharedView.set(bufferView)
+
+	console.debug(`Created SharedArrayBuffer from database: ${sharedBuffer.byteLength} bytes - workers will now access shared memory`)
+	return sharedBuffer
 }
