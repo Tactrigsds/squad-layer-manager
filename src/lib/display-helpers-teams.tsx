@@ -1,5 +1,6 @@
 import * as L from '@/models/layer'
 import * as DH from './display-helpers'
+import { cn } from './utils'
 
 export const teamColors = {
 	teamA: '#9932CC',
@@ -38,10 +39,10 @@ export function getTeamsDisplay(
 
 	const teamElts = [
 		<span>
-			<span className={withBackfilledStyles?.Faction_1}>{partialLayer.Faction_1}</span>
+			<span className={cn(withBackfilledStyles?.Faction_1, withBackfilledStyles?.Alliance_1)}>{partialLayer.Faction_1}</span>
 			{subfaction1
 				? (
-					<span className={withBackfilledStyles?.Unit_1}>
+					<span className={cn(withBackfilledStyles?.Unit_1, withBackfilledStyles?.Alliance_1)}>
 						{` ${subfaction1}`}
 					</span>
 				)
@@ -55,10 +56,10 @@ export function getTeamsDisplay(
 			</span>
 		</span>,
 		<span>
-			<span className={withBackfilledStyles?.Faction_2}>{partialLayer.Faction_2}</span>
+			<span className={cn(withBackfilledStyles?.Faction_2, withBackfilledStyles?.Alliance_2)}>{partialLayer.Faction_2}</span>
 			{subFaction2
 				? (
-					<span className={withBackfilledStyles?.Unit_2}>
+					<span className={cn(withBackfilledStyles?.Unit_2, withBackfilledStyles?.Alliance_2)}>
 						{` ${subFaction2}`}
 					</span>
 				)
