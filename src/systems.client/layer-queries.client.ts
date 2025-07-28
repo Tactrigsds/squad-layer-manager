@@ -340,7 +340,6 @@ class LayerQueryWorkerPool {
 	}
 
 	private processQueue() {
-		const t1 = performance.now()
 		while (this.availableWorkers.length > 0 && this.pendingQueries.length > 0) {
 			// Sort by priority (lower number = higher priority)
 			this.pendingQueries.sort((a, b) => a.priority - b.priority)
@@ -357,9 +356,6 @@ class LayerQueryWorkerPool {
 
 			worker.postMessage(query.message)
 		}
-
-		const t2 = performance.now()
-		console.log(`processQueue took ${t2 - t1} ms`)
 	}
 
 	postMessage(message: any, priority: number = 0): Promise<any> {
