@@ -16,12 +16,13 @@ export type FilterTextEditorHandle = {
 }
 
 type Editor = Ace.Ace.Editor
-export type FilterTextEditorProps = {
+export interface FilterTextEditorProps {
 	node: F.EditableFilterNode
 	setNode: (node: F.FilterNode) => void
+	ref?: React.Ref<FilterTextEditorHandle>
 }
-export function FilterTextEditor(props: FilterTextEditorProps, ref: React.ForwardedRef<FilterTextEditorHandle>) {
-	const { setNode } = props
+export function FilterTextEditor(props: FilterTextEditorProps) {
+	const { setNode, ref } = props
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
 
@@ -144,4 +145,4 @@ export function FilterTextEditor(props: FilterTextEditorProps, ref: React.Forwar
 	)
 }
 
-export default React.forwardRef(FilterTextEditor)
+export default FilterTextEditor

@@ -331,7 +331,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 const LIMIT_AUTOCOMPLETE_COLS: L.LayerColumnKey[] = ['id']
 
 export type ComparisonHandle = Clearable & Focusable
-export const Comparison = React.forwardRef(function Comparison(props: {
+export const Comparison = function Comparison(props: {
 	comp: F.EditableComparison
 	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
 	columnEditable?: boolean
@@ -343,7 +343,8 @@ export const Comparison = React.forwardRef(function Comparison(props: {
 	defaultEditing?: boolean
 	highlight?: boolean
 	columnLabel?: string
-}, ref: React.ForwardedRef<ComparisonHandle>) {
+	ref?: React.ForwardedRef<ComparisonHandle>
+}) {
 	const showValueDropdown = props.showValueDropdown ?? true
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const { comp, setComp } = props
@@ -353,14 +354,16 @@ export const Comparison = React.forwardRef(function Comparison(props: {
 	const codeBoxRef = useRef<ComboBoxHandle>(null)
 	const valueBoxRef = useRef<Focusable & Clearable>(null)
 
-	React.useImperativeHandle(ref, () => ({
+	React.useImperativeHandle(props.ref, () => ({
 		clear: (ephemeral) => {
 			valueBoxRef.current?.clear(ephemeral)
 		},
 		focus: () => {
 			columnBoxRef.current?.focus()
 		},
-		isFocused: false,
+		get isFocused() {
+			return columnBoxRef.current?.isFocused || codeBoxRef.current?.isFocused || valueBoxRef.current?.isFocused || false
+		},
 	}))
 
 	const alreadyOpenedRef = useRef(false)
@@ -392,10 +395,11 @@ export const Comparison = React.forwardRef(function Comparison(props: {
 
 	const componentStyles = props.highlight ? 'bg-accent' : undefined
 
+	const columnDef = comp.column ? LC.getColumnDef(comp.column, cfg) : undefined
 	const columnBox = columnEditable
 		? (
 			<ComboBox
-				title={props.columnLabel ?? 'Column'}
+				title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
 				className={componentStyles}
 				allowEmpty={true}
 				value={comp.column}
@@ -419,7 +423,7 @@ export const Comparison = React.forwardRef(function Comparison(props: {
 		)
 		: (
 			<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-				{props.columnLabel ?? comp.column}
+				{props.columnLabel ?? columnDef?.displayName}
 			</span>
 		)
 	if (!comp.column) return columnBox
@@ -596,7 +600,7 @@ export const Comparison = React.forwardRef(function Comparison(props: {
 			{valueBox}
 		</>
 	)
-})
+}
 
 type ApplyFilterProps = {
 	filterId: string | undefined
@@ -637,7 +641,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	)
 }
 
-const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string | null>(
+function StringEqConfig<T extends string | null>(
 	props: {
 		value: T | undefined
 		column: LC.GroupByColumn
@@ -645,15 +649,15 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 		lockOnSingleOption?: boolean
+		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
 	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data : LOADING
 	return (
 		<ComboBox
-			ref={ref}
+			ref={props.ref}
 			allowEmpty={true}
 			className={props.className}
 			title={props.column}
@@ -663,22 +667,22 @@ const StringEqConfig = React.forwardRef(function StringEqConfig<T extends string
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
-})
+}
 
-const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConfigLimitedAutocomplete<T extends string | null>(
+function StringEqConfigLimitedAutocomplete<T extends string | null>(
 	props: {
 		value: T | undefined
 		column: string
 		setValue: (value: T | undefined) => void
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
+		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.baseQueryInput)
 	return (
 		<ComboBox
-			ref={ref}
+			ref={props.ref}
 			allowEmpty={false}
 			title={props.column}
 			value={props.value}
@@ -689,7 +693,7 @@ const StringEqConfigLimitedAutocomplete = React.forwardRef(function StringEqConf
 			className={props.className}
 		/>
 	)
-})
+}
 
 function useDynamicColumnAutocomplete<T extends string | null>(
 	column: string,
@@ -737,44 +741,44 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 	}
 }
 
-const StringInConfig = React.forwardRef(function StringInConfig(
+function StringInConfig(
 	props: {
 		values: (string | null)[]
 		column: LC.GroupByColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
+		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
 	return (
 		<ComboBoxMulti
 			title={props.column}
-			ref={ref}
+			ref={props.ref}
 			values={props.values}
 			options={valuesRes.data ? valuesRes.data : []}
 			onSelect={props.setValues}
 			className={props.className}
 		/>
 	)
-})
+}
 
-const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfigLimitAutoComplete(
+function StringInConfigLimitAutoComplete(
 	props: {
 		values: (string | null)[]
 		column: string
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
+		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
-	ref: React.ForwardedRef<ComboBoxHandle>,
 ) {
 	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.baseQueryInput)
 	return (
 		<ComboBoxMulti
 			title={props.column}
-			ref={ref}
+			ref={props.ref}
 			values={props.values}
 			options={autocomplete.options}
 			onSelect={props.setValues as ComboBoxMultiProps['onSelect']}
@@ -783,51 +787,49 @@ const StringInConfigLimitAutoComplete = React.forwardRef(function StringInConfig
 			className={props.className}
 		/>
 	)
-})
+}
 
-const NumericValueConfig = React.forwardRef(
-	(
-		props: {
-			placeholder?: string
-			className?: string
-			value?: number
-			setValue: (value?: number) => void
-		},
-		forwardedRef: React.ForwardedRef<Focusable & Clearable>,
-	) => {
-		const [value, setValue] = useState(props.value?.toString() ?? '')
-		const inputRef = React.useRef<HTMLInputElement>(null)
-		React.useImperativeHandle(forwardedRef, () => ({
-			...eltToFocusable(inputRef.current!),
-			clear: (ephemeral) => {
-				if (!ephemeral) props.setValue()
-				setValue('')
-			},
-		}))
-		return (
-			<Input
-				ref={inputRef}
-				className={props.className}
-				placeholder={props.placeholder}
-				value={value}
-				onChange={(e) => {
-					setValue(e.target.value)
-					const value = e.target.value.trim()
-					// TODO debounce
-					return props.setValue(value === '' ? undefined : parseFloat(value))
-				}}
-			/>
-		)
+function NumericValueConfig(
+	props: {
+		placeholder?: string
+		className?: string
+		value?: number
+		setValue: (value?: number) => void
+		ref?: React.ForwardedRef<Focusable & Clearable>
 	},
-)
+) {
+	const [value, setValue] = useState(props.value?.toString() ?? '')
+	const inputRef = React.useRef<HTMLInputElement>(null)
+	React.useImperativeHandle(props.ref, () => ({
+		...eltToFocusable(inputRef.current!),
+		clear: (ephemeral) => {
+			if (!ephemeral) props.setValue()
+			setValue('')
+		},
+	}))
+	return (
+		<Input
+			ref={inputRef}
+			className={props.className}
+			placeholder={props.placeholder}
+			value={value}
+			onChange={(e) => {
+				setValue(e.target.value)
+				const value = e.target.value.trim()
+				// TODO debounce
+				return props.setValue(value === '' ? undefined : parseFloat(value))
+			}}
+		/>
+	)
+}
 
-const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
+function NumericRangeConfig(
 	props: {
 		range: [number | undefined, number | undefined]
 		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
 		className?: string
+		ref?: React.ForwardedRef<Focusable & Clearable>
 	},
-	ref: React.ForwardedRef<Focusable & Clearable>,
 ) {
 	function setFirst(value: number | undefined) {
 		props.setValues((values) => [value, values[1]])
@@ -837,7 +839,7 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 	}
 	const secondValueRef = React.useRef<Focusable & Clearable>(null)
 	const firstValueRef = React.useRef<Focusable & Clearable>(null)
-	React.useImperativeHandle(ref, () => ({
+	React.useImperativeHandle(props.ref, () => ({
 		isFocused: false,
 		clear: (ephemeral) => {
 			firstValueRef.current?.clear(true)
@@ -854,16 +856,32 @@ const NumericRangeConfig = React.forwardRef(function NumericRangeConfig(
 			<NumericValueConfig ref={secondValueRef} value={props.range[1]} setValue={setSecond} />
 		</div>
 	)
-})
+}
 
-const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatchupsConfig(props: {
+function FactionsAllowMatchupsConfig(props: {
 	masks?: F.FactionMask[][]
 	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][] | undefined>>
 	mode?: 'split' | 'both' | 'either'
 	setMode?: (mode: 'split' | 'both' | 'either') => void
 	baseQueryInput?: LQY.LayerQueryBaseInput
 	className?: string
-}, ref: React.ForwardedRef<Focusable>) {
+	ref?: React.ForwardedRef<Focusable & Clearable>
+}) {
+	const innerRef = React.useRef<Focusable>(null)
+	React.useImperativeHandle(props.ref, () => ({
+		clear: (ephemeral) => {
+			if (ephemeral) return
+			props.setMasks(undefined)
+			props.setMode?.('split')
+		},
+		focus() {
+			innerRef.current?.focus()
+		},
+		get isFocused() {
+			return innerRef.current?.isFocused ?? false
+		},
+	}))
+
 	const masks = props.masks ?? []
 	const [isEditOpen, setIsEditOpen] = useState(false)
 
@@ -1022,7 +1040,6 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 							Mode:
 						</Label>
 						<ComboBox
-							ref={ref}
 							allowEmpty={false}
 							className="w-32"
 							title="Mode"
@@ -1052,7 +1069,7 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 							<div className="space-y-2">
 								<h4 className="text-sm font-medium">Team 1</h4>
 								<FactionMaskListConfig
-									ref={ref}
+									ref={innerRef}
 									value={getTeam1Masks()}
 									setValue={update => updateTeam(1, update)}
 									queryContext={props.baseQueryInput}
@@ -1097,7 +1114,6 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 					: (
 						<div className="space-y-2">
 							<FactionMaskListConfig
-								ref={ref}
 								value={getTeam1Masks()}
 								setValue={update => updateTeam(1, update)}
 								queryContext={props.baseQueryInput}
@@ -1121,14 +1137,15 @@ const FactionsAllowMatchupsConfig = React.forwardRef(function FactionsAllowMatch
 			</PopoverContent>
 		</Popover>
 	)
-})
+}
 
-const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
+function FactionMaskConfig(props: {
 	value: F.FactionMask | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask | undefined>>
 	queryContext?: LQY.LayerQueryBaseInput
 	className?: string
-}, ref: React.ForwardedRef<Focusable>) {
+	ref?: React.ForwardedRef<Focusable>
+}) {
 	const responses = {
 		alliance1Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_1' }),
 		alliance2Res: useLayerComponent({ ...(props.queryContext ?? {}), column: 'Alliance_2' }),
@@ -1180,7 +1197,7 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 					title="Alliance"
 					values={mask.alliance ?? []}
 					options={allPopulated ? alliances : LOADING}
-					onSelect={(v) => updateMask('alliance', v)}
+					onSelect={(v) => updateMask('alliance', v as string[])}
 				/>
 			</div>
 			<div className="flex items-center space-x-2">
@@ -1190,25 +1207,24 @@ const FactionMaskConfig = React.forwardRef(function FactionMaskConfig(props: {
 					title="Faction"
 					values={mask.faction ?? []}
 					options={allPopulated ? factions : LOADING}
-					onSelect={(v) => updateMask('faction', v)}
+					onSelect={(v) => updateMask('faction', v as string[])}
 				/>
 			</div>
 			<div className="flex items-center space-x-2">
 				<span className="text-sm font-medium min-w-[60px]">Unit:</span>
 				<ComboBoxMulti
-					ref={ref}
 					className="flex-1"
 					title="Unit"
 					values={mask.unit ?? []}
 					options={allPopulated ? units : LOADING}
-					onSelect={(v) => updateMask('unit', v)}
+					onSelect={(v) => updateMask('unit', v as string[])}
 				/>
 			</div>
 		</div>
 	)
-})
+}
 
-const FactionMaskListConfig = React.forwardRef(function FactionMaskListConfig(props: {
+function FactionMaskListConfig(props: {
 	value: F.FactionMask[] | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask[] | undefined>>
 	queryContext?: LQY.LayerQueryBaseInput
@@ -1216,7 +1232,8 @@ const FactionMaskListConfig = React.forwardRef(function FactionMaskListConfig(pr
 	onSwitchMaskTeam?: (mask: F.FactionMask, index: number) => void
 	showTeamSwitch?: boolean
 	currentTeam?: 1 | 2
-}, ref: React.ForwardedRef<Focusable>) {
+	ref?: React.ForwardedRef<Focusable>
+}) {
 	const maskIds = React.useMemo(() => {
 		return props.value?.map(mask => JSON.stringify(mask))
 	}, [props.value])
@@ -1298,7 +1315,7 @@ const FactionMaskListConfig = React.forwardRef(function FactionMaskListConfig(pr
 							<div className="flex items-start space-x-2 p-2 border rounded-md" key={maskIds![index]}>
 								<div className="flex-1">
 									<FactionMaskConfig
-										ref={index === 0 ? ref : undefined}
+										ref={index === 0 ? props.ref : undefined}
 										value={mask}
 										setValue={(newMask) => updateMask(index, newMask)}
 										queryContext={props.queryContext}
@@ -1332,4 +1349,4 @@ const FactionMaskListConfig = React.forwardRef(function FactionMaskListConfig(pr
 				)}
 		</div>
 	)
-})
+}

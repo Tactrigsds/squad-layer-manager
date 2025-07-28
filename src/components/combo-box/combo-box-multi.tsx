@@ -21,26 +21,25 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	disabled?: boolean
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: React.Dispatch<React.SetStateAction<T[]>>
+	ref?: React.ForwardedRef<ComboBoxHandle>
 }
 
-function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
+export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values, selectionLimit, disabled } = props
+	const { values, selectionLimit, disabled, onSelect: _onSelect } = props
 	const [open, setOpen] = useState(true)
-	const openRef = useRef(open)
-	openRef.current = open
-	useImperativeHandle(ref, () => ({
+	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
 		},
 		get isFocused() {
-			return openRef.current
+			return open
 		},
 		clear: () => {
 			setOpen(false)
-			props.onSelect([])
+			_onSelect([])
 		},
-	}))
+	}), [open, _onSelect])
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
 		props.onSelect((currentValues) => {
@@ -129,5 +128,3 @@ function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>, re
 		</Popover>
 	)
 }
-
-export default React.forwardRef(ComboBoxMulti)

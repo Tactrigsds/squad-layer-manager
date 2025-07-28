@@ -22,6 +22,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
 	children?: React.ReactNode
+	ref?: React.ForwardedRef<ComboBoxHandle>
 }
 
 export interface ComboBoxOption<T> {
@@ -29,9 +30,8 @@ export interface ComboBoxOption<T> {
 	label?: string
 }
 
-function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.ForwardedRef<ComboBoxHandle>) {
+export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
-	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	let options: ComboBoxOption<T>[] | typeof LOADING
 	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
 		options = (props.options as T[]).map((v) => ({ value: v }))
@@ -42,23 +42,22 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 	const inputRef = useRef<HTMLInputElement | null>(null)
 
 	const [open, setOpen] = useState(false)
-	const openRef = useRef(open)
-	openRef.current = open
-	useImperativeHandle(ref, () => ({
+	const _onSelect = props.onSelect
+	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
 		},
 		get isFocused() {
-			return openRef.current
+			return open
 		},
 		clear: (ephemeral) => {
 			setOpen(false)
-			if (!ephemeral) props.onSelect(undefined)
+			if (!ephemeral) _onSelect(undefined)
 		},
-	}))
+	}), [_onSelect, open])
 	function onSelect(value: T | undefined) {
 		setOpen(false)
-		props.onSelect(value)
+		_onSelect(value)
 	}
 
 	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
@@ -116,7 +115,7 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 								&& options.map((option) => (
 									<CommandItem
 										key={option.value}
-										value={option.value === null ? NULL.current : option.value}
+										value={option.value ?? undefined}
 										onSelect={() => {
 											onSelect(option.value)
 										}}
@@ -132,5 +131,3 @@ function ComboBox<T extends string | null>(props: ComboBoxProps<T>, ref: React.F
 		</Popover>
 	)
 }
-
-export default React.forwardRef(ComboBox)

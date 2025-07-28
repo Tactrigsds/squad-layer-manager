@@ -20,6 +20,7 @@ export default function LayerFilterMenu(
 	const storeState = ZusUtils.useStoreDeep(
 		props.filterMenuStore,
 		state => selectProps(state, ['menuItems', 'siblingFilters']),
+		{ dependencies: [] },
 	)
 	const clearAll$Ref = useRefConstructor(() => new Rx.Subject<void>())
 
@@ -76,7 +77,7 @@ function LayerFilterMenuItem(
 				]
 			}
 			return {
-				queryBaseInput: { ...props.queryBaseInput, ...constraints },
+				queryBaseInput: { ...props.queryBaseInput, constraints },
 				swapFactionsDisabled,
 			}
 		},
@@ -98,7 +99,6 @@ function LayerFilterMenuItem(
 						title="Swap Factions"
 						disabled={swapFactionsDisabled}
 						onClick={() => {
-							console.log('swapping teams')
 							return props.store.getState().swapTeams()
 						}}
 						size="icon"
@@ -114,7 +114,9 @@ function LayerFilterMenuItem(
 				columnEditable={false}
 				highlight={F.editableComparisonHasValue(props.comp)}
 				comp={props.comp}
-				setComp={(update) => props.store.getState().setComparison(props.field, update)}
+				setComp={(update) => {
+					return props.store.getState().setComparison(props.field, update)
+				}}
 				baseQueryInput={queryBaseInput}
 				lockOnSingleOption={true}
 			/>

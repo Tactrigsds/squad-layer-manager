@@ -163,12 +163,10 @@ function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableCo
 /**
  * Derive filter nodes which
  */
-function getSiblingFiltersForMenuItems(items: Record<keyof L.KnownLayer, F.EditableComparison>) {
-	// @ts-expect-error idc
-	const filtersExcludingFields: { [k in keyof L.KnownLayer]: F.FilterNode | undefined } = {}
+function getSiblingFiltersForMenuItems(items: Record<keyof L.KnownLayer | string, F.EditableComparison>) {
+	const filtersExcludingFields: { [k in keyof L.KnownLayer | string]: F.FilterNode | undefined } = {}
 
-	for (const itemKey in items) {
-		const key = itemKey as keyof L.KnownLayer
+	for (const key in items) {
 		const item = items[key]
 		if (!item.column) continue
 

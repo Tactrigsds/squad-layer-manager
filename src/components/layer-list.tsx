@@ -25,6 +25,7 @@ import { CSS } from '@dnd-kit/utilities'
 import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import LayerDisplay from './layer-display.tsx'
@@ -39,7 +40,7 @@ export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
 	const user = useLoggedInUser()
-	const queueIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId))
+	const queueIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
 	useDragEnd((event) => {
 		if (!event.over) return
 		const { layerList: layerQueue, move } = props.store.getState()
@@ -95,6 +96,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 	const [initialItem, index] = ZusUtils.useStoreDeep(
 		props.itemStore,
 		(s) => [s.item, s.index],
+		{ dependencies: [] },
 	)
 
 	const editedItemStore = React.useMemo(() => {
@@ -156,24 +158,31 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 			props.itemStore.getState().setItem({ ...editedItemStore.getState().item, source })
 		}
 	}
+	const layerItemsState = QD.useLayerItemsState()
 
-	const queryInputs = ZusUtils.useStoreDeepMultiple(
-		[QD.QDStore, filterMenuStore, editedItemStore, QD.layerItemsState$],
+	const queryInputs = ZusUtils.useCombinedStoresDeep(
+		[QD.QDStore, filterMenuStore, editedItemStore],
 		(args) => {
-			const [qdState, filterMenuState, editedLayerListItemState, layerItemsState] = args
+			const [qdState, filterMenuState, editedLayerListItemState] = args
 			const constraints = QD.selectBaseQueryConstraints(qdState)
 			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForAddingVoteChoice(
 				layerItemsState,
 				constraints,
 				editedLayerListItemState.item.itemId,
 			)
-			const editItem: LQY.LayerQueryBaseInput = {
+			const editItem = {
 				constraints,
 				cursor: LQY.getQueryCursorForLayerItem(LQY.getLayerItemForLayerListItem(editedLayerListItemState.item), 'edit'),
-			}
+			} satisfies LQY.LayerQueryBaseInput
 			const editItemWithFilterMenu: LQY.LayerQueryBaseInput = {
 				cursor: editItem.cursor,
 				constraints: [...constraints, ...LFM.selectFilterMenuConstraints(filterMenuState)],
+				patches: [{
+					type: 'splice',
+					deleteCount: 1,
+					cursor: editItem.cursor,
+					insertions: [LQY.getLayerItemForLayerListItem(editedLayerListItemState.item) as LQY.LayerItem],
+				}],
 			}
 			return {
 				addVoteChoice,
@@ -181,7 +190,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 				editItemWithFilterMenu,
 			}
 		},
-		{ selectorDeps: [] },
+		{ selectorDeps: [layerItemsState] },
 	)
 
 	function toggleItemType() {
@@ -505,7 +514,7 @@ function ItemDropdown(props: {
 	}
 	const layerId = Zus.useStore(props.itemStore, s => s.item.layerId)
 
-	const queryContexts = ZusUtils.useStoreDeepMultiple([QD.QDStore, props.itemStore], ([qdStore, itemStore]) => {
+	const queryContexts = ZusUtils.useCombinedStoresDeep([QD.QDStore, props.itemStore], ([qdStore, itemStore]) => {
 		const constraints = QD.selectBaseQueryConstraints(qdStore)
 		return {
 			addLayersBefore: {
@@ -519,7 +528,7 @@ function ItemDropdown(props: {
 		}
 	}, { selectorDeps: [] })
 
-	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item))
+	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item), { dependencies: [] })
 
 	const user = useLoggedInUser()
 	return (

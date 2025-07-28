@@ -64,7 +64,7 @@ export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProp
 									<Icons.ShieldQuestion className="text-orange-400" />
 								</TooltipTrigger>
 							)}
-						<TooltipContent className="max-w-sm p-3">
+						<TooltipContent className="max-w-sm p-3" align="start" side="right">
 							<div className="font-semibold text-base mb-2">Filtered:</div>
 							<ul className="flex flex-col space-y-2">
 								{filterViolations.map(v => {

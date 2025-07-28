@@ -375,7 +375,7 @@ export function resolveCursorIndex(
 			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
 		)
 		if (itemIndex === -1) {
-			throw new Error(`Item with ID ${id} not found`)
+			return orderedItemsState.layerItems.length
 		}
 		if (cursor.action === 'add-after') {
 			return itemIndex + 1

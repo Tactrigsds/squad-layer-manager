@@ -1,6 +1,7 @@
 import * as Obj from '@/lib/object'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
+import { StateObservable } from '@rx-state/core'
 import { derive } from 'derive-zustand'
 import deepEqual from 'fast-deep-equal'
 import * as React from 'react'
@@ -10,6 +11,7 @@ import { StoreApi, StoreMutatorIdentifier, StoreMutators, useStore } from 'zusta
 import { toStream } from 'zustand-rx'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { distinctDeepEquals } from './async'
+import { useDeepEqualsMemo, useStableReferenceDeepEquals } from './react'
 
 // ripped from zustand types
 type Get<T, K, F> = K extends keyof T ? T[K] : F
@@ -22,50 +24,41 @@ export type Setter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Ge
 export type Getter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'getState', never>
 
 export function useStoreDeep<S, O>(store: StoreApi<S>, selector: (s: S) => O, opts?: { dependencies?: unknown[] }) {
-	if (opts?.dependencies) {
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		selector = React.useCallback(selector, opts.dependencies)
-	}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	selector = React.useCallback(selector, opts?.dependencies ?? [])
 
 	return useStoreWithEqualityFn(store, selector, deepEqual)
 }
 
-export function useStoreDeepMultiple<States extends unknown[], Selector extends (states: States) => any>(
-	_stores: StoresTuple<States>,
+export function useCombinedStoresDeep<States extends unknown[], Selector extends (states: States) => any>(
+	stores: StoresTuple<States>,
 	selector: Selector,
-	// when pureSelector is true, the selector is assumed not not have any closures
-	opts: { selectorDeps: [] },
+	opts: { selectorDeps: unknown[] },
 ) {
-	const subRef = React.useRef<Rx.Subscription | null>()
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	selector = React.useCallback(selector, opts.selectorDeps)
-	const combined = React.useMemo(() => {
-		subRef.current?.unsubscribe()
-		subRef.current = new Rx.Subscription()
-		const streams = _stores.map(storeOr$ => {
-			if (Rx.isObservable(storeOr$)) {
-				return storeOr$
-			}
-			return toStream(storeOr$)
-		})
-		const combined = ReactRx.state(
-			Rx.combineLatest(streams).pipe(
-				Rx.map(states => selector(states as unknown as States)),
-				distinctDeepEquals(),
-			) as ReactRx.StateObservable<ReturnType<Selector>>,
-		)
-		return storeFromStateObservable(combined, { sub: subRef.current })
+	const [values, setValues] = React.useState(() => stores.map(s => s.getState()) as States)
 
+	const updateValues = React.useCallback(() => {
+		setValues(stores.map(s => s.getState()) as States)
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [..._stores, selector])
-	return useStore(combined)
+	}, [...stores])
+
+	React.useEffect(() => {
+		const subscriptions = stores.map(s => s.subscribe(updateValues))
+		return () => subscriptions.forEach(unsub => unsub())
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [...stores])
+
+	return React.useMemo(() => {
+		return selector(values)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [...opts.selectorDeps, values]) as ReturnType<Selector>
 }
 
-export function storeFromStateObservable<T>(o: ReactRx.StateObservable<T>, opts: { sub: Rx.Subscription }) {
-	return Zus.createStore((set) => {
-		opts.sub.add(o.subscribe(s => set(s)))
-		return o.getValue()
+export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, opts: { sub: Rx.Subscription }) {
+	return Zus.createStore<T>((set) => {
+		opts.sub.add(o.subscribe({ next: s => set(s) }))
+		return initialValue
 	})
 }
 
-type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> | ReactRx.StateObservable<States[s]> }]
+type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> }]

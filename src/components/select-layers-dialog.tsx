@@ -90,11 +90,11 @@ export default function SelectLayersDialog(props: {
 
 	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, state => {
 		return LFM.selectFilterMenuConstraints(state)
-	})
-	const queryContextWithFilter: LQY.LayerQueryBaseInput = {
+	}, { dependencies: [] })
+	const queryContextWithFilter: LQY.LayerQueryBaseInput = React.useMemo(() => ({
 		...props.layerQueryBaseInput,
 		constraints: [...(props.layerQueryBaseInput.constraints ?? []), ...filterMenuConstraints],
-	}
+	}), [props.layerQueryBaseInput, filterMenuConstraints])
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>

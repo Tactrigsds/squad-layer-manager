@@ -54,3 +54,15 @@ export function useStableReferenceDeepEquals<T>(value: T) {
 	}
 	return ref.current
 }
+
+export function useDeepEqualsMemo<T>(cb: () => T, deps: unknown[]) {
+	const ref = React.useRef<T>()
+	return React.useMemo(() => {
+		const newValue = cb()
+		if (!deepEqual(ref.current, newValue)) {
+			ref.current = newValue
+		}
+		return ref.current
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, deps)
+}

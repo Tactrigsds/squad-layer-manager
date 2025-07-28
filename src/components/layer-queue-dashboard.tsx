@@ -164,9 +164,9 @@ function QueueControlPanel() {
 	function setAppendLayersPopoverOpen(v: boolean) {
 		_setAppendLayersPopoverOpen(v)
 	}
-	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue)
+	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue, { dependencies: [] })
 
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints)
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints, { dependencies: [] })
 	const queryInputs = {
 		addtoQueue: { constraints },
 		playNext: {
@@ -653,150 +653,151 @@ function VoteState() {
 type PoolConfigurationPopoverHandle = {
 	reset(settings: SS.ServerSettings): void
 }
-const PoolConfigurationPopover = React.forwardRef(
-	function PoolConfigurationPopover(
-		props: { children: React.ReactNode },
-		ref: React.ForwardedRef<PoolConfigurationPopoverHandle>,
-	) {
-		const filterOptions = []
-		for (const f of FilterEntityClient.useFilterEntities().values()) {
-			filterOptions.push({
-				value: f.id as string | null,
-				label: f.name,
-			})
+function PoolConfigurationPopover(
+	props: {
+		children: React.ReactNode
+		ref?: React.ForwardedRef<PoolConfigurationPopoverHandle>
+	},
+) {
+	const filterOptions = []
+	for (const f of FilterEntityClient.useFilterEntities().values()) {
+		filterOptions.push({
+			value: f.id as string | null,
+			label: f.name,
+		})
+	}
+	filterOptions.push({ value: null, label: '<none>' })
+
+	const user = useLoggedInUser()
+	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+
+	React.useImperativeHandle(props.ref, () => ({
+		reset: () => {},
+	}))
+
+	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
+	const saveChangesMutation = QD.useSaveChangesMutation()
+
+	const storedSettingsChanged = Zus.useStore(
+		QD.QDStore,
+		(state) =>
+			!deepEqual(
+				state.serverState?.settings,
+				state.editedServerState.settings,
+			),
+	)
+	const [storedMainPoolDnrRules, storedGenerationPoolDnrRules] = ZusUtils.useStoreDeep(
+		QD.QDStore,
+		(s) => [
+			s.editedServerState.settings.queue.mainPool.repeatRules,
+			s.editedServerState.settings.queue.generationPool.repeatRules,
+		],
+		{ dependencies: [] },
+	)
+	const [mainPoolRules, setMainPoolRules] = React.useState(storedMainPoolDnrRules)
+	const [generationPoolRules, setGenerationPoolRules] = React.useState(
+		[...storedGenerationPoolDnrRules],
+	)
+	React.useEffect(() => {
+		setMainPoolRules(storedMainPoolDnrRules)
+		setGenerationPoolRules(storedGenerationPoolDnrRules)
+	}, [storedMainPoolDnrRules, storedGenerationPoolDnrRules])
+	const settingsChanged = React.useMemo(() => {
+		const mainPoolRulesChanged = !deepEqual(storedMainPoolDnrRules, mainPoolRules)
+		const generationPoolRulesChanged = !deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
+		const res = storedSettingsChanged || mainPoolRulesChanged || generationPoolRulesChanged
+		return res
+	}, [
+		storedSettingsChanged,
+		storedMainPoolDnrRules,
+		mainPoolRules,
+		storedGenerationPoolDnrRules,
+		generationPoolRules,
+	])
+
+	function saveRules() {
+		if (!settingsChanged) return
+		QD.QDStore.getState().setSetting((settings) => {
+			settings.queue.mainPool.repeatRules = [...mainPoolRules]
+			settings.queue.generationPool.repeatRules = [...generationPoolRules]
+			return settings
+		})
+	}
+
+	const [open, _setOpen] = React.useState(false)
+	const setOpen = (open: boolean) => {
+		if (!open) {
+			saveRules()
 		}
-		filterOptions.push({ value: null, label: '<none>' })
+		_setOpen(open)
+	}
 
-		const user = useLoggedInUser()
-		const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const applyMainPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.applyMainPoolToGenerationPool)
+	const applymainPoolSwitchId = React.useId()
 
-		React.useImperativeHandle(ref, () => ({
-			reset: () => {},
-		}))
+	function setApplyMainPool(checked: boolean | 'indeterminate') {
+		if (checked === 'indeterminate') return
+		QD.QDStore.getState().setSetting((settings) => {
+			settings.queue.applyMainPoolToGenerationPool = checked
+		})
+	}
 
-		const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
-		const saveChangesMutation = QD.useSaveChangesMutation()
-
-		const storedSettingsChanged = Zus.useStore(
-			QD.QDStore,
-			(state) =>
-				!deepEqual(
-					state.serverState?.settings,
-					state.editedServerState.settings,
-				),
-		)
-		const [storedMainPoolDnrRules, storedGenerationPoolDnrRules] = ZusUtils.useStoreDeep(
-			QD.QDStore,
-			(s) => [
-				s.editedServerState.settings.queue.mainPool.repeatRules,
-				s.editedServerState.settings.queue.generationPool.repeatRules,
-			],
-		)
-		const [mainPoolRules, setMainPoolRules] = React.useState(storedMainPoolDnrRules)
-		const [generationPoolRules, setGenerationPoolRules] = React.useState(
-			[...storedGenerationPoolDnrRules],
-		)
-		React.useEffect(() => {
-			setMainPoolRules(storedMainPoolDnrRules)
-			setGenerationPoolRules(storedGenerationPoolDnrRules)
-		}, [storedMainPoolDnrRules, storedGenerationPoolDnrRules])
-		const settingsChanged = React.useMemo(() => {
-			const mainPoolRulesChanged = !deepEqual(storedMainPoolDnrRules, mainPoolRules)
-			const generationPoolRulesChanged = !deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
-			const res = storedSettingsChanged || mainPoolRulesChanged || generationPoolRulesChanged
-			return res
-		}, [
-			storedSettingsChanged,
-			storedMainPoolDnrRules,
-			mainPoolRules,
-			storedGenerationPoolDnrRules,
-			generationPoolRules,
-		])
-
-		function saveRules() {
-			if (!settingsChanged) return
-			QD.QDStore.getState().setSetting((settings) => {
-				settings.queue.mainPool.repeatRules = [...mainPoolRules]
-				settings.queue.generationPool.repeatRules = [...generationPoolRules]
-				return settings
-			})
-		}
-
-		const [open, _setOpen] = React.useState(false)
-		const setOpen = (open: boolean) => {
-			if (!open) {
-				saveRules()
-			}
-			_setOpen(open)
-		}
-
-		const applyMainPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.applyMainPoolToGenerationPool)
-		const applymainPoolSwitchId = React.useId()
-
-		function setApplyMainPool(checked: boolean | 'indeterminate') {
-			if (checked === 'indeterminate') return
-			QD.QDStore.getState().setSetting((settings) => {
-				settings.queue.applyMainPoolToGenerationPool = checked
-			})
-		}
-
-		return (
-			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-				<PopoverContent
-					className="w-[700px] flex flex-col space-y-2"
-					side="right"
-				>
-					<div className="flex items-center justify-between">
-						<h3 className="font-medium">Pool Configuration</h3>
-						<div className="flex items-center space-x-2">
-							<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
-								<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
-								<Switch
-									disabled={!canWriteSettings}
-									id={applymainPoolSwitchId}
-									checked={applyMainPool}
-									onCheckedChange={setApplyMainPool}
-								/>
-							</div>
-							<TabsList
-								options={[
-									{ label: 'Main Pool', value: 'mainPool' },
-									{ label: 'Autogeneration', value: 'generationPool' },
-								]}
-								active={poolId}
-								setActive={setPoolId}
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+			<PopoverContent
+				className="w-[700px] flex flex-col space-y-2"
+				side="right"
+			>
+				<div className="flex items-center justify-between">
+					<h3 className="font-medium">Pool Configuration</h3>
+					<div className="flex items-center space-x-2">
+						<div className={cn('flex items-center space-x-1', poolId === 'generationPool' ? '' : 'invisible')}>
+							<Label htmlFor={applymainPoolSwitchId}>Apply Main Pool</Label>
+							<Switch
+								disabled={!canWriteSettings}
+								id={applymainPoolSwitchId}
+								checked={applyMainPool}
+								onCheckedChange={setApplyMainPool}
 							/>
 						</div>
+						<TabsList
+							options={[
+								{ label: 'Main Pool', value: 'mainPool' },
+								{ label: 'Autogeneration', value: 'generationPool' },
+							]}
+							active={poolId}
+							setActive={setPoolId}
+						/>
 					</div>
-					<PoolFiltersConfigurationPanel poolId={poolId} />
-					<PoolRepeatRulesConfigurationPanel
-						className={poolId !== 'mainPool' ? 'hidden' : undefined}
-						poolId="mainPool"
-						rules={mainPoolRules}
-						setRules={setMainPoolRules}
-					/>
-					<PoolRepeatRulesConfigurationPanel
-						className={poolId !== 'generationPool' ? 'hidden' : undefined}
-						poolId="generationPool"
-						rules={generationPoolRules}
-						setRules={setGenerationPoolRules}
-					/>
-					<Button
-						disabled={!settingsChanged || !canWriteSettings}
-						onClick={() => {
-							saveRules()
-							saveChangesMutation.mutate()
-							_setOpen(false)
-						}}
-					>
-						Save Changes
-					</Button>
-				</PopoverContent>
-			</Popover>
-		)
-	},
-)
+				</div>
+				<PoolFiltersConfigurationPanel poolId={poolId} />
+				<PoolRepeatRulesConfigurationPanel
+					className={poolId !== 'mainPool' ? 'hidden' : undefined}
+					poolId="mainPool"
+					rules={mainPoolRules}
+					setRules={setMainPoolRules}
+				/>
+				<PoolRepeatRulesConfigurationPanel
+					className={poolId !== 'generationPool' ? 'hidden' : undefined}
+					poolId="generationPool"
+					rules={generationPoolRules}
+					setRules={setGenerationPoolRules}
+				/>
+				<Button
+					disabled={!settingsChanged || !canWriteSettings}
+					onClick={() => {
+						saveRules()
+						saveChangesMutation.mutate()
+						_setOpen(false)
+					}}
+				>
+					Save Changes
+				</Button>
+			</PopoverContent>
+		</Popover>
+	)
+}
 
 function PoolFiltersConfigurationPanel({
 	poolId,
@@ -806,7 +807,7 @@ function PoolFiltersConfigurationPanel({
 	const [filterIds, setSetting] = ZusUtils.useStoreDeep(QD.QDStore, (s) => [
 		s.editedServerState.settings.queue[poolId].filters,
 		s.setSetting,
-	])
+	], { dependencies: [poolId] })
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -975,7 +976,6 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							onSelect={(updated) => {
 								props.setRules(
 									Im.produce((draft) => {
-										// @ts-expect-error idgaf
 										draft[index].targetValues = typeof updated === 'function'
 											? updated(draft[index].targetValues ?? [])
 											: updated

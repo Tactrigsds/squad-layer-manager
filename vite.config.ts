@@ -9,7 +9,7 @@ import * as Env from './src/server/env.ts'
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [react()],
-	server: process.env.NODE_ENV === 'production' ? buildDevServer() : undefined,
+	server: process.env.NODE_ENV !== 'production' ? buildDevServerConfig() : undefined,
 	envPrefix: 'PUBLIC_',
 	build: {
 		sourcemap: true,
@@ -25,7 +25,7 @@ export default defineConfig({
 	},
 })
 
-function buildDevServer(): UserConfig['server'] {
+function buildDevServerConfig(): UserConfig['server'] {
 	ensureEnvSetup()
 	const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 	const proxy = Object.fromEntries(

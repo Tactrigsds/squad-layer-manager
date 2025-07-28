@@ -153,7 +153,7 @@ function buildColDefs(
 	cfg: LQY.EffectiveColumnAndTableConfig,
 	teamParity: number,
 	displayLayersNormalized: boolean,
-	constraints: LQY.LayerQueryConstraint[],
+	constraints?: LQY.LayerQueryConstraint[],
 ) {
 	const colDefs: ColumnDef<RowData>[] = [
 		{
@@ -165,7 +165,7 @@ function buildColDefs(
 					aria-label="Select all"
 				/>
 			),
-			cell: ({ row }) => <Cell row={row} constraints={constraints} />,
+			cell: ({ row }) => <Cell row={row} constraints={constraints ?? []} />,
 			enableSorting: false,
 			enableHiding: false,
 		},
@@ -185,24 +185,25 @@ function buildColDefs(
 		}
 	}
 
-	const constraintsCol = columnHelper.accessor('constraints', {
-		header: '',
-		enableHiding: false,
-		cell: info => {
-			const { values, violationDescriptors } = info.getValue()
-			if (!violationDescriptors || !values) return null
-			const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
-			return (
-				<ConstraintViolationDisplay
-					padEmpty={true}
-					violated={namedConstraints}
-					violationDescriptors={violationDescriptors}
-				/>
-			)
-		},
-	})
-
-	colDefs.push(constraintsCol as any)
+	if (constraints) {
+		const constraintsCol = columnHelper.accessor('constraints', {
+			header: '',
+			enableHiding: false,
+			cell: info => {
+				const { values, violationDescriptors } = info.getValue()
+				if (!violationDescriptors || !values) return null
+				const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
+				return (
+					<ConstraintViolationDisplay
+						padEmpty={true}
+						violated={namedConstraints}
+						violationDescriptors={violationDescriptors}
+					/>
+				)
+			},
+		})
+		colDefs.push(constraintsCol as any)
+	}
 
 	return colDefs
 }
@@ -239,16 +240,16 @@ export default function LayerTable(props: {
 	const canToggleColumns = props.canToggleColumns ?? true
 	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
 	const cfg = ConfigClient.useEffectiveColConfig()
-	let pageIndex = props.pageIndex
+	const pageIndex = props.pageIndex
 
-	{
-		const constraintsRef = React.useRef(props.baseInput?.constraints)
-		if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
-			props.setPageIndex(0)
-			pageIndex = 0
-		}
-		constraintsRef.current = props.baseInput?.constraints
-	}
+	// {
+	// 	const constraintsRef = React.useRef(props.baseInput?.constraints)
+	// 	if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
+	// 		props.setPageIndex(0)
+	// 		pageIndex = 0
+	// 	}
+	// 	constraintsRef.current = props.baseInput?.constraints
+	// }
 
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
@@ -457,14 +458,16 @@ export default function LayerTable(props: {
 
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
-		React.useCallback((state) => props.baseInput ? LQY.resolveTeamParityForCursor(state, props.baseInput) : undefined, [props.baseInput]),
+		React.useCallback((state) => {
+			return props.baseInput ? LQY.resolveTeamParityForCursor(state, props.baseInput) : undefined
+		}, [props.baseInput]),
 	)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(
-			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints ?? []) : [],
+			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints) : [],
 			[
 				cfg,
 				teamParity,
@@ -752,10 +755,12 @@ type SetRawDialogHandle = {
 	focus: () => void
 }
 
-const SetRawLayerDialog = React.forwardRef<
-	SetRawDialogHandle,
-	{ open: boolean; setOpen: (update: (value: boolean) => boolean) => void; onSubmit: (layer: L.UnvalidatedLayer[]) => void }
->(function SetRawLayerDialog(props, ref) {
+function SetRawLayerDialog(props: {
+	open: boolean
+	setOpen: (update: (value: boolean) => boolean) => void
+	onSubmit: (layer: L.UnvalidatedLayer[]) => void
+	ref?: React.ForwardedRef<SetRawDialogHandle>
+}) {
 	const inputRef = React.useRef<HTMLInputElement>(null)
 	const [validLayer, setValidLayer] = React.useState<L.UnvalidatedLayer | null>(null)
 	const [validLayerDebounced, setValidLayerDebounced] = React.useState<L.UnvalidatedLayer | null>(null)
@@ -769,7 +774,7 @@ const SetRawLayerDialog = React.forwardRef<
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
-	React.useImperativeHandle(ref, () => ({
+	React.useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			inputRef.current?.focus()
 		},
@@ -843,7 +848,7 @@ const SetRawLayerDialog = React.forwardRef<
 			</div>
 		)
 	)
-})
+}
 
 function MultiLayerSetDialog({
 	onSubmit,
