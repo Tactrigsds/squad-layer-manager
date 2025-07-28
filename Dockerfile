@@ -1,9 +1,6 @@
 FROM node:lts AS base
 LABEL org.opencontainers.image.description="Squad Layer Manager. See https://github.com/Tactrigsds/squad-layer-manager"
 
-ARG GIT_SHA="unknown"
-ARG GIT_BRANCH="unknown"
-
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN mkdir -p /logs
@@ -15,6 +12,8 @@ COPY pnpm-lock.yaml .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY . .
+ARG GIT_SHA="unknown"
+ARG GIT_BRANCH="unknown"
 ENV PUBLIC_GIT_SHA=${GIT_SHA}
 ENV PUBLIC_GIT_BRANCH=${GIT_BRANCH}
 ENV NODE_ENV=production
