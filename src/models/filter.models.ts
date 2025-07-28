@@ -140,9 +140,12 @@ export const InRangeComparisonSchema = z
 			.describe(
 				"smallest value is always the start of the range, even if it's larger",
 			)
-			.refine((range) => {
-				return range.some(value => value !== undefined)
-			}, { message: 'Range must have at least one value' }),
+			.refine(
+				(range) => {
+					return range.some((value) => value !== undefined)
+				},
+				{ message: 'Range must have at least one value' },
+			),
 		column: z.string(),
 	})
 	.describe('Inclusive Range')
@@ -310,20 +313,36 @@ export function isEditableBlockNode(
 }
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
-export const getComparisonTypesForColumn = LC.coalesceLookupErrors((
-	column: string,
-	cfg = LC.BASE_COLUMN_CONFIG,
-) => {
-	if (Arr.includes(COMPOSITE_COLUMNS.options, column)) {
-		return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === column) }
-	}
-	const colType = LC.getColumnDef(column, cfg)!.type
-	return { code: 'ok' as const, comparisonTypes: COMPARISON_TYPES.filter((type) => type.coltype === colType) }
-})
+export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
+	(column: string, cfg = LC.BASE_COLUMN_CONFIG) => {
+		if (Arr.includes(COMPOSITE_COLUMNS.options, column)) {
+			return {
+				code: 'ok' as const,
+				comparisonTypes: COMPARISON_TYPES.filter(
+					(type) => type.coltype === column,
+				),
+			}
+		}
+		const colType = LC.getColumnDef(column, cfg)!.type
+		return {
+			code: 'ok' as const,
+			comparisonTypes: COMPARISON_TYPES.filter(
+				(type) => type.coltype === colType,
+			),
+		}
+	},
+)
 
 export const EditableComparisonSchema = z.object({
 	column: z.string().optional(),
-	code: z.enum(COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]]).optional(),
+	code: z
+		.enum(
+			COMPARISON_TYPES.map((type) => type.code) as [
+				ComparisonCode,
+				...ComparisonCode[],
+			],
+		)
+		.optional(),
 	value: z.union([z.number(), z.string(), z.null()]).optional(),
 	values: z.array(z.string().nullable()).optional(),
 	range: z.tuple([z.number().optional(), z.number().optional()]).optional(),
@@ -337,8 +356,9 @@ export function editableComparisonHasValue(comp: EditableComparison) {
 		comp.code === 'is-true'
 		|| comp.value !== undefined
 		|| comp.values !== undefined
-		|| (comp.range !== undefined && !deepEqual(comp.range, [undefined, undefined]))
-		|| comp.allMasks?.some(side => side.length > 0)
+		|| (comp.range !== undefined
+			&& !deepEqual(comp.range, [undefined, undefined]))
+		|| comp.allMasks?.some((side) => side.length > 0)
 	)
 }
 
@@ -366,7 +386,12 @@ export const BaseFilterEntitySchema = z.object({
 })
 
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']
-export const COMPARISON_CODES = z.enum(COMPARISON_TYPES.map((type) => type.code) as [ComparisonCode, ...ComparisonCode[]])
+export const COMPARISON_CODES = z.enum(
+	COMPARISON_TYPES.map((type) => type.code) as [
+		ComparisonCode,
+		...ComparisonCode[],
+	],
+)
 
 export function filterContainsId(id: string, node: FilterNode): boolean {
 	switch (node.type) {

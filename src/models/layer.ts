@@ -293,7 +293,13 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 	const [layerString, faction1String, faction2String] = rawLayerText.split(' ')
 	if (!layerString?.trim()) return null
 	const parsedLayer = parseLayerStringSegment(layerString)
-	const [faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String)
+	let faction1: ParsedFaction | null = null
+	let faction2: ParsedFaction | null = null
+	if (parsedLayer?.extraFactions) {
+		;[faction1, faction2] = parsedLayer.extraFactions.map((f): ParsedFaction => ({ faction: f, unit: 'CombinedArms' }))
+	} else {
+		;[faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String)
+	}
 	if (!parsedLayer || !faction1 || !faction2) {
 		return {
 			id: 'RAW:' + rawLayerText,
@@ -348,7 +354,7 @@ export function parseLayerStringSegment(layer: string) {
 		const trainingMaps = ['JensensRange', 'PacificProvingGrounds']
 		for (const map of trainingMaps) {
 			if (layer.startsWith(map)) {
-				const trainingFactions = layer.slice(map.length + 1).split('-')
+				const trainingFactions = layer.slice(map.length + 1).split('-') as [string, string]
 
 				return {
 					layerType: 'training' as const,
