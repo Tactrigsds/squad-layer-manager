@@ -61,7 +61,7 @@ export function getEffectiveColumnConfig(config: LayerDbConfig): EffectiveColumn
 export function getColumnDef(name: string, cfg = BASE_COLUMN_CONFIG) {
 	const column = cfg.defs[name] as CombinedColumnDef | undefined
 	if (!column) {
-		throw new ColumnNotFoundError(`Column '${name}' not found`)
+		return
 	}
 	return column
 }
