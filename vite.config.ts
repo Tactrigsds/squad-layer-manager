@@ -9,7 +9,7 @@ import * as Env from './src/server/env.ts'
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [react()],
-	server: process.env.NODE_ENV !== 'production' ? buildDevServerConfig() : undefined,
+	server: process.env.NODE_ENV === 'development' ? buildDevServerConfig() : undefined,
 	envPrefix: 'PUBLIC_',
 	build: {
 		sourcemap: true,
