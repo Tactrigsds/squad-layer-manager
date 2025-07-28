@@ -4,7 +4,7 @@ import React from 'react'
 export type SetStateCallback<T> = (prevState: T) => T
 
 export type GenericForwardedRef<RefType, Props extends object> = <P extends Props>(
-	props: P & { ref?: React.MutableRefObject<RefType> },
+	props: P & { ref?: React.RefObject<RefType> },
 ) => React.ReactElement
 
 export function useClosureRef<T extends object>(obj: T) {
@@ -20,11 +20,11 @@ export function useClosureRef<T extends object>(obj: T) {
  * For when the psychic damage of whatever you set as the starting value of the ref being reevaluated on every render is too great. Also useful if you only want to run something exactly once
  */
 export function useRefConstructor<T>(constructor: () => T) {
-	const ref = React.useRef<T>()
+	const ref = React.useRef<T>(null)
 	if (!ref.current) {
 		ref.current = constructor()
 	}
-	return ref as React.MutableRefObject<T>
+	return ref as React.RefObject<T>
 }
 
 export type Focusable = {
@@ -56,7 +56,7 @@ export function useStableReferenceDeepEquals<T>(value: T) {
 }
 
 export function useDeepEqualsMemo<T>(cb: () => T, deps: unknown[]) {
-	const ref = React.useRef<T>()
+	const ref = React.useRef<T>(null)
 	return React.useMemo(() => {
 		const newValue = cb()
 		if (!deepEqual(ref.current, newValue)) {

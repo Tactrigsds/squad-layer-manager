@@ -28,13 +28,13 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 
 	// null if not currently valid node
 	const editorValueObjRef = React.useRef(props.node as any)
-	const editorRef = React.useRef<Editor>()
+	const editorRef = React.useRef<Editor>(null)
 	function trySetEditorValue(obj: any) {
 		if (editorValueObjRef.current !== null && deepEqual(obj, editorValueObjRef.current)) return
 		editorValueObjRef.current = obj
 		editorRef.current?.setValue(stringifyCompact(obj))
 	}
-	const errorViewRef = React.useRef<Editor>()
+	const errorViewRef = React.useRef<Editor>(null)
 	const onChange = React.useCallback(
 		(value: string) => {
 			let obj: any

@@ -18,7 +18,6 @@ import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 import React from 'react'
 import { Link } from 'react-router-dom'
 import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
@@ -147,10 +146,10 @@ function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPres
 export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 	const { node, setNode } = props
 	const isValid = F.isLocallyValidFilterNode(node)
-	const [showInvalid, setShowInvalid] = useState(false)
+	const [showInvalid, setShowInvalid] = React.useState(false)
 	const invalid = !isValid && showInvalid
-	const wrapperRef = useRef<HTMLDivElement>(null)
-	useEffect(() => {
+	const wrapperRef = React.useRef<HTMLDivElement>(null)
+	React.useEffect(() => {
 		const elt = wrapperRef.current!
 		if (isValid || !elt) return
 		if (wrapperRef.current !== document.activeElement || elt.contains(document.activeElement)) {
@@ -166,7 +165,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			elt.removeEventListener('focusout', onFocusLeave)
 		}
 	}, [isValid])
-	const [editedChildIndex, setEditedChildIndex] = useState<number | undefined>()
+	const [editedChildIndex, setEditedChildIndex] = React.useState<number | undefined>()
 
 	const negationToggle = (
 		<NegationToggle
@@ -350,9 +349,9 @@ export const Comparison = function Comparison(props: {
 	const { comp, setComp } = props
 	let { columnEditable } = props
 	columnEditable ??= true
-	const columnBoxRef = useRef<ComboBoxHandle>(null)
-	const codeBoxRef = useRef<ComboBoxHandle>(null)
-	const valueBoxRef = useRef<Focusable & Clearable>(null)
+	const columnBoxRef = React.useRef<ComboBoxHandle>(null)
+	const codeBoxRef = React.useRef<ComboBoxHandle>(null)
+	const valueBoxRef = React.useRef<Focusable & Clearable>(null)
 
 	React.useImperativeHandle(props.ref, () => ({
 		clear: (ephemeral) => {
@@ -366,9 +365,9 @@ export const Comparison = function Comparison(props: {
 		},
 	}))
 
-	const alreadyOpenedRef = useRef(false)
+	const alreadyOpenedRef = React.useRef(false)
 	const cfg = ConfigClient.useEffectiveColConfig()
-	useEffect(() => {
+	React.useEffect(() => {
 		if (props.defaultEditing && !columnBoxRef.current!.isFocused && !alreadyOpenedRef.current) {
 			columnBoxRef.current?.focus()
 			alreadyOpenedRef.current = true
@@ -618,7 +617,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 
 		options.push({ label: filter.name, value: filter.id })
 	}
-	const boxRef = useRef<ComboBoxHandle>()
+	const boxRef = React.useRef<ComboBoxHandle>(null)
 	React.useEffect(() => {
 		if (props.defaultEditing) {
 			boxRef.current?.focus()
@@ -700,8 +699,8 @@ function useDynamicColumnAutocomplete<T extends string | null>(
 	value: T | undefined,
 	queryContext?: LQY.LayerQueryBaseInput,
 ) {
-	const [debouncedInput, _setDebouncedInput] = useState('')
-	const [inputValue, _setInputValue] = useState<string>(value?.split?.(',')?.[0] ?? '')
+	const [debouncedInput, _setDebouncedInput] = React.useState('')
+	const [inputValue, _setInputValue] = React.useState<string>(value?.split?.(',')?.[0] ?? '')
 	function setDebouncedInput(value: string) {
 		const v = value.trim()
 		_setDebouncedInput(v)
@@ -798,7 +797,7 @@ function NumericValueConfig(
 		ref?: React.ForwardedRef<Focusable & Clearable>
 	},
 ) {
-	const [value, setValue] = useState(props.value?.toString() ?? '')
+	const [value, setValue] = React.useState(props.value?.toString() ?? '')
 	const inputRef = React.useRef<HTMLInputElement>(null)
 	React.useImperativeHandle(props.ref, () => ({
 		...eltToFocusable(inputRef.current!),
@@ -883,7 +882,7 @@ function FactionsAllowMatchupsConfig(props: {
 	}))
 
 	const masks = props.masks ?? []
-	const [isEditOpen, setIsEditOpen] = useState(false)
+	const [isEditOpen, setIsEditOpen] = React.useState(false)
 
 	// Helper function to check if a mask is empty
 	function isMaskEmpty(mask: F.FactionMask): boolean {
