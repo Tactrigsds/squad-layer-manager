@@ -28,6 +28,7 @@ import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerDisplay from './layer-display.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
@@ -237,10 +238,9 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 			<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
 					<DialogTitle>Edit</DialogTitle>
-					<div className="mx-8 font-light">-</div>
-					<DialogDescription>Change the layer or vote choices for this queue item.</DialogDescription>
 				</div>
-				<div className="flex items-center space-x-2">
+				<div className="flex justify-end items-center space-x-2 flex-grow">
+					<ExtraFiltersPanel />
 					{allowVotes && (
 						<Button
 							variant="outline"
