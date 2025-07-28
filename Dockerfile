@@ -17,7 +17,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY . .
 ENV PUBLIC_GIT_SHA=${GIT_SHA}
 ENV PUBLIC_GIT_BRANCH=${GIT_BRANCH}
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 RUN pnpm vite build
 
 ENV HOST=0.0.0.0
