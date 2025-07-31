@@ -38,6 +38,8 @@ const layerCtxVersionStore = Zus.createStore<LayerCtxModifiedState>((set, get) =
 	},
 }))
 
+export const useFetchingBuffer = Zus.create(() => false)
+
 export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
 	options = options ? { ...options } : {}
 	options.enabled = options.enabled ?? true
@@ -577,7 +579,6 @@ async function setup() {
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
 	const dbBuffer = await fetchDatabaseBuffer()
-	console.debug(`Using SharedArrayBuffer for database: ${dbBuffer.byteLength} bytes`)
 
 	const ctx: WorkerTypes.InitRequest['ctx'] = {
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
@@ -659,71 +660,76 @@ export async function cleanupWorkerPool() {
 }
 
 async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
-	// Check if SharedArrayBuffer is available
-	if (typeof SharedArrayBuffer === 'undefined') {
-		throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
-	}
-
-	const opfsRoot = await navigator.storage.getDirectory()
-	const dbFileName = 'layers.sqlite3'
-	const hashFileName = 'layers.sqlite3.hash'
-
-	let dbHandle: FileSystemFileHandle
-	let hashHandle: FileSystemFileHandle
-	let storedHash: string | null = null
-
+	useFetchingBuffer.setState(true)
 	try {
-		const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
-			return handle
-		})
-		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
-			return handle
-		})
-		const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
-			return text
-		})
-		;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
-	} catch {
-		;[dbHandle, hashHandle] = await Promise.all([
-			opfsRoot.getFileHandle(dbFileName, { create: true }),
-			opfsRoot.getFileHandle(hashFileName, { create: true }),
-		])
-	}
-
-	const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
-
-	const res = await fetch(AR.link('/layers.sqlite3'), { headers })
-
-	let buffer: ArrayBuffer
-
-	if (res.status === 304) {
-		const cachedFile = await dbHandle.getFile()
-		buffer = await cachedFile.arrayBuffer()
-	} else {
-		buffer = await res.arrayBuffer()
-
-		// Store in OPFS
-		const writable = await dbHandle.createWritable()
-		await writable.write(buffer)
-		await writable.close()
-
-		// Store hash
-		const etag = res.headers.get('ETag')
-		if (etag) {
-			const hashWritable = await hashHandle.createWritable()
-			await hashWritable.write(etag)
-			await hashWritable.close()
+		// Check if SharedArrayBuffer is available
+		if (typeof SharedArrayBuffer === 'undefined') {
+			throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
 		}
+
+		const opfsRoot = await navigator.storage.getDirectory()
+		const dbFileName = 'layers.sqlite3'
+		const hashFileName = 'layers.sqlite3.hash'
+
+		let dbHandle: FileSystemFileHandle
+		let hashHandle: FileSystemFileHandle
+		let storedHash: string | null = null
+
+		try {
+			const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
+				return handle
+			})
+			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
+				return handle
+			})
+			const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
+				return text
+			})
+			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
+		} catch {
+			;[dbHandle, hashHandle] = await Promise.all([
+				opfsRoot.getFileHandle(dbFileName, { create: true }),
+				opfsRoot.getFileHandle(hashFileName, { create: true }),
+			])
+		}
+
+		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
+
+		const res = await fetch(AR.link('/layers.sqlite3'), { headers })
+
+		let buffer: ArrayBuffer
+
+		if (res.status === 304) {
+			const cachedFile = await dbHandle.getFile()
+			buffer = await cachedFile.arrayBuffer()
+		} else {
+			buffer = await res.arrayBuffer()
+
+			// Store in OPFS
+			const writable = await dbHandle.createWritable()
+			await writable.write(buffer)
+			await writable.close()
+
+			// Store hash
+			const etag = res.headers.get('ETag')
+			if (etag) {
+				const hashWritable = await hashHandle.createWritable()
+				await hashWritable.write(etag)
+				await hashWritable.close()
+			}
+		}
+
+		// Convert ArrayBuffer to SharedArrayBuffer to minimize cloning overhead
+		// This ensures workers can access the database without cloning the entire buffer
+		console.debug(`Converting ${buffer.byteLength} byte database buffer to SharedArrayBuffer`)
+		const sharedBuffer = new SharedArrayBuffer(buffer.byteLength)
+		const sharedView = new Uint8Array(sharedBuffer)
+		const bufferView = new Uint8Array(buffer)
+		sharedView.set(bufferView)
+
+		console.debug(`Created SharedArrayBuffer from database: ${sharedBuffer.byteLength} bytes - workers will now access shared memory`)
+		return sharedBuffer
+	} finally {
+		useFetchingBuffer.setState(false)
 	}
-
-	// Convert ArrayBuffer to SharedArrayBuffer to minimize cloning overhead
-	// This ensures workers can access the database without cloning the entire buffer
-	console.debug(`Converting ${buffer.byteLength} byte database buffer to SharedArrayBuffer`)
-	const sharedBuffer = new SharedArrayBuffer(buffer.byteLength)
-	const sharedView = new Uint8Array(sharedBuffer)
-	const bufferView = new Uint8Array(buffer)
-	sharedView.set(bufferView)
-
-	console.debug(`Created SharedArrayBuffer from database: ${sharedBuffer.byteLength} bytes - workers will now access shared memory`)
-	return sharedBuffer
 }

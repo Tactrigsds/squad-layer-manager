@@ -10,6 +10,7 @@ import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as Typo from '@/lib/typography'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -23,7 +24,6 @@ export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
 import { cn } from '@/lib/utils'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
-import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
@@ -501,6 +501,7 @@ export default function LayerTable(props: {
 
 	const loggedInUser = useLoggedInUser()
 	const userCanForceSelect = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
+	const fetchingBuffer = LayerQueriesClient.useFetchingBuffer()
 
 	function getChosenRows(row: Row<L.KnownLayer>) {
 		if (!props.selected.includes(row.original.id)) {
@@ -736,7 +737,10 @@ export default function LayerTable(props: {
 								? `Showing ${page?.layers?.length} of ${page?.totalCount} randomized rows`
 								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${page?.totalCount} matching rows`)}
 					</div>
-					<LoaderCircle data-loading={layersRes.isFetching} className="invisible data-[loading=true]:visible h-4 w-4 animate-spin" />
+					<div data-loading={layersRes.isFetching} className="flex items-center space-x-2 invisible data-[loading=true]:visible ">
+						<LoaderCircle className="h-4 w-4 animate-spin" />
+						{fetchingBuffer && <p className={Typo.Muted}>Downloading layers from server, this may take a few minutes...</p>}
+					</div>
 				</div>
 				<div className={'space-x-2 ' + (randomize ? 'invisible' : '')}>
 					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
