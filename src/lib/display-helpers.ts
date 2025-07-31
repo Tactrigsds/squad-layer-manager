@@ -22,7 +22,7 @@ export function displayUnvalidatedLayer(_possibleUnknown: L.UnvalidatedLayer | L
 }
 
 export function toFormattedNormalizedTeam(team: 'A' | 'B' | 'teamA' | 'teamB') {
-	if (team.startsWith('T')) team = team.slice(team.length - 1) as ('A' | 'B')
+	if (team.startsWith('t')) team = team.slice(team.length - 1) as ('A' | 'B')
 	if (team === 'A') return 'Team A'
 	return 'Team B'
 }

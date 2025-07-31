@@ -5,7 +5,7 @@ import { AlertOctagon, AlertTriangle, Info } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
 export default function BalanceTriggerAlert(
-	props: { event: BAL.BalanceTriggerEvent; referenceMatch: MH.MatchDetails; referenceIsCurrentMatch: boolean },
+	props: { event: BAL.BalanceTriggerEvent; referenceMatch: MH.MatchDetails },
 ) {
 	if (!BAL.isKnownEventInstance(props.event)) return null
 	const trigger = BAL.TRIGGERS[props.event.triggerId]
@@ -36,7 +36,7 @@ export default function BalanceTriggerAlert(
 				{trigger.name}
 			</AlertTitle>
 			<AlertDescription>
-				{GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, props.referenceIsCurrentMatch)}
+				{GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}
 			</AlertDescription>
 		</Alert>
 	)

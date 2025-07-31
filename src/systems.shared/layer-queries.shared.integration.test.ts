@@ -446,7 +446,6 @@ describe('getLayerStatusesForLayerQueue', () => {
 			},
 			ctx: ctxWithLayerQueue,
 		})
-		console.log(res)
 
 		expect(res.code).toBe('ok')
 		if (res.code !== 'ok') throw new Error(`Unexpected error: ${res.code}`)
@@ -1061,7 +1060,6 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			ctx: ctxWithLayerQueue,
 		})
 
-		console.log(res)
 		expect(res.code).toBe('ok')
 		if (res.code === 'ok') {
 			// Should detect the duplicate layer

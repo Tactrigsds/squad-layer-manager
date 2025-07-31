@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import * as DH from '@/lib/display-helpers'
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -32,15 +33,12 @@ import { Button } from './ui/button'
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
-	const [currentStreak, matchesByDate] = React.useMemo(() => {
-		const today = new Date()
-		const todayStr = dateFns.format(today, 'yyyy-MM-dd')
-
+	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
 		const allEntries = [...(history ?? [])].reverse()
 		const matchesByDate = new Map<string, typeof allEntries>()
 
 		// Add matches with startTime grouped by date
-		allEntries.forEach(entry => {
+		for (const entry of allEntries) {
 			if (entry.startTime) {
 				const dateStr = dateFns.format(entry.startTime, 'yyyy-MM-dd')
 				if (!matchesByDate.has(dateStr)) {
@@ -48,15 +46,12 @@ export default function MatchHistoryPanel() {
 				}
 				matchesByDate.get(dateStr)!.push(entry)
 			} else {
-				// Matches without startTime (incomplete/current matches) go to today
-				if (!matchesByDate.has(todayStr)) {
-					matchesByDate.set(todayStr, [])
-				}
-				matchesByDate.get(todayStr)!.push(entry)
+				continue
 			}
-		})
+		}
 
-		return [BAL.getCurrentStreak(history), matchesByDate]
+		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
+		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
 	}, [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = SquadServerClient.useCurrentMatch()
@@ -65,11 +60,6 @@ export default function MatchHistoryPanel() {
 
 	// -------- Date-based pagination --------
 	const [currentPage, setCurrentPage] = useState(1)
-
-	// Get sorted dates (newest first)
-	const availableDates = React.useMemo(() => {
-		return Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
-	}, [matchesByDate])
 
 	const totalPages = Math.max(availableDates.length, 1)
 	const currentDate = availableDates[currentPage - 1]
@@ -89,30 +79,22 @@ export default function MatchHistoryPanel() {
 	// -------- Date display helpers --------
 	const getDateDisplayText = (dateStr: string) => {
 		const today = new Date()
-		const yesterday = dateFns.subDays(today, 1)
 		const date = new Date(dateStr + 'T00:00:00')
 
-		if (dateFns.isSameDay(date, today)) {
-			return 'Today'
-		} else if (dateFns.isSameDay(date, yesterday)) {
-			return 'Yesterday'
-		} else {
-			return dateFns.format(date, 'MMM d, yyyy')
-		}
+		return date.toLocaleDateString() + (dateFns.isSameDay(date, today) ? ' (Today)' : '')
 	}
 
 	// Helper function to create trigger alerts for a specific entry
 	const createTriggerAlertsForEntry = (
 		events: BAL.BalanceTriggerEvent[],
 		entry: MH.MatchDetails,
-		isCurrent: boolean,
 	): React.ReactNode[] => {
 		if (events.length === 0) return []
 
 		const alerts: React.ReactNode[] = ([...events]
 			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
 			.map(
-				event => <BalanceTriggerAlert event={event} referenceMatch={entry} referenceIsCurrentMatch={isCurrent} />,
+				event => <BalanceTriggerAlert event={event} referenceMatch={entry} />,
 			)
 
 		return alerts
@@ -132,8 +114,8 @@ export default function MatchHistoryPanel() {
 						>
 							<ChevronLeft className="h-4 w-4" />
 						</Button>
-						<span className="text-sm">
-							{currentDate ? getDateDisplayText(currentDate) : 'No matches'}
+						<span className="text-sm font-mono">
+							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
 							{availableDates.length > 1 && (
 								<span className="text-muted-foreground ml-1">
 									({currentPage} of {availableDates.length})
@@ -160,14 +142,14 @@ export default function MatchHistoryPanel() {
 							<TableHead>Layer</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
-								{globalSettings.displayTeamsNormalized && currentStreak?.team === 'teamA' && (
+								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamA' && (
 									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
 								)}
 							</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
-								{globalSettings.displayTeamsNormalized && currentStreak?.team === 'teamB' && (
+								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamB' && (
 									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
 								)}
 							</TableHead>

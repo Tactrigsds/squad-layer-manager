@@ -52,6 +52,7 @@ let state!: State
 const mutex = new Mutex()
 
 onmessage = withErrorResponse(async (e) => {
+	using lock = await acquireInBlock(mutex)
 	const msg = e.data as GenericRequest
 	if (msg.type === 'init') {
 		await init(msg)

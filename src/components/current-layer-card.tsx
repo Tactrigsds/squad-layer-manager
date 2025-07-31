@@ -97,7 +97,7 @@ export default function CurrentLayerCard() {
 	return (
 		<Card>
 			<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
-				<span className="flex space-x-2 items-center">
+				<span className="flex space-x-2 items-center whitespace-nowrap">
 					<CardTitle>
 						Current Layer:
 					</CardTitle>
