@@ -224,7 +224,7 @@ function resolveMatchSession(matches: MH.MatchDetails[], skipNonPost = false) {
 	for (let i = matches.length - 1; i >= 0; i--) {
 		const match = matches[i]
 		if (match.status !== 'post-game') {
-			if (skipNonPost) continue
+			if (i === matches.length - 1 && skipNonPost) continue
 			break
 		}
 		if (terminatingGamemodes.includes(L.toLayer(match.layerId)?.Gamemode as string)) break
