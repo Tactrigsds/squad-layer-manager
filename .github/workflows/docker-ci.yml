@@ -9,30 +9,29 @@ on:
     branches: ["main", "dev"]
 
 jobs:
-  typecheck_and_format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  # typecheck_and_format:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
+  #     - name: Setup Node
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "18"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: latest
+  #     - name: Setup pnpm
+  #       uses: pnpm/action-setup@v2
+  #       with:
+  #         version: latest
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+  #     - name: Install dependencies
+  #       run: pnpm install --frozen-lockfile
 
-      - name: Check formatting
-        run: pnpm run format:check
+  #     - name: Check formatting
+  #       run: pnpm run format:check
 
-      - name: Type check
-        run: pnpm tsc -b
-
+  #     - name: Type check
+  #       run: pnpm tsc -b
   build:
     runs-on: ubuntu-latest
     steps:

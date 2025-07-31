@@ -1,9 +1,9 @@
 import * as SchemaModels from '$root/drizzle/schema.models'
+import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import { z } from 'zod'
-import { isNullOrUndef } from '../lib/type-guards'
 
 // -------- types --------
 type BaseBalanceTriggerInput = {
@@ -214,7 +214,7 @@ function lastNResolvedMatchesForSession(n: number) {
 	}
 }
 
-export function getTriggerPriority(level: string): number {
+export function getTriggerPriority(level: TriggerWarnLevel): number {
 	switch (level) {
 		case 'violation':
 			return 3
@@ -223,7 +223,7 @@ export function getTriggerPriority(level: string): number {
 		case 'info':
 			return 1
 		default:
-			return 0
+			assertNever(level)
 	}
 }
 
