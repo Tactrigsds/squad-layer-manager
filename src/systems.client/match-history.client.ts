@@ -1,5 +1,6 @@
 import * as TrpcHelpers from '@/lib/trpc-helpers'
 import * as MH from '@/models/match-history.models'
+import * as PartsSys from '@/systems.client/parts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
@@ -9,7 +10,7 @@ import * as Rx from 'rxjs'
 const [initialized$, setInitialized] = createSignal<boolean>()
 
 export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.PublicMatchHistoryState>(
-	TrpcHelpers.fromTrpcSub(undefined, trpc.matchHistory.watchMatchHistoryState.subscribe),
+	TrpcHelpers.fromTrpcSub(undefined, trpc.matchHistory.watchMatchHistoryState.subscribe).pipe(Rx.map(PartsSys.stripParts)),
 	{ recentBalanceTriggerEvents: [], recentMatches: [] },
 )
 
