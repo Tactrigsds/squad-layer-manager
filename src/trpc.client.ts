@@ -49,7 +49,7 @@ const link = wsLink<AppRouter>({
 			const buildGitSha = import.meta.env.PUBLIC_GIT_SHA ?? 'unknown'
 			// -------- version skew protection --------
 			//  This only works as long as index.html is resolved directly from fastify and not cached.
-			if ((config.PUBLIC_GIT_BRANCH !== buildGitBranch) || config.PUBLIC_GIT_SHA !== buildGitSha) {
+			if (config.PUBLIC_GIT_SHA !== buildGitSha) {
 				await sleep(1000)
 				globalToast$.next({ variant: 'destructive', title: 'SLM is being upgraded, window will refresh shortly...' })
 				const buildFormatted = formatVersion(buildGitBranch, buildGitSha)

@@ -9,35 +9,12 @@ on:
     branches: ["main", "dev"]
 
 jobs:
-  # typecheck_and_format:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-
-  #     - name: Setup Node
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: "18"
-
-  #     - name: Setup pnpm
-  #       uses: pnpm/action-setup@v2
-  #       with:
-  #         version: latest
-
-  #     - name: Install dependencies
-  #       run: pnpm install --frozen-lockfile
-
-  #     - name: Check formatting
-  #       run: pnpm run format:check
-
-  #     - name: Type check
-  #       run: pnpm tsc -b
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get branch name
+      - name: Get branch name and all branches containing commit
         id: branch
         run: |
           if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
@@ -52,6 +29,15 @@ jobs:
           fi
 
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+          # Get all branches that contain the current commit
+          git fetch --all
+          ALL_BRANCHES=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ',' | sed 's/,$//')
+          echo "ALL_BRANCHES=$ALL_BRANCHES" >> $GITHUB_OUTPUT
+
+          # Create colon-delimited list for GIT_BRANCH build arg
+          BRANCHES_LIST=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ':' | sed 's/:$//')
+          echo "BRANCHES_LIST=$BRANCHES_LIST" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -79,8 +65,60 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ github.ref_name }}
-          tags: |
-            ${{ steps.branch.outputs.BRANCH_NAME == 'main' && format('ghcr.io/{0}/squad-layer-manager:latest', steps.owner.outputs.name) || '' }}
-            ${{ contains(github.ref, 'refs/tags/') && format('ghcr.io/{0}/squad-layer-manager:{1}', steps.owner.outputs.name, github.ref_name) || '' }}
-            ${{ github.event_name == 'pull_request' && format('ghcr.io/{0}/squad-layer-manager:latest-{1}', steps.owner.outputs.name, steps.branch.outputs.BRANCH_NAME) || '' }}
-            ${{ format('ghcr.io/{0}/squad-layer-manager:commit-{1}', steps.owner.outputs.name, github.sha) }}
+      - name: Generate tags for all branches
+        id: tags
+        run: |
+          OWNER="${{ steps.owner.outputs.name }}"
+          COMMIT_SHA="${{ github.sha }}"
+          CURRENT_BRANCH="${{ steps.branch.outputs.BRANCH_NAME }}"
+          ALL_BRANCHES="${{ steps.branch.outputs.ALL_BRANCHES }}"
+
+          TAGS=""
+
+          # Always add commit tag
+          TAGS="ghcr.io/$OWNER/squad-layer-manager:commit-$COMMIT_SHA"
+
+          # Add latest tag if main branch is in the branches containing this commit
+          if [[ "$ALL_BRANCHES" == *"main"* ]]; then
+            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:latest"
+          fi
+
+          # Add tag for each branch containing this commit
+          IFS=',' read -ra BRANCH_ARRAY <<< "$ALL_BRANCHES"
+          for branch in "${BRANCH_ARRAY[@]}"; do
+            # Skip empty entries and clean up whitespace
+            branch=$(echo "$branch" | xargs)
+            if [[ -n "$branch" && "$branch" != "main" ]]; then
+              TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$branch"
+            fi
+          done
+
+          # Add tag for current branch if it's different and not already covered
+          if [[ "$CURRENT_BRANCH" != "main" && "$ALL_BRANCHES" != *"$CURRENT_BRANCH"* ]]; then
+            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$CURRENT_BRANCH"
+          fi
+
+          # Handle pull request tags
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:latest-$CURRENT_BRANCH"
+          fi
+
+          # Handle tag releases
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:$TAG_NAME"
+          fi
+
+          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and tag Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
+          tags: ${{ steps.tags.outputs.TAGS }}
