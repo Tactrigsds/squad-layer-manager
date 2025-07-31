@@ -126,7 +126,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	id: 'RAM3+',
 	version: 1,
 	name: 'Maximum Rolling Average Across 3+',
-	description: 'a rolling average of 150+ tickets across any streak of 3 or more games (utilizing the max of all options.)',
+	description: 'a rolling average of 125+ tickets across any streak of 3 or more games(utilizing the max of all options).',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
 		let streaker: 'teamA' | 'teamB' | undefined
@@ -142,6 +142,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 		}
 
 		if (streakLength < 3 || !streaker) return
+		const windowAvgs: { avg: number; length: number }[] = []
 		for (let currentWindow = 3; currentWindow <= streakLength; currentWindow++) {
 			let totalA = 0
 			let totalB = 0
@@ -161,14 +162,26 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 			const avgLoser = streaker === 'teamA' ? avgB : avgA
 			const avgDiff = avgWinner - avgLoser
 
-			if (avgDiff >= 150) {
-				return {
-					code: 'triggered' as const,
-					strongerTeam: streaker!,
-					messageTemplate: `{{strongerTeam}} has been winning for ${currentWindow} games with an average of +${avgDiff} tickets`,
-					relevantInput: matchDetails.slice(matchDetails.length - currentWindow),
-				}
+			if (avgDiff >= 125) {
+				windowAvgs.push({ avg: avgDiff, length: currentWindow })
 			}
+		}
+
+		if (windowAvgs.length === 0) return
+		let maxWindow: { avg: number; length: number } | null = null
+		for (const window of windowAvgs) {
+			if (!maxWindow || window.avg > maxWindow.avg) {
+				maxWindow = window
+			}
+		}
+
+		return {
+			code: 'triggered' as const,
+			strongerTeam: streaker!,
+			messageTemplate: `{{strongerTeam}} has been winning for ${maxWindow!.length} games with an average of (125+)(${
+				maxWindow!.avg
+			}) tickets`,
+			relevantInput: matchDetails.slice(matchDetails.length - maxWindow!.length),
 		}
 	},
 })
@@ -200,18 +213,24 @@ export function isKnownEventInstance(event: BalanceTriggerEvent): event is Balan
 }
 
 function lastNResolvedMatchesForSession(n: number) {
-	const terminatingGamemodes = ['Training', 'Seed', 'Invasion', 'Destruction', 'Insurgency']
-	return (input: BaseBalanceTriggerInput): MH.PostGameMatchDetails[] => {
-		const matches: MH.PostGameMatchDetails[] = []
-		for (let i = input.history.length - 1; i >= 0 && matches.length < n; i--) {
-			const match = input.history[i]
-			if (match.status !== 'post-game') break
-			const layer = L.toLayer(match.layerId)
-			if (terminatingGamemodes.includes(layer.Gamemode as string)) break
-			matches.unshift(match)
-		}
-		return matches
+	return (input: BaseBalanceTriggerInput) => {
+		return resolveMatchSession(input.history.slice(Math.max(input.history.length - n, 0)))
 	}
+}
+
+function resolveMatchSession(matches: MH.MatchDetails[], skipNonPost = false) {
+	const terminatingGamemodes = ['Training', 'Seed', 'Invasion', 'Destruction', 'Insurgency']
+	const session: MH.PostGameMatchDetails[] = []
+	for (let i = matches.length - 1; i >= 0; i--) {
+		const match = matches[i]
+		if (match.status !== 'post-game') {
+			if (skipNonPost) continue
+			break
+		}
+		if (terminatingGamemodes.includes(L.toLayer(match.layerId)?.Gamemode as string)) break
+		session.unshift(match)
+	}
+	return session
 }
 
 export function getTriggerPriority(level: TriggerWarnLevel): number {
@@ -242,4 +261,40 @@ export function getHighestPriorityTriggerEvent(events: BalanceTriggerEvent[]): B
 	}
 
 	return highestEvent
+}
+
+export type CurrentStreak = {
+	team: 'teamA' | 'teamB'
+	length: number
+} | null
+
+/**
+ * Calculates the current win streak from match history
+ * Returns null if no streak (less than 2 consecutive wins) or if most recent match is a draw
+ */
+export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | null {
+	const session = resolveMatchSession(matches, true)
+	if (!session.length) return null
+
+	let streaker: 'teamA' | 'teamB' | undefined
+	let streakLength = 0
+
+	for (let i = session.length - 1; i >= 0; i--) {
+		const match = session[i]
+		const outcome = MH.getTeamNormalizedOutcome(match)
+
+		if (outcome.type === 'draw') break
+
+		if (streaker && streaker !== outcome.type) break
+
+		if (isNullOrUndef(streaker)) streaker = outcome.type
+		streakLength++
+	}
+
+	if (!streaker) return null
+
+	return {
+		team: streaker,
+		length: streakLength,
+	}
 }

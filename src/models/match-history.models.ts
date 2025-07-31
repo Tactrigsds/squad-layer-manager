@@ -2,7 +2,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models'
 import * as V from '@/models/vote.models'
-import * as Arr from '../lib/array'
+
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
 

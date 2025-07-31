@@ -16,6 +16,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
+import * as BAL from '@/models/balance-triggers.models'
 import * as F from '@/models/filter.models.ts'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -26,6 +27,7 @@ import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as LayerQueueClient from '@/systems.client/layer-queue.client'
+import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useUserPresenceState } from '@/systems.client/presence.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -41,6 +43,7 @@ import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import BalanceTriggerAlert from './balance-trigger-alert.tsx'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
@@ -91,10 +94,11 @@ export default function LayerQueueDashboard() {
 					{/* ------- top card ------- */}
 					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
 					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
-					{!isEditing && editingUser && !inEditTransition && <UserEditingAlert />}
-					{isEditing && !inEditTransition && <EditingCard />}
 					{!updatesToSquadServerDisabled && unexpectedNextLayer && <UnexpectedNextLayerAlert />}
 					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
+					<PostGameBalanceTriggerAlert />
+					{!isEditing && editingUser && !inEditTransition && <UserEditingAlert />}
+					{isEditing && !inEditTransition && <EditingCard />}
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between">
 							<CardTitle>Up Next</CardTitle>
@@ -1073,5 +1077,40 @@ function SyncToSquadServerDisabledAlert() {
 				<Button onClick={enableUpdates} disabled={!hasDisableUpdatesPerm} variant="secondary">Re-Enable</Button>
 			</div>
 		</Alert>
+	)
+}
+
+function PostGameBalanceTriggerAlert() {
+	const currentMatch = SquadServerClient.useCurrentMatch()
+	const allTriggerEvents = MatchHistoryClient.useMatchHistoryState().recentBalanceTriggerEvents
+	if (!currentMatch || currentMatch.status !== 'post-game') return null
+	const events = allTriggerEvents.filter(event => event.matchTriggeredId === currentMatch.historyEntryId)
+		.sort((a, b) => BAL.getTriggerPriority(a.level) - BAL.getTriggerPriority(b.level))
+	if (events.length === 0) return null
+	const alerts = events.map(event => (
+		<BalanceTriggerAlert key={event.id} event={event} referenceIsCurrentMatch={true} referenceMatch={currentMatch} />
+	))
+	if (alerts.length === 1) return alerts[0]
+	return (
+		<Popover>
+			<div className="flex flex-col space-y-1">
+				{alerts[0]}
+				<PopoverTrigger asChild>
+					<Button
+						variant="outline"
+						size="sm"
+						className="flex items-center justify-center"
+					>
+						Show {alerts.length - 1} more
+						<Icons.ChevronDown className="ml-1 h-4 w-4" />
+					</Button>
+				</PopoverTrigger>
+			</div>
+			<PopoverContent className="w-auto p-2 max-h-80 overflow-y-auto">
+				<div className="flex flex-col space-y-2">
+					{alerts.slice(1)}
+				</div>
+			</PopoverContent>
+		</Popover>
 	)
 }

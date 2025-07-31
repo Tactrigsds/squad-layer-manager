@@ -4,6 +4,7 @@ import * as Arr from '@/lib/array'
 import { acquireInBlock, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
+import { GENERAL } from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -169,18 +170,23 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 			let inputStored: any
 			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {
+				ctx.log.info('Evaluating trigger %s', trig.id)
 				const input = trig.resolveInput({ history: state.recentMatches })
 				inputStored = input
 				const res = trig.evaluate(ctx, input)
 				if (!res) continue
-				await ctx.db().insert(Schema.balanceTriggerEvents).values(superjsonify(Schema.balanceTriggerEvents, {
+				const event = {
 					strongerTeam: res.strongerTeam,
 					level: level,
 					triggerId: trig.id,
 					triggerVersion: trig.version,
 					matchTriggeredId: currentMatch.historyEntryId,
 					evaluationResult: res,
-				}))
+				}
+				const [{ id }] = await ctx.db().insert(Schema.balanceTriggerEvents)
+					.values(superjsonify(Schema.balanceTriggerEvents, event))
+					.$returningId()
+				ctx.log.info('Trigger %s fired: message: "%s"', trig.id, GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, true))
 			} catch (err) {
 				ctx.log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
 			}

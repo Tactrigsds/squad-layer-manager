@@ -1,14 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { OneToManyMap } from '@/lib/one-to-many-map'
-import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
-import { GENERAL } from '@/messages'
+
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -20,41 +19,87 @@ import * as QD from '@/systems.client/queue-dashboard'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import deepEqual from 'fast-deep-equal'
-import { AlertOctagon, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import { AlertOctagon, AlertTriangle, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
+import BalanceTriggerAlert from './balance-trigger-alert'
 import { MapLayerDisplay } from './layer-display'
 import LayerSourceDisplay from './layer-source-display'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
-	const allEntries = React.useMemo(() => [...(history ?? [])].reverse(), [history])
+	const [currentStreak, matchesByDate] = React.useMemo(() => {
+		const today = new Date()
+		const todayStr = dateFns.format(today, 'yyyy-MM-dd')
+
+		const allEntries = [...(history ?? [])].reverse()
+		const matchesByDate = new Map<string, typeof allEntries>()
+
+		// Add matches with startTime grouped by date
+		allEntries.forEach(entry => {
+			if (entry.startTime) {
+				const dateStr = dateFns.format(entry.startTime, 'yyyy-MM-dd')
+				if (!matchesByDate.has(dateStr)) {
+					matchesByDate.set(dateStr, [])
+				}
+				matchesByDate.get(dateStr)!.push(entry)
+			} else {
+				// Matches without startTime (incomplete/current matches) go to today
+				if (!matchesByDate.has(todayStr)) {
+					matchesByDate.set(todayStr, [])
+				}
+				matchesByDate.get(todayStr)!.push(entry)
+			}
+		})
+
+		return [BAL.getCurrentStreak(history), matchesByDate]
+	}, [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = SquadServerClient.useCurrentMatch()
 	const violationDescriptors = LayerQueriesClient.useLayerItemStatuses().data?.violationDescriptors
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 
-	// -------- Pagination state --------
+	// -------- Date-based pagination --------
 	const [currentPage, setCurrentPage] = useState(1)
-	const itemsPerPage = MH.RECENT_HISTORY_ITEMS_PER_PAGE
-	const totalPages = Math.ceil(allEntries.length / itemsPerPage)
 
-	// -------- Get current entries --------
-	const indexOfLastEntry = currentPage * itemsPerPage
-	const indexOfFirstEntry = indexOfLastEntry - itemsPerPage
-	const currentEntries = allEntries.slice(indexOfFirstEntry, indexOfLastEntry)
+	// Get sorted dates (newest first)
+	const availableDates = React.useMemo(() => {
+		return Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
+	}, [matchesByDate])
+
+	const totalPages = Math.max(availableDates.length, 1)
+	const currentDate = availableDates[currentPage - 1]
+	const currentEntries = currentDate ? matchesByDate.get(currentDate) || [] : []
+
+	// Reset to page 1 if current page is beyond available dates
+	React.useEffect(() => {
+		if (currentPage > totalPages && totalPages > 0) {
+			setCurrentPage(1)
+		}
+	}, [currentPage, totalPages])
 
 	// -------- Page navigation --------
 	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
 	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
 
-	// Process trigger alerts
-	const triggerAlerts: React.ReactNode[] = []
+	// -------- Date display helpers --------
+	const getDateDisplayText = (dateStr: string) => {
+		const today = new Date()
+		const yesterday = dateFns.subDays(today, 1)
+		const date = new Date(dateStr + 'T00:00:00')
+
+		if (dateFns.isSameDay(date, today)) {
+			return 'Today'
+		} else if (dateFns.isSameDay(date, yesterday)) {
+			return 'Yesterday'
+		} else {
+			return dateFns.format(date, 'MMM d, yyyy')
+		}
+	}
 
 	// Helper function to create trigger alerts for a specific entry
 	const createTriggerAlertsForEntry = (
@@ -64,175 +109,20 @@ export default function MatchHistoryPanel() {
 	): React.ReactNode[] => {
 		if (events.length === 0) return []
 
-		const eventAlerts: Array<
-			{ event: BAL.BalanceTriggerEvent; variant: 'default' | 'destructive' | 'info' | 'warning'; priority: number }
-		> = []
-
-		for (const event of events) {
-			let variant: 'default' | 'destructive' | 'info' | 'warning'
-			switch (event.level) {
-				case 'info':
-					variant = 'info'
-					break
-				case 'violation':
-					variant = 'destructive'
-					break
-				case 'warn':
-					variant = 'warning'
-					break
-				default:
-					variant = 'default'
-			}
-
-			eventAlerts.push({
-				event,
-				variant,
-				priority: BAL.getTriggerPriority(event.level),
-			})
-		}
-
-		// Sort alerts by priority (highest first)
-		eventAlerts.sort((a, b) => b.priority - a.priority)
-
-		// Create alert nodes
-		const alerts: React.ReactNode[] = []
-		for (const { event, variant } of eventAlerts) {
-			let AlertIcon
-			switch (event.level) {
-				case 'violation':
-					AlertIcon = AlertOctagon
-					break
-				case 'warn':
-					AlertIcon = AlertTriangle
-					break
-				case 'info':
-					AlertIcon = Info
-					break
-				default:
-					AlertIcon = Info
-			}
-			if (!BAL.isKnownEventInstance(event)) continue
-			const trigger = BAL.TRIGGERS[event.triggerId]
-
-			alerts.push(
-				<Alert variant={variant} key={event.id} className="w-full">
-					<AlertTitle className="flex items-center space-x-2">
-						<AlertIcon className="h-4 w-4 mr-2" />
-						{trigger.name}
-					</AlertTitle>
-					<AlertDescription>
-						{GENERAL.balanceTrigger.showEvent(event, entry, isCurrent)}
-					</AlertDescription>
-				</Alert>,
+		const alerts: React.ReactNode[] = ([...events]
+			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
+			.map(
+				event => <BalanceTriggerAlert event={event} referenceMatch={entry} referenceIsCurrentMatch={isCurrent} />,
 			)
-		}
 
 		return alerts
 	}
-
-	if (currentMatch) {
-		// Map events with their variants
-		const eventAlerts: Array<
-			{ event: BAL.BalanceTriggerEvent; variant: 'default' | 'destructive' | 'info' | 'warning'; priority: number }
-		> = []
-
-		for (const event of MH.getActiveTriggerEvents(historyState)) {
-			let variant: 'default' | 'destructive' | 'info' | 'warning'
-			switch (event.level) {
-				case 'info':
-					variant = 'info'
-					break
-				case 'violation':
-					variant = 'destructive'
-					break
-				case 'warn':
-					variant = 'warning'
-					break
-				default:
-					assertNever(event.level)
-			}
-
-			eventAlerts.push({
-				event,
-				variant,
-				priority: BAL.getTriggerPriority(event.level),
-			})
-		}
-
-		// Sort alerts by priority (highest first)
-		eventAlerts.sort((a, b) => b.priority - a.priority)
-
-		// Create alert nodes
-		for (const { event, variant } of eventAlerts) {
-			let AlertIcon
-			switch (event.level) {
-				case 'violation':
-					AlertIcon = AlertOctagon
-					break
-				case 'warn':
-					AlertIcon = AlertTriangle
-					break
-				case 'info':
-					AlertIcon = Info
-					break
-				default:
-					AlertIcon = Info
-			}
-			if (!BAL.isKnownEventInstance(event)) continue
-			const trigger = BAL.TRIGGERS[event.triggerId]
-
-			triggerAlerts.push(
-				<Alert variant={variant} key={event.id} className="w-full">
-					<AlertTitle className="flex items-center space-x-2">
-						<AlertIcon className="h-4 w-4 mr-2" />
-						{trigger.name}
-					</AlertTitle>
-					<AlertDescription>
-						{GENERAL.balanceTrigger.showEvent(event, currentMatch, true)}
-					</AlertDescription>
-				</Alert>,
-			)
-		}
-	}
-
-	// Determine what to display
-	const hasTriggers = triggerAlerts.length > 0
-	const hasMultipleTriggers = triggerAlerts.length > 1
-	const mostUrgentTrigger = triggerAlerts[0]
 
 	return (
 		<Card>
 			<CardHeader className="flex flex-row justify-between items-start">
 				<CardTitle>Match History</CardTitle>
-				{hasTriggers && (
-					<div className="flex flex-col space-y-1">
-						{hasMultipleTriggers
-							? (
-								<Popover>
-									<div className="flex flex-col space-y-1">
-										{mostUrgentTrigger}
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												size="sm"
-												className="flex items-center justify-center"
-											>
-												Show {triggerAlerts.length - 1} more
-												<ChevronDown className="ml-1 h-4 w-4" />
-											</Button>
-										</PopoverTrigger>
-									</div>
-									<PopoverContent className="w-auto p-2 max-h-80 overflow-y-auto">
-										<div className="flex flex-col space-y-2">
-											{triggerAlerts.slice(1).map((trigger, i) => <div key={i}>{trigger}</div>)}
-										</div>
-									</PopoverContent>
-								</Popover>
-							)
-							: mostUrgentTrigger}
-					</div>
-				)}
-				{totalPages > 1 && (
+				{availableDates.length > 1 && (
 					<div className="flex items-center justify-center space-x-2 mt-4">
 						<Button
 							variant="outline"
@@ -243,13 +133,18 @@ export default function MatchHistoryPanel() {
 							<ChevronLeft className="h-4 w-4" />
 						</Button>
 						<span className="text-sm">
-							Page {currentPage} of {totalPages}
+							{currentDate ? getDateDisplayText(currentDate) : 'No matches'}
+							{availableDates.length > 1 && (
+								<span className="text-muted-foreground ml-1">
+									({currentPage} of {availableDates.length})
+								</span>
+							)}
 						</span>
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={goToNextPage}
-							disabled={currentPage === totalPages}
+							disabled={currentPage === availableDates.length}
 						>
 							<ChevronRight className="h-4 w-4" />
 						</Button>
@@ -263,198 +158,223 @@ export default function MatchHistoryPanel() {
 							<TableHead></TableHead>
 							<TableHead>Time</TableHead>
 							<TableHead>Layer</TableHead>
-							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}</TableHead>
+							<TableHead>
+								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
+								{globalSettings.displayTeamsNormalized && currentStreak?.team === 'teamA' && (
+									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								)}
+							</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
-							<TableHead>{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}</TableHead>
+							<TableHead>
+								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
+								{globalSettings.displayTeamsNormalized && currentStreak?.team === 'teamB' && (
+									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								)}
+							</TableHead>
 							<TableHead>Set By</TableHead>
-							<TableHead className="text-center">Alerts</TableHead>
+							<TableHead className="text-center"></TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{currentEntries.map((entry, index) => {
-							if (entry.historyEntryId === currentMatch?.historyEntryId) {
-								return
-							}
-							const layerItem: LQY.LayerItem = {
-								type: 'match-history-entry',
-								historyEntryId: entry.historyEntryId,
-								layerId: entry.layerId,
-							}
-							const entryDescriptors = (hoveredConstraintItemId
-								&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
-
-							let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
-							if (entryDescriptors) {
-								violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
-							}
-
-							const extraLayerStyles: Record<string, string> = {}
-							if (violatedProperties) {
-								for (const v of violatedProperties.keys()) {
-									extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
-								}
-							}
-							const layer = L.toLayer(entry.layerId)
-							let outcomeDisp: React.ReactNode
-							if (entry.status === 'in-progress') {
-								outcomeDisp = '-'
-							} else if (entry.outcome.type === 'draw') {
-								outcomeDisp = 'draw'
-							} else {
-								// Determine win/loss status
-								let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
-								let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
-								let team1Tickets = entry.outcome.team1Tickets
-								let team2Tickets = entry.outcome.team2Tickets
-
-								if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
-									// Swap status if normalized
-									;[team1Status, team2Status] = [team2Status, team1Status]
-									;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
-								}
-
-								outcomeDisp = `${team1Tickets} ${team1Status} - ${team2Status} ${team2Tickets}`
-							}
-							const gameRuntime = (entry.startTime && entry.status === 'post-game')
-								? entry.endTime.getTime() - entry.startTime.getTime()
-								: undefined
-							const visibleIndex = index + 1 + (currentPage - 1) * itemsPerPage
-
-							const copyHistoryEntryId = () => {
-								navigator.clipboard.writeText(entry.historyEntryId.toString())
-								toast({
-									title: 'Copied History Entry ID',
-									description: (
-										<div className="flex flex-col">
-											<span>The history entry ID has been copied to your clipboard.</span>
-											<span className="font-mono text-xs">({entry.historyEntryId})</span>
-										</div>
-									),
-								})
-							}
-							const copyLayerId = () => {
-								navigator.clipboard.writeText(entry.layerId)
-								toast({
-									title: 'Copied Layer ID',
-									description: (
-										<div className="flex flex-col">
-											<span>The layer ID has been copied to your clipboard.</span>
-											<span className="font-mono text-xs">({entry.layerId})</span>
-										</div>
-									),
-								})
-							}
-							const copyAdminSetNextLayerCommand = () => {
-								const cmd = L.getAdminSetNextLayerCommand(entry.layerId)
-								navigator.clipboard.writeText(cmd)
-								toast({
-									title: 'Copied Admin Set Next Layer Command',
-									description: (
-										<div className="flex flex-col">
-											<span>The admin set next layer command has been copied to your clipboard.</span>
-											<span className="font-mono text-xs">({cmd})</span>
-										</div>
-									),
-								})
-							}
-
-							const [leftTeam, rightTeam] = getTeamsDisplay(
-								layer,
-								entry.ordinal % 2,
-								globalSettings.displayTeamsNormalized,
-								extraLayerStyles,
+						{currentEntries.length === 0
+							? (
+								<TableRow>
+									<TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+								</TableRow>
 							)
-
-							const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
-							// Get trigger info for this entry
-							const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
-							const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry, false)
-
-							// Determine trigger icon
-							let TriggerIcon = null
-							let triggerIconColor = ''
-							if (triggerLevel) {
-								switch (triggerLevel) {
-									case 'violation':
-										TriggerIcon = AlertOctagon
-										triggerIconColor = 'text-red-500'
-										break
-									case 'warn':
-										TriggerIcon = AlertTriangle
-										triggerIconColor = 'text-yellow-500'
-										break
-									case 'info':
-										TriggerIcon = Info
-										triggerIconColor = 'text-blue-500'
-										break
+							: currentEntries.map((entry, index) => {
+								if (entry.historyEntryId === currentMatch?.historyEntryId) {
+									return
 								}
-							}
+								const layerItem: LQY.LayerItem = {
+									type: 'match-history-entry',
+									historyEntryId: entry.historyEntryId,
+									layerId: entry.layerId,
+								}
+								const entryDescriptors = (hoveredConstraintItemId
+									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
 
-							return (
-								<ContextMenu key={entry.historyEntryId}>
-									<ContextMenuTrigger asChild>
-										<TableRow>
-											<TableCell className="font-mono text-xs">{visibleIndex.toString().padStart(2, '0')}</TableCell>
-											<TableCell className="text-xs ">
-												{entry.startTime
-													? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
-													: <Badge variant="secondary">incomplete</Badge>}
-											</TableCell>
-											<TableCell>
-												<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
-											</TableCell>
-											<TableCell>
-												{leftTeam}
-											</TableCell>
-											<TableCell className="text-center">{outcomeDisp}</TableCell>
-											<TableCell>
-												{rightTeam}
-											</TableCell>
-											<TableCell>
-												<LayerSourceDisplay source={entry.layerSource} />
-											</TableCell>
-											<TableCell className="text-center">
-												{TriggerIcon && entryTriggerAlerts.length > 0 && (
-													<Tooltip delayDuration={0}>
-														<TooltipTrigger asChild>
-															<Button
-																variant="ghost"
-																size="sm"
-																className={`h-6 w-6 p-0 ${triggerIconColor}`}
-															>
-																<TriggerIcon className="h-4 w-4" />
-															</Button>
-														</TooltipTrigger>
-														<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background">
-															<div className="flex flex-col space-y-2">
-																{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
-															</div>
-														</TooltipContent>
-													</Tooltip>
-												)}
-											</TableCell>
-										</TableRow>
-									</ContextMenuTrigger>
-									<ContextMenuContent>
-										<ContextMenuItem
-											onClick={() => copyHistoryEntryId()}
-										>
-											copy history entry id
-										</ContextMenuItem>
-										<ContextMenuItem
-											onClick={() => copyLayerId()}
-										>
-											copy layer id
-										</ContextMenuItem>
-										<ContextMenuItem
-											onClick={() => copyAdminSetNextLayerCommand()}
-										>
-											copy AdminSetNextLayer command
-										</ContextMenuItem>
-									</ContextMenuContent>
-								</ContextMenu>
-							)
-						})}
+								let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
+								if (entryDescriptors) {
+									violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
+								}
+
+								const extraLayerStyles: Record<string, string> = {}
+								if (violatedProperties) {
+									for (const v of violatedProperties.keys()) {
+										extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
+									}
+								}
+								const layer = L.toLayer(entry.layerId)
+								let outcomeDisp: React.ReactNode
+								if (entry.status === 'in-progress') {
+									outcomeDisp = '-'
+								} else if (entry.outcome.type === 'draw') {
+									outcomeDisp = 'draw'
+								} else {
+									// Determine win/loss status
+									let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
+									let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
+									let team1Tickets = entry.outcome.team1Tickets
+									let team2Tickets = entry.outcome.team2Tickets
+
+									if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
+										// Swap status if normalized
+										;[team1Status, team2Status] = [team2Status, team1Status]
+										;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
+									}
+
+									outcomeDisp = (
+										<span>
+											{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
+											<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
+										</span>
+									)
+								}
+								const gameRuntime = (entry.startTime && entry.status === 'post-game')
+									? entry.endTime.getTime() - entry.startTime.getTime()
+									: undefined
+								const visibleIndex = index + 1
+
+								const copyHistoryEntryId = () => {
+									navigator.clipboard.writeText(entry.historyEntryId.toString())
+									toast({
+										title: 'Copied History Entry ID',
+										description: (
+											<div className="flex flex-col">
+												<span>The history entry ID has been copied to your clipboard.</span>
+												<span className="font-mono text-xs">({entry.historyEntryId})</span>
+											</div>
+										),
+									})
+								}
+								const copyLayerId = () => {
+									navigator.clipboard.writeText(entry.layerId)
+									toast({
+										title: 'Copied Layer ID',
+										description: (
+											<div className="flex flex-col">
+												<span>The layer ID has been copied to your clipboard.</span>
+												<span className="font-mono text-xs">({entry.layerId})</span>
+											</div>
+										),
+									})
+								}
+								const copyAdminSetNextLayerCommand = () => {
+									const cmd = L.getAdminSetNextLayerCommand(entry.layerId)
+									navigator.clipboard.writeText(cmd)
+									toast({
+										title: 'Copied Admin Set Next Layer Command',
+										description: (
+											<div className="flex flex-col">
+												<span>The admin set next layer command has been copied to your clipboard.</span>
+												<span className="font-mono text-xs">({cmd})</span>
+											</div>
+										),
+									})
+								}
+
+								const [leftTeam, rightTeam] = getTeamsDisplay(
+									layer,
+									entry.ordinal % 2,
+									globalSettings.displayTeamsNormalized,
+									extraLayerStyles,
+								)
+
+								const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
+								// Get trigger info for this entry
+								const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
+								const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry, false)
+
+								// Determine trigger icon
+								let TriggerIcon = null
+								let triggerIconColor = ''
+								if (triggerLevel) {
+									switch (triggerLevel) {
+										case 'violation':
+											TriggerIcon = AlertOctagon
+											triggerIconColor = 'text-red-500'
+											break
+										case 'warn':
+											TriggerIcon = AlertTriangle
+											triggerIconColor = 'text-yellow-500'
+											break
+										case 'info':
+											TriggerIcon = Info
+											triggerIconColor = 'text-blue-500'
+											break
+									}
+								}
+
+								return (
+									<ContextMenu key={entry.historyEntryId}>
+										<ContextMenuTrigger asChild>
+											<TableRow className="whitespace-nowrap">
+												<TableCell className="font-mono text-xs">{visibleIndex.toString().padStart(2, '0')}</TableCell>
+												<TableCell className="text-xs ">
+													{entry.startTime
+														? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
+														: <Badge variant="secondary">incomplete</Badge>}
+												</TableCell>
+												<TableCell>
+													<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+												</TableCell>
+												<TableCell>
+													{leftTeam}
+												</TableCell>
+												<TableCell className="text-center">{outcomeDisp}</TableCell>
+												<TableCell>
+													{rightTeam}
+												</TableCell>
+												<TableCell>
+													<LayerSourceDisplay source={entry.layerSource} />
+												</TableCell>
+												<TableCell className="text-center">
+													{TriggerIcon && entryTriggerAlerts.length > 0 && (
+														<Tooltip delayDuration={0}>
+															<TooltipTrigger asChild>
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	className={`h-6 w-6 p-0 ${triggerIconColor}`}
+																>
+																	<TriggerIcon className="h-4 w-4" />
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background">
+																<div className="flex flex-col space-y-2">
+																	{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
+																</div>
+															</TooltipContent>
+														</Tooltip>
+													)}
+												</TableCell>
+											</TableRow>
+										</ContextMenuTrigger>
+										<ContextMenuContent>
+											<ContextMenuItem
+												onClick={() => copyHistoryEntryId()}
+											>
+												copy history entry id
+											</ContextMenuItem>
+											<ContextMenuItem
+												onClick={() => copyLayerId()}
+											>
+												copy layer id
+											</ContextMenuItem>
+											<ContextMenuItem
+												onClick={() => copyAdminSetNextLayerCommand()}
+											>
+												copy AdminSetNextLayer command
+											</ContextMenuItem>
+										</ContextMenuContent>
+									</ContextMenu>
+								)
+							})}
 					</TableBody>
 				</Table>
 			</CardContent>

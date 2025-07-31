@@ -285,11 +285,11 @@ describe('Balance Triggers', () => {
 	describe('RAM3+ Trigger', () => {
 		const trigger = BT.TRIGGERS['RAM3+']
 
-		test('triggers on 3-game rolling average > 150', () => {
+		test('triggers on 3-game rolling average > 125', () => {
 			const matches = createMatchSequence([
-				{ winner: 'teamA', margin: 250 },
-				{ winner: 'teamA', margin: 110 },
-				{ winner: 'teamA', margin: 130 },
+				{ winner: 'teamA', margin: 200 },
+				{ winner: 'teamA', margin: 100 },
+				{ winner: 'teamA', margin: 75 },
 			])
 			const input = trigger.resolveInput({ history: matches })
 			const result = trigger.evaluate(ctx, input)
@@ -303,11 +303,11 @@ describe('Balance Triggers', () => {
 
 		test('triggers on longer streak with max average', () => {
 			const matches = createMatchSequence([
-				{ winner: 'teamA', margin: 190 }, // 5-game avg: 150
-				{ winner: 'teamA', margin: 160 }, // 4-game avg: 140
-				{ winner: 'teamA', margin: 150 }, // 3-game avg: 1333.33_
-				{ winner: 'teamA', margin: 140 }, // next previous game
-				{ winner: 'teamA', margin: 110 }, // previous game
+				{ winner: 'teamA', margin: 160 }, // 5-game avg: 125
+				{ winner: 'teamA', margin: 130 }, // 4-game avg: 115
+				{ winner: 'teamA', margin: 125 }, // 3-game avg: 125
+				{ winner: 'teamA', margin: 115 }, // next previous game
+				{ winner: 'teamA', margin: 95 }, // previous game
 			])
 			const input = trigger.resolveInput({ history: matches })
 			const result = trigger.evaluate(ctx, input)
@@ -330,7 +330,7 @@ describe('Balance Triggers', () => {
 			expect(result).toBeUndefined()
 		})
 
-		test('does not trigger when average < 150', () => {
+		test('does not trigger when average < 125', () => {
 			const matches = createMatchSequence([
 				{ winner: 'teamA', margin: 50 },
 				{ winner: 'teamA', margin: 60 },
