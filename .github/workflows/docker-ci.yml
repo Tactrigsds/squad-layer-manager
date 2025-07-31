@@ -121,4 +121,5 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-          tags: ${{ steps.tags.outputs.TAGS }}
+            TYPECHECK_AND_FORMAT=true
+          tags: ${{ steps.branch.outputs.TAGS }}
