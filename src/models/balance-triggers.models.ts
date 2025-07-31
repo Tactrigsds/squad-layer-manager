@@ -273,6 +273,7 @@ export type CurrentStreak = {
  * Returns null if no streak (less than 2 consecutive wins) or if most recent match is a draw
  */
 export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | null {
+	return null
 	const session = resolveMatchSession(matches, true)
 	if (!session.length) return null
 
