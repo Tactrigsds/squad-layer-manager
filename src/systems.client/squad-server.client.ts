@@ -41,15 +41,6 @@ export function useDisableFogOfWarMutation() {
 }
 
 export function setup() {
-	layersStatus$.subscribe(status => {
-		if (status.code !== 'ok') return
-		// console.log('layersStatus', {
-		// 	currentLayer: DH.displayUnvalidatedLayer(status.data.currentLayer),
-		// 	nextLayer: DH.displayUnvalidatedLayer(status.data.nextLayer!),
-		// 	currentMatch: status.data.currentMatch && DH.displayUnvalidatedLayer(status.data.currentMatch?.layerId),
-		// })
-	})
-
 	serverInfo$.subscribe()
 	currentMatch$.subscribe()
 }

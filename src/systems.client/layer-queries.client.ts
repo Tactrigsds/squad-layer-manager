@@ -138,7 +138,10 @@ export function useLayerItemStatuses(
 		],
 		enabled: options?.enabled,
 		queryFn: async () => {
-			if (!QD.QDStore.getState().isEditing) {
+			const counters = layerCtxVersionStore.getState().counters
+			// if the layer context changes we can't trust the parts anymore
+			const layerContextUnchanged = Object.values(counters).every(c => c === 0)
+			if (!QD.QDStore.getState().isEditing && layerContextUnchanged) {
 				return PartsSys.getServerLayerItemStatuses()
 			}
 			const res = await sendQuery('getLayerItemStatuses', input)

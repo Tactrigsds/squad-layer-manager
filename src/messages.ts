@@ -172,7 +172,7 @@ export const GENERAL = {
 		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
 	},
 	balanceTrigger: {
-		showEvent(event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, referenceIsCurrentMatch: boolean) {
+		showEvent(event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, qualifyAsCurrent: boolean) {
 			if (!BAL.isKnownEventInstance(event)) {
 				const result = event.evaluationResult as BAL.EvaluationResultBase<any>
 				return result.messageTemplate.replace('{{strongerTeam}}', result.strongerTeam)
@@ -180,15 +180,12 @@ export const GENERAL = {
 
 			const currentLayerPartial = L.toLayer(referenceMatch.layerId)
 			let strongerTeamFormatted: string
-			let strongerTeamFaction: string | undefined
-			if (
-				!currentLayerPartial
-				|| !(strongerTeamFaction = currentLayerPartial[MH.getTeamNormalizedFactionProp(referenceMatch.ordinal, event.strongerTeam)])
-			) {
+			const strongerTeamFaction = currentLayerPartial?.[MH.getTeamNormalizedFactionProp(referenceMatch.ordinal, event.strongerTeam)]
+			if (!strongerTeamFaction) {
 				strongerTeamFormatted = DH.toFormattedNormalizedTeam(event.strongerTeam)
 			} else {
 				strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(${
-					referenceIsCurrentMatch ? 'current ' : ''
+					qualifyAsCurrent ? 'current ' : ''
 				}${strongerTeamFaction})`
 			}
 

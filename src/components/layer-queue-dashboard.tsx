@@ -1,5 +1,6 @@
 import LayerComponents from '$root/assets/layer-components.json'
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
@@ -1085,32 +1086,25 @@ function PostGameBalanceTriggerAlert() {
 	const allTriggerEvents = MatchHistoryClient.useMatchHistoryState().recentBalanceTriggerEvents
 	if (!currentMatch || currentMatch.status !== 'post-game') return null
 	const events = allTriggerEvents.filter(event => event.matchTriggeredId === currentMatch.historyEntryId)
-		.sort((a, b) => BAL.getTriggerPriority(a.level) - BAL.getTriggerPriority(b.level))
+		.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level))
 	if (events.length === 0) return null
-	const alerts = events.map(event => (
-		<BalanceTriggerAlert key={event.id} event={event} referenceIsCurrentMatch={true} referenceMatch={currentMatch} />
-	))
+	const alerts = events.map(event => <BalanceTriggerAlert key={event.id} event={event} referenceMatch={currentMatch} />)
 	if (alerts.length === 1) return alerts[0]
 	return (
-		<Popover>
-			<div className="flex flex-col space-y-1">
-				{alerts[0]}
-				<PopoverTrigger asChild>
-					<Button
-						variant="outline"
-						size="sm"
-						className="flex items-center justify-center"
-					>
+		<div className="flex flex-col space-y-1">
+			{alerts[0]}
+			<Accordion type="single" collapsible className="w-full">
+				<AccordionItem value="additional-alerts">
+					<AccordionTrigger className="py-2 text-sm">
 						Show {alerts.length - 1} more
-						<Icons.ChevronDown className="ml-1 h-4 w-4" />
-					</Button>
-				</PopoverTrigger>
-			</div>
-			<PopoverContent className="w-auto p-2 max-h-80 overflow-y-auto">
-				<div className="flex flex-col space-y-2">
-					{alerts.slice(1)}
-				</div>
-			</PopoverContent>
-		</Popover>
+					</AccordionTrigger>
+					<AccordionContent className="max-h-80 overflow-y-auto">
+						<div className="flex flex-col space-y-2">
+							{alerts.slice(1)}
+						</div>
+					</AccordionContent>
+				</AccordionItem>
+			</Accordion>
+		</div>
 	)
 }

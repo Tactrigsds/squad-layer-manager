@@ -619,7 +619,10 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
 		Rx.filter(([qdState]) => {
 			return qdState.initialized
 		}),
-		Rx.map(([qdState, history]) => LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)),
+		Rx.map(([qdState, history]) => {
+			const state = LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)
+			return state
+		}),
 		distinctDeepEquals(),
 	),
 )

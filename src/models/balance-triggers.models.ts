@@ -179,7 +179,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 			code: 'triggered' as const,
 			strongerTeam: streaker!,
 			messageTemplate: `{{strongerTeam}} has been winning for ${maxWindow!.length} games with an average of (125+)(${
-				maxWindow!.avg
+				maxWindow!.avg.toFixed(2)
 			}) tickets`,
 			relevantInput: matchDetails.slice(matchDetails.length - maxWindow!.length),
 		}

@@ -82,7 +82,7 @@ async function* watchLayersStatus({ ctx, signal }: { ctx: CS.Log; signal?: Abort
 }
 
 async function* watchServerInfo({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
-	yield* toAsyncGenerator(rcon.serverInfo.observe(ctx).pipe(withAbortSignal(signal!)))
+	yield* toAsyncGenerator(rcon.serverInfo.observe(ctx).pipe(distinctDeepEquals(), withAbortSignal(signal!)))
 }
 
 async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
@@ -295,7 +295,6 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			console.log('handling squad event:', new Date().toISOString())
 			state.lastRoll = event.time
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
