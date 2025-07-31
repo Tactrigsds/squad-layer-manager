@@ -49,6 +49,9 @@ export default function MatchHistoryPanel() {
 				continue
 			}
 		}
+		for (const matches of matchesByDate.values()) {
+			matches.sort((a, b) => b.ordinal - a.ordinal)
+		}
 
 		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
 		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
