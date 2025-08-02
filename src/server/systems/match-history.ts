@@ -66,7 +66,7 @@ export const loadState = C.spanOp(
 			// keep in mind that there may be multiple balance trigger events for this history entry id, and therefore multiple rows for a single match history entry
 			.leftJoin(Schema.balanceTriggerEvents, E.eq(recentMatchesCte.id, Schema.balanceTriggerEvents.matchTriggeredId))
 
-		for (const row of rows) {
+		for (const row of rows.reverse()) {
 			const details = MH.matchHistoryEntryToMatchDetails(row.recent_matches)
 			Arr.upsertOn(state.recentMatches, details, 'historyEntryId')
 			if (row.balanceTriggerEvents) {
