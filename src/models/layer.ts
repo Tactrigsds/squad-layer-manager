@@ -184,7 +184,7 @@ export function parseKnownLayerId(id: string, components = StaticLayerComponents
 		if (!components.layers.includes(layer)) {
 			return {
 				code: 'err:unknown-training-layer' as const,
-				msg: `Unknown Training layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}`,
+				msg: `Unknown Training layer: ${id}`,
 			}
 		}
 	} else {
