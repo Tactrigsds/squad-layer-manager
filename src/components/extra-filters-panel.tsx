@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import * as Typography from '@/lib/typography.ts'
-import { cn } from '@/lib/utils.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
@@ -10,14 +9,16 @@ import FilterEntitySelect from './filter-entity-select.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
-export default function ExtraFiltersPanel() {
-	const extraFilters = Zus.useStore(QD.QDStore, s => s.extraQueryFilters)
+export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<QD.ExtraQueryFiltersStore> }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
+	const state = Zus.useStore(store)
+	const extraFilters = Array.from(state.filters)
 
 	return (
 		<div className="flex items-center">
-			{extraFilters.map(({ filterId, active }) => {
+			{Array.from(state.filters).map((filterId) => {
 				const htmlId = 'filter-list:' + filterId
+				const active = state.active.has(filterId)
 				return (
 					<div key={filterId} className="flex items-center space-x-0.5 p-2">
 						<Label htmlFor={htmlId}>{filterEntities.get(filterId)?.name}</Label>
@@ -26,8 +27,7 @@ export default function ExtraFiltersPanel() {
 							checked={active}
 							onCheckedChange={checked => {
 								if (checked === 'indeterminate') return
-								const actions = QD.QDStore.getState().extraQueryFilterActions
-								actions.setActive(filterId, checked)
+								store.getState().setActive(filterId, checked)
 							}}
 						/>
 					</div>
@@ -43,33 +43,31 @@ export default function ExtraFiltersPanel() {
 					<h4 className={Typography.H4}>Edit Extra Filters</h4>
 					<div className="space-y-4">
 						<ul>
-							{extraFilters.map(filter => {
-								const excluded = extraFilters.map(f => f.filterId).filter((id) => filter.filterId !== id)
+							{extraFilters.map(filterId => {
+								const excluded = extraFilters.filter(f => filterId !== f)
+								const active = state.filters.has(filterId)
 								return (
-									<li className="flex items-center space-x-0.5" key={filter.filterId}>
+									<li className="flex items-center space-x-0.5" key={filterId}>
 										<FilterEntitySelect
 											className="flex-grow"
-											filterId={filter.filterId}
+											filterId={filterId}
 											allowEmpty={false}
 											allowToggle={true}
-											enabled={filter.active}
+											enabled={active}
 											setEnabled={enabled => {
-												const actions = QD.QDStore.getState().extraQueryFilterActions
-												actions.setActive(filter.filterId, enabled)
+												store.getState().setActive(filterId, enabled)
 											}}
 											excludedFilterIds={excluded}
 											onSelect={(id) => {
-												const actions = QD.QDStore.getState().extraQueryFilterActions
 												if (id === null) return
-												actions.select(id, filter.filterId)
+												store.getState().select(id, filterId)
 											}}
 										/>
 										<Button
 											size="icon"
 											variant="ghost"
 											onClick={() => {
-												const actions = QD.QDStore.getState().extraQueryFilterActions
-												actions.remove(filter.filterId)
+												store.getState().remove(filterId)
 											}}
 										>
 											<Icons.X />
@@ -82,11 +80,10 @@ export default function ExtraFiltersPanel() {
 							title="Extra Filter"
 							filterId={null}
 							allowEmpty={true}
-							excludedFilterIds={extraFilters.map(f => f.filterId)}
+							excludedFilterIds={extraFilters}
 							onSelect={(id) => {
-								const actions = QD.QDStore.getState().extraQueryFilterActions
 								if (id === null) return
-								actions.add(id, true)
+								store.getState().add(id, true)
 							}}
 						>
 							<Button variant="secondary">

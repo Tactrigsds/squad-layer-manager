@@ -722,15 +722,11 @@ async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
 			}
 		}
 
-		// Convert ArrayBuffer to SharedArrayBuffer to minimize cloning overhead
-		// This ensures workers can access the database without cloning the entire buffer
-		console.debug(`Converting ${buffer.byteLength} byte database buffer to SharedArrayBuffer`)
+		// Convert to SharedArrayBuffer to minimize cloning overhead
 		const sharedBuffer = new SharedArrayBuffer(buffer.byteLength)
 		const sharedView = new Uint8Array(sharedBuffer)
 		const bufferView = new Uint8Array(buffer)
 		sharedView.set(bufferView)
-
-		console.debug(`Created SharedArrayBuffer from database: ${sharedBuffer.byteLength} bytes - workers will now access shared memory`)
 		return sharedBuffer
 	} finally {
 		useFetchingBuffer.setState(false)

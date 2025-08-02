@@ -4,6 +4,7 @@ import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
 import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
@@ -26,6 +27,7 @@ import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import * as ZusRx from 'zustand-rx'
+import { subscribeWithSelector } from 'zustand/middleware'
 import { fetchConfig } from './config.client'
 import * as FilterEntityClient from './filter-entity.client'
 import { userPresenceState$, userPresenceUpdate$ } from './presence'
@@ -75,9 +77,97 @@ export type LLItemActions = {
 	remove?: () => void
 }
 
-export type ExtraQueryFilter = {
-	filterId: F.FilterEntityId
-	active: boolean
+export type ExtraQueryFiltersActions = {
+	setActive: (filterId: F.FilterEntityId, active: boolean) => void
+	select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
+	add: (newFilterId: F.FilterEntityId, active: boolean) => void
+	remove: (filterId: F.FilterEntityId) => void
+}
+
+export type ExtraQueryFiltersState = {
+	filters: Set<F.FilterEntityId>
+	active: Set<F.FilterEntityId>
+}
+
+export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
+
+export function useExtraFiltersStore(useIndependentActiveState: boolean = false) {
+	const storeRef = useRefConstructor(() => {
+		const activeStore = Zus.createStore(() => ({ active: new Set<F.FilterEntityId>() }))
+		const addActive = (draft: Im.WritableDraft<QDStore>, filterId: F.FilterEntityId) => {
+			if (useIndependentActiveState) {
+				console.log('setting active', filterId)
+				activeStore.setState(state => {
+					const newState = new Set(state.active)
+					newState.add(filterId)
+					return { active: newState }
+				})
+			} else {
+				draft.activeExtraQueryFilters.add(filterId)
+			}
+		}
+		const removeActive = (draft: QDStore, filterId: F.FilterEntityId) => {
+			if (useIndependentActiveState) {
+				activeStore.setState(state => {
+					const newState = new Set(state.active)
+					newState.delete(filterId)
+					return { active: newState }
+				})
+			} else {
+				draft.activeExtraQueryFilters.delete(filterId)
+			}
+		}
+
+		const actions: ExtraQueryFiltersActions = {
+			setActive(filterId, active) {
+				QDStore.setState((state) =>
+					Im.produce(state, (draft) => {
+						if (!active) {
+							removeActive(draft, filterId)
+							return
+						}
+						if (!draft.extraQueryFilters.has(filterId)) {
+							draft.extraQueryFilters.add(filterId)
+						}
+						addActive(draft, filterId)
+					})
+				)
+			},
+			select(newFilterId, oldFilterId) {
+				QDStore.setState(state =>
+					Im.produce(state, draft => {
+						removeActive(draft, oldFilterId)
+						addActive(draft, newFilterId)
+						draft.extraQueryFilters.add(newFilterId)
+					})
+				)
+			},
+			add(filterId) {
+				QDStore.setState(state =>
+					Im.produce(state, draft => {
+						draft.extraQueryFilters.add(filterId)
+						addActive(draft, filterId)
+					})
+				)
+			},
+			remove(filterId) {
+				QDStore.setState(state =>
+					Im.produce(state, draft => {
+						draft.extraQueryFilters.delete(filterId)
+						removeActive(draft, filterId)
+					})
+				)
+			},
+		}
+
+		return derive<ExtraQueryFiltersStore>(get => ({
+			filters: get(QDStore).extraQueryFilters,
+			active: useIndependentActiveState ? get(activeStore).active : get(QDStore).activeExtraQueryFilters,
+			...actions,
+		}))
+	})
+
+	return storeRef.current
 }
 
 // Queue Dashboard state
@@ -97,7 +187,8 @@ export type QDState = {
 		dnr: LQY.LayerQueryConstraint['applyAs']
 		filter: LQY.LayerQueryConstraint['applyAs']
 	}
-	extraQueryFilters: ExtraQueryFilter[]
+	extraQueryFilters: Set<F.FilterEntityId>
+	activeExtraQueryFilters: Set<F.FilterEntityId>
 
 	// M.toQueueLayerKey and stuff to lookup the id
 	hoveredConstraintItemId?: string
@@ -112,14 +203,6 @@ export type QDStore = QDState & {
 	tryEndEditing: () => void
 
 	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: LQY.LayerQueryConstraint['applyAs']) => void
-
-	extraQueryFilterActions: {
-		setActive: (filterId: F.FilterEntityId, active: boolean) => void
-		select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
-		add: (newFilterId: F.FilterEntityId, active: boolean) => void
-		remove: (filterId: F.FilterEntityId) => void
-	}
-
 	setHoveredConstraintItemId: React.Dispatch<React.SetStateAction<string | undefined>>
 }
 
@@ -379,7 +462,8 @@ export const initialQDState: QDState = {
 	canEditQueue: false,
 	canEditSettings: false,
 	stopEditingInProgress: false,
-	extraQueryFilters: [],
+	extraQueryFilters: new Set(),
+	activeExtraQueryFilters: new Set(),
 	poolApplyAs: {
 		dnr: 'field',
 		filter: 'where-condition',
@@ -387,7 +471,7 @@ export const initialQDState: QDState = {
 	hoveredConstraintItemId: undefined,
 }
 
-export const QDStore = Zus.createStore<QDStore>((set, get) => {
+export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get, store) => {
 	const canEdit$ = userPresenceState$.pipe(
 		Rx.mergeMap(async (state) => {
 			const user = await UsersClient.fetchLoggedInUser()
@@ -477,21 +561,16 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		}
 	}
 
-	const extraQueryFilters = JSON.parse(localStorage.getItem('extraQueryFilters:v1') ?? '[]') as ExtraQueryFilter[]
+	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	function writeExtraQueryFilters() {
-		localStorage.setItem('extraQueryFilters:v1', JSON.stringify(get().extraQueryFilters))
+		localStorage.setItem('extraQueryFilters:v2', Array.from(get().extraQueryFilters).join())
 	}
 	FilterEntityClient.filterEntityChanged$.subscribe(() => {
-		const toWrite: ExtraQueryFilter[] = []
-		for (const extraFilter of extraQueryFilters) {
-			if (FilterEntityClient.filterEntities.has(extraFilter.filterId)) {
-				toWrite.push(extraFilter)
-			}
-		}
-
-		set({ extraQueryFilters: toWrite })
-		writeExtraQueryFilters()
+		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f))
+		set({ extraQueryFilters: new Set(extraFilters) })
 	})
+
+	store.subscribe((state) => state?.extraQueryFilters, (state) => state && writeExtraQueryFilters())
 
 	let maxQueueSize: number = 10
 	fetchConfig().then(config => {
@@ -552,62 +631,13 @@ export const QDStore = Zus.createStore<QDStore>((set, get) => {
 		},
 		tryStartEditing,
 		tryEndEditing,
-		extraQueryFilterActions: {
-			setActive(filterId, active) {
-				set(state =>
-					Im.produce(state, draft => {
-						const existing = draft.extraQueryFilters.find(f => f.filterId === filterId)
-						if (existing) {
-							existing.active = active
-						} else {
-							draft.extraQueryFilters.push({ filterId, active })
-						}
-					})
-				)
-				writeExtraQueryFilters()
-			},
-			select(newFilterId, oldFilterId) {
-				set(state =>
-					Im.produce(state, draft => {
-						const existing = draft.extraQueryFilters.find(f => f.filterId === oldFilterId)
-						if (existing) {
-							existing.filterId = newFilterId
-						} else {
-							console.warn(`Filter ${oldFilterId} not found`)
-						}
-					})
-				)
-				writeExtraQueryFilters()
-			},
-			add(filterId) {
-				set(state =>
-					Im.produce(state, draft => {
-						const existing = draft.extraQueryFilters.find(f => f.filterId === filterId)
-						if (!existing) {
-							draft.extraQueryFilters.push({ filterId, active: true })
-						}
-					})
-				)
-				writeExtraQueryFilters()
-			},
-			remove(filterId) {
-				set(state =>
-					Im.produce(state, draft => {
-						const existingIdx = draft.extraQueryFilters.findIndex(f => f.filterId === filterId)
-						if (existingIdx === -1) return
-						draft.extraQueryFilters.splice(existingIdx, 1)
-					})
-				)
-				writeExtraQueryFilters()
-			},
-		},
 		setHoveredConstraintItemId: (update) => {
 			const previous = get().hoveredConstraintItemId
 			const updated = typeof update === 'function' ? update(get().hoveredConstraintItemId) : update
 			if (updated !== previous) set({ hoveredConstraintItemId: updated })
 		},
 	}
-})
+}))
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
@@ -631,22 +661,26 @@ export function setup() {
 	layerItemsState$.subscribe()
 }
 
-export function selectBaseQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
-	const queryConstraints = SS.getPoolConstraints(
-		state.editedServerState.settings.queue.mainPool,
-		state.poolApplyAs.dnr,
-		state.poolApplyAs.filter,
-	)
-
-	for (const { filterId, active } of state.extraQueryFilters) {
-		if (!active) continue
-		queryConstraints.push({
+export function getExtraFiltersConstraints(extraFiltersState: ExtraQueryFiltersState) {
+	const constraints: LQY.LayerQueryConstraint[] = []
+	for (const filterId of extraFiltersState.filters) {
+		if (!extraFiltersState.active.has(filterId)) continue
+		constraints.push({
 			type: 'filter-entity',
 			id: 'extra-filter:' + filterId,
 			filterEntityId: filterId,
 			applyAs: 'where-condition',
 		})
 	}
+	return constraints
+}
+
+export function selectBaseQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
+	const queryConstraints = SS.getPoolConstraints(
+		state.editedServerState.settings.queue.mainPool,
+		state.poolApplyAs.dnr,
+		state.poolApplyAs.filter,
+	)
 
 	return queryConstraints
 }

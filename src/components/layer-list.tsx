@@ -160,17 +160,20 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		}
 	}
 	const layerItemsState = QD.useLayerItemsState()
+	const extraFiltersStore = QD.useExtraFiltersStore(true)
 
 	const queryInputs = ZusUtils.useCombinedStoresDeep(
-		[QD.QDStore, filterMenuStore, editedItemStore],
+		[QD.QDStore, filterMenuStore, editedItemStore, extraFiltersStore],
 		(args) => {
-			const [qdState, filterMenuState, editedLayerListItemState] = args
-			const constraints = QD.selectBaseQueryConstraints(qdState)
+			const [qdState, filterMenuState, editedLayerListItemState, extraFiltersState] = args
+			let constraints = QD.selectBaseQueryConstraints(qdState)
 			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForAddingVoteChoice(
 				layerItemsState,
 				constraints,
 				editedLayerListItemState.item.itemId,
 			)
+			// it's  intentional to add this after addVoteChoice
+			constraints = [...constraints, ...QD.getExtraFiltersConstraints(extraFiltersState)]
 			const editItem = {
 				constraints,
 				cursor: LQY.getQueryCursorForLayerItem(LQY.getLayerItemForLayerListItem(editedLayerListItemState.item), 'edit'),
@@ -240,7 +243,7 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 					<DialogTitle>Edit</DialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2 flex-grow">
-					<ExtraFiltersPanel />
+					<ExtraFiltersPanel store={extraFiltersStore} />
 					{allowVotes && (
 						<Button
 							variant="outline"

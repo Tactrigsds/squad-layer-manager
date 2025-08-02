@@ -5,8 +5,10 @@ import * as L from '@/models/layer'
 import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as QD from '@/systems.client/queue-dashboard.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
+import * as Zus from 'zustand'
 import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
@@ -88,13 +90,20 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange(open)
 	}
 
+	const extraFiltersStore = QD.useExtraFiltersStore()
+	const extraFiltersState = Zus.useStore(extraFiltersStore)
+
 	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, state => {
 		return LFM.selectFilterMenuConstraints(state)
 	}, { dependencies: [] })
 	const queryContextWithFilter: LQY.LayerQueryBaseInput = React.useMemo(() => ({
 		...props.layerQueryBaseInput,
-		constraints: [...(props.layerQueryBaseInput.constraints ?? []), ...filterMenuConstraints],
-	}), [props.layerQueryBaseInput, filterMenuConstraints])
+		constraints: [
+			...(props.layerQueryBaseInput.constraints ?? []),
+			...filterMenuConstraints,
+			...QD.getExtraFiltersConstraints(extraFiltersState),
+		],
+	}), [props.layerQueryBaseInput, filterMenuConstraints, extraFiltersState])
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
@@ -112,7 +121,7 @@ export default function SelectLayersDialog(props: {
 							)}
 					</div>
 					<div className="flex justify-end items-center space-x-2 flex-grow">
-						<ExtraFiltersPanel />
+						<ExtraFiltersPanel store={extraFiltersStore} />
 						{!props.pinMode && (
 							<TabsList
 								options={[
