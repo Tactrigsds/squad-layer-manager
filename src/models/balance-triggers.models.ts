@@ -288,14 +288,14 @@ export function getCurrentStreak(matches: MH.MatchDetails[]): CurrentStreak | nu
 
 		if (streaker && streaker !== outcome.type) break
 
-		if (isNullOrUndef(streaker)) streaker = outcome.type
+		if (isNullOrUndef(streaker)) streaker = outcome.type as 'teamA' | 'teamB'
 		streakLength++
 	}
 
 	if (!streaker) return null
 
 	return {
-		team: streaker,
+		team: streaker!,
 		length: streakLength,
 	}
 }
