@@ -407,7 +407,7 @@ export async function getLayerItemStatuses(args: {
 		.layerDb()
 		.select(selectExpr)
 		.from(LC.layersView(ctx))
-		.where(E.inArray(LC.viewCol('id', ctx), LC.packLayers(LQY.getAllLayerIds(layerItems.slice(maxLookbackIndex)))))
+		.where(E.inArray(LC.viewCol('id', ctx), LC.packValidLayers(LQY.getAllLayerIds(layerItems.slice(maxLookbackIndex)))))
 
 	const present = new Set<L.LayerId>()
 	for (const row of rows) {

@@ -69,9 +69,10 @@ function ensureIdRegexInitialized() {
 	knownLayerIdRegex = getKnownLayerIdRegex(StaticLayerComponents)
 }
 
-export function isKnownLayer(layer: UnvalidatedLayer): layer is KnownLayer {
+export function isKnownLayer(layer: UnvalidatedLayer | LayerId): layer is KnownLayer {
+	const id = typeof layer === 'string' ? layer : layer.id
 	ensureIdRegexInitialized()
-	return (layer.id !== undefined && !layer.id.startsWith('RAW:') && parseKnownLayerId(layer.id).code === 'ok')
+	return (id !== undefined && !id.startsWith('RAW:') && parseKnownLayerId(id).code === 'ok')
 }
 
 export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayerComponents) {
@@ -154,7 +155,7 @@ export function getKnownLayer(layer: LayerIdArgs): KnownLayer | null {
 	return res.layer
 }
 
-export function isRawLayer(layer: UnvalidatedLayer): layer is RawLayer {
+export function isRawLayer(layer: UnvalidatedLayer | LayerId): layer is RawLayer {
 	const id = typeof layer === 'string' ? layer : layer.id
 	return id !== undefined && id.startsWith('RAW:')
 }

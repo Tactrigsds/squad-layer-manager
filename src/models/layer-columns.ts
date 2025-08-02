@@ -320,6 +320,16 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 	return packed
 }
 
+export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {
+	const packed: number[] = []
+	for (const layer of layers) {
+		if (L.isKnownLayer(layer)) {
+			packed.push(packId(layer, L.StaticLayerComponents))
+		}
+	}
+	return packed
+}
+
 export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.StaticLayerComponents) {
 	return layers.map(l => packId(l, components))
 }
