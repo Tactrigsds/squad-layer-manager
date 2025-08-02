@@ -21,6 +21,9 @@
               "displayName": {
                 "type": "string"
               },
+              "shortName": {
+                "type": "string"
+              },
               "notNull": {
                 "type": "boolean"
               }
@@ -44,6 +47,9 @@
               },
               "displayName": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
+              },
+              "shortName": {
+                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
               },
               "notNull": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"
@@ -69,6 +75,9 @@
               "displayName": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
               },
+              "shortName": {
+                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
+              },
               "notNull": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"
               }
@@ -92,6 +101,9 @@
               },
               "displayName": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
+              },
+              "shortName": {
+                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
               },
               "notNull": {
                 "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"

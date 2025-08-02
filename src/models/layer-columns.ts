@@ -1,4 +1,5 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
+import { toShortLayerName } from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
@@ -556,8 +557,10 @@ const UNIT_SHORT_NAMES = {
 const baseProperties = {
 	name: z.string(),
 	displayName: z.string(),
+	shortName: z.string().optional(),
 	notNull: z.boolean().optional(),
 }
+
 export const ColumnDefSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('string'),

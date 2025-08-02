@@ -66,9 +66,10 @@ function buildColumn(
 					className="data-[sort=true]:text-accent-foreground"
 					data-sort={!!sort}
 					variant="ghost"
+					title={colDef.displayName}
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
-					{colDef.displayName}
+					{colDef.shortName ?? colDef.displayName}
 					{!noSortCols.includes(column.id) && (
 						<>
 							{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}

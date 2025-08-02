@@ -9,7 +9,7 @@ export function toShortUnit(unit: string | null) {
 	return LayerComponents.unitShortNames[unit] ?? unit
 }
 
-export const NULL_DISPLAY = ' <empty> '
+export const NULL_DISPLAY = ' - '
 export const MISSING_DISPLAY = ' - '
 
 export function displayUnvalidatedLayer(_possibleUnknown: L.UnvalidatedLayer | L.LayerId, you?: 1 | 2) {
