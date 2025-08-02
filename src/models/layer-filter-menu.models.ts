@@ -135,7 +135,7 @@ export function getDefaultFilterMenuItemState(
 		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
 		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
-		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_1'] ?? undefined),
+		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_2'] ?? undefined),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
 		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 	}
