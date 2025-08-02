@@ -17,6 +17,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import { useDragEnd } from '@/systems.client/dndkit.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
@@ -234,6 +235,25 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 		}
 	}
 
+	const mainPoolConstraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints, { dependencies: [] })
+	const layerStatusesRes = LayerQueriesClient.useLayerItemStatuses()
+	let mainPoolFiltered = false
+	const item = LQY.getLayerItemForLayerListItem(editedItem)
+	if (!LQY.isParentVoteItem(item)) {
+		const layerItemId = LQY.toLayerItemId(item)
+		const blockedConstraintIds = layerStatusesRes.data?.blocked.get(layerItemId)
+		if (blockedConstraintIds) {
+			for (const constraint of mainPoolConstraints) {
+				if (blockedConstraintIds.has(constraint.id)) {
+					if (constraint.type === 'filter-entity') {
+						mainPoolFiltered = true
+					}
+					break
+				}
+			}
+		}
+	}
+
 	if (!props.allowVotes && editedItem.vote) throw new Error('Invalid queue item')
 
 	return (
@@ -298,7 +318,15 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 									if (!id) return
 									return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
 								}}
-								extraPanelItems={<PoolCheckboxes />}
+								extraPanelItems={
+									<PoolCheckboxes
+										ephemeralState={true}
+										defaultState={{
+											dnr: 'field',
+											filter: mainPoolFiltered ? 'field' : 'where-condition',
+										}}
+									/>
+								}
 							/>
 							<div className="flex justify-end">
 								<Button disabled={!canSubmit} onClick={submit}>
