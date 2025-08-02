@@ -1,10 +1,12 @@
+import { cn } from '@/lib/utils'
 export default function TabsList<T extends string>(props: {
 	options: { value: T; label: string; disabled?: boolean }[]
 	active: T
 	setActive: (active: T) => void
+	className?: string
 }) {
 	return (
-		<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+		<div className={cn('inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground', props.className)}>
 			{props.options.map((option) => (
 				<button
 					key={option.value}

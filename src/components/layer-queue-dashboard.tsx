@@ -82,16 +82,31 @@ export default function LayerQueueDashboard() {
 	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
 	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
 	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
+	type Tab = 'history' | 'queue'
+	const [activeTab, setActiveTab] = React.useState<Tab>('queue')
+
 	return (
 		<div className="mx-auto grid place-items-center">
-			<div className="w-full flex justify-end">
+			{/* Mobile/Tablet: Show tabs */}
+			<div className="w-full flex justify-between items-center pb-2 dash-2col:hidden">
+				<TabsList
+					active={activeTab}
+					options={[{ label: 'History', value: 'history' }, { label: 'Queue', value: 'queue' }]}
+					setActive={setActiveTab}
+				/>
 				<NormTeamsSwitch />
 			</div>
-			<div className="flex space-x-4">
-				<div>
+			{/* Desktop: Show only NormTeamsSwitch */}
+			<div className="w-full justify-end pb-2 hidden dash-2col:flex">
+				<NormTeamsSwitch />
+			</div>
+			<div className="w-full dash-2col:flex dash-2col:space-x-4">
+				{/* History Panel */}
+				<div className={`${activeTab === 'history' ? '' : 'hidden'} dash-2col:block`}>
 					<MatchHistoryPanel />
 				</div>
-				<div className="flex flex-col space-y-4">
+				{/* Queue Panel */}
+				<div className={`flex flex-col space-y-4 ${activeTab === 'queue' ? '' : 'hidden'} dash-2col:block`}>
 					{/* ------- top card ------- */}
 					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
 					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
@@ -117,8 +132,6 @@ export default function LayerQueueDashboard() {
 							/>
 						</CardContent>
 					</Card>
-				</div>
-				<div>
 					<VoteState />
 				</div>
 			</div>

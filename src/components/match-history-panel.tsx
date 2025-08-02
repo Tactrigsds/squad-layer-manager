@@ -138,7 +138,7 @@ export default function MatchHistoryPanel() {
 					<TableHeader>
 						<TableRow className="font-medium">
 							<TableHead></TableHead>
-							<TableHead>Time</TableHead>
+							<TableHead className="hidden min-[820px]:table-cell">Time</TableHead>
 							<TableHead>Layer</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
@@ -153,7 +153,7 @@ export default function MatchHistoryPanel() {
 									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
 								)}
 							</TableHead>
-							<TableHead>Set By</TableHead>
+							<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
 							<TableHead className="text-center"></TableHead>
 						</TableRow>
 					</TableHeader>
@@ -161,7 +161,20 @@ export default function MatchHistoryPanel() {
 						{currentEntries.length === 0
 							? (
 								<TableRow>
-									<TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+									<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell">
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+									<TableCell
+										colSpan={7}
+										className="text-center text-muted-foreground py-8 hidden min-[820px]:table-cell min-[900px]:hidden"
+									>
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+									<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden">
 										{availableDates.length === 0
 											? 'No matches found'
 											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
@@ -297,7 +310,7 @@ export default function MatchHistoryPanel() {
 										<ContextMenuTrigger asChild>
 											<TableRow className="whitespace-nowrap">
 												<TableCell className="font-mono text-xs">{visibleIndex.toString().padStart(2, '0')}</TableCell>
-												<TableCell className="text-xs ">
+												<TableCell className="text-xs hidden min-[820px]:table-cell">
 													{entry.startTime
 														? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
 														: <Badge variant="secondary">incomplete</Badge>}
@@ -312,7 +325,7 @@ export default function MatchHistoryPanel() {
 												<TableCell>
 													{rightTeam}
 												</TableCell>
-												<TableCell>
+												<TableCell className="hidden min-[900px]:table-cell">
 													<LayerSourceDisplay source={entry.layerSource} />
 												</TableCell>
 												<TableCell className="text-center">
