@@ -185,7 +185,7 @@ function ShortLayerName(
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
-					<span>-</span>
+					<span className="px-1">-</span>
 					{leftTeamElt}
 					{<span>vs</span>}
 					{rightTeamElt}
@@ -203,7 +203,7 @@ export function MapLayerDisplay(
 	},
 ) {
 	const segments = L.parseLayerStringSegment(layer)
-	if (!segments || segments.Gamemode === 'Training') return layer
+	if (!segments || segments.Gamemode === 'Training') return segments?.Map ?? layer
 	return (
 		<span className={cn(backfilledStyles.Layer, backfilledStyles.Size, className)}>
 			<span className={backfilledStyles.Map}>{segments.Map}</span>
