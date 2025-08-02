@@ -369,7 +369,7 @@ export default function MatchHistoryPanel() {
 
 function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 	// Format the start time as HH:mm:ss (24-hour format)
-	const formattedStartTime = dateFns.format(startTime, 'HH:mm:ss')
+	const formattedStartTime = dateFns.format(startTime, 'HH:mm')
 
 	// Calculate time difference from now
 	const difference = dateFns.differenceInHours(new Date(), startTime)
