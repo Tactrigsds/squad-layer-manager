@@ -84,6 +84,20 @@ function buildColumn(
 			const value = info.getValue()
 			if (value === null) return DH.NULL_DISPLAY
 
+			const violationDescriptors = info.row.original.violationDescriptors
+			if (colDef.name === 'Layer') {
+				return (
+					<MapLayerDisplay
+						layer={L.toLayer(info.row.original.id).Layer}
+						extraLayerStyles={{
+							Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
+							Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
+							Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
+						}}
+					/>
+				)
+			}
+
 			let text: string
 			switch (colDef.type) {
 				case 'float':
@@ -108,19 +122,6 @@ function buildColumn(
 					break
 				default:
 					assertNever(colDef)
-			}
-			const violationDescriptors = info.row.original.violationDescriptors
-			if (colDef.name === 'Layer') {
-				return (
-					<MapLayerDisplay
-						layer={L.toLayer(info.row.original.id).Layer}
-						extraLayerStyles={{
-							Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
-							Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
-							Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
-						}}
-					/>
-				)
 			}
 
 			return (
