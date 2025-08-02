@@ -415,7 +415,8 @@ export async function getLayerItemStatuses(args: {
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const item of LQY.iterLayerItems(layerItems)) {
+		for (const item of LQY.iterLayerItems(layerItems.slice(maxLookbackIndex))) {
+			if (item.layerId !== layerId) continue
 			for (const [constraintId, isConstraintBlocked] of Object.entries(row)) {
 				if (constraintId === '_id') continue
 				if (Number(isConstraintBlocked) === 0) {
