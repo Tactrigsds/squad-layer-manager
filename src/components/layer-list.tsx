@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -115,7 +116,17 @@ export function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps
 
 	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
 
-	const filterMenuStore = LFM.useFilterMenuStore(editedItem.layerId ? L.toLayer(editedItem.layerId) : undefined)
+	let filterMenuItemDefaults: Partial<L.KnownLayer> | undefined
+	if (editedItem.layerId) {
+		const layer = L.toLayer(editedItem.layerId)
+		if (layer.Gamemode === 'Training') {
+			filterMenuItemDefaults = { Gamemode: 'Training' }
+		} else {
+			filterMenuItemDefaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2'])
+		}
+	}
+
+	const filterMenuStore = LFM.useFilterMenuStore(filterMenuItemDefaults)
 
 	const canSubmitSetLayer = Zus.useStore(
 		editedItemStore,
