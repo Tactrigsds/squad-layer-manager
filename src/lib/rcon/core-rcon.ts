@@ -116,7 +116,7 @@ export default class Rcon extends EventEmitter {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
 			return await new Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }>((resolve, reject) => {
-				if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: 'Rcon not connected.' })
+				if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: "Couldn't establish connection with server" })
 				if (!this.client?.writable) {
 					return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
 				}
