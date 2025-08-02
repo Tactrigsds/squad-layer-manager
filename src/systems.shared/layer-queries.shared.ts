@@ -138,26 +138,7 @@ export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input
 	}
 }
 
-export const getConstraintSQLConditions = LC.coalesceLookupErrors((
-	ctx: CS.Log & CS.LayerDb & CS.Filters & CS.LayerItemsState,
-	cursorIndex: number,
-	constraint: LQY.LayerQueryConstraint,
-) => {
-	switch (constraint.type) {
-		case 'filter-anon':
-			return getFilterNodeSQLConditions(ctx, constraint.filter, [])
-		case 'filter-entity':
-			return getFilterNodeSQLConditions(
-				ctx,
-				FB.applyFilter(constraint.filterEntityId),
-				[],
-			)
-		case 'do-not-repeat':
-			return getRepeatSQLConditions(ctx, cursorIndex, constraint.rule)
-		default:
-			assertNever(constraint)
-	}
-})
+type SQLConditionsResult = { code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string }
 
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
@@ -165,7 +146,7 @@ export function getFilterNodeSQLConditions(
 	ctx: CS.Log & CS.Filters & CS.LayerDb,
 	node: F.FilterNode,
 	reentrantFilterIds: string[],
-): { code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string } {
+): SQLConditionsResult {
 	let condition: SQL | undefined
 	if (node.type === 'comp') {
 		const comp = node.comp!
@@ -322,7 +303,24 @@ function buildConstraintSqlCondition(
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
-		const res = getConstraintSQLConditions(ctx, cursorIndex, constraint)
+		let res: SQLConditionsResult
+		switch (constraint.type) {
+			case 'filter-anon':
+				res = getFilterNodeSQLConditions(ctx, constraint.filter, [])
+				break
+			case 'filter-entity':
+				res = getFilterNodeSQLConditions(
+					ctx,
+					FB.applyFilter(constraint.filterEntityId),
+					[],
+				)
+				break
+			case 'do-not-repeat':
+				res = getRepeatSQLConditions(ctx, cursorIndex, constraint.rule)
+				break
+			default:
+				assertNever(constraint)
+		}
 		if (res.code !== 'ok') {
 			// TODO: pass error back instead
 			throw new Error('error building constraint SQL condition: ' + JSON.stringify(res))
@@ -519,7 +517,7 @@ function getRepeatSQLConditions(
 	ctx: CS.EffectiveColumnConfig & CS.LayerItemsState,
 	cursorIndex: number,
 	rule: LQY.RepeatRule,
-) {
+): SQLConditionsResult {
 	const values = new Set<number>()
 	const valuesA = new Set<number>()
 	const valuesB = new Set<number>()
