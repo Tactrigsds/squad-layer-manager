@@ -241,7 +241,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 		.then(async () => {
 			const { value: statusRes } = await rcon.layersStatus.get(ctx)
 			if (statusRes.code === 'err:rcon') return
-			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer.id)
+			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
 			const currentMatch = MatchHistory.getCurrentMatch()
 			if (currentMatch && L.areLayersCompatible(statusRes.data.currentLayer, currentMatch.layerId)) {
 				const currentLayer = L.toLayer(currentMatch.layerId)

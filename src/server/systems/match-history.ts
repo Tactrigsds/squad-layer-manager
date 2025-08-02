@@ -217,14 +217,14 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Db, currentLayerOnServer: L.LayerId) => {
+	async (ctx: C.Db, currentLayerOnServer: L.UnvalidatedLayer) => {
 		await DB.runTransaction(ctx, async ctx => {
 			using _lock = await acquireInBlock(historyMtx)
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values({
-				layerId: currentLayerOnServer,
+				layerId: currentLayerOnServer.id,
 				ordinal,
 				setByType: 'unknown',
 			})

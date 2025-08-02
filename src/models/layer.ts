@@ -336,7 +336,7 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 		if (knownLayerRes.code === 'ok') return knownLayerRes.layer
 	}
 	return {
-		id: 'RAW:${id}',
+		id: `RAW:${rawLayerText}`,
 		Map: map,
 		Layer: layerString,
 		Gamemode: gamemode,
