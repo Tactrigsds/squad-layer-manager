@@ -570,7 +570,7 @@ export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get,
 	if (extraQueryFilters.size === 0) {
 		;(async () => {
 			const config = await ConfigClient.fetchConfig()
-			const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
 			if (!config.layerTable.defaultExtraFilters) return
 
 			set({
