@@ -389,11 +389,7 @@ export default function LayerTable(props: {
 		pageSize,
 		sort,
 	})
-	// const prevQueryInput = React.useRef(queryInput)
-	// if (!deepEqual(prevQueryInput.current, queryInput)) {
-	// 	debugger
-	// 	prevQueryInput.current = queryInput
-	// }
+
 	const layersRes = LayerQueriesClient.useLayersQuery(queryInput, { errorStore: props.errorStore })
 
 	const page = React.useMemo(() => {
@@ -806,7 +802,6 @@ function SetRawLayerDialog(props: {
 
 	React.useLayoutEffect(() => {
 		if (layersKnownRes.data) {
-			console.log(layersKnownRes.data.results)
 			setLayerFound(layersKnownRes.data.results[0].exists)
 		} else {
 			setLayerFound(false)
