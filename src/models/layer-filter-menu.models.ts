@@ -145,8 +145,8 @@ export function getDefaultFilterMenuItemState(
 		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 	}
 
-	if (config?.extraFilterMenuItems) {
-		for (const obj of config.extraFilterMenuItems) {
+	if (config?.extraLayerSelectMenuItems) {
+		for (const obj of config.extraLayerSelectMenuItems) {
 			extraItems[obj.column!] = obj
 		}
 	}
