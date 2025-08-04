@@ -543,7 +543,7 @@ export function Comparison(props: {
 							if (typeof update === 'function') {
 								return setComp((c) => ({ ...c, values: update(c.values ?? []) }))
 							}
-							return setComp((c) => ({ ...c, values }))
+							return setComp((c) => ({ ...c, values: update }))
 						}}
 						baseQueryInput={props.baseQueryInput}
 						className={componentStyles}
