@@ -1,18 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
-import * as DH from '@/lib/display-helpers'
-
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from '@/hooks/use-toast'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { OneToManyMap } from '@/lib/one-to-many-map'
 import * as Typo from '@/lib/typography'
-
+import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import * as SS from '@/models/server-state.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
@@ -25,6 +24,7 @@ import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
+import { ConstraintViolationDisplay } from './constraint-violation-display'
 import { MapLayerDisplay } from './layer-display'
 import LayerSourceDisplay from './layer-source-display'
 import { Badge } from './ui/badge'
@@ -55,7 +55,9 @@ export default function MatchHistoryPanel() {
 	}, [history])
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = SquadServerClient.useCurrentMatch()
-	const violationDescriptors = LayerQueriesClient.useLayerItemStatuses().data?.violationDescriptors
+	const layerStatusesRes = LayerQueriesClient.useLayerItemStatuses().data
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
+	const violationDescriptors = layerStatusesRes?.violationDescriptors
 	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
 
 	// -------- Date-based pagination --------
@@ -190,20 +192,36 @@ export default function MatchHistoryPanel() {
 									historyEntryId: entry.historyEntryId,
 									layerId: entry.layerId,
 								}
-								const entryDescriptors = (hoveredConstraintItemId
-									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
-
-								let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
-								if (entryDescriptors) {
-									violatedProperties = LQY.resolveViolatedLayerProperties(entryDescriptors, entry.ordinal % 2)
-								}
-
+								const layerItemId = LQY.toLayerItemId(layerItem)
 								const extraLayerStyles: Record<string, string> = {}
-								if (violatedProperties) {
-									for (const v of violatedProperties.keys()) {
-										extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
+								// ------- resolve hovered styles ------
+								{
+									const relevantDesciptorsForHovered = (hoveredConstraintItemId
+										&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
+
+									let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
+									if (relevantDesciptorsForHovered) {
+										violatedProperties = LQY.resolveViolatedLayerProperties(relevantDesciptorsForHovered, entry.ordinal % 2)
+									}
+
+									if (violatedProperties) {
+										for (const v of violatedProperties.keys()) {
+											extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
+										}
 									}
 								}
+								const localBlockedConstraints = layerStatusesRes?.blocked.get(layerItemId)
+								const localDescriptors = violationDescriptors?.get(layerItemId)
+								const violationDisplayElt = localBlockedConstraints && (
+									<ConstraintViolationDisplay
+										violated={Array.from(localBlockedConstraints).map(id => constraints.find(c => c.id === id)).filter(c =>
+											c !== undefined
+										)}
+										violationDescriptors={localDescriptors}
+										itemId={layerItemId}
+									/>
+								)
+
 								const layer = L.toLayer(entry.layerId)
 								let outcomeDisp: React.ReactNode
 								if (entry.status === 'in-progress') {
@@ -347,6 +365,7 @@ export default function MatchHistoryPanel() {
 															</TooltipContent>
 														</Tooltip>
 													)}
+													{violationDisplayElt}
 												</TableCell>
 											</TableRow>
 										</ContextMenuTrigger>

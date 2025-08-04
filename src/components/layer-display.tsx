@@ -26,6 +26,7 @@ export default function LayerDisplay(
 		badges?: React.ReactNode[]
 		backfillLayerId?: L.LayerId
 		addedLayerQueryInput?: Pick<LQY.LayerQueryBaseInput, 'patches'>
+		className?: string
 	},
 ) {
 	const layerStatusesRes = useLayerItemStatuses({ addedInput: props.addedLayerQueryInput })
@@ -94,7 +95,7 @@ export default function LayerDisplay(
 	}
 
 	return (
-		<div className="flex space-x-2 items-center">
+		<div className={cn('flex space-x-2 items-center', props.className)}>
 			<span className="flex-1 text-nowrap">
 				<ShortLayerName
 					layerId={props.item.layerId}
@@ -103,7 +104,7 @@ export default function LayerDisplay(
 					violationDescriptors={localViolationDescriptors || hoveredReasonViolationDescriptors || undefined}
 				/>
 			</span>
-			<span className="flex items-center space-x-1">
+			<span className="flex items-center self-end space-x-1">
 				{badges}
 			</span>
 		</div>

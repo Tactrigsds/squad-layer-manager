@@ -226,14 +226,12 @@ function LayerListItem(props: QueueItemProps) {
 				>
 					{gripElt}
 					{indexElt}
-					<div className="flex flex-col w-max flex-grow">
-						<div className="flex items-center flex-shrink-0">
-							<LayerDisplay
-								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
-								backfillLayerId={backfillLayerId}
-								addedLayerQueryInput={addedLayerQueryInput}
-							/>
-						</div>
+					<div className="flex flex-col flex-grow">
+						<LayerDisplay
+							item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
+							backfillLayerId={backfillLayerId}
+							addedLayerQueryInput={addedLayerQueryInput}
+						/>
 						<div className="flex space-x-1 items-center">{badges}</div>
 					</div>
 					{itemDropdown}

@@ -558,6 +558,7 @@ function getRepeatSQLConditions(
 
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		const teamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
+		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
 			const layer = L.toLayer(layerItem.layerId)
 			switch (rule.field) {
