@@ -290,7 +290,7 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 						<LayerFilterMenu layerQueryBaseInput={queryInputs.editItem} filterMenuStore={filterMenuStore} />
 						<div className="flex flex-col h-full justify-between">
 							<TableStyleLayerPicker
-								defaultPageSize={12}
+								defaultPageSize={16}
 								queryContext={queryInputs.editItemWithFilterMenu}
 								editingSingleValue={true}
 								selected={[editedItem.layerId!]}

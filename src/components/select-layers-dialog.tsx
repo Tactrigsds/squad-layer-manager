@@ -139,7 +139,7 @@ export default function SelectLayersDialog(props: {
 					<LayerFilterMenu layerQueryBaseInput={props.layerQueryBaseInput} filterMenuStore={filterMenuStore} />
 					<div className="flex flex-col space-y-2 justify-between h-full">
 						<TableStyleLayerPicker
-							defaultPageSize={12}
+							defaultPageSize={16}
 							queryContext={queryContextWithFilter}
 							selected={selectedLayers}
 							onSelect={setSelectedLayers}

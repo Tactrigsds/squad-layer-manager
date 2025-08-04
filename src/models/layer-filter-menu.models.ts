@@ -133,6 +133,7 @@ export function getDefaultFilterMenuItemState(
 	config?: LQY.EffectiveColumnAndTableConfig,
 ): Record<keyof L.KnownLayer | string, F.EditableComparison> {
 	const extraItems: Record<string | keyof L.KnownLayer, F.EditableComparison> = {
+		Size: EFB.eq('Size', defaultFields['Size'] ?? undefined),
 		Layer: EFB.eq('Layer', defaultFields['Layer']),
 		Map: EFB.eq('Map', defaultFields['Map']),
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
