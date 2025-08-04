@@ -9,10 +9,12 @@ import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
 import * as RBAC from '@/rbac.models'
+import * as ConfigClient from '@/systems.client/config.client'
 import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -564,6 +566,18 @@ export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get,
 	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	function writeExtraQueryFilters() {
 		localStorage.setItem('extraQueryFilters:v2', Array.from(get().extraQueryFilters).join())
+	}
+	if (extraQueryFilters.size === 0) {
+		;(async () => {
+			const config = await ConfigClient.fetchConfig()
+			const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+			if (!config.layerTable.defaultExtraFilters) return
+
+			set({
+				extraQueryFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
+			})
+			writeExtraQueryFilters()
+		})()
 	}
 	FilterEntityClient.filterEntityChanged$.subscribe(() => {
 		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f))

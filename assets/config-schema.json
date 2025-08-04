@@ -319,7 +319,7 @@
           ],
           "description": "if not provided, no sorting will be done"
         },
-        "extraFilterMenuItems": {
+        "extraLayerSelectMenuItems": {
           "type": "array",
           "items": {
             "type": "object",
@@ -385,6 +385,15 @@
               "mode": {"type": "string", "enum": ["split", "both", "either"]}
             },
             "additionalProperties": false
+          }
+        },
+        "defaultExtraFilters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-_]+$",
+            "minLength": 3,
+            "maxLength": 64
           }
         }
       },

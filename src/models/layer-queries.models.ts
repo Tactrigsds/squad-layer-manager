@@ -520,9 +520,12 @@ export function getQueryCursorForItemIndex(index: number): LayerQueryCursor {
 }
 
 export const LayerTableConfigSchema = z.object({
-	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
+	orderedColumns: z.array(
+		z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') }),
+	),
 	defaultSortBy: LayersQuerySortSchema,
-	extraFilterMenuItems: z.array(F.EditableComparisonSchema).optional(),
+	extraLayerSelectMenuItems: z.array(F.EditableComparisonSchema).optional(),
+	defaultExtraFilters: z.array(F.FilterEntityIdSchema).optional(),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>
