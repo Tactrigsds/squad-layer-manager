@@ -54,7 +54,6 @@ const formatFloat = (value: number) => {
 	if (numeric > 0) return `+${formatted}`
 	return formatted
 }
-const noSortCols = ['Layer', 'Map', 'Gamemode', 'LayerVersion', 'Faction1', 'SubFaction1', 'Faction2', 'SubFaction2']
 function buildColumn(
 	colDef: LC.ColumnDef,
 	teamParity: number,
@@ -65,20 +64,16 @@ function buildColumn(
 			const sort = column.getIsSorted()
 			return (
 				<Button
-					className="data-[sort=true]:text-accent-foreground"
+					className="data-[sort=true]:text-accent-foreground w-full justify-start"
 					data-sort={!!sort}
 					variant="ghost"
 					title={colDef.displayName}
 					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
 				>
 					{colDef.shortName ?? colDef.displayName}
-					{!noSortCols.includes(column.id) && (
-						<>
-							{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
-							{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
-							{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
-						</>
-					)}
+					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
+					{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
+					{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
 				</Button>
 			)
 		},
@@ -126,12 +121,16 @@ function buildColumn(
 					assertNever(colDef)
 			}
 
+			const extraStyles = DH.getColumnExtraStyles(
+				colDef.name as keyof L.KnownLayer,
+				teamParity,
+				displayLayersNormalized,
+				violationDescriptors,
+			)
+
 			return (
 				<div
-					className={cn(
-						'px-4',
-						DH.getColumnExtraStyles(colDef.name as keyof L.KnownLayer, teamParity, displayLayersNormalized, violationDescriptors),
-					)}
+					className={extraStyles}
 				>
 					{text}
 				</div>
@@ -163,11 +162,13 @@ function buildColDefs(
 		{
 			id: 'select',
 			header: ({ table }) => (
-				<Checkbox
-					checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
-					onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-					aria-label="Select all"
-				/>
+				<div className="pl-4">
+					<Checkbox
+						checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
+						onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+						aria-label="Select all"
+					/>
+				</div>
 			),
 			cell: ({ row }) => <Cell row={row} constraints={constraints ?? []} />,
 			enableSorting: false,
@@ -682,7 +683,7 @@ export default function LayerTable(props: {
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => (
-									<TableHead key={header.id}>
+									<TableHead className="px-0" key={header.id}>
 										{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 									</TableHead>
 								))}
@@ -709,7 +710,7 @@ export default function LayerTable(props: {
 											}}
 										>
 											{row.getVisibleCells().map((cell) => (
-												<TableCell className="px-4" key={cell.id}>
+												<TableCell className="pl-4" key={cell.id}>
 													{flexRender(cell.column.columnDef.cell, cell.getContext())}
 												</TableCell>
 											))}

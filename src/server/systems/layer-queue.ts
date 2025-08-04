@@ -369,7 +369,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		}),
 	).subscribe()
 
-	// -------- trim pool filters when filter entities are deleted
+	// -------- trim pool filters when filter entities are deleted --------
 	FilterEntity.filterMutation$
 		.pipe(
 			Rx.filter(([_, mut]) => mut.type === 'delete'),

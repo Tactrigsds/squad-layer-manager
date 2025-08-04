@@ -238,15 +238,14 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 	})
 
 	void coreRcon.connect(ctx)
-		.then(async () => {
+
+	coreRcon.connected$
+		.pipe()
+		.subscribe(async (connected) => {
+			if (!connected) return
 			const { value: statusRes } = await rcon.layersStatus.get(ctx)
 			if (statusRes.code === 'err:rcon') return
 			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
-			const currentMatch = MatchHistory.getCurrentMatch()
-			if (currentMatch && L.areLayersCompatible(statusRes.data.currentLayer, currentMatch.layerId)) {
-				const currentLayer = L.toLayer(currentMatch.layerId)
-				if (currentLayer.Gamemode === 'FRAAS') await rcon.setFogOfWar(ctx, 'off')
-			}
 		})
 	rcon = new SquadRcon(ctx, coreRcon, { warnPrefix: CONFIG.warnPrefix })
 

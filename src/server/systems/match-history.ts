@@ -212,7 +212,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 })
 
 /**
- * Runs on startup once rcon is connected to ensure that the match history is up-to-date. If the current layer is unexpected then we insert a new history entry for the current match.
+ * Runs when rcon is connected to ensure that the match history is up-to-date. If the current layer is unexpected then we insert a new history entry for the current match.
  */
 export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
