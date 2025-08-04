@@ -539,8 +539,10 @@ export function Comparison(props: {
 				valueBox = (
 					<LayersInConfig
 						values={comp.values ?? []}
-						setValues={(values) => {
-							// @ts-expect-error idc
+						setValues={(update) => {
+							if (typeof update === 'function') {
+								return setComp((c) => ({ ...c, values: update(c.values ?? []) }))
+							}
 							return setComp((c) => ({ ...c, values }))
 						}}
 						baseQueryInput={props.baseQueryInput}
@@ -720,24 +722,48 @@ function LayersInConfig(
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
+	const filteredValues = props.values?.filter(v => v !== null)
+
+	const removeValue = (layerIdToRemove: string) => {
+		props.setValues(prevValues => prevValues?.filter(layerId => layerId !== layerIdToRemove) ?? [])
+	}
+
 	// TODO implement a useImperativeHandle call
 	return (
-		<div className={props.className}>
-			<ul>
-				{props.values.filter(v => v !== null).map((layerId) => <li key={layerId}>{DH.displayUnvalidatedLayer(layerId)}</li>)}
-			</ul>
-			<SelectLayersDialog
-				open={open}
-				onOpenChange={setOpen}
-				title="Select Layers"
-				pinMode="layers"
-				selectQueueItems={items => props.setValues(items.map(items => items.layerId!))}
-				layerQueryBaseInput={props.baseQueryInput ?? {}}
-			>
-				<Button size="icon" variant="ghost" onClick={() => setOpen(true)}>
-					<Icons.Edit />
-				</Button>
-			</SelectLayersDialog>
+		<div className={cn(props.className, 'space-y-2')}>
+			{filteredValues.length > 0 && (
+				<ul className="flex items-center space-x-1">
+					{filteredValues.map((layerId) => (
+						<li key={layerId} className="flex items-center justify-between px-2 py-1 bg-secondary rounded-md">
+							<span className="text-sm">{DH.displayUnvalidatedLayer(layerId)}</span>
+							<Button
+								size="sm"
+								variant="ghost"
+								onClick={() =>
+									removeValue(layerId)}
+								className="h-6 w-6 p-0 hover:bg-destructive/20 hover:text-destructive"
+							>
+								<Minus className="h-3 w-3" />
+							</Button>
+						</li>
+					))}
+				</ul>
+			)}
+			<div className="w-max">
+				<SelectLayersDialog
+					open={open}
+					onOpenChange={setOpen}
+					title="Select Layers"
+					pinMode="layers"
+					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
+					layerQueryBaseInput={props.baseQueryInput ?? {}}
+				>
+					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
+						<Icons.Edit className="h-4 w-4 mr-2" />
+						{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
+					</Button>
+				</SelectLayersDialog>
+			</div>
 		</div>
 	)
 }
