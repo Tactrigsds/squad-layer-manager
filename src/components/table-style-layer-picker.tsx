@@ -9,7 +9,7 @@ export default function TableStyleLayerPicker(props: {
 	queryContext: LQY.LayerQueryBaseInput
 	selected: L.LayerId[]
 	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>
-	maxSelected?: number
+	editingSingleValue?: boolean
 	extraPanelItems?: React.ReactNode
 	className?: string
 	defaultPageSize?: number
@@ -22,11 +22,10 @@ export default function TableStyleLayerPicker(props: {
 				defaultPageSize={props.defaultPageSize}
 				baseInput={props.queryContext}
 				pageIndex={pageIndex}
-				autoSelectIfSingleResult={props.maxSelected === 1}
+				editingSingleValue={props.editingSingleValue}
 				setPageIndex={setPageIndex}
 				selected={props.selected}
 				setSelected={props.onSelect}
-				maxSelected={props.maxSelected}
 				enableForceSelect={true}
 				canChangeRowsPerPage={false}
 				canToggleColumns={false}

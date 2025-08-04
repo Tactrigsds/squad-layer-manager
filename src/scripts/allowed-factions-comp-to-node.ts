@@ -1,9 +1,5 @@
 import * as Schema from '$root/drizzle/schema'
-import * as Obj from '@/lib/object'
-import { assertNever } from '@/lib/type-guards'
-import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as Config from '@/server/config.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
@@ -31,36 +27,25 @@ await DB.runTransaction(ctx, async (ctx) => {
 		if (F.isBlockNode(node)) return { ...node, children: node.children.map(transformFilterNode) }
 
 		switch (node.type) {
-			case 'apply-filter':
-			case 'allow-matchups':
-				return node
 			case 'comp': {
-				let masks: F.FactionMask[][]
-				let mode: F.FactionMaskMode
-				const comp = node.comp as any
-				console.log(comp.code)
-				if (comp.code !== 'has') return node
-				const values = comp.values.filter((v: any) => v !== null && v !== undefined)
-				if (comp.column === 'FactionMatchup') {
-					masks = values.map((v: any) => [{ faction: [v] }])
-					mode = values.length > 1 ? 'split' : 'either'
-				} else if (comp.column === 'SubFacMatchup') {
-					masks = values.map((v: any) => [{ unit: [v] }])
-					mode = values.length > 1 ? 'split' : 'either'
-				} else {
-					masks = values.map((v: string) => {
-						const [faction, unitAbbrev] = v.split('-')
-						const unit = unitAbbrev ? Obj.revLookup(L.StaticLayerComponents.unitAbbreviations, unitAbbrev) : undefined
-						return [{ faction: faction ? [faction] : undefined, unit: unit ? [unit] : undefined }]
-					})
-					mode = comp.values.length > 1 ? 'split' : 'either'
+				const comp = node.comp
+				if (comp.column !== 'Factions') return node
+				const factionsComp = comp as any
+				const allMasks = factionsComp.allMasks as F.FactionMask[][]
+				const mode = factionsComp.mode as F.FactionMaskMode
+				const config: F.FactionsAllowMatchups = {
+					allMasks,
+					mode,
 				}
-				const newComp = FB.allowMatchups(mode, masks)
-				console.log(JSON.stringify(newComp, null, 2))
-				return F.FilterNodeSchema.parse(newComp)
+				return {
+					type: 'allow-matchups',
+					neg: node.neg,
+					allowMatchups: config,
+				}
+				break
 			}
 			default:
-				assertNever(node)
+				return node
 		}
 	}
 

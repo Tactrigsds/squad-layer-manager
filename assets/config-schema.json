@@ -335,8 +335,7 @@
                   "notin",
                   "eq",
                   "neq",
-                  "is-true",
-                  "factions:allow-matchups"
+                  "is-true"
                 ]
               },
               "value": {"type": ["number", "string", "null"]},

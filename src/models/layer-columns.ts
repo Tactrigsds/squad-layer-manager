@@ -1,10 +1,8 @@
 import _StaticLayerComponents from '$root/assets/layer-components.json'
-import { toShortLayerName } from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import * as F from '@/models/filter.models'
 import * as E from 'drizzle-orm/expressions'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -116,13 +114,6 @@ export const layers = sqliteTable('layers', {
 	alliance2Index: index('alliance2Index').on(table.Alliance_2),
 }))
 
-export const layerStrIds = sqliteTable('layerStrIds', {
-	id: int('id').primaryKey().notNull(),
-	idStr: text('idStr').notNull(),
-}, (table) => ({
-	idStrIndex: index('idStrIndex').on(table.idStr),
-}))
-
 export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 	const columns: Record<string, any> = {
 		id: int('id').primaryKey().notNull(),
@@ -187,21 +178,83 @@ export function selectAllViewCols(ctx: CS.EffectiveColumnConfig) {
 	return selectViewCols(Object.keys(ctx.effectiveColsConfig.defs), ctx)
 }
 
+export function isEnumeratedValue(column: string, value: string, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
+	const def = getColumnDef(column, ctx.effectiveColsConfig)
+	if (!def) return false
+	if (def.type !== 'string') return false
+	if (!def.enumMapping) return
+	return (components[def.enumMapping as keyof typeof components] as string[]).includes(value)
+}
+
 export type LayerRow = typeof layers.$inferSelect
 export type NewLayerRow = typeof layers.$inferInsert
 
 export class ValueNotFoundError extends Error {}
 export class ColumnNotFoundError extends Error {}
 
-export function dbValue<T extends string | number | boolean | null | undefined>(
+const UnmappedDbValue = Symbol('UnmappedDbValue')
+export type UnmappedDbValue = typeof UnmappedDbValue
+export type DbValue = string | number | boolean | null | undefined
+export type DbValueResult = DbValue | UnmappedDbValue
+
+export function isUnmappedDbValue(value: unknown): value is UnmappedDbValue {
+	return value === UnmappedDbValue
+}
+export function assertedMappedValue(value: DbValueResult) {
+	if (isUnmappedDbValue(value)) {
+		throw new Error(`Expected UnmappedValue, got ${typeof value}`)
+	}
+	return value
+}
+
+export class DbValueError extends Error {
+	constructor(public path: string[], public code: string, message: string) {
+		super(message)
+	}
+}
+export type InputValue = string | number | boolean | null | undefined
+
+export function assertDbValue(
 	columnName: string,
-	value: string | number | boolean | null | undefined,
+	value: InputValue,
 	ctx?: CS.EffectiveColumnConfig,
 	components = L.StaticLayerComponents,
-): T {
+) {
+	const result = dbValue(columnName, value, ctx, components)
+	if (isUnmappedDbValue(result)) {
+		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+	}
+	return result
+}
+
+export function assertedEnumDbValue(
+	columnName: string,
+	value: InputValue,
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+) {
+	const result = dbValue(columnName, value, ctx, components)
+	if (isUnmappedDbValue(result)) {
+		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
+	}
+	if (typeof result !== 'number') {
+		throw new Error(`Expected number, got ${typeof result}`)
+	}
+	return result
+}
+
+export function dbValue(
+	columnName: string,
+	value: InputValue,
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+): DbValueResult {
 	const def = getColumnDef(columnName, ctx?.effectiveColsConfig)!
 	if (columnName === 'id') {
-		return packId(value as L.LayerId, components) as T
+		if (!L.isKnownLayer(value as string)) {
+			return UnmappedDbValue
+		}
+		return packId(value as L.LayerId, components)
 	}
 	switch (def.type) {
 		case 'string': {
@@ -210,19 +263,19 @@ export function dbValue<T extends string | number | boolean | null | undefined>(
 
 				const index = targetArray.indexOf(value as string)
 				if (index === -1) {
-					throw new ValueNotFoundError(`Value "${value}" not found in array for column "${columnName}"`)
+					return UnmappedDbValue
 				}
 
-				return index as T
+				return index
 			} else {
-				return value as T
+				return value
 			}
 		}
 		case 'integer':
 		case 'float':
-			return value as T
+			return value
 		case 'boolean':
-			return Number(value) as T
+			return Number(value)
 		default:
 			assertNever(def)
 	}
@@ -279,7 +332,7 @@ export function dbValues(
  * Uses enumeration indices to minimize the bits required for each component.
  */
 export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
-	const layer = typeof layerOrId === 'string' ? L.fromPossibleRawId(layerOrId) : layerOrId
+	const layer = typeof layerOrId === 'string' ? L.toLayer(layerOrId) : layerOrId
 
 	if (!L.isKnownLayer(layer)) {
 		throw new Error('Cannot pack raw or invalid layer to integer')
@@ -287,11 +340,11 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 
 	const ctx: CS.EffectiveColumnConfig = { effectiveColsConfig: BASE_COLUMN_CONFIG }
 	// Get enumeration indices for each component
-	const layerIndex = dbValue('Layer', layer.Layer, ctx, components)! as number
-	const faction1Index = dbValue('Faction_1', layer.Faction_1, ctx, components)! as number
-	const unit1Index = dbValue('Unit_1', layer.Unit_1, ctx, components)! as number
-	const faction2Index = dbValue('Faction_2', layer.Faction_2, ctx, components)! as number
-	const unit2Index = dbValue('Unit_2', layer.Unit_2, ctx, components)! as number
+	const layerIndex = assertedEnumDbValue('Layer', layer.Layer, ctx, components)
+	const faction1Index = assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components)
+	const unit1Index = assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components)
+	const faction2Index = assertedEnumDbValue('Faction_2', layer.Faction_2, ctx, components)
+	const unit2Index = assertedEnumDbValue('Unit_2', layer.Unit_2, ctx, components)
 
 	// Calculate bits needed for each component based on array sizes
 	// const layerBits = Math.ceil(Math.log2(components.layers.length))
@@ -318,6 +371,18 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 	packed |= layerIndex << bitOffset
 
 	return packed
+}
+
+export function isKnownAndValidLayer(layer: L.LayerId | L.UnvalidatedLayer, cfg = BASE_COLUMN_CONFIG) {
+	if (!L.isKnownLayer(layer)) return false
+	for (const [key, value] of Obj.objEntries(layer)) {
+		const colDef = getColumnDef(key, cfg)
+		if (!colDef) return false
+		if (colDef.type === 'string' && colDef.enumMapping) {
+			if (!colDef.enumMapping.includes(value as string)) return false
+		}
+	}
+	return false
 }
 
 export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {
@@ -381,17 +446,17 @@ export function unpackId(
 export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents): LayerRow {
 	return {
 		id: packId(layer, components) ?? 0,
-		Map: dbValue('Map', layer.Map, ctx, components)!,
-		Layer: dbValue('Layer', layer.Layer, ctx, components)!,
-		Size: dbValue('Size', layer.Size, ctx, components)!,
-		Gamemode: dbValue('Gamemode', layer.Gamemode, ctx, components)!,
-		LayerVersion: dbValue('LayerVersion', layer.LayerVersion, ctx, components) ?? null,
-		Faction_1: dbValue('Faction_1', layer.Faction_1, ctx, components)!,
-		Unit_1: dbValue('Unit_1', layer.Unit_1, ctx, components)!,
-		Alliance_1: dbValue('Alliance_1', layer.Alliance_1, ctx, components)!,
-		Faction_2: dbValue('Faction_2', layer.Faction_2, ctx, components)!,
-		Unit_2: dbValue('Unit_2', layer.Unit_2, ctx, components)!,
-		Alliance_2: dbValue('Alliance_2', layer.Alliance_2, ctx, components)!,
+		Map: assertedEnumDbValue('Map', layer.Map, ctx, components),
+		Layer: assertedEnumDbValue('Layer', layer.Layer, ctx, components),
+		Size: assertedEnumDbValue('Size', layer.Size, ctx, components),
+		Gamemode: assertedEnumDbValue('Gamemode', layer.Gamemode, ctx, components),
+		LayerVersion: assertedEnumDbValue('LayerVersion', layer.LayerVersion, ctx, components) ?? null,
+		Faction_1: assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components),
+		Unit_1: assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components),
+		Alliance_1: assertedEnumDbValue('Alliance_1', layer.Alliance_1, ctx, components),
+		Faction_2: assertedEnumDbValue('Faction_2', layer.Faction_2, ctx, components),
+		Unit_2: assertedEnumDbValue('Unit_2', layer.Unit_2, ctx, components),
+		Alliance_2: assertedEnumDbValue('Alliance_2', layer.Alliance_2, ctx, components),
 	}
 }
 

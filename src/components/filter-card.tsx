@@ -1,10 +1,10 @@
 import * as AR from '@/app-routes.ts'
-import { useDebounced } from '@/hooks/use-debounce'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
-import { sleepUntil } from '@/lib/async'
+import * as DH from '@/lib/display-helpers'
+import { initMutationState } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object.ts'
-import { Clearable, eltToFocusable, Focusable } from '@/lib/react'
+import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/react'
 import { cn } from '@/lib/utils.ts'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
@@ -13,17 +13,21 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import { useLayerComponents as useLayerComponent, useSearchIds } from '@/systems.client/layer-queries.client.ts'
+import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
+import * as QD from '@/systems.client/queue-dashboard.ts'
 import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
-import ComboBoxMulti, { ComboBoxMultiProps } from './combo-box/combo-box-multi.tsx'
+import * as Zus from 'zustand'
+import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
+import EditLayerListItemDialog from './edit-layer-list-item-dialog.tsx'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
+import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Input } from './ui/input'
@@ -42,7 +46,6 @@ function getNodeWrapperClasses(depth: number, invalid: boolean) {
 }
 
 export type FilterCardProps = {
-	defaultEditing?: boolean
 	node: F.EditableFilterNode
 	// weird way of passing this down but I guess good for perf?
 	setNode: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>>
@@ -165,7 +168,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			elt.removeEventListener('focusout', onFocusLeave)
 		}
 	}, [isValid])
-	const [editedChildIndex, setEditedChildIndex] = React.useState<number | undefined>()
 
 	const negationToggle = (
 		<NegationToggle
@@ -203,7 +205,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 
 			return (
 				<FilterNodeDisplay
-					defaultEditing={editedChildIndex === i}
 					depth={props.depth + 1}
 					key={i}
 					node={child}
@@ -216,12 +217,11 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			setNode(
 				Im.produce((draft) => {
 					if (!draft || !F.isEditableBlockNode(draft)) {
-						setEditedChildIndex(undefined)
 						return
 					}
-					setEditedChildIndex(draft.children.length)
 					if (type === 'comp') draft.children.push(EFB.comp())
 					if (type === 'apply-filter') draft.children.push(EFB.applyFilter())
+					if (type === 'allow-matchups') draft.children.push(EFB.allowMatchups())
 					if (F.isBlockType(type)) {
 						draft.children.push(EFB.createBlock(type)())
 					}
@@ -265,6 +265,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						<DropdownMenuContent>
 							<DropdownMenuItem onClick={() => addNewChild('comp')}>comparison</DropdownMenuItem>
 							<DropdownMenuItem onClick={() => addNewChild('apply-filter')}>apply existing filter</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => addNewChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem onClick={() => addNewChild('and')}>and block</DropdownMenuItem>
 							<DropdownMenuItem onClick={() => addNewChild('or')}>or block</DropdownMenuItem>
@@ -275,21 +276,21 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		)
 	}
 
-	const setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>> = (update) => {
-		setNode(
-			Im.produce((draft) => {
-				if (!draft) return
-				if (draft.type !== 'comp') return
-				draft.comp = typeof update === 'function' ? update(draft.comp) : update
-			}),
-		)
-	}
-
 	if (node.type === 'comp' && node.comp) {
+		const setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>> = (update) => {
+			setNode(
+				Im.produce((draft) => {
+					if (!draft) return
+					if (draft.type !== 'comp') return
+					draft.comp = typeof update === 'function' ? update(draft.comp) : update
+				}),
+			)
+		}
+
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
-				<Comparison defaultEditing={props.defaultEditing} comp={node.comp} setComp={setComp} />
+				<Comparison comp={node.comp} setComp={setComp} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
 					<Minus color="hsl(var(--destructive))" />
 				</Button>
@@ -301,7 +302,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<ApplyFilter
-					defaultEditing={props.defaultEditing}
 					filterId={node.filterId}
 					editedFilterId={props.filterId}
 					setFilterId={(filterId) => {
@@ -325,12 +325,52 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		)
 	}
 
+	if (node.type === 'allow-matchups') {
+		const setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>> = (update) => {
+			if (typeof update === 'function') {
+				setNode((n) => {
+					if (!n || n.type !== 'allow-matchups') return
+					return { ...n, allowMatchups: { ...n.allowMatchups, allMasks: update(n.allowMatchups.allMasks) } }
+				})
+			} else {
+				setNode((n) => {
+					if (!n || n.type !== 'allow-matchups') return
+					return { ...n, allowMatchups: { ...n.allowMatchups, allMasks: update } }
+				})
+			}
+		}
+		const setMode: React.Dispatch<React.SetStateAction<'split' | 'both' | 'either'>> = (update) => {
+			if (typeof update === 'function') {
+				setNode((n) => {
+					if (!n || n.type !== 'allow-matchups') return
+					return { ...n, allowMatchups: { ...n.allowMatchups, mode: update(n.allowMatchups.mode ?? 'either') } }
+				})
+			} else {
+				setNode((n) => {
+					if (!n || n.type !== 'allow-matchups') return
+					return { ...n, allowMatchups: { ...n.allowMatchups, mode: update } }
+				})
+			}
+		}
+		return (
+			<div className="flex items-center w-max">
+				<FactionsAllowMatchupsConfig
+					masks={node.allowMatchups.allMasks}
+					mode={node.allowMatchups.mode}
+					setMasks={setMasks}
+					setMode={setMode}
+				/>
+				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
+					<Minus color="hsl(var(--destructive))" />
+				</Button>
+			</div>
+		)
+	}
+
 	throw new Error('Invalid node type ' + node.type)
 }
-const LIMIT_AUTOCOMPLETE_COLS: L.LayerColumnKey[] = ['id']
-
 export type ComparisonHandle = Clearable & Focusable
-export const Comparison = function Comparison(props: {
+export function Comparison(props: {
 	comp: F.EditableComparison
 	setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>>
 	columnEditable?: boolean
@@ -375,7 +415,7 @@ export const Comparison = function Comparison(props: {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
-	const columnOptions = (props.allowedColumns ? props.allowedColumns : [...F.COMPOSITE_COLUMNS.options, ...LC.COLUMN_KEYS]).map((c) => ({
+	const columnOptions = (props.allowedColumns ? props.allowedColumns : LC.COLUMN_KEYS).map((c) => ({
 		value: c,
 	}))
 
@@ -414,9 +454,9 @@ export const Comparison = function Comparison(props: {
 					setComp((c) => {
 						return { column, code: c.code ?? defaultComparisonType }
 					})
-					sleepUntil(() => valueBoxRef.current).then((handle) => {
-						return handle?.focus()
-					})
+					// sleepUntil(() => valueBoxRef.current).then((handle) => {
+					// 	return handle?.focus()
+					// })
 				}}
 			/>
 		)
@@ -438,9 +478,9 @@ export const Comparison = function Comparison(props: {
 			onSelect={(_code) => {
 				const code = _code as typeof comp.code
 				// instead of doing this cringe sleepUntil thing we could buffer events to send to newly created Config components and send them on mount, but I thought of that after coming up with this solution ¯\_(ツ)_/¯. flushSync is also an option but I don't think blocking this event on a react rerender is a good idea
-				if (code !== undefined) {
-					sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
-				}
+				// if (code !== undefined) {
+				// 	sleepUntil(() => valueBoxRef.current).then((handle) => handle?.focus())
+				// }
 				return setComp((c) => ({ ...c, code: code ?? undefined }))
 			}}
 		/>
@@ -459,7 +499,23 @@ export const Comparison = function Comparison(props: {
 	switch (comp.code) {
 		case 'neq':
 		case 'eq': {
-			if (!Arr.includes(LIMIT_AUTOCOMPLETE_COLS, comp.column)) {
+			if (comp.column === 'id') {
+				valueBox = (
+					<LayerEqConfig
+						value={comp.value as string | null ?? null}
+						setValue={(update) => {
+							let value: string | null
+							if (typeof update === 'function') {
+								value = update(comp.value as string | undefined ?? null)
+							} else {
+								value = update as string | null
+							}
+							setComp((c) => ({ ...c, value }))
+						}}
+						baseQueryInput={props.baseQueryInput}
+					/>
+				)
+			} else {
 				valueBox = (
 					<StringEqConfig
 						ref={valueBoxRef}
@@ -473,24 +529,25 @@ export const Comparison = function Comparison(props: {
 						baseQueryInput={props.baseQueryInput}
 					/>
 				)
-			} else {
-				valueBox = (
-					<StringEqConfigLimitedAutocomplete
-						ref={valueBoxRef}
-						className={componentStyles}
-						column={comp.column}
-						value={comp.value as string | undefined | null}
-						setValue={(value) => setComp((c) => ({ ...c, value }))}
-						baseQueryInput={props.baseQueryInput}
-					/>
-				)
 			}
 			break
 		}
 
 		case 'notin':
 		case 'in': {
-			if (!Arr.includes(LIMIT_AUTOCOMPLETE_COLS, comp.column)) {
+			if (comp.column === 'id') {
+				valueBox = (
+					<LayersInConfig
+						values={comp.values ?? []}
+						setValues={(values) => {
+							// @ts-expect-error idc
+							return setComp((c) => ({ ...c, values }))
+						}}
+						baseQueryInput={props.baseQueryInput}
+						className={componentStyles}
+					/>
+				)
+			} else {
 				valueBox = (
 					<StringInConfig
 						className={componentStyles}
@@ -508,47 +565,9 @@ export const Comparison = function Comparison(props: {
 						}}
 					/>
 				)
-			} else {
-				valueBox = (
-					<StringInConfigLimitAutoComplete
-						ref={valueBoxRef}
-						column={comp.column}
-						values={comp.values ?? []}
-						setValues={(values) => {
-							// @ts-expect-error idc
-							return setComp((c) => ({ ...c, values }))
-						}}
-						baseQueryInput={props.baseQueryInput}
-						className={componentStyles}
-					/>
-				)
 			}
 			break
 		}
-
-		case 'factions:allow-matchups': {
-			valueBox = (
-				<FactionsAllowMatchupsConfig
-					className={componentStyles}
-					ref={valueBoxRef}
-					baseQueryInput={props.baseQueryInput}
-					masks={comp.allMasks}
-					setMode={(mode) => {
-						return setComp((c) => ({ ...c, mode }))
-					}}
-					mode={comp.mode}
-					setMasks={(action) => {
-						setComp(
-							Im.produce((c) => {
-								c.allMasks = typeof action === 'function' ? action(c.allMasks) : action
-							}),
-						)
-					}}
-				/>
-			)
-			break
-		}
-
 		case 'gt':
 		case 'lt': {
 			valueBox = (
@@ -653,7 +672,7 @@ function StringEqConfig<T extends string | null>(
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
-	const options = (valuesRes.isSuccess && valuesRes.data) ? valuesRes.data : LOADING
+	const options = valuesRes.isSuccess ? Array.isArray(valuesRes.data) ? valuesRes.data : [] : LOADING
 	return (
 		<ComboBox
 			ref={props.ref}
@@ -668,78 +687,6 @@ function StringEqConfig<T extends string | null>(
 	)
 }
 
-function StringEqConfigLimitedAutocomplete<T extends string | null>(
-	props: {
-		value: T | undefined
-		column: string
-		setValue: (value: T | undefined) => void
-		baseQueryInput?: LQY.LayerQueryBaseInput
-		className?: string
-		ref?: React.ForwardedRef<ComboBoxHandle>
-	},
-) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.value, props.baseQueryInput)
-	return (
-		<ComboBox
-			ref={props.ref}
-			allowEmpty={false}
-			title={props.column}
-			value={props.value}
-			inputValue={autocomplete.inputValue}
-			setInputValue={autocomplete.setInputValue}
-			options={autocomplete.options}
-			onSelect={(v) => props.setValue(v as T | undefined)}
-			className={props.className}
-		/>
-	)
-}
-
-function useDynamicColumnAutocomplete<T extends string | null>(
-	column: string,
-	value: T | undefined,
-	queryContext?: LQY.LayerQueryBaseInput,
-) {
-	const [debouncedInput, _setDebouncedInput] = React.useState('')
-	const [inputValue, _setInputValue] = React.useState<string>(value?.split?.(',')?.[0] ?? '')
-	function setDebouncedInput(value: string) {
-		const v = value.trim()
-		_setDebouncedInput(v)
-	}
-	const debouncer = useDebounced({
-		defaultValue: () => inputValue,
-		onChange: setDebouncedInput,
-		delay: 500,
-	})
-	function setInputValue(value: string) {
-		_setInputValue(value)
-		debouncer.setValue(value)
-	}
-
-	const valuesRes = useLayerComponent(
-		{ ...(queryContext ?? {}), column: column as LC.GroupByColumn },
-		{
-			enabled: debouncedInput !== '' && column !== 'id',
-		},
-	)
-	const idsRes = useSearchIds({ constraints: queryContext?.constraints, queryString: debouncedInput }, {
-		enabled: debouncedInput !== '' && column === 'id',
-	})
-
-	let options: T[] | typeof LOADING = LOADING
-	if (debouncedInput === '') options = []
-	else if (debouncedInput && valuesRes.isSuccess && column !== 'id') {
-		options = valuesRes.data as T[]
-	} else if (debouncedInput && idsRes.isSuccess) {
-		options = idsRes.data!.ids as unknown as T[]
-	}
-
-	return {
-		inputValue,
-		setInputValue,
-		options,
-	}
-}
-
 function StringInConfig(
 	props: {
 		values: (string | null)[]
@@ -751,40 +698,93 @@ function StringInConfig(
 	},
 ) {
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
+	const options = Array.isArray(valuesRes.data) ? valuesRes.data : []
 	return (
 		<ComboBoxMulti
 			title={props.column}
 			ref={props.ref}
 			values={props.values}
-			options={valuesRes.data ? valuesRes.data : []}
+			options={options}
 			onSelect={props.setValues}
 			className={props.className}
 		/>
 	)
 }
 
-function StringInConfigLimitAutoComplete(
+function LayersInConfig(
 	props: {
 		values: (string | null)[]
-		column: string
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
-		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
 ) {
-	const autocomplete = useDynamicColumnAutocomplete(props.column, props.values[0] ?? '', props.baseQueryInput)
+	const [open, setOpen] = React.useState(false)
+	// TODO implement a useImperativeHandle call
 	return (
-		<ComboBoxMulti
-			title={props.column}
-			ref={props.ref}
-			values={props.values}
-			options={autocomplete.options}
-			onSelect={props.setValues as ComboBoxMultiProps['onSelect']}
-			inputValue={autocomplete.inputValue}
-			setInputValue={autocomplete.setInputValue}
-			className={props.className}
-		/>
+		<div className={props.className}>
+			<ul>
+				{props.values.filter(v => v !== null).map((layerId) => <li key={layerId}>{DH.displayUnvalidatedLayer(layerId)}</li>)}
+			</ul>
+			<SelectLayersDialog
+				open={open}
+				onOpenChange={setOpen}
+				title="Select Layers"
+				pinMode="layers"
+				selectQueueItems={items => props.setValues(items.map(items => items.layerId!))}
+				layerQueryBaseInput={props.baseQueryInput ?? {}}
+			>
+				<Button size="icon" variant="ghost" onClick={() => setOpen(true)}>
+					<Icons.Edit />
+				</Button>
+			</SelectLayersDialog>
+		</div>
+	)
+}
+
+export function LayerEqConfig(
+	props: {
+		value: string | null
+		setValue: React.Dispatch<React.SetStateAction<string | null>>
+		baseQueryInput?: LQY.LayerQueryBaseInput
+		className?: string
+	},
+) {
+	const [open, setOpen] = React.useState(false)
+	const storeRef = useRefConstructor(() => {
+		return Zus.createStore<QD.LLItemStore>((set, get) =>
+			QD.createLLItemStore(set, get, {
+				mutationState: initMutationState(),
+				index: 0,
+				item: { itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? L.DEFAULT_LAYER_ID },
+			})
+		)
+	})
+	// React.useEffect(() => {
+	// 	console.log('rerender')
+	// 	// storeRef.current.getState().setItem({ itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? undefined })
+	// }, [props.value, storeRef])
+	// React.useEffect(() => {
+	// 	const unsub = storeRef.current.subscribe((state) => {
+	// 		props.setValue(state.item.layerId!)
+	// 	})
+	// 	return () => unsub()
+	// }, [props, props.setValue, storeRef])
+
+	return (
+		<div>
+			{props.value !== null && <li>{DH.displayUnvalidatedLayer(props.value)}</li>}
+			<EditLayerListItemDialog
+				open={open}
+				onOpenChange={setOpen}
+				itemStore={storeRef.current}
+				allowVotes={false}
+			>
+				<Button size="icon" variant="ghost" onClick={() => setOpen(true)}>
+					<Icons.Edit />
+				</Button>
+			</EditLayerListItemDialog>
+		</div>
 	)
 }
 
@@ -859,7 +859,7 @@ function NumericRangeConfig(
 
 function FactionsAllowMatchupsConfig(props: {
 	masks?: F.FactionMask[][]
-	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][] | undefined>>
+	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>>
 	mode?: 'split' | 'both' | 'either'
 	setMode?: (mode: 'split' | 'both' | 'either') => void
 	baseQueryInput?: LQY.LayerQueryBaseInput
@@ -870,8 +870,8 @@ function FactionsAllowMatchupsConfig(props: {
 	React.useImperativeHandle(props.ref, () => ({
 		clear: (ephemeral) => {
 			if (ephemeral) return
-			props.setMasks(undefined)
-			props.setMode?.('split')
+			props.setMasks([])
+			props.setMode?.('either')
 		},
 		focus() {
 			innerRef.current?.focus()
@@ -1156,15 +1156,19 @@ function FactionMaskConfig(props: {
 
 	const mask = props.value ?? {}
 
-	const allPopulated = Object.values(responses).every(res => !!res.data)
+	const allPopulated = Object.values(responses).every(res => !!res)
 
 	// Get available options from the query context
 	const { alliances, factions, units } = React.useMemo(() => {
+		const coalesceErrors = (data: ReturnType<typeof useLayerComponent>['data']) => {
+			if (!Array.isArray(data)) return []
+			return data
+		}
 		if (!allPopulated) return { alliances: [], factions: [], units: [] }
 		return {
-			alliances: Arr.union(responses.alliance1Res.data!, responses.alliance2Res.data!),
-			factions: Arr.union(responses.faction1Res.data!, responses.faction2Res.data!),
-			units: Arr.union(responses.unit1Res.data!, responses.unit2Res.data!),
+			alliances: Arr.union(coalesceErrors(responses.alliance1Res.data), coalesceErrors(responses.alliance2Res.data)),
+			factions: Arr.union(coalesceErrors(responses.faction1Res.data), coalesceErrors(responses.faction2Res.data)),
+			units: Arr.union(coalesceErrors(responses.unit1Res.data), coalesceErrors(responses.unit2Res.data)),
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [...Object.values(responses), allPopulated])

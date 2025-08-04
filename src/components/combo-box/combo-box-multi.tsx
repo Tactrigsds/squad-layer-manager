@@ -11,7 +11,6 @@ import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
-	allowEmpty?: boolean
 	className?: string
 	title: string
 	inputValue?: string

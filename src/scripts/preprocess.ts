@@ -1,4 +1,3 @@
-import { sleep } from '@/lib/async'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
@@ -192,7 +191,6 @@ async function populateLayersTable(
 	// -------- process layers --------
 	ctx.log.info('Truncating layers table')
 	ctx.layerDb().run(sql`DELETE FROM ${LC.layers} `)
-	ctx.layerDb().run(sql`DELETE FROM ${LC.layerStrIds} `)
 	let chunkCount = 1
 	const seenIds: Set<string> = new Set()
 	await Rx.lastValueFrom(finalLayers.pipe(
@@ -205,7 +203,6 @@ async function populateLayersTable(
 				}
 				seenIds.add(layer.id)
 			}
-			await ctx.layerDb().insert(LC.layerStrIds).values(buf.map(layer => ({ id: LC.packId(layer), idStr: layer.id })))
 			await ctx.layerDb().insert(LC.layers).values(buf.map(layer => LC.toRow(layer, ctx, components)))
 			chunkCount++
 		}),

@@ -16,6 +16,7 @@
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",
 		"rcon:test": "NODE_ENV=development vitest 'src/lib/rcon'",
+		"preprocess": "LOG_LEVEL_OVERRIDE=info tsx --tsconfig tsconfig.node.json src/scripts/preprocess.ts",
 		"check-layer-compat": "tsx --tsconfig tsconfig.node.json src/scripts/check-layer-compat.ts ./broken-layers.csv"
 	},
 	"dependencies": {

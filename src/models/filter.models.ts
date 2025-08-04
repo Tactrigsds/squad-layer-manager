@@ -1,26 +1,17 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Arr from '@/lib/array'
+import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
+import type { SQL } from 'drizzle-orm'
 import deepEqual from 'fast-deep-equal'
 import { z } from 'zod'
+import * as Zus from 'zustand'
 import * as LC from './layer-columns'
 
-export const COMPOSITE_COLUMNS = z.enum(['Factions'])
-export const COMPOSITE_COLTYPES = z.enum(['factions'])
-type CompositeColType = z.infer<typeof COMPOSITE_COLTYPES>
 export type ComparisonType = {
-	coltype: LC.ColumnType | CompositeColType
+	coltype: LC.ColumnType
 	code: string
 	displayName: string
 	default?: boolean
-}
-
-export function getColumnTypeWithComposite(
-	name: string,
-	cfg = LC.BASE_COLUMN_CONFIG,
-) {
-	if (name === 'Factions') return 'factions'
-	return LC.getColumnDef(name, cfg)?.type
 }
 
 export const COMPARISON_TYPES = [
@@ -32,25 +23,24 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'string', code: 'eq', displayName: '=' },
 	{ coltype: 'string', code: 'neq', displayName: '!=' },
 	{ coltype: 'boolean', code: 'is-true', displayName: 'true' },
-	{
-		coltype: 'factions',
-		code: 'factions:allow-matchups',
-		displayName: 'Matchups',
-	},
 ] as const satisfies ComparisonType[]
 
 export const DEFAULT_COMPARISONS = {
 	float: 'inrange',
 	string: 'eq',
 	boolean: 'is-true',
-	factions: 'factions:allow-matchups',
 } satisfies Record<
-	Exclude<LC.ColumnType, 'integer'> | CompositeColType,
+	Exclude<LC.ColumnType, 'integer'>,
 	ComparisonCode
 >
+export function getColumnTypeWithComposite(column: string, cfg = LC.BASE_COLUMN_CONFIG) {
+	const colDef = LC.getColumnDef(column, cfg)
+	if (!colDef) return undefined
+	return colDef.type
+}
 
 export function getDefaultComparison(
-	columnType: LC.ColumnType | CompositeColType,
+	columnType: LC.ColumnType,
 ) {
 	const result = DEFAULT_COMPARISONS[columnType as keyof typeof DEFAULT_COMPARISONS]
 	if (!result) throw new Error(`No default comparison for ${columnType}`)
@@ -79,6 +69,11 @@ export type FilterNode =
 		neg: boolean
 		filterId: string
 	}
+	| {
+		type: 'allow-matchups'
+		allowMatchups: FactionsAllowMatchups
+		neg: boolean
+	}
 
 export type EditableFilterNode =
 	| {
@@ -100,6 +95,11 @@ export type EditableFilterNode =
 		type: 'apply-filter'
 		neg: boolean
 		filterId?: string
+	}
+	| {
+		type: 'allow-matchups'
+		allowMatchups: FactionsAllowMatchups
+		neg: boolean
 	}
 
 export type BlockTypeEditableFilterNode = Extract<
@@ -207,9 +207,7 @@ export const FACTION_MODE = z.enum(['split', 'both', 'either'])
 export type FactionMaskMode = z.infer<typeof FACTION_MODE>
 
 // --------  factions --------
-export const FactionsAllowMatchupsComparisonSchema = z.object({
-	code: z.literal('factions:allow-matchups'),
-	column: z.literal('Factions'),
+export const FactionsAllowMatchupsSchema = z.object({
 	allMasks: z
 		.array(z.array(FactionMaskSchema))
 		.refine((teams) => teams.length > 0 && teams.length <= 2, {
@@ -219,9 +217,7 @@ export const FactionsAllowMatchupsComparisonSchema = z.object({
 	mode: FACTION_MODE.optional(),
 })
 
-export type FactionsAllowMatchupsComparison = z.infer<
-	typeof FactionsAllowMatchupsComparisonSchema
->
+export type FactionsAllowMatchups = z.infer<typeof FactionsAllowMatchupsSchema>
 
 // --------  factionsend --------
 
@@ -236,7 +232,6 @@ export const ComparisonSchema = z
 		EqualComparison,
 		NotEqualComparison,
 		IsTrueComparison,
-		FactionsAllowMatchupsComparisonSchema,
 	])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {
 		message: 'Invalid comparison type',
@@ -249,11 +244,13 @@ export const BaseFilterNodeSchema = z.object({
 		z.literal('or'),
 		z.literal('comp'),
 		z.literal('apply-filter'),
+		z.literal('allow-matchups'),
 	]),
 	comp: ComparisonSchema.optional(),
 	// negations
 	neg: z.boolean().default(false),
 	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
+	allowMatchups: FactionsAllowMatchupsSchema.optional(),
 })
 
 export function isValidComparison(
@@ -266,6 +263,13 @@ export function isValidApplyFilterNode(
 	node: EditableFilterNode & { type: 'apply-filter' },
 ): node is FilterNode & { type: 'apply-filter' } {
 	return !!node.filterId
+}
+
+// TODO Implement isValidAllowMatchupsNode
+export function isValidAllowMatchupsNode(
+	node: EditableFilterNode & { type: 'allow-matchups' },
+): node is FilterNode & { type: 'allow-matchups' } {
+	return !!node.allowMatchups
 }
 
 export const FilterNodeSchema = BaseFilterNodeSchema.extend({
@@ -303,7 +307,8 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 	if (node.type === 'and' || node.type === 'or') return true
 	if (node.type === 'comp') return isValidComparison(node.comp)
 	if (node.type === 'apply-filter') return isValidApplyFilterNode(node)
-	throw new Error('Invalid node type')
+	if (node.type === 'allow-matchups') return isValidAllowMatchupsNode(node)
+	assertNever(node)
 }
 
 export function isEditableBlockNode(
@@ -315,14 +320,6 @@ export type BlockType = (typeof BLOCK_TYPES)[number]
 
 export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
 	(column: string, cfg = LC.BASE_COLUMN_CONFIG) => {
-		if (Arr.includes(COMPOSITE_COLUMNS.options, column)) {
-			return {
-				code: 'ok' as const,
-				comparisonTypes: COMPARISON_TYPES.filter(
-					(type) => type.coltype === column,
-				),
-			}
-		}
 		const colType = LC.getColumnDef(column, cfg)!.type
 		return {
 			code: 'ok' as const,
@@ -399,6 +396,7 @@ export function filterContainsId(id: string, node: FilterNode): boolean {
 		case 'or':
 			return node.children.some((n) => filterContainsId(id, n))
 		case 'comp':
+		case 'allow-matchups':
 			return false
 		case 'apply-filter':
 			return node.filterId === id
@@ -423,3 +421,38 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({
 
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+
+export type InvalidFilterNodeResult = { code: 'err:invalid-node'; errors: NodeValidationError[] }
+export type SQLConditionsResult = { code: 'ok'; condition: SQL } | InvalidFilterNodeResult
+
+type ErrorBase = {
+	path: string[]
+	msg: string
+}
+
+export type NodeValidationError =
+	| ErrorBase & { type: 'unmapped-column'; column: string }
+	| ErrorBase & {
+		type: 'unmapped-value'
+		column: string
+		value: LC.InputValue
+	}
+	| ErrorBase & {
+		type: 'recursive-filter' | 'unknown-filter'
+		filterId: string
+	}
+
+export type NodeValidationErrorStore = {
+	errors?: NodeValidationError[]
+	setErrors: (errors: NodeValidationError[]) => void
+}
+
+export function useNodeValidationErrorStore() {
+	const storeRef = useRefConstructor(() => {
+		return Zus.createStore<NodeValidationErrorStore>((set) => ({
+			errors: [],
+			setErrors: (errors) => set({ errors }),
+		}))
+	})
+	return storeRef.current
+}

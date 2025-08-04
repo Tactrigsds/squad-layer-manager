@@ -40,7 +40,11 @@ beforeAll(async () => {
 		},
 		ctx: baseQueryCtx,
 	})
-	sampleLayers = raasQuery.layers
+	if (raasQuery.code === 'ok') {
+		sampleLayers = raasQuery.layers
+	} else {
+		throw new Error('Failed to get RAAS layers for tests')
+	}
 
 	// Get Seed layers (terminating gamemode)
 	const seedQuery = await queryLayers({
@@ -50,7 +54,11 @@ beforeAll(async () => {
 		},
 		ctx: baseQueryCtx,
 	})
-	terminatingLayers = seedQuery.layers
+	if (seedQuery.code === 'ok') {
+		terminatingLayers = seedQuery.layers
+	} else {
+		throw new Error('Failed to get Seed layers for tests')
+	}
 
 	ctx = { log: baseLogger }
 })

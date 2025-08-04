@@ -24,7 +24,6 @@ export default function SelectLayersDialog(props: {
 	children: React.ReactNode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
-	selectingSingleLayerQueueItem?: boolean
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	layerQueryBaseInput: LQY.LayerQueryBaseInput

@@ -72,12 +72,15 @@ export const neq = (column?: string, value?: string) =>
 		value,
 	}) satisfies F.EditableComparison
 
-export const factionsAllowMatchups = (column?: string, allMasks?: F.FactionMask[][]) =>
+export const allowMatchups = (allMasks?: F.FactionMask[][], mode?: F.FactionMaskMode, neg?: boolean): F.EditableFilterNode =>
 	({
-		code: 'factions:allow-matchups' as const,
-		column,
-		allMasks,
-	}) satisfies F.EditableComparison
+		type: 'allow-matchups' as const,
+		neg: neg ?? false,
+		allowMatchups: {
+			allMasks: allMasks ?? [[]],
+			mode,
+		},
+	}) satisfies F.EditableFilterNode
 
 export const CODE_TO_EFB = {
 	lt,
@@ -87,5 +90,4 @@ export const CODE_TO_EFB = {
 	eq,
 	neq,
 	in: inValues,
-	'factions:allow-matchups': factionsAllowMatchups,
 }

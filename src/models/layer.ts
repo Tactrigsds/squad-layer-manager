@@ -216,15 +216,6 @@ export function parseKnownLayerId(id: string, components = StaticLayerComponents
 	}
 }
 
-export function fromPossibleRawId(id: string, components = StaticLayerComponents): UnvalidatedLayer {
-	if (id.startsWith('RAW:')) {
-		return parseRawLayerText(id.slice('RAW:'.length))!
-	}
-	const res = parseKnownLayerId(id, components)
-	if (res.code !== 'ok') throw new Error(res.msg)
-	return res.layer
-}
-
 export function swapFactionsInId(id: LayerId) {
 	const [layer, faction1, faction2] = id.split(':')
 	return `${layer}:${faction2}:${faction1}`
@@ -261,6 +252,15 @@ export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId): Unval
 		return fromPossibleRawId(unvalidatedLayerOrId)
 	}
 	return unvalidatedLayerOrId
+}
+
+export function fromPossibleRawId(id: string, components = StaticLayerComponents): UnvalidatedLayer {
+	if (id.startsWith('RAW:')) {
+		return parseRawLayerText(id.slice('RAW:'.length))!
+	}
+	const res = parseKnownLayerId(id, components)
+	if (res.code !== 'ok') throw new Error(res.msg)
+	return res.layer
 }
 
 export function getAdminSetNextLayerCommand(layerOrId: UnvalidatedLayer | LayerId) {
@@ -431,4 +431,4 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 	return parsedFactions
 }
 
-export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:US-CA:RGF-CA'
+export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:USA-CA:RGF-CA'

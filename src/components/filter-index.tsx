@@ -2,9 +2,11 @@ import * as AR from '@/app-routes.ts'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import * as Typography from '@/lib/typography'
 import * as LQY from '@/models/layer-queries.models'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
 
@@ -15,6 +17,7 @@ export default function FiltersIndex() {
 	React.useEffect(() => {
 		document.title = 'SLM - Filters'
 	}, [])
+	const cfg = ConfigClient.useEffectiveColConfig()
 
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	return (
@@ -22,7 +25,8 @@ export default function FiltersIndex() {
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typography.H2}>Filters</h2>
 				<Link className={buttonVariants({ variant: 'secondary' })} to={AR.link('/filters/new')}>
-					New Filter
+					<Icons.Plus />
+					<span>New Filter</span>
 				</Link>
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -30,7 +34,7 @@ export default function FiltersIndex() {
 					const user = PartsSys.findUser(entity.owner)
 					const onHover = () => {
 						LayerQueriesClient.prefetchLayersQuery(
-							LayerQueriesClient.getLayerQueryInput({ constraints: [LQY.getEditedFilterConstraint(entity.filter)] }),
+							LayerQueriesClient.getLayerQueryInput({ constraints: [LQY.getEditedFilterConstraint(entity.filter)] }, { cfg }),
 						)
 					}
 					return (

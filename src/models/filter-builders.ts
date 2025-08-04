@@ -71,12 +71,13 @@ export const isTrue = (column: string) =>
 		column,
 	}) satisfies F.Comparison
 
-export function factionsAllowMatchup(mode: F.FactionMaskMode, allMasks: F.FactionMask[][]) {
-	const comp: F.Comparison = {
-		code: 'factions:allow-matchups',
-		column: 'Factions',
-		mode,
-		allMasks,
+export function allowMatchups(mode: F.FactionMaskMode, allMasks: F.FactionMask[][], neg?: boolean): F.FilterNode {
+	return {
+		type: 'allow-matchups',
+		allowMatchups: {
+			mode,
+			allMasks,
+		},
+		neg: neg ?? false,
 	}
-	return comp
 }

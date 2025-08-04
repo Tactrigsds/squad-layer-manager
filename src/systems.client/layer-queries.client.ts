@@ -3,6 +3,7 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as FB from '@/models/filter-builders'
+import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
@@ -40,7 +41,10 @@ const layerCtxVersionStore = Zus.createStore<LayerCtxModifiedState>((set, get) =
 
 export const useFetchingBuffer = Zus.create(() => false)
 
-export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?: boolean }) {
+export function useLayersQuery(
+	input: LQY.LayersQueryInput,
+	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+) {
 	options = options ? { ...options } : {}
 	options.enabled = options.enabled ?? true
 	return useQuery({
@@ -50,6 +54,12 @@ export function useLayersQuery(input: LQY.LayersQueryInput, options?: { enabled?
 		enabled: options.enabled,
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input)
+			if (res?.code === 'err:invalid-node') {
+				options?.errorStore?.setState({ errors: res.errors })
+				return undefined
+			} else {
+				options?.errorStore?.setState({ errors: undefined })
+			}
 			return res
 		},
 		staleTime: Infinity,
@@ -64,24 +74,33 @@ export async function invalidateLayersQuery(input: LQY.LayersQueryInput) {
 export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	return reactQueryClient.prefetchQuery({
 		queryKey: ['layers', 'queryLayers', getDepKey({ ...input }, layerCtxVersionStore.getState().counters)],
-		queryFn: async () => sendQuery('queryLayers', input, 0),
+		queryFn: async () => {
+			const res = await sendQuery('queryLayers', input, 0)
+			if (res?.code === 'err:invalid-node') {
+				return undefined
+			}
+			return res
+		},
 		staleTime: Infinity,
 	})
 }
 
-export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts?: {
+export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts: {
+	cfg?: LC.EffectiveColumnConfig
 	selectedLayers?: L.LayerId[]
 	sort?: LQY.LayersQueryInput['sort']
 	pageSize?: number
 	pageIndex?: number
 }): LQY.LayersQueryInput {
 	const sort = opts?.sort ?? LQY.DEFAULT_SORT
-	const pageSize = opts?.pageSize ?? LQY.DEFAULT_PAGE_SIZE
-	const pageIndex = opts?.pageIndex
-	const selectedLayers = opts?.selectedLayers
+	const pageSize = opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE
+	const pageIndex = opts.pageIndex
+	const selectedLayers = opts.selectedLayers
 
 	if (selectedLayers) {
-		const filter = FB.comp(FB.inValues('id', selectedLayers))
+		const filter = FB.comp(
+			FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, opts.cfg))),
+		)
 		queryContext = {
 			...queryContext,
 			constraints: [
@@ -99,28 +118,32 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts?:
 	}
 }
 
-export function useLayerComponents(input: LQY.LayerComponentInput, options?: { enabled?: boolean }) {
+export function useLayerComponents(
+	input: LQY.LayerComponentInput,
+	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+) {
 	options ??= {}
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
 		enabled: options?.enabled,
-		queryFn: async () => sendQuery('queryLayerComponent', input),
-		staleTime: Infinity,
-	})
-}
-export function useSearchIds(input: LQY.SearchIdsInput, options?: { enabled?: boolean }) {
-	options ??= {}
-	return useQuery({
-		queryKey: ['layers', 'searchIds', useDepKey(input)],
-		enabled: options.enabled,
-		queryFn: async () => await sendQuery('searchIds', input),
+		queryFn: async () => {
+			const res = await sendQuery('queryLayerComponent', input)
+			if (Array.isArray(res)) return res
+			if (res?.code === 'err:invalid-node') {
+				options?.errorStore?.setState({ errors: res.errors })
+				return undefined
+			} else if (options.errorStore) {
+				options.errorStore.setState({ errors: undefined })
+			}
+			return res
+		},
 		staleTime: Infinity,
 	})
 }
 
 export function useLayerItemStatuses(
-	options?: { enabled?: boolean; addedInput?: LQY.LayerQueryBaseInput },
+	options?: { enabled?: boolean; addedInput?: LQY.LayerQueryBaseInput; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
 	options ??= {}
 	const input: LQY.LayerItemStatusesInput = {
@@ -146,9 +169,9 @@ export function useLayerItemStatuses(
 			}
 			const res = await sendQuery('getLayerItemStatuses', input)
 			if (!res) return
-			if (res.code !== 'ok') {
-				globalToast$.next({ variant: 'destructive', description: res.msg, title: res.code })
-				throw new Error(res.msg)
+			if (res.code === 'err:invalid-node') {
+				options?.errorStore?.setState({ errors: res.errors })
+				return undefined
 			}
 			return res.statuses
 		},

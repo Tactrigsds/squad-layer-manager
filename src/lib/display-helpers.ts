@@ -36,7 +36,7 @@ export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2) {
 }
 
 export function toFullLayerNameFromId(id: string, you?: 1 | 2) {
-	const layer = L.fromPossibleRawId(id)
+	const layer = L.toLayer(id)
 	if (L.isKnownLayer(layer)) return toFullLayerName(layer, you)
 	return layer.id.slice('RAW:'.length)
 }

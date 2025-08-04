@@ -24,17 +24,22 @@ export async function queryLayers(args: {
 	const input = { ...args.input }
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
+
+	const conditionsRes = buildConstraintSqlCondition(ctx, input)
+	if (conditionsRes.code !== 'ok') return conditionsRes
+	const { conditions: whereConditions, selectProperties } = conditionsRes
+
 	if (input.sort && input.sort.type === 'random') {
 		const { layers, totalCount } = await getRandomGeneratedLayers(
 			args.ctx,
+			E.and(...whereConditions),
+			selectProperties,
 			input.pageSize,
 			input,
 			true,
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}
-
-	const { conditions: whereConditions, selectProperties } = buildConstraintSqlCondition(ctx, input)
 
 	const includeWhere = (query: any) => {
 		if (whereConditions.length > 0) {
@@ -90,18 +95,18 @@ export async function layerExists({
 	input: LQY.LayerExistsInput
 	ctx: CS.LayerQuery
 }) {
-	const packedIds = LC.packLayers(input)
+	const packedIds = LC.packValidLayers(input)
 	const results = await ctx
 		.layerDb()
 		.select(LC.selectViewCols(['id'], ctx))
 		.from(LC.layersView(ctx))
 		.where(E.inArray(LC.viewCol('id', ctx), packedIds))
-	const existsMap = new Map(results.map((result) => [result.id, true]))
+	const existsMap = new Set(results.map((result) => LC.unpackId(result.id as number)))
 
 	return {
 		code: 'ok' as const,
-		results: packedIds.map((id) => ({
-			id: LC.unpackId(id),
+		results: input.map((id) => ({
+			id: id,
 			exists: existsMap.has(id),
 		})),
 	}
@@ -113,7 +118,12 @@ export async function queryLayerComponent(args: {
 }) {
 	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
 	const input = args.input
-	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
+	const conditionsRes = buildConstraintSqlCondition(ctx, input)
+	if (conditionsRes.code !== 'ok') return conditionsRes
+	const { conditions: whereConditions } = conditionsRes
+	const colDef = LC.getColumnDef(input.column, ctx.effectiveColsConfig)
+	if (!colDef) return { code: 'err:unknown-column' as const }
+
 	const res = (await ctx.layerDb().selectDistinct({ [input.column]: LC.viewCol(input.column, ctx) })
 		.from(LC.layersView(ctx))
 		.where(E.and(...whereConditions)))
@@ -121,117 +131,75 @@ export async function queryLayerComponent(args: {
 	return res as string[]
 }
 
-export async function searchIds({ ctx: ctx, input }: { ctx: CS.LayerQuery; input: LQY.SearchIdsInput }) {
-	const { conditions: whereConditions } = buildConstraintSqlCondition(ctx, input)
-
-	const results = await ctx
-		.layerDb()
-		.select({ id: LC.layerStrIds.idStr })
-		.from(LC.layerStrIds)
-		.leftJoin(LC.layersView(ctx), E.eq(LC.viewCol('id', ctx), LC.layerStrIds.id))
-		.where(E.and(E.like(LC.layerStrIds.idStr, `%${input.queryString}%`), ...whereConditions))
-		.limit(15)
-
-	return {
-		code: 'ok' as const,
-		ids: results.map(r => r.id),
-	}
-}
-
-type SQLConditionsResult = { code: 'ok'; condition: SQL } | { code: 'err:recursive-filter' | 'err:unknown-filter'; msg: string }
-
 // reentrantFilterIds are IDs that cannot be present in this node,
 // as their presence would cause infinite recursion
 export function getFilterNodeSQLConditions(
 	ctx: CS.Log & CS.Filters & CS.LayerDb,
 	node: F.FilterNode,
+	path: string[],
 	reentrantFilterIds: string[],
-): SQLConditionsResult {
+): F.SQLConditionsResult {
+	const errors: F.NodeValidationError[] = []
 	let condition: SQL | undefined
 	if (node.type === 'comp') {
+		path = [...path, 'comp']
 		const comp = node.comp!
-		const dbVal = (v: string | number | boolean | null) => LC.dbValue(comp.column, v, ctx)
-		const dbVals = (vs: (string | number | boolean | null)[]) => vs.map(v => dbVal(v))
+		const dbVal = (v: LC.InputValue) => {
+			let dbValue = LC.dbValue(comp.column, v, ctx)
+			if (LC.isUnmappedDbValue(dbValue)) {
+				errors.push({ type: 'unmapped-value', path, column: comp.column, value: v, msg: `Value ${v} is not mapped for ${comp.column}` })
+				dbValue = null
+			}
+			return dbValue as LC.DbValue
+		}
+		const dbVals = (vs: (string | number | boolean | null)[]) => {
+			const dbValues: LC.DbValueResult[] = []
+			for (const v of vs) {
+				const res = LC.dbValue(comp.column, v, ctx)
+				if (LC.isUnmappedDbValue(res)) {
+					errors.push({ type: 'unmapped-value', path, column: comp.column, value: v, msg: 'Value is not mapped to a database column' })
+					dbValues.push(null)
+				} else {
+					dbValues.push(res)
+				}
+			}
+			return dbValues
+		}
+		const colDef = LC.getColumnDef(comp.column, ctx.effectiveColsConfig)
+		if (!colDef) {
+			errors.push({ type: 'unmapped-column', column: comp.column, path, msg: `Column ${comp.column} is not mapped` })
+			return {
+				code: 'err:invalid-node',
+				errors,
+			}
+		}
+		const column = LC.viewCol(comp.column, ctx)
 		switch (comp.code) {
 			case 'eq': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.eq(column, dbVal(comp.value))!
 				break
 			}
 			case 'neq': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.ne(column, dbVal(comp.value))!
 				break
 			}
 			case 'in': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.inArray(column, dbVals(comp.values))!
 				break
 			}
 			case 'notin': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.notInArray(column, dbVals(comp.values))!
 				break
 			}
-			case 'factions:allow-matchups': {
-				const mode = comp.mode ?? 'either' as const
-				switch (mode) {
-					case 'both': {
-						if (comp.allMasks[0].length > 0) {
-							condition = E.and(
-								E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
-								E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
-							)
-						} else {
-							condition = sql`1 = 1`
-						}
-						break
-					}
-					case 'either': {
-						if (comp.allMasks[0].length > 0) {
-							condition = E.or(
-								E.and(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
-								E.and(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
-							)
-						} else {
-							condition = sql`1 = 1`
-						}
-						break
-					}
-					case 'split': {
-						if (comp.allMasks[0].length > 0 && comp.allMasks[1].length > 0) {
-							condition = E.or(
-								E.and(
-									E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
-									E.or(...comp.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
-								),
-								E.and(
-									E.or(...comp.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 1, ctx))),
-									E.or(...comp.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, ctx))),
-								),
-							)
-						} else {
-							condition = sql`1 = 1`
-						}
-						break
-					}
-					default:
-						assertNever(mode)
-				}
-				break
-			}
 			case 'gt': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.gt(column, dbVal(comp.value))!
 				break
 			}
 			case 'lt': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.lt(column, dbVal(comp.value))!
 				break
 			}
 			case 'inrange': {
-				const column = LC.viewCol(comp.column, ctx)
 				if (comp.range[0] === undefined) condition = E.lte(column, comp.range[1]!)
 				else if (comp.range[1] === undefined) condition = E.gte(column, comp.range[0]!)
 				else {
@@ -241,7 +209,6 @@ export function getFilterNodeSQLConditions(
 				break
 			}
 			case 'is-true': {
-				const column = LC.viewCol(comp.column, ctx)
 				condition = E.eq(column, 1)!
 				break
 			}
@@ -249,41 +216,104 @@ export function getFilterNodeSQLConditions(
 				assertNever(comp)
 		}
 	}
+	if (node.type === 'allow-matchups') {
+		const config = node.allowMatchups
+		path = [...path, 'allowMatchups']
+		const mode = config.mode ?? 'either' as const
+		switch (mode) {
+			case 'both': {
+				if (config.allMasks[0].length > 0) {
+					condition = E.and(
+						E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
+						E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+					)
+				} else {
+					condition = sql`1 = 1`
+				}
+				break
+			}
+			case 'either': {
+				if (config.allMasks[0].length > 0) {
+					condition = E.or(
+						E.and(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
+						E.and(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+					)
+				} else {
+					condition = sql`1 = 1`
+				}
+				break
+			}
+			case 'split': {
+				if (config.allMasks[0].length > 0 && config.allMasks[1].length > 0) {
+					condition = E.or(
+						E.and(
+							E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
+							E.or(...config.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+						),
+						E.and(
+							E.or(...config.allMasks[1].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
+							E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+						),
+					)
+				} else {
+					condition = sql`1 = 1`
+				}
+				break
+			}
+			default:
+				assertNever(mode)
+		}
+	}
+
 	if (node.type === 'apply-filter') {
+		path = [...path, 'filterId']
 		if (reentrantFilterIds.includes(node.filterId)) {
-			return {
-				code: 'err:recursive-filter',
+			errors.push({
+				path,
+				filterId: node.filterId,
+				type: 'recursive-filter',
 				msg: 'Filter is mutually recursive via filter: ' + node.filterId,
+			})
+		} else {
+			const entity = ctx.filters.get(node.filterId)
+			if (!entity) {
+				errors.push({
+					path,
+					filterId: node.filterId,
+					type: 'unknown-filter',
+					msg: `Filter ${node.filterId} doesn't exist`,
+				})
+			} else {
+				const filter = F.FilterNodeSchema.parse(entity.filter)
+				const res = getFilterNodeSQLConditions(ctx, filter, path, [...reentrantFilterIds, node.filterId])
+				if (res.code !== 'ok') return res
+				condition = res.condition
 			}
 		}
-		const entity = ctx.filters.get(node.filterId)
-		if (!entity) {
-			console.trace('unknown filter ', node.filterId, ctx.filters)
-			return {
-				code: 'err:unknown-filter',
-				msg: `Filter ${node.filterId} doesn't exist`,
-			}
-		}
-		const filter = F.FilterNodeSchema.parse(entity.filter)
-		const res = getFilterNodeSQLConditions(ctx, filter, [
-			...reentrantFilterIds,
-			node.filterId,
-		])
-		if (res.code !== 'ok') return res
-		condition = res.condition
 	}
 
 	if (F.isBlockNode(node)) {
 		const childConditions: SQL<unknown>[] = []
-		const childResults = node.children.map((node) => getFilterNodeSQLConditions(ctx, node, reentrantFilterIds))
+		path = [...path, 'children']
+		const childResults = node.children.map((node, i) => getFilterNodeSQLConditions(ctx, node, [...path, i.toString()], reentrantFilterIds))
 		for (const childResult of childResults) {
-			if (childResult.code !== 'ok') return childResult
-			childConditions.push(childResult.condition)
+			if (childResult.code !== 'ok') {
+				errors.push(...childResult.errors)
+			} else {
+				childConditions.push(childResult.condition)
+			}
 		}
 		if (node.type === 'and') {
 			condition = E.and(...childConditions)!
 		} else if (node.type === 'or') {
 			condition = E.or(...childConditions)!
+		}
+	}
+
+	if (errors.length > 0) {
+		return {
+			code: 'err:invalid-node' as const,
+			errors,
 		}
 	}
 
@@ -303,15 +333,16 @@ function buildConstraintSqlCondition(
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
-		let res: SQLConditionsResult
+		let res: F.SQLConditionsResult
 		switch (constraint.type) {
 			case 'filter-anon':
-				res = getFilterNodeSQLConditions(ctx, constraint.filter, [])
+				res = getFilterNodeSQLConditions(ctx, constraint.filter, [i.toString()], [])
 				break
 			case 'filter-entity':
 				res = getFilterNodeSQLConditions(
 					ctx,
 					FB.applyFilter(constraint.filterEntityId),
+					[i.toString()],
 					[],
 				)
 				break
@@ -323,7 +354,7 @@ function buildConstraintSqlCondition(
 		}
 		if (res.code !== 'ok') {
 			// TODO: pass error back instead
-			throw new Error('error building constraint SQL condition: ' + JSON.stringify(res))
+			return res
 		}
 		switch (constraint.applyAs) {
 			case 'field':
@@ -336,7 +367,7 @@ function buildConstraintSqlCondition(
 				assertNever(constraint.applyAs)
 		}
 	}
-	return { conditions, selectProperties }
+	return { code: 'ok' as const, conditions, selectProperties }
 }
 
 export async function getLayerItemStatuses(args: {
@@ -385,13 +416,13 @@ export async function getLayerItemStatuses(args: {
 					continue
 				}
 				if (constraint.type === 'filter-anon') {
-					const res = getFilterNodeSQLConditions(ctx, constraint.filter, [])
+					const res = getFilterNodeSQLConditions(ctx, constraint.filter, [constraint.id], [])
 					if (res.code !== 'ok') return res
 					selectExpr[constraint.id] = res.condition
 					continue
 				}
 				if (constraint.type === 'filter-entity') {
-					const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [])
+					const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [constraint.id], [])
 					if (res.code !== 'ok') return res
 					filterConditionResults.set(constraint.id, res.condition)
 					selectExpr[constraint.id] = res.condition
@@ -517,7 +548,7 @@ function getRepeatSQLConditions(
 	ctx: CS.EffectiveColumnConfig & CS.LayerItemsState,
 	cursorIndex: number,
 	rule: LQY.RepeatRule,
-): SQLConditionsResult {
+): F.SQLConditionsResult {
 	const values = new Set<number>()
 	const valuesA = new Set<number>()
 	const valuesB = new Set<number>()
@@ -538,7 +569,9 @@ function getRepeatSQLConditions(
 						layer[rule.field]
 						&& (rule.targetValues?.includes(layer[rule.field]!) ?? true)
 					) {
-						values.add(LC.dbValue(rule.field, layer[rule.field]!, ctx))
+						const value = LC.dbValue(rule.field, layer[rule.field]!, ctx)
+						if (LC.isUnmappedDbValue(value)) break
+						values.add(value as number)
 					}
 					break
 				case 'Faction': {
@@ -548,7 +581,9 @@ function getRepeatSQLConditions(
 						const value = layer[column]
 						const values = team === 'A' ? valuesA : valuesB
 						if (value && (!LQY.valueFilteredByTargetValues(rule, value))) {
-							values.add(LC.dbValue(column, value, ctx))
+							const dbValue = LC.dbValue(column, value, ctx)
+							if (LC.isUnmappedDbValue(dbValue)) return
+							values.add(dbValue as number)
 						}
 					}
 					addApplicable('A')
@@ -561,7 +596,9 @@ function getRepeatSQLConditions(
 						const alliance = layer[column]
 						const values = team === 'A' ? valuesA : valuesB
 						if (!LQY.valueFilteredByTargetValues(rule, alliance)) {
-							values.add(LC.dbValue(column, alliance, ctx))
+							const dbValue = LC.dbValue(column, alliance, ctx)
+							if (LC.isUnmappedDbValue(dbValue)) return
+							values.add(dbValue as number)
 						}
 					}
 					addApplicable('A')
@@ -617,15 +654,14 @@ function getRepeatSQLConditions(
 
 type GenLayerOutput<ReturnLayers extends boolean> = ReturnLayers extends true ? { layers: PostProcessedLayer[]; totalCount: number }
 	: { ids: L.LayerId[]; totalCount: number }
-export async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
+async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	ctx: CS.LayerQuery,
+	p_condition: SQL<unknown> | undefined,
+	selectProperties: any,
 	numLayers: number,
 	input: LQY.LayerQueryBaseInput,
 	returnLayers: ReturnLayers,
 ): Promise<GenLayerOutput<ReturnLayers>> {
-	const { conditions, selectProperties } = buildConstraintSqlCondition(ctx, input)
-	const p_condition = conditions.length > 0 ? E.and(...conditions) as SQL<unknown> : sql`1=1`
-
 	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
 
 	if (totalCount === 0) {
@@ -767,23 +803,44 @@ export const queries = {
 	queryLayers,
 	layerExists,
 	queryLayerComponent: queryLayerComponent,
-	searchIds,
 	getLayerItemStatuses,
 }
 
-function factionMaskToSqlCondition(mask: F.FactionMask, team: 1 | 2, ctx: CS.EffectiveColumnConfig) {
+function factionMaskToSqlCondition(
+	mask: F.FactionMask,
+	team: 1 | 2,
+	path: string[],
+	errors: F.NodeValidationError[],
+	ctx: CS.EffectiveColumnConfig,
+) {
+	const getVals = (column: string, values: string[]) => {
+		const dbValues = LC.dbValues(column, values, ctx)
+		for (let i = 0; i < values.length; i++) {
+			if (LC.isUnmappedDbValue(dbValues[i])) {
+				errors.push({
+					column,
+					type: 'unmapped-value',
+					msg: `Invalid value for ${column}: ${values[i]}`,
+					value: values[i],
+					path,
+				})
+				dbValues[i] = -1
+			}
+		}
+		return dbValues as number[]
+	}
 	const conditions: (SQL<unknown> | undefined)[] = []
 	if (mask.alliance && mask.alliance.length > 0) {
 		const colName = `Alliance_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.alliance, ctx)))
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.alliance)))
 	}
 	if (mask.faction && mask.faction.length > 0) {
 		const colName = `Faction_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.faction, ctx)))
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.faction)))
 	}
 	if (mask.unit && mask.unit.length > 0) {
 		const colName = `Unit_${team}`
-		conditions.push(E.inArray(LC.viewCol(colName, ctx), LC.dbValues(colName, mask.unit, ctx)))
+		conditions.push(E.inArray(LC.viewCol(colName, ctx), getVals(colName, mask.unit)))
 	}
 
 	return conditions.length > 0 ? E.and(...conditions) : sql`1=1`

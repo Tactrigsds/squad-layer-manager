@@ -29,6 +29,7 @@ await DB.runTransaction(ctx, async (ctx) => {
 
 		switch (node.type) {
 			case 'apply-filter':
+			case 'allow-matchups':
 				return node
 			case 'comp':
 				if (node.comp.column === 'Level') {

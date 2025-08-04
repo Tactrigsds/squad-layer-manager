@@ -11,6 +11,7 @@ import * as DH from '@/lib/display-helpers'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
+import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -21,6 +22,7 @@ import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as Zus from 'zustand'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
+import { Focusable } from '@/lib/react'
 import { cn } from '@/lib/utils'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
@@ -227,20 +229,17 @@ export default function LayerTable(props: {
 	defaultSort?: LQY.LayersQueryInput['sort']
 	defaultColumns?: string[]
 
-	maxSelected?: number
+	editingSingleValue?: boolean
 
 	canChangeRowsPerPage?: boolean
 	canToggleColumns?: boolean
 
-	autoSelectIfSingleResult?: boolean
-
 	extraPanelItems?: React.ReactNode
+	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>
 }) {
-	const maxSelected = props.maxSelected ?? Infinity
 	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
 
 	const canToggleColumns = props.canToggleColumns ?? true
-	const autoSelectIfSingleResult = props.autoSelectIfSingleResult ?? false
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const pageIndex = props.pageIndex
 
@@ -328,12 +327,13 @@ export default function LayerTable(props: {
 				}
 			}
 
-			const updatedSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
+			let updatedSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
 			if (updatedSelectedIds.length === 0) {
 				setShowSelectedLayers(false)
 			}
-			if (updatedSelectedIds.length > maxSelected) {
-				updatedSelectedIds.splice(0, updatedSelectedIds.length - maxSelected)
+			if (props.editingSingleValue && updatedSelectedIds.length > 0) {
+				updatedSelectedIds = updatedSelectedIds.slice(updatedSelectedIds.length - 1)
+				if (updatedSelectedIds.length > 0) rawSetDialogRef.current?.setInput(updatedSelectedIds[0])
 			}
 			const now = Date.now()
 			for (const id of Object.keys(newValues)) {
@@ -347,11 +347,7 @@ export default function LayerTable(props: {
 					insertionTimes.current[id] = now
 				}
 			}
-
 			updatedSelectedIds.sort((a, b) => (insertionTimes.current[a] ?? now) - (insertionTimes.current[b] ?? now))
-			if (updatedSelectedIds.length > maxSelected) {
-				updatedSelectedIds.splice(0, updatedSelectedIds.length - maxSelected)
-			}
 			return updatedSelectedIds
 		})
 	}
@@ -385,6 +381,7 @@ export default function LayerTable(props: {
 	}
 
 	const queryInput = LayerQueriesClient.getLayerQueryInput(props.baseInput ?? {}, {
+		cfg,
 		pageIndex,
 		selectedLayers: showSelectedLayers ? props.selected : undefined,
 		pageSize,
@@ -395,7 +392,7 @@ export default function LayerTable(props: {
 	// 	debugger
 	// 	prevQueryInput.current = queryInput
 	// }
-	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
+	const layersRes = LayerQueriesClient.useLayersQuery(queryInput, { errorStore: props.errorStore })
 
 	const page = React.useMemo(() => {
 		let _page = layersRes.data
@@ -410,7 +407,7 @@ export default function LayerTable(props: {
 				)
 			) {
 				if (returnedIds.has(selectedId)) continue
-				const unvalidated = L.fromPossibleRawId(selectedId)
+				const unvalidated = L.toLayer(selectedId)
 				if (L.isKnownLayer(unvalidated)) {
 					// @ts-expect-error idc
 					_page.layers.push(unvalidated)
@@ -449,14 +446,14 @@ export default function LayerTable(props: {
 	}, [layersRes.data, showSelectedLayers, props.selected, pageIndex, pageSize, sort, now])
 
 	React.useLayoutEffect(() => {
-		if (autoSelectIfSingleResult && page?.layers.length === 1 && page.totalCount === 1) {
+		if (props.editingSingleValue && page?.layers.length === 1 && page.totalCount === 1) {
 			const layer = page.layers[0]
 			if (!props.selected.includes(layer.id)) {
 				props.setSelected([layer.id])
 			}
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [page, autoSelectIfSingleResult])
+	}, [page, props.editingSingleValue])
 
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
@@ -601,14 +598,17 @@ export default function LayerTable(props: {
 								onClick={() => {
 									if (props.resetSelected) props.resetSelected()
 									else props.setSelected([])
+
 									setShowSelectedLayers(false)
 								}}
 							>
 								Reset
 							</Button>
-							<p className="whitespace-nowrap">
-								{props.selected.length} {props.maxSelected ? ` / ${props.maxSelected}` : ''} layers selected
-							</p>
+							{!props.editingSingleValue && (
+								<p className="whitespace-nowrap">
+									{props.selected.length} layers selected
+								</p>
+							)}
 						</>
 					)}
 				</span>
@@ -658,18 +658,18 @@ export default function LayerTable(props: {
 			<div>
 				<SetRawLayerDialog
 					ref={rawSetDialogRef}
+					singleOnly={props.editingSingleValue}
 					open={rawSetDialogOpen}
 					setOpen={setRawSetDialogOpen}
+					defaultValue={props.editingSingleValue && props.selected.length === 1
+						? L.getAdminSetNextLayerCommand(props.selected[0])
+						: undefined}
 					onSubmit={layers => {
-						props.setSelected(Im.produce(selected => {
-							for (const layer of layers) {
-								if (selected.includes(layer.id)) continue
-								if (props.maxSelected && props.selected.length >= props.maxSelected) {
-									selected.shift()
-								}
-								selected.push(layer.id)
-							}
-						}))
+						if (props.editingSingleValue) {
+							props.setSelected(layers.slice(layers.length - 1).map(layer => layer.id))
+						} else {
+							props.setSelected(selected => [...selected, ...layers.map(layer => layer.id)])
+						}
 						setShowSelectedLayers(true)
 					}}
 				/>
@@ -757,13 +757,14 @@ export default function LayerTable(props: {
 	)
 }
 
-type SetRawDialogHandle = {
-	focus: () => void
+type SetRawDialogHandle = Focusable & {
+	setInput: (value: string) => void
 }
-
 function SetRawLayerDialog(props: {
 	open: boolean
 	setOpen: (update: (value: boolean) => boolean) => void
+	singleOnly?: boolean
+	defaultValue?: string
 	onSubmit: (layer: L.UnvalidatedLayer[]) => void
 	ref?: React.ForwardedRef<SetRawDialogHandle>
 }) {
@@ -780,27 +781,34 @@ function SetRawLayerDialog(props: {
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
-	React.useImperativeHandle(props.ref, () => ({
-		focus: () => {
-			inputRef.current?.focus()
-		},
-	}), [])
-
-	React.useLayoutEffect(() => {
-		if (layersKnownRes.data) {
-			if (layersKnownRes.data.code !== 'ok') {
-				throw new Error('Something went wrong')
-			}
-			setLayerFound(layersKnownRes.data.results[0].exists)
-		}
-	}, [layersKnownRes.data])
-
-	function setInputText(value: string) {
+	const setInputText = React.useCallback((value: string) => {
 		value = value.trim()
 		const layerRes = L.parseRawLayerText(value)
 		validLayerDebouncer.setValue(layerRes)
 		setValidLayer(layerRes)
-	}
+	}, [validLayerDebouncer])
+
+	React.useImperativeHandle(props.ref, () => ({
+		get isFocused() {
+			return document.activeElement === inputRef.current
+		},
+		focus() {
+			inputRef.current?.focus()
+		},
+		setInput(value: string) {
+			setInputText(value)
+			if (inputRef.current) inputRef.current.value = value
+		},
+	}), [setInputText])
+
+	React.useLayoutEffect(() => {
+		if (layersKnownRes.data) {
+			console.log(layersKnownRes.data.results)
+			setLayerFound(layersKnownRes.data.results[0].exists)
+		} else {
+			setLayerFound(false)
+		}
+	}, [layersKnownRes.data])
 
 	return (
 		props.open && (
@@ -818,17 +826,23 @@ function SetRawLayerDialog(props: {
 				<MultiLayerSetDialog open={multiSetLayerDialogOpen} setOpen={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
 				<Input
 					ref={inputRef}
+					defaultValue={props.defaultValue}
 					className="flex-1"
 					placeholder="Ex: Narva_RAAS_v1 RGF USMC or a layer id"
 					onChange={(e) => setInputText(e.target.value)}
 					rightElement={
 						<div className="flex space-x-1 items-center">
-							<Label title="Layer exists in the database" className={validLayerDebounced && layerFound ? 'visible' : 'invisible'}>
+							<Label
+								title="Layer exists in the database"
+								data-layerFound={validLayerDebounced && layerFound}
+								className="invisible data-[layerFound=true]:visible"
+							>
 								<Icons.CheckSquare className="text-info" />
 							</Label>
 							<Button
 								variant="ghost"
-								className="h-6 w-6"
+								className="h-6 w-6 data-[singleOnly=true]:invisible"
+								data-singleOnly={props.singleOnly}
 								size="icon"
 								onClick={() => {
 									setMultiSetLayerDialogOpen(true)
@@ -845,7 +859,7 @@ function SetRawLayerDialog(props: {
 					size="icon"
 					onClick={() => {
 						props.onSubmit([validLayer!])
-						inputRef.current!.value = ''
+						if (!props.singleOnly) inputRef.current!.value = ''
 						inputRef.current!.focus()
 					}}
 				>
