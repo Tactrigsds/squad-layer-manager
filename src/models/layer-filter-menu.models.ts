@@ -21,6 +21,11 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 	const colConfig = ConfigClient.useEffectiveColConfig()
 	const store = React.useMemo(() => (
 		Zus.createStore<FilterMenuStore>((set, get) => {
+			if (!colConfig) {
+				throw new Error(
+					"colConfig is undefined when creating filter menu store. this shouldn't be possible. if it is we need to be smarter about how we use this store to avoid stale references",
+				)
+			}
 			const items = getDefaultFilterMenuItemState(defaultFields, colConfig)
 			const filter = getFilterFromComparisons(items)
 			const siblingFilters = getSiblingFiltersForMenuItems(items)
@@ -115,7 +120,7 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 			}
 		})
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	), [colConfig])
+	), [])
 	return store
 }
 
@@ -128,7 +133,6 @@ export function getDefaultFilterMenuItemState(
 	config?: LQY.EffectiveColumnAndTableConfig,
 ): Record<keyof L.KnownLayer | string, F.EditableComparison> {
 	const extraItems: Record<string | keyof L.KnownLayer, F.EditableComparison> = {
-		Size: EFB.eq('Size', defaultFields['Size']),
 		Layer: EFB.eq('Layer', defaultFields['Layer']),
 		Map: EFB.eq('Map', defaultFields['Map']),
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
@@ -136,13 +140,13 @@ export function getDefaultFilterMenuItemState(
 		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
 		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
 		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
-		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_2'] ?? undefined),
+		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_1'] ?? undefined),
 		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
 		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 	}
 
-	if (config?.extraLayerSelectMenuItems) {
-		for (const obj of config.extraLayerSelectMenuItems) {
+	if (config?.extraFilterMenuItems) {
+		for (const obj of config.extraFilterMenuItems) {
 			extraItems[obj.column!] = obj
 		}
 	}
