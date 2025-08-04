@@ -115,7 +115,7 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 			}
 		})
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	), [])
+	), [colConfig])
 	return store
 }
 
