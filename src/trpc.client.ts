@@ -1,21 +1,20 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
-import * as ConfigClient from '@/systems.client/config.client'
-import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
-import { formatVersion } from './lib/versioning'
-
-import superjson from 'superjson'
-
 import * as AR from '@/app-routes'
+import { globalToast$ } from '@/hooks/use-global-toast'
 import type { AppRouter } from '@/server/router'
+import * as ConfigClient from '@/systems.client/config.client'
+import * as ReactRx from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
 import { QueryClient } from '@tanstack/react-query'
-import { atom, getDefaultStore } from 'jotai'
+import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
+import superjson from 'superjson'
 import { sleep } from './lib/async'
+import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
 const wsUrl = `${wsHostname}${AR.route('/trpc')}`
 
-export const trpcConnectedAtom = atom(null as boolean | null)
-const defaultStore = getDefaultStore()
+const [_trpcConnected$, setTrpcConnected] = createSignal<boolean>()
+export const [useTrpcConnected, trpcConnected$] = ReactRx.bind(_trpcConnected$, false)
 
 const link = wsLink<AppRouter>({
 	client: createWSClient({
@@ -37,10 +36,10 @@ const link = wsLink<AppRouter>({
 		},
 		onClose: (error) => {
 			console.log('WebSocket connection closed: ', JSON.stringify(error))
-			defaultStore.set(trpcConnectedAtom, false)
+			setTrpcConnected(false)
 		},
 		onOpen: async () => {
-			defaultStore.set(trpcConnectedAtom, true)
+			setTrpcConnected(true)
 			console.log('WebSocket connection opened')
 			ConfigClient.invalidateConfig()
 			const config = await ConfigClient.fetchConfig()

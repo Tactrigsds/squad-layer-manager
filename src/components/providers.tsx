@@ -7,7 +7,6 @@ import * as QD from '@/systems.client/queue-dashboard'
 import { reactQueryClient } from '@/trpc.client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import * as jotai from 'jotai'
 import { ReactNode } from 'react'
 import React from 'react'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
@@ -31,14 +30,12 @@ function ProvidersInner(props: { children: ReactNode }) {
 	return (
 		<>
 			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen={true} />}
-			<jotai.Provider>
-				<TooltipProvider>
-					<DragContextProvider>
-						<AlertDialogProvider>{props.children}</AlertDialogProvider>
-					</DragContextProvider>
-				</TooltipProvider>
-				<Toaster />
-			</jotai.Provider>
+			<TooltipProvider>
+				<DragContextProvider>
+					<AlertDialogProvider>{props.children}</AlertDialogProvider>
+				</DragContextProvider>
+			</TooltipProvider>
+			<Toaster />
 		</>
 	)
 }

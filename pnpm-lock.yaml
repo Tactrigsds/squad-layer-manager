@@ -323,15 +323,6 @@ importers:
       immer:
         specifier: ^10.1.1
         version: 10.1.1
-      jotai:
-        specifier: ^2.12.5
-        version: 2.12.5(@types/react@19.1.0)(react@19.1.0)
-      jotai-immer:
-        specifier: ^0.4.1
-        version: 0.4.1(immer@10.1.1)(jotai@2.12.5(@types/react@19.1.0)(react@19.1.0))
-      jotai-trpc:
-        specifier: ^0.7.1
-        version: 0.7.1(@trpc/client@11.0.0-rc.682(@trpc/server@11.0.0-rc.682(typescript@5.7.2))(typescript@5.7.2))(@trpc/server@11.0.0-rc.682(typescript@5.7.2))(jotai@2.12.5(@types/react@19.1.0)(react@19.1.0))
       json-stringify-pretty-compact:
         specifier: ^4.0.0
         version: 4.0.0
@@ -4256,31 +4247,6 @@ packages:
 
   joi@17.13.3:
     resolution: {integrity: sha512-otDA4ldcIx+ZXsKHWmp0YizCweVRZG96J10b0FevjfuncLO1oX59THoAmHkNubYJ+9gWsYsp5k8v4ib6oDv1fA==}
-
-  jotai-immer@0.4.1:
-    resolution: {integrity: sha512-nQTt1HBKie/5OJDck1qLpV1PeBA6bjJLAczEYAx70PD8R4Mbu7gtexfBUCzJh6W6ecsOfwHksAYAesVth6SN9A==}
-    peerDependencies:
-      immer: '>=9.0.0'
-      jotai: '>=2.0.0'
-
-  jotai-trpc@0.7.1:
-    resolution: {integrity: sha512-uc0u4MJTWf/1lUxkpzI1xH7x5ELDuTmfY2uZsDPZulfBcBLVHuJFVPKLEX+582nQOxY7ekwLRD7R092rEl58YA==}
-    peerDependencies:
-      '@trpc/client': '>=10.0.0'
-      '@trpc/server': '>=10.0.0'
-      jotai: '>=2.0.0'
-
-  jotai@2.12.5:
-    resolution: {integrity: sha512-G8m32HW3lSmcz/4mbqx0hgJIQ0ekndKWiYP7kWVKi0p6saLXdSoye+FZiOFyonnd7Q482LCzm8sMDl7Ar1NWDw==}
-    engines: {node: '>=12.20.0'}
-    peerDependencies:
-      '@types/react': '>=17.0.0'
-      react: '>=17.0.0'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-      react:
-        optional: true
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -9873,22 +9839,6 @@ snapshots:
       '@sideway/address': 4.1.5
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
-
-  jotai-immer@0.4.1(immer@10.1.1)(jotai@2.12.5(@types/react@19.1.0)(react@19.1.0)):
-    dependencies:
-      immer: 10.1.1
-      jotai: 2.12.5(@types/react@19.1.0)(react@19.1.0)
-
-  jotai-trpc@0.7.1(@trpc/client@11.0.0-rc.682(@trpc/server@11.0.0-rc.682(typescript@5.7.2))(typescript@5.7.2))(@trpc/server@11.0.0-rc.682(typescript@5.7.2))(jotai@2.12.5(@types/react@19.1.0)(react@19.1.0)):
-    dependencies:
-      '@trpc/client': 11.0.0-rc.682(@trpc/server@11.0.0-rc.682(typescript@5.7.2))(typescript@5.7.2)
-      '@trpc/server': 11.0.0-rc.682(typescript@5.7.2)
-      jotai: 2.12.5(@types/react@19.1.0)(react@19.1.0)
-
-  jotai@2.12.5(@types/react@19.1.0)(react@19.1.0):
-    optionalDependencies:
-      '@types/react': 19.1.0
-      react: 19.1.0
 
   joycon@3.1.1: {}
 

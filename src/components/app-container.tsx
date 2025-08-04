@@ -4,8 +4,7 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { trpcConnectedAtom } from '@/trpc.client'
-import { useAtomValue } from 'jotai'
+import { useTrpcConnected } from '@/trpc.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
@@ -17,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
-	const trpcConnected = useAtomValue(trpcConnectedAtom)
+	const trpcConnected = useTrpcConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const serverInfoRes = SquadServerClient.useServerInfo()
 	const user = useLoggedInUser()
