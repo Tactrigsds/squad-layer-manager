@@ -15,6 +15,7 @@ const wsUrl = `${wsHostname}${AR.route('/trpc')}`
 
 const [_trpcConnected$, setTrpcConnected] = createSignal<boolean>()
 export const [useTrpcConnected, trpcConnected$] = ReactRx.bind(_trpcConnected$, false)
+trpcConnected$.subscribe()
 
 const link = wsLink<AppRouter>({
 	client: createWSClient({
