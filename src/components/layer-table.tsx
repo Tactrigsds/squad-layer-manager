@@ -534,6 +534,7 @@ export default function LayerTable(props: {
 		navigator.clipboard.writeText(text)
 		toast({ description: 'Command copied to clipboard' })
 	}
+	const toggleRandomizeId = React.useId()
 
 	return (
 		<div className="space-y-2">
@@ -625,8 +626,8 @@ export default function LayerTable(props: {
 						<Dices />
 					</Button>
 					<div className="flex items-center space-x-1">
-						<Switch disabled={showSelectedLayers} checked={randomize} onCheckedChange={() => toggleRandomize()} id="toggle-randomize" />
-						<Label htmlFor="toggle-randomize">Randomize</Label>
+						<Switch disabled={showSelectedLayers} checked={randomize} onCheckedChange={() => toggleRandomize()} id={toggleRandomizeId} />
+						<Label htmlFor={toggleRandomizeId}>Randomize</Label>
 					</div>
 					<Separator orientation="vertical" />
 
