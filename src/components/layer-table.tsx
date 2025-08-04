@@ -64,7 +64,8 @@ function buildColumn(
 			const sort = column.getIsSorted()
 			return (
 				<Button
-					className="data-[sort=true]:text-accent-foreground w-full justify-start"
+					className="data-[sort=true]:text-accent-foreground w-full justify-between"
+					size="sm"
 					data-sort={!!sort}
 					variant="ghost"
 					title={colDef.displayName}
