@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -106,7 +107,9 @@ function LayerListItem(props: QueueItemProps) {
 		? baseBackfillLayerId
 		: undefined
 
+	const isMobile = useIsMobile()
 	const style = { transform: CSS.Translate.toString(transform) }
+
 	const itemDropdown = (
 		<ItemDropdown
 			open={dropdownOpen && canEdit}
@@ -117,7 +120,8 @@ function LayerListItem(props: QueueItemProps) {
 			<Button
 				disabled={!canEdit}
 				data-canedit={canEdit}
-				className="invisible data-[canedit=true]:group-hover:visible"
+				data-mobile={isMobile}
+				className="data-[mobile=false]:invisible data-[canedit=true]:group-hover:visible"
 				variant="ghost"
 				size="icon"
 			>
