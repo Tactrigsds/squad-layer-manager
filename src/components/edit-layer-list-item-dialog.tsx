@@ -43,7 +43,7 @@ export default function EditLayerListItemDialogWrapper(props: EditLayerListItemD
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0 pb-2">
+			<DialogContent className="w-auto max-w-full min-w-0 pb-2 overflow-x-auto">
 				<DragContextProvider>
 					<EditLayerListItemDialog {...props} />
 				</DragContextProvider>

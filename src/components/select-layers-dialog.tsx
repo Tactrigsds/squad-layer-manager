@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LFM from '@/models/layer-filter-menu.models.ts'
@@ -107,7 +108,7 @@ export default function SelectLayersDialog(props: {
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
-			<DialogContent className="w-auto max-w-full min-w-0 pb-2">
+			<DialogContent className="w-auto max-w-full overflow-x-auto min-w-0 pb-2">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center space-x-2">
 						<DialogTitle>{props.title}</DialogTitle>
