@@ -14,6 +14,7 @@ export type SftpTailOptions = {
 	host: string
 	filePath: string
 	pollInterval: number
+	reconnectInterval: number
 }
 
 // TODO kind of awkward, could simplify the "options" type here
@@ -28,6 +29,7 @@ type FullSftpTailOptions = {
 		password: string
 	}
 	fetchInterval: number
+	reconnectInterval: number
 	tailLastBytes: number
 }
 
@@ -53,10 +55,11 @@ export class SftpTail extends EventEmitter {
 			ftp: { ...options, encoding: 'utf-8', timeout: 10 * 1000 },
 			fetchInterval: options.pollInterval,
 			tailLastBytes: 0,
+			reconnectInterval: options.reconnectInterval,
 		}
 
 		// Setup ssh2 client
-		this.client = new Client()
+		this.client = new Client({ captureRejections: true })
 		this.filePath = options.filePath
 		this.lastByteReceived = null
 		this.fetchLoopActive = false
@@ -73,9 +76,6 @@ export class SftpTail extends EventEmitter {
 				.digest('hex')
 				+ '.log',
 		)
-
-		// Connect.
-		await this.connect()
 
 		// Start fetch loop.
 		this.ctx.log.info('Starting fetch loop...')
@@ -95,8 +95,13 @@ export class SftpTail extends EventEmitter {
 				// Store the start time of the loop.
 				const fetchStartTime = Date.now()
 
-				// Reconnect the SFTP client in case it has disconnected.
-				await this.connect()
+				try {
+					await this.connect()
+				} catch (err) {
+					this.ctx.log.error(err, 'Failed to connect to SFTP server: %s', (err as any)?.message)
+					await this.sleep(this.options.reconnectInterval)
+					continue
+				}
 
 				// Get the size of the file on the SFTP server.
 				this.ctx.log.trace('Fetching size of file...')

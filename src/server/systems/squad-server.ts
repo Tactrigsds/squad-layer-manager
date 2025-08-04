@@ -237,7 +237,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 		password: ENV.RCON_PASSWORD,
 	})
 
-	void coreRcon.connect(ctx)
+	coreRcon.ensureConnected(ctx)
 
 	coreRcon.connected$
 		.pipe()
@@ -274,6 +274,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 			password: ENV.SQUAD_SFTP_PASSWORD,
 			filePath: ENV.SQUAD_SFTP_LOG_FILE,
 			pollInterval: ENV.SQUAD_SFTP_POLL_INTERVAL,
+			reconnectInterval: 5_000,
 		},
 	})
 

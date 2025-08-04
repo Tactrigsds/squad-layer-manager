@@ -5,6 +5,7 @@ import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Rx from 'rxjs'
+import { filterTruthy } from '../async'
 
 export type DecodedPacket = {
 	type: number
@@ -34,9 +35,7 @@ export default class Rcon extends EventEmitter {
 	}
 	public connected$ = new Rx.BehaviorSubject<boolean>(false)
 
-	private autoReconnect: boolean
 	private autoReconnectDelay: number
-	private connectionRetry: NodeJS.Timeout | undefined
 	private msgId: number
 	private responseString: { id: number; body: string }
 
@@ -52,9 +51,7 @@ export default class Rcon extends EventEmitter {
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
-		this.autoReconnect = false
 		this.autoReconnectDelay = options.autoReconnectDelay || 5000
-		this.connectionRetry = undefined
 		this.msgId = 20
 		this.responseString = { id: 0, body: '' }
 	}
@@ -66,46 +63,54 @@ export default class Rcon extends EventEmitter {
 		return ctx
 	}
 
-	async connect(ctx: CS.Log & { module?: string }) {
+	ensureConnectedSub?: Rx.Subscription
+	ensureConnected(ctx: CS.Log & { module?: string }) {
+		if (this.ensureConnectedSub) return
+		const connect = () => {
+		}
 		ctx = this.addLogProps(ctx)
-		return new Promise<void>((resolve, reject) => {
-			if (this.client && this.connected && !this.client.destroyed) {
-				return reject(new Error('Rcon.connect() Rcon already connected.'))
-			}
-			this.removeAllListeners('auth')
-			this.once('auth', () => {
-				ctx.log.trace(`Connected to: ${this.host}:${this.port}`)
-				clearTimeout(this.connectionRetry)
+		const sub = new Rx.Subscription()
+		this.ensureConnectedSub = sub
+		sub.add(
+			Rx.fromEvent(this, 'auth').subscribe(() => {
+				ctx.log.info(`RCON Connected to: ${this.host}:${this.port}`)
 				this.connected$.next(true)
-				resolve()
-			})
-			ctx.log.trace(`Connecting to: ${this.host}:${this.port}`)
-			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
-			this.autoReconnect = true
-			this.client?.destroy()
-			this.client = net
-				.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
-				.on('data', (data) => this.#onData(ctx, data))
-				.on('end', () => this.#onClose(ctx))
-				.on('error', (error) => this.#onNetError(ctx, error))
-		}).catch((error) => {
-			ctx.log.error(`Rcon.connect() ${error}`)
-		})
+			}),
+		)
+		sub.add(
+			this.connected$.pipe(
+				// switchMap means a successful connection will cancel reconnect attempts
+				Rx.switchMap((connected) => {
+					if (connected) return Rx.EMPTY
+					// try to connect immediately, and then every `autoReconnectDelay` ms
+					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
+				}),
+			).subscribe(() => {
+				this.client?.destroy()
+				this.client = net
+					.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
+					.on('data', (data) => this.#onData(ctx, data))
+					.on('end', () => this.#onClose(ctx))
+					.on('error', (error) => this.#onNetError(ctx, error))
+				connect()
+			}),
+		)
 	}
 
-	async disconnect(ctx: CS.Log): Promise<void> {
+	connect(ctx: CS.Log) {
+		this.ensureConnected(ctx)
+		return Rx.firstValueFrom(this.connected$.pipe(filterTruthy()))
+	}
+
+	disconnect(ctx: CS.Log) {
 		ctx = this.addLogProps(ctx)
-		return new Promise<void>((resolve) => {
-			ctx.log.trace(`Disconnecting from: ${this.host}:${this.port}`)
-			clearTimeout(this.connectionRetry)
-			this.removeAllListeners()
-			this.autoReconnect = false
-			this.client?.end()
-			this.connected$.next(false)
-			resolve()
-		}).catch((error) => {
-			ctx.log.error(`Rcon.disconnect() ${error}`)
-		})
+		ctx.log.trace(`Disconnecting from: ${this.host}:${this.port}`)
+		this.removeAllListeners()
+		this.ensureConnectedSub?.unsubscribe()
+		this.ensureConnectedSub = undefined
+		this.client?.destroy()
+		this.connected$.next(false)
+		this.connected$.unsubscribe()
 	}
 
 	async execute(_ctx: CS.Log, body: string) {
@@ -124,25 +129,24 @@ export default class Rcon extends EventEmitter {
 				if (length > SM.RCON_MAX_BUF_LEN) {
 					return resolve({ code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` })
 				} else {
-					const outputData = (data: any) => {
-						clearTimeout(timeOut)
-						resolve({ code: 'ok' as const, data })
-					}
-					const timedOut = () => {
-						this.removeListener(listenerId, outputData)
-						return reject({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
-					}
 					if (this.msgId > 80) this.msgId = 20
 					const listenerId = `response${this.msgId}`
-					const timeOut = setTimeout(timedOut, 10000)
-					this.once(listenerId, outputData)
+					const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
+					const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
 					this.#send(ctx, body, this.msgId)
 					this.msgId++
+					Rx.firstValueFrom(Rx.race(timeout$, response$))
+						.catch(err => reject(err))
+						.then((res) => {
+							if (!res) return
+							resolve(res)
+						})
 				}
-			}).then((res) => {
-				if (res.code === 'err:rcon') ctx.log.error(res.msg)
-				return res
 			})
+				.then((res) => {
+					if (res.code === 'err:rcon') ctx.log.error(res.msg)
+					return res
+				})
 		})()
 	}
 
@@ -246,26 +250,14 @@ export default class Rcon extends EventEmitter {
 	#onClose(ctx: CS.Log): void {
 		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Socket closed.`)
-		this.#cleanUp(ctx)
+		this.connected$.next(false)
 	}
 
 	#onNetError(ctx: CS.Log, error: Error): void {
 		ctx = this.addLogProps(ctx)
 		ctx.log.error(error, `node:net error`)
 		this.emit('RCON_ERROR', error)
-		this.#cleanUp(ctx)
-	}
-
-	#cleanUp(ctx: CS.Log): void {
-		ctx = this.addLogProps(ctx)
 		this.connected$.next(false)
-		this.connected$.complete()
-		this.removeAllListeners()
-		clearTimeout(this.connectionRetry)
-		if (this.autoReconnect) {
-			ctx.log.info(`Sleeping ${this.autoReconnectDelay}ms before reconnecting.`)
-			this.connectionRetry = setTimeout(() => this.connect(ctx), this.autoReconnectDelay)
-		}
 	}
 
 	#bufToHexString(buf: Buffer): string {

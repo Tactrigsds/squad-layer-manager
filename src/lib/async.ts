@@ -76,6 +76,10 @@ export function toCold<T>(task: () => Rx.ObservableInput<T>) {
 	})
 }
 
+export function filterTruthy() {
+	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
+}
+
 /**
  * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
  * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
