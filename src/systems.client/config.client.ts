@@ -2,6 +2,7 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
+import React from 'react'
 
 const baseQuery = {
 	queryKey: ['config'],
@@ -33,10 +34,12 @@ export function invalidateConfig() {
 
 export function useEffectiveColConfig(): LQY.EffectiveColumnAndTableConfig | undefined {
 	const config = useConfig()
-	if (!config) return
 
-	return {
-		...LC.getEffectiveColumnConfig(config.extraColumnsConfig),
-		...config.layerTable,
-	}
+	return React.useMemo(() => {
+		if (!config) return
+		return {
+			...LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+			...config.layerTable,
+		}
+	}, [config])
 }
