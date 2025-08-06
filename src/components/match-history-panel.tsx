@@ -3,9 +3,8 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from '@/hooks/use-toast'
+import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
-import { OneToManyMap } from '@/lib/one-to-many-map'
-import * as Typo from '@/lib/typography'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
@@ -193,25 +192,9 @@ export default function MatchHistoryPanel() {
 									layerId: entry.layerId,
 								}
 								const layerItemId = LQY.toLayerItemId(layerItem)
-								const extraLayerStyles: Record<string, string> = {}
-								// ------- resolve hovered styles ------
-								{
-									const relevantDesciptorsForHovered = (hoveredConstraintItemId
-										&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
-
-									let violatedProperties: OneToManyMap<string, LQY.ViolationDescriptor> | undefined
-									if (relevantDesciptorsForHovered) {
-										violatedProperties = LQY.resolveViolatedLayerProperties(relevantDesciptorsForHovered, entry.ordinal % 2)
-									}
-
-									if (violatedProperties) {
-										for (const v of violatedProperties.keys()) {
-											extraLayerStyles[v] = Typo.ConstraintViolationDescriptor
-										}
-									}
-								}
 								const localBlockedConstraints = layerStatusesRes?.blocked.get(layerItemId)
 								const localDescriptors = violationDescriptors?.get(layerItemId)
+								const isHovered = hoveredConstraintItemId === layerItemId
 								const violationDisplayElt = localBlockedConstraints && (
 									<ConstraintViolationDisplay
 										violated={Array.from(localBlockedConstraints).map(id => constraints.find(c => c.id === id)).filter(c =>
@@ -221,7 +204,15 @@ export default function MatchHistoryPanel() {
 										itemId={layerItemId}
 									/>
 								)
+								const relevantDesciptorsForHovered = (hoveredConstraintItemId
+									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
 
+								const extraLayerStyles = DH.getAllExtraStyles(
+									entry.layerId,
+									entry.ordinal,
+									globalSettings.displayTeamsNormalized,
+									(isHovered ? localDescriptors : undefined) ?? relevantDesciptorsForHovered,
+								)
 								const layer = L.toLayer(entry.layerId)
 								let outcomeDisp: React.ReactNode
 								if (entry.status === 'in-progress') {
@@ -293,7 +284,7 @@ export default function MatchHistoryPanel() {
 
 								const [leftTeam, rightTeam] = getTeamsDisplay(
 									layer,
-									entry.ordinal % 2,
+									entry.ordinal,
 									globalSettings.displayTeamsNormalized,
 									extraLayerStyles,
 								)

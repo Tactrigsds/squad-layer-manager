@@ -77,3 +77,18 @@ export function getColumnExtraStyles(
 		return Typo.ConstraintViolationDescriptor
 	}
 }
+
+export function getAllExtraStyles(
+	_layer: L.UnvalidatedLayer | L.LayerId,
+	teamParity: number | undefined,
+	displayLayersNormalized: boolean,
+	descriptors?: LQY.ViolationDescriptor[],
+) {
+	const layer = L.toLayer(_layer)
+	const extraStyles: Record<string, string | undefined> = {}
+	if (!descriptors) return extraStyles
+	for (const key of Object.keys(layer)) {
+		extraStyles[key] = getColumnExtraStyles(key as keyof L.UnvalidatedLayer, teamParity, displayLayersNormalized, descriptors)
+	}
+	return extraStyles
+}
