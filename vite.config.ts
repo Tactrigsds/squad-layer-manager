@@ -14,7 +14,7 @@ const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 export default defineConfig({
 	plugins: [
 		ViteEjsPlugin({
-			OVERRIDE_REACT_SCAN_ENABLED: ENV.REACT_SCAN_ENABLED_OVERRIDE,
+			REACT_SCAN_ENABLED_OVERRIDE: ENV.REACT_SCAN_ENABLED_OVERRIDE,
 			NODE_ENV: ENV.NODE_ENV,
 		}),
 		react(),

@@ -64,8 +64,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{serverInfoRes?.code === 'ok' && (
 						<>
 							{trpcConnected === false && (
-								<Alert variant="destructive" className="hidden md:flex items-center space-x-2 py-1 px-2">
-									<AlertTitle className="text-xs font-medium">Websocket Disconnected</AlertTitle>
+								<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
+									<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
 								</Alert>
 							)}
 							<h3 className="hidden sm:block text-sm sm:text-base font-medium truncate max-w-[120px] sm:max-w-[200px] lg:max-w-none">
