@@ -2,13 +2,23 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig, UserConfig } from 'vite'
+import { ViteEjsPlugin } from 'vite-plugin-ejs'
 import * as AR from './src/app-routes.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
 
+ensureEnvSetup()
+const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
+
 // https://vitejs.dev/config/
 export default defineConfig({
-	plugins: [react()],
+	plugins: [
+		ViteEjsPlugin({
+			OVERRIDE_REACT_SCAN_ENABLED: ENV.REACT_SCAN_ENABLED_OVERRIDE,
+			NODE_ENV: ENV.NODE_ENV,
+		}),
+		react(),
+	],
 	server: process.env.NODE_ENV === 'development' ? buildDevServerConfig() : undefined,
 	envPrefix: 'PUBLIC_',
 	build: {
@@ -27,6 +37,7 @@ export default defineConfig({
 
 function buildDevServerConfig(): UserConfig['server'] {
 	ensureEnvSetup()
+	// don't resolve these in prod
 	const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 	const proxy = Object.fromEntries(
 		Object.values(AR.routes).map((r) => {

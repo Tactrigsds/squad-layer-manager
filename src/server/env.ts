@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
-import { HumanTime, NormedUrl, ParsedIntSchema } from '../lib/zod'
+import { HumanTime, NormedUrl, ParsedIntSchema, StrFlag } from '../lib/zod'
 import * as Paths from './paths'
 import * as Cli from './systems/cli.ts'
 
@@ -13,6 +13,8 @@ export const groups = {
 
 		PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
 		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
+
+		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
 	},
 
 	db: {
