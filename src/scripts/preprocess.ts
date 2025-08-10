@@ -68,7 +68,7 @@ async function main() {
 		ctx.layerDb().run('VACUUM')
 		ctx.layerDb().$client.close()
 	}
-	ctx.log.info('Done! Wrote layers to %s', ENV.LAYER_DB_CONFIG_PATH)
+	ctx.log.info('Done! Wrote layers to %s', ENV.LAYERS_DB_PATH)
 }
 
 function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
