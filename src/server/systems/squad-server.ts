@@ -74,11 +74,9 @@ export const warnAllAdmins = C.spanOp(
 
 async function* watchLayersStatus({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
 	yield await fetchLayersStatusExt(ctx)
-	ctx.log.info('aborted: %s', signal!.aborted)
 	for await (const res of toAsyncGenerator(layersStatusExt$.pipe(withAbortSignal(signal!)))) {
 		yield res
 	}
-	ctx.log.info('watchlayerStatus ended')
 }
 
 async function* watchServerInfo({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
