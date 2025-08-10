@@ -73,7 +73,7 @@ export default class Rcon extends EventEmitter {
 		this.ensureConnectedSub = sub
 		sub.add(
 			Rx.fromEvent(this, 'auth').subscribe(() => {
-				ctx.log.info(`RCON Connected to: ${this.host}:${this.port}`)
+				ctx.log.info('RCON Connected to: %s', `${this.host}:${this.port}`)
 				this.connected$.next(true)
 			}),
 		)
@@ -86,6 +86,7 @@ export default class Rcon extends EventEmitter {
 					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
 				}),
 			).subscribe(() => {
+				ctx.log.info('Attempting to connect to RCON: %s', `${this.host}:${this.port}`)
 				this.client?.destroy()
 				this.client = net
 					.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
@@ -104,7 +105,7 @@ export default class Rcon extends EventEmitter {
 
 	disconnect(ctx: CS.Log) {
 		ctx = this.addLogProps(ctx)
-		ctx.log.trace(`Disconnecting from: ${this.host}:${this.port}`)
+		ctx.log.info('Disconnecting from: %s', `${this.host}:${this.port}`)
 		this.removeAllListeners()
 		this.ensureConnectedSub?.unsubscribe()
 		this.ensureConnectedSub = undefined
