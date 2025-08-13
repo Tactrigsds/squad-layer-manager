@@ -1,4 +1,4 @@
-import scoreRanges from '$root/data/score-ranges.json'
+import scoreRanges from '$root/assets/score-ranges.json'
 import { upperSnakeCaseToPascalCase } from '@/lib/string.ts'
 import * as Typography from '@/lib/typography'
 import * as FB from '@/models/filter-builders'
@@ -100,12 +100,14 @@ function LayerDetailsDisplay(
 					unit={layerDetails.team1}
 					faction={layerDetails.layer.Faction_1}
 					role={layerDetails.layerConfig?.teams[0].role}
+					tickets={layerDetails.layerConfig?.teams[0].tickets}
 				/>
 				<TeamInfoOnly
 					title="Team 2"
 					unit={layerDetails.team2}
 					faction={layerDetails.layer.Faction_2}
 					role={layerDetails.layerConfig?.teams[1].role}
+					tickets={layerDetails.layerConfig?.teams[1].tickets}
 				/>
 
 				{/* Vehicles Row */}
@@ -127,18 +129,27 @@ function TeamInfoOnly({
 	unit,
 	faction,
 	role,
+	tickets,
 }: {
 	title: string
 	unit: L.FactionUnitConfig | undefined
 	faction: string
 	role?: string
+	tickets?: number
 }) {
 	return (
 		<section className="space-y-1">
 			<div className="text-sm">
-				<strong>{title}{role && `(${role})`}</strong> - {faction} ({upperSnakeCaseToPascalCase(unit?.type || 'UNKNOWN')}) -{' '}
-				<span className="font-light">{unit?.displayName || 'Unknown'}</span>
+				<strong>{title}{role && ` (${role})`}</strong> - {faction} ({upperSnakeCaseToPascalCase(unit?.type || 'UNKNOWN')})
 			</div>
+			<div className="text-sm font-light">
+				{unit?.displayName || 'Unknown'}
+			</div>
+			{tickets && (
+				<div className="text-xs text-muted-foreground">
+					<strong>Starting Tickets:</strong> {tickets}
+				</div>
+			)}
 
 			{unit && unit.characteristics && unit.characteristics.length > 0 && (
 				<div className="mt-4">
@@ -229,10 +240,8 @@ function OtherScoreRow({
 	score: number
 	scoreRange?: { min: number; max: number; field: string }
 }) {
-	// Color coding for Balance Differential only
+	// No special color coding for Balance Differential
 	const isBalanceDifferential = scoreType === 'Balance_Differential'
-	const isPositive = score > 0
-	const isNegative = score < 0
 
 	// Calculate percentage based on actual score range
 	let percentage = 0
@@ -248,34 +257,14 @@ function OtherScoreRow({
 		<div className="space-y-1">
 			<div className="flex justify-between items-center">
 				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
-				<span
-					className={`text-xs font-medium ${
-						isBalanceDifferential && isPositive
-							? 'text-blue-600'
-							: isBalanceDifferential && isNegative
-							? 'text-red-600'
-							: 'text-muted-foreground'
-					}`}
-				>
+				<span className="text-xs font-medium text-muted-foreground">
 					{score > 0 ? '+' : ''}
 					{score.toFixed(2)}
 				</span>
 			</div>
-			<div
-				className={`h-1 rounded-full ${
-					isBalanceDifferential
-						? 'bg-muted'
-						: 'bg-muted'
-				}`}
-			>
+			<div className="h-1 rounded-full bg-muted">
 				<div
-					className={`h-full rounded-full transition-all duration-200 ${
-						isBalanceDifferential && isPositive
-							? 'bg-blue-500'
-							: isBalanceDifferential && isNegative
-							? 'bg-red-500'
-							: 'bg-muted-foreground'
-					}`}
+					className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
 					style={{ width: `${Math.min(percentage, 100)}%` }}
 				/>
 			</div>

@@ -47,8 +47,6 @@ async function main() {
 	await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
 
 	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
-	await calculateScoreRanges(ctx)
-	return
 
 	L.lockStaticFactionUnitConfigs()
 	L.lockStaticLayerComponents()
@@ -69,8 +67,9 @@ async function main() {
 	childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
 
 	if (args.includes('update-layers-table')) {
-		const scoresExtracted = extractLayerScores(ctx, components)
+		const scoresExtraction = await extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
+		await scoresExtraction
 
 		await calculateScoreRanges(ctx)
 
@@ -571,7 +570,7 @@ async function calculateScoreRanges(ctx: CS.LayerDb) {
 	}
 
 	const finalScoreRanges = { regular, paired: Object.values(paired) }
-	await fsPromise.writeFile(path.join(Paths.DATA, 'score-ranges.json'), JSON.stringify(finalScoreRanges, null, 2))
+	await fsPromise.writeFile(path.join(Paths.ASSETS, 'score-ranges.json'), JSON.stringify(finalScoreRanges, null, 2))
 }
 
 const SHEETS = [
