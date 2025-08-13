@@ -31,6 +31,7 @@ import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
 import { ConstraintViolationDisplay } from './constraint-violation-display'
+import LayerInfo from './layer-info'
 import MapLayerDisplay from './map-layer-display'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
@@ -713,6 +714,11 @@ export default function LayerTable(props: {
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent>
+										<LayerInfo layerId={row.original.id}>
+											<ContextMenuItem onSelect={(e) => e.preventDefault()}>
+												Show Layer Info
+											</ContextMenuItem>
+										</LayerInfo>
 										<ContextMenuItem onClick={() => onCopySetNextLayerCommand(row)}>
 											Copy AdminSetNextLayer {props.selected.includes(row.original.id) && 'for selected'}
 										</ContextMenuItem>

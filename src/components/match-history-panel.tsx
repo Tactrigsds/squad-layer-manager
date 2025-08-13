@@ -24,6 +24,7 @@ import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintViolationDisplay } from './constraint-violation-display'
+import LayerInfo from './layer-info'
 import LayerSourceDisplay from './layer-source-display'
 import MapLayerDisplay from './map-layer-display'
 import { Badge } from './ui/badge'
@@ -361,6 +362,11 @@ export default function MatchHistoryPanel() {
 											</TableRow>
 										</ContextMenuTrigger>
 										<ContextMenuContent>
+											<LayerInfo layerId={layer.id}>
+												<ContextMenuItem onSelect={(e) => e.preventDefault()}>
+													Show Layer Info
+												</ContextMenuItem>
+											</LayerInfo>
 											<ContextMenuItem
 												onClick={() => copyHistoryEntryId()}
 											>
