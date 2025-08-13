@@ -612,19 +612,19 @@ function getRepeatSQLConditions(
 		}
 	}
 
-	if ((Array.from(values)).length === 0) {
-		return { code: 'ok' as const, condition: sql`1=1` }
-	}
-
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, cursorIndex)
 	let resultSql: SQL
 	switch (rule.field) {
 		case 'Map':
 		case 'Gamemode':
 		case 'Size':
-		case 'Layer':
+		case 'Layer': {
+			if (values.size === 0) {
+				return { code: 'ok' as const, condition: sql`1=1` }
+			}
 			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), Array.from(values))
 			break
+		}
 		case 'Faction': {
 			const teamACol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')
 			const teamBCol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')
