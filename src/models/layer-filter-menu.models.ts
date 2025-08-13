@@ -28,6 +28,7 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 					"colConfig is undefined when creating filter menu store. this shouldn't be possible. if it is we need to be smarter about how we use this store to avoid stale references",
 				)
 			}
+			const emptyItems = getDefaultFilterMenuItemState({}, colConfig)
 			const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
 			const filter = getFilterFromComparisons(defaultItems)
 			const siblingFilters = getSiblingFiltersForMenuItems(defaultItems)
@@ -120,15 +121,13 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 					)
 				},
 				resetFilter(field) {
-					const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
-					const defaultComparison = defaultItems[field]
-					if (defaultComparison) {
-						this.setComparison(field, defaultComparison)
+					const emptyComparison = emptyItems[field]
+					if (emptyComparison) {
+						this.setComparison(field, emptyComparison)
 					}
 				},
 				resetAllFilters() {
-					const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
-					Object.entries(defaultItems).forEach(([field, item]) => {
+					Object.entries(emptyItems).forEach(([field, item]) => {
 						this.setComparison(field, item)
 					})
 				},
