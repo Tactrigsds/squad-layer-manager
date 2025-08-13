@@ -1,9 +1,7 @@
-import _StaticFactionunitConfigs from '$root/assets/factionunit-configs.json'
 import * as Obj from '@/lib/object'
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import * as SLL from '@/models/squad-layer-list.models'
 import * as E from 'drizzle-orm/expressions'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -11,19 +9,6 @@ import * as L from './layer'
 
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
 export type ColumnType = z.infer<typeof COLUMN_TYPE>
-export const StaticFactionunitConfigs = _StaticFactionunitConfigs as unknown as FactionUnitConfigMapping
-
-// clear Static Factionunit Configs so we can verify that they aren't being used while preprocessing
-export function clearStaticFactionunitConfigs() {
-	Object.keys(StaticFactionunitConfigs).forEach(key => {
-		Object.defineProperty(StaticFactionunitConfigs, key as keyof typeof StaticFactionunitConfigs, {
-			get() {
-				throw new Error(`Static factionunit config '${key}' was accessed after being cleared`)
-			},
-			configurable: true,
-		})
-	})
-}
 
 export function createColumnDef<K extends L.LayerColumnKey, T extends Omit<ColumnDef, 'name'>>(name: K, def: T) {
 	return {
@@ -48,7 +33,7 @@ export const BASE_COLUMN_DEFS = {
 
 	...createColumnDef('Alliance_1', { type: 'string', displayName: 'Alliance T1', enumMapping: 'alliances' }),
 	...createColumnDef('Alliance_2', { type: 'string', displayName: 'Alliance T2', enumMapping: 'alliances' }),
-} as const satisfies Record<string, ColDef>
+} as const satisfies Record<string, ColumnDef>
 
 export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
@@ -481,95 +466,6 @@ export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, compon
 	}
 }
 
-export type LayerFactionAvailabilityEntry = {
-	Faction: string
-	Unit: string
-	allowedTeams: (1 | 2)[]
-	isDefaultUnit: boolean
-}
-
-export type FactionUnitConfig = SLL.Unit
-export type FactionUnitConfigMapping = Record<string, FactionUnitConfig>
-export type LayerDetails = {
-	layer: L.KnownLayer
-	layerConfig: LayerConfig
-	team1: FactionUnitConfig
-	team2: FactionUnitConfig
-}
-
-export function resolveLayerDetails(
-	layer: L.KnownLayer,
-	factionUnitConfigs = StaticFactionunitConfigs,
-	components = L.StaticLayerComponents,
-) {
-	const layerConfig = components.mapLayers.find(l => l.Layer === layer.Layer)!
-	const factionUnitTeam1 = resolveFactionUnit(layer.Faction_1, layer.Unit_1, 1)
-	const factionUnitTeam2 = resolveFactionUnit(layer.Faction_2, layer.Unit_2, 2)
-
-	return {
-		layer,
-		team1: factionUnitConfigs[factionUnitTeam1],
-		team2: factionUnitConfigs[factionUnitTeam2],
-	}
-
-	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
-		const teamConfig = layerConfig.teams[team - 1]
-		let size: string
-		switch (layer.Size) {
-			case 'Small':
-				size = 'S'
-				break
-			case 'Medium':
-				size = 'M'
-				break
-			case 'Large':
-				size = 'L'
-				break
-			default:
-				console.warn(`Unknown layer size: ${layer.Size}, defaulting to Small`)
-				size = 'S'
-		}
-
-		let role: string
-		switch (teamConfig.role) {
-			case 'attack':
-				role = 'O'
-				break
-			case 'defend':
-				role = 'D'
-				break
-			default:
-				role = 'O'
-		}
-
-		// TODO finish impleeementing this
-		let id = `${faction}_${size}${role}_${unit}`
-		if (layer.Gamemode === 'Seed') id += '_Seed'
-		if (layerConfig.variants.boats) id += '-Boats'
-		// what the helly
-		if (layerConfig.variants.noHeli) id += '-NoHeli'
-		return id
-	}
-}
-
-export type LayerConfig = {
-	Layer: string
-	Map: string
-	Size: string
-	Gamemode: string
-	LayerVersion: string | null
-	variants: { boats?: boolean; noHeli?: boolean }
-	hasCommander: boolean
-	persistentLightingType: string | null
-	teams: MapConfigTeam[]
-}
-
-export type MapConfigTeam = {
-	defaultFaction: string
-	tickets: number
-	role?: 'attack' | 'defend'
-}
-
 export type BaseLayerComponents = {
 	maps: Set<string>
 	alliances: Set<string>
@@ -577,14 +473,14 @@ export type BaseLayerComponents = {
 	layers: Set<string>
 	versions: Set<string | null>
 	size: Set<string>
-	mapLayers: LayerConfig[]
+	mapLayers: L.LayerConfig[]
 	factions: Set<string>
 	units: Set<string>
 	allianceToFaction: OneToManyMap<string, string>
 	factionToAlliance: Map<string, string>
 	factionToUnit: OneToManyMap<string, string>
 	factionUnitToUnitFullName: Map<string, string>
-	layerFactionAvailability: Map<string, LayerFactionAvailabilityEntry[]>
+	layerFactionAvailability: Map<string, L.LayerFactionAvailabilityEntry[]>
 }
 
 export type BaseLayerComponentsJson = {
@@ -594,14 +490,14 @@ export type BaseLayerComponentsJson = {
 	layers: string[]
 	versions: (string | null)[]
 	size: string[]
-	mapLayers: LayerConfig[]
+	mapLayers: L.LayerConfig[]
 	factions: string[]
 	units: string[]
 	allianceToFaction: Record<string, string[]>
 	factionToAlliance: Record<string, string>
 	factionToUnit: Record<string, string[]>
 	factionUnitToUnitFullName: Record<string, string>
-	layerFactionAvailability: Record<string, LayerFactionAvailabilityEntry[]>
+	layerFactionAvailability: Record<string, L.LayerFactionAvailabilityEntry[]>
 }
 
 export type LayerComponents = BaseLayerComponents & {
@@ -854,4 +750,28 @@ export function coalesceLookupErrors<Args extends any[], V>(cb: (...args: Args) 
 			throw error
 		}
 	}
+}
+
+export type PartitionedScores = {
+	other: Record<string, number>
+	diffs: Record<string, number>
+	team1: Record<string, number>
+	team2: Record<string, number>
+}
+
+export function partitionScores(layer: any, cfg: EffectiveColumnConfig) {
+	const partitioned: PartitionedScores = {
+		diffs: {},
+		team1: {},
+		team2: {},
+		other: {},
+	}
+	for (const def of Object.values(cfg.defs)) {
+		if (def.table !== 'extra-cols' || def.type !== 'float') continue
+		if (def.name.endsWith('Diff')) partitioned.diffs[def.name.replace(/_Diff$/, '')] = layer[def.name]
+		else if (def.name.endsWith('_1')) partitioned.team1[def.name.replace(/_1$/, '')] = layer[def.name]
+		else if (def.name.endsWith('_2')) partitioned.team2[def.name.replace(/_2$/, '')] = layer[def.name]
+		else partitioned.other[def.name] = layer[def.name]
+	}
+	return partitioned
 }

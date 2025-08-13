@@ -49,6 +49,7 @@ export const VehicleSchema = z.object({
 	tags: z.array(z.string()),
 	spawnCommands: z.array(z.string()),
 })
+export type Vehicle = z.infer<typeof VehicleSchema>
 
 export const UnitSchema = z.object({
 	unitObjectName: z.string(),

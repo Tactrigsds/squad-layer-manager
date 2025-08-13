@@ -1,11 +1,13 @@
+import _StaticFactionunitConfigs from '$root/assets/factionunit-configs.json'
 import _StaticLayerComponents from '$root/assets/layer-components.json'
 import * as Obj from '@/lib/object'
 import * as LC from '@/models/layer-columns'
+import * as SLL from '@/models/squad-layer-list.models'
 import * as z from 'zod'
 
 export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
 
-// clear out static layer components so we can verify that we're not using them while preprocessing
+// lock static layer components so we can verify that we're not using them while preprocessing
 export function lockStaticLayerComponents() {
 	Object.keys(StaticLayerComponents).forEach(key => {
 		Object.defineProperty(StaticLayerComponents, key as keyof typeof StaticLayerComponents, {
@@ -19,6 +21,20 @@ export function lockStaticLayerComponents() {
 
 export function setStaticLayerComponents(components: LC.LayerComponentsJson) {
 	StaticLayerComponents = components
+}
+
+export const StaticFactionunitConfigs = _StaticFactionunitConfigs as unknown as FactionUnitConfigMapping
+
+// lock Factionunit Configs so we can verify that they aren't being used while preprocessing
+export function lockStaticFactionUnitConfigs() {
+	Object.keys(StaticFactionunitConfigs).forEach(key => {
+		Object.defineProperty(StaticFactionunitConfigs, key as keyof typeof StaticFactionunitConfigs, {
+			get() {
+				throw new Error(`Static factionunit config '${key}' was accessed after being cleared`)
+			},
+			configurable: true,
+		})
+	})
 }
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
@@ -460,3 +476,92 @@ export function getFraasVariant(layer: KnownLayer) {
 }
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:USA-CA:RGF-CA'
+
+export type LayerFactionAvailabilityEntry = {
+	Faction: string
+	Unit: string
+	allowedTeams: (1 | 2)[]
+	isDefaultUnit: boolean
+}
+
+export type FactionUnitConfig = SLL.Unit
+export type FactionUnitConfigMapping = Record<string, FactionUnitConfig>
+export type LayerDetails = {
+	layer: KnownLayer
+	layerConfig: LayerConfig
+	team1: FactionUnitConfig
+	team2: FactionUnitConfig
+}
+
+export function resolveLayerDetails(
+	layer: KnownLayer,
+	factionUnitConfigs = StaticFactionunitConfigs,
+	components = StaticLayerComponents,
+) {
+	const layerConfig = components.mapLayers.find(l => l.Layer === layer.Layer)!
+	const factionUnitTeam1 = resolveFactionUnit(layer.Faction_1, layer.Unit_1, 1)
+	const factionUnitTeam2 = resolveFactionUnit(layer.Faction_2, layer.Unit_2, 2)
+
+	return {
+		layer,
+		team1: factionUnitConfigs[factionUnitTeam1],
+		team2: factionUnitConfigs[factionUnitTeam2],
+	}
+
+	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
+		const teamConfig = layerConfig.teams[team - 1]
+		let size: string
+		switch (layer.Size) {
+			case 'Small':
+				size = 'S'
+				break
+			case 'Medium':
+				size = 'M'
+				break
+			case 'Large':
+				size = 'L'
+				break
+			default:
+				console.warn(`Unknown layer size: ${layer.Size}, defaulting to Small`)
+				size = 'S'
+		}
+
+		let role: string
+		switch (teamConfig.role) {
+			case 'attack':
+				role = 'O'
+				break
+			case 'defend':
+				role = 'D'
+				break
+			default:
+				role = 'O'
+		}
+
+		// TODO finish impleeementing this
+		let id = `${faction}_${size}${role}_${unit}`
+		if (layer.Gamemode === 'Seed') id += '_Seed'
+		if (layerConfig.variants.boats) id += '-Boats'
+		// what the helly
+		if (layerConfig.variants.noHeli) id += '-NoHeli'
+		return id
+	}
+}
+
+export type LayerConfig = {
+	Layer: string
+	Map: string
+	Size: string
+	Gamemode: string
+	LayerVersion: string | null
+	variants: { boats?: boolean; noHeli?: boolean }
+	hasCommander: boolean
+	persistentLightingType: string | null
+	teams: MapConfigTeam[]
+}
+
+export type MapConfigTeam = {
+	defaultFaction: string
+	tickets: number
+	role?: 'attack' | 'defend'
+}

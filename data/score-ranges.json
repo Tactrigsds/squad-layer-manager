@@ -1,0 +1,41 @@
+{
+  "regular": [
+    {
+      "min": -32.396531942551576,
+      "max": 32.396531942551576,
+      "field": "Balance_Differential"
+    },
+    {
+      "min": 0.1045194983143983,
+      "max": 11.850093077799745,
+      "field": "Asymmetry_Score"
+    }
+  ],
+  "paired": [
+    {
+      "min": 12,
+      "max": 50.2,
+      "field": "Logistics"
+    },
+    {
+      "min": 35.25,
+      "max": 121.5,
+      "field": "Transportation"
+    },
+    {
+      "min": 1,
+      "max": 50.00000000000001,
+      "field": "Armor"
+    },
+    {
+      "min": 6.5,
+      "max": 70.74583333333334,
+      "field": "Anti-Infantry"
+    },
+    {
+      "min": 7.948272367926356,
+      "max": 98.60657210780192,
+      "field": "ZERO_Score"
+    }
+  ]
+}

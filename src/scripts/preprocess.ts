@@ -1,4 +1,3 @@
-import * as Arr from '@/lib/array'
 import * as MapUtils from '@/lib/map'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
@@ -13,6 +12,7 @@ import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
 import * as LayerDb from '@/server/systems/layer-db.server'
+import { getScoreRanges } from '@/systems.shared/layer-queries.shared'
 import { parse } from 'csv-parse'
 import { sql } from 'drizzle-orm'
 import http from 'follow-redirects'
@@ -46,10 +46,12 @@ async function main() {
 	ensureLoggerSetup()
 	await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
 
-	LC.clearStaticFactionunitConfigs()
-	L.lockStaticLayerComponents()
-
 	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
+	await calculateScoreRanges(ctx)
+	return
+
+	L.lockStaticFactionUnitConfigs()
+	L.lockStaticLayerComponents()
 	await ensureAllSheetsDownloaded(ctx)
 
 	const data = await parseSquadLayerSheetData(ctx)
@@ -69,7 +71,8 @@ async function main() {
 	if (args.includes('update-layers-table')) {
 		const scoresExtracted = extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
-		await scoresExtracted
+
+		await calculateScoreRanges(ctx)
 
 		ctx.layerDb().run('PRAGMA wal_checkpoint')
 		ctx.layerDb().run('PRAGMA optimize')
@@ -221,14 +224,6 @@ async function populateLayersTable(
 	ctx.log.info(`Inserting ${chunkCount * 500} rows took ${elapsedSecondsInsert} s`)
 }
 
-type FactionUnit = `${string}:${string}`
-type BattlegroupsData = {
-	allianceToFaction: OneToManyMap<string, string>
-	factionToUnit: OneToManyMap<string, string>
-	factionUnitToUnitFullName: Map<FactionUnit, string>
-}
-
-type BaseLayer = L.KnownLayer
 // {
 //     "factionId": "ADF",
 //     "defaultUnit": "ADF_LO_CombinedArms",
@@ -244,14 +239,14 @@ type BaseLayer = L.KnownLayer
 
 async function parseSquadLayerSheetData(ctx: CS.Log) {
 	const json = SLL.RootSchema.parse(
-		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'layers.json'), 'utf-8').then(res => res)),
+		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then(res => res)),
 	)
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(ctx, json)
-	const availability: Map<string, LC.LayerFactionAvailabilityEntry[]> = new Map()
+	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
 	const sizes = await getMapLayerSizes()
 
-	const mapLayers: LC.LayerConfig[] = []
+	const mapLayers: L.LayerConfig[] = []
 	for (const map of json.Maps) {
 		if (map.levelName.toLowerCase().includes('tutorial')) continue
 		const segments = L.parseLayerStringSegment(map.levelName)
@@ -273,7 +268,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 			persistentLightingType: map.persistentLightingType,
 		}
 
-		const availForLayer: LC.LayerFactionAvailabilityEntry[] = []
+		const availForLayer: L.LayerFactionAvailabilityEntry[] = []
 		availability.set(map.levelName, availForLayer)
 		if (segments.layerType === 'training') {
 			availForLayer.push(
@@ -312,10 +307,10 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				boats: map.factions.some(f => f.defaultUnit.includes('Boats')),
 				noHeli: map.factions.some(f => f.defaultUnit.includes('NoHeli')),
 			},
-			teams: teamConfigs.map((t): LC.MapConfigTeam => {
+			teams: teamConfigs.map((t): L.MapConfigTeam => {
 				const defaultFaction = t.defaultFactionUnit.split('_')[0]
 				const faction = map.factions.find(f => f.factionId === defaultFaction)
-				let role: LC.MapConfigTeam['role']
+				let role: L.MapConfigTeam['role']
 				if (L.ASYMM_GAMEMODES.includes(segments.Gamemode)) {
 					if (t.isAttackingTeam) role = 'attack'
 					if (t.isDefendingTeam) role = 'defend'
@@ -342,7 +337,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		}
 	}
 
-	const baseLayers: BaseLayer[] = []
+	const baseLayers: L.KnownLayer[] = []
 	const idToIdx: Map<string, number> = new Map()
 	const components: LC.LayerComponents = LC.buildFullLayerComponents(
 		{
@@ -445,7 +440,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	}
 	baseLayers.push(...layersToAdd)
 
-	const mapLayersToAdd: LC.LayerConfig[] = []
+	const mapLayersToAdd: L.LayerConfig[] = []
 	for (const layerConfig of components.mapLayers) {
 		if (layerConfig.Gamemode !== 'RAAS') continue
 		const newLayerConfig = { ...layerConfig }
@@ -455,7 +450,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	}
 	components.mapLayers.push(...mapLayersToAdd)
 
-	const addedAvailability = new Map<string, LC.LayerFactionAvailabilityEntry[]>()
+	const addedAvailability = new Map<string, L.LayerFactionAvailabilityEntry[]>()
 	for (const [key, entries] of components.layerFactionAvailability.entries()) {
 		if (!key.includes('RAAS')) continue
 
@@ -473,7 +468,7 @@ function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
 	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
 
 	// Extract data from LayerListData.Units
-	for (const [unitKey, unit] of Object.entries(root.Units)) {
+	for (const unit of Object.values(root.Units)) {
 		const alliance = unit.alliance
 		const faction = unit.factionID
 		const unitName = upperSnakeCaseToPascalCase(unit.type)
@@ -495,13 +490,6 @@ function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
 	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName }
 }
 
-function preprocessLevel(level: string) {
-	level = level.replace(/\s/g, '')
-	if (level.startsWith('Sanxian')) return 'Sanxian'
-	if (level.startsWith('Belaya')) return 'Belaya'
-	if (level.startsWith('Albasrah')) return level.replace('Albasrah', 'AlBasrah')
-	return level
-}
 function getMapLayerSizes() {
 	return new Promise<Map<string, string>>((resolve, reject) => {
 		const sizeMapping: Map<string, string> = new Map()
@@ -518,96 +506,6 @@ function getMapLayerSizes() {
 			})
 			.on('error', (error) => {
 				console.error('Error parsing map layers CSV:', error)
-				reject(error)
-			})
-	})
-}
-
-function parseBgLayerAvailability(ctx: CS.Log) {
-	return new Promise<{ availability: Map<string, LC.LayerFactionAvailabilityEntry[]> }>((resolve, reject) => {
-		const entries: Map<string, LC.LayerFactionAvailabilityEntry[]> = new Map()
-		const col = {
-			Layer: 2,
-			Faction: 3,
-			Unit: 4,
-			UnitFullName: 5,
-			TeamOptions: 6,
-			sheetLink: 8,
-		}
-
-		let currentLayers: string[] | undefined
-		let currentFaction: string | undefined
-		let i = 0
-		fs.createReadStream(path.join(Paths.DATA, 'bg-layer-availability.csv'))
-			.pipe(parse({ columns: false }))
-			.on('data', (row: string[]) => {
-				if (i < 5) {
-					i++
-					return
-				}
-
-				if (row[col.Layer]) {
-					if (row[col.Layer].toLowerCase().startsWith('tutorial')) {
-						currentLayers = undefined
-						return
-					}
-					currentLayers = [row[col.Layer]]
-					entries.set(row[col.Layer], [])
-					const segments = L.parseLayerStringSegment(row[col.Layer])
-					if (!segments) throw new Error(`Invalid layer string segment: ${currentLayers}`)
-					if (segments.Gamemode === 'RAAS') {
-						const fraasLayer = row[col.Layer].replace('RAAS', 'FRAAS')
-						entries.set(fraasLayer, [])
-						currentLayers.push(fraasLayer)
-					}
-					return
-				}
-				let unit: string | undefined
-				let isDefaultUnit = false
-				if (!currentLayers) return
-				for (const currentLayer of currentLayers) {
-					if (currentLayer.startsWith('JensensRange')) {
-						currentFaction = row[col.UnitFullName]?.split(' ')?.[0]
-						unit = 'CombinedArms'
-					} else if (row[col.Faction]) {
-						currentFaction = row[col.Faction]
-
-						const url = new URL(row[col.sheetLink])
-						const gid = parseInt(url.hash.replace('#gid=', '').replace(/\?range.+$/, ''))
-						unit = SHEETS.find(sheet => sheet.gid === gid)!.unit
-						if (!unit) throw new Error(`Unit ${row[col.UnitFullName]} not found for faction ${row[col.Faction]}`)
-						isDefaultUnit = true
-					} else if (row[col.Unit]) {
-						unit = row[col.Unit]
-					} else {
-						return
-					}
-					const teams: (1 | 2)[] = []
-					if (row[col.TeamOptions].includes('1')) teams.push(1)
-					if (row[col.TeamOptions].includes('2')) teams.push(2)
-					const entry = { Layer: currentLayers!, Faction: currentFaction!, Unit: unit, allowedTeams: teams, isDefaultUnit }
-					entries.get(currentLayer)!.push(entry)
-					if (currentLayer.toLowerCase().includes('sanxian') || currentLayer.toLowerCase().includes('pacificprovinggrounds')) {
-						// RGF and PLA are excluded on sanxian, so we add them here. if we add them in addition to both a blufor and CCP faction we should get the correct availability
-						if (entry.Faction === 'PLA' || entry.Faction === 'USMC') {
-							for (const faction of ['RGF', 'VDV']) {
-								const existing = entries.get(currentLayer)!.find(e => e.Faction === faction && e.Unit === unit)
-								if (!existing) {
-									entries.get(currentLayer)!.push({ ...entry, Faction: faction })
-								} else {
-									existing.allowedTeams = Array.from(new Set([...existing.allowedTeams, ...teams]))
-								}
-							}
-						}
-					}
-				}
-			})
-			.on('end', () => {
-				ctx.log.info(`Parsed ${entries.size} layers for availability`)
-				resolve({ availability: entries })
-			})
-			.on('error', (error) => {
-				ctx.log.error('Error parsing battlegroups CSV:', error)
 				reject(error)
 			})
 	})
@@ -652,132 +550,35 @@ function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
 	})
 }
 
+async function calculateScoreRanges(ctx: CS.LayerDb) {
+	const scoreRanges = await getScoreRanges({ ctx })
+	const paired: Record<string, {
+		min: number
+		max: number
+		field: string
+	}> = {}
+	const regular: { min: number; max: number; field: string }[] = []
+	for (const range of scoreRanges) {
+		if (!range.field.match(/_(1|2)$/)) {
+			if (!range.field.endsWith('_Diff')) regular.push(range)
+			continue
+		}
+
+		const pairedField = range.field.replace(/_(1|2)$/, '')
+		if (!paired[pairedField]) paired[pairedField] = { min: Infinity, max: -Infinity, field: pairedField }
+		paired[pairedField].min = Math.min(range.min, paired[pairedField].min)
+		paired[pairedField].max = Math.max(range.max, paired[pairedField].max)
+	}
+
+	const finalScoreRanges = { regular, paired: Object.values(paired) }
+	await fsPromise.writeFile(path.join(Paths.DATA, 'score-ranges.json'), JSON.stringify(finalScoreRanges, null, 2))
+}
+
 const SHEETS = [
-	{
-		name: 'battlegroups',
-		filename: 'battlegroups.csv',
-		gid: 1796438364,
-	},
-	{
-		name: 'alliances',
-		filename: 'alliances.csv',
-		gid: 337815939,
-	},
-	{
-		name: 'biomes',
-		filename: 'biomes.csv',
-		gid: 1025614852,
-	},
-	{
-		name: 'bgDescriptions',
-		filename: 'bg-descriptions.csv',
-		gid: 104824254,
-	},
-	{
-		name: 'bgLayerAvailability',
-		filename: 'bg-layer-availability.csv',
-		gid: 1881530590,
-	},
 	{
 		name: 'mapLayers',
 		filename: 'map-layers.csv',
 		gid: 1212962563,
-	},
-	{
-		name: 'Assets:AirAssault:Large:Offense',
-		filename: 'assets-airassault-large-offense.csv',
-		unit: 'Amphibious',
-		gid: 196602319,
-	},
-	{
-		name: 'Assets:AmphibiousAssault:Large:Offense',
-		filename: 'assets-amphibious-large-offense.csv',
-		unit: 'AmphibiousAssault',
-		gid: 1592545787,
-	},
-	{
-		name: 'Assets:CombinedArms:Large:Offense',
-		filename: 'assets-combinedarms-large-offense.csv',
-		unit: 'CombinedArms',
-		gid: 55130916,
-	},
-	{
-		name: 'Assets:CombinedArms:Large:Defense',
-		filename: 'assets-combinedarms-large-defense.csv',
-		unit: 'CombinedArms',
-		gid: 1024747126,
-	},
-	{
-		name: 'Assets:LightInfantry:Large:Offense',
-		filename: 'assets-lightinfantry-large-offense.csv',
-		unit: 'LightInfantry',
-		gid: 706333626,
-	},
-	{
-		name: 'Assets:LightInfantry:Large:Defense',
-		filename: 'assets-lightinfantry-large-defense.csv',
-		unit: 'LightInfantry',
-		gid: 1650555364,
-	},
-	{
-		name: 'Assets:Mechanized:Large:Offense',
-		filename: 'assets-mechanized-large-offense.csv',
-		unit: 'Mechanized',
-		gid: 996007242,
-	},
-	{
-		name: 'Assets:Mechanized:Large:Defense',
-		filename: 'assets-mechanized-large-defense.csv',
-		unit: 'Mechanized',
-		gid: 1128826127,
-	},
-	{
-		name: 'Assets:Motorized:Large:Offense',
-		filename: 'assets-motorized-large-offense.csv',
-		unit: 'Motorized',
-		gid: 131120776,
-	},
-	{
-		name: 'Assets:Motorized:Large:Defense',
-		filename: 'assets-motorized-large-defense.csv',
-		unit: 'Motorized',
-		gid: 1681257950,
-	},
-	{
-		name: 'Assets:Support:Large:Offense',
-		filename: 'assets-support-large-offense.csv',
-		unit: 'Support',
-		gid: 2080033084,
-	},
-	{
-		name: 'Assets:Support:Large:Defense',
-		filename: 'assets-support-large-defense.csv',
-		unit: 'Support',
-		gid: 1622797716,
-	},
-	{
-		name: 'Assets:CombinedArms:Medium:Offense',
-		filename: 'assets-combinedarms-medium-offense.csv',
-		unit: 'CombinedArms',
-		gid: 970369378,
-	},
-	{
-		name: 'Assets:CombinedArms:Medium:Defense',
-		filename: 'assets-combinedarms-medium-defense.csv',
-		unit: 'CombinedArms',
-		gid: 188928736,
-	},
-	{
-		name: 'Assets:CombinedArms:Small',
-		filename: 'assets-combinedarms-small.csv',
-		unit: 'CombinedArms',
-		gid: 2069827913,
-	},
-	{
-		name: 'Assets:CombinedArms:Seed',
-		filename: 'assets-combinedarms-seed.csv',
-		unit: 'CombinedArms',
-		gid: 1905776366,
 	},
 ]
 

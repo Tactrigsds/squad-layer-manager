@@ -10,6 +10,7 @@ import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
+import { nullable } from 'zod'
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -845,4 +846,31 @@ function factionMaskToSqlCondition(
 	}
 
 	return conditions.length > 0 ? E.and(...conditions) : sql`1=1`
+}
+
+export async function getScoreRanges({ ctx }: { ctx: CS.LayerDb }) {
+	const ops: Promise<{
+		min: number
+		max: number
+		field: string
+	}>[] = []
+	for (const col of Object.values(ctx.effectiveColsConfig.defs)) {
+		if (col.type !== 'float' || col.table !== 'extra-cols') continue
+		ops.push(getRangeForExtraCol({ input: { colDef: col }, ctx }).then(range => ({ ...range, field: col.name })))
+	}
+	return await Promise.all(ops)
+}
+
+async function getRangeForExtraCol({ input, ctx }: { input: { colDef: LC.CombinedColumnDef }; ctx: CS.LayerDb }) {
+	const result = await ctx
+		.layerDb()
+		.select({
+			min: sql<number>`MIN(${LC.viewCol(input.colDef.name, ctx)})`,
+			max: sql<number>`MAX(${LC.viewCol(input.colDef.name, ctx)})`,
+		})
+		.from(LC.layersView(ctx))
+		.where(E.isNotNull(LC.viewCol(input.colDef.name, ctx)))
+
+	const [{ min, max }] = await result
+	return { min, max }
 }
