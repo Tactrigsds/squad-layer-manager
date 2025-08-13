@@ -15,6 +15,8 @@ export type FilterMenuStore = {
 	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof L.KnownLayer | string, F.EditableComparison>>>
 	swapTeams: () => void
 	setComparison: (field: keyof L.KnownLayer | string, update: React.SetStateAction<F.EditableComparison>) => void
+	resetFilter: (field: keyof L.KnownLayer | string) => void
+	resetAllFilters: () => void
 }
 
 export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
@@ -26,12 +28,12 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 					"colConfig is undefined when creating filter menu store. this shouldn't be possible. if it is we need to be smarter about how we use this store to avoid stale references",
 				)
 			}
-			const items = getDefaultFilterMenuItemState(defaultFields, colConfig)
-			const filter = getFilterFromComparisons(items)
-			const siblingFilters = getSiblingFiltersForMenuItems(items)
+			const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
+			const filter = getFilterFromComparisons(defaultItems)
+			const siblingFilters = getSiblingFiltersForMenuItems(defaultItems)
 
 			return {
-				menuItems: items,
+				menuItems: defaultItems,
 				filter,
 				siblingFilters: siblingFilters,
 				setMenuItems: (update) => {
@@ -116,6 +118,19 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 							},
 						),
 					)
+				},
+				resetFilter(field) {
+					const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
+					const defaultComparison = defaultItems[field]
+					if (defaultComparison) {
+						this.setComparison(field, defaultComparison)
+					}
+				},
+				resetAllFilters() {
+					const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
+					Object.entries(defaultItems).forEach(([field, item]) => {
+						this.setComparison(field, item)
+					})
 				},
 			}
 		})

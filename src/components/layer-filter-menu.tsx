@@ -5,6 +5,7 @@ import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import * as LFM from '@/models/layer-filter-menu.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
@@ -41,7 +42,10 @@ export default function LayerFilterMenu(
 			<div>
 				<Button
 					variant="secondary"
-					onClick={() => clearAll$Ref.current.next()}
+					onClick={() => {
+						props.filterMenuStore.getState().resetAllFilters()
+						clearAll$Ref.current.next()
+					}}
 				>
 					Clear All
 				</Button>
@@ -85,7 +89,7 @@ function LayerFilterMenuItem(
 	)
 	React.useEffect(() => {
 		const sub = props.clearAll$.subscribe(() => {
-			ref.current?.clear()
+			ref.current?.clear(true)
 		})
 		return () => sub.unsubscribe()
 	}, [props.clearAll$])
@@ -124,7 +128,16 @@ function LayerFilterMenuItem(
 				disabled={!F.editableComparisonHasValue(props.comp)}
 				variant="ghost"
 				size="icon"
-				onClick={() => ref.current?.clear()}
+				onClick={() => {
+					const colDef = LC.getColumnDef(props.field)
+					if (!colDef) {
+						console.warn('Column definition not found for field:', props.field)
+						return
+					}
+
+					props.store.getState().resetFilter(props.field)
+					ref.current?.clear(true)
+				}}
 			>
 				<Icons.Trash />
 			</Button>
