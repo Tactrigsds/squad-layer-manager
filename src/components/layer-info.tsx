@@ -173,7 +173,7 @@ function VehiclesOnly({
 		<section className="space-y-1">
 			<h4 className="text-sm font-medium">{title}</h4>
 			{vehicles.length > 0 && (
-				<div className="grid grid-cols-[auto_1fr_auto_2fr] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
+				<div className="grid grid-cols-[auto_auto_auto_auto] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
 					<div className="text-right font-medium" role="columnheader">#</div>
 					<div className="flex items-center font-medium" role="columnheader">
 						<TooltipProvider>
