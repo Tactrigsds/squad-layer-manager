@@ -1,8 +1,9 @@
-import _StaticLayerComponents from '$root/assets/layer-components.json'
+import _StaticFactionunitConfigs from '$root/assets/factionunit-configs.json'
 import * as Obj from '@/lib/object'
 import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
+import * as SLL from '@/models/squad-layer-list.models'
 import * as E from 'drizzle-orm/expressions'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -10,6 +11,19 @@ import * as L from './layer'
 
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
 export type ColumnType = z.infer<typeof COLUMN_TYPE>
+export const StaticFactionunitConfigs = _StaticFactionunitConfigs as unknown as FactionUnitConfigMapping
+
+// clear Static Factionunit Configs so we can verify that they aren't being used while preprocessing
+export function clearStaticFactionunitConfigs() {
+	Object.keys(StaticFactionunitConfigs).forEach(key => {
+		Object.defineProperty(StaticFactionunitConfigs, key as keyof typeof StaticFactionunitConfigs, {
+			get() {
+				throw new Error(`Static factionunit config '${key}' was accessed after being cleared`)
+			},
+			configurable: true,
+		})
+	})
+}
 
 export function createColumnDef<K extends L.LayerColumnKey, T extends Omit<ColumnDef, 'name'>>(name: K, def: T) {
 	return {
@@ -34,7 +48,7 @@ export const BASE_COLUMN_DEFS = {
 
 	...createColumnDef('Alliance_1', { type: 'string', displayName: 'Alliance T1', enumMapping: 'alliances' }),
 	...createColumnDef('Alliance_2', { type: 'string', displayName: 'Alliance T2', enumMapping: 'alliances' }),
-} as const satisfies Record<string, CombinedColumnDef>
+} as const satisfies Record<string, ColDef>
 
 export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
@@ -176,6 +190,13 @@ export function selectViewCols(cols: string[], ctx: CS.EffectiveColumnConfig) {
 }
 export function selectAllViewCols(ctx: CS.EffectiveColumnConfig) {
 	return selectViewCols(Object.keys(ctx.effectiveColsConfig.defs), ctx)
+}
+
+export function isEnumeratedColumn(column: string, ctx: CS.EffectiveColumnConfig) {
+	const def = getColumnDef(column, ctx.effectiveColsConfig)
+	if (!def) return false
+	if (def.type !== 'string') return false
+	return !!def.enumMapping
 }
 
 export function isEnumeratedValue(column: string, value: string, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
@@ -334,7 +355,7 @@ export function dbValues(
 export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
 	const layer = typeof layerOrId === 'string' ? L.toLayer(layerOrId) : layerOrId
 
-	if (!L.isKnownLayer(layer)) {
+	if (!L.isKnownLayer(layer, components)) {
 		throw new Error('Cannot pack raw or invalid layer to integer')
 	}
 
@@ -467,7 +488,87 @@ export type LayerFactionAvailabilityEntry = {
 	isDefaultUnit: boolean
 }
 
-export type MapConfigLayer = { Layer: string; Map: string; Size: string; Gamemode: string; LayerVersion: string }
+export type FactionUnitConfig = SLL.Unit
+export type FactionUnitConfigMapping = Record<string, FactionUnitConfig>
+export type LayerDetails = {
+	layer: L.KnownLayer
+	layerConfig: LayerConfig
+	team1: FactionUnitConfig
+	team2: FactionUnitConfig
+}
+
+export function resolveLayerDetails(
+	layer: L.KnownLayer,
+	factionUnitConfigs = StaticFactionunitConfigs,
+	components = L.StaticLayerComponents,
+) {
+	const layerConfig = components.mapLayers.find(l => l.Layer === layer.Layer)!
+	const factionUnitTeam1 = resolveFactionUnit(layer.Faction_1, layer.Unit_1, 1)
+	const factionUnitTeam2 = resolveFactionUnit(layer.Faction_2, layer.Unit_2, 2)
+
+	return {
+		layer,
+		team1: factionUnitConfigs[factionUnitTeam1],
+		team2: factionUnitConfigs[factionUnitTeam2],
+	}
+
+	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
+		const teamConfig = layerConfig.teams[team - 1]
+		let size: string
+		switch (layer.Size) {
+			case 'Small':
+				size = 'S'
+				break
+			case 'Medium':
+				size = 'M'
+				break
+			case 'Large':
+				size = 'L'
+				break
+			default:
+				console.warn(`Unknown layer size: ${layer.Size}, defaulting to Small`)
+				size = 'S'
+		}
+
+		let role: string
+		switch (teamConfig.role) {
+			case 'attack':
+				role = 'O'
+				break
+			case 'defend':
+				role = 'D'
+				break
+			default:
+				role = 'O'
+		}
+
+		// TODO finish impleeementing this
+		let id = `${faction}_${size}${role}_${unit}`
+		if (layer.Gamemode === 'Seed') id += '_Seed'
+		if (layerConfig.variants.boats) id += '-Boats'
+		// what the helly
+		if (layerConfig.variants.noHeli) id += '-NoHeli'
+		return id
+	}
+}
+
+export type LayerConfig = {
+	Layer: string
+	Map: string
+	Size: string
+	Gamemode: string
+	LayerVersion: string | null
+	variants: { boats?: boolean; noHeli?: boolean }
+	hasCommander: boolean
+	persistentLightingType: string | null
+	teams: MapConfigTeam[]
+}
+
+export type MapConfigTeam = {
+	defaultFaction: string
+	tickets: number
+	role?: 'attack' | 'defend'
+}
 
 export type BaseLayerComponents = {
 	maps: Set<string>
@@ -476,7 +577,7 @@ export type BaseLayerComponents = {
 	layers: Set<string>
 	versions: Set<string | null>
 	size: Set<string>
-	mapLayers: MapConfigLayer[]
+	mapLayers: LayerConfig[]
 	factions: Set<string>
 	units: Set<string>
 	allianceToFaction: OneToManyMap<string, string>
@@ -493,7 +594,7 @@ export type BaseLayerComponentsJson = {
 	layers: string[]
 	versions: (string | null)[]
 	size: string[]
-	mapLayers: MapConfigLayer[]
+	mapLayers: LayerConfig[]
 	factions: string[]
 	units: string[]
 	allianceToFaction: Record<string, string[]>

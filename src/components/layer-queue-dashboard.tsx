@@ -1,4 +1,3 @@
-import LayerComponents from '$root/assets/layer-components.json'
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -19,6 +18,7 @@ import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as F from '@/models/filter.models.ts'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
@@ -917,22 +917,22 @@ function PoolRepeatRulesConfigurationPanel(props: {
 				let targetValueOptions: string[]
 				switch (rule.field) {
 					case 'Map':
-						targetValueOptions = LayerComponents.maps
+						targetValueOptions = L.StaticLayerComponents.maps
 						break
 					case 'Layer':
-						targetValueOptions = LayerComponents.layers
+						targetValueOptions = L.StaticLayerComponents.layers
 						break
 					case 'Size':
-						targetValueOptions = LayerComponents.size
+						targetValueOptions = L.StaticLayerComponents.size
 						break
 					case 'Gamemode':
-						targetValueOptions = LayerComponents.gamemodes
+						targetValueOptions = L.StaticLayerComponents.gamemodes
 						break
 					case 'Faction':
-						targetValueOptions = LayerComponents.factions
+						targetValueOptions = L.StaticLayerComponents.factions
 						break
 					case 'Alliance':
-						targetValueOptions = LayerComponents.alliances
+						targetValueOptions = L.StaticLayerComponents.alliances
 						break
 					default:
 						assertNever(rule.field)

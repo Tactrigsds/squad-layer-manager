@@ -3,7 +3,25 @@ import * as Obj from '@/lib/object'
 import * as LC from '@/models/layer-columns'
 import * as z from 'zod'
 
-export const StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
+export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
+
+// clear out static layer components so we can verify that we're not using them while preprocessing
+export function lockStaticLayerComponents() {
+	Object.keys(StaticLayerComponents).forEach(key => {
+		Object.defineProperty(StaticLayerComponents, key as keyof typeof StaticLayerComponents, {
+			get() {
+				throw new Error(`Static layer component '${key}' was accessed after being cleared`)
+			},
+			configurable: true,
+		})
+	})
+}
+
+export function setStaticLayerComponents(components: LC.LayerComponentsJson) {
+	StaticLayerComponents = components
+}
+
+export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
 
 export type KnownLayer = {
 	id: string
@@ -69,10 +87,10 @@ function ensureIdRegexInitialized() {
 	knownLayerIdRegex = getKnownLayerIdRegex(StaticLayerComponents)
 }
 
-export function isKnownLayer(layer: UnvalidatedLayer | LayerId): layer is KnownLayer {
+export function isKnownLayer(layer: UnvalidatedLayer | LayerId, components = StaticLayerComponents): layer is KnownLayer {
 	const id = typeof layer === 'string' ? layer : layer.id
 	ensureIdRegexInitialized()
-	return (id !== undefined && !id.startsWith('RAW:') && parseKnownLayerId(id).code === 'ok')
+	return (id !== undefined && !id.startsWith('RAW:') && parseKnownLayerId(id, components).code === 'ok')
 }
 
 export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayerComponents) {
@@ -117,7 +135,7 @@ export function getLayerIdTeamString(faction: string, unit: string, components =
 }
 
 export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents) {
-	if (!areLayerIdArgsValid(layer)) {
+	if (!areLayerIdArgsValid(layer, components)) {
 		return null
 	}
 	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
@@ -196,6 +214,7 @@ export function parseKnownLayerId(id: string, components = StaticLayerComponents
 			return { code: 'err:unknown-layer' as const, msg: `Unknown layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}` }
 		}
 	}
+	const mapLayer = components.mapLayers.find(l => l.Layer === layer)
 
 	return {
 		code: 'ok' as const,
@@ -203,7 +222,7 @@ export function parseKnownLayerId(id: string, components = StaticLayerComponents
 			id,
 			Map: map,
 			Layer: layer,
-			Size: components.mapLayers.find(l => l.Layer === layer)!.Size,
+			Size: mapLayer!.Size,
 			Gamemode: gamemode,
 			LayerVersion: layerVersion,
 			Faction_1: faction1,
@@ -247,9 +266,9 @@ export function areLayersCompatible(layer1: LayerId | UnvalidatedLayer, layer2: 
 	return areLayersPartialMatch(layer1, layer2, ignoreFraas) || areLayersPartialMatch(layer2, layer1, ignoreFraas)
 }
 
-export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId): UnvalidatedLayer {
+export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {
 	if (typeof unvalidatedLayerOrId === 'string') {
-		return fromPossibleRawId(unvalidatedLayerOrId)
+		return fromPossibleRawId(unvalidatedLayerOrId, components)
 	}
 	return unvalidatedLayerOrId
 }
@@ -429,6 +448,15 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 		}
 	}
 	return parsedFactions
+}
+
+export function getFraasVariant(layer: KnownLayer) {
+	if (layer.Gamemode !== 'RAAS') throw new Error('Expected RAAS gamemode')
+	layer = Obj.deepClone(layer)
+	layer.Layer = layer.Layer.replace('RAAS', 'FRAAS')
+	layer.id = layer.id.replace('RAAS', 'FRAAS')
+	layer.Gamemode = 'FRAAS'
+	return layer
 }
 
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:USA-CA:RGF-CA'

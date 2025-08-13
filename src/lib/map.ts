@@ -23,3 +23,13 @@ export function mapToArray<K, T>(map: Map<K, T>, fn: (key: K, value: T) => [K, T
 	}
 	return arr
 }
+
+export function union<K, T>(...maps: Map<K, T>[]): Map<K, T> {
+	const newMap = new Map<K, T>()
+	for (const map of maps) {
+		for (const [key, value] of map.entries()) {
+			newMap.set(key, value)
+		}
+	}
+	return newMap
+}

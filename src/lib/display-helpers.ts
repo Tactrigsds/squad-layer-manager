@@ -1,12 +1,10 @@
-import LayerComponents from '$root/assets/layer-components.json'
 import * as Typo from '@/lib/typography'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 
 export function toShortUnit(unit: string | null) {
 	if (unit === null) return ''
-	// @ts-expect-error idc
-	return LayerComponents.unitShortNames[unit] ?? unit
+	return L.StaticLayerComponents.unitShortNames[unit] ?? unit
 }
 
 export const NULL_DISPLAY = ' - '

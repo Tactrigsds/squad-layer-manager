@@ -1,11 +1,14 @@
+import * as Arr from '@/lib/array'
+import * as MapUtils from '@/lib/map'
 import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
+import { upperSnakeCaseToPascalCase } from '@/lib/string'
 import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as DB from '@/server/db'
+import * as SLL from '@/models/squad-layer-list.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as Paths from '@/server/paths'
@@ -42,16 +45,21 @@ async function main() {
 	ENV = envBuilder()
 	ensureLoggerSetup()
 	await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
-	await DB.setup()
+
+	LC.clearStaticFactionunitConfigs()
+	L.lockStaticLayerComponents()
 
 	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
-
 	await ensureAllSheetsDownloaded(ctx)
 
 	const data = await parseSquadLayerSheetData(ctx)
 	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
+	L.setStaticLayerComponents(components)
 
-	await fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2))
+	await Promise.all([
+		fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2)),
+		fsPromise.writeFile(path.join(Paths.ASSETS, 'factionunit-configs.json'), JSON.stringify(data.units, null, 2)),
+	])
 
 	// drizzle-kit push doesn't appear to account for views
 	ctx.layerDb().run(sql`drop view if exists ${LC.layersView(ctx)}`)
@@ -221,14 +229,118 @@ type BattlegroupsData = {
 }
 
 type BaseLayer = L.KnownLayer
+// {
+//     "factionId": "ADF",
+//     "defaultUnit": "ADF_LO_CombinedArms",
+//     "availableOnTeams": [
+//         1,
+//         2
+//     ],
+//     "types": [
+//         "AirAssault",
+//         "Mechanized"
+//     ]
+// }
 
 async function parseSquadLayerSheetData(ctx: CS.Log) {
-	const availPromise = parseBgLayerAvailability(ctx)
-	const mapLayers = await parseMapLayers()
-	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = await parseBattlegroups(ctx)
-
-	const { availability } = await availPromise
+	const json = SLL.RootSchema.parse(
+		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'layers.json'), 'utf-8').then(res => res)),
+	)
+	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(ctx, json)
+	const availability: Map<string, LC.LayerFactionAvailabilityEntry[]> = new Map()
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
+	const sizes = await getMapLayerSizes()
+
+	const mapLayers: LC.LayerConfig[] = []
+	for (const map of json.Maps) {
+		if (map.levelName.toLowerCase().includes('tutorial')) continue
+		const segments = L.parseLayerStringSegment(map.levelName)
+		if (!segments) {
+			ctx.log.error(`Invalid layer name: ${map.levelName}`)
+			continue
+		}
+		const size = sizes.get(map.levelName) ?? 'Small'
+		if (!size) {
+			ctx.log.error(`${map.levelName} has unknown size`)
+		}
+		const teamConfigs = Object.entries(map.teamConfigs).sort((a, b) => a[0].localeCompare(b[0])).map(([_, team]) => team)
+		const baseConfig = {
+			...segments,
+			Size: size,
+			Layer: map.levelName,
+
+			hasCommander: map.commander,
+			persistentLightingType: map.persistentLightingType,
+		}
+
+		const availForLayer: LC.LayerFactionAvailabilityEntry[] = []
+		availability.set(map.levelName, availForLayer)
+		if (segments.layerType === 'training') {
+			availForLayer.push(
+				{
+					Faction: segments.extraFactions[0],
+					Unit: 'CombinedArms',
+					allowedTeams: [1],
+					isDefaultUnit: true,
+				},
+				{
+					Faction: segments.extraFactions[1],
+					Unit: 'CombinedArms',
+					allowedTeams: [2],
+					isDefaultUnit: true,
+				},
+			)
+			mapLayers.push({
+				...baseConfig,
+				variants: {},
+				teams: [
+					{
+						defaultFaction: segments.extraFactions[0],
+						tickets: map.teamConfigs.team1.tickets,
+					},
+					{
+						defaultFaction: segments.extraFactions[1],
+						tickets: map.teamConfigs.team2.tickets,
+					},
+				],
+			})
+			continue
+		}
+		mapLayers.push({
+			...baseConfig,
+			variants: {
+				boats: map.factions.some(f => f.defaultUnit.includes('Boats')),
+				noHeli: map.factions.some(f => f.defaultUnit.includes('NoHeli')),
+			},
+			teams: teamConfigs.map((t): LC.MapConfigTeam => {
+				const defaultFaction = t.defaultFactionUnit.split('_')[0]
+				const faction = map.factions.find(f => f.factionId === defaultFaction)
+				let role: LC.MapConfigTeam['role']
+				if (L.ASYMM_GAMEMODES.includes(segments.Gamemode)) {
+					if (t.isAttackingTeam) role = 'attack'
+					if (t.isDefendingTeam) role = 'defend'
+				}
+
+				return {
+					defaultFaction: faction!.factionId,
+					tickets: t.tickets,
+					role,
+				}
+			}),
+		})
+		for (const faction of map.factions) {
+			const idDetails = json.Units[faction.defaultUnit]
+			const units = new Set([...faction.types, upperSnakeCaseToPascalCase(idDetails.type)])
+			for (const unit of units) {
+				availForLayer.push({
+					Faction: faction.factionId,
+					Unit: unit,
+					allowedTeams: faction.availableOnTeams,
+					isDefaultUnit: faction.defaultUnit.toLocaleLowerCase().includes(unit.toLocaleLowerCase()),
+				})
+			}
+		}
+	}
 
 	const baseLayers: BaseLayer[] = []
 	const idToIdx: Map<string, number> = new Map()
@@ -315,43 +427,72 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		}
 	}
 
+	// -------- include FRAAS --------
+	components.gamemodes.add('FRAAS')
+	for (const layer of Array.from(components.layers)) {
+		components.layers.add(layer.replace('RAAS', 'FRAAS'))
+	}
+
+	const layersToAdd: L.KnownLayer[] = []
+	let i = 0
+	for (const layer of baseLayers) {
+		if (layer.Gamemode !== 'RAAS') continue
+		const fraasVariant = L.getFraasVariant(layer)
+		components.layers.add(fraasVariant.Layer)
+		layersToAdd.push(fraasVariant)
+		idToIdx.set(fraasVariant.id, i + baseLayers.length)
+		i++
+	}
+	baseLayers.push(...layersToAdd)
+
+	const mapLayersToAdd: LC.LayerConfig[] = []
+	for (const layerConfig of components.mapLayers) {
+		if (layerConfig.Gamemode !== 'RAAS') continue
+		const newLayerConfig = { ...layerConfig }
+		newLayerConfig.Gamemode = 'FRAAS'
+		newLayerConfig.Layer = newLayerConfig.Layer.replace('RAAS', 'FRAAS')
+		mapLayersToAdd.push(newLayerConfig)
+	}
+	components.mapLayers.push(...mapLayersToAdd)
+
+	const addedAvailability = new Map<string, LC.LayerFactionAvailabilityEntry[]>()
+	for (const [key, entries] of components.layerFactionAvailability.entries()) {
+		if (!key.includes('RAAS')) continue
+
+		addedAvailability.set(key.replace('RAAS', 'FRAAS'), entries)
+	}
+	components.layerFactionAvailability = MapUtils.union(addedAvailability, components.layerFactionAvailability)
+
 	ctx.log.info('Parsed %s total layers', baseLayers.length)
-	return { baseLayers, idToIdx, components, availability }
+	return { baseLayers, idToIdx, components, units: json.Units }
 }
 
-function parseBattlegroups(ctx: CS.Log) {
-	return new Promise<BattlegroupsData>((resolve, reject) => {
-		const allianceToFaction: OneToManyMap<string, string> = new Map()
-		const factionToUnit: OneToManyMap<string, string> = new Map()
-		const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
+function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
+	const allianceToFaction: OneToManyMap<string, string> = new Map()
+	const factionToUnit: OneToManyMap<string, string> = new Map()
+	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
 
-		let currentAlliance: string | undefined
-		fs.createReadStream(path.join(Paths.DATA, 'battlegroups.csv'))
-			.pipe(parse({ columns: true }))
-			.on('data', (row) => {
-				if (row.Alliance) currentAlliance = row.Alliance
-				if (!row.Faction) return
-				const faction = row.Faction === 'MEI' ? 'INS' : row.Faction
+	// Extract data from LayerListData.Units
+	for (const [unitKey, unit] of Object.entries(root.Units)) {
+		const alliance = unit.alliance
+		const faction = unit.factionID
+		const unitName = upperSnakeCaseToPascalCase(unit.type)
 
-				OneToMany.set(allianceToFaction, currentAlliance, faction)
-				for (const [key, value] of Object.entries(row)) {
-					if (key === 'Alliance' || key === 'Faction' || !key || !value) continue
-					OneToMany.set(factionToUnit, faction, key.replace(' ', ''))
-					factionUnitToFullUnitName.set(`${faction}:${key.replace(' ', '')}`, value as string)
-				}
-			})
-			.on('end', () => {
-				ctx.log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
-				ctx.log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
-				ctx.log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
+		// Map alliance to faction
+		OneToMany.set(allianceToFaction, alliance, faction)
 
-				resolve({ allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName })
-			})
-			.on('error', (error) => {
-				ctx.log.error('Error parsing battlegroups CSV:', error)
-				reject(error)
-			})
-	})
+		// Map faction to unit
+		OneToMany.set(factionToUnit, faction, unitName)
+
+		// Map faction:unit to full unit name
+		factionUnitToFullUnitName.set(`${faction}:${unitName}`, unit.displayName)
+	}
+
+	ctx.log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
+	ctx.log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
+	ctx.log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
+
+	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName }
 }
 
 function preprocessLevel(level: string) {
@@ -361,37 +502,24 @@ function preprocessLevel(level: string) {
 	if (level.startsWith('Albasrah')) return level.replace('Albasrah', 'AlBasrah')
 	return level
 }
-
-function parseMapLayers() {
-	return new Promise<LC.MapConfigLayer[]>((resolve, reject) => {
-		const layers: LC.MapConfigLayer[] = []
-		let currentMap: string | undefined
+function getMapLayerSizes() {
+	return new Promise<Map<string, string>>((resolve, reject) => {
+		const sizeMapping: Map<string, string> = new Map()
 		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
 			.pipe(parse({ columns: true }))
 			.on('data', (row: Record<string, string>) => {
 				if (!row['Layer Name']) return
-				if (row['Level']) currentMap = preprocessLevel(row['Level'])
-				const layer = { Map: preprocessLevel(currentMap!), Layer: row['Layer Name'], Size: row['Layer Size*'] }
-				const segments = L.parseLayerStringSegment(layer.Layer)
-				if (!segments) throw new Error(`Invalid layer string: ${layer.Layer}`)
-				const withSegments = {
-					...layer,
-					Gamemode: segments.Gamemode!,
-					LayerVersion: segments.LayerVersion!,
-				}
-				layers.push(withSegments)
-				if (withSegments.Gamemode === 'RAAS') {
-					layers.push({ ...withSegments, Gamemode: 'FRAAS', Layer: withSegments.Layer.replace('RAAS', 'FRAAS') })
-				}
+				const size = row['Layer Size*']
+				const layer = row['Layer Name']
+				sizeMapping.set(layer, size)
 			})
 			.on('end', () => {
-				resolve(layers)
+				resolve(sizeMapping)
 			})
 			.on('error', (error) => {
 				console.error('Error parsing map layers CSV:', error)
 				reject(error)
 			})
-		return layers
 	})
 }
 
