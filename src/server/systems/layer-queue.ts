@@ -1074,7 +1074,10 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
 		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 
-		const res = await LayerQueries.queryLayers({ ctx: layerCtx, input: { constraints, pageSize: 1 } })
+		const res = await LayerQueries.queryLayers({
+			ctx: layerCtx,
+			input: { constraints, pageSize: 1, sort: { type: 'random', seed: Math.random() } },
+		})
 		if (res.code !== 'ok') throw new Error(`Failed to query layers: ${JSON.stringify(res)}`)
 		const ids = res.layers.map(layer => layer.id)
 		;[nextLayerId] = ids
