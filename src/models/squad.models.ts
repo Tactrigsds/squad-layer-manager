@@ -167,7 +167,7 @@ export const SquadEventSchema = z.discriminatedUnion('type', [
 	}),
 ])
 
-export type SquadEvent = z.infer<typeof SquadEventSchema>
+export type SquadRconEvent = z.infer<typeof SquadEventSchema>
 export const AdminListSourceSchema = z.object({
 	type: z.enum(['remote', 'local', 'ftp']),
 	source: z.string(),

@@ -114,42 +114,33 @@ export default class Rcon extends EventEmitter {
 		this.connected$.unsubscribe()
 	}
 
-	async execute(_ctx: CS.Log, body: string) {
-		return C.spanOp('rcon:execute', { tracer, eventLogLevel: 'trace' }, async () => {
+	execute = C.spanOp(
+		'rcon:execute',
+		{ tracer, eventLogLevel: 'trace' },
+		async (_ctx: CS.Log, body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			const ctx = this.addLogProps(_ctx)
 			ctx.log.trace(`Executing %s `, body)
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
-			return await new Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }>((resolve, reject) => {
-				if (!this.connected) return resolve({ code: 'err:rcon' as const, msg: "Couldn't establish connection with server" })
-				if (!this.client?.writable) {
-					return resolve({ code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' })
-				}
-				const length = Buffer.from(body).length
-				if (length > SM.RCON_MAX_BUF_LEN) {
-					return resolve({ code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` })
-				} else {
-					if (this.msgId > 80) this.msgId = 20
-					const listenerId = `response${this.msgId}`
-					const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
-					const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
-					this.#send(ctx, body, this.msgId)
-					this.msgId++
-					Rx.firstValueFrom(Rx.race(timeout$, response$))
-						.catch(err => reject(err))
-						.then((res) => {
-							if (!res) return
-							resolve(res)
-						})
-				}
-			})
-				.then((res) => {
-					if (res.code === 'err:rcon') ctx.log.error(res.msg)
-					return res
-				})
-		})()
-	}
+			if (!this.connected) return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
+			if (!this.client?.writable) {
+				return { code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' }
+			}
+			const length = Buffer.from(body).length
+			if (length > SM.RCON_MAX_BUF_LEN) {
+				return { code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` }
+			} else {
+				if (this.msgId > 80) this.msgId = 20
+				const listenerId = `response${this.msgId}`
+				const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
+				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
+				this.#send(ctx, body, this.msgId)
+				this.msgId++
+				return await Rx.firstValueFrom(Rx.race(timeout$, response$))
+			}
+		},
+	)
 
 	#sendAuth(ctx: CS.Log): void {
 		ctx = this.addLogProps(ctx)

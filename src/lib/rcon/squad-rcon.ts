@@ -4,7 +4,7 @@ import * as L from '@/models/layer'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-import { Subject } from 'rxjs'
+import * as Rx from 'rxjs'
 import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 
@@ -13,7 +13,7 @@ export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase)
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 export default class SquadRcon {
-	event$: Subject<SM.SquadEvent> = new Subject()
+	event$: Rx.Subject<SM.SquadRconEvent> = new Rx.Subject()
 
 	layersStatus: AsyncResource<SM.LayerStatusRes>
 	serverInfo: AsyncResource<SM.ServerInfoRes>
@@ -33,19 +33,20 @@ export default class SquadRcon {
 		const onServerMsg = (pkt: DecodedPacket) => {
 			const message = processChatPacket(ctx, pkt)
 			if (message === null) return
+			ctx.log.debug(`Chat : %s : %s`, message.name, message.message)
 			this.event$.next({ type: 'chat-message', message })
 		}
-		core.on('server', onServerMsg)
+		const sub = new Rx.Subscription()
+		sub.add(Rx.fromEvent(core, 'server').subscribe(packet => onServerMsg(packet as DecodedPacket)))
 
 		// immediately reset the state of all resources when the connection state changes
-		const sub = core.connected$.subscribe(() => {
+		sub.add(core.connected$.subscribe(() => {
 			this.layersStatus.invalidate(ctx)
 			this.playerList.invalidate(ctx)
 			this.squadList.invalidate(ctx)
-		})
+		}))
 
 		this[Symbol.dispose] = () => {
-			core.off('server', onServerMsg)
 			sub.unsubscribe()
 		}
 	}
@@ -313,7 +314,6 @@ export default class SquadRcon {
 function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
 	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
 	if (matchChat) {
-		ctx.log.debug(`Matched chat message: %s`, decodedPacket.body)
 		const result = {
 			raw: decodedPacket.body,
 			chat: matchChat[1],
@@ -330,7 +330,6 @@ function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
 			result[lowerID(platform)] = id
 		})
 		result.playerId = (result.steamID || result.eosID)!
-		ctx.log.info({ result }, result.raw)
 		return SM.ChatMessageSchema.parse(result)
 	}
 
