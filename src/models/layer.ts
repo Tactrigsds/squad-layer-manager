@@ -344,9 +344,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 			Gamemode: parsedLayer?.Gamemode,
 			LayerVersion: parsedLayer?.LayerVersion ?? null,
 			Faction_1: faction1?.faction,
-			Unit_1: faction1?.unit,
+			Unit_1: faction1?.unit ?? undefined,
 			Faction_2: faction2?.faction,
-			Unit_2: faction2?.unit,
+			Unit_2: faction2?.unit ?? undefined,
 		}
 	}
 	const {
@@ -360,9 +360,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 		Gamemode: gamemode,
 		LayerVersion: version ?? null,
 		Faction_1: faction1.faction,
-		Unit_1: faction1.unit,
+		Unit_1: faction1.unit ?? undefined,
 		Faction_2: faction2.faction,
-		Unit_2: faction2.unit,
+		Unit_2: faction2.unit ?? undefined,
 	}
 
 	const id = getKnownLayerId(layerIdArgs)
@@ -447,7 +447,7 @@ export function subfacFullNameToAbbr(fullName: string, components = StaticLayerC
 
 export type ParsedFaction = {
 	faction: string
-	unit: string
+	unit: string | null
 }
 
 function parseLayerFactions(layer: string, faction1String: string, faction2String: string, components = StaticLayerComponents) {
@@ -460,7 +460,7 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 		parsedFactions[i] = {
 			faction: faction.trim(),
 			unit: unit?.trim()
-				?? components.layerFactionAvailability[layer]!.find(l => l.Faction === faction && l.isDefaultUnit)?.Unit,
+				?? components.layerFactionAvailability[layer]?.find(l => l.Faction === faction && l.isDefaultUnit)?.Unit ?? null,
 		}
 	}
 	return parsedFactions

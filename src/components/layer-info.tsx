@@ -51,26 +51,30 @@ function LayerInfo(props: LayerInfoProps) {
 		}
 	}
 
+	console.log('scores:', scores)
+	const hasScores = scores && Object.values(scores).some(score => typeof score === 'number')
 	return (
 		<Popover modal={true}>
 			<PopoverTrigger asChild>
 				{props.children}
 			</PopoverTrigger>
-			<PopoverContent className="w-max">
+			<PopoverContent align="center" className="w-max">
 				<div className="space-y-3">
 					<div className="flex justify-between items-center space-x-2">
 						<div className="flex items-center gap-3">
 							<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
 							{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 						</div>
-						<TabsList
-							options={[
-								{ value: 'details', label: 'Details' },
-								{ value: 'scores', label: 'Scores' },
-							]}
-							active={activeTab}
-							setActive={setActiveTab}
-						/>
+						{hasScores && (
+							<TabsList
+								options={[
+									{ value: 'details', label: 'Details' },
+									{ value: 'scores', label: 'Scores' },
+								]}
+								active={activeTab}
+								setActive={setActiveTab}
+							/>
+						)}
 					</div>
 					{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
 					{activeTab === 'details' && !layerDetails && <div>No details available</div>}
