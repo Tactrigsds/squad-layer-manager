@@ -96,7 +96,7 @@ export default function ShortLayerName(
 			)}
 		</div>
 	)
-	if (!allowShowInfo) return content
+	if (!allowShowInfo || L.isRawLayerId(layerId)) return content
 	return (
 		<LayerInfo layerId={layerId}>
 			<Button variant="link">{content}</Button>
