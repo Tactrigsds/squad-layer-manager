@@ -19,12 +19,73 @@ const StrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
 })
 
-const CommandConfigSchema = z.object({
-	strings: z.array(StrNoWhitespace).describe('Command strings that trigger this command when prefixed with the command prefix'),
-	scopes: z.array(SM.COMMAND_SCOPES).describe('Chats in which this command is available'),
-	enabled: z.boolean().default(true),
-})
-export type CommandConfig = z.infer<typeof CommandConfigSchema>
+export type CommandConfig = {
+	strings: string[]
+	scopes: SM.CommandScope[]
+	enabled: boolean
+}
+
+function CommandConfigSchema(command: CommandId) {
+	return z.object({
+		strings: z.array(StrNoWhitespace).default(COMMAND_DEFAULTS[command].strings).describe(
+			'Command strings that trigger this command when prefixed with the command prefix',
+		),
+		scopes: z.array(SM.COMMAND_SCOPES).default(COMMAND_DEFAULTS[command].scopes).describe(COMMAND_DESCRIPTIONS[command]),
+		enabled: z.boolean().default(COMMAND_DEFAULTS[command].enabled),
+	}).describe(COMMAND_DESCRIPTIONS[command]).default(COMMAND_DEFAULTS[command])
+}
+
+export type CommandId = 'help' | 'startVote' | 'abortVote' | 'showNext' | 'enableSlmUpdates' | 'disableSlmUpdates' | 'getSlmUpdatesEnabled'
+
+type CommandConfigs = Record<CommandId, CommandConfig>
+
+export const COMMAND_DESCRIPTIONS: Record<CommandId, string> = {
+	help: 'Display help information',
+	startVote: 'Start a new vote',
+	abortVote: 'Abort the current vote',
+	showNext: 'Show the next item in the queue',
+	enableSlmUpdates: 'Enable updates from Squad Layer Manager',
+	disableSlmUpdates: 'Disable updates from Squad Layer Manager',
+	getSlmUpdatesEnabled: 'Get the status of updates from Squad Layer Manager',
+}
+
+const COMMAND_DEFAULTS: CommandConfigs = {
+	help: {
+		scopes: ['admin'],
+		strings: ['help', 'h'],
+		enabled: true,
+	},
+	startVote: {
+		scopes: ['admin'],
+		strings: ['startvote', 'sv'],
+		enabled: true,
+	},
+	abortVote: {
+		scopes: ['admin'],
+		strings: ['abortvote', 'av'],
+		enabled: true,
+	},
+	showNext: {
+		scopes: ['admin'],
+		strings: ['shownext', 'sn'],
+		enabled: true,
+	},
+	enableSlmUpdates: {
+		scopes: ['admin'],
+		strings: ['enable-slm'],
+		enabled: true,
+	},
+	disableSlmUpdates: {
+		scopes: ['admin'],
+		strings: ['disable-slm'],
+		enabled: true,
+	},
+	getSlmUpdatesEnabled: {
+		scopes: ['admin'],
+		strings: ['get-slm-status'],
+		enabled: true,
+	},
+}
 
 export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
@@ -35,12 +96,15 @@ export const ConfigSchema = z.object({
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 	}),
+	// we have to ues .optional instead of .default here to avoid circular type definitions
 	commands: z.object({
-		help: CommandConfigSchema.describe('Show help text'),
-		startVote: CommandConfigSchema.describe('Start a vote for the next layer'),
-		abortVote: CommandConfigSchema.describe('Abort the current vote'),
-		showNext: CommandConfigSchema.describe('Show the next layer or configured vote'),
-	}),
+		help: CommandConfigSchema('help'),
+		startVote: CommandConfigSchema('startVote'),
+		abortVote: CommandConfigSchema('abortVote'),
+		showNext: CommandConfigSchema('showNext'),
+		enableSlmUpdates: CommandConfigSchema('enableSlmUpdates'),
+		disableSlmUpdates: CommandConfigSchema('disableSlmUpdates'),
+	}).default(COMMAND_DEFAULTS),
 	reminders: z.object({
 		lowQueueWarningThreshold: z
 			.number()

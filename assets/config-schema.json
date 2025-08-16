@@ -34,73 +34,199 @@
             "strings": {
               "type": "array",
               "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["help", "h"],
               "description": "Command strings that trigger this command when prefixed with the command prefix"
             },
             "scopes": {
               "type": "array",
               "items": {"type": "string", "enum": ["admin", "public"]},
-              "description": "Chats in which this command is available"
+              "default": ["admin"],
+              "description": "Display help information"
             },
             "enabled": {"type": "boolean", "default": true}
           },
-          "required": ["strings", "scopes"],
           "additionalProperties": false,
-          "description": "Show help text"
+          "description": "Display help information",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["help", "h"],
+            "enabled": true
+          }
         },
         "startVote": {
           "type": "object",
           "properties": {
             "strings": {
-              "$ref": "#/properties/commands/properties/help/properties/strings"
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["startvote", "sv"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
             },
             "scopes": {
-              "$ref": "#/properties/commands/properties/help/properties/scopes"
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Start a new vote"
             },
-            "enabled": {
-              "$ref": "#/properties/commands/properties/help/properties/enabled"
-            }
+            "enabled": {"type": "boolean", "default": true}
           },
-          "required": ["strings", "scopes"],
           "additionalProperties": false,
-          "description": "Start a vote for the next layer"
+          "description": "Start a new vote",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["startvote", "sv"],
+            "enabled": true
+          }
         },
         "abortVote": {
           "type": "object",
           "properties": {
             "strings": {
-              "$ref": "#/properties/commands/properties/help/properties/strings"
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["abortvote", "av"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
             },
             "scopes": {
-              "$ref": "#/properties/commands/properties/help/properties/scopes"
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Abort the current vote"
             },
-            "enabled": {
-              "$ref": "#/properties/commands/properties/help/properties/enabled"
-            }
+            "enabled": {"type": "boolean", "default": true}
           },
-          "required": ["strings", "scopes"],
           "additionalProperties": false,
-          "description": "Abort the current vote"
+          "description": "Abort the current vote",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["abortvote", "av"],
+            "enabled": true
+          }
         },
         "showNext": {
           "type": "object",
           "properties": {
             "strings": {
-              "$ref": "#/properties/commands/properties/help/properties/strings"
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["shownext", "sn"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
             },
             "scopes": {
-              "$ref": "#/properties/commands/properties/help/properties/scopes"
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Show the next item in the queue"
             },
-            "enabled": {
-              "$ref": "#/properties/commands/properties/help/properties/enabled"
-            }
+            "enabled": {"type": "boolean", "default": true}
           },
-          "required": ["strings", "scopes"],
           "additionalProperties": false,
-          "description": "Show the next layer or configured vote"
+          "description": "Show the next item in the queue",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["shownext", "sn"],
+            "enabled": true
+          }
+        },
+        "enableSlmUpdates": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["enable-slm"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Enable updates from Squad Layer Manager"
+            },
+            "enabled": {"type": "boolean", "default": true}
+          },
+          "additionalProperties": false,
+          "description": "Enable updates from Squad Layer Manager",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["enable-slm"],
+            "enabled": true
+          }
+        },
+        "disableSlmUpdates": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["disable-slm"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Disable updates from Squad Layer Manager"
+            },
+            "enabled": {"type": "boolean", "default": true}
+          },
+          "additionalProperties": false,
+          "description": "Disable updates from Squad Layer Manager",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["disable-slm"],
+            "enabled": true
+          }
         }
       },
-      "required": ["help", "startVote", "abortVote", "showNext"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "default": {
+        "help": {
+          "scopes": ["admin"],
+          "strings": ["help", "h"],
+          "enabled": true
+        },
+        "startVote": {
+          "scopes": ["admin"],
+          "strings": ["startvote", "sv"],
+          "enabled": true
+        },
+        "abortVote": {
+          "scopes": ["admin"],
+          "strings": ["abortvote", "av"],
+          "enabled": true
+        },
+        "showNext": {
+          "scopes": ["admin"],
+          "strings": ["shownext", "sn"],
+          "enabled": true
+        },
+        "enableSlmUpdates": {
+          "scopes": ["admin"],
+          "strings": ["enable-slm"],
+          "enabled": true
+        },
+        "disableSlmUpdates": {
+          "scopes": ["admin"],
+          "strings": ["disable-slm"],
+          "enabled": true
+        },
+        "getSlmUpdatesEnabled": {
+          "scopes": ["admin"],
+          "strings": ["get-slm-status"],
+          "enabled": true
+        }
+      }
     },
     "reminders": {
       "type": "object",
@@ -428,7 +554,6 @@
     "serverDisplayName",
     "commandPrefix",
     "defaults",
-    "commands",
     "adminListSources",
     "adminListAdminRole",
     "homeDiscordGuildId",

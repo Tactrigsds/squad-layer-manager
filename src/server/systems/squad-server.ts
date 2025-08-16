@@ -1,6 +1,5 @@
 import * as SchemaModels from '$root/drizzle/schema.models.ts'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as DH from '@/lib/display-helpers.ts'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -17,7 +16,7 @@ import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Config from '@/server/config'
-import { CONFIG } from '@/server/config'
+import { CommandId, CONFIG } from '@/server/config'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger'
@@ -97,7 +96,7 @@ async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
 function matchCommandText(cmdText: string) {
 	for (const [cmd, config] of Object.entries(CONFIG.commands)) {
 		if (config.strings.includes(cmdText)) {
-			return cmd as keyof typeof CONFIG.commands
+			return cmd as CommandId
 		}
 	}
 	return null
@@ -113,13 +112,18 @@ function chatInScope(scopes: SM.CommandScope[], msgChat: SM.ChatChannel) {
 
 async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid chat channel')
-		return
+		return {
+			code: 'err:invalid-chat-channel' as const,
+			msg: 'Invalid chat channel',
+		}
 	}
 
-	const showError = (errMsg: string) => {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, errMsg)
-		return rcon.warn(ctx, msg.playerId, errMsg)
+	async function showError<T extends string>(reason: T, errorMessage: string) {
+		await rcon.warn(ctx, msg.playerId, errorMessage)
+		return {
+			code: `err:${reason}` as const,
+			msg: errorMessage,
+		}
 	}
 
 	const words = msg.message.split(/\s+/)
@@ -133,16 +137,14 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 			.map((s) => CONFIG.commandPrefix + s)
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
 		if (sortedMatches.length === 0) {
-			return await showError(`Unknown command "${words[0]}"`)
-			return
+			return await showError('unknown-command', `Unknown command "${words[0]}"`)
 		}
 		const matched = sortedMatches[sortedMatches.length - 1].member
-		return await showError(`Unknown command "${words[0]}". Did you mean ${matched}?`)
-		return
+		return await showError('unknown-command', `Unknown command "${words[0]}". Did you mean ${matched}?`)
 	}
 	ctx.log.info('Command received: %s', cmd)
 
-	const cmdConfig = CONFIG.commands[cmd]
+	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
 	if (!chatInScope(cmdConfig.scopes, msg.chat)) {
 		const scopes = SM.getScopesForChat(msg.chat)
 		const correctChats = scopes.flatMap((s) => SM.CHAT_SCOPE_MAPPINGS[s])
@@ -151,7 +153,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	}
 
 	if (cmdConfig.enabled === false) {
-		return await showError(`Command "${cmd}" is disabled`)
+		return await showError('command-disabled', `Command "${cmd}" is disabled`)
 	}
 
 	const user: USR.GuiOrChatUserId = { steamId: msg.steamID }
@@ -160,36 +162,35 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
 			switch (res.code) {
 				case 'err:permission-denied': {
-					return await showError(WARNS.permissionDenied(res))
+					return await showError('permission-denied', WARNS.permissionDenied(res))
 				}
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress': {
-					return await showError(res.msg)
+					return await showError('vote-error', res.msg)
 				}
 				case 'err:rcon': {
 					throw new Error(`RCON error`)
 				}
 				case 'ok':
-					break
+					return { code: 'ok' as const }
 				default:
 					assertNever(res)
+					return
 			}
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
-			return
 		}
 		case 'abortVote': {
 			const res = await LayerQueue.abortVote(ctx, { aborter: user })
 			switch (res.code) {
 				case 'ok':
-					break
+					return { code: 'ok' as const }
 				case 'err:no-vote-in-progress':
-					return await showError(WARNS.vote.noVoteInProgress)
+					return await showError('no-vote-in-progress', WARNS.vote.noVoteInProgress)
 				default: {
 					assertNever(res)
+					return
 				}
 			}
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
-			return
+			break
 		}
 		case 'help': {
 			const configsWithDescriptions: (Config.CommandConfig & { description: string })[] = []
@@ -197,17 +198,34 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				const cmd = _cmd as keyof typeof CONFIG.commands
 				configsWithDescriptions.push({
 					...config,
-					description: Config.ConfigSchema.shape.commands.shape[cmd].description ?? '<no description>',
+					description: Config.COMMAND_DESCRIPTIONS[cmd] ?? '<no description>',
 				})
 			}
 			await rcon.warn(ctx, msg.playerId, WARNS.commands.help(configsWithDescriptions, CONFIG.commandPrefix))
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
-			return
+			return { code: 'ok' as const }
 		}
 		case 'showNext': {
 			await LayerQueue.warnShowNext(ctx, msg.playerId, { repeat: 3 })
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
-			return
+			return { code: 'ok' as const }
+		}
+		case 'disableSlmUpdates':
+		case 'enableSlmUpdates': {
+			const res = await LayerQueue.toggleUpdatesToSquadServer({ ctx, input: { disabled: cmd === 'disableSlmUpdates' } })
+			switch (res.code) {
+				case 'ok':
+					return { code: 'ok' as const }
+				case 'err:permission-denied':
+					await rcon.warn(ctx, msg.playerId, WARNS.permissionDenied(res))
+					return res
+				default:
+					assertNever(res)
+					return res
+			}
+		}
+		case 'getSlmUpdatesEnabled': {
+			const res = await LayerQueue.getSlmUpdatesEnabled(ctx)
+			await rcon.warn(ctx, msg.playerId, WARNS.slmUpdatesStatus(res.enabled))
+			return { code: 'ok' as const }
 		}
 		default: {
 			assertNever(cmd)

@@ -157,13 +157,19 @@ export const WARNS = {
 				currentGroup.push(config)
 			}
 			groups[0].unshift(`Available commands:`)
-			const groupsJoined = groups.map((g) => g.join('\n')).join('\n')
+			const groupsJoined = groups.map((g) => g.join('\n'))
 
 			return { msg: groupsJoined, repeat: 3 }
 		},
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
+	},
+	slmUpdatesSet(enabled: boolean) {
+		return `Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.`
+	},
+	slmUpdatesStatus(enabled: boolean) {
+		return `Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.`
 	},
 } satisfies WarnNode
 

@@ -51,7 +51,6 @@ function LayerInfo(props: LayerInfoProps) {
 		}
 	}
 
-	console.log('scores:', scores)
 	const hasScores = scores && Object.values(scores).some(score => typeof score === 'number')
 	return (
 		<Popover modal={true}>

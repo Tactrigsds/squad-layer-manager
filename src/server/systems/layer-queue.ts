@@ -1111,9 +1111,12 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	return wroteServerState
 }
 
-export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
-	if (denyRes) return denyRes
+export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log & C.Db & C.UserOrPlayer; input: { disabled: boolean } }) {
+	// if player we assume authorization has already been established
+	if (ctx.user) {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
+		if (denyRes) return denyRes
+	}
 
 	await DB.runTransaction(ctx, async ctx => {
 		const serverState = await getServerState({ lock: true }, ctx)
@@ -1121,7 +1124,14 @@ export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log &
 		await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings: serverState.settings }))
 		serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'updates-to-squad-server-toggled' } }, ctx])
 	})
-	await SquadServer.warnAllAdmins(ctx, `Updates from Squad Layer Manager have been ${input.disabled ? 'disabled' : 'enabled'}.`)
+
+	await SquadServer.warnAllAdmins(ctx, WARNS.slmUpdatesSet(!input.disabled))
+	return { code: 'ok' as const }
+}
+
+export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer) {
+	const serverState = await getServerState({ lock: true }, ctx)
+	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
 // -------- setup router --------

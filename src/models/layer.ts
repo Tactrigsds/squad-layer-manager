@@ -377,9 +377,9 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 		Gamemode: gamemode,
 		LayerVersion: version ?? null,
 		Faction_1: faction1.faction,
-		Unit_1: faction1.unit,
+		Unit_1: faction1.unit ?? undefined,
 		Faction_2: faction2.faction,
-		Unit_2: faction2.unit,
+		Unit_2: faction2.unit ?? undefined,
 	}
 }
 

@@ -157,6 +157,9 @@ export type User = {
 export type Player = {
 	player: SM.Player
 }
+
+export type UserOrPlayer = Partial<User> & Partial<Player>
+
 export type RbacUser = { user: RBAC.UserWithRbac }
 
 export type AuthSession = {
