@@ -135,8 +135,8 @@ export default function CurrentLayerCard() {
 				<EndMatchDialog>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="icon">
-								<Icons.Ellipsis />
+							<Button variant="secondary" size="sm">
+								Server Actions
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent>
