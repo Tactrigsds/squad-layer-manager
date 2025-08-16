@@ -1,7 +1,7 @@
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as L from '@/models/layer'
-import LayerInfo from './layer-info'
+import LayerInfoDialog from './layer-info'
 
 /** eslint-disable react-refresh/only-export-components */
 export function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
@@ -46,11 +46,11 @@ export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; se
 	return (
 		<>
 			{props.selectedLayerIds.length === 1 && (
-				<LayerInfo layerId={props.selectedLayerIds[0]}>
+				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
 					<ContextMenuItem onSelect={(e) => e.preventDefault()}>
 						Show layer info
 					</ContextMenuItem>
-				</LayerInfo>
+				</LayerInfoDialog>
 			)}
 			<ContextMenuItem
 				onClick={() => copyAdminSetNextLayerCommand(props.selectedLayerIds)}

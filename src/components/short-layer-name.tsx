@@ -9,7 +9,7 @@ import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
-import LayerInfo from './layer-info'
+import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
 
@@ -99,8 +99,8 @@ export default function ShortLayerName(
 	)
 	if (!allowShowInfo || L.isRawLayerId(layerId)) return content
 	return (
-		<LayerInfo layerId={layerId}>
+		<LayerInfoDialog layerId={layerId}>
 			<Button className="px-0 py-1" variant="link">{content}</Button>
-		</LayerInfo>
+		</LayerInfoDialog>
 	)
 }

@@ -6,6 +6,7 @@ import { route } from './app-routes.ts'
 import AppContainer from './components/app-container.tsx'
 import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
+import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
@@ -25,6 +26,18 @@ enableMapSet()
 console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 
 const router = createBrowserRouter([
+	{
+		path: route('/'),
+		element: (
+			<InnerRouterProviders>
+				<AppContainer>
+					<LayerQueueDashboard />
+				</AppContainer>
+			</InnerRouterProviders>
+		),
+	},
+
+	// -------- filters ---------
 	{
 		path: route('/filters'),
 		element: (
@@ -55,13 +68,12 @@ const router = createBrowserRouter([
 			</InnerRouterProviders>
 		),
 	},
+	// -------- Layer Info
 	{
-		path: route('/'),
+		path: route('/layers/:id'),
 		element: (
 			<InnerRouterProviders>
-				<AppContainer>
-					<LayerQueueDashboard />
-				</AppContainer>
+				<LayerInfoPage />
 			</InnerRouterProviders>
 		),
 	},

@@ -1,4 +1,6 @@
 import scoreRanges from '$root/assets/score-ranges.json'
+import * as AR from '@/app-routes.ts'
+import useAppParams from '@/hooks/use-app-params.ts'
 import { upperSnakeCaseToPascalCase } from '@/lib/string.ts'
 import * as Typography from '@/lib/typography'
 import * as FB from '@/models/filter-builders'
@@ -9,7 +11,7 @@ import * as SLL from '@/models/squad-layer-list.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as Icons from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { copyAdminSetNextLayerCommand } from './layer-table-helpers.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
@@ -23,14 +25,41 @@ type LayerInfoProps = {
 	children: React.ReactNode
 }
 
-export default function LayerInfoWrapper(props: LayerInfoProps) {
-	const isKnownLayer = L.isKnownLayer(props.layerId)
-	if (!isKnownLayer) return null
-	return <LayerInfo {...props} />
+type LayerInfoContentProps = {
+	// expected to be known layer id
+	layerId: L.LayerId
 }
 
-function LayerInfo(props: LayerInfoProps) {
+export default function LayerInfoDialog(props: LayerInfoProps) {
+	const isKnownLayer = L.isKnownLayer(props.layerId)
+	if (!isKnownLayer) return null
+
+	return (
+		<Popover modal={true}>
+			<PopoverTrigger asChild>
+				{props.children}
+			</PopoverTrigger>
+			<PopoverContent align="center" className="w-max">
+				<LayerInfo layerId={props.layerId} />
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+export function LayerInfoPage() {
+	const params = useAppParams('/layers/:id')
+	const isKnownLayer = L.isKnownLayer(params.id)
+	if (!isKnownLayer) return null
+	return (
+		<div className="p-4">
+			<LayerInfo layerId={params.id} />
+		</div>
+	)
+}
+
+function LayerInfo(props: LayerInfoContentProps) {
 	const [activeTab, setActiveTab] = useState<'details' | 'scores'>('details')
+	const contentRef = useRef<HTMLDivElement>(null)
 	const layerConstraint = LQY.filterToConstraint(FB.comp(FB.eq('id', props.layerId)), 'get-layer')
 	const constraints: LQY.LayerQueryConstraint[] = [layerConstraint]
 	const layerRes = LayerQueriesClient.useLayersQuery({ constraints })
@@ -55,44 +84,58 @@ function LayerInfo(props: LayerInfoProps) {
 			console.warn('Failed to resolve layer details:', error)
 		}
 	}
+	const openInPopoutWindow = () => {
+		let width = 650
+		let height = 450
+
+		if (contentRef.current) {
+			const rect = contentRef.current.getBoundingClientRect()
+			// Add some padding to account for browser chrome and scrollbars
+			width = Math.max(Math.min(rect.width + 40, window.screen.width * 0.8), 400)
+			height = Math.max(Math.min(rect.height + 80, window.screen.height * 0.8), 300)
+		}
+
+		window.open(AR.link('/layers/:id', props.layerId), '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
+	}
 
 	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
 	return (
-		<Popover modal={true}>
-			<PopoverTrigger asChild>
-				{props.children}
-			</PopoverTrigger>
-			<PopoverContent align="center" className="w-max">
-				<div className="space-y-3">
-					<div className="flex justify-between items-center space-x-2">
-						<div className="flex items-center gap-3">
-							<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
-							<Button
-								onClick={() => copyAdminSetNextLayerCommand([props.layerId])}
-								size="icon"
-								variant="ghost"
-								title="Copy AdminSetNextLayer command"
-							>
-								<Icons.Clipboard />
-							</Button>
-							{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
-						</div>
-						<TabsList
-							options={[
-								{ value: 'details', label: 'Details' },
-								{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
-							]}
-							active={activeTab}
-							setActive={setActiveTab}
-						/>
-					</div>
-					{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
-					{activeTab === 'details' && !layerDetails && <div>No details available</div>}
-					{activeTab === 'scores' && scores && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
-					{activeTab === 'scores' && !scores && <div>No scores available</div>}
+		<div ref={contentRef} className="space-y-3">
+			<div className="flex justify-between items-center space-x-2">
+				<div className="flex items-center gap-3">
+					<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
+					<Button
+						onClick={() => copyAdminSetNextLayerCommand([props.layerId])}
+						size="icon"
+						variant="ghost"
+						title="Copy AdminSetNextLayer command"
+					>
+						<Icons.Clipboard />
+					</Button>
+					<Button
+						onClick={openInPopoutWindow}
+						size="icon"
+						variant="ghost"
+						title="Open in popout window"
+					>
+						<Icons.ExternalLink />
+					</Button>
+					{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 				</div>
-			</PopoverContent>
-		</Popover>
+				<TabsList
+					options={[
+						{ value: 'details', label: 'Details' },
+						{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+					]}
+					active={activeTab}
+					setActive={setActiveTab}
+				/>
+			</div>
+			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
+			{activeTab === 'details' && !layerDetails && <div>No details available</div>}
+			{activeTab === 'scores' && scores && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
+			{activeTab === 'scores' && !scores && <div>No scores available</div>}
+		</div>
 	)
 }
 

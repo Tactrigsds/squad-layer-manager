@@ -8,11 +8,11 @@ export type RouteDefinition<Params extends string[] = string[]> = {
 }
 export const routes = {
 	...defRoute('/', []),
-	...defRoute('/layers', []),
 
 	...defRoute('/filters', []),
 	...defRoute('/filters/new', []),
 	...defRoute('/filters/:id', ['id'], { link: (id) => `/filters/${id}` }),
+	...defRoute('/layers/:id', ['id'], { link: (id) => `/layers/${id}` }),
 
 	...defRoute('/login', [], { handle: 'custom' }),
 	...defRoute('/login/callback', [], { handle: 'custom' }),
