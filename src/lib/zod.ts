@@ -54,3 +54,7 @@ export const StrFlag = z
 export const StrOrNullIfEmptyOrWhitespace = z.string().trim().nullable().transform((val) => val || null)
 
 export const NormedUrl = z.string().url().transform((url) => url.replace(/\/$/, ''))
+
+export const BasicStrNoWhitespace = z.string().regex(/^\S+$/, {
+	message: 'Must not contain whitespace',
+})

@@ -9,6 +9,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
 import * as Zus from 'zustand'
+import CommandsHelpDialog from './commands-help-dialog'
 import { ServerUnreachable } from './server-offline-display'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
@@ -24,7 +25,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -32,9 +33,10 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onPermissionsOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'permissions' : null)
 	}
+	const onCommandsHelpOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'commands' : null)
+	}
 	const config = ConfigClient.useConfig()
-	const primaryDropdownOpen = openState !== null
-	const permissionsOpen = openState === 'permissions'
 	return (
 		<div className="h-full w-full">
 			<nav
@@ -79,7 +81,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						</div>
 					)}
 					{user && (
-						<DropdownMenu modal={false} open={primaryDropdownOpen} onOpenChange={onPrimaryDropdownOpenChange}>
+						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
 									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
@@ -108,12 +110,18 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										</button>
 									</DropdownMenuItem>
 								</form>
-								<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={permissionsOpen}>
+								<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
 									<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
 										<Icons.Shield className="mr-2 h-4 w-4" />
 										Permissions
 									</DropdownMenuItem>
 								</UserPermissionsDialog>
+								<CommandsHelpDialog onOpenChange={onCommandsHelpOpenChange} open={openState === 'commands'}>
+									<DropdownMenuItem onClick={() => setDropdownState('commands')} className="text-sm">
+										<Icons.HelpCircle className="mr-2 h-4 w-4" />
+										Commands
+									</DropdownMenuItem>
+								</CommandsHelpDialog>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}

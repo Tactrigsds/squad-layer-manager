@@ -25,7 +25,6 @@ export type BalanceTrigger<ID extends string, Input> = {
 	name: string
 	// update whenever we change the logic for the trigger
 	version: number
-	description: string
 
 	// the result of resolveInput will be serialized and included in the event log
 	resolveInput: (input: BaseBalanceTriggerInput) => Input
@@ -56,7 +55,6 @@ const trig150x2 = createTrigger<'150x2', MH.PostGameMatchDetails[]>({
 	id: '150x2',
 	version: 1,
 	name: '150 tickets x2',
-	description: '2 consecutive games of a Team winning by 150+ tickets',
 	resolveInput: lastNResolvedMatchesForSession(2),
 	evaluate: resolveBasicTicketStreak(150, 2),
 })
@@ -65,7 +63,6 @@ const trig200x2 = createTrigger<'200x2', MH.PostGameMatchDetails[]>({
 	id: '200x2',
 	version: 1,
 	name: '200 tickets x2',
-	description: '2 consecutive games of a Team winning by 200+ tickets',
 	resolveInput: lastNResolvedMatchesForSession(2),
 	evaluate: resolveBasicTicketStreak(200, 2),
 })
@@ -97,7 +94,6 @@ const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
 	id: 'RWS5',
 	version: 1,
 	name: 'Raw Win Streak Across 5',
-	description: '5 consecutive games of a team winning by any number of tickets',
 	resolveInput: lastNResolvedMatchesForSession(5),
 	evaluate: (_ctx, matchDetails) => {
 		let streaker: 'teamA' | 'teamB' | undefined
@@ -126,7 +122,6 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 	id: 'RAM3+',
 	version: 1,
 	name: 'Maximum Rolling Average Across 3+',
-	description: 'a rolling average of 125+ tickets across any streak of 3 or more games(utilizing the max of all options).',
 	resolveInput: lastNResolvedMatchesForSession(20),
 	evaluate: (_ctx, matchDetails) => {
 		let streaker: 'teamA' | 'teamB' | undefined

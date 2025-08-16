@@ -4,7 +4,7 @@ import * as Arr from '@/lib/array'
 import { acquireInBlock, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
-import { GENERAL } from '@/messages'
+import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -197,7 +197,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 				ctx.log.info(
 					'Trigger %s fired: message: "%s"',
 					trig.id,
-					GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
+					Messages.GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
 				)
 			} catch (err) {
 				ctx.log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))

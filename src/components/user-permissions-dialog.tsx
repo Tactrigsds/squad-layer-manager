@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as RBAC from '@/rbac.models'
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 
 export default function UserPermissionsDialog(
-	props: { children: React.ReactNode; open: boolean; onOpenChange: (newState: boolean) => void },
+	props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void },
 ) {
 	const userBase = useLoggedInUserBase()
 	const user = useLoggedInUser()
@@ -27,7 +27,9 @@ export default function UserPermissionsDialog(
 	if (!userBase || !user || !permissionsByRole) {
 		return (
 			<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-				{props.children}
+				<DialogTrigger asChild={true}>
+					{props.children}
+				</DialogTrigger>
 				<DialogContent className="max-w-4xl">
 					<DialogHeader>
 						<DialogTitle>User Permissions</DialogTitle>
@@ -66,7 +68,7 @@ export default function UserPermissionsDialog(
 	}
 
 	return (
-		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+		<Dialog modal={true} open={props.open} onOpenChange={props.onOpenChange}>
 			{props.children}
 			<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>

@@ -101,10 +101,20 @@ export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<str
 	return output
 }
 
-export function map<O extends object>(obj: O, callback: (value: O[keyof O], key: keyof O) => any): any {
-	const output: any = {}
+export function map<O extends object, R>(obj: O, callback: (value: O[keyof O], key: keyof O) => R): { [K in keyof O]: R } {
+	const output: { [K in keyof O]: R } = {} as { [K in keyof O]: R }
 	for (const [key, value] of Object.entries(obj)) {
-		output[key] = callback(value, key as keyof O)
+		output[key as keyof O] = callback(value, key as keyof O)
+	}
+	return output
+}
+export function mapRecord<O extends Record<string, any>, R>(
+	obj: O,
+	callback: (value: O[keyof O], key: keyof O) => R,
+): { [K in keyof O]: R } {
+	const output: { [K in keyof O]: R } = {} as { [K in keyof O]: R }
+	for (const [key, value] of Object.entries(obj)) {
+		output[key as keyof O] = callback(value, key as keyof O)
 	}
 	return output
 }

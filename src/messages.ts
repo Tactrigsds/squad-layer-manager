@@ -1,5 +1,7 @@
 import * as DH from '@/lib/display-helpers'
+import * as Obj from '@/lib/object'
 import * as BAL from '@/models/balance-triggers.models'
+import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
@@ -10,7 +12,6 @@ import type * as C from '@/server/context'
 import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
-import { CommandConfig } from './server/config'
 
 function formatInterval(interval: number) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
@@ -141,10 +142,10 @@ export const WARNS = {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
 		wrongChat: (correctChats: string[]) => `Command not available in this chat. Try using ${correctChats.join(' or ')}`,
-		help(commands: (CommandConfig & { description: string })[], prefix: string) {
-			const commandLines = commands.map((cmd) => {
+		help(commands: Record<CMD.CommandId, CMD.CommandConfig>, prefix: string) {
+			const commandLines = Obj.objEntries(commands).map(([id, cmd]) => {
 				const sortedStrings = cmd.strings.sort((a, b) => a.length - b.length).map((s) => `${prefix}${s}`)
-				return `[${sortedStrings.join(', ')}]: ${cmd.description}`
+				return `[${sortedStrings.join(', ')}]: ${GENERAL.command.descriptions[id]}`
 			})
 			const groups: string[][] = []
 			let currentGroup: string[] = []
@@ -196,6 +197,23 @@ export const GENERAL = {
 			}
 
 			return event.evaluationResult!.messageTemplate.replace('{{strongerTeam}}', strongerTeamFormatted)
+		},
+		descriptions: {
+			'150x2': '2 consecutive games of a Team winning by 150+ tickets',
+			'200x2': '2 consecutive games of a Team winning by 200+ tickets',
+			'RWS5': '5 consecutive games of a team winning by any number of tickets',
+			'RAM3+': 'a rolling average of 125+ tickets across any streak of 3 or more games(utilizing the max of all options).',
+		} satisfies Record<BAL.TriggerId, string>,
+	},
+	command: {
+		descriptions: {
+			help: 'Display help information',
+			startVote: 'Start a new vote',
+			abortVote: 'Abort the current vote',
+			showNext: 'Show the next item in the queue',
+			enableSlmUpdates: 'Allow SLM to set the next layer',
+			disableSlmUpdates: 'Prevent SLM from setting the next layer',
+			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
 		},
 	},
 }

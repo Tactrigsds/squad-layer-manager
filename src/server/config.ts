@@ -1,6 +1,7 @@
 import { selectProps } from '@/lib/object.ts'
-import { HumanTime, ParsedBigIntSchema } from '@/lib/zod'
+import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
+import * as CMD from '@/models/command.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
@@ -15,96 +16,22 @@ import { z } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
 import * as Env from './env.ts'
 
-const StrNoWhitespace = z.string().regex(/^\S+$/, {
-	message: 'Must not contain whitespace',
-})
-
-export type CommandConfig = {
-	strings: string[]
-	scopes: SM.CommandScope[]
-	enabled: boolean
-}
-
-function CommandConfigSchema(command: CommandId) {
-	return z.object({
-		strings: z.array(StrNoWhitespace).default(COMMAND_DEFAULTS[command].strings).describe(
-			'Command strings that trigger this command when prefixed with the command prefix',
-		),
-		scopes: z.array(SM.COMMAND_SCOPES).default(COMMAND_DEFAULTS[command].scopes).describe(COMMAND_DESCRIPTIONS[command]),
-		enabled: z.boolean().default(COMMAND_DEFAULTS[command].enabled),
-	}).describe(COMMAND_DESCRIPTIONS[command]).default(COMMAND_DEFAULTS[command])
-}
-
-export type CommandId = 'help' | 'startVote' | 'abortVote' | 'showNext' | 'enableSlmUpdates' | 'disableSlmUpdates' | 'getSlmUpdatesEnabled'
-
-type CommandConfigs = Record<CommandId, CommandConfig>
-
-export const COMMAND_DESCRIPTIONS: Record<CommandId, string> = {
-	help: 'Display help information',
-	startVote: 'Start a new vote',
-	abortVote: 'Abort the current vote',
-	showNext: 'Show the next item in the queue',
-	enableSlmUpdates: 'Enable updates from Squad Layer Manager',
-	disableSlmUpdates: 'Disable updates from Squad Layer Manager',
-	getSlmUpdatesEnabled: 'Get the status of updates from Squad Layer Manager',
-}
-
-const COMMAND_DEFAULTS: CommandConfigs = {
-	help: {
-		scopes: ['admin'],
-		strings: ['help', 'h'],
-		enabled: true,
-	},
-	startVote: {
-		scopes: ['admin'],
-		strings: ['startvote', 'sv'],
-		enabled: true,
-	},
-	abortVote: {
-		scopes: ['admin'],
-		strings: ['abortvote', 'av'],
-		enabled: true,
-	},
-	showNext: {
-		scopes: ['admin'],
-		strings: ['shownext', 'sn'],
-		enabled: true,
-	},
-	enableSlmUpdates: {
-		scopes: ['admin'],
-		strings: ['enable-slm'],
-		enabled: true,
-	},
-	disableSlmUpdates: {
-		scopes: ['admin'],
-		strings: ['disable-slm'],
-		enabled: true,
-	},
-	getSlmUpdatesEnabled: {
-		scopes: ['admin'],
-		strings: ['get-slm-status'],
-		enabled: true,
-	},
-}
-
 export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
-	commandPrefix: StrNoWhitespace,
+	commandPrefix: BasicStrNoWhitespace,
 	topBarColor: z.string().default('#033e03').nullable().describe('this should be set to null for production'),
 	warnPrefix: z.string().optional().default('SLM: ').describe('Prefix to use for warnings'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 	}),
 	// we have to ues .optional instead of .default here to avoid circular type definitions
-	commands: z.object({
-		help: CommandConfigSchema('help'),
-		startVote: CommandConfigSchema('startVote'),
-		abortVote: CommandConfigSchema('abortVote'),
-		showNext: CommandConfigSchema('showNext'),
-		enableSlmUpdates: CommandConfigSchema('enableSlmUpdates'),
-		disableSlmUpdates: CommandConfigSchema('disableSlmUpdates'),
-	}).default(COMMAND_DEFAULTS),
+	commands: z.object(
+		Object.fromEntries(CMD.COMMAND_IDS.options.map(id => [id, CMD.CommandConfigSchema(id)])) as Record<
+			CMD.CommandId,
+			ReturnType<typeof CMD.CommandConfigSchema>
+		>,
+	).default(CMD.COMMAND_DEFAULTS),
 	reminders: z.object({
 		lowQueueWarningThreshold: z
 			.number()
@@ -198,6 +125,8 @@ export function getPublicConfig() {
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
+		commands: CONFIG.commands,
+		commandPrefix: CONFIG.commandPrefix,
 	}
 }
 

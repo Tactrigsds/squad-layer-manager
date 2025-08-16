@@ -1,4 +1,4 @@
-import { GENERAL } from '@/messages'
+import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as MH from '@/models/match-history.models'
 import { AlertOctagon, AlertTriangle, Info } from 'lucide-react'
@@ -36,7 +36,7 @@ export default function BalanceTriggerAlert(
 				{trigger.name}
 			</AlertTitle>
 			<AlertDescription>
-				{GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}
+				{Messages.GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}
 			</AlertDescription>
 		</Alert>
 	)

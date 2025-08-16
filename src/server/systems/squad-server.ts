@@ -6,7 +6,8 @@ import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/type-guards.ts'
-import { BROADCASTS, WARNS } from '@/messages.ts'
+import * as Messages from '@/messages.ts'
+import * as CMD from '@/models/command.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
@@ -15,8 +16,7 @@ import * as SME from '@/models/squad-models.events.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as Config from '@/server/config'
-import { CommandId, CONFIG } from '@/server/config'
+import { CONFIG } from '@/server/config'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger'
@@ -89,25 +89,8 @@ async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
 	})
 	if (deniedRes) return deniedRes
 	await rcon.endMatch(ctx)
-	await warnAllAdmins(ctx, BROADCASTS.matchEnded(ctx.user))
+	await warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
 	return { code: 'ok' as const }
-}
-
-function matchCommandText(cmdText: string) {
-	for (const [cmd, config] of Object.entries(CONFIG.commands)) {
-		if (config.strings.includes(cmdText)) {
-			return cmd as CommandId
-		}
-	}
-	return null
-}
-function chatInScope(scopes: SM.CommandScope[], msgChat: SM.ChatChannel) {
-	for (const scope of scopes) {
-		if (SM.CHAT_SCOPE_MAPPINGS[scope].includes(msgChat)) {
-			return true
-		}
-	}
-	return false
 }
 
 async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
@@ -129,10 +112,10 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	const words = msg.message.split(/\s+/)
 	const cmdText = words[0].slice(1)
 	// const args = words.slice(1)
-	const cmd = matchCommandText(cmdText)
+	const cmd = CMD.matchCommandText(CONFIG.commands, cmdText)
 	if (cmd === null) {
 		const allCommandStrings = Object.values(CONFIG.commands)
-			.filter((c) => chatInScope(c.scopes, msg.chat))
+			.filter((c) => CMD.chatInScope(c.scopes, msg.chat))
 			.flatMap((c) => c.strings)
 			.map((s) => CONFIG.commandPrefix + s)
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
@@ -145,10 +128,10 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 	ctx.log.info('Command received: %s', cmd)
 
 	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
-	if (!chatInScope(cmdConfig.scopes, msg.chat)) {
-		const scopes = SM.getScopesForChat(msg.chat)
-		const correctChats = scopes.flatMap((s) => SM.CHAT_SCOPE_MAPPINGS[s])
-		await rcon.warn(ctx, msg.playerId, WARNS.commands.wrongChat(correctChats))
+	if (!CMD.chatInScope(cmdConfig.scopes, msg.chat)) {
+		const scopes = CMD.getScopesForChat(msg.chat)
+		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+		await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.wrongChat(correctChats))
 		return
 	}
 
@@ -162,7 +145,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 			const res = await LayerQueue.startVote(ctx, { initiator: user })
 			switch (res.code) {
 				case 'err:permission-denied': {
-					return await showError('permission-denied', WARNS.permissionDenied(res))
+					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
 				}
 				case 'err:no-vote-exists':
 				case 'err:vote-in-progress': {
@@ -184,7 +167,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				case 'ok':
 					return { code: 'ok' as const }
 				case 'err:no-vote-in-progress':
-					return await showError('no-vote-in-progress', WARNS.vote.noVoteInProgress)
+					return await showError('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
 				default: {
 					assertNever(res)
 					return
@@ -193,15 +176,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 			break
 		}
 		case 'help': {
-			const configsWithDescriptions: (Config.CommandConfig & { description: string })[] = []
-			for (const [_cmd, config] of Object.entries(CONFIG.commands)) {
-				const cmd = _cmd as keyof typeof CONFIG.commands
-				configsWithDescriptions.push({
-					...config,
-					description: Config.COMMAND_DESCRIPTIONS[cmd] ?? '<no description>',
-				})
-			}
-			await rcon.warn(ctx, msg.playerId, WARNS.commands.help(configsWithDescriptions, CONFIG.commandPrefix))
+			await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.help(CONFIG.commands, CONFIG.commandPrefix))
 			return { code: 'ok' as const }
 		}
 		case 'showNext': {
@@ -215,7 +190,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				case 'ok':
 					return { code: 'ok' as const }
 				case 'err:permission-denied':
-					await rcon.warn(ctx, msg.playerId, WARNS.permissionDenied(res))
+					await rcon.warn(ctx, msg.playerId, Messages.WARNS.permissionDenied(res))
 					return res
 				default:
 					assertNever(res)
@@ -224,7 +199,7 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 		}
 		case 'getSlmUpdatesEnabled': {
 			const res = await LayerQueue.getSlmUpdatesEnabled(ctx)
-			await rcon.warn(ctx, msg.playerId, WARNS.slmUpdatesStatus(res.enabled))
+			await rcon.warn(ctx, msg.playerId, Messages.WARNS.slmUpdatesStatus(res.enabled))
 			return { code: 'ok' as const }
 		}
 		default: {
@@ -407,7 +382,7 @@ export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.Us
 	if (serverStatusRes.code !== 'ok') return serverStatusRes
 	await rcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
 	if (input.disabled) {
-		await rcon.broadcast(ctx, BROADCASTS.fogOff)
+		await rcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 	}
 	return { code: 'ok' as const }
 }

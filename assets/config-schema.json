@@ -41,7 +41,7 @@
               "type": "array",
               "items": {"type": "string", "enum": ["admin", "public"]},
               "default": ["admin"],
-              "description": "Display help information"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
@@ -68,7 +68,7 @@
                 "$ref": "#/properties/commands/properties/help/properties/scopes/items"
               },
               "default": ["admin"],
-              "description": "Start a new vote"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
@@ -95,7 +95,7 @@
                 "$ref": "#/properties/commands/properties/help/properties/scopes/items"
               },
               "default": ["admin"],
-              "description": "Abort the current vote"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
@@ -122,7 +122,7 @@
                 "$ref": "#/properties/commands/properties/help/properties/scopes/items"
               },
               "default": ["admin"],
-              "description": "Show the next item in the queue"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
@@ -149,12 +149,12 @@
                 "$ref": "#/properties/commands/properties/help/properties/scopes/items"
               },
               "default": ["admin"],
-              "description": "Enable updates from Squad Layer Manager"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
           "additionalProperties": false,
-          "description": "Enable updates from Squad Layer Manager",
+          "description": "Allow SLM to set the next layer",
           "default": {
             "scopes": ["admin"],
             "strings": ["enable-slm"],
@@ -176,15 +176,42 @@
                 "$ref": "#/properties/commands/properties/help/properties/scopes/items"
               },
               "default": ["admin"],
-              "description": "Disable updates from Squad Layer Manager"
+              "description": "Scopes in which this command is available"
             },
             "enabled": {"type": "boolean", "default": true}
           },
           "additionalProperties": false,
-          "description": "Disable updates from Squad Layer Manager",
+          "description": "Prevent SLM from setting the next layer",
           "default": {
             "scopes": ["admin"],
             "strings": ["disable-slm"],
+            "enabled": true
+          }
+        },
+        "getSlmUpdatesEnabled": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["get-slm-status"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Scopes in which this command is available"
+            },
+            "enabled": {"type": "boolean", "default": true}
+          },
+          "additionalProperties": false,
+          "description": "Check if SLM is allowed to set the next layer",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["get-slm-status"],
             "enabled": true
           }
         }

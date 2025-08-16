@@ -6,7 +6,7 @@ import { deepClone } from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
-import { BROADCASTS, WARNS } from '@/messages.ts'
+import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -132,9 +132,9 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				&& voteState?.code === 'ready'
 				&& SquadServer.state.lastRoll.getTime() + CONFIG.reminders.startVoteReminderThreshold < Date.now()
 			) {
-				await SquadServer.warnAllAdmins(ctx, WARNS.queue.votePending)
+				await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
 			} else if (serverState.layerQueue.length === 0) {
-				await SquadServer.warnAllAdmins(ctx, WARNS.queue.empty)
+				await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
 			}
 		}),
 	).subscribe()
@@ -245,7 +245,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 					postRollEventsSub.add(
 						Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
 							await SquadServer.rcon.setFogOfWar(ctx, 'off')
-							await SquadServer.rcon.broadcast(ctx, BROADCASTS.fogOff)
+							await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 						}),
 					)
 				}
@@ -257,7 +257,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				if (!currentMatch) return
 				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
 				if (!mostRelevantEvent) return
-				await SquadServer.warnAllAdmins(ctx, WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
+				await SquadServer.warnAllAdmins(ctx, Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
 			}))
 
 			announcementTasks.push(toCold(async () => warnShowNext(ctx, 'all-admins')))
@@ -265,7 +265,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			announcementTasks.push(toCold(async () => {
 				const serverState = await getServerState({}, ctx)
 				if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold) {
-					await SquadServer.warnAllAdmins(ctx, WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+					await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
 				}
 			}))
 
@@ -494,14 +494,14 @@ export const startVote = C.spanOp(
 			if (!voteState) {
 				return {
 					code: 'err:no-vote-exists' as const,
-					msg: WARNS.vote.start.noVoteConfigured,
+					msg: Messages.WARNS.vote.start.noVoteConfigured,
 				}
 			}
 
 			if (voteState.code === 'in-progress') {
 				return {
 					code: 'err:vote-in-progress' as const,
-					msg: WARNS.vote.start.voteAlreadyInProgress,
+					msg: Messages.WARNS.vote.start.voteAlreadyInProgress,
 				}
 			}
 
@@ -549,7 +549,7 @@ export const startVote = C.spanOp(
 		registerVoteDeadlineAndReminder$(ctx)
 		await SquadServer.rcon.broadcast(
 			ctx,
-			BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000),
+			Messages.BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000),
 		)
 
 		return res
@@ -567,11 +567,11 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-		await SquadServer.rcon.warn(ctx, msg.playerId, WARNS.vote.invalidChoice)
+		await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.invalidChoice)
 		return
 	}
 	if (voteState.code !== 'in-progress') {
-		await SquadServer.rcon.warn(ctx, msg.playerId, WARNS.vote.noVoteInProgress)
+		await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.noVoteInProgress)
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 		return
 	}
@@ -588,7 +588,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 	}
 
 	voteStateUpdate$.next([ctx, update])
-	await SquadServer.rcon.warn(ctx, msg.playerId, WARNS.vote.voteCast(choice))
+	await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast(choice))
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
@@ -623,7 +623,7 @@ export const abortVote = C.spanOp(
 		voteStateUpdate$.next([ctx, update])
 		voteEndTask?.unsubscribe()
 		voteEndTask = null
-		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.aborted(voteState.defaultChoice))
+		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.aborted(voteState.defaultChoice))
 
 		return { code: 'ok' as const }
 	},
@@ -647,7 +647,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 				C.durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
-					await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
+					await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.voteReminder(timeLeft, voteState.choices))
 				}),
 			)
 			.subscribe(),
@@ -661,7 +661,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 					if (!voteState || voteState.code !== 'in-progress') return
 					await SquadServer.rcon.broadcast(
 						ctx,
-						BROADCASTS.vote.voteReminder(CONFIG.reminders.finalVote, voteState.choices, true),
+						Messages.BROADCASTS.vote.voteReminder(CONFIG.reminders.finalVote, voteState.choices, true),
 					)
 				}),
 			).subscribe(),
@@ -752,10 +752,10 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 	voteStateUpdate$.next([ctx, res.voteUpdate])
 	if (res.voteUpdate.state!.code === 'ended:winner') {
 		await syncNextLayerInPlace(ctx, update.state, { noDbWrite: true })
-		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.winnerSelected(res.tally!, res.voteUpdate.state!.winner))
+		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.winnerSelected(res.tally!, res.voteUpdate.state!.winner))
 	}
 	if (res.voteUpdate!.state!.code === 'ended:insufficient-votes') {
-		await SquadServer.rcon.broadcast(ctx, BROADCASTS.vote.insufficientVotes(res.voteUpdate.state!.defaultChoice))
+		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.insufficientVotes(res.voteUpdate.state!.defaultChoice))
 	}
 	return res
 })
@@ -1004,9 +1004,9 @@ export async function warnShowNext(ctx: C.Db & CS.Log, playerId: string | 'all-a
 		parts.users.push(user)
 	}
 	if (playerId === 'all-admins') {
-		await SquadServer.warnAllAdmins(ctx, WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
+		await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	} else {
-		await SquadServer.rcon.warn(ctx, playerId, WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
+		await SquadServer.rcon.warn(ctx, playerId, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	}
 }
 
@@ -1125,7 +1125,7 @@ export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log &
 		serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'updates-to-squad-server-toggled' } }, ctx])
 	})
 
-	await SquadServer.warnAllAdmins(ctx, WARNS.slmUpdatesSet(!input.disabled))
+	await SquadServer.warnAllAdmins(ctx, Messages.WARNS.slmUpdatesSet(!input.disabled))
 	return { code: 'ok' as const }
 }
 
