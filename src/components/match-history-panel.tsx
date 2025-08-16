@@ -26,6 +26,7 @@ import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintViolationDisplay } from './constraint-violation-display'
 import LayerInfo from './layer-info'
 import LayerSourceDisplay from './layer-source-display'
+import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -245,44 +246,6 @@ export default function MatchHistoryPanel() {
 									: undefined
 								const visibleIndex = index + 1
 
-								const copyHistoryEntryId = () => {
-									navigator.clipboard.writeText(entry.historyEntryId.toString())
-									toast({
-										title: 'Copied History Entry ID',
-										description: (
-											<div className="flex flex-col">
-												<span>The history entry ID has been copied to your clipboard.</span>
-												<span className="font-mono text-xs">({entry.historyEntryId})</span>
-											</div>
-										),
-									})
-								}
-								const copyLayerId = () => {
-									navigator.clipboard.writeText(entry.layerId)
-									toast({
-										title: 'Copied Layer ID',
-										description: (
-											<div className="flex flex-col">
-												<span>The layer ID has been copied to your clipboard.</span>
-												<span className="font-mono text-xs">({entry.layerId})</span>
-											</div>
-										),
-									})
-								}
-								const copyAdminSetNextLayerCommand = () => {
-									const cmd = L.getAdminSetNextLayerCommand(entry.layerId)
-									navigator.clipboard.writeText(cmd)
-									toast({
-										title: 'Copied Admin Set Next Layer Command',
-										description: (
-											<div className="flex flex-col">
-												<span>The admin set next layer command has been copied to your clipboard.</span>
-												<span className="font-mono text-xs">({cmd})</span>
-											</div>
-										),
-									})
-								}
-
 								const [leftTeam, rightTeam] = getTeamsDisplay(
 									layer,
 									entry.ordinal,
@@ -362,26 +325,7 @@ export default function MatchHistoryPanel() {
 											</TableRow>
 										</ContextMenuTrigger>
 										<ContextMenuContent>
-											<LayerInfo layerId={layer.id}>
-												<ContextMenuItem onSelect={(e) => e.preventDefault()}>
-													Show Layer Info
-												</ContextMenuItem>
-											</LayerInfo>
-											<ContextMenuItem
-												onClick={() => copyHistoryEntryId()}
-											>
-												copy history entry id
-											</ContextMenuItem>
-											<ContextMenuItem
-												onClick={() => copyLayerId()}
-											>
-												copy layer id
-											</ContextMenuItem>
-											<ContextMenuItem
-												onClick={() => copyAdminSetNextLayerCommand()}
-											>
-												copy AdminSetNextLayer command
-											</ContextMenuItem>
+											<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
 										</ContextMenuContent>
 									</ContextMenu>
 								)

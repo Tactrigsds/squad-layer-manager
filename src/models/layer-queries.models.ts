@@ -1,6 +1,7 @@
 import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
+import { VisibilityState } from '@tanstack/react-table'
 import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import { z } from 'zod'
@@ -532,12 +533,14 @@ export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>
 
 export type EffectiveColumnAndTableConfig = LayerTableConfig & LC.EffectiveColumnConfig
 
-export function getColVisibilityState(cfg: EffectiveColumnAndTableConfig) {
-	return Object.fromEntries(
+export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig): VisibilityState {
+	const res = Object.fromEntries(
 		Object.values(cfg.defs).map(col => {
 			const colDef = cfg.orderedColumns.find(c => c.name === col.name)
 			const visible = colDef ? (colDef.visible ?? true) : false
 			return [col.name, visible]
 		}),
 	)
+	console.log({ res })
+	return res
 }

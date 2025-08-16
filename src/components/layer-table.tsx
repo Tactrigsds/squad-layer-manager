@@ -1,12 +1,11 @@
 import { Button } from '@/components/ui/button'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
 import { useDebounced } from '@/hooks/use-debounce'
-import { toast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers'
 import { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
@@ -31,7 +30,7 @@ import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
 import { ConstraintViolationDisplay } from './constraint-violation-display'
-import LayerInfo from './layer-info'
+import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
@@ -60,6 +59,7 @@ function buildColumn(
 	displayLayersNormalized: boolean,
 ) {
 	return columnHelper.accessor(colDef.name, {
+		enableHiding: true,
 		header: ({ column }) => {
 			const sort = column.getIsSorted()
 			return (
@@ -159,7 +159,7 @@ function buildColDefs(
 	displayLayersNormalized: boolean,
 	constraints?: LQY.LayerQueryConstraint[],
 ) {
-	const colDefs: ColumnDef<RowData>[] = [
+	const tableColDefs: ColumnDef<RowData>[] = [
 		{
 			id: 'select',
 			header: ({ table }) => (
@@ -186,8 +186,15 @@ function buildColDefs(
 			return aIndex - bIndex
 		})
 
+		// add sorted first
 		for (const col of sortedColKeys) {
-			colDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!, teamParity, displayLayersNormalized))
+			tableColDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!, teamParity, displayLayersNormalized))
+		}
+
+		// then add the rest
+		for (const key of Object.keys(cfg.defs)) {
+			if (sortedColKeys.some(c => c.name === key)) continue
+			tableColDefs.push(buildColumn(LC.getColumnDef(key, cfg)!, teamParity, displayLayersNormalized))
 		}
 	}
 
@@ -208,10 +215,10 @@ function buildColDefs(
 				)
 			},
 		})
-		colDefs.push(constraintsCol as any)
+		tableColDefs.push(constraintsCol as any)
 	}
 
-	return colDefs
+	return tableColDefs
 }
 
 export default function LayerTable(props: {
@@ -294,8 +301,8 @@ export default function LayerTable(props: {
 		})
 	}
 
-	const [_columnVisibility, setColumnVisibility] = useState<VisibilityState | undefined>()
-	const defaultVisibility = React.useMemo(() => cfg ? LQY.getColVisibilityState(cfg) : undefined, [cfg])
+	const defaultVisibility = React.useMemo(() => cfg ? LQY.getDefaultColVisibilityState(cfg) : undefined, [cfg])
+	const [_columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultVisibility!)
 	const columnVisibility = _columnVisibility ?? defaultVisibility
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
@@ -502,36 +509,15 @@ export default function LayerTable(props: {
 
 	function getChosenRows(row: Row<L.KnownLayer>) {
 		if (!props.selected.includes(row.original.id)) {
-			return [row.original]
+			return [row.original.id]
 		} else {
 			return table
 				.getRowModel()
 				.rows.filter((r) => rowSelection[r.id])
-				.map((r) => r.original)
+				.map((r) => r.original.id)
 		}
 	}
 
-	function onCopyIdCommand(row: Row<L.KnownLayer>) {
-		const chosenRows = getChosenRows(row)
-		let text = ''
-		for (const row of chosenRows) {
-			if (text !== '') text += '\n'
-			text += row.id
-		}
-		navigator.clipboard.writeText(text)
-		toast({ description: 'Layer ID copied to clipboard' })
-	}
-
-	function onCopySetNextLayerCommand(row: Row<L.KnownLayer>) {
-		const chosenRows = getChosenRows(row)
-		let text = ''
-		for (const row of chosenRows) {
-			if (text !== '') text += '\n'
-			text += L.getAdminSetNextLayerCommand(row)
-		}
-		navigator.clipboard.writeText(text)
-		toast({ description: 'Command copied to clipboard' })
-	}
 	const toggleRandomizeId = React.useId()
 
 	return (
@@ -542,7 +528,9 @@ export default function LayerTable(props: {
 					{canToggleColumns && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
-								<Button variant="outline">Toggle Columns</Button>
+								<Button variant="outline">
+									Toggle Columns
+								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
 								{table.getAllLeafColumns().map((column) => {
@@ -691,6 +679,8 @@ export default function LayerTable(props: {
 						{table.getRowModel().rows.map((row) => {
 							const id = row.original.id
 							const disabled = 'hover:bg-unset bg-gray-800'
+							const selectedForCopy = getChosenRows(row)
+
 							return (
 								<ContextMenu key={row.id}>
 									<ContextMenuTrigger asChild>
@@ -714,17 +704,7 @@ export default function LayerTable(props: {
 										</TableRow>
 									</ContextMenuTrigger>
 									<ContextMenuContent>
-										<LayerInfo layerId={row.original.id}>
-											<ContextMenuItem onSelect={(e) => e.preventDefault()}>
-												Show Layer Info
-											</ContextMenuItem>
-										</LayerInfo>
-										<ContextMenuItem onClick={() => onCopySetNextLayerCommand(row)}>
-											Copy AdminSetNextLayer {props.selected.includes(row.original.id) && 'for selected'}
-										</ContextMenuItem>
-										<ContextMenuItem onClick={() => onCopyIdCommand(row)}>
-											Copy ID {props.selected.includes(row.original.id) && 'for selected'}
-										</ContextMenuItem>
+										{<LayerContextMenuItems selectedLayerIds={selectedForCopy} />}
 									</ContextMenuContent>
 								</ContextMenu>
 							)

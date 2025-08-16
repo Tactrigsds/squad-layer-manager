@@ -79,24 +79,8 @@ export type Squad = z.infer<typeof SquadSchema>
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
-export const COMMAND_SCOPES = z.enum(['admin', 'public'])
-export type CommandScope = z.infer<typeof COMMAND_SCOPES>
-
 export const CHAT_CHANNEL = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
-export const CHAT_SCOPE_MAPPINGS = {
-	[COMMAND_SCOPES.Values.admin]: ['ChatAdmin'],
-	[COMMAND_SCOPES.Values.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
-}
-export function getScopesForChat(chat: ChatChannel): CommandScope[] {
-	const matches: CommandScope[] = []
-	for (const [scope, chats] of Object.entries(CHAT_SCOPE_MAPPINGS)) {
-		if (chats.includes(chat)) {
-			matches.push(scope as CommandScope)
-		}
-	}
-	return matches
-}
 
 export const ChatMessageSchema = z
 	.object({

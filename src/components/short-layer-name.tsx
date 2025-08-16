@@ -100,7 +100,7 @@ export default function ShortLayerName(
 	if (!allowShowInfo || L.isRawLayerId(layerId)) return content
 	return (
 		<LayerInfo layerId={layerId}>
-			<Button variant="link">{content}</Button>
+			<Button className="px-0 py-1" variant="link">{content}</Button>
 		</LayerInfo>
 	)
 }

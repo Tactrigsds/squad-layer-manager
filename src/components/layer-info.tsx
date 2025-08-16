@@ -8,9 +8,11 @@ import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
-import { Car, Info } from 'lucide-react'
+import * as Icons from 'lucide-react'
 import React, { useState } from 'react'
+import { copyAdminSetNextLayerCommand } from './layer-table-helpers.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
+import { Button } from './ui/button.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -65,6 +67,14 @@ function LayerInfo(props: LayerInfoProps) {
 					<div className="flex justify-between items-center space-x-2">
 						<div className="flex items-center gap-3">
 							<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
+							<Button
+								onClick={() => copyAdminSetNextLayerCommand([props.layerId])}
+								size="icon"
+								variant="ghost"
+								title="Copy AdminSetNextLayer command"
+							>
+								<Icons.Clipboard />
+							</Button>
 							{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 						</div>
 						<TabsList
@@ -183,7 +193,7 @@ function VehiclesOnly({
 						<TooltipProvider>
 							<Tooltip>
 								<TooltipTrigger>
-									<Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
+									<Icons.Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
 								</TooltipTrigger>
 								<TooltipContent>
 									Delay/Respawn (in minutes)
@@ -194,7 +204,7 @@ function VehiclesOnly({
 					<div className="flex items-center font-medium" role="columnheader">
 						<Tooltip>
 							<TooltipTrigger>
-								<Car size={16} className="text-green-400" />
+								<Icons.Car size={16} className="text-green-400" />
 							</TooltipTrigger>
 							<TooltipContent>
 								Vehicle Type
