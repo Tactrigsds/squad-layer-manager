@@ -145,9 +145,9 @@ export class SftpTail extends EventEmitter {
 
 				data
 					// Remove trailing new lines.
-					.replace(/\r\n$/, '')
+					.replace(/\r?\n$/, '')
 					// Split the data on the lines.
-					.split('\r\n')
+					.split(/\r?\n/)
 					// Emit each line.
 					.forEach((line) => {
 						if (!line.trim()) return
