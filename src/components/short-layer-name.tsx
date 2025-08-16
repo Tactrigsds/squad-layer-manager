@@ -6,6 +6,7 @@ import * as Typo from '@/lib/typography.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import LayerInfo from './layer-info'
@@ -84,13 +85,13 @@ export default function ShortLayerName(
 		)
 	}
 	const content = (
-		<div className="flex items-center space-x-1">
+		<div className="flex items-center">
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
-					<span className="px-1">-</span>
+					<Icons.Dot width={20} height={20} />
 					{leftTeamElt}
-					{<span>vs</span>}
+					{<span className="mx-1">vs</span>}
 					{rightTeamElt}
 				</>
 			)}

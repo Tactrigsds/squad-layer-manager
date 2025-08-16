@@ -192,9 +192,16 @@ function VehiclesOnly({
 						</TooltipProvider>
 					</div>
 					<div className="flex items-center font-medium" role="columnheader">
-						<Car size={16} className="text-green-400" />
+						<Tooltip>
+							<TooltipTrigger>
+								<Car size={16} className="text-green-400" />
+							</TooltipTrigger>
+							<TooltipContent>
+								Vehicle Type
+							</TooltipContent>
+						</Tooltip>
 					</div>
-					<div className="font-medium" role="columnheader">Vehicle</div>
+					<div className="font-medium" role="columnheader">Name</div>
 					{vehicles.map((vehicle, index) => <IndividualVehicleRow key={index} vehicle={vehicle} />)}
 				</div>
 			)}
