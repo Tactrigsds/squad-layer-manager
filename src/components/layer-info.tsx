@@ -16,14 +16,17 @@ import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 type LayerInfoProps = {
+	// expected to be known layer id
 	layerId: L.LayerId
 	children: React.ReactNode
 }
+
 export default function LayerInfoWrapper(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(props.layerId)
 	if (!isKnownLayer) return null
 	return <LayerInfo {...props} />
 }
+
 function LayerInfo(props: LayerInfoProps) {
 	const [activeTab, setActiveTab] = useState<'details' | 'scores'>('details')
 	const layerConstraint = LQY.filterToConstraint(FB.comp(FB.eq('id', props.layerId)), 'get-layer')
@@ -51,7 +54,7 @@ function LayerInfo(props: LayerInfoProps) {
 		}
 	}
 
-	const hasScores = scores && Object.values(scores).some(score => typeof score === 'number')
+	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
 	return (
 		<Popover modal={true}>
 			<PopoverTrigger asChild>
@@ -64,16 +67,14 @@ function LayerInfo(props: LayerInfoProps) {
 							<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />
 							{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 						</div>
-						{hasScores && (
-							<TabsList
-								options={[
-									{ value: 'details', label: 'Details' },
-									{ value: 'scores', label: 'Scores' },
-								]}
-								active={activeTab}
-								setActive={setActiveTab}
-							/>
-						)}
+						<TabsList
+							options={[
+								{ value: 'details', label: 'Details' },
+								{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+							]}
+							active={activeTab}
+							setActive={setActiveTab}
+						/>
 					</div>
 					{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
 					{activeTab === 'details' && !layerDetails && <div>No details available</div>}
