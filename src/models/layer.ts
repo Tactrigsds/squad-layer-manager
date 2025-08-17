@@ -527,16 +527,18 @@ export function resolveLayerDetails(
 				size = 'S'
 		}
 
-		let role: string
-		switch (teamConfig.role) {
-			case 'attack':
-				role = 'O'
-				break
-			case 'defend':
-				role = 'D'
-				break
-			default:
-				role = 'O'
+		let role: string = ''
+		if (layer.Gamemode !== 'Seed') {
+			switch (teamConfig.role) {
+				case 'attack':
+					role = 'O'
+					break
+				case 'defend':
+					role = 'D'
+					break
+				default:
+					role = 'O'
+			}
 		}
 
 		// TODO finish impleeementing this
