@@ -321,6 +321,19 @@ export function fromDbValue(
 			assertNever(columnDef)
 	}
 }
+export function fromDbValues(
+	data: Record<string, DbValue>[],
+	ctx?: CS.EffectiveColumnConfig,
+	components = L.StaticLayerComponents,
+) {
+	return data.map((row) => {
+		const result: Record<string, any> = {}
+		for (const [columnName, dbValue] of Object.entries(row)) {
+			result[columnName] = fromDbValue(columnName, dbValue, ctx, components)
+		}
+		return result
+	})
+}
 
 export function dbValues(
 	columnNames: string[] | string,

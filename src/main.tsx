@@ -1,25 +1,24 @@
-import * as QueueDashboard from '@/systems.client/queue-dashboard'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { route } from './app-routes.ts'
-import AppContainer from './components/app-container.tsx'
+import * as AR from './app-routes.ts'
 import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
 import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
-import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
-import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeSys from '@/systems.client/theme.system.ts'
-import * as UsersClient from '@/systems.client/users.client.ts'
 import { enableMapSet } from 'immer'
-import FilterEdit from './components/filter-edit.tsx'
-import FilterIndex from './components/filter-index.tsx'
-import FilterNew from './components/filter-new.tsx'
-import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
+import * as Rx from 'rxjs'
+
+import FullPageSpinner from './components/full-page-spinner.tsx'
 import { formatVersion as formatAppVersion } from './lib/versioning.ts'
+
+// Lazy load components
+const AppContainer = React.lazy(() => import('./components/app-container.tsx'))
+const FilterEdit = React.lazy(() => import('./components/filter-edit.tsx'))
+const FilterIndex = React.lazy(() => import('./components/filter-index.tsx'))
+const FilterNew = React.lazy(() => import('./components/filter-new.tsx'))
+const LayerQueueDashboard = React.lazy(() => import('./components/layer-queue-dashboard.tsx'))
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -27,50 +26,58 @@ console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH,
 
 const router = createBrowserRouter([
 	{
-		path: route('/'),
+		path: AR.route('/'),
 		element: (
 			<InnerRouterProviders>
-				<AppContainer>
-					<LayerQueueDashboard />
-				</AppContainer>
+				<React.Suspense fallback={<FullPageSpinner />}>
+					<AppContainer>
+						<LayerQueueDashboard />
+					</AppContainer>
+				</React.Suspense>
 			</InnerRouterProviders>
 		),
 	},
 
 	// -------- filters ---------
 	{
-		path: route('/filters'),
+		path: AR.route('/filters'),
 		element: (
 			<InnerRouterProviders>
-				<AppContainer>
-					<FilterIndex />
-				</AppContainer>
+				<React.Suspense fallback={<FullPageSpinner />}>
+					<AppContainer>
+						<FilterIndex />
+					</AppContainer>
+				</React.Suspense>
 			</InnerRouterProviders>
 		),
 	},
 	{
-		path: route('/filters/:id'),
+		path: AR.route('/filters/:id'),
 		element: (
 			<InnerRouterProviders>
-				<AppContainer>
-					<FilterEdit />
-				</AppContainer>
+				<React.Suspense fallback={<FullPageSpinner />}>
+					<AppContainer>
+						<FilterEdit />
+					</AppContainer>
+				</React.Suspense>
 			</InnerRouterProviders>
 		),
 	},
 	{
-		path: route('/filters/new'),
+		path: AR.route('/filters/new'),
 		element: (
 			<InnerRouterProviders>
-				<AppContainer>
-					<FilterNew />
-				</AppContainer>
+				<React.Suspense fallback={<FullPageSpinner />}>
+					<AppContainer>
+						<FilterNew />
+					</AppContainer>
+				</React.Suspense>
 			</InnerRouterProviders>
 		),
 	},
 	// -------- Layer Info
 	{
-		path: route('/layers/:id'),
+		path: AR.route('/layers/:id'),
 		element: (
 			<InnerRouterProviders>
 				<LayerInfoPage />
@@ -83,13 +90,67 @@ console.log('running system initialization')
 
 // -------- system initialization --------
 ThemeSys.setup()
-void LayerQueriesClient.ensureSetup()
-FilterEntityClient.setup()
-MatchHistoryClient.setup()
-SquadServerClient.setup()
-UsersClient.setup()
 ConfigClient.setup()
-QueueDashboard.setup()
+
+let setupState: 'all' | 'layer-info' | null = null
+async function ensureSystemsSetup() {
+	if (setupState == 'all') return
+	const route = AR.getRouteForPath(window.location.pathname)
+	if (!route) {
+		console.warn('No route found for path:', window.location.pathname)
+		throw new Error('No configured route found for path ' + window.location.pathname)
+	}
+	if (AR.isRouteType(route, 'custom')) return
+	switch (route.server) {
+		case '/':
+		case '/filters':
+		case '/filters/:id':
+		case '/filters/new': {
+			console.debug('loading full app')
+			// we only need these systems if we're loading the full app
+			const [
+				LayerQueriesClient,
+				FilterEntityClient,
+				MatchHistoryClient,
+				SquadServerClient,
+				UsersClient,
+				QueueDashboard,
+			] = await Promise.all([
+				import('@/systems.client/layer-queries.client.ts'),
+				import('@/systems.client/filter-entity.client.ts'),
+				import('@/systems.client/match-history.client.ts'),
+				import('@/systems.client/squad-server.client'),
+				import('@/systems.client/users.client.ts'),
+				import('@/systems.client/queue-dashboard'),
+			])
+
+			void LayerQueriesClient.ensureFullSetup()
+			FilterEntityClient.setup()
+			MatchHistoryClient.setup()
+			SquadServerClient.setup()
+			UsersClient.setup()
+			QueueDashboard.setup()
+			setupState = 'all'
+			break
+		}
+		case '/layers/:id': {
+			console.debug('only loading layer info systems')
+			setupState = 'layer-info'
+			break
+		}
+	}
+}
+
+Rx.merge([
+	Rx.fromEvent(window, 'popstate'),
+	Rx.fromEvent(window, 'pushstate'),
+	Rx.fromEvent(window, 'replacestate'),
+	Rx.fromEvent(window, 'hashchange'),
+]).subscribe(() => {
+	void ensureSystemsSetup()
+})
+
+await ensureSystemsSetup()
 
 createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

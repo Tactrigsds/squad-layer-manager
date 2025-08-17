@@ -1,5 +1,6 @@
 import * as Config from '@/server/config.ts'
 import * as FilterEntity from './systems/filter-entity.ts'
+import * as LayerQueries from './systems/layer-queries.server.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as MatchHistory from './systems/match-history.ts'
 import * as Rbac from './systems/rbac.system.ts'
@@ -21,6 +22,7 @@ export function setup() {
 		users: Users.usersRouter,
 		rbac: Rbac.rbacRouter,
 		matchHistory: MatchHistory.matchHistoryRouter,
+		layerQueries: LayerQueries.layerQueriesRouter,
 	})
 	appRouter = _appRouter
 	return _appRouter

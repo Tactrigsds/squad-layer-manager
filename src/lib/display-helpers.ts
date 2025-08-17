@@ -43,7 +43,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2) {
 	const subfaction1 = toShortUnit(layer.Unit_1)
 	const subFaction2 = toShortUnit(layer.Unit_2)
 	let txt = `${layer.Layer}`
-	txt += ` - ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}${you === 1 ? ' (you)' : ''}`.trim()
+	txt += ` - ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}${you === 1 ? ' (you)' : ''}`.trimEnd()
 	txt += ' vs '
 	txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}${you === 2 ? ' (you)' : ''}`.trim()
 	return txt

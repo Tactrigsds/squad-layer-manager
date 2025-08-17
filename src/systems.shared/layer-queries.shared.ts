@@ -10,7 +10,6 @@ import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
-import { nullable } from 'zod'
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -806,6 +805,7 @@ export const queries = {
 	layerExists,
 	queryLayerComponent: queryLayerComponent,
 	getLayerItemStatuses,
+	getLayerInfo,
 }
 
 function factionMaskToSqlCondition(
@@ -846,6 +846,16 @@ function factionMaskToSqlCondition(
 	}
 
 	return conditions.length > 0 ? E.and(...conditions) : sql`1=1`
+}
+
+export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerDb; input: { layerId: L.LayerId } }) {
+	if (!L.isKnownLayer(input.layerId)) return null
+	const [row] = await ctx.layerDb().select(LC.selectAllViewCols(ctx)).from(LC.layersView(ctx)).where(
+		E.eq(LC.viewCol('id', ctx), LC.packId(input.layerId)),
+	)
+	// @ts-expect-error idgaf
+	if (row) return LC.fromDbValues([row], ctx)[0]
+	return null
 }
 
 export async function getScoreRanges({ ctx }: { ctx: CS.LayerDb }) {

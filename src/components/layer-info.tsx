@@ -1,15 +1,14 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import * as AR from '@/app-routes.ts'
 import useAppParams from '@/hooks/use-app-params.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { upperSnakeCaseToPascalCase } from '@/lib/string.ts'
-import * as Typography from '@/lib/typography'
-import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
-import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
+import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React, { useRef, useState } from 'react'
 import { copyAdminSetNextLayerCommand } from './layer-table-helpers.tsx'
@@ -28,6 +27,7 @@ type LayerInfoProps = {
 type LayerInfoContentProps = {
 	// expected to be known layer id
 	layerId: L.LayerId
+	hidePopoutButton?: boolean
 }
 
 export default function LayerInfoDialog(props: LayerInfoProps) {
@@ -48,11 +48,16 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 
 export function LayerInfoPage() {
 	const params = useAppParams('/layers/:id')
+	// -------- set title --------
+	React.useLayoutEffect(() => {
+		document.title = `SLM - ${DH.displayUnvalidatedLayer(params.id)}`
+	}, [params.id])
+
 	const isKnownLayer = L.isKnownLayer(params.id)
 	if (!isKnownLayer) return null
 	return (
 		<div className="p-4">
-			<LayerInfo layerId={params.id} />
+			<LayerInfo hidePopoutButton={true} layerId={params.id} />
 		</div>
 	)
 }
@@ -60,29 +65,16 @@ export function LayerInfoPage() {
 function LayerInfo(props: LayerInfoContentProps) {
 	const [activeTab, setActiveTab] = useState<'details' | 'scores'>('details')
 	const contentRef = useRef<HTMLDivElement>(null)
-	const layerConstraint = LQY.filterToConstraint(FB.comp(FB.eq('id', props.layerId)), 'get-layer')
-	const constraints: LQY.LayerQueryConstraint[] = [layerConstraint]
-	const layerRes = LayerQueriesClient.useLayersQuery({ constraints })
+	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 	let scores: LC.PartitionedScores | undefined
-	let layerDetails:
-		| { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
-		| undefined
+	const layer = L.toLayer(props.layerId)!
+	if (!L.isKnownLayer(layer)) throw new Error(`Layer ${props.layerId} is not a known layer`)
+	const layerDetails = L.resolveLayerDetails(layer)
 
 	if (layerRes.data && cfg) {
-		const layer = layerRes.data.layers[0]
+		const layer = layerRes.data as L.KnownLayer
 		scores = LC.partitionScores(layer, cfg)
-
-		try {
-			const resolved = L.resolveLayerDetails(layer)
-			const layerConfig = L.StaticLayerComponents.mapLayers.find(l => l.Layer === layer.Layer)
-			layerDetails = {
-				...resolved,
-				layerConfig,
-			}
-		} catch (error) {
-			console.warn('Failed to resolve layer details:', error)
-		}
 	}
 	const openInPopoutWindow = () => {
 		let width = 650
@@ -112,14 +104,16 @@ function LayerInfo(props: LayerInfoContentProps) {
 					>
 						<Icons.Clipboard />
 					</Button>
-					<Button
-						onClick={openInPopoutWindow}
-						size="icon"
-						variant="ghost"
-						title="Open in popout window"
-					>
-						<Icons.ExternalLink />
-					</Button>
+					{!props.hidePopoutButton && (
+						<Button
+							onClick={openInPopoutWindow}
+							size="icon"
+							variant="ghost"
+							title="Open in popout window"
+						>
+							<Icons.ExternalLink />
+						</Button>
+					)}
 					{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 				</div>
 				<TabsList

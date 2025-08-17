@@ -506,6 +506,7 @@ export function resolveLayerDetails(
 		layer,
 		team1: factionUnitConfigs[factionUnitTeam1],
 		team2: factionUnitConfigs[factionUnitTeam2],
+		layerConfig,
 	}
 
 	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
