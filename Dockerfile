@@ -22,7 +22,8 @@ ENV NODE_ENV=production
 RUN if [ -n "$TYPECHECK_AND_FORMAT" ]; then \
     pnpm run check & \
     pnpm run format:check & \
-  fi
+    wait; \
+    fi
 RUN pnpm vite build
 
 ENV HOST=0.0.0.0
