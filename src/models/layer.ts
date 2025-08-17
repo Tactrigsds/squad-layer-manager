@@ -528,7 +528,7 @@ export function resolveLayerDetails(
 		}
 
 		let role: string = ''
-		if (layer.Gamemode !== 'Seed') {
+		if (size !== 'S') {
 			switch (teamConfig.role) {
 				case 'attack':
 					role = 'O'

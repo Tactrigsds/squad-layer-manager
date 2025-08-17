@@ -68,9 +68,12 @@ function LayerInfo(props: LayerInfoContentProps) {
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 	let scores: LC.PartitionedScores | undefined
-	const layer = L.toLayer(props.layerId)!
-	if (!L.isKnownLayer(layer)) throw new Error(`Layer ${props.layerId} is not a known layer`)
-	const layerDetails = L.resolveLayerDetails(layer)
+	const layerDetails = React.useMemo(() => {
+		const layer = L.toLayer(props.layerId)!
+		if (!L.isKnownLayer(layer)) throw new Error(`Layer ${props.layerId} is not a known layer`)
+		const layerDetails = L.resolveLayerDetails(layer)
+		return layerDetails
+	}, [props.layerId])
 
 	if (layerRes.data && cfg) {
 		const layer = layerRes.data as L.KnownLayer
