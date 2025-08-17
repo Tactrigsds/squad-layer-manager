@@ -543,7 +543,7 @@ export async function ensureFullSetup() {
  * - Reinitializes workers if they were previously terminated
  * - Refetches the database buffer to ensure data freshness
  */
-function setupWindowFocusHandlers() {
+function _setupWindowFocusHandlers() {
 	if (windowFocusCleanupFn) return // Already set up
 
 	let blurTimeout: number | null = null

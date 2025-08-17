@@ -1,5 +1,6 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import * as AR from '@/app-routes.ts'
+import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
 import useAppParams from '@/hooks/use-app-params.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { upperSnakeCaseToPascalCase } from '@/lib/string.ts'
@@ -11,7 +12,6 @@ import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React, { useRef, useState } from 'react'
-import { copyAdminSetNextLayerCommand } from './layer-table-helpers.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
@@ -269,26 +269,6 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 	)
 }
 
-function VehicleRow({ vehicles }: { vehicles: SLL.Vehicle[] }) {
-	const totalCount = vehicles.reduce((sum, v) => sum + v.count, 0)
-	const vehicle = vehicles[0]
-	const hasDelayed = vehicles.some(v => v.delay > 0)
-
-	// For delay/respawn format, use the first vehicle's values
-	// If mixed delays, show the delayed vehicle's delay, otherwise 0
-	const displayDelay = hasDelayed ? vehicles.find(v => v.delay > 0)?.delay || 0 : 0
-	const delayRespawnInfo = `${displayDelay}/${vehicle.respawnTime}`
-
-	return (
-		<>
-			<div className="text-right" role="cell">{totalCount}</div>
-			<div role="cell">{delayRespawnInfo}</div>
-			<div role="cell">{vehicle.type}</div>
-			<div role="cell">{vehicle.name}</div>
-		</>
-	)
-}
-
 function OtherScoreRow({
 	scoreType,
 	score,
@@ -298,9 +278,6 @@ function OtherScoreRow({
 	score: number
 	scoreRange?: { min: number; max: number; field: string }
 }) {
-	// No special color coding for Balance Differential
-	const isBalanceDifferential = scoreType === 'Balance_Differential'
-
 	// Calculate percentage based on actual score range
 	let percentage = 0
 	if (scoreRange) {

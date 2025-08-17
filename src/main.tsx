@@ -78,11 +78,7 @@ const router = createBrowserRouter([
 	// -------- Layer Info
 	{
 		path: AR.route('/layers/:id'),
-		element: (
-			<InnerRouterProviders>
-				<LayerInfoPage />
-			</InnerRouterProviders>
-		),
+		element: <LayerInfoPage />,
 	},
 ])
 

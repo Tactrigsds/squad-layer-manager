@@ -1,10 +1,10 @@
+import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as L from '@/models/layer'
 import LayerInfoDialog from './layer-info'
 
-/** eslint-disable react-refresh/only-export-components */
-export function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
+function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 	let text = ''
 	for (const id of selectedHistoryEntryIds) {
 		if (text !== '') text += '\n'
@@ -16,8 +16,7 @@ export function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 	})
 }
 
-/** eslint-disable react-refresh/only-export-components */
-export function copyLayerId(selectedLayerIds: L.LayerId[]) {
+function copyLayerId(selectedLayerIds: L.LayerId[]) {
 	let text = ''
 	for (const id of selectedLayerIds) {
 		if (text !== '') text += '\n'
@@ -26,19 +25,6 @@ export function copyLayerId(selectedLayerIds: L.LayerId[]) {
 	navigator.clipboard.writeText(text)
 	globalToast$.next({
 		title: 'Copied Layer ID',
-	})
-}
-
-/** eslint-disable react-refresh/only-export-components */
-export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
-	let text = ''
-	for (const layerId of selectedLayerIds) {
-		if (text !== '') text += '\n'
-		text += L.getAdminSetNextLayerCommand(layerId)
-	}
-	navigator.clipboard.writeText(text)
-	globalToast$.next({
-		title: 'Copied AdminSetNextLayer Command',
 	})
 }
 
