@@ -102,5 +102,25 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-            TYPECHECK_AND_FORMAT=true
           tags: ${{ steps.branch.outputs.TAGS }}
+
+  quality-checks:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run type checking
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker run --rm ghcr.io/$OWNER/squad-layer-manager:commit-${{ github.sha }} pnpm run check
+
+      - name: Run format checking
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker run --rm ghcr.io/$OWNER/squad-layer-manager:commit-${{ github.sha }} pnpm run format:check
