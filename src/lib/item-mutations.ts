@@ -62,11 +62,11 @@ export function hasMutations(mutations: ItemMutations) {
 	return Math.max(...Object.values(mutations).map((set) => set.size)) > 0
 }
 
-export function toItemMutationState(mutations: ItemMutations, id: string): ItemMutationState {
+export function toItemMutationState(mutations: ItemMutations, id: string, parentItemId?: string): ItemMutationState {
 	return {
-		added: mutations.added.has(id),
-		removed: mutations.removed.has(id),
-		moved: mutations.moved.has(id),
-		edited: mutations.edited.has(id),
+		added: mutations.added.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
+		removed: mutations.removed.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
+		moved: mutations.moved.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
+		edited: mutations.edited.has(id) || parentItemId != undefined && mutations.moved.has(parentItemId),
 	}
 }

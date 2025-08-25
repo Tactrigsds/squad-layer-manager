@@ -1,5 +1,5 @@
 import { distinctDeepEquals } from '@/lib/async'
-import * as DH from '@/lib/display-helpers'
+
 import * as TrpcHelpers from '@/lib/trpc-helpers'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'

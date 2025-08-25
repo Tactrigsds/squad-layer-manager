@@ -13,6 +13,11 @@ type TallyProperties = {
 	deadline: number
 }
 
+type LayerVote = {
+	itemId: string
+	choices: L.LayerId[]
+}
+
 export type VoteState =
 	| ({ code: 'ready' } & LayerVote)
 	| (
@@ -46,12 +51,6 @@ export type VoteState =
 		& TallyProperties
 		& LayerVote
 	)
-
-export const LayerVoteSchema = z.object({
-	defaultChoice: L.LayerIdSchema,
-	choices: z.array(L.LayerIdSchema),
-})
-export type LayerVote = z.infer<typeof LayerVoteSchema>
 
 export type VoteStateWithVoteData = Extract<
 	VoteState,
@@ -127,4 +126,8 @@ export type VoteStateUpdate = {
 			event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change'
 			user: USR.GuiOrChatUserId
 		}
+}
+
+export function getDefaultChoice(state: VoteState) {
+	return state.choices[0]
 }

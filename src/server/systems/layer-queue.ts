@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { acquireInBlock, distinctDeepEquals, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import { deepClone } from '@/lib/object'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
@@ -128,7 +128,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
 			const serverState = await getServerState({}, ctx)
 			if (
-				serverState.layerQueue[0]?.vote
+				LL.isParentVoteItem(serverState.layerQueue[0])
 				&& voteState?.code === 'ready'
 				&& SquadServer.state.lastRoll.getTime() + CONFIG.reminders.startVoteReminderThreshold < Date.now()
 			) {
@@ -228,13 +228,13 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			using acquired = await acquireInBlock(voteStateMtx)
-			const serverState = deepClone(prevServerState)
+			const serverState = Obj.deepClone(prevServerState)
 			if (prevServerState.layerQueue.length === 0) {
 				C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No layers in queue to roll to')
 				return
 			}
 			const currentLayerItem = serverState.layerQueue.shift()
-			const currentLayerId = currentLayerItem ? LL.getLayerIdToSetFromItem(currentLayerItem) : undefined
+			const currentLayerId = currentLayerItem?.layerId
 			postRollEventsSub?.unsubscribe()
 			postRollEventsSub = new Rx.Subscription()
 
@@ -402,32 +402,32 @@ function getVoteStateUpdatesFromQueueUpdate(
 	const lastQueueItem = lastQueue[0] as LL.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
 
-	if (!lastQueueItem?.vote && !newQueueItem?.vote) return { code: 'noop' as const }
+	if ((!lastQueueItem || !LL.isParentVoteItem(lastQueueItem)) && !LL.isParentVoteItem(newQueueItem)) return { code: 'noop' as const }
 
 	if (!deepEqual(lastQueueItem, newQueueItem) && voteState?.code === 'in-progress' && !force) {
 		return { code: 'err:queue-change-during-vote' as const }
 	}
 
-	if (lastQueueItem?.vote && !newQueueItem?.vote) {
+	if (lastQueueItem && LL.isParentVoteItem(lastQueueItem) && LL.isParentVoteItem(newQueueItem)) {
 		return {
 			code: 'ok' as const,
 			update: { state: null, source: { type: 'system', event: 'queue-change' } } satisfies V.VoteStateUpdate,
 		}
 	}
 
-	if (newQueueItem.vote && !deepEqual(lastQueueItem?.vote, newQueueItem.vote)) {
+	if (newQueueItem && newQueueItem.choices && !deepEqual(lastQueueItem?.choices, newQueueItem.choices)) {
 		let newVoteState: V.VoteState
 		if (lastQueueItem?.itemId === newQueueItem.itemId) {
 			newVoteState = {
 				...(voteState ?? { code: 'ready' }),
-				choices: newQueueItem.vote.choices,
-				defaultChoice: newQueueItem.vote.defaultChoice,
+				choices: newQueueItem.choices.map(choice => choice.layerId),
+				itemId: newQueueItem.itemId,
 			}
 		} else {
 			newVoteState = {
 				code: 'ready',
-				choices: newQueueItem.vote.choices,
-				defaultChoice: newQueueItem.vote.defaultChoice,
+				choices: newQueueItem.choices.map(choice => choice.layerId),
+				itemId: newQueueItem.itemId,
 			}
 		}
 		return {
@@ -507,21 +507,12 @@ export const startVote = C.spanOp(
 
 			{
 				const serverState = await getServerState({ lock: true }, ctx)
-				if (serverState.layerQueue[0].layerId) {
-					delete serverState.layerQueue[0].layerId
-					await ctx
-						.db()
-						.update(Schema.servers)
-						.set(superjsonify(Schema.servers, { layerQueue: serverState.layerQueue }))
-						.where(E.eq(Schema.servers.id, CONFIG.serverId))
-				}
 				serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'vote-start' } }, ctx])
 			}
 
 			const updatedVoteState = {
 				code: 'in-progress',
-				choices: voteState.choices,
-				defaultChoice: voteState.defaultChoice,
+				...Obj.selectProps(voteState, ['choices', 'itemId']),
 				deadline: Date.now() + durationSeconds * 1000,
 				votes: {},
 				initiator: opts.initiator,
@@ -549,7 +540,11 @@ export const startVote = C.spanOp(
 		registerVoteDeadlineAndReminder$(ctx)
 		await SquadServer.rcon.broadcast(
 			ctx,
-			Messages.BROADCASTS.vote.started(res.voteStateUpdate.state.choices, res.voteStateUpdate.state.defaultChoice, durationSeconds * 1000),
+			Messages.BROADCASTS.vote.started(
+				res.voteStateUpdate.state.choices,
+				V.getDefaultChoice(res.voteStateUpdate.state),
+				durationSeconds * 1000,
+			),
 		)
 
 		return res
@@ -608,7 +603,7 @@ export const abortVote = C.spanOp(
 
 		const newVoteState: V.VoteState = {
 			choices: voteState.choices,
-			defaultChoice: voteState.defaultChoice,
+			itemId: voteState.itemId,
 			deadline: voteState.deadline,
 			votes: voteState.votes,
 			code: 'ended:aborted',
@@ -623,7 +618,7 @@ export const abortVote = C.spanOp(
 		voteStateUpdate$.next([ctx, update])
 		voteEndTask?.unsubscribe()
 		voteEndTask = null
-		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.aborted(voteState.defaultChoice))
+		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.aborted(V.getDefaultChoice(voteState)))
 
 		return { code: 'ok' as const }
 	},
@@ -686,7 +681,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	using acquired = await acquireInBlock(voteStateMtx)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
-		const serverState = deepClone(await getServerState({ lock: true }, ctx))
+		const serverState = Obj.deepClone(await getServerState({ lock: true }, ctx))
 		if (!voteState || voteState.code !== 'in-progress') {
 			return {
 				code: 'err:no-vote-in-progress' as const,
@@ -698,13 +693,9 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 		let voteUpdate: V.VoteStateUpdate
 		let tally: V.Tally | null = null
 		if (Object.values(voteState.votes).length === 0) {
-			serverState.layerQueue[0].layerId = voteState.defaultChoice
 			newVoteState = {
 				code: 'ended:insufficient-votes',
-				choices: voteState.choices,
-				defaultChoice: voteState.defaultChoice,
-				deadline: voteState.deadline,
-				votes: voteState.votes,
+				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes']),
 			}
 			voteUpdate = {
 				source: { type: 'system', event: 'vote-timeout' },
@@ -722,12 +713,8 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 			const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
 			serverState.layerQueue[0].layerId = winner
 			newVoteState = {
-				choices: voteState.choices,
-				defaultChoice: voteState.defaultChoice,
-				deadline: voteState.deadline,
-				votes: voteState.votes,
-
 				code: 'ended:winner',
+				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes']),
 				winner,
 			}
 			voteUpdate = {
@@ -755,7 +742,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.winnerSelected(res.tally!, res.voteUpdate.state!.winner))
 	}
 	if (res.voteUpdate!.state!.code === 'ended:insufficient-votes') {
-		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.insufficientVotes(res.voteUpdate.state!.defaultChoice))
+		await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(res.voteUpdate.state!)))
 	}
 	return res
 })
@@ -879,10 +866,10 @@ async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db; signal?:
 
 export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServerState; ctx: C.TrpcRequest }) {
 	C.setSpanOpAttrs({ input })
-	input = deepClone(input)
+	input = Obj.deepClone(input)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverStatePrev = await getServerState({ lock: true }, ctx)
-		const serverState = deepClone(serverStatePrev)
+		const serverState = Obj.deepClone(serverStatePrev)
 		if (input.layerQueueSeqId !== serverState.layerQueueSeqId) {
 			return {
 				code: 'err:out-of-sync' as const,
@@ -906,40 +893,31 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 			if (denyRes) return denyRes
 		}
 
-		// in case we've voted for a layer that has been shuffled to the back
-		for (let i = 1; i < input.layerQueue.length; i++) {
-			const item = input.layerQueue[i]
-			if (item.vote && item.layerId) {
-				delete item.layerId
-			}
-		}
 		if (input.layerQueue.length > CONFIG.maxQueueSize) {
 			return { code: 'err:queue-too-large' as const }
 		}
 
 		for (const item of input.layerQueue) {
-			if (item.vote && item.vote.choices.length === 0) {
+			if (LL.isParentVoteItem(item) && item.choices.length === 0) {
 				return { code: 'err:empty-vote' as const }
 			}
-			if (item.vote && item.vote.choices.length > CONFIG.maxNumVoteChoices) {
+			if (LL.isParentVoteItem(item) && item.choices.length > CONFIG.maxNumVoteChoices) {
 				return {
 					code: 'err:too-many-vote-choices' as const,
 					msg: `Max choices allowed is ${CONFIG.maxNumVoteChoices}`,
 				}
 			}
-			if (item.vote && item.vote.defaultChoice && !item.vote.choices.includes(item.vote.defaultChoice)) {
-				return { code: 'err:default-choice-not-in-choices' as const }
-			}
+
 			const choiceSet = new Set<string>()
-			if (item.vote) {
-				for (const choice of item.vote.choices) {
-					if (choiceSet.has(choice)) {
+			if (LL.isParentVoteItem(item)) {
+				for (const choice of item.choices) {
+					if (choiceSet.has(choice.layerId)) {
 						return {
 							code: 'err:duplicate-vote-choices' as const,
 							msg: `Duplicate choice: ${choice}`,
 						}
 					}
-					choiceSet.add(choice)
+					choiceSet.add(choice.layerId)
 				}
 			}
 		}

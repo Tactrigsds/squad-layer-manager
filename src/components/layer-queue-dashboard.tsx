@@ -126,10 +126,8 @@ export default function LayerQueueDashboard() {
 							</CardDescription>
 							<QueueControlPanel />
 						</CardHeader>
-						<CardContent>
-							<LayerList
-								store={QD.LQStore}
-							/>
+						<CardContent className="p-0 px-1">
+							<LayerList store={QD.LQStore} />
 						</CardContent>
 					</Card>
 					<VoteState />
@@ -230,7 +228,7 @@ function QueueControlPanel() {
 			</SelectLayersDialog>
 			<SelectLayersDialog
 				title="Play Next"
-				selectQueueItems={(items) => QD.LQStore.getState().add(items, 0)}
+				selectQueueItems={(items) => QD.LQStore.getState().add(items, { outerIndex: 0, innerIndex: null })}
 				open={playNextPopoverOpen}
 				onOpenChange={setPlayNextPopoverOpen}
 				layerQueryBaseInput={queryInputs.playNext}
@@ -301,12 +299,6 @@ function EditingCard() {
 					variant: 'destructive',
 				})
 				break
-			case 'err:default-choice-not-in-choices':
-				toaster.toast({
-					title: 'Cannot update: default choice must be one of the vote choices',
-					variant: 'destructive',
-				})
-				break
 			case 'err:duplicate-vote-choices':
 				toaster.toast({
 					title: res.msg,
@@ -346,17 +338,17 @@ function EditingCard() {
 								)}
 								{queueMutations.removed.size > 0 && (
 									<Badge variant="removed">
-										{queueMutations.removed.size} layers deleted
+										{queueMutations.removed.size} items deleted
 									</Badge>
 								)}
 								{queueMutations.moved.size > 0 && (
 									<Badge variant="moved">
-										{queueMutations.moved.size} layers moved
+										{queueMutations.moved.size} items moved
 									</Badge>
 								)}
 								{queueMutations.edited.size > 0 && (
 									<Badge variant="edited">
-										{queueMutations.edited.size} layers edited
+										{queueMutations.edited.size} items edited
 									</Badge>
 								)}
 							</span>

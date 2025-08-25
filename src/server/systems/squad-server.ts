@@ -300,7 +300,7 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 				if (state.bufferedNextMatch) {
 					newEntry.layerId = LL.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
 					newEntry.lqItemId = state.bufferedNextMatch.layerListItem.itemId
-					newEntry.layerVote = state.bufferedNextMatch.layerListItem.vote
+					newEntry.layerVote = { choices: state.bufferedNextMatch.layerListItem.choices }
 					newEntry.setByType = state.bufferedNextMatch.layerListItem.source.type
 
 					const setByUserId = state.bufferedNextMatch.layerListItem.source.type === 'manual'

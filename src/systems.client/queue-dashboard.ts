@@ -6,10 +6,10 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
+import { isNullOrUndef } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -50,15 +50,13 @@ export type LLState = {
 	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
 	nextLayerBackfillId?: string
 	listMutations: ItemMutations
-
-	isVoteChoice?: boolean
 }
 
 export type LLStore = LLState & LLActions
 
 export type LLActions = {
-	move: (sourceIndex: number, targetIndex: number, modifiedBy: bigint) => void
-	add: (items: LL.NewLayerListItem[], index?: number) => void
+	move: (movedItemId: LL.LayerListItemId, targetCursor: LL.LLItemRelativeCursor, modifiedBy: bigint) => void
+	add: (items: LL.NewLayerListItem[], index?: LL.LLItemIndex | LL.LLItemRelativeCursor) => void
 	setItem: (id: string, update: React.SetStateAction<LL.LayerListItem>) => void
 	remove: (id: string) => void
 	clear: () => void
@@ -66,8 +64,10 @@ export type LLActions = {
 
 export type LLItemState = {
 	index: number
+	innerIndex: number | null
 	item: LL.LayerListItem
 	mutationState: ItemMutationState
+	isVoteChoice: boolean
 }
 
 export type LLItemStore = LLItemState & LLItemActions
@@ -214,103 +214,141 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 		set((state) =>
 			Im.produce(state, (state) => {
 				const layerList = state.layerList
+				let removed = false
+
+				// First try to find and remove from main layer list
 				const index = layerList.findIndex((item) => item.itemId === id)
-				if (index === -1) return
-				layerList.splice(index, 1)
-				onMutate?.()
-				ItemMut.tryApplyMutation('removed', id, state.listMutations)
+				if (index !== -1) {
+					layerList.splice(index, 1)
+					removed = true
+				} else {
+					// If not found in main list, search in vote choices
+					outerLoop: for (let i = 0; i < layerList.length; i++) {
+						if (!LL.isParentVoteItem(layerList[i])) continue
+						const choices = layerList[i].choices!
+						for (let j = 0; j < choices.length; j++) {
+							if (choices[j].itemId === id) {
+								choices.splice(j, 1)
+								removed = true
+								break outerLoop
+							}
+						}
+					}
+				}
+
+				if (removed) {
+					onMutate?.()
+					ItemMut.tryApplyMutation('removed', id, state.listMutations)
+				}
 			})
 		)
 	}
 	return {
 		setItem: (id, update) => {
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const index = draft.layerList.findIndex((item) => item.itemId === id)
-					if (index === -1) return
-					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
-					draft.layerList[index].itemId = id
+			set((state) => {
+				console.log(state)
+				return Im.produce(state, (draft) => {
+					const itemResult = LL.findItemById(state.layerList, id)
+					if (!itemResult) return
+					const updated = typeof update === 'function' ? update(itemResult.item) : update
+					LL.splice(draft.layerList, itemResult, 1, updated)
+					for (const { item } of LL.iterLayerList([itemResult.item])) {
+						ItemMut.tryApplyMutation('edited', item.itemId, draft.listMutations)
+					}
 					onMutate?.()
-					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
 				})
-			)
+			})
 		},
 		add: (newItems, index) => {
 			set(
-				Im.produce((state) => {
-					const layerList = state.layerList
+				Im.produce((draft) => {
 					const items = newItems.map(LL.createLayerListItem)
-					if (index === undefined) {
-						layerList.push(...items)
-					} else {
-						layerList.splice(index, 0, ...items)
+					index ??= { outerIndex: draft.layerList.length, innerIndex: null }
+					LL.splice(draft.layerList, index, 0, ...items)
+					for (const { item } of LL.iterLayerList(items)) {
+						ItemMut.tryApplyMutation('added', item.itemId, draft.listMutations)
 					}
 					onMutate?.()
-					for (const item of items) {
-						ItemMut.tryApplyMutation('added', item.itemId, state.listMutations)
-					}
 				}),
 			)
 		},
-		move: (sourceIndex, targetIndex, modifiedBy) => {
-			if (sourceIndex === targetIndex || sourceIndex === targetIndex + 1) return
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const layerList = draft.layerList
-					const item = layerList[sourceIndex]
-					item.source = {
-						type: 'manual',
-						userId: modifiedBy,
+		move(movedItemId, targetCursor, modifiedBy) {
+			set((state) => {
+				console.debug('before', state)
+				return Im.produce(state, (draft) => {
+					if (movedItemId === targetCursor.itemId) return
+					const targetCursorParent = LL.findParentItem(targetCursor.itemId, state.layerList)
+					if (targetCursorParent?.itemId == movedItemId) return
+
+					const movedItemRes = LL.findItemById(state.layerList, movedItemId)
+					const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
+					if (movedItemRes === undefined) {
+						console.warn('Failed to move item. item not found', movedItemId, targetCursor.itemId)
+						return
 					}
-					if (sourceIndex > targetIndex) {
-						targetIndex++
+					if (targetItemRes === undefined) {
+						console.warn('Failed to move item. target item not found', movedItemId, targetCursor.itemId)
+						return
 					}
-					layerList.splice(sourceIndex, 1)
-					layerList.splice(targetIndex, 0, item)
+
+					{
+						const cursorItemIndex = LL.resolveQualfiedIndexFromCursorForMove(state.layerList, targetCursor)
+						if (cursorItemIndex === undefined) return
+
+						if (cursorItemIndex.innerIndex === movedItemRes.innerIndex && cursorItemIndex.outerIndex === movedItemRes.outerIndex) {
+							// already at target position
+							return
+						}
+					}
+					LL.splice(draft.layerList, movedItemRes, 1)
+					switch (targetCursor.position) {
+						case 'on': {
+							const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
+							if (!targetItemRes) return
+							const mergedItem = LL.mergeItems(targetItemRes.item, movedItemRes.item)
+							if (!mergedItem) throw new Error('Failed to merge items')
+							LL.splice(draft.layerList, targetCursor, 1, mergedItem)
+							ItemMut.tryApplyMutation('edited', mergedItem.itemId, draft.listMutations)
+							break
+						}
+						case 'after':
+						case 'before': {
+							const movedAndModifiedItem: LL.LayerListItem = { ...movedItemRes.item, source: { type: 'manual', userId: modifiedBy } }
+							LL.splice(draft.layerList, targetCursor, 0, movedAndModifiedItem)
+							break
+						}
+						default: {
+							assertNever(targetCursor.position)
+						}
+					}
+
+					if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
+						ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
+					}
+
+					if (targetCursorParent && LL.isParentVoteItem(movedItemRes.item)) {
+						for (const { item } of LL.iterLayerList([movedItemRes.item])) {
+							if (LL.isParentVoteItem(item)) continue
+							ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
+						}
+					} else {
+						ItemMut.tryApplyMutation('moved', movedItemId, draft.listMutations)
+					}
 					onMutate?.()
-					ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
 				})
-			)
+				console.debug('after', state)
+			})
 		},
 		remove,
 		clear: () => {
-			for (const item of get().layerList) {
-				onMutate?.()
-				remove(item.itemId)
-			}
+			const removed = new Set(get().layerList.map((item) => item.itemId))
+			set({
+				layerList: [],
+				listMutations: { removed, added: new Set(), edited: new Set(), moved: new Set() },
+			})
+			onMutate?.()
 		},
 	}
-}
-
-export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item'>): LLState => {
-	return {
-		listMutations: ItemMut.initMutations(),
-		layerList: itemState.item.vote?.choices.map(choice => LL.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
-		isVoteChoice: true,
-	}
-}
-
-export const getVoteChoiceStore = (itemState: Pick<LLItemState, 'item'>) => {
-	const initialState = getVoteChoiceStateFromItem(itemState)
-	return Zus.createStore<LLStore>((set, get) => ({
-		...createLLActions(set, get),
-		...initialState,
-	}))
-}
-
-export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	// notably we're not syncing and state from itemStore here
-	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState()), [itemStore])
-	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(newStore)
-
-	const initialRef = React.useRef(false)
-	React.useEffect(() => {
-		if (initialRef.current) return
-		initialRef.current = true
-		_setStore(newStore)
-	}, [newStore])
-
-	return store
 }
 
 export const selectLLState = (state: QDState): LLState => ({
@@ -367,84 +405,68 @@ function swapFactions(existingItem: LL.LayerListItem) {
 		const layerId = L.swapFactionsInId(existingItem.layerId)
 		updated.layerId = layerId
 	}
-	if (existingItem.vote) {
-		updated.vote = {
-			...existingItem.vote,
-			choices: existingItem.vote.choices.map(L.swapFactionsInId),
-			defaultChoice: L.swapFactionsInId(existingItem.vote.defaultChoice),
-		}
+	if (LL.isParentVoteItem(existingItem)) {
+		updated.choices = existingItem.choices.map(swapFactions)
 	}
 	return updated
 }
 
-export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) => {
-	const actions: LLItemActions = {
-		setItem: (update) => store.getState().setItem(itemId, update),
-		remove: () => store.getState().remove(itemId),
-		swapFactions: () => {
-			const item = store.getState().layerList.find((item) => item.itemId === itemId)!
-			store.getState().setItem(itemId, swapFactions(item))
-		},
-	}
-
-	return derive<LLItemStore>((get) => {
-		const layerList = get(store).layerList
-		const index = layerList.findIndex((item) => item.itemId === itemId)
-		const isVoteChoice = get(store).isVoteChoice
-		if (isVoteChoice) {
-			return {
-				...actions,
-				index,
-				item: layerList[index],
-				mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
-			}
-		}
-		return {
-			...actions,
-			index,
-			item: layerList[index],
-			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
-		}
-	})
+export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.LayerListItemId) {
+	const [store, subHandle] = React.useMemo(() => deriveLLItemStore(llStore, itemId), [llStore, itemId])
+	React.useEffect(() => {
+		const sub = subHandle.subscribe()
+		return () => sub.unsubscribe()
+	}, [subHandle])
+	return store
 }
 
-export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const mutationStore = Zus.createStore<ItemMutations>(() => ItemMut.initMutations())
-	function selectLLState(state: LLItemState, mutState: ItemMutations): LLState {
-		return {
-			listMutations: mutState,
-			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: { type: 'gameserver' } })) ?? [],
-			isVoteChoice: true,
+export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string) => {
+	let subHandle!: { subscribe: () => Rx.Subscription }
+	const store = Zus.createStore<LLItemStore>((set) => {
+		const actions: LLItemActions = {
+			setItem: (update) => llStore.getState().setItem(itemId, update),
+			remove: () => llStore.getState().remove(itemId),
+			swapFactions: () => {
+				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
+				llStore.getState().setItem(itemId, swapFactions(item))
+			},
 		}
-	}
-	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
-	const llSet: Setter<LLState> = (update) => {
-		const llState = llGet()
-		const updated = typeof update === 'function' ? update(llState) : update
-		if (updated.layerList) {
-			const choices = updated.layerList!.map((item) => item.layerId!)
-			const defaultChoice = choices[0] ?? itemStore.getState().item.vote?.defaultChoice
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
-					if (!draft.vote) return
-					draft.vote.choices = choices
-					draft.vote.defaultChoice = defaultChoice
-				})
-			)
-		}
-		if (updated.listMutations) {
-			mutationStore.setState(updated.listMutations)
-		}
-	}
+		function deriveState(llState: LLStore): LLItemState | null {
+			const layerList = llState.layerList
 
-	const actions = createLLActions(llSet, llGet)
+			const res = LL.findItemById(layerList, itemId)
+			if (!res) return null
+			const parentItem = LL.findParentItem(itemId, layerList)
+			const { item, outerIndex, innerIndex } = res
+			return {
+				index: outerIndex,
+				innerIndex,
+				isVoteChoice: innerIndex != null,
+				item,
+				mutationState: ItemMut.toItemMutationState(llState.listMutations, itemId, parentItem?.layerId),
+			}
+		}
 
-	return derive<LLStore>((get) => {
+		const derived$ = new Rx.Observable<LLItemState | null>((observer) => {
+			const unsub = llStore.subscribe((state) => {
+				observer.next(deriveState(state))
+			})
+			return () => unsub()
+		})
+
+		subHandle = {
+			subscribe: () =>
+				derived$.subscribe((state) => {
+					if (state) set(state)
+				}),
+		}
+
 		return {
-			...selectLLState(get(itemStore), get(mutationStore)),
 			...actions,
+			...deriveState(llStore.getState())!,
 		}
 	})
+	return [store, subHandle] as const
 }
 
 export function getEditableServerState(state: SS.LQServerState): MutServerStateWithIds {
@@ -777,12 +799,6 @@ export function useSaveChangesMutation() {
 			case 'err:too-many-vote-choices':
 				toaster.toast({
 					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:default-choice-not-in-choices':
-				toaster.toast({
-					title: 'Cannot update: default choice must be one of the vote choices',
 					variant: 'destructive',
 				})
 				break

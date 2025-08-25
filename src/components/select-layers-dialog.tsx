@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LFM from '@/models/layer-filter-menu.models.ts'
@@ -22,7 +21,7 @@ export default function SelectLayersDialog(props: {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	children: React.ReactNode
+	children?: React.ReactNode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
 	open: boolean
@@ -58,22 +57,21 @@ export default function SelectLayersDialog(props: {
 		if (!canSubmit) return
 		setSubmitted(true)
 		try {
+			const source: LL.LayerSource = { type: 'manual', userId: user!.discordId }
 			if (selectMode === 'layers' || selectedLayers.length === 1) {
 				const items = selectedLayers.map(
 					(layerId) =>
 						({
 							layerId: layerId,
-							source: { type: 'manual', userId: user!.discordId },
+							source,
 						}) satisfies LL.NewLayerListItem,
 				)
 				props.selectQueueItems(items)
 			} else if (selectMode === 'vote') {
 				const item: LL.NewLayerListItem = {
-					vote: {
-						choices: selectedLayers,
-						defaultChoice: selectedLayers[0],
-					},
-					source: { type: 'manual', userId: user!.discordId },
+					layerId: selectedLayers[0],
+					choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId, source })),
+					source,
 				}
 				props.selectQueueItems([item])
 			}
@@ -107,7 +105,7 @@ export default function SelectLayersDialog(props: {
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
-			<DialogTrigger asChild>{props.children}</DialogTrigger>
+      {props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
 			<DialogContent className="w-auto max-w-full overflow-x-auto min-w-0 pb-2">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center space-x-2">

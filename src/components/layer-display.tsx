@@ -22,6 +22,7 @@ export default function LayerDisplay(
 		addedLayerQueryInput?: Pick<LQY.LayerQueryBaseInput, 'patches'>
 		allowShowInfo?: boolean
 		className?: string
+		ref?: React.RefAttributes<HTMLDivElement>
 	},
 ) {
 	const layerStatusesRes = useLayerItemStatuses({ addedInput: props.addedLayerQueryInput })
@@ -90,7 +91,7 @@ export default function LayerDisplay(
 	}
 
 	return (
-		<div className={cn('flex space-x-2 items-center', props.className)}>
+		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
 			<span className="flex-1 text-nowrap">
 				<ShortLayerName
 					layerId={props.item.layerId}

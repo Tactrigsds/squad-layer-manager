@@ -115,14 +115,14 @@ export const WARNS = {
 
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
 
-			if (item.vote) {
+			if (LL.isParentVoteItem(item)) {
 				if (item.layerId) {
 					const msg = `Next Layer (Chosen via vote)\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`
 					return getOptions(msg)
 				} else {
 					const msg = [
 						'Upcoming vote:',
-						...voteChoicesLines(item.vote.choices, item.vote.defaultChoice, playerNextTeamId),
+						...voteChoicesLines(item.choices.map(choice => choice.layerId), LL.getDefaultLayerId(item), playerNextTeamId),
 					]
 					msg.push(extraDisplay)
 					return getOptions(msg)
