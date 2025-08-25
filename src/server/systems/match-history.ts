@@ -67,7 +67,8 @@ export const loadState = C.spanOp(
 			.leftJoin(Schema.balanceTriggerEvents, E.eq(recentMatchesCte.id, Schema.balanceTriggerEvents.matchTriggeredId))
 
 		for (const row of rows.reverse()) {
-			const details = MH.matchHistoryEntryToMatchDetails(row.recent_matches)
+			// @ts-expect-error idgaf
+			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches))
 			Arr.upsertOn(state.recentMatches, details, 'historyEntryId')
 			if (row.balanceTriggerEvents) {
 				Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
@@ -132,7 +133,7 @@ export const addNewCurrentMatch = C.spanOp(
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values({ ...entry, ordinal }).$returningId()
+			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, { ...entry, ordinal })).$returningId()
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
@@ -170,7 +171,9 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 			team2Tickets: teams[1]?.tickets,
 		}
 
-		await ctx.db().update(Schema.matchHistory).set(update).where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
+		await ctx.db().update(Schema.matchHistory).set(superjsonify(Schema.matchHistory, update)).where(
+			E.eq(Schema.matchHistory.id, currentMatch.historyEntryId),
+		)
 		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
 
 		// -------- look for tripped balance triggers --------
@@ -223,11 +226,11 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values({
+			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
 				layerId: currentLayerOnServer.id,
 				ordinal,
 				setByType: 'unknown',
-			})
+			}))
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 		stateUpdated$.next(ctx)

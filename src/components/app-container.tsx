@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
+import * as ThemeClient from '@/systems.client/theme'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { useTrpcConnected } from '@/trpc.client'
 import * as Icons from 'lucide-react'
@@ -13,13 +14,13 @@ import CommandsHelpDialog from './commands-help-dialog'
 import { ServerUnreachable } from './server-offline-display'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
 import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useTrpcConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
@@ -36,6 +37,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onCommandsHelpOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'commands' : null)
 	}
+	const { theme, setTheme } = ThemeClient.useTheme()
 	const config = ConfigClient.useConfig()
 	return (
 		<div className="h-full w-full">
@@ -102,6 +104,28 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										Websocket Disconnected
 									</DropdownMenuItem>
 								)}
+								<DropdownMenuSub>
+									<DropdownMenuSubTrigger className="text-sm" chevronLeft>
+										Theme
+									</DropdownMenuSubTrigger>
+									<DropdownMenuSubContent>
+										<DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as 'dark' | 'light' | 'system')}>
+											<DropdownMenuRadioItem value="light" className="text-sm">
+												<Icons.Sun className="mr-2 h-4 w-4" />
+												Light
+											</DropdownMenuRadioItem>
+											<DropdownMenuRadioItem value="dark" className="text-sm">
+												<Icons.Moon className="mr-2 h-4 w-4" />
+												Dark
+											</DropdownMenuRadioItem>
+											<DropdownMenuRadioItem value="system" className="text-sm">
+												<Icons.Monitor className="mr-2 h-4 w-4" />
+												System
+											</DropdownMenuRadioItem>
+										</DropdownMenuRadioGroup>
+									</DropdownMenuSubContent>
+								</DropdownMenuSub>
+								<DropdownMenuSeparator />
 								<form action={AR.route('/logout')} method="POST">
 									<DropdownMenuItem asChild>
 										<button className="w-full text-sm" type="submit">

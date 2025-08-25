@@ -418,13 +418,11 @@ describe('getLayerStatusesForLayerQueue', () => {
 			{
 				itemId: 'vote1',
 				source: { type: 'unknown' },
-				vote: {
-					defaultChoice: sampleLayerIds[0],
-					choices: [
-						sampleLayerIds[0],
-						sampleLayerIds[1],
-					],
-				},
+				layerId: sampleLayerIds[0],
+				choices: [
+					sampleLayerIds[0],
+					sampleLayerIds[1],
+				].map(id => LL.createLayerListItem({ layerId: id })),
 			},
 		]
 		const basicPool: SS.PoolConfiguration = {
@@ -1077,14 +1075,12 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'vote1',
 				source: { type: 'unknown' },
-				vote: {
-					defaultChoice: sampleLayerIds[1],
-					choices: [
-						sampleLayerIds[0], // This should be blocked by repeat rule
-						sampleLayerIds[1],
-						sampleLayerIds[2],
-					],
-				},
+				layerId: sampleLayerIds[1],
+				choices: [
+					sampleLayerIds[0], // This should be blocked by repeat rule
+					sampleLayerIds[1],
+					sampleLayerIds[2],
+				].map(id => LL.createLayerListItem({ layerId: id })),
 			},
 		]
 

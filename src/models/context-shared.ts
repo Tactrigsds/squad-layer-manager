@@ -3,6 +3,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import type * as Config from '@/server/config'
 import type pino from 'pino'
 import * as LDB from './layer-db'
 
@@ -25,6 +26,9 @@ export type MatchHistory = {
 }
 export type LayerItemsState = {
 	layerItemsState: LQY.LayerItemsState
+}
+export type PublicConfig = {
+	publicConfig: Config.PublicConfig
 }
 
 export type LayerQuery = LayerDb & Log & Filters & LayerItemsState

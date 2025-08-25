@@ -341,7 +341,7 @@ export async function createTrpcRequestContext(
 		}
 	}
 	const wsClientId = createId(32)
-	const ctx: C.TrpcRequest = {
+	const ctx: C.TrpcRequest = C.initLocks({
 		wsClientId,
 		user: result.ctx.user,
 		sessionId: result.ctx.sessionId,
@@ -350,7 +350,7 @@ export async function createTrpcRequestContext(
 		ws: options.res as unknown as WebSocket,
 		log: result.ctx.log.child({ wsClientId }),
 		db: result.ctx.db,
-	}
+	})
 	WsSessionSys.registerClient(ctx)
 	return ctx
 }

@@ -21,6 +21,17 @@
           "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
           "description": "Duration of a vote",
           "default": "120s"
+        },
+        "autoStartVoteDelay": {
+          "anyOf": [
+            {
+              "$ref": "#/properties/defaults/properties/voteDuration",
+              "default": "20m",
+              "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+            },
+            {"type": "null"}
+          ],
+          "description": "Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes"
         }
       },
       "additionalProperties": false

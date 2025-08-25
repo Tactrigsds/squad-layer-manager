@@ -9,7 +9,6 @@ import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -23,6 +22,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
@@ -50,15 +50,13 @@ export type LLState = {
 	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
 	nextLayerBackfillId?: string
 	listMutations: ItemMutations
-
-	isVoteChoice?: boolean
 }
 
 export type LLStore = LLState & LLActions
 
 export type LLActions = {
-	move: (sourceIndex: number, targetIndex: number, modifiedBy: bigint) => void
-	add: (items: LL.NewLayerListItem[], index?: number) => void
+	move: (movedItemId: LL.LayerListItemId, targetCursor: LL.LLItemRelativeCursor, modifiedBy: bigint) => void
+	add: (items: LL.NewLayerListItem[], index?: LL.LLItemIndex | LL.LLItemRelativeCursor) => void
 	setItem: (id: string, update: React.SetStateAction<LL.LayerListItem>) => void
 	remove: (id: string) => void
 	clear: () => void
@@ -66,14 +64,19 @@ export type LLActions = {
 
 export type LLItemState = {
 	index: number
+	innerIndex: number | null
 	item: LL.LayerListItem
 	mutationState: ItemMutationState
+	isVoteChoice: boolean
+	isLocallyLast: boolean
+	backfillLayerId?: string
 }
 
 export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
 	setItem: React.Dispatch<React.SetStateAction<LL.LayerListItem>>
+	addVoteItems: (items: LL.NewLayerListItem[]) => void
 	swapFactions: () => void
 	// if not present then removing is disabled
 	remove?: () => void
@@ -211,106 +214,133 @@ export type QDStore = QDState & {
 // -------- store initialization --------
 export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMutate?: () => void): LLActions => {
 	const remove = (id: string) => {
-		set((state) =>
-			Im.produce(state, (state) => {
-				const layerList = state.layerList
-				const index = layerList.findIndex((item) => item.itemId === id)
-				if (index === -1) return
-				layerList.splice(index, 1)
+		set((prevState) =>
+			Im.produce(prevState, (draft) => {
+				let itemRes: LL.LayerListIteratorResult | undefined
+				if (!(itemRes = LL.findItemById(prevState.layerList, id))) return
+				LL.splice(draft.layerList, itemRes, 1)
+				ItemMut.tryApplyMutation('removed', id, draft.listMutations)
+				// TODO current implementation of the below doesn't work for this scenario. will need some kind of structural diffing instead
+				LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 				onMutate?.()
-				ItemMut.tryApplyMutation('removed', id, state.listMutations)
 			})
 		)
 	}
 	return {
 		setItem: (id, update) => {
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const index = draft.layerList.findIndex((item) => item.itemId === id)
-					if (index === -1) return
-					draft.layerList[index] = typeof update === 'function' ? update(draft.layerList[index]) : update
-					draft.layerList[index].itemId = id
-					onMutate?.()
+			set((state) => {
+				return Im.produce(state, (draft) => {
+					const itemResult = LL.findItemById(state.layerList, id)
+					if (!itemResult) return
+					const originalItem = itemResult.item
+					const updatedItem = typeof update === 'function' ? update(itemResult.item) : update
+					LL.splice(draft.layerList, itemResult, 1, updatedItem)
 					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
+					// here we handle potential edits only
+					if (LL.isParentVoteItem(updatedItem) && LL.isParentVoteItem(originalItem)) {
+						for (let i = 0; i < Math.max(updatedItem.choices.length, originalItem.choices.length); i++) {
+							const choice = updatedItem.choices[i]
+							const originalChoice = originalItem.choices[i]
+							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !deepEqual(choice, originalChoice)) {
+								ItemMut.tryApplyMutation('edited', choice.itemId, draft.listMutations)
+							}
+							if (choice && !LL.findItemById([originalItem], choice.itemId)) {
+								ItemMut.tryApplyMutation('added', choice.itemId, draft.listMutations)
+							}
+						}
+					}
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
+					onMutate?.()
 				})
-			)
+			})
 		},
 		add: (newItems, index) => {
 			set(
-				Im.produce((state) => {
-					const layerList = state.layerList
+				Im.produce((draft) => {
 					const items = newItems.map(LL.createLayerListItem)
-					if (index === undefined) {
-						layerList.push(...items)
-					} else {
-						layerList.splice(index, 0, ...items)
+					index ??= { outerIndex: draft.layerList.length, innerIndex: null }
+					LL.splice(draft.layerList, index, 0, ...items)
+					for (const { item } of LL.iterLayerList(items)) {
+						ItemMut.tryApplyMutation('added', item.itemId, draft.listMutations)
 					}
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 					onMutate?.()
-					for (const item of items) {
-						ItemMut.tryApplyMutation('added', item.itemId, state.listMutations)
-					}
 				}),
 			)
 		},
-		move: (sourceIndex, targetIndex, modifiedBy) => {
-			if (sourceIndex === targetIndex || sourceIndex === targetIndex + 1) return
-			set((state) =>
-				Im.produce(state, (draft) => {
-					const layerList = draft.layerList
-					const item = layerList[sourceIndex]
-					item.source = {
-						type: 'manual',
-						userId: modifiedBy,
+		move(movedItemId, targetCursor, modifiedBy) {
+			set((state) => {
+				console.debug('before', state)
+				return Im.produce(state, (draft) => {
+					if (movedItemId === targetCursor.itemId) return
+					const targetCursorParent = LL.findParentItem(targetCursor.itemId, draft.layerList)
+					if (targetCursorParent?.itemId == movedItemId) return
+
+					const movedItemRes = LL.findItemById(state.layerList, movedItemId)
+					const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
+					if (movedItemRes === undefined) {
+						console.warn('Failed to move item. item not found', movedItemId, targetCursor.itemId)
+						return
 					}
-					if (sourceIndex > targetIndex) {
-						targetIndex++
+					if (targetItemRes === undefined) {
+						console.warn('Failed to move item. target item not found', movedItemId, targetCursor.itemId)
+						return
 					}
-					layerList.splice(sourceIndex, 1)
-					layerList.splice(targetIndex, 0, item)
+
+					{
+						const cursorItemIndex = LL.resolveQualfiedIndexFromCursorForMove(state.layerList, targetCursor)
+						if (cursorItemIndex === undefined) return
+
+						if (cursorItemIndex.innerIndex === movedItemRes.innerIndex && cursorItemIndex.outerIndex === movedItemRes.outerIndex) {
+							// already at target position
+							return
+						}
+					}
+					LL.splice(draft.layerList, movedItemRes, 1)
+					switch (targetCursor.position) {
+						case 'on': {
+							const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
+							if (!targetItemRes) return
+							const mergedItem = LL.mergeItems(targetItemRes.item, movedItemRes.item)
+							if (!mergedItem) throw new Error('Failed to merge items')
+							LL.splice(draft.layerList, targetCursor, 1, mergedItem)
+							ItemMut.tryApplyMutation('edited', mergedItem.itemId, draft.listMutations)
+							break
+						}
+						case 'after':
+						case 'before': {
+							const movedAndModifiedItem: LL.LayerListItem = { ...movedItemRes.item, source: { type: 'manual', userId: modifiedBy } }
+							LL.splice(draft.layerList, targetCursor, 0, movedAndModifiedItem)
+							if (targetCursorParent && LL.isParentVoteItem(targetCursorParent)) {
+								LL.setCorrectChosenLayerIdInPlace(targetCursorParent as LL.ParentVoteItem)
+							}
+							if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
+								ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
+							}
+							break
+						}
+						default: {
+							assertNever(targetCursor.position)
+						}
+					}
+
+					ItemMut.tryApplyMutation('moved', movedItemRes.item.itemId, draft.listMutations)
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 					onMutate?.()
-					ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
 				})
-			)
+				console.debug('after', state)
+			})
 		},
 		remove,
 		clear: () => {
-			for (const item of get().layerList) {
-				onMutate?.()
-				remove(item.itemId)
-			}
+			const removed = new Set(get().layerList.map((item) => item.itemId))
+			set({
+				layerList: [],
+				listMutations: { removed, added: new Set(), edited: new Set(), moved: new Set() },
+			})
+			onMutate?.()
 		},
 	}
-}
-
-export const getVoteChoiceStateFromItem = (itemState: Pick<LLItemState, 'item'>): LLState => {
-	return {
-		listMutations: ItemMut.initMutations(),
-		layerList: itemState.item.vote?.choices.map(choice => LL.createLayerListItem({ layerId: choice, source: itemState.item.source })) ?? [],
-		isVoteChoice: true,
-	}
-}
-
-export const getVoteChoiceStore = (itemState: Pick<LLItemState, 'item'>) => {
-	const initialState = getVoteChoiceStateFromItem(itemState)
-	return Zus.createStore<LLStore>((set, get) => ({
-		...createLLActions(set, get),
-		...initialState,
-	}))
-}
-
-export const useVoteChoiceStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	// notably we're not syncing and state from itemStore here
-	const newStore = React.useMemo(() => getVoteChoiceStore(itemStore.getState()), [itemStore])
-	const [store, _setStore] = React.useState<Zus.StoreApi<LLStore>>(newStore)
-
-	const initialRef = React.useRef(false)
-	React.useEffect(() => {
-		if (initialRef.current) return
-		initialRef.current = true
-		_setStore(newStore)
-	}, [newStore])
-
-	return store
 }
 
 export const selectLLState = (state: QDState): LLState => ({
@@ -355,96 +385,90 @@ export const createLLItemStore = (
 		},
 		swapFactions: () => {
 			const item = get().item
-			set({ item: swapFactions(item) })
+			set({ item: LL.swapFactions(item) })
+		},
+		addVoteItems: (choices) => {
+			const newItem = LL.mergeItems(get().item, ...choices.map(LL.createLayerListItem))
+			if (!newItem) return
+			set({ item: newItem })
 		},
 		remove: removeItem,
 	}
 }
 
-function swapFactions(existingItem: LL.LayerListItem) {
-	const updated: LL.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId! } }
-	if (existingItem.layerId) {
-		const layerId = L.swapFactionsInId(existingItem.layerId)
-		updated.layerId = layerId
-	}
-	if (existingItem.vote) {
-		updated.vote = {
-			...existingItem.vote,
-			choices: existingItem.vote.choices.map(L.swapFactionsInId),
-			defaultChoice: L.swapFactionsInId(existingItem.vote.defaultChoice),
-		}
-	}
-	return updated
+export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.LayerListItemId) {
+	const [store, subHandle] = React.useMemo(() => deriveLLItemStore(llStore, itemId), [llStore, itemId])
+	React.useEffect(() => {
+		const sub = subHandle.subscribe()
+		return () => sub.unsubscribe()
+	}, [subHandle])
+	return store
 }
 
-export const deriveLLItemStore = (store: Zus.StoreApi<LLStore>, itemId: string) => {
-	const actions: LLItemActions = {
-		setItem: (update) => store.getState().setItem(itemId, update),
-		remove: () => store.getState().remove(itemId),
-		swapFactions: () => {
-			const item = store.getState().layerList.find((item) => item.itemId === itemId)!
-			store.getState().setItem(itemId, swapFactions(item))
-		},
-	}
+export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string) => {
+	let subHandle!: { subscribe: () => Rx.Subscription }
+	const store = Zus.createStore<LLItemStore>((set) => {
+		const actions: LLItemActions = {
+			setItem: (update) => llStore.getState().setItem(itemId, update),
+			addVoteItems: (choices) => {
+				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
+				const newItem = LL.mergeItems(item, ...choices.map(LL.createLayerListItem))
+				if (!newItem) return
+				llStore.getState().setItem(item.itemId, newItem)
+			},
+			remove: () => llStore.getState().remove(itemId),
+			swapFactions: () => {
+				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
+				llStore.getState().setItem(itemId, LL.swapFactions(item))
+			},
+		}
+		function deriveState(llState: LLStore): LLItemState | null {
+			const layerList = llState.layerList
 
-	return derive<LLItemStore>((get) => {
-		const layerList = get(store).layerList
-		const index = layerList.findIndex((item) => item.itemId === itemId)
-		const isVoteChoice = get(store).isVoteChoice
-		if (isVoteChoice) {
+			const res = LL.findItemById(layerList, itemId)
+			if (!res) return null
+			const parentItem = LL.findParentItem(itemId, layerList)
+			const { item, outerIndex, innerIndex } = res
+			const isLocallyLast = LL.isLocallyLastItem(itemId, layerList)
+
+			let backfillLayerId: string | undefined
+			if (outerIndex === 0 || innerIndex !== null && parentItem && parentItem?.layerId === item.layerId) {
+				if (llState.nextLayerBackfillId && L.areLayersCompatible(item.layerId, llState.nextLayerBackfillId)) {
+					backfillLayerId = llState.nextLayerBackfillId
+				}
+			}
+
 			return {
-				...actions,
-				index,
-				item: layerList[index],
-				mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
+				index: outerIndex,
+				innerIndex,
+				isVoteChoice: innerIndex != null,
+				item,
+				mutationState: ItemMut.toItemMutationState(llState.listMutations, itemId, parentItem?.layerId),
+				isLocallyLast,
+				backfillLayerId,
 			}
 		}
+
+		const derived$ = new Rx.Observable<LLItemState | null>((observer) => {
+			const unsub = llStore.subscribe((state) => {
+				observer.next(deriveState(state))
+			})
+			return () => unsub()
+		})
+
+		subHandle = {
+			subscribe: () =>
+				derived$.subscribe((state) => {
+					if (state) set(state)
+				}),
+		}
+
 		return {
 			...actions,
-			index,
-			item: layerList[index],
-			mutationState: ItemMut.toItemMutationState(get(store).listMutations, itemId),
+			...deriveState(llStore.getState())!,
 		}
 	})
-}
-
-export const deriveVoteChoiceListStore = (itemStore: Zus.StoreApi<LLItemStore>) => {
-	const mutationStore = Zus.createStore<ItemMutations>(() => ItemMut.initMutations())
-	function selectLLState(state: LLItemState, mutState: ItemMutations): LLState {
-		return {
-			listMutations: mutState,
-			layerList: state.item.vote?.choices.map((layerId) => ({ layerId, itemId: layerId, source: { type: 'gameserver' } })) ?? [],
-			isVoteChoice: true,
-		}
-	}
-	const llGet: Getter<LLState> = () => selectLLState(itemStore.getState(), mutationStore.getState())
-	const llSet: Setter<LLState> = (update) => {
-		const llState = llGet()
-		const updated = typeof update === 'function' ? update(llState) : update
-		if (updated.layerList) {
-			const choices = updated.layerList!.map((item) => item.layerId!)
-			const defaultChoice = choices[0] ?? itemStore.getState().item.vote?.defaultChoice
-			itemStore.getState().setItem((prev) =>
-				Im.produce(prev, (draft) => {
-					if (!draft.vote) return
-					draft.vote.choices = choices
-					draft.vote.defaultChoice = defaultChoice
-				})
-			)
-		}
-		if (updated.listMutations) {
-			mutationStore.setState(updated.listMutations)
-		}
-	}
-
-	const actions = createLLActions(llSet, llGet)
-
-	return derive<LLStore>((get) => {
-		return {
-			...selectLLState(get(itemStore), get(mutationStore)),
-			...actions,
-		}
-	})
+	return [store, subHandle] as const
 }
 
 export function getEditableServerState(state: SS.LQServerState): MutServerStateWithIds {
@@ -755,38 +779,14 @@ export function useSaveChangesMutation() {
 				})
 				reset()
 				return
-			case 'err:queue-change-during-vote':
-				toaster.toast({
-					title: 'Cannot update: layer vote in progress',
-					variant: 'destructive',
-				})
-				reset()
-				break
 			case 'err:queue-too-large':
 				toaster.toast({
 					title: 'Queue too large',
 					variant: 'destructive',
 				})
 				break
-			case 'err:empty-vote':
-				toaster.toast({
-					title: 'Cannot update: vote is empty',
-					variant: 'destructive',
-				})
-				break
+			case 'err:not-enough-visible-info':
 			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:default-choice-not-in-choices':
-				toaster.toast({
-					title: 'Cannot update: default choice must be one of the vote choices',
-					variant: 'destructive',
-				})
-				break
-			case 'err:duplicate-vote-choices':
 				toaster.toast({
 					title: res.msg,
 					variant: 'destructive',

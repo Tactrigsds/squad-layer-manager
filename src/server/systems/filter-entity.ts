@@ -167,7 +167,7 @@ export const filtersRouter = router({
 			return res
 		}),
 	deleteFilter: procedure.input(F.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
-		const serverState = await LayerQueue.getServerState({}, ctx)
+		const serverState = await LayerQueue.getServerState(ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes

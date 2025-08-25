@@ -255,4 +255,26 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	return Array.from(active)
 }
 
+export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; startTime: Date; lqItem?: LL.LayerListItem }) {
+	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
+		layerId: opts.layerId,
+		startTime: opts.startTime,
+		setByType: 'unknown',
+	}
+
+	if (opts.lqItem) {
+		newEntry.layerId = LL.getActiveItemLayerId(opts.lqItem) ?? newEntry.layerId
+		newEntry.lqItemId = opts.lqItem.itemId
+		newEntry.layerVote = { choices: opts.lqItem.choices }
+		newEntry.setByType = opts.lqItem.source.type
+
+		const setByUserId = opts.lqItem.source.type === 'manual'
+			? opts.lqItem.source.userId
+			: undefined
+		newEntry.setByType = opts.lqItem.source.type
+		newEntry.setByUserId = setByUserId
+	}
+	return newEntry
+}
+
 export const RECENT_HISTORY_ITEMS_PER_PAGE = 10

@@ -782,6 +782,9 @@ export function LayerEqConfig(
 			QD.createLLItemStore(set, get, {
 				mutationState: initMutationState(),
 				index: 0,
+				innerIndex: null,
+				isVoteChoice: false,
+				isLocallyLast: false,
 				item: { itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? L.DEFAULT_LAYER_ID },
 			})
 		)
@@ -804,7 +807,6 @@ export function LayerEqConfig(
 				open={open}
 				onOpenChange={setOpen}
 				itemStore={storeRef.current}
-				allowVotes={false}
 			>
 				<Button size="icon" variant="ghost" onClick={() => setOpen(true)}>
 					<Icons.Edit />

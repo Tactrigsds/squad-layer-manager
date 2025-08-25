@@ -1,4 +1,3 @@
-import * as SchemaModels from '$root/drizzle/schema.models.ts'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import Rcon from '@/lib/rcon/core-rcon.ts'
@@ -10,7 +9,6 @@ import * as Messages from '@/messages.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models.ts'
 import * as MH from '@/models/match-history.models.ts'
 import * as SME from '@/models/squad-models.events.ts'
 import * as SM from '@/models/squad.models.ts'
@@ -31,12 +29,6 @@ import * as Env from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
 type SquadServerState = {
-	// An ephemeral copy of the current matches layer queue item, taken just before the server rolls and the NEW_GAME squad event is emitted. in order for usages of this to be valid, the corresponding NEW_GAME event must be received after its details are buffered.
-	bufferedNextMatch?: {
-		layerListItem: LL.LayerListItem
-	}
-	lastRoll: Date
-
 	debug__ticketOutcome?: SME.DebugTicketOutcome
 }
 
@@ -93,7 +85,7 @@ async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
 	return { code: 'ok' as const }
 }
 
-async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
+async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
@@ -147,8 +139,12 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				case 'err:permission-denied': {
 					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
 				}
-				case 'err:no-vote-exists':
-				case 'err:vote-in-progress': {
+				case 'err:invalid-item-type':
+				case 'err:public-vote-not-first':
+				case 'err:vote-not-allowed':
+				case 'err:item-not-found':
+				case 'err:vote-in-progress':
+				case 'err:editing-in-progress': {
 					return await showError('vote-error', res.msg)
 				}
 				case 'err:rcon': {
@@ -214,9 +210,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 	const adminListTTL = 1000 * 60 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })
 
-	state = {
-		lastRoll: new Date(0),
-	}
+	state = {}
 
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	void adminList.get(ctx)
@@ -246,7 +240,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 			{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
 			async (event) => {
 				if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-					await handleCommand(ctx, event.message)
+					await handleCommand(C.initLocks(ctx), event.message)
 				}
 
 				if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
@@ -273,58 +267,20 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 		C.durableSub(
 			'squad-server:handle-squad-log-event',
 			{ tracer, ctx, eventLogLevel: 'info' },
-			([ctx, event]) => handleSquadEvent(DB.addPooledDb(ctx), event),
+			([ctx, event]) => handleSquadEvent(C.initLocks(DB.addPooledDb(ctx)), event),
 		),
 	).subscribe()
 
 	void squadLogEvents.connect()
 
 	layersStatusExt$ = getLayersStatusExt$(ctx)
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
-async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
+async function handleSquadEvent(ctx: C.Db & C.Locks, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			state.lastRoll = event.time
-			const res = await DB.runTransaction(ctx, async (ctx) => {
-				const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
-				if (statusRes.code !== 'ok') return statusRes
-
-				const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
-					layerId: statusRes.data.currentLayer.id,
-					startTime: event.time,
-					setByType: 'unknown',
-				}
-
-				if (state.bufferedNextMatch) {
-					newEntry.layerId = LL.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
-					newEntry.lqItemId = state.bufferedNextMatch.layerListItem.itemId
-					newEntry.layerVote = state.bufferedNextMatch.layerListItem.vote
-					newEntry.setByType = state.bufferedNextMatch.layerListItem.source.type
-
-					const setByUserId = state.bufferedNextMatch.layerListItem.source.type === 'manual'
-						? state.bufferedNextMatch.layerListItem.source.userId
-						: undefined
-					newEntry.setByUserId = setByUserId
-				}
-
-				const res = await MatchHistory.addNewCurrentMatch(ctx, newEntry)
-				if (res.code !== 'ok') return res
-
-				delete state.bufferedNextMatch
-
-				return { code: 'ok' as const }
-			})
-
-			if (res.code !== 'ok') return res
-
-			// Kind of a hack -- we need to refresh the server state to recalculate the relevant parts
-			const lastUpdate = await Rx.firstValueFrom(LayerQueue.serverStateUpdateWithParts$)
-			LayerQueue.serverStateUpdate$.next([lastUpdate, ctx])
-			return res
+			return await LayerQueue.handleNewGame(ctx, event.time)
 		}
-
 		case 'ROUND_ENDED': {
 			const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
 			if (statusRes.code !== 'ok') return statusRes
@@ -369,10 +325,6 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 		default:
 			assertNever(event)
 	}
-}
-
-export function bufferNextMatchLQItem(item: LL.LayerListItem) {
-	state.bufferedNextMatch = { layerListItem: item }
 }
 
 export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {

@@ -26,7 +26,7 @@ export default function VoteTallyDisplay({ voteState, playerCount }: VoteTallyPr
 		})
 		.sort((a, b) => a.index - b.index)
 
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	if (serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
 	const totalVoteDisplay = tally.turnoutPercentage !== null ? ` (${tally.turnoutPercentage.toFixed(1)}%)` : null

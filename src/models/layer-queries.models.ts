@@ -99,7 +99,7 @@ export const LayersQuerySortSchema = z
 		}),
 		z.object({
 			type: z.literal('random'),
-			seed: z.number().int().positive(),
+			seed: z.number().int().positive().optional(),
 		}),
 	])
 	.describe('if not provided, no sorting will be done')
@@ -237,6 +237,7 @@ type LayerItemPartsCommon = {
 }
 
 // uniquely identifies positions layers can appear within the application's state
+// TODO this has become awkwardly structured after changes to layer list items
 export type LayerItem =
 	| LayerItemPartsCommon & {
 		type: 'list-item'
@@ -328,9 +329,9 @@ export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.Matc
 	}
 
 	for (const listItem of layerList) {
-		if (listItem.vote) {
+		if (LL.isParentVoteItem(listItem)) {
 			const choiceItems: VoteChoiceLayerItem[] = []
-			for (let i = 0; i < listItem.vote.choices.length; i++) {
+			for (let i = 0; i < listItem.choices.length; i++) {
 				choiceItems.push(getLayerItemForVoteItem(listItem, i))
 			}
 			const parent: ParentVoteItem = { type: 'parent-vote-item', parentItemId: listItem.itemId, choices: choiceItems }
@@ -424,17 +425,17 @@ export function getAllLayerIds(items: OrderedLayerItems) {
 }
 
 export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem | ParentVoteItem {
-	if (item.vote) {
+	if (LL.isParentVoteItem(item)) {
 		return {
 			type: 'parent-vote-item',
-			choices: item.vote.choices.map((_, index) => (getLayerItemForVoteItem(item, index))),
+			choices: item.choices.map((_, index) => (getLayerItemForVoteItem(item, index))),
 			parentItemId: item.itemId,
 		}
 	}
 	return {
 		type: 'list-item',
 		itemId: item.itemId,
-		layerId: LL.getActiveItemLayerId(item),
+		layerId: item.layerId,
 	}
 }
 
@@ -442,7 +443,7 @@ export function getLayerItemForVoteItem(item: LL.LayerListItem, choiceIndex: num
 	return {
 		type: 'vote-item',
 		itemId: item.itemId,
-		layerId: item.vote!.choices[choiceIndex],
+		layerId: item.choices![choiceIndex].layerId,
 		choiceIndex: choiceIndex,
 	}
 }
@@ -541,6 +542,5 @@ export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig)
 			return [col.name, visible]
 		}),
 	)
-	console.log({ res })
 	return res
 }

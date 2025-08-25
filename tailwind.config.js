@@ -46,24 +46,24 @@ export default {
 					foreground: 'hsl(var(--info-foreground))',
 				},
 				moved: {
-					DEFAULT: colors.blue[800],
-					foreground: colors.blue[50],
+					DEFAULT: 'hsl(var(--moved))',
+					foreground: 'hsl(var(--moved-foreground))',
 				},
 				edited: {
-					DEFAULT: colors.yellow[800],
-					foreground: colors.yellow[50],
+					DEFAULT: 'hsl(var(--edited))',
+					foreground: 'hsl(var(--edited-foreground))',
 				},
 				warning: {
 					DEFAULT: 'hsl(var(--warning))',
 					foreground: 'hsl(var(--warning-foreground))',
 				},
 				added: {
-					DEFAULT: colors.green[800],
-					foreground: colors.green[50],
+					DEFAULT: 'hsl(var(--added))',
+					foreground: 'hsl(var(--added-foreground))',
 				},
 				removed: {
-					DEFAULT: colors.red[800],
-					foreground: colors.red[50],
+					DEFAULT: 'hsl(var(--removed))',
+					foreground: 'hsl(var(--removed-foreground))',
 				},
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',

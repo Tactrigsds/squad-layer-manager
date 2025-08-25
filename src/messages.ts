@@ -13,9 +13,11 @@ import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
-function formatInterval(interval: number) {
+function formatInterval(interval: number, terse = true) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
-	return dateFns.formatDuration(duration).replace(' seconds', 's').replace(' minutes', 'm')
+	let txt = dateFns.formatDuration(duration)
+	if (terse) txt = txt.replace(' seconds', 's').replace(' minutes', 'm')
+	return txt
 }
 
 export const BROADCASTS = {
@@ -25,35 +27,43 @@ export const BROADCASTS = {
 	},
 	queue: {},
 	vote: {
-		started(choices: L.LayerId[], defaultLayer: L.LayerId, duration: number) {
-			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
-				formatInterval(duration)
-			} to vote`
+		started(state: Pick<V.VoteState, 'choices' | 'voterType'>, duration: number, displayProps: DH.LayerDisplayProp[]) {
+			const lines = voteChoicesLines(state.choices, undefined, displayProps).join('\n')
+			const formattedInterval = formatInterval(duration, false)
+			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
+			const fullText = `\nVote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.`
 			return fullText
 		},
-		winnerSelected(tally: V.Tally, winner: L.LayerId) {
+		winnerSelected(tally: V.Tally, winner: L.LayerId, displayProps: DH.LayerDisplayProp[]) {
 			const resultsText = Array.from(tally.totals.entries())
 				.sort((a, b) => b[1] - a[1])
 				.map(([choice, votes]) => {
 					const isWinner = choice === winner
-					const layerName = DH.toShortLayerNameFromId(choice)
+					const layerName = DH.toShortLayerNameFromId(choice, undefined, displayProps)
 					return `${votes} votes - (${tally.percentages.get(choice)?.toFixed(1)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
-			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie)` : ''
+			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
 			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
 			return fullText
 		},
-		insufficientVotes: (defaultChoice: L.LayerId) => {
-			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
+		insufficientVotes(defaultChoice: L.LayerId, displayProps: DH.LayerDisplayProp[]) {
+			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${
+				DH.toShortLayerNameFromId(defaultChoice, undefined, displayProps)
+			}`
 		},
-		aborted(defaultLayer: L.LayerId) {
-			return `\nVote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
+		aborted: `\nThe vote has been aborted.`,
+		inProgressVoteCleared() {
+			return `in-progress vote has been cleared.`
 		},
-		voteReminder(timeLeft: number, choices: L.LayerId[], finalReminder = false) {
-			const durationStr = formatInterval(timeLeft)
-			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
-			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
-			const fullText = `${prefix}\n${choicesText}`
+		voteReminder(
+			state: Extract<V.VoteState, { code: 'in-progress' }>,
+			timeLeft: number,
+			finalReminder = false,
+			displayProps: DH.LayerDisplayProp[],
+		) {
+			const durationStr = formatInterval(timeLeft, false)
+			const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
+			const fullText = `${prefix}\n${voteChoicesLines(state.choices, undefined, displayProps).join('\n')}`
 			return fullText
 		},
 	},
@@ -63,10 +73,17 @@ export const WARNS = {
 	vote: {
 		noVoteInProgress: `No vote in progress`,
 		invalidChoice: `Invalid vote choice`,
-		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}`,
+		voteCast: (choice: L.LayerId, displayProps: DH.LayerDisplayProp[]) =>
+			`Vote cast for ${DH.toShortLayerNameFromId(choice, undefined, displayProps)}.`,
+		wrongChat: (correctChannel: string) => `Vote must be cast in ${correctChannel}`,
 		start: {
 			noVoteConfigured: `No vote is currently configured`,
 			voteAlreadyInProgress: `A vote is already in progress`,
+			itemNotFound: `Item not found`,
+			invalidItemType: `Referenced item must be a vote`,
+			editingInProgress: `Vote is currently being edited`,
+			publicVoteNotFirst: `Public vote must be the first item in the queue when initiated`,
+			noVoteInPostGame: 'Not votes allowed in post-game',
 		},
 	},
 	balanceTrigger: {
@@ -115,14 +132,16 @@ export const WARNS = {
 
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
 
-			if (item.vote) {
-				if (item.layerId) {
-					const msg = `Next Layer (Chosen via vote)\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`
+			if (LL.isParentVoteItem(item)) {
+				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
+					const msg = `Next Layer (Chosen via vote)\n${
+						DH.displayUnvalidatedLayer(item.endingVoteState.winner, playerNextTeamId, ['layer', 'factions', 'units'])
+					}`
 					return getOptions(msg)
 				} else {
 					const msg = [
 						'Upcoming vote:',
-						...voteChoicesLines(item.vote.choices, item.vote.defaultChoice, playerNextTeamId),
+						voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId, ['layer', 'factions', 'units']).join('\n'),
 					]
 					msg.push(extraDisplay)
 					return getOptions(msg)
@@ -132,7 +151,7 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg = [`Next Layer\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`]
+			const msg = [`Next Layer\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])}`]
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
@@ -227,9 +246,13 @@ type MessageNode = {
 	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }
 
-function voteChoicesLines(choices: L.LayerId[], defaultLayer: L.LayerId, you?: 1 | 2) {
-	return choices.map((c, index) => {
-		const isDefault = c === defaultLayer
-		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you)} ${isDefault ? '\n(Default)' : ''}`
+function voteChoicesLines(choices: L.LayerId[], you?: 1 | 2, displayProps?: DH.LayerDisplayProp[]) {
+	const lines = choices.map((c, index) => {
+		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you, displayProps)}`
 	})
+
+	if (lines.join(' ').length < 70) {
+		return [lines.join(' ')]
+	}
+	return lines
 }

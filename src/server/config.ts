@@ -1,3 +1,4 @@
+import * as DH from '@/lib/display-helpers.ts'
 import { selectProps } from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -20,10 +21,16 @@ export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: BasicStrNoWhitespace,
-	topBarColor: z.string().default('#033e03').nullable().describe('this should be set to null for production'),
-	warnPrefix: z.string().optional().default('SLM: ').describe('Prefix to use for warnings'),
+	topBarColor: z.string().default('green').nullable().describe('this should be set to null for production'),
+	warnPrefix: z.string().nullable().default('SLM: ').describe('Prefix to use for warnings'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
+		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
+			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
+		),
+		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(['map', 'gamemode']).describe(
+			'What parts of a layer setup should be displayed',
+		),
 	}),
 	// we have to ues .optional instead of .default here to avoid circular type definitions
 	commands: z.object(
@@ -84,7 +91,7 @@ export const ConfigSchema = z.object({
 			{ name: 'Unit_2' },
 			{ name: 'Alliance_2', visible: false },
 		],
-		defaultSortBy: { type: 'column', sortBy: 'Layer', sortDirection: 'ASC' },
+		defaultSortBy: { type: 'random' },
 	}),
 })
 
@@ -117,10 +124,11 @@ export async function ensureSetup() {
 	}
 }
 
+export type PublicConfig = ReturnType<typeof getPublicConfig>
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
-		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor', 'layerTable']),
+		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
