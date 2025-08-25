@@ -1,6 +1,10 @@
+import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
@@ -12,13 +16,15 @@ import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as V from '@/models/vote.models.ts'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import * as DndKitReact from '@dnd-kit/core'
-import { ActiveDraggableContext } from '@dnd-kit/core/dist/components/DndContext/DndContext'
 import { CSS } from '@dnd-kit/utilities'
+import { useForm } from '@tanstack/react-form'
+import { zodValidator } from '@tanstack/zod-form-adapter'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -28,6 +34,7 @@ import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 
 export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
@@ -110,6 +117,13 @@ function LayerListItem(props: LayerListItemProps) {
 	const badges: React.ReactNode[] = []
 
 	badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
+	if (innerIndex === 0) {
+		badges.push(
+			<Badge key="default-choice" variant="secondary">
+				Default
+			</Badge>,
+		)
+	}
 
 	const queueItemStyles =
 		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
@@ -117,7 +131,14 @@ function LayerListItem(props: LayerListItemProps) {
 		`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline cursor-default`
 	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
 
-	const layerDisplayRef = React.useRef<HTMLDivElement>(null)
+	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep([QD.QDStore, itemStore], ([qdStore, itemStore]) => {
+		const constraints = QD.selectBaseQueryConstraints(qdStore)
+		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
+		return {
+			constraints,
+			cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
+		}
+	}, { selectorDeps: [] })
 
 	if (
 		!isEditing && layersStatus?.nextLayer && index === 0 && !isVoteChoice
@@ -169,7 +190,17 @@ function LayerListItem(props: LayerListItemProps) {
 
 	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
 
+	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
+	const [voteConfigOpen, setVoteConfigOpen] = React.useState(false)
+
 	if (LL.isParentVoteItem(item)) {
+		const setConfig = (config: V.AdvancedVoteConfig) => {
+			itemStore.getState().setItem((item) => ({
+				...item,
+				voteConfig: config,
+			}))
+			setVoteConfigOpen(false)
+		}
 		return (
 			<>
 				{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
@@ -191,18 +222,57 @@ function LayerListItem(props: LayerListItemProps) {
 									<GripElt className="data-[canedit=true]:group-hover/parent-item:visible" orientation="horizontal" />
 									<h3 className={Typography.Label}>Vote</h3>
 								</span>
-								<ItemDropdown {...dropdownProps}>
-									<Button
-										disabled={!canEdit}
-										data-canedit={canEdit}
-										data-mobile={isMobile}
-										variant="ghost"
-										size="icon"
-										className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible')}
+								<span className="flex items-center space-x-1">
+									<SelectLayersDialog
+										title="Add Vote Choices"
+										pinMode="layers"
+										selectQueueItems={(items) => itemStore.getState().addVoteItems(items)}
+										layerQueryBaseInput={addVoteChoiceInput}
+										open={addVoteChoicesOpen}
+										onOpenChange={setAddVoteChoicesOpen}
 									>
-										<Icons.EllipsisVertical />
-									</Button>
-								</ItemDropdown>
+										<Button
+											variant="ghost"
+											size="icon"
+											disabled={!canEdit}
+											data-canedit={canEdit}
+											data-mobile={isMobile}
+											className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
+										>
+											<Icons.Plus />
+										</Button>
+									</SelectLayersDialog>
+									<Popover open={voteConfigOpen} onOpenChange={setVoteConfigOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												data-canedit={canEdit}
+												data-mobile={isMobile}
+												disabled={!canEdit}
+												className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
+												variant="ghost"
+												size="icon"
+											>
+												<Icons.Settings />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent>
+											<VoteConfig setConfig={setConfig} default={item.voteConfig} />
+										</PopoverContent>
+									</Popover>
+
+									<ItemDropdown {...dropdownProps}>
+										<Button
+											disabled={!canEdit}
+											data-canedit={canEdit}
+											data-mobile={isMobile}
+											variant="ghost"
+											size="icon"
+											className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible')}
+										>
+											<Icons.EllipsisVertical />
+										</Button>
+									</ItemDropdown>
+								</span>
 							</div>
 							<ol className={'flex flex-col items-start'}>
 								{item.choices!.map((choice, choiceIndex) => {
@@ -261,28 +331,24 @@ function LayerListItem(props: LayerListItemProps) {
 						<span className="grid">
 							<span
 								data-canedit={canEdit}
-								className=" text-right font-mono text-s col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:invisible"
+								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:invisible"
 							>
 								{index + 1}.{innerIndex != null ? innerIndex + 1 : ''}
 							</span>
 							<GripElt orientation="vertical" className="col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:visible" />
 						</span>
-						<div className="flex flex-col flex-grow">
-							<span>
-								<span
-									ref={dropOnAttrs.setNodeRef}
-									data-over={dropOnAttrs.isOver}
-									className="data-[over=true]:bg-gray-600 rounded"
-								>
-									<LayerDisplay
-										item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
-										backfillLayerId={backfillLayerId}
-										addedLayerQueryInput={addedLayerQueryInput}
-									/>
-								</span>
-							</span>
-							<div className="flex space-x-1 items-center">{badges}</div>
-						</div>
+						<span
+							ref={dropOnAttrs.setNodeRef}
+							data-over={dropOnAttrs.isOver}
+							className="data-[over=true]:bg-gray-600 rounded flex space-x-1 w-full"
+						>
+							<LayerDisplay
+								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
+								badges={badges}
+								backfillLayerId={backfillLayerId}
+								addedLayerQueryInput={addedLayerQueryInput}
+							/>
+						</span>
 						<ItemDropdown {...dropdownProps}>
 							<Button
 								disabled={!canEdit}
@@ -315,7 +381,7 @@ type ItemDropdownProps = {
 function ItemDropdown(props: ItemDropdownProps) {
 	const allowVotes = props.allowVotes ?? true
 
-	type SubDropdownState = 'add-before' | 'add-after' | 'edit' | null
+	type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote' | null
 	React.useEffect(() => {
 		console.log('mount')
 		return () => {
@@ -376,6 +442,12 @@ function ItemDropdown(props: ItemDropdownProps) {
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
 
+					{!LL.isParentVoteItem(item) && (
+						<DropdownMenuItem onClick={() => setSubDropdownState('create-vote')}>
+							Create Vote
+						</DropdownMenuItem>
+					)}
+
 					<DropdownMenuSeparator />
 
 					<DropdownMenuGroup>
@@ -424,6 +496,18 @@ function ItemDropdown(props: ItemDropdownProps) {
 			)}
 
 			<SelectLayersDialog
+				title="Create Vote"
+				description="Select additional layers vote on"
+				open={subDropdownState === 'create-vote'}
+				onOpenChange={(open) => setSubDropdownState(open ? 'create-vote' : null)}
+				pinMode="layers"
+				selectQueueItems={(items) => {
+					props.itemStore.getState().addVoteItems(items)
+				}}
+				layerQueryBaseInput={queryContexts.editOrInsert}
+			/>
+
+			<SelectLayersDialog
 				title="Add layers before"
 				description="Select layers to add before"
 				open={subDropdownState === 'add-before'}
@@ -466,5 +550,90 @@ function QueueItemSeparator(props: {
 			className="w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-secondary-foreground" // data-is-last={props.isAfterLast && !isOver}
 			data-is-over={isOver}
 		/>
+	)
+}
+
+function VoteConfig(props: { default?: LL.LayerListItem['voteConfig']; setConfig: (config: V.AdvancedVoteConfig) => void }) {
+	const config = ConfigClient.useConfig()
+
+	const form = useForm({
+		defaultValues: {
+			durationSeconds: (props.default?.duration ?? (config?.defaults.voteDuration ?? V.getDefaultVoteConfig().duration)) / 1000,
+			voterType: props.default?.voterType ?? V.getDefaultVoteConfig().voterType,
+		},
+		validatorAdapter: zodValidator(),
+		onSubmit: async ({ value }) => {
+			props.setConfig({
+				duration: value.durationSeconds * 1000,
+				voterType: value.voterType,
+			})
+		},
+	})
+
+	const durationEltId = React.useId()
+	const voterTypeEltId = React.useId()
+
+	function onSubmit(e: React.FormEvent) {
+		e.preventDefault()
+		e.stopPropagation()
+		form.handleSubmit()
+	}
+
+	return (
+		<form onSubmit={onSubmit} className="flex flex-col space-y-4">
+			<form.Field
+				name="durationSeconds"
+				children={(field) => (
+					<>
+						<Label htmlFor={durationEltId}>Vote Duration (seconds)</Label>
+						<Input
+							id={durationEltId}
+							name={field.name}
+							type="number"
+							defaultValue={field.state.value}
+							onChange={(e) => {
+								return field.setValue(e.target.valueAsNumber)
+							}}
+						/>
+						{field.state.meta.errors.length > 0 && (
+							<Alert variant="destructive">
+								{field.state.meta.errors.join(', ')}
+							</Alert>
+						)}
+					</>
+				)}
+			/>
+
+			<form.Field
+				name="voterType"
+				validators={{ onChange: V.AdvancedVoteConfigSchema.shape.voterType }}
+				children={(field) => (
+					<>
+						<Label htmlFor={voterTypeEltId}>Voter Type</Label>
+						<Select
+							value={field.state.value}
+							onValueChange={(value) => field.setValue(value as V.VoterType)}
+						>
+							<SelectTrigger id={voterTypeEltId}>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="public">Public</SelectItem>
+								<SelectItem value="internal">Internal</SelectItem>
+							</SelectContent>
+						</Select>
+						{field.state.meta.errors.length > 0 && (
+							<Alert variant="destructive">
+								{field.state.meta.errors.join(', ')}
+							</Alert>
+						)}
+					</>
+				)}
+			/>
+
+			<Button type="submit">
+				Apply
+			</Button>
+		</form>
 	)
 }

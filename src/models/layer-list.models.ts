@@ -1,6 +1,8 @@
 import * as Generator from '@/lib/generator'
 import { assertNever } from '@/lib/type-guards'
+import * as CS from '@/models/context-shared'
 import * as DND from '@/models/dndkit.models'
+import * as V from '@/models/vote.models'
 import * as DndKit from '@/systems.client/dndkit'
 import { z } from 'zod'
 import { createId } from '../lib/id'
@@ -28,8 +30,13 @@ export const LayerListItemSchema = z.object({
 	itemId: LayerListItemIdSchema,
 	layerId: L.LayerIdSchema,
 	choices: z.array(InnerLayerListItemSchema).optional(),
+
+	// this is fully optional
+	voteConfig: V.AdvancedVoteConfigSchema.partial().optional(),
 	source: LayerSourceSchema,
 })
+
+export type ParentVoteItem = LayerListItem & { choices: InnerLayerListItem[]; voteConfig: V.AdvancedVoteConfig }
 
 export type LLItemRelativeCursor = {
 	itemId: LayerListItemId
@@ -41,7 +48,7 @@ export type LLItemIndex = {
 	innerIndex: number | null
 }
 
-type LayerListIteratorResult = LLItemIndex & {
+export type LayerListIteratorResult = LLItemIndex & {
 	item: LayerListItem | InnerLayerListItem
 }
 
@@ -122,7 +129,7 @@ export function getNextLayerId(layerQueue: LayerList) {
 	return layerQueue[0].layerId
 }
 
-export function isParentVoteItem(item: LayerListItem): item is LayerListItem & { choices: InnerLayerListItem[] } {
+export function isParentVoteItem(item: LayerListItem): item is ParentVoteItem {
 	return !!item.choices
 }
 

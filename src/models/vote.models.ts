@@ -1,12 +1,25 @@
 import { Parts } from '@/lib/types'
+import { HumanTime } from '@/lib/zod'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
 import * as L from './layer'
 
-export const StartVoteInputSchema = z.object({
-	restart: z.boolean().default(false),
-	durationSeconds: z.number().positive(),
+export const VOTER_TYPE = z.enum(['public', 'internal'])
+
+export type VoterType = z.infer<typeof VOTER_TYPE>
+
+export const AdvancedVoteConfigSchema = z.object({
+	duration: z.number().positive(),
+	voterType: VOTER_TYPE,
 })
+
+export type AdvancedVoteConfig = z.infer<typeof AdvancedVoteConfigSchema>
+export function getDefaultVoteConfig(): AdvancedVoteConfig {
+	return {
+		duration: HumanTime.parse('120s'),
+		voterType: 'public',
+	}
+}
 
 type TallyProperties = {
 	votes: Record<string, L.LayerId>
@@ -16,6 +29,7 @@ type TallyProperties = {
 type LayerVote = {
 	itemId: string
 	choices: L.LayerId[]
+	voterType: VoterType
 }
 
 export type VoteState =

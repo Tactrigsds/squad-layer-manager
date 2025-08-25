@@ -1118,7 +1118,7 @@ export const layerQueueRouter = router({
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	watchUnexpectedNextLayer: procedure.subscription(watchUnexpectedNextLayer),
 	startVote: procedure
-		.input(V.StartVoteInputSchema)
+		.input(V.AdvancedVoteConfigSchema)
 		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),
 	abortVote: procedure.mutation(async ({ ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })

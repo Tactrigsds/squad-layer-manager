@@ -503,7 +503,7 @@ function VoteState() {
 		<form onSubmit={onSubmit} className="flex flex-col space-y-2">
 			<startVoteForm.Field
 				name="durationSeconds"
-				validators={{ onChange: V.StartVoteInputSchema.shape.durationSeconds }}
+				validators={{ onChange: V.AdvancedVoteConfigSchema.shape.durationSeconds }}
 				children={(field) => (
 					<>
 						<Label htmlFor={voteDurationEltId}>Vote Duration (seconds)</Label>

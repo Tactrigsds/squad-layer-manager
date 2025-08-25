@@ -85,7 +85,7 @@ export default function SelectLayersDialog(props: {
 		if (open) {
 			setSelectedLayers(defaultSelected)
 		}
-		props.onOpenChange(open)
+		props.onOpenChange?.(open)
 	}
 
 	const extraFiltersStore = QD.useExtraFiltersStore()
@@ -105,7 +105,7 @@ export default function SelectLayersDialog(props: {
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
-      {props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
+			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
 			<DialogContent className="w-auto max-w-full overflow-x-auto min-w-0 pb-2">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center space-x-2">

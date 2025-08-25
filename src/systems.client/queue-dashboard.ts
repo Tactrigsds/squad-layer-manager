@@ -6,7 +6,6 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
-import { isNullOrUndef } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -27,6 +26,7 @@ import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
+import superjson from 'superjson'
 import * as Zus from 'zustand'
 import * as ZusRx from 'zustand-rx'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -74,6 +74,7 @@ export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
 	setItem: React.Dispatch<React.SetStateAction<LL.LayerListItem>>
+	addVoteItems: (items: LL.NewLayerListItem[]) => void
 	swapFactions: () => void
 	// if not present then removing is disabled
 	remove?: () => void
@@ -211,48 +212,28 @@ export type QDStore = QDState & {
 // -------- store initialization --------
 export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMutate?: () => void): LLActions => {
 	const remove = (id: string) => {
-		set((state) =>
-			Im.produce(state, (state) => {
-				const layerList = state.layerList
-				let removed = false
-
-				// First try to find and remove from main layer list
-				const index = layerList.findIndex((item) => item.itemId === id)
-				if (index !== -1) {
-					layerList.splice(index, 1)
-					removed = true
-				} else {
-					// If not found in main list, search in vote choices
-					outerLoop: for (let i = 0; i < layerList.length; i++) {
-						if (!LL.isParentVoteItem(layerList[i])) continue
-						const choices = layerList[i].choices!
-						for (let j = 0; j < choices.length; j++) {
-							if (choices[j].itemId === id) {
-								choices.splice(j, 1)
-								removed = true
-								break outerLoop
-							}
-						}
-					}
-				}
-
-				if (removed) {
-					onMutate?.()
-					ItemMut.tryApplyMutation('removed', id, state.listMutations)
-				}
+		set((prevState) =>
+			Im.produce(prevState, (draft) => {
+				let itemRes: LL.LayerListIteratorResult | undefined
+				if (!(itemRes = LL.findItemById(prevState.layerList, id))) return
+				LL.splice(draft.layerList, itemRes, 1)
+				ItemMut.tryApplyMutation('removed', id, draft.listMutations)
+				onMutate?.()
 			})
 		)
 	}
 	return {
 		setItem: (id, update) => {
 			set((state) => {
-				console.log(state)
 				return Im.produce(state, (draft) => {
 					const itemResult = LL.findItemById(state.layerList, id)
 					if (!itemResult) return
 					const updated = typeof update === 'function' ? update(itemResult.item) : update
 					LL.splice(draft.layerList, itemResult, 1, updated)
-					for (const { item } of LL.iterLayerList([itemResult.item])) {
+					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
+					for (const { item, innerIndex, outerIndex } of LL.iterLayerList([itemResult.item])) {
+						if (LL.isParentVoteItem(item)) continue
+						if (superjson.stringify(item) === superjson.stringify(state.layerList[outerIndex].choices?.[innerIndex!])) continue
 						ItemMut.tryApplyMutation('edited', item.itemId, draft.listMutations)
 					}
 					onMutate?.()
@@ -315,15 +296,14 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 						case 'before': {
 							const movedAndModifiedItem: LL.LayerListItem = { ...movedItemRes.item, source: { type: 'manual', userId: modifiedBy } }
 							LL.splice(draft.layerList, targetCursor, 0, movedAndModifiedItem)
+							if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
+								ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
+							}
 							break
 						}
 						default: {
 							assertNever(targetCursor.position)
 						}
-					}
-
-					if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
-						ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
 					}
 
 					if (targetCursorParent && LL.isParentVoteItem(movedItemRes.item)) {
@@ -425,6 +405,12 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 	const store = Zus.createStore<LLItemStore>((set) => {
 		const actions: LLItemActions = {
 			setItem: (update) => llStore.getState().setItem(itemId, update),
+			addVoteItems: (choices) => {
+				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
+				const newItem = LL.mergeItems(item, ...choices.map(LL.createLayerListItem))
+				if (!newItem) return
+				llStore.getState().setItem(item.itemId, newItem)
+			},
 			remove: () => llStore.getState().remove(itemId),
 			swapFactions: () => {
 				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!

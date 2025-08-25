@@ -100,7 +100,7 @@ export default function LayerDisplay(
 					violationDescriptors={localViolationDescriptors || hoveredReasonViolationDescriptors || undefined}
 				/>
 			</span>
-			<span className="flex items-center self-end space-x-1">
+			<span className="flex items-center space-x-1">
 				{badges}
 			</span>
 		</div>

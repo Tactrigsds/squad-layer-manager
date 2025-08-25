@@ -117,10 +117,11 @@ export async function ensureSetup() {
 	}
 }
 
+export type PublicConfig = ReturnType<typeof getPublicConfig>
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
-		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'maxQueueSize', 'topBarColor', 'layerTable']),
+		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
