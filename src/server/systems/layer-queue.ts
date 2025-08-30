@@ -31,6 +31,7 @@ import * as WSSessionSys from '@/server/systems/ws-session.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
+import { Message } from 'discord.js'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
@@ -53,6 +54,8 @@ const userPresence: USR.UserPresenceState = {}
 const userPresenceUpdate$ = new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>()
 
 let postRollEventsSub: Rx.Subscription | undefined
+
+let autostartVoteSub: Rx.Subscription | undefined
 
 const voteStateMtx = new Mutex()
 
@@ -174,11 +177,14 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			Rx.map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
 			distinctDeepEquals(),
 			Rx.scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
-			C.durableSub('layer-queue:check-layer-status-change', { ctx, tracer, root: true }, async ([status, prevStatus]) => {
-				C.setSpanOpAttrs({ status, prevStatus })
+			C.durableSub('layer-queue:check-layer-status-change', {
+				ctx,
+				tracer,
+				root: true,
+				attrs: ([status, prevStatus]) => ({ status, prevStatus }),
+			}, async ([status, prevStatus]) => {
 				if (!status) return
 				await DB.runTransaction(ctx, (ctx) => processLayerStatusChange(ctx, status, prevStatus))
-				C.setSpanStatus(Otel.SpanStatusCode.OK)
 			}),
 		)
 		.subscribe()
@@ -191,9 +197,12 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			case 'sync-disabled:no-action':
 			case 'no-next-layer-set:no-action':
 				break
-			case 'expected-new-current-layer:roll':
-				await handleServerRoll(ctx, serverState)
+			case 'new-current-layer:roll': {
+				const serverInfoRes = await SquadServer.rcon.serverInfo.get(ctx, { ttl: 100 })
+				if (serverInfoRes.value.code !== 'ok') return serverInfoRes.value
+				await handleServerRoll(ctx, serverState, serverInfoRes)
 				break
+			}
 			case 'layer-change-with-empty-queue:buffer-next-match-context': {
 				// the SquadServer system is expecting "buffered" match details just before map roll. in this case since we don't have an actual layer queue item that we're rolling to so we'll just generate a generic one. Not strictly necessary right now but will serve as a placeholder for future functionality.
 				const item = LL.createLayerListItem({
@@ -217,15 +226,93 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			default:
 				assertNever(action)
 		}
-		C.setSpanStatus(Otel.SpanStatusCode.OK)
 	}
 
-	const handleServerRoll = C.spanOp(
-		'layer-queue:handle-server-roll',
-		{ tracer, eventLogLevel: 'info' },
-		async (baseCtx: CS.Log & C.Db & C.Tx, prevServerState: SS.LQServerState) => {
-			baseCtx.log.info('Attempting to handle roll to next layer')
-			C.setSpanOpAttrs({ prevQueueLength: prevServerState.layerQueue.length })
+	async function handleServerRoll(ctx: C.Db, prevServerState: SS.LQServerState, newCurrentLayerId: L.LayerId) {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		using acquired = await acquireInBlock(voteStateMtx)
+		const serverState = Obj.deepClone(prevServerState)
+		if (prevServerState.layerQueue.length === 0) {
+			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No layers in queue to roll to')
+			return
+		}
+		const currentLayerItem = serverState.layerQueue.shift()
+		const currentLayerId = currentLayerItem?.layerId
+		postRollEventsSub?.unsubscribe()
+		postRollEventsSub = new Rx.Subscription()
+
+		// -------- schedule FRAAS auto fog-off --------
+		if (currentLayerItem && currentLayerId) {
+			const currentLayer = L.toLayer(currentLayerId)
+			if (currentLayer.Gamemode === 'FRAAS') {
+				postRollEventsSub.add(
+					Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
+						await SquadServer.rcon.setFogOfWar(ctx, 'off')
+						await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+					}),
+				)
+			}
+		}
+		const announcementTasks: (Rx.Observable<void>)[] = []
+		announcementTasks.push(toCold(async () => {
+			const historyState = MatchHistory.getPublicMatchHistoryState()
+			const currentMatch = MatchHistory.getCurrentMatch()
+			if (!currentMatch) return
+			const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
+			if (!mostRelevantEvent) return
+			await SquadServer.warnAllAdmins(ctx, Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
+		}))
+
+		announcementTasks.push(toCold(async () => warnShowNext(ctx, 'all-admins')))
+
+		announcementTasks.push(toCold(async () => {
+			const serverState = await getServerState({}, ctx)
+			if (serverState.layerQueue.length <= CONFIG.reminders.lowQueueWarningThreshold) {
+				await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+			}
+		}))
+
+		const withWaits: Rx.Observable<unknown>[] = []
+		withWaits.push(Rx.timer(CONFIG.reminders.postRollAnnouncementsTimeout))
+
+		for (let i = 0; i < announcementTasks.length; i++) {
+			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
+			if (i !== announcementTasks.length - 1) {
+				withWaits.push(Rx.timer(2000))
+			}
+		}
+
+		postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
+
+		SquadServer.bufferNextMatchLQItem(currentLayerItem!)
+		const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
+		switch (updateRes.code) {
+			case 'noop':
+			case 'err:queue-item-changed-during-vote':
+				break
+			case 'ok':
+				voteState = updateRes.update.state
+				voteStateUpdate$.next([ctx, updateRes.update])
+				break
+			default:
+				assertNever(updateRes)
+		}
+		serverState.lastRoll = new Date()
+		await syncNextLayerInPlace(ctx, serverState, { noDbWrite: true })
+		await ctx
+			.db()
+			.update(Schema.servers)
+			.set(superjsonify(Schema.servers, serverState))
+			.where(E.eq(Schema.servers.id, CONFIG.serverId))
+		serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'server-roll' } }, ctx])
+	}
+
+	const handleImmediateServerRoll = C.spanOp(
+		'layer-queue:handle-immediate-server-roll',
+		{ tracer, eventLogLevel: 'info', attrs: (_, prevServerState) => ({ prevQueueLength: prevServerState.layerQueue.length }) },
+		async (baseCtx: CS.Log & C.Db & C.Tx, prevServerState: SS.LQServerState, serverInfo: Pick<SM.ServerInfo, 'playerCount'>) => {
+			if (serverInfo.playerCount !== 0) return
+
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			using acquired = await acquireInBlock(voteStateMtx)
 			const serverState = Obj.deepClone(prevServerState)
@@ -285,7 +372,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 			const updateRes = getVoteStateUpdatesFromQueueUpdate(prevServerState.layerQueue, serverState.layerQueue, voteState, true)
 			switch (updateRes.code) {
 				case 'noop':
-				case 'err:queue-change-during-vote':
+				case 'err:queue-item-changed-during-vote':
 					break
 				case 'ok':
 					voteState = updateRes.update.state
@@ -302,7 +389,6 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 				.set(superjsonify(Schema.servers, serverState))
 				.where(E.eq(Schema.servers.id, CONFIG.serverId))
 			serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'server-roll' } }, baseCtx])
-			C.setSpanStatus(Otel.SpanStatusCode.OK)
 		},
 	)
 
@@ -310,7 +396,6 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		'layer-queue:handle-admin-change-layer',
 		{ tracer },
 		async (baseCtx: CS.Log & C.Db & C.Tx, serverState: SS.LQServerState) => {
-			C.setSpanOpAttrs({ serverState })
 			// the new current layer was set to something unexpected, so we just handle updating the next layer
 			const time = new Date()
 
@@ -404,8 +489,21 @@ function getVoteStateUpdatesFromQueueUpdate(
 
 	if ((!lastQueueItem || !LL.isParentVoteItem(lastQueueItem)) && !LL.isParentVoteItem(newQueueItem)) return { code: 'noop' as const }
 
-	if (!deepEqual(lastQueueItem, newQueueItem) && voteState?.code === 'in-progress' && !force) {
-		return { code: 'err:queue-change-during-vote' as const }
+	if (voteState && voteState.code === 'in-progress' && !force) {
+		const itemRes = LL.findItemById(newQueue, voteState.itemId)
+		const oldItemRes = LL.findItemById(lastQueue, voteState.itemId)
+		let success = true
+		if (!itemRes) success = false
+		else if (!LL.isParentVoteItem(itemRes.item)) success = false
+		// don't allow items attached to in-progress public votes for the next layer to be moved
+		else if (oldItemRes?.outerIndex === 0 && voteState.voterType === 'public' && oldItemRes.outerIndex !== itemRes.outerIndex) {
+			success = false
+		} else {
+			const choices = itemRes.item.choices.map(choice => choice.layerId)
+			if (!deepEqual(choices, voteState.choices)) success = false
+		}
+
+		if (!success) return { code: 'err:queue-item-changed-during-vote' as const }
 	}
 
 	if (lastQueueItem && LL.isParentVoteItem(lastQueueItem) && LL.isParentVoteItem(newQueueItem)) {
@@ -422,12 +520,14 @@ function getVoteStateUpdatesFromQueueUpdate(
 				...(voteState ?? { code: 'ready' }),
 				choices: newQueueItem.choices.map(choice => choice.layerId),
 				itemId: newQueueItem.itemId,
+				voterType: voteState?.voterType ?? 'public',
 			}
 		} else {
 			newVoteState = {
 				code: 'ready',
 				choices: newQueueItem.choices.map(choice => choice.layerId),
 				itemId: newQueueItem.itemId,
+				voterType: voteState?.voterType ?? 'public',
 			}
 		}
 		return {
@@ -464,19 +564,17 @@ async function* watchVoteStateUpdates({ ctx, signal }: { ctx: CS.Log & C.Db; sig
 
 export const startVote = C.spanOp(
 	'layer-queue:vote:start',
-	{ tracer, eventLogLevel: 'info' },
+	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
 	async (
 		ctx: CS.Log & C.Db & Partial<C.User>,
-		opts: { durationSeconds?: number; initiator: USR.GuiOrChatUserId },
+		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId },
 	) => {
-		C.setSpanOpAttrs(opts)
 		if (ctx.user) {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
 				check: 'all',
 				permits: [RBAC.perm('vote:manage')],
 			})
 			if (denyRes) {
-				C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Permission denied')
 				return denyRes
 			}
 		}
@@ -485,37 +583,43 @@ export const startVote = C.spanOp(
 		using acquired = await acquireInBlock(voteStateMtx)
 		const { value: statusRes } = await SquadServer.rcon.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
-			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Failed to get server status')
 			return statusRes
 		}
 
-		const durationSeconds = opts.durationSeconds ?? CONFIG.defaults.voteDuration / 1000
+		const duration = opts.duration ?? CONFIG.defaults.voteDuration
 		const res = await DB.runTransaction(ctx, async (ctx) => {
-			if (!voteState) {
-				return {
-					code: 'err:no-vote-exists' as const,
-					msg: Messages.WARNS.vote.start.noVoteConfigured,
-				}
+			const serverState = await getServerState({ lock: true }, ctx)
+			const itemId = opts.itemId ?? serverState.layerQueue[0]?.itemId
+			if (!itemId) {
+				return { code: 'err:item-not-found' as const, msg: Messages.WARNS.vote.start.itemNotFound }
 			}
 
-			if (voteState.code === 'in-progress') {
+			const initiateVoteRes = V.canInitiateVote(itemId, serverState.layerQueue, opts.voterType ?? 'public', voteState ?? undefined)
+
+			const msgMap = {
+				'err:item-not-found': Messages.WARNS.vote.start.itemNotFound,
+				'err:invalid-item-type': Messages.WARNS.vote.start.invalidItemType,
+				'err:public-vote-not-first': Messages.WARNS.vote.start.publicVoteNotFirst,
+				'err:vote-in-progress': Messages.WARNS.vote.start.voteAlreadyInProgress,
+				'ok': null,
+			} satisfies Record<typeof initiateVoteRes['code'], string | null>
+
+			if (initiateVoteRes.code !== 'ok') {
 				return {
-					code: 'err:vote-in-progress' as const,
-					msg: Messages.WARNS.vote.start.voteAlreadyInProgress,
+					code: initiateVoteRes.code,
+					msg: msgMap[initiateVoteRes.code]!,
 				}
 			}
-
-			{
-				const serverState = await getServerState({ lock: true }, ctx)
-				serverStateUpdate$.next([{ state: serverState, source: { type: 'system', event: 'vote-start' } }, ctx])
-			}
+			const item = initiateVoteRes.item
 
 			const updatedVoteState = {
 				code: 'in-progress',
-				...Obj.selectProps(voteState, ['choices', 'itemId']),
-				deadline: Date.now() + durationSeconds * 1000,
+				deadline: Date.now() + duration,
 				votes: {},
 				initiator: opts.initiator,
+				choices: item.choices.map(choice => choice.layerId),
+				itemId: item.itemId,
+				voterType: opts.voterType ?? 'public',
 			} satisfies V.VoteState
 
 			ctx.log.info('registering vote deadline')
@@ -535,15 +639,17 @@ export const startVote = C.spanOp(
 			return res
 		}
 
+		autostartVoteSub?.unsubscribe()
+		autostartVoteSub = undefined
+
 		voteState = res.voteStateUpdate.state
 		voteStateUpdate$.next([ctx, res.voteStateUpdate])
 		registerVoteDeadlineAndReminder$(ctx)
 		await SquadServer.rcon.broadcast(
 			ctx,
 			Messages.BROADCASTS.vote.started(
-				res.voteStateUpdate.state.choices,
-				V.getDefaultChoice(res.voteStateUpdate.state),
-				durationSeconds * 1000,
+				res.voteStateUpdate.state,
+				duration,
 			),
 		)
 
@@ -551,14 +657,28 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, async (ctx: CS.Log & C.Db, msg: SM.ChatMessage) => {
+export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
+	tracer,
+	attrs: (_, msg) => ({ messageId: msg.message, playerId: msg.playerId }),
+}, async (ctx: CS.Log & C.Db, msg: SM.ChatMessage) => {
 	// no need to acquire vote mutex here, this is a safe operation
-	C.setSpanOpAttrs({ messageId: msg.message, playerId: msg.playerId })
-
+	//
 	const choiceIdx = parseInt(msg.message.trim())
 	if (!voteState) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
 		return
+	}
+	if (voteState.voterType === 'public') {
+		if (msg.chat !== 'ChatAll') {
+			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast('AllChat'))
+			return
+		}
+	}
+	if (voteState.voterType === 'internal') {
+		if (msg.chat !== 'ChatAdmin') {
+			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast('AdminChat'))
+			return
+		}
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
@@ -589,9 +709,8 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', { tracer }, a
 
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
-	{ tracer, eventLogLevel: 'info' },
+	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
 	async (ctx: CS.Log & C.Db, opts: { aborter: USR.GuiOrChatUserId }) => {
-		C.setSpanOpAttrs(opts)
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		using acquired = await acquireInBlock(voteStateMtx)
 
@@ -602,11 +721,8 @@ export const abortVote = C.spanOp(
 		}
 
 		const newVoteState: V.VoteState = {
-			choices: voteState.choices,
-			itemId: voteState.itemId,
-			deadline: voteState.deadline,
-			votes: voteState.votes,
 			code: 'ended:aborted',
+			...Obj.selectProps(voteState, ['choices', 'itemId', 'voterType', 'votes', 'deadline']),
 			aborter: opts.aborter,
 		}
 
@@ -695,7 +811,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 		if (Object.values(voteState.votes).length === 0) {
 			newVoteState = {
 				code: 'ended:insufficient-votes',
-				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes']),
+				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
 			}
 			voteUpdate = {
 				source: { type: 'system', event: 'vote-timeout' },
@@ -714,7 +830,7 @@ const handleVoteTimeout = C.spanOp('layer-queue:vote:handle-timeout', { tracer, 
 			serverState.layerQueue[0].layerId = winner
 			newVoteState = {
 				code: 'ended:winner',
-				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes']),
+				...Obj.selectProps(voteState, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
 				winner,
 			}
 			voteUpdate = {
@@ -776,7 +892,7 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 			break
 		}
 		case 'in-progress': {
-			if (state.initiator.discordId) discordIds.push(state.initiator.discordId)
+			if (typeof state.initiator === 'object' && state.initiator.discordId) discordIds.push(state.initiator.discordId)
 			break
 		}
 		default:
@@ -865,7 +981,6 @@ async function* watchLayerQueueStateUpdates(args: { ctx: CS.Log & C.Db; signal?:
 }
 
 export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServerState; ctx: C.TrpcRequest }) {
-	C.setSpanOpAttrs({ input })
 	input = Obj.deepClone(input)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverStatePrev = await getServerState({ lock: true }, ctx)
@@ -933,8 +1048,8 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 		const voteUpdateRes = getVoteStateUpdatesFromQueueUpdate(serverStatePrev.layerQueue, serverState.layerQueue, voteState)
 
 		switch (voteUpdateRes.code) {
-			case 'err:queue-change-during-vote':
-				return { code: 'err:queue-change-during-vote' as const }
+			case 'err:queue-item-changed-during-vote':
+				return { code: 'err:queue-item-changed-during-vote' as const }
 			case 'noop':
 				break
 			case 'ok': {
@@ -1035,7 +1150,7 @@ async function includeLayerItemStatusesForLQServerUpdate(ctx: CS.Log, update: SS
 }
 
 /**
- * sets next layer on server, generating a new queue item if needed. modifies serverState in place
+ * sets next layer on server, generating a new queue item if needed. modifies serverState in place. sets are
  */
 async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	ctx: CS.Log & C.Db & (NoDbWrite extends true ? object : C.Tx),
@@ -1118,8 +1233,10 @@ export const layerQueueRouter = router({
 	watchVoteStateUpdates: procedure.subscription(watchVoteStateUpdates),
 	watchUnexpectedNextLayer: procedure.subscription(watchUnexpectedNextLayer),
 	startVote: procedure
-		.input(V.AdvancedVoteConfigSchema)
-		.mutation(async ({ input, ctx }) => startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })),
+		.input(V.StartVoteInputSchema)
+		.mutation(async ({ input, ctx }) => {
+			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
+		}),
 	abortVote: procedure.mutation(async ({ ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 		if (denyRes) return denyRes

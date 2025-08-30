@@ -22,6 +22,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
@@ -231,11 +232,6 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 					const updated = typeof update === 'function' ? update(itemResult.item) : update
 					LL.splice(draft.layerList, itemResult, 1, updated)
 					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
-					for (const { item, innerIndex, outerIndex } of LL.iterLayerList([itemResult.item])) {
-						if (LL.isParentVoteItem(item)) continue
-						if (superjson.stringify(item) === superjson.stringify(state.layerList[outerIndex].choices?.[innerIndex!])) continue
-						ItemMut.tryApplyMutation('edited', item.itemId, draft.listMutations)
-					}
 					onMutate?.()
 				})
 			})
@@ -306,14 +302,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 						}
 					}
 
-					if (targetCursorParent && LL.isParentVoteItem(movedItemRes.item)) {
-						for (const { item } of LL.iterLayerList([movedItemRes.item])) {
-							if (LL.isParentVoteItem(item)) continue
-							ItemMut.tryApplyMutation('moved', item.itemId, draft.listMutations)
-						}
-					} else {
-						ItemMut.tryApplyMutation('moved', movedItemId, draft.listMutations)
-					}
+					ItemMut.tryApplyMutation('moved', movedItemRes.item.itemId, draft.listMutations)
 					onMutate?.()
 				})
 				console.debug('after', state)
@@ -373,22 +362,15 @@ export const createLLItemStore = (
 		},
 		swapFactions: () => {
 			const item = get().item
-			set({ item: swapFactions(item) })
+			set({ item: LL.swapFactions(item) })
+		},
+		addVoteItems: (choices) => {
+			const newItem = LL.mergeItems(get().item, ...choices.map(LL.createLayerListItem))
+			if (!newItem) return
+			set({ item: newItem })
 		},
 		remove: removeItem,
 	}
-}
-
-function swapFactions(existingItem: LL.LayerListItem) {
-	const updated: LL.LayerListItem = { ...existingItem, source: { type: 'manual', userId: UsersClient.logggedInUserId! } }
-	if (existingItem.layerId) {
-		const layerId = L.swapFactionsInId(existingItem.layerId)
-		updated.layerId = layerId
-	}
-	if (LL.isParentVoteItem(existingItem)) {
-		updated.choices = existingItem.choices.map(swapFactions)
-	}
-	return updated
 }
 
 export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.LayerListItemId) {
@@ -414,7 +396,7 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			remove: () => llStore.getState().remove(itemId),
 			swapFactions: () => {
 				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				llStore.getState().setItem(itemId, swapFactions(item))
+				llStore.getState().setItem(itemId, LL.swapFactions(item))
 			},
 		}
 		function deriveState(llState: LLStore): LLItemState | null {

@@ -4,6 +4,12 @@ import React from 'react'
 
 export const DragEndContext = React.createContext<DND.DragEndContext>({ addHook: () => {}, removeHook: () => {} })
 
+export function useDragging() {
+	const ctx = DndKitCore.useDndContext()
+
+	return ctx.active
+}
+
 export function useDragEnd(handler: DND.DragEndHandler) {
 	const id = React.useId()
 	const ctx = React.useContext(DragEndContext)

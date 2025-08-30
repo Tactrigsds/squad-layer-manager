@@ -6,7 +6,7 @@ import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
 import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
-import * as ThemeSys from '@/systems.client/theme.system.ts'
+import * as ThemeSys from '@/systems.client/theme.ts'
 import { enableMapSet } from 'immer'
 import * as Rx from 'rxjs'
 

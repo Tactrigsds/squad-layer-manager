@@ -25,8 +25,8 @@ export const BROADCASTS = {
 	},
 	queue: {},
 	vote: {
-		started(choices: L.LayerId[], defaultLayer: L.LayerId, duration: number) {
-			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
+		started(state: Extract<V.VoteState, { code: 'in-progress' }>, duration: number) {
+			const fullText = `\nVote for the next layer:\n${voteChoicesLines(state.choices, state.choices[0]).join('\n')}\nYou have ${
 				formatInterval(duration)
 			} to vote`
 			return fullText
@@ -63,10 +63,14 @@ export const WARNS = {
 	vote: {
 		noVoteInProgress: `No vote in progress`,
 		invalidChoice: `Invalid vote choice`,
-		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}`,
+		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}.`,
+		wrongChat: (correctChannel: string) => `Vote must be cast in ${correctChannel}`,
 		start: {
 			noVoteConfigured: `No vote is currently configured`,
 			voteAlreadyInProgress: `A vote is already in progress`,
+			itemNotFound: `Item not found`,
+			invalidItemType: `Referenced item must be a vote`,
+			publicVoteNotFirst: `Public vote must be the first item in the queue when initiated`,
 		},
 	},
 	balanceTrigger: {

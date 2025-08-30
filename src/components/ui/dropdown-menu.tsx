@@ -1,5 +1,5 @@
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
-import { CheckIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icons'
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
@@ -20,8 +20,9 @@ const DropdownMenuSubTrigger = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
 		inset?: boolean
+		chevronLeft?: boolean
 	}
->(({ className, inset, children, ...props }, ref) => (
+>(({ className, inset, chevronLeft, children, ...props }, ref) => (
 	<DropdownMenuPrimitive.SubTrigger
 		ref={ref}
 		className={cn(
@@ -31,8 +32,9 @@ const DropdownMenuSubTrigger = React.forwardRef<
 		)}
 		{...props}
 	>
+		{chevronLeft && <ChevronLeftIcon className="mr-2 h-4 w-4" />}
 		{children}
-		<ChevronRightIcon className="ml-auto h-4 w-4" />
+		{!chevronLeft && <ChevronRightIcon className="ml-auto h-4 w-4" />}
 	</DropdownMenuPrimitive.SubTrigger>
 ))
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName

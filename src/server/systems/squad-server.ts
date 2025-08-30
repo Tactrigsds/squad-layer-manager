@@ -147,7 +147,9 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				case 'err:permission-denied': {
 					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
 				}
-				case 'err:no-vote-exists':
+				case 'err:invalid-item-type':
+				case 'err:public-vote-not-first':
+				case 'err:item-not-found':
 				case 'err:vote-in-progress': {
 					return await showError('vote-error', res.msg)
 				}
@@ -280,7 +282,6 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 	void squadLogEvents.connect()
 
 	layersStatusExt$ = getLayersStatusExt$(ctx)
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {

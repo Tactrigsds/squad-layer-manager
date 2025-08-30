@@ -84,8 +84,10 @@ const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: CS.Lo
 	}
 })
 
-export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (ctx: CS.Log, guildId: bigint, memberId: bigint) => {
-	C.setSpanOpAttrs({ guildId: guildId.toString(), memberId: memberId.toString() })
+export const fetchMember = C.spanOp('discord:fetch-member', {
+	tracer,
+	attrs: (_, guildId, memberId) => ({ guildId: guildId.toString(), memberId: memberId.toString() }),
+}, async (ctx: CS.Log, guildId: bigint, memberId: bigint) => {
 	const guildRes = await fetchGuild(ctx, guildId)
 	if (guildRes.code !== 'ok') return guildRes
 
@@ -106,7 +108,6 @@ export const fetchMember = C.spanOp('discord:fetch-member', { tracer }, async (c
 })
 
 export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, async (baseCtx: CS.Log) => {
-	C.setSpanOpAttrs({ guildId: CONFIG.homeDiscordGuildId.toString() })
 	const res = await fetchGuild(baseCtx, CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
 		return res

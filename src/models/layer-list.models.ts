@@ -33,6 +33,10 @@ export const LayerListItemSchema = z.object({
 
 	// this is fully optional
 	voteConfig: V.AdvancedVoteConfigSchema.partial().optional(),
+
+	// should set after a vote has been resolved
+	endingVoteState: V.VoteStateSchema.optional(),
+
 	source: LayerSourceSchema,
 })
 
@@ -255,4 +259,21 @@ export function splice(list: LayerList, indexOrCursor: LLItemRelativeCursor | LL
 	function isItemIndex(item: LLItemRelativeCursor | LLItemIndex): item is LLItemIndex {
 		return (item as any).outerIndex !== undefined
 	}
+}
+
+export function swapFactions(existingItem: LayerListItem) {
+	const updated: LayerListItem = { ...existingItem }
+	const layerId = L.swapFactionsInId(existingItem.layerId)
+	updated.layerId = layerId
+	if (isParentVoteItem(existingItem)) {
+		updated.choices = existingItem.choices.map(swapFactions)
+	}
+	return updated
+}
+
+export function clearTally(_item: LayerListItem) {
+	if (!_item.endingVoteState) return _item
+	const item = { ..._item }
+	delete item.endingVoteState
+	return item
 }
