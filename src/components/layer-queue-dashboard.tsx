@@ -4,11 +4,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAlertDialog } from '@/components/ui/lazy-alert-dialog.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useToast } from '@/hooks/use-toast'
-import { useAbortVote, useStartVote, useVoteState } from '@/hooks/votes.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
@@ -22,7 +20,6 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
-import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
@@ -36,9 +33,7 @@ import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client.ts'
-import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
-import { zodValidator } from '@tanstack/zod-form-adapter'
 import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -57,7 +52,6 @@ import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
 import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import VoteTallyDisplay from './votes-display.tsx'
 
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useServerInfo()
@@ -117,20 +111,21 @@ export default function LayerQueueDashboard() {
 					{isEditing && !inEditTransition && <EditingCard />}
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between">
-							<CardTitle>Up Next</CardTitle>
-							<CardDescription
-								data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-								className="data-[limitreached=true]:text-destructive"
-							>
-								{queueLength} / {maxQueueSize}
-							</CardDescription>
+							<span className="flex items-center space-x-1">
+								<CardTitle>Up Next</CardTitle>
+								<CardDescription
+									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+									className="data-[limitreached=true]:text-destructive"
+								>
+									{queueLength} / {maxQueueSize}
+								</CardDescription>
+							</span>
 							<QueueControlPanel />
 						</CardHeader>
 						<CardContent className="p-0 px-1">
 							<LayerList store={QD.LQStore} />
 						</CardContent>
 					</Card>
-					<VoteState />
 				</div>
 			</div>
 		</div>
@@ -326,7 +321,7 @@ function EditingCard() {
 			<CardHeader>
 				<CardTitle>Changes Pending</CardTitle>
 			</CardHeader>
-			<CardContent className="flex justify-between py-0">
+			<CardContent className="flex justify-between">
 				<div className="space-y-1">
 					{queueHasMutations && (
 						<>
@@ -416,247 +411,6 @@ function UserEditingAlert() {
 				Kick
 			</Button>
 		</Alert>
-	)
-}
-
-// TODO this is all kinds of fucked up
-function VoteState() {
-	const abortVoteMutation = useAbortVote()
-	const toaster = useToast()
-	const voteState = useVoteState()
-	const serverInfoRes = SquadServerClient.useServerInfo()
-	const loggedInUser = useLoggedInUser()
-
-	const userPresence = useUserPresenceState()
-	const editInProgress = userPresence?.editState
-
-	async function abortVote() {
-		const serverStateMut = QD.QDStore.getState().editedServerState
-		if (!serverStateMut?.layerQueueSeqId) return
-		const res = await abortVoteMutation.mutateAsync()
-
-		if (res.code === 'ok') {
-			toaster.toast({ title: 'Vote aborted' })
-			return
-		}
-		return toaster.toast({
-			title: 'Failed to abort vote',
-			description: res.code,
-			variant: 'destructive',
-		})
-	}
-
-	const startVoteMutation = useStartVote()
-	const openDialog = useAlertDialog()
-	let body: React.ReactNode
-
-	const slmConfig = useConfig()
-	const startVoteForm = useForm({
-		defaultValues: {
-			durationSeconds: (slmConfig?.defaults.voteDuration ?? 3000) / 1000,
-		},
-		validatorAdapter: zodValidator(),
-		onSubmit: async ({ value }) => {
-			const res = await startVoteMutation.mutateAsync({
-				durationSeconds: value.durationSeconds,
-			})
-			switch (res.code) {
-				case 'ok':
-					toaster.toast({ title: 'Vote started!' })
-					break
-				case 'err:permission-denied':
-					RbacClient.handlePermissionDenied(res)
-					break
-				case 'err:no-vote-exists':
-				case 'err:vote-in-progress':
-				case 'err:rcon':
-					toaster.toast({
-						title: 'Failed to start vote: ' + res.code,
-						description: res.msg,
-						variant: 'destructive',
-					})
-					break
-				default:
-					assertNever(res)
-			}
-		},
-	})
-
-	const voteDurationEltId = React.useId()
-	const canModifyVote = loggedInUser
-		&& RBAC.rbacUserHasPerms(loggedInUser, {
-			check: 'all',
-			permits: [RBAC.perm('vote:manage')],
-		})
-		&& !editInProgress
-
-	if (!voteState || !serverInfoRes || serverInfoRes.code !== 'ok') {
-		return null
-	}
-	function onSubmit(e: React.FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
-		startVoteForm.handleSubmit()
-	}
-
-	const voteConfigElt = (
-		<form onSubmit={onSubmit} className="flex flex-col space-y-2">
-			<startVoteForm.Field
-				name="durationSeconds"
-				validators={{ onChange: V.AdvancedVoteConfigSchema.shape.durationSeconds }}
-				children={(field) => (
-					<>
-						<Label htmlFor={voteDurationEltId}>Vote Duration (seconds)</Label>
-						<Input
-							id={voteDurationEltId}
-							name={field.name}
-							type="number"
-							disabled={!canModifyVote}
-							defaultValue={field.state.value}
-							onChange={(e) => {
-								return field.setValue(e.target.valueAsNumber)
-							}}
-						/>
-						{field.state.meta.errors.length > 0 && (
-							<Alert variant="destructive">
-								{field.state.meta.errors.join(', ')}
-							</Alert>
-						)}
-					</>
-				)}
-			/>
-		</form>
-	)
-
-	const rerunVoteBtn = (
-		<Button
-			onClick={async () => {
-				const id = await openDialog({
-					title: 'Rerun Vote',
-					description: 'Are you sure you want to rerun the vote?',
-					buttons: [{ label: 'Rerun Vote', id: 'confirm' }],
-				})
-				if (id === 'confirm') startVoteForm.handleSubmit()
-			}}
-			variant="secondary"
-		>
-			Rerun Vote
-		</Button>
-	)
-	const cancelBtn = (
-		<Button
-			disabled={!canModifyVote}
-			onClick={() => {
-				openDialog({
-					title: 'Cancel Vote',
-					description: 'Are you sure you want to cancel the vote?',
-					buttons: [{ label: 'Cancel Vote', id: 'confirm' }],
-				}).then((id) => {
-					if (id === 'confirm') abortVote()
-				})
-			}}
-			variant="secondary"
-		>
-			Cancel Vote
-		</Button>
-	)
-
-	switch (voteState.code) {
-		case 'ready':
-			body = (
-				<>
-					<Button
-						disabled={!canModifyVote}
-						onClick={async () => {
-							const id = await openDialog({
-								title: 'Start Vote',
-								description: 'Are you sure you want to start the vote?',
-								buttons: [{ label: 'Start Vote', id: 'confirm' }],
-							})
-							if (id === 'confirm') startVoteForm.handleSubmit()
-						}}
-					>
-						Start Vote
-					</Button>
-					{voteConfigElt}
-				</>
-			)
-			break
-		case 'in-progress':
-			{
-				body = (
-					<>
-						<Timer
-							zeros={true}
-							deadline={voteState.deadline}
-							className={Typography.Blockquote}
-						/>
-						<VoteTallyDisplay
-							voteState={voteState}
-							playerCount={serverInfoRes.data.playerCount}
-						/>
-						{cancelBtn}
-					</>
-				)
-			}
-			break
-		case 'ended:winner':
-			body = (
-				<>
-					<VoteTallyDisplay
-						voteState={voteState}
-						playerCount={serverInfoRes.data.playerCount}
-					/>
-					{rerunVoteBtn}
-					{voteConfigElt}
-				</>
-			)
-			break
-		case 'ended:insufficient-votes':
-		case 'ended:aborted': {
-			const user = voteState.code === 'ended:aborted'
-				? voteState.aborter.discordId
-					&& PartsSys.findUser(voteState.aborter.discordId)
-				: null
-			body = (
-				<>
-					<VoteTallyDisplay
-						voteState={voteState}
-						playerCount={serverInfoRes.data.playerCount}
-					/>
-					<Alert variant="destructive">
-						<AlertTitle>Vote Aborted</AlertTitle>
-						{voteState.code === 'ended:insufficient-votes' && (
-							<AlertDescription>
-								Insufficient votes to determine a winner
-							</AlertDescription>
-						)}
-						{voteState.code === 'ended:aborted'
-							&& (user
-								? (
-									<AlertDescription>
-										Vote was manually aborted by {user.username}
-									</AlertDescription>
-								)
-								: <AlertDescription>Vote was Aborted</AlertDescription>)}
-					</Alert>
-					{rerunVoteBtn}
-					{voteConfigElt}
-				</>
-			)
-			break
-		}
-		default:
-			assertNever(voteState)
-	}
-
-	return (
-		<Card className="w-min min-w-[200px]">
-			<CardHeader>
-				<CardTitle>Vote</CardTitle>
-			</CardHeader>
-			<CardContent className="flex flex-col space-y-2">{body}</CardContent>
-		</Card>
 	)
 }
 

@@ -1,8 +1,24 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { z } from 'zod'
-export type GuiUserId = { discordId: bigint }
-export type ChatUserId = { steamId: string }
-export type GuiOrChatUserId = { discordId?: bigint; steamId?: string }
+
+export const GuiUserIdSchema = z.object({
+	discordId: z.bigint(),
+})
+
+export type GuiUserId = z.infer<typeof GuiUserIdSchema>
+
+export const ChatUserIdSchema = z.object({
+	steamId: z.string(),
+})
+
+export type ChatUserId = z.infer<typeof ChatUserIdSchema>
+
+export const GuiOrChatUserIdSchema = z.object({
+	discordId: z.bigint().optional(),
+	steamId: z.string().optional(),
+})
+
+export type GuiOrChatUserId = z.infer<typeof GuiOrChatUserIdSchema>
 
 export type User = SchemaModels.User
 export type MiniUser = {

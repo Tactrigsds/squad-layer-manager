@@ -2,77 +2,99 @@ import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
-import * as L from './layer'
+import * as LL from './layer-list.models'
 
 export const VOTER_TYPE = z.enum(['public', 'internal'])
 
 export type VoterType = z.infer<typeof VOTER_TYPE>
 
 export const AdvancedVoteConfigSchema = z.object({
-	duration: z.number().positive(),
-	voterType: VOTER_TYPE,
+	duration: z.number().positive().optional(),
 })
 
 export type AdvancedVoteConfig = z.infer<typeof AdvancedVoteConfigSchema>
-export function getDefaultVoteConfig(): AdvancedVoteConfig {
+
+export const StartVoteInputSchema = z.object({
+	itemId: z.string().optional(),
+	voterType: VOTER_TYPE.optional(),
+	...AdvancedVoteConfigSchema.shape,
+})
+
+export type StartVoteInput = z.infer<typeof StartVoteInputSchema>
+
+export function getDefaultVoteConfig() {
 	return {
 		duration: HumanTime.parse('120s'),
-		voterType: 'public',
-	}
+	} satisfies AdvancedVoteConfig
 }
 
-type TallyProperties = {
-	votes: Record<string, L.LayerId>
-	deadline: number
-}
+const TallyPropertiesSchema = z.object({
+	votes: z.record(z.string(), z.string()),
+	deadline: z.number(),
+})
 
-type LayerVote = {
-	itemId: string
-	choices: L.LayerId[]
-	voterType: VoterType
-}
+type TallyProperties = z.infer<typeof TallyPropertiesSchema>
 
-export type VoteState =
-	| ({ code: 'ready' } & LayerVote)
-	| (
-		& {
-			code: 'in-progress'
-			initiator: USR.GuiOrChatUserId
-		}
-		& TallyProperties
-		& LayerVote
-	)
-	| (
-		& {
-			code: 'ended:winner'
-			winner: L.LayerId
-		}
-		& TallyProperties
-		& LayerVote
-	)
-	| (
-		& {
-			code: 'ended:aborted'
-			aborter: USR.GuiOrChatUserId
-		}
-		& TallyProperties
-		& LayerVote
-	)
-	| (
-		& {
-			code: 'ended:insufficient-votes'
-		}
-		& TallyProperties
-		& LayerVote
-	)
+const LayerVoteSchema = z.object({
+	itemId: z.string(),
+	choices: z.array(z.string()),
+	voterType: VOTER_TYPE,
+})
+
+type LayerVote = z.infer<typeof LayerVoteSchema>
+
+export const VoteStateSchema = z.discriminatedUnion('code', [
+	// the vote state doesn't have to be set to 'ready' before they're started. this is here so we can autostart votes for the next layer
+	z.object({
+		code: z.literal('ready'),
+		...LayerVoteSchema.shape,
+
+		autostartTime: z.date().optional(),
+	}),
+
+	z.object({
+		code: z.literal('in-progress'),
+		initiator: z.union([USR.GuiOrChatUserIdSchema, z.literal('automatic')]),
+		...TallyPropertiesSchema.shape,
+		...LayerVoteSchema.shape,
+	}),
+	z.object({
+		code: z.literal('ended:winner'),
+		winner: z.string(),
+		...TallyPropertiesSchema.shape,
+		...LayerVoteSchema.shape,
+	}),
+	z.object({
+		code: z.literal('ended:aborted'),
+		aborter: z.union([USR.GuiOrChatUserIdSchema, z.literal('automatic')]),
+		...TallyPropertiesSchema.shape,
+		...LayerVoteSchema.shape,
+	}),
+	z.object({
+		code: z.literal('ended:insufficient-votes'),
+		...TallyPropertiesSchema.shape,
+		...LayerVoteSchema.shape,
+	}),
+])
+
+export type VoteState = z.infer<typeof VoteStateSchema>
 
 export type VoteStateWithVoteData = Extract<
 	VoteState,
 	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
 >
 
-export type Tally = ReturnType<typeof tallyVotes>
-export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: number) {
+export const TallySchema = z.object({
+	totals: z.map(z.string(), z.number()),
+	totalVotes: z.number(),
+	turnoutPercentage: z.number(),
+	percentages: z.map(z.string(), z.number()),
+	leaders: z.array(z.string()),
+})
+
+export type Tally = z.infer<typeof TallySchema>
+
+export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: number): Tally {
 	if (Object.values(currentVote.choices).length == 0) {
 		throw new Error('No choices listed')
 	}
@@ -133,7 +155,7 @@ export type VoteStateUpdate = {
 	source:
 		| {
 			type: 'system'
-			event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup'
+			event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup' | 'new-game'
 		}
 		| {
 			type: 'manual'
@@ -141,7 +163,42 @@ export type VoteStateUpdate = {
 			user: USR.GuiOrChatUserId
 		}
 }
+export type VoteStateUpdateSource = VoteStateUpdate['source']
+export type VoteStateUpdateSourceEvent = VoteStateUpdateSource['event']
+export type ManualVoteStateUpdateSourceEvent = Extract<VoteStateUpdateSource, { type: 'manual' }>['event']
 
 export function getDefaultChoice(state: VoteState) {
 	return state.choices[0]
+}
+
+export function canInitiateVote(itemId: string, queue: LL.LayerList, voterType: VoterType, voteState?: Pick<VoteState, 'code'>) {
+	const itemRes = LL.findItemById(queue, itemId)
+	if (!itemRes) {
+		return {
+			code: 'err:item-not-found' as const,
+		}
+	}
+	const item = itemRes.item
+
+	if (!LL.isParentVoteItem(item)) {
+		return {
+			code: 'err:invalid-item-type' as const,
+		}
+	}
+
+	if (voterType === 'public' && itemRes.outerIndex !== 0) {
+		return {
+			code: 'err:public-vote-not-first' as const,
+		}
+	}
+	if (voteState?.code === 'in-progress') {
+		return {
+			code: 'err:vote-in-progress' as const,
+		}
+	}
+
+	return {
+		code: 'ok' as const,
+		item,
+	}
 }

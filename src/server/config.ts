@@ -24,6 +24,9 @@ export const ConfigSchema = z.object({
 	warnPrefix: z.string().optional().default('SLM: ').describe('Prefix to use for warnings'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
+		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
+			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
+		),
 	}),
 	// we have to ues .optional instead of .default here to avoid circular type definitions
 	commands: z.object(

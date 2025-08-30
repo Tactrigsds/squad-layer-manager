@@ -56,43 +56,45 @@ export function setup() {
 
 const tracer = Otel.trace.getTracer('rbac')
 
-export const getRolesForDiscordUser = C.spanOp('rbac:get-roles-for-discord-user', { tracer }, async (baseCtx: CS.Log, userId: bigint) => {
-	C.setSpanOpAttrs({ userId })
-	const roles: RBAC.Role[] = []
-	const tasks: Promise<void>[] = []
-	for (const assignment of roleAssignments) {
-		if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
-			roles.push(assignment.role)
-		}
-		tasks.push(
-			(async () => {
-				if (assignment.type === 'discord-server-member') {
-					const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
-					if (memberRes.code === 'ok') {
-						roles.push(assignment.role)
-					}
-				}
-				if (assignment.type === 'discord-role') {
-					const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
-					if (memberRes.code === 'ok') {
-						const member = memberRes.member
-						if (member.roles.cache.has(assignment.discordRoleId.toString())) {
+export const getRolesForDiscordUser = C.spanOp(
+	'rbac:get-roles-for-discord-user',
+	{ tracer, attrs: (_, userId) => ({ userId }) },
+	async (baseCtx: CS.Log, userId: bigint) => {
+		const roles: RBAC.Role[] = []
+		const tasks: Promise<void>[] = []
+		for (const assignment of roleAssignments) {
+			if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
+				roles.push(assignment.role)
+			}
+			tasks.push(
+				(async () => {
+					if (assignment.type === 'discord-server-member') {
+						const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
+						if (memberRes.code === 'ok') {
 							roles.push(assignment.role)
 						}
 					}
-				}
-			})(),
-		)
-	}
-	await Promise.all(tasks)
-	return roles
-})
+					if (assignment.type === 'discord-role') {
+						const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
+						if (memberRes.code === 'ok') {
+							const member = memberRes.member
+							if (member.roles.cache.has(assignment.discordRoleId.toString())) {
+								roles.push(assignment.role)
+							}
+						}
+					}
+				})(),
+			)
+		}
+		await Promise.all(tasks)
+		return roles
+	},
+)
 
 export const getUserRbacPerms = C.spanOp(
 	'rbac:get-permissions-for-discord-user',
-	{ tracer },
+	{ tracer, attrs: (_, userId) => ({ userId }) },
 	async (baseCtx: CS.Log & C.Db, userId: bigint): Promise<RBAC.TracedPermission[]> => {
-		C.setSpanOpAttrs({ userId })
 		const ownedFiltersPromise = getOwnedFilters()
 		const roles = await getRolesForDiscordUser(baseCtx, userId)
 		const userFilterContributorsPromise = getUserContributorFilters()

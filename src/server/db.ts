@@ -69,6 +69,7 @@ export async function runTransaction<T extends C.Db, V>(
 	return await tracer.startActiveSpan('db.transaction', async (span) => {
 		let res!: Awaited<V>
 		let shouldRollback = false
+		const unlockTasks: C.Tx['tx']['unlockTasks'] = []
 		try {
 			await ctx.db().transaction(async (tx) => {
 				res = await callback({
@@ -77,11 +78,13 @@ export async function runTransaction<T extends C.Db, V>(
 						rollback: () => {
 							shouldRollback = true
 						},
+						unlockTasks,
 					},
 					db: () => tx,
 				})
 				if (shouldRollback) tx.rollback()
 			})
+			await Promise.all(unlockTasks.map((task) => task()))
 			span.setStatus({ code: Otel.SpanStatusCode.OK })
 			return res
 		} catch (err) {

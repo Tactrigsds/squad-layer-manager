@@ -98,9 +98,8 @@ export function clearInvalidSession(ctx: Pick<C.HttpRequest, 'res'>) {
 
 export const getUser = C.spanOp(
 	'sessions:get-user',
-	{ tracer },
+	{ tracer, attrs: ({ lock }) => ({ lock }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
-		C.setSpanOpAttrs({ lock: opts.lock })
 		opts.lock ??= false
 		const q = ctx
 			.db({ redactParams: true })
@@ -111,7 +110,6 @@ export const getUser = C.spanOp(
 
 		const [row] = opts.lock ? await q.for('update') : await q
 
-		C.setSpanStatus(Otel.SpanStatusCode.OK)
 		return row!.user!
 	},
 )

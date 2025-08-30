@@ -350,6 +350,7 @@ export async function createTrpcRequestContext(
 		ws: options.res as unknown as WebSocket,
 		log: result.ctx.log.child({ wsClientId }),
 		db: result.ctx.db,
+		...C.initLocks(),
 	}
 	WsSessionSys.registerClient(ctx)
 	return ctx

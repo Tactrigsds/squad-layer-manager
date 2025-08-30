@@ -1,13 +1,13 @@
 import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
+import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
 import RconCore from '@/lib/rcon/core-rcon.ts'
 import * as CS from '@/models/context-shared.ts'
-import * as LC from '@/models/layer-columns.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as LayerDb from '@/server/systems/layer-db.server.ts'
 import * as Otel from '@opentelemetry/api'
+import { Mutex } from 'async-mutex'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import Pino from 'pino'
 import * as Rx from 'rxjs'
@@ -32,6 +32,9 @@ export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
 	return { ...ctx, log: child }
 }
 
+// LRU map in case of leaks
+const spanStatusMap = new LRUMap<string, { code: Otel.SpanStatusCode; message?: string }>(500)
+
 export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
 	opts: {
@@ -40,7 +43,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 		links?: Otel.Link[]
 		eventLogLevel?: Pino.Level
 		root?: boolean
-		attrs?: Record<string, any>
+		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
 	},
 	cb: Cb,
 ): Cb {
@@ -64,6 +67,9 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 			{ root: opts.root ?? !Otel.trace.getActiveSpan(), links: opts.links },
 			context,
 			async (span) => {
+				if (typeof opts.attrs === 'function') {
+					opts.attrs = opts.attrs(...args as Parameters<Cb>)
+				}
 				if (opts.attrs) {
 					setSpanOpAttrs(opts.attrs)
 				}
@@ -79,20 +85,29 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 					const result = await cb(...args)
 					if (result !== null && typeof result === 'object' && 'code' in result) {
 						if (result.code === 'ok') {
-							span.setStatus({ code: Otel.SpanStatusCode.OK })
+							setSpanStatus(Otel.SpanStatusCode.OK)
 						} else {
 							const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
 							logger?.[opts.eventLogLevel ?? 'debug'](`Error running ${name}: ${msg}`)
-							span.setStatus({ code: Otel.SpanStatusCode.ERROR, message: msg })
+							setSpanStatus(Otel.SpanStatusCode.ERROR, msg)
 						}
 					}
-					logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - ok`)
+					let spanStatus = spanStatusMap.get(span.spanContext().spanId)
+					if (!spanStatus) {
+						spanStatus = { code: Otel.SpanStatusCode.OK }
+						span.setStatus({ code: Otel.SpanStatusCode.OK })
+					}
+					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? 'warn' : (opts.eventLogLevel ?? 'debug')
+					logger?.[logLevel](
+						`${name}(${id}) : ${spanStatus.code === Otel.SpanStatusCode.ERROR ? `error : ${spanStatus?.message}` : 'ok'}`,
+					)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
-					logger?.warn(`${name}(${id}) : error : ${message} `)
+					logger?.warn(`${name}(${id}) : error : ${message}`)
 					throw error
 				} finally {
+					spanStatusMap.delete(span.spanContext().spanId)
 					span.end()
 				}
 			},
@@ -108,7 +123,11 @@ export function setSpanOpAttrs(attrs: Record<string, any>) {
 	Otel.default.trace.getActiveSpan()?.setAttributes(namespaced)
 }
 export function setSpanStatus(status: Otel.SpanStatusCode, message?: string) {
-	Otel.default.trace.getActiveSpan()?.setStatus({ code: status, message })
+	const activeSpan = Otel.default.trace.getActiveSpan()
+	if (!activeSpan) return
+
+	spanStatusMap.set(activeSpan.spanContext().spanId, { code: status, message })
+	activeSpan.setStatus({ code: status, message })
 }
 
 export function pushOtelCtx<Ctx extends object>(ctx: Ctx) {
@@ -142,7 +161,28 @@ export type Db = {
 } & CS.Log
 
 // indicates the context is in a db transaction
-export type Tx = { tx: { rollback: () => void } }
+export type Tx = {
+	tx: {
+		rollback: () => void
+
+		// tasks which will be executed after the transaction is committed
+		unlockTasks: (() => void | Promise<void>)[]
+	}
+}
+
+// TODO we may want some way of specifying in function signature what kinds of locks the context might acquire
+export type Locks = {
+	locks: {
+		// represents the set of mutexes currently locked by the context
+		locked: Set<Mutex>
+
+		// tasks to be executed after mutex is released
+		releaseTasks: (() => void | Promise<void>)[]
+	}
+}
+export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Locks {
+	return { ...(ctx ?? {} as Ctx), locks: { locked: new Set<Mutex>(), releaseTasks: [] } }
+}
 
 export type Rcon = {
 	rcon: RconCore
@@ -209,6 +249,7 @@ export function durableSub<T, O>(
 		downstreamRetryTimeoutMs?: number
 		taskScheduling?: 'switch' | 'parallel' | 'sequential'
 		root?: boolean
+		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
 	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
@@ -229,7 +270,7 @@ export function durableSub<T, O>(
 				let attemptsLeft = numRetries + 1
 				while (true) {
 					try {
-						const res = await spanOp(name, { tracer: opts.tracer, links: [link], root: opts.root }, cb)(arg)
+						const res = await spanOp(name, { tracer: opts.tracer, links: [link], root: opts.root, attrs: opts.attrs }, cb)(arg)
 						if (retryOnValueError && (res as any).code !== 'ok') {
 							attemptsLeft--
 							if (attemptsLeft === 0) return res

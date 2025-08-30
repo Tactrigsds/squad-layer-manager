@@ -29,7 +29,7 @@ function applyTheme(theme: Theme) {
 let ThemeStore!: Zus.StoreApi<ThemeStore>
 
 export function setup() {
-	Zus.createStore<ThemeStore>((set) => {
+	ThemeStore = Zus.createStore<ThemeStore>((set) => {
 		const theme = THEME.parse(localStorage.getItem(THEME_STORAGE_KEY) ?? 'dark')
 		applyTheme(theme)
 		return {

@@ -25,8 +25,8 @@ export const BROADCASTS = {
 	},
 	queue: {},
 	vote: {
-		started(choices: L.LayerId[], defaultLayer: L.LayerId, duration: number) {
-			const fullText = `\nVote for the next layer:\n${voteChoicesLines(choices, defaultLayer).join('\n')}\nYou have ${
+		started(state: Extract<V.VoteState, { code: 'in-progress' }>, duration: number) {
+			const fullText = `\nVote for the next layer:\n${voteChoicesLines(state.choices, state.choices[0]).join('\n')}\nYou have ${
 				formatInterval(duration)
 			} to vote`
 			return fullText
@@ -43,11 +43,14 @@ export const BROADCASTS = {
 			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
 			return fullText
 		},
-		insufficientVotes: (defaultChoice: L.LayerId) => {
+		insufficientVotes(defaultChoice: L.LayerId) {
 			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
 		},
 		aborted(defaultLayer: L.LayerId) {
 			return `\nVote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
+		},
+		inProgressVoteCleared() {
+			return `in-progress vote has been cleared.`
 		},
 		voteReminder(timeLeft: number, choices: L.LayerId[], finalReminder = false) {
 			const durationStr = formatInterval(timeLeft)
@@ -63,10 +66,14 @@ export const WARNS = {
 	vote: {
 		noVoteInProgress: `No vote in progress`,
 		invalidChoice: `Invalid vote choice`,
-		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}`,
+		voteCast: (choice: L.LayerId) => `Vote cast for ${DH.toShortLayerNameFromId(choice)}.`,
+		wrongChat: (correctChannel: string) => `Vote must be cast in ${correctChannel}`,
 		start: {
 			noVoteConfigured: `No vote is currently configured`,
 			voteAlreadyInProgress: `A vote is already in progress`,
+			itemNotFound: `Item not found`,
+			invalidItemType: `Referenced item must be a vote`,
+			publicVoteNotFirst: `Public vote must be the first item in the queue when initiated`,
 		},
 	},
 	balanceTrigger: {

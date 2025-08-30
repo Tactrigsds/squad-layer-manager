@@ -292,9 +292,10 @@ export class AsyncExclusiveTaskRunner {
 	}
 }
 
-export async function acquireInBlock(mutex: Mutex, opts?: { bypass?: boolean }) {
+export async function acquireInBlock(mutex: Mutex, opts?: { lock?: boolean }) {
+	const lock = opts?.lock ?? true
 	let release: (() => void) | undefined
-	if (!opts?.bypass) {
+	if (lock) {
 		release = await mutex.acquire()
 	}
 	return {
@@ -302,6 +303,31 @@ export async function acquireInBlock(mutex: Mutex, opts?: { bypass?: boolean }) 
 			release?.()
 		},
 		mutex,
+	}
+}
+
+// WARNING: if you use this function you cannot pass the context out of the lifetime of the calling function or weird things might happen
+export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexes: Mutex[]) {
+	const ctx = { ..._ctx, locks: new Set((_ctx as C.Locks)?.locks.locked) }
+
+	const mutexesToAcquire = mutexes.filter(mutex => !ctx.locks.locked.has(mutex))
+
+	for (const mutex of mutexesToAcquire) {
+		ctx.locks.add(mutex)
+	}
+
+	// Acquire all locks in parallel
+	const releaseTasks = await Promise.all(
+		mutexesToAcquire.map(mutex => mutex.acquire()),
+	)
+
+	return {
+		...ctx,
+		[Symbol.dispose]() {
+			for (const release of releaseTasks) {
+				release()
+			}
+		},
 	}
 }
 

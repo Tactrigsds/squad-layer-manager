@@ -22,7 +22,7 @@ export default function LayerDisplay(
 		addedLayerQueryInput?: Pick<LQY.LayerQueryBaseInput, 'patches'>
 		allowShowInfo?: boolean
 		className?: string
-		ref?: React.RefAttributes<HTMLDivElement>
+		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
 	const layerStatusesRes = useLayerItemStatuses({ addedInput: props.addedLayerQueryInput })

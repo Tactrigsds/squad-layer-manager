@@ -31,12 +31,6 @@ import * as Env from '../env'
 import { procedure, router } from '../trpc.server.ts'
 
 type SquadServerState = {
-	// An ephemeral copy of the current matches layer queue item, taken just before the server rolls and the NEW_GAME squad event is emitted. in order for usages of this to be valid, the corresponding NEW_GAME event must be received after its details are buffered.
-	bufferedNextMatch?: {
-		layerListItem: LL.LayerListItem
-	}
-	lastRoll: Date
-
 	debug__ticketOutcome?: SME.DebugTicketOutcome
 }
 
@@ -147,7 +141,9 @@ async function handleCommand(ctx: CS.Log & C.Db, msg: SM.ChatMessage) {
 				case 'err:permission-denied': {
 					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
 				}
-				case 'err:no-vote-exists':
+				case 'err:invalid-item-type':
+				case 'err:public-vote-not-first':
+				case 'err:item-not-found':
 				case 'err:vote-in-progress': {
 					return await showError('vote-error', res.msg)
 				}
@@ -280,7 +276,6 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 	void squadLogEvents.connect()
 
 	layersStatusExt$ = getLayersStatusExt$(ctx)
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
 async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
@@ -290,24 +285,17 @@ async function handleSquadEvent(ctx: CS.Log & C.Db, event: SME.Event) {
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
 				if (statusRes.code !== 'ok') return statusRes
+				let lqItem: LL.LayerListItem | undefined
+        if (!state.serverRolling) {
+          const serverState = await LayerQueue.getServerState({lock: true}, ctx)
+          if (L.areLayersCompatible())
+        }
 
-				const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
+				const newEntry = MH.getNewMatchHistoryEntry({
 					layerId: statusRes.data.currentLayer.id,
 					startTime: event.time,
-					setByType: 'unknown',
-				}
-
-				if (state.bufferedNextMatch) {
-					newEntry.layerId = LL.getActiveItemLayerId(state.bufferedNextMatch.layerListItem) ?? newEntry.layerId
-					newEntry.lqItemId = state.bufferedNextMatch.layerListItem.itemId
-					newEntry.layerVote = { choices: state.bufferedNextMatch.layerListItem.choices }
-					newEntry.setByType = state.bufferedNextMatch.layerListItem.source.type
-
-					const setByUserId = state.bufferedNextMatch.layerListItem.source.type === 'manual'
-						? state.bufferedNextMatch.layerListItem.source.userId
-						: undefined
-					newEntry.setByUserId = setByUserId
-				}
+					lqItem: state.bufferedNextMatch?.layerListItem,
+				})
 
 				const res = await MatchHistory.addNewCurrentMatch(ctx, newEntry)
 				if (res.code !== 'ok') return res
