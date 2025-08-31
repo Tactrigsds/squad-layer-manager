@@ -103,6 +103,7 @@ export type LQServerStateUpdate = {
 				| 'server-roll'
 				| 'app-startup'
 				| 'vote-timeout'
+				| 'vote-abort'
 				| 'next-layer-override'
 				| 'vote-start'
 				| 'admin-change-layer'

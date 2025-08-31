@@ -269,32 +269,13 @@ function EditingCard() {
 				})
 				reset()
 				return
-			case 'err:queue-change-during-vote':
-				toaster.toast({
-					title: 'Cannot update: layer vote in progress',
-					variant: 'destructive',
-				})
-				reset()
-				break
 			case 'err:queue-too-large':
 				toaster.toast({
 					title: 'Queue too large',
 					variant: 'destructive',
 				})
 				break
-			case 'err:empty-vote':
-				toaster.toast({
-					title: 'Cannot update: vote is empty',
-					variant: 'destructive',
-				})
-				break
 			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:duplicate-vote-choices':
 				toaster.toast({
 					title: res.msg,
 					variant: 'destructive',

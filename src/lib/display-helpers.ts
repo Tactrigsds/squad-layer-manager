@@ -63,6 +63,10 @@ export function toShortLayerNameFromId(id: string, you?: 1 | 2) {
 	return displayUnvalidatedLayer(res, you)
 }
 
+export function toExtraShortLayerNameFromId(id: string, you?: 1 | 2) {
+	return toShortLayerNameFromId(id, you).replace(' - ', ' ')
+}
+
 export function getColumnExtraStyles(
 	column: keyof L.KnownLayer,
 	teamParity: number | undefined,

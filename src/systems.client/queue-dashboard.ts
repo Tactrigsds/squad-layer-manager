@@ -8,7 +8,6 @@ import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -22,12 +21,10 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
-import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
-import superjson from 'superjson'
 import * as Zus from 'zustand'
 import * as ZusRx from 'zustand-rx'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -745,32 +742,13 @@ export function useSaveChangesMutation() {
 				})
 				reset()
 				return
-			case 'err:queue-change-during-vote':
-				toaster.toast({
-					title: 'Cannot update: layer vote in progress',
-					variant: 'destructive',
-				})
-				reset()
-				break
 			case 'err:queue-too-large':
 				toaster.toast({
 					title: 'Queue too large',
 					variant: 'destructive',
 				})
 				break
-			case 'err:empty-vote':
-				toaster.toast({
-					title: 'Cannot update: vote is empty',
-					variant: 'destructive',
-				})
-				break
 			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'err:duplicate-vote-choices':
 				toaster.toast({
 					title: res.msg,
 					variant: 'destructive',

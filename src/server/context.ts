@@ -156,9 +156,12 @@ export function recordGenericError(error: unknown, setStatus = true) {
 
 // -------- Logging end --------
 
-export type Db = {
-	db(opts?: { redactParams?: boolean }): DB.Db
-} & CS.Log
+export type Db =
+	& {
+		db(opts?: { redactParams?: boolean }): DB.Db
+	}
+	& CS.Log
+	& Partial<Tx>
 
 // indicates the context is in a db transaction
 export type Tx = {
@@ -170,6 +173,7 @@ export type Tx = {
 	}
 }
 
+type ReleaseTask = () => void | Promise<void>
 // TODO we may want some way of specifying in function signature what kinds of locks the context might acquire
 export type Locks = {
 	locks: {
@@ -177,7 +181,7 @@ export type Locks = {
 		locked: Set<Mutex>
 
 		// tasks to be executed after mutex is released
-		releaseTasks: (() => void | Promise<void>)[]
+		releaseTasks: ([Mutex[], ReleaseTask] | ReleaseTask)[]
 	}
 }
 export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Locks {
@@ -213,7 +217,7 @@ export type WSSession = {
 
 export type AuthedUser = User & AuthSession
 
-export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & CS.Log
+export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & CS.Log & Locks
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts

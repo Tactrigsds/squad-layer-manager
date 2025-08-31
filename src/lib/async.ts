@@ -308,23 +308,33 @@ export async function acquireInBlock(mutex: Mutex, opts?: { lock?: boolean }) {
 
 // WARNING: if you use this function you cannot pass the context out of the lifetime of the calling function or weird things might happen
 export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexes: Mutex[]) {
-	const ctx = { ..._ctx, locks: new Set((_ctx as C.Locks)?.locks.locked) }
+	const ctx: Ctx = { ..._ctx, locks: { locked: new Set(_ctx.locks.locked), releaseTasks: [] } }
 
 	const mutexesToAcquire = mutexes.filter(mutex => !ctx.locks.locked.has(mutex))
 
 	for (const mutex of mutexesToAcquire) {
-		ctx.locks.add(mutex)
+		ctx.locks.locked.add(mutex)
 	}
 
 	// Acquire all locks in parallel
-	const releaseTasks = await Promise.all(
+	const acquired = await Promise.all(
 		mutexesToAcquire.map(mutex => mutex.acquire()),
 	)
+
+	// wait for referenced mutexes to be released and then process releaseTask. There is no execution ordering guarantee
+	for (const entry of ctx.locks.releaseTasks) {
+		const pairedMutexes = entry instanceof Array ? entry[0] : mutexes
+		const allReleased = Promise.all(pairedMutexes.map(mutex => mutex.waitForUnlock()))
+		void allReleased.then(() => {
+			const task = entry instanceof Array ? entry[1] : entry
+			task()
+		})
+	}
 
 	return {
 		...ctx,
 		[Symbol.dispose]() {
-			for (const release of releaseTasks) {
+			for (const release of acquired) {
 				release()
 			}
 		},

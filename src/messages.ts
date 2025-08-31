@@ -13,9 +13,11 @@ import * as dateFns from 'date-fns'
 import { WarnOptions } from './lib/rcon/squad-rcon'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
-function formatInterval(interval: number) {
+function formatInterval(interval: number, terse = true) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: interval })
-	return dateFns.formatDuration(duration).replace(' seconds', 's').replace(' minutes', 'm')
+	let txt = dateFns.formatDuration(duration)
+	if (terse) txt = txt.replace(' seconds', 's').replace(' minutes', 'm')
+	return txt
 }
 
 export const BROADCASTS = {
@@ -26,9 +28,9 @@ export const BROADCASTS = {
 	queue: {},
 	vote: {
 		started(state: Extract<V.VoteState, { code: 'in-progress' }>, duration: number) {
-			const fullText = `\nVote for the next layer:\n${voteChoicesLines(state.choices, state.choices[0]).join('\n')}\nYou have ${
-				formatInterval(duration)
-			} to vote`
+			const lines = voteChoicesLines(state.choices).join('\n')
+			const formattedInterval = formatInterval(duration, false)
+			const fullText = `\nVote for the next layer:\n${lines}\nYou have ${formattedInterval} to vote`
 			return fullText
 		},
 		winnerSelected(tally: V.Tally, winner: L.LayerId) {
@@ -46,17 +48,14 @@ export const BROADCASTS = {
 		insufficientVotes(defaultChoice: L.LayerId) {
 			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(defaultChoice)}`
 		},
-		aborted(defaultLayer: L.LayerId) {
-			return `\nVote has been aborted. Defaulting to ${DH.toShortLayerNameFromId(defaultLayer)} for now`
-		},
+		aborted: `\nThe vote has been aborted.`,
 		inProgressVoteCleared() {
 			return `in-progress vote has been cleared.`
 		},
-		voteReminder(timeLeft: number, choices: L.LayerId[], finalReminder = false) {
-			const durationStr = formatInterval(timeLeft)
-			const choicesText = choices.map((c, index) => `${index + 1}. ${DH.toShortLayerNameFromId(c)}`).join('\n')
+		voteReminder(state: Extract<V.VoteState, { code: 'in-progress' }>, timeLeft: number, finalReminder = false) {
+			const durationStr = formatInterval(timeLeft, false)
 			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
-			const fullText = `${prefix}\n${choicesText}`
+			const fullText = `${prefix}\n${voteChoicesLines(state.choices).join('\n')}`
 			return fullText
 		},
 	},
@@ -74,6 +73,7 @@ export const WARNS = {
 			itemNotFound: `Item not found`,
 			invalidItemType: `Referenced item must be a vote`,
 			publicVoteNotFirst: `Public vote must be the first item in the queue when initiated`,
+			noVoteInPostGame: 'Not votes allowed in post-game',
 		},
 	},
 	balanceTrigger: {
@@ -129,7 +129,7 @@ export const WARNS = {
 				} else {
 					const msg = [
 						'Upcoming vote:',
-						...voteChoicesLines(item.choices.map(choice => choice.layerId), LL.getDefaultLayerId(item), playerNextTeamId),
+						...voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId),
 					]
 					msg.push(extraDisplay)
 					return getOptions(msg)
@@ -234,9 +234,8 @@ type MessageNode = {
 	[key: string]: MessageNode | MessageOutput | ((...args: any[]) => MessageOutput)
 }
 
-function voteChoicesLines(choices: L.LayerId[], defaultLayer: L.LayerId, you?: 1 | 2) {
+function voteChoicesLines(choices: L.LayerId[], you?: 1 | 2) {
 	return choices.map((c, index) => {
-		const isDefault = c === defaultLayer
-		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you)} ${isDefault ? '\n(Default)' : ''}`
+		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you)}`
 	})
 }

@@ -54,10 +54,15 @@ export const VoteStateSchema = z.discriminatedUnion('code', [
 
 	z.object({
 		code: z.literal('in-progress'),
-		initiator: z.union([USR.GuiOrChatUserIdSchema, z.literal('automatic')]),
+		initiator: z.union([USR.GuiOrChatUserIdSchema, z.literal('autostart')]),
 		...TallyPropertiesSchema.shape,
 		...LayerVoteSchema.shape,
 	}),
+])
+
+export type VoteState = z.infer<typeof VoteStateSchema>
+
+export const EndingVoteStateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('ended:winner'),
 		winner: z.string(),
@@ -66,7 +71,7 @@ export const VoteStateSchema = z.discriminatedUnion('code', [
 	}),
 	z.object({
 		code: z.literal('ended:aborted'),
-		aborter: z.union([USR.GuiOrChatUserIdSchema, z.literal('automatic')]),
+		aborter: z.union([USR.GuiOrChatUserIdSchema, z.literal('autostart')]),
 		...TallyPropertiesSchema.shape,
 		...LayerVoteSchema.shape,
 	}),
@@ -77,10 +82,10 @@ export const VoteStateSchema = z.discriminatedUnion('code', [
 	}),
 ])
 
-export type VoteState = z.infer<typeof VoteStateSchema>
+export type EndingVoteState = z.infer<typeof EndingVoteStateSchema>
 
 export type VoteStateWithVoteData = Extract<
-	VoteState,
+	VoteState | EndingVoteState,
 	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
 >
 
@@ -127,7 +132,7 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 	return {
 		totals: tally,
 		totalVotes,
-		turnoutPercentage: isNaN(turnoutPercentage) ? null : turnoutPercentage,
+		turnoutPercentage: isNaN(turnoutPercentage) ? 0 : turnoutPercentage,
 		percentages,
 		leaders: leaders,
 	}
@@ -155,7 +160,7 @@ export type VoteStateUpdate = {
 	source:
 		| {
 			type: 'system'
-			event: 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup' | 'new-game'
+			event: 'automatic-start-vote' | 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup' | 'new-game'
 		}
 		| {
 			type: 'manual'
@@ -167,7 +172,7 @@ export type VoteStateUpdateSource = VoteStateUpdate['source']
 export type VoteStateUpdateSourceEvent = VoteStateUpdateSource['event']
 export type ManualVoteStateUpdateSourceEvent = Extract<VoteStateUpdateSource, { type: 'manual' }>['event']
 
-export function getDefaultChoice(state: VoteState) {
+export function getDefaultChoice(state: { choices: string[] }) {
 	return state.choices[0]
 }
 

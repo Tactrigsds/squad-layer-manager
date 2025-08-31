@@ -1,16 +1,13 @@
-import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import { snakeCaseToTitleCase, statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -20,17 +17,13 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as ConfigClient from '@/systems.client/config.client'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import { CSS } from '@dnd-kit/utilities'
-import { useForm } from '@tanstack/react-form'
 import * as ReactQuery from '@tanstack/react-query'
-import { zodValidator } from '@tanstack/zod-form-adapter'
-import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -40,8 +33,8 @@ import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Timer } from './timer.tsx'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 
 export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
@@ -199,7 +192,6 @@ function LayerListItem(props: LayerListItemProps) {
 	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
 
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
-	const [voteConfigOpen, setVoteConfigOpen] = React.useState(false)
 
 	const voteState = VotesClient.useVoteState()
 	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
@@ -224,13 +216,6 @@ function LayerListItem(props: LayerListItemProps) {
 	)
 
 	if (LL.isParentVoteItem(item)) {
-		const setConfig = (config: V.AdvancedVoteConfig) => {
-			itemStore.getState().setItem((item) => ({
-				...item,
-				voteConfig: config,
-			}))
-			setVoteConfigOpen(false)
-		}
 		return (
 			<>
 				{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
@@ -246,14 +231,30 @@ function LayerListItem(props: LayerListItemProps) {
 					data-is-dragging={isDragging}
 				>
 					{isDragging ? <span className="mx-auto w-[20px]">...</span> : (
-						<div className="h-full flex flex-col flex-grow w-[500px] ">
+						<div className="h-full flex flex-col flex-grow">
 							<div className="p-1 space-x-2 flex items-center justify-between w-full">
 								<span className="flex items-center space-x-1">
 									<GripElt className="data-[canedit=true]:group-hover/parent-item:visible" orientation="horizontal" />
-									<h3 className={Typography.Label}>Vote</h3>
-									{voteAutostartTime && <Timer deadline={voteAutostartTime.getTime()} />}
-									{voteState && voteState.code !== 'ready' && <span className="text-xs font-mono">{voteState.code}</span>}
-									{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount}</span>}
+									<h3 className={cn(Typography.Label, 'bold')}>Vote</h3>
+									{voteAutostartTime && (
+										<>
+											<span>:</span>
+											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+											</span>
+										</>
+									)}
+									{voteState && voteState.code === 'in-progress' && (
+										<Alert variant="info">
+											<AlertTitle>
+												<span className="text-xs font-mono">{statusCodeToTitleCase(voteState.code)}</span>
+											</AlertTitle>
+											<AlertDescription>
+												<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount}</span>}</span>
+												{voteState.code === 'in-progress' && <Timer deadline={voteState.deadline} />}
+											</AlertDescription>
+										</Alert>
+									)}
 								</span>
 								<span className="flex items-center space-x-1">
 									<div
@@ -305,26 +306,6 @@ function LayerListItem(props: LayerListItemProps) {
 											<Icons.Plus />
 										</Button>
 									</SelectLayersDialog>
-									{
-										/*<Popover open={voteConfigOpen} onOpenChange={setVoteConfigOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												data-canedit={canEdit}
-												data-mobile={isMobile}
-												disabled={!canEdit}
-												className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
-												variant="ghost"
-												size="icon"
-											>
-												<Icons.Settings />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent>
-											<VoteConfig setConfig={setConfig} default={item.voteConfig} />
-										</PopoverContent>
-									</Popover>*/
-									}
-
 									<ItemDropdown {...dropdownProps}>
 										<Button
 											disabled={!canEdit}
@@ -349,16 +330,12 @@ function LayerListItem(props: LayerListItemProps) {
 									// 	choiceItemLinks.push({ position: 'before', itemId: nextItemId })
 									// }
 									return (
-										<React.Fragment key={choice.itemId}>
-											{choiceIndex === 0 && <QueueItemSeparator links={beforeChoiceItemLinks} isAfterLast={false} />}
-											<LayerListItem
-												key={choice.itemId}
-												itemId={choice.itemId}
-												llStore={props.llStore}
-												isLast={isLast}
-											/>
-											<QueueItemSeparator links={afterChoiceItemLinks} isAfterLast={isLast} />
-										</React.Fragment>
+										<LayerListItem
+											key={choice.itemId}
+											itemId={choice.itemId}
+											llStore={props.llStore}
+											isLast={isLast}
+										/>
 									)
 								})}
 							</ol>
@@ -379,7 +356,7 @@ function LayerListItem(props: LayerListItemProps) {
 	}
 	return (
 		<>
-			{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
+			{(isVoteChoice ? innerIndex! : index) === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
 			<li
 				style={style}
 				{...attributes}
@@ -607,77 +584,5 @@ function QueueItemSeparator(props: {
 			data-is-over={isOver}
 			data-is-dragging={!!isDragging}
 		/>
-	)
-}
-
-function VoteConfig(props: { default?: LL.LayerListItem['voteConfig']; setConfig: (config: V.AdvancedVoteConfig) => void }) {
-	const config = ConfigClient.useConfig()
-
-	const form = useForm({
-		defaultValues: {
-			durationSeconds: (props.default?.duration ?? (config?.defaults.voteDuration ?? V.getDefaultVoteConfig().duration)) / 1000,
-			voterType: props.default?.voterType ?? V.getDefaultVoteConfig().voterType,
-		},
-		validatorAdapter: zodValidator(),
-		onSubmit: async ({ value }) => {
-			props.setConfig({
-				duration: value.durationSeconds * 1000,
-				voterType: value.voterType,
-			})
-		},
-	})
-
-	const durationEltId = React.useId()
-	const voterTypeEltId = React.useId()
-
-	function onSubmit(e: React.FormEvent) {
-		e.preventDefault()
-		e.stopPropagation()
-		form.handleSubmit()
-	}
-
-	return (
-		<form onSubmit={onSubmit} className="flex flex-col space-y-4">
-			<form.Field
-				name="durationSeconds"
-				children={(field) => (
-					<>
-						<Label htmlFor={durationEltId}>Vote Duration (seconds)</Label>
-						<Input
-							id={durationEltId}
-							name={field.name}
-							type="number"
-							defaultValue={field.state.value}
-							onChange={(e) => {
-								return field.setValue(e.target.valueAsNumber)
-							}}
-						/>
-						{field.state.meta.errors.length > 0 && (
-							<Alert variant="destructive">
-								{field.state.meta.errors.join(', ')}
-							</Alert>
-						)}
-					</>
-				)}
-			/>
-
-			<form.Field
-				name="voterType"
-				validators={{ onChange: V.AdvancedVoteConfigSchema.shape.voterType }}
-				children={(field) => (
-					<>
-						{field.state.meta.errors.length > 0 && (
-							<Alert variant="destructive">
-								{field.state.meta.errors.join(', ')}
-							</Alert>
-						)}
-					</>
-				)}
-			/>
-
-			<Button type="submit">
-				Apply
-			</Button>
-		</form>
 	)
 }

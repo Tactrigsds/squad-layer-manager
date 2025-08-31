@@ -27,8 +27,11 @@ export function Timer(props: {
 				displayTimeMs = 0
 			}
 
-			eltRef.current!.innerText = formatTime(displayTimeMs)
-		}, 10)
+			const formatted = formatTime(displayTimeMs)
+			if (formatted !== eltRef.current!.innerText) {
+				eltRef.current!.innerText = formatted
+			}
+		}, 50)
 		return () => clearInterval(intervalId)
 	}, [props.start, props.deadline, formatTime])
 

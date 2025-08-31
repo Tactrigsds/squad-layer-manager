@@ -35,7 +35,7 @@ export const LayerListItemSchema = z.object({
 	voteConfig: V.AdvancedVoteConfigSchema.partial().optional(),
 
 	// should set after a vote has been resolved
-	endingVoteState: V.VoteStateSchema.optional(),
+	endingVoteState: V.EndingVoteStateSchema.optional(),
 
 	source: LayerSourceSchema,
 })
@@ -46,11 +46,17 @@ export const LayerListItemSchema = z.object({
 			if (choiceSet.has(choice.layerId)) return false
 			choiceSet.add(choice.layerId)
 		}
+		return true
 	}, { message: 'Duplicate layer IDs found in choices' })
 	.refine((item): boolean => {
 		if (!isParentVoteItem(item)) return true
 		return item.choices!.some(choice => choice.layerId === item.layerId)
 	}, { message: 'The parent layerId must be included in the choices' })
+	.refine((item): boolean => {
+		if (!isParentVoteItem(item)) return true
+		if (item.endingVoteState && item.endingVoteState.code !== 'ended:insufficient-votes') return true
+		return !!item.choices && item.choices[0].layerId === item.layerId
+	}, { message: "if vote isn't complete, then the layerId should always be the first layer choice" })
 
 export type ParentVoteItem = LayerListItem & { choices: InnerLayerListItem[]; voteConfig: V.AdvancedVoteConfig }
 
@@ -264,6 +270,7 @@ export function splice(list: LayerList, indexOrCursor: LLItemRelativeCursor | LL
 			}
 			list.splice(index.outerIndex, 1, regularItem)
 		}
+		setCorrectChosenLayerIdInPlace(parentItem)
 	} else {
 		list.splice(index.outerIndex, deleteCount, ...items)
 	}
@@ -271,6 +278,13 @@ export function splice(list: LayerList, indexOrCursor: LLItemRelativeCursor | LL
 	function isItemIndex(item: LLItemRelativeCursor | LLItemIndex): item is LLItemIndex {
 		return (item as any).outerIndex !== undefined
 	}
+}
+
+export function setCorrectChosenLayerIdInPlace(item: LayerListItem) {
+	if (!isParentVoteItem(item)) return item
+	if (item.endingVoteState && item.endingVoteState.code !== 'ended:insufficient-votes') return item
+	item.layerId = item.choices[0].layerId
+	return item
 }
 
 export function swapFactions(existingItem: LayerListItem) {
