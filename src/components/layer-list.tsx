@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
-import { snakeCaseToTitleCase, statusCodeToTitleCase } from '@/lib/string.ts'
+import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -24,6 +24,7 @@ import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import { CSS } from '@dnd-kit/utilities'
 import * as ReactQuery from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -40,7 +41,7 @@ export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
 	const user = UsersClient.useLoggedInUser()
-	const queueIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
+	const queueItemIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
 	DndKit.useDragEnd(React.useCallback((event) => {
 		if (!event.over) return
 		if (!user || !event.over) return
@@ -52,12 +53,11 @@ export function LayerList(
 
 	return (
 		<ul className="flex w-full flex-col">
-			{queueIds.map((id, index) => (
+			{queueItemIds.map((id) => (
 				<LayerListItem
 					llStore={props.store}
 					key={id}
 					itemId={id}
-					isLast={index + 1 === queueIds.length}
 				/>
 			))}
 		</ul>
@@ -85,32 +85,38 @@ export type QueueItemAction =
 	}
 
 type LayerListItemProps = {
-	isLast: boolean
 	itemId: string
 	llStore: Zus.StoreApi<QD.LLStore>
 }
 
 function LayerListItem(props: LayerListItemProps) {
+	const itemRes = ZusUtils.useStoreDeep(props.llStore, s => LL.findItemById(s.layerList, props.itemId), { dependencies: [props.itemId] })
+	if (!itemRes) return null
+	const item = itemRes.item
+	if (LL.isParentVoteItem(item)) {
+		return <ParentLayerListItem {...props} />
+	}
+	return <SingleLayerListItem {...props} />
+}
+
+function SingleLayerListItem(props: LayerListItemProps) {
 	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
 
-	const item = ZusUtils.useStoreDeep(itemStore, (s) => s.item)
-	const isVoteChoice = Zus.useStore(itemStore, (s) => s.isVoteChoice)
+	const [item, isVoteChoice, index, innerIndex, backfillLayerId, isLocallyLast, displayedMutation] = ZusUtils.useStoreDeep(
+		itemStore,
+		(s) => [s.item, s.isVoteChoice, s.index, s.innerIndex, s.backfillLayerId, s.isLocallyLast, getDisplayedMutation(s.mutationState)],
+	)
+
 	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
-	const user = UsersClient.useLoggedInUser()
-	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
+
 	const draggableItem = LL.layerItemToDragItem(item)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(draggableItem)
-	const [index, innerIndex] = Zus.useStore(itemStore, useShallow((s) => [s.index, s.innerIndex]))
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
 		if (!canEdit) _setDropdownOpen(false)
 		_setDropdownOpen(update)
 	}, [canEdit, _setDropdownOpen])
-	const [baseBackfillLayerId] = Zus.useStore(props.llStore, useShallow(s => [s.nextLayerBackfillId]))
-	const backfillLayerId = index === 0 && baseBackfillLayerId && L.areLayersCompatible(LL.getActiveItemLayerId(item), baseBackfillLayerId)
-		? baseBackfillLayerId
-		: undefined
 
 	const isMobile = useIsMobile()
 	const style = { transform: CSS.Translate.toString(transform) }
@@ -126,20 +132,22 @@ function LayerListItem(props: LayerListItemProps) {
 		)
 	}
 
-	const queueItemStyles =
-		`bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default`
-	const parentQueueItemStyles =
-		`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline cursor-default`
-	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
+	const editButtonProps = (className?: string) => ({
+		'data-can-edit': canEdit,
+		'data-is-editing': isEditing,
+		'data-mobile': isMobile,
+		disabled: !canEdit,
+		className: cn('data-[mobile=false]:invisible data-[can-edit=true]:group-hover/single-item:visible', className),
+	})
 
-	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep([QD.QDStore, itemStore], ([qdStore, itemStore]) => {
-		const constraints = QD.selectBaseQueryConstraints(qdStore)
-		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
-		return {
-			constraints,
-			cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
-		}
-	}, { selectorDeps: [] })
+	const dropdownProps = {
+		open: dropdownOpen && canEdit,
+		setOpen: setDropdownOpen,
+		listStore: props.llStore,
+		itemStore: itemStore,
+	} satisfies Partial<ItemDropdownProps>
+
+	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
 
 	if (
 		!isEditing && layersStatus?.nextLayer && index === 0 && !isVoteChoice
@@ -154,198 +162,21 @@ function LayerListItem(props: LayerListItemProps) {
 			</Tooltip>,
 		)
 	}
-	const dropdownProps = {
-		open: dropdownOpen && canEdit,
-		setOpen: setDropdownOpen,
-		listStore: props.llStore,
-		itemStore: itemStore,
-	} satisfies Partial<ItemDropdownProps>
 
-	const displayedMutation = Zus.useStore(itemStore, (s) => getDisplayedMutation(s.mutationState))
-	const GripElt = (props: { orientation: 'horizontal' | 'vertical'; className?: string }) => (
+	const GripElt = (props: { className?: string }) => (
 		<Button
 			{...listeners}
-			disabled={!canEdit}
 			variant="ghost"
 			size="icon"
-			data-canedit={canEdit}
-			className={cn(props.className, 'invisible data-[canedit=true]:cursor-grab ')}
+			{...editButtonProps(cn('invisible data-[canedit=true]:cursor-grab', props.className))}
 		>
-			{props.orientation === 'horizontal' ? <Icons.GripHorizontal /> : <Icons.GripVertical />}
+			<Icons.GripVertical />
 		</Button>
 	)
-	// const [prevItemId, nextItemId] = Zus.useStore(
-	// 	props.llStore,
-	// 	useShallow(s => [s.layerList[index - 1]?.itemId, s.layerList[index + 1]?.itemId]),
-	// )
 	const beforeItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
-	// if (prevItemId) {
-	// 	beforeItemLinks.push({ position: 'after', itemId: prevItemId })
-	// }
 	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
-	// if (nextItemId) {
-	// 	afterItemLinks.push({ position: 'before', itemId: nextItemId })
-	// }
-	//
-	//
 
 	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
-
-	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
-
-	const voteState = VotesClient.useVoteState()
-	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
-	const serverInfoRes = SquadServerClient.useServerInfo()
-	const serverInfo = serverInfoRes.code === 'ok' ? serverInfoRes.data : undefined
-
-	const [voterType, setVoterType] = React.useState<V.VoterType>('public')
-	const internalVoteCheckboxId = React.useId()
-	const [canInitiateVote, voteAutostartTime, voteTally] = ZusUtils.useStoreDeep(
-		props.llStore,
-		store => {
-			const canInitiateVote = V.canInitiateVote(item.itemId, store.layerList, voterType, voteState ? { code: voteState.code } : undefined)
-			return [
-				canInitiateVote,
-				(voteState?.code === 'ready' && voteState.itemId === item.itemId) ? voteState.autostartTime : undefined,
-				voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined,
-			]
-		},
-		{
-			dependencies: [item.itemId, voteState?.code, voterType, serverInfo?.playerCount],
-		},
-	)
-
-	if (LL.isParentVoteItem(item)) {
-		return (
-			<>
-				{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
-				<li
-					ref={setNodeRef}
-					style={style}
-					{...attributes}
-					className={cn(
-						'group/parent-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
-						parentQueueItemStyles,
-					)}
-					data-mutation={displayedMutation}
-					data-is-dragging={isDragging}
-				>
-					{isDragging ? <span className="mx-auto w-[20px]">...</span> : (
-						<div className="h-full flex flex-col flex-grow">
-							<div className="p-1 space-x-2 flex items-center justify-between w-full">
-								<span className="flex items-center space-x-1">
-									<GripElt className="data-[canedit=true]:group-hover/parent-item:visible" orientation="horizontal" />
-									<h3 className={cn(Typography.Label, 'bold')}>Vote</h3>
-									{voteAutostartTime && (
-										<>
-											<span>:</span>
-											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
-											</span>
-										</>
-									)}
-									{voteState && voteState.code === 'in-progress' && (
-										<Alert variant="info">
-											<AlertTitle>
-												<span className="text-xs font-mono">{statusCodeToTitleCase(voteState.code)}</span>
-											</AlertTitle>
-											<AlertDescription>
-												<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount}</span>}</span>
-												{voteState.code === 'in-progress' && <Timer deadline={voteState.deadline} />}
-											</AlertDescription>
-										</Alert>
-									)}
-								</span>
-								<span className="flex items-center space-x-1">
-									<div
-										data-canedit={canManageVote}
-										data-mobile={isMobile}
-										className="flex items-center space-x-2 data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
-									>
-										<Checkbox
-											id={internalVoteCheckboxId}
-											checked={voterType === 'internal'}
-											onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
-										/>
-										<Label
-											htmlFor={internalVoteCheckboxId}
-											className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-										>
-											Internal
-										</Label>
-									</div>
-									<Button
-										variant="ghost"
-										size="icon"
-										data-canedit={canManageVote}
-										data-mobile={isMobile}
-										className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible text-green-500 disabled:text-foreground"
-										onClick={() =>
-											startVoteMutation.mutate({ itemId: item.itemId, ...(item.voteConfig ?? V.getDefaultVoteConfig()), ...{ voterType } })}
-										disabled={canInitiateVote.code !== 'ok'}
-										title="Start Vote"
-									>
-										<Icons.Play />
-									</Button>
-									<SelectLayersDialog
-										title="Add Vote Choices"
-										pinMode="layers"
-										selectQueueItems={(items) => itemStore.getState().addVoteItems(items)}
-										layerQueryBaseInput={addVoteChoiceInput}
-										open={addVoteChoicesOpen}
-										onOpenChange={setAddVoteChoicesOpen}
-									>
-										<Button
-											variant="ghost"
-											size="icon"
-											disabled={!canEdit}
-											data-canedit={canEdit}
-											data-mobile={isMobile}
-											className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
-										>
-											<Icons.Plus />
-										</Button>
-									</SelectLayersDialog>
-									<ItemDropdown {...dropdownProps}>
-										<Button
-											disabled={!canEdit}
-											data-canedit={canEdit}
-											data-mobile={isMobile}
-											variant="ghost"
-											size="icon"
-											className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible')}
-										>
-											<Icons.EllipsisVertical />
-										</Button>
-									</ItemDropdown>
-								</span>
-							</div>
-							<ol className={'flex flex-col items-start'}>
-								{item.choices!.map((choice, choiceIndex) => {
-									const isLast = choiceIndex === item.choices.length - 1 && props.isLast
-									const afterChoiceItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: choice.itemId }]
-									// const nextItemId = item.choices[choiceIndex + 1]?.itemId
-									const beforeChoiceItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: choice.itemId }]
-									// if (isLast) {
-									// 	choiceItemLinks.push({ position: 'before', itemId: nextItemId })
-									// }
-									return (
-										<LayerListItem
-											key={choice.itemId}
-											itemId={choice.itemId}
-											llStore={props.llStore}
-											isLast={isLast}
-										/>
-									)
-								})}
-							</ol>
-						</div>
-					)}
-				</li>
-				<QueueItemSeparator links={afterItemLinks} isAfterLast={props.isLast} />
-			</>
-		)
-	}
 
 	let addedLayerQueryInput: LQY.LayerQueryBaseInput | undefined
 	if (isVoteChoice) {
@@ -360,10 +191,7 @@ function LayerListItem(props: LayerListItemProps) {
 			<li
 				style={style}
 				{...attributes}
-				className={cn(
-					`group/single-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0`,
-					queueItemStyles,
-				)}
+				className="group/single-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default"
 				data-mutation={displayedMutation}
 				data-is-dragging={isDragging}
 				ref={setNodeRef}
@@ -372,12 +200,12 @@ function LayerListItem(props: LayerListItemProps) {
 					<>
 						<span className="grid">
 							<span
-								data-canedit={canEdit}
-								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:invisible"
+								data-can-edit={canEdit}
+								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[can-edit=true]:group-hover/single-item:invisible"
 							>
 								{index + 1}.{innerIndex != null ? innerIndex + 1 : ''}
 							</span>
-							<GripElt orientation="vertical" className="col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:visible" />
+							<GripElt className="col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:visible" />
 						</span>
 						<span
 							ref={dropOnAttrs.setNodeRef}
@@ -393,12 +221,9 @@ function LayerListItem(props: LayerListItemProps) {
 						</span>
 						<ItemDropdown {...dropdownProps}>
 							<Button
-								disabled={!canEdit}
-								data-canedit={canEdit}
-								data-mobile={isMobile}
+								{...editButtonProps()}
 								variant="ghost"
 								size="icon"
-								className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/single-item:visible')}
 							>
 								<Icons.EllipsisVertical />
 							</Button>
@@ -406,7 +231,244 @@ function LayerListItem(props: LayerListItemProps) {
 					</>
 				)}
 			</li>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={props.isLast} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
+		</>
+	)
+}
+
+export function ParentLayerListItem(props: LayerListItemProps) {
+	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
+
+	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStoreDeep(
+		itemStore,
+		(s) => [s.item as LL.ParentVoteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, s.item.endingVoteState],
+	)
+	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+	const user = UsersClient.useLoggedInUser()
+	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
+	const draggableItem = LL.layerItemToDragItem(item)
+	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(draggableItem)
+
+	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
+	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
+		if (!canEdit) _setDropdownOpen(false)
+		_setDropdownOpen(update)
+	}, [canEdit, _setDropdownOpen])
+
+	const isMobile = useIsMobile()
+	const style = { transform: CSS.Translate.toString(transform) }
+
+	const editButtonProps = (className?: string) => ({
+		['data-mobile']: isMobile,
+		disabled: !canEdit,
+		className: cn('data-[mobile=false]:invisible group-hover/parent-item:visible', className),
+	})
+
+	const manageVoteButtonProps = (opts?: { className?: string; hideWhenNotHovering?: boolean }) => {
+		opts ??= {}
+		opts.hideWhenNotHovering ??= true
+		return ({
+			['data-mobile']: isMobile,
+			disabled: !canManageVote,
+			className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
+		})
+	}
+
+	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep([QD.QDStore, itemStore], ([qdStore, itemStore]) => {
+		const constraints = QD.selectBaseQueryConstraints(qdStore)
+		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
+		return {
+			constraints,
+			cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
+		}
+	}, { selectorDeps: [] })
+
+	const dropdownProps = {
+		open: dropdownOpen && canEdit,
+		setOpen: setDropdownOpen,
+		listStore: props.llStore,
+		itemStore: itemStore,
+	} satisfies Partial<ItemDropdownProps>
+
+	const beforeItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
+	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
+	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
+
+	const activeVoteState = VotesClient.useVoteState()
+	const voteState = (activeVoteState?.itemId === item.itemId ? activeVoteState : undefined) ?? endingVoteState
+	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
+	function startVote() {
+		startVoteMutation.mutate({ itemId: item.itemId, ...(item.voteConfig ?? V.getDefaultVoteConfig()), ...{ voterType } })
+	}
+	const abortVoteMutation = ReactQuery.useMutation(VotesClient.abortVoteOpts)
+	function abortVote() {
+		abortVoteMutation.mutate()
+	}
+
+	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfo = serverInfoRes.code === 'ok' ? serverInfoRes.data : undefined
+
+	const [voterType, setVoterType] = React.useState<V.VoterType>('public')
+	const internalVoteCheckboxId = React.useId()
+	const { canInitiateVote, voteAutostartTime, voteTally } = ZusUtils.useStoreDeep(
+		props.llStore,
+		store => {
+			const canInitiateVote = V.canInitiateVote(
+				item.itemId,
+				store.layerList,
+				voterType,
+				activeVoteState ? { code: activeVoteState.code } : undefined,
+			)
+			const res = {
+				canInitiateVote,
+				voteAutostartTime: (voteState?.code === 'ready') ? voteState.autostartTime : undefined,
+				voteTally: voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined,
+			}
+			console.log(res)
+			return res
+		},
+		{
+			dependencies: [item.itemId, voteState, activeVoteState?.code, voterType, serverInfo?.playerCount],
+		},
+	)
+	React.useEffect(() => {
+		console.log({ voteState })
+	}, [voteState])
+
+	return (
+		<>
+			{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
+			<li
+				ref={setNodeRef}
+				style={style}
+				{...attributes}
+				className={cn(
+					'group/parent-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
+					`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline cursor-default`,
+				)}
+				data-mutation={displayedMutation}
+				data-is-dragging={isDragging}
+			>
+				{isDragging ? <span className="mx-auto w-[20px]">...</span> : (
+					<div className="h-full flex flex-col flex-grow">
+						<div className="p-1 space-x-2 flex items-center justify-between w-full">
+							<span className="flex items-center space-x-1">
+								<Button
+									{...listeners}
+									{...editButtonProps('data-[can-edit=true]:cursor-grab')}
+									variant="ghost"
+									size="icon"
+								>
+									<Icons.GripHorizontal />
+								</Button>
+								<h3 className={cn(Typography.Label, 'bold')}>Vote</h3>
+								{voteAutostartTime && (
+									<>
+										<span>:</span>
+										<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+											<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+										</span>
+									</>
+								)}
+								{voteState && voteState.code === 'in-progress' && (
+									<div className="flex space-x-2 items-center">
+										<Icons.Dot width={20} height={20} />
+										<span>{statusCodeToTitleCase(voteState.code)}</span>
+										<Icons.Dot width={20} height={20} />
+										<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount}</span>}</span>
+										<Icons.Dot width={20} height={20} />
+										{voteState.code === 'in-progress' && (
+											<Badge variant="outline">
+												<Timer formatTime={ms => dateFns.format(new Date(ms), 'm:ss')} deadline={voteState.deadline} zeros={true} />
+											</Badge>
+										)}
+										<Button
+											title="Abort Vote"
+											variant="ghost"
+											size="icon"
+											onClick={abortVote}
+											{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+										>
+											<Icons.X />
+										</Button>
+									</div>
+								)}
+							</span>
+							<span className="flex items-center space-x-1">
+								<div
+									{...manageVoteButtonProps({ className: 'flex items-center space-x-2' })}
+								>
+									<Checkbox
+										{...manageVoteButtonProps()}
+										id={internalVoteCheckboxId}
+										checked={voterType === 'internal'}
+										onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
+									/>
+									<Label
+										htmlFor={internalVoteCheckboxId}
+										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+									>
+										Internal
+									</Label>
+								</div>
+								<Button
+									{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
+									variant="ghost"
+									size="icon"
+									onClick={() => startVote()}
+									disabled={!canManageVote || canInitiateVote.code !== 'ok'}
+									title="Start Vote"
+								>
+									<Icons.Play />
+								</Button>
+								<SelectLayersDialog
+									title="Add Vote Choices"
+									pinMode="layers"
+									selectQueueItems={(items) => itemStore.getState().addVoteItems(items)}
+									layerQueryBaseInput={addVoteChoiceInput}
+									open={addVoteChoicesOpen}
+									onOpenChange={setAddVoteChoicesOpen}
+								>
+									<Button
+										variant="ghost"
+										size="icon"
+										disabled={!canEdit}
+										data-canedit={canEdit}
+										data-mobile={isMobile}
+										className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
+									>
+										<Icons.Plus />
+									</Button>
+								</SelectLayersDialog>
+								<ItemDropdown {...dropdownProps}>
+									<Button
+										disabled={!canEdit}
+										data-canedit={canEdit}
+										data-mobile={isMobile}
+										variant="ghost"
+										size="icon"
+										className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible')}
+									>
+										<Icons.EllipsisVertical />
+									</Button>
+								</ItemDropdown>
+							</span>
+						</div>
+						<ol className={'flex flex-col items-start'}>
+							{item.choices!.map((choice) => {
+								return (
+									<SingleLayerListItem
+										key={choice.itemId}
+										itemId={choice.itemId}
+										llStore={props.llStore}
+									/>
+								)
+							})}
+						</ol>
+					</div>
+				)}
+			</li>
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
 		</>
 	)
 }

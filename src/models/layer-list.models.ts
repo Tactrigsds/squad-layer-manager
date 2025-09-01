@@ -54,7 +54,7 @@ export const LayerListItemSchema = z.object({
 	}, { message: 'The parent layerId must be included in the choices' })
 	.refine((item): boolean => {
 		if (!isParentVoteItem(item)) return true
-		if (item.endingVoteState && item.endingVoteState.code !== 'ended:insufficient-votes') return true
+		if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return true
 		return !!item.choices && item.choices[0].layerId === item.layerId
 	}, { message: "if vote isn't complete, then the layerId should always be the first layer choice" })
 
@@ -280,9 +280,8 @@ export function splice(list: LayerList, indexOrCursor: LLItemRelativeCursor | LL
 	}
 }
 
-export function setCorrectChosenLayerIdInPlace(item: LayerListItem) {
-	if (!isParentVoteItem(item)) return item
-	if (item.endingVoteState && item.endingVoteState.code !== 'ended:insufficient-votes') return item
+export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
+	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return item
 	item.layerId = item.choices[0].layerId
 	return item
 }
@@ -302,4 +301,14 @@ export function clearTally(_item: LayerListItem) {
 	const item = { ..._item }
 	delete item.endingVoteState
 	return item
+}
+
+export function isLocallyLastItem(itemId: LayerListItemId, list: LayerList) {
+	const res = findItemById(list, itemId)
+	if (!res) return false
+	if (res.innerIndex != null) {
+		const parentRes = findParentItem(itemId, list)! as ParentVoteItem
+		return parentRes.choices.length - 1 === res.innerIndex
+	}
+	return list.length - 1 === res.outerIndex
 }

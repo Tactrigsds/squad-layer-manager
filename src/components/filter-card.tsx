@@ -784,6 +784,7 @@ export function LayerEqConfig(
 				index: 0,
 				innerIndex: null,
 				isVoteChoice: false,
+				isLocallyLast: false,
 				item: { itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? L.DEFAULT_LAYER_ID },
 			})
 		)

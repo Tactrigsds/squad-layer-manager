@@ -176,7 +176,12 @@ export function getDefaultChoice(state: { choices: string[] }) {
 	return state.choices[0]
 }
 
-export function canInitiateVote(itemId: string, queue: LL.LayerList, voterType: VoterType, voteState?: Pick<VoteState, 'code'>) {
+export function canInitiateVote(
+	itemId: string,
+	queue: LL.LayerList,
+	voterType: VoterType,
+	voteState?: Pick<VoteState | EndingVoteState, 'code'>,
+) {
 	const itemRes = LL.findItemById(queue, itemId)
 	if (!itemRes) {
 		return {

@@ -5,6 +5,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
+import * as React from 'react'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 
@@ -49,17 +50,20 @@ export function useLoggedInUserBase() {
 export function useLoggedInUser() {
 	const { simulateRoles, disabledRoles } = Zus.useStore(RbacClient.RbacStore)
 	const loggedInUser = useLoggedInUserBase()
-	if (!loggedInUser) return undefined
 
-	if (!simulateRoles) return loggedInUser
-	const simulatedPerms = loggedInUser.perms.filter(p =>
-		p.allowedByRoles.some(r => !disabledRoles.some(toCompare => deepEqual(r, toCompare)))
-	)
+	return React.useMemo(() => {
+		if (!loggedInUser) return undefined
 
-	return {
-		...loggedInUser,
-		perms: RBAC.recalculateNegations(simulatedPerms),
-	}
+		if (!simulateRoles) return loggedInUser
+		const simulatedPerms = loggedInUser.perms.filter(p =>
+			p.allowedByRoles.some(r => !disabledRoles.some(toCompare => deepEqual(r, toCompare)))
+		)
+
+		return {
+			...loggedInUser,
+			perms: RBAC.recalculateNegations(simulatedPerms),
+		}
+	}, [loggedInUser, simulateRoles, disabledRoles])
 }
 
 export async function fetchLoggedInUser() {

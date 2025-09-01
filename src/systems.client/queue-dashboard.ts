@@ -8,6 +8,7 @@ import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import { Getter, Setter } from '@/lib/zustand'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -21,6 +22,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
@@ -66,6 +68,8 @@ export type LLItemState = {
 	item: LL.LayerListItem
 	mutationState: ItemMutationState
 	isVoteChoice: boolean
+	isLocallyLast: boolean
+	backfillLayerId?: string
 }
 
 export type LLItemStore = LLItemState & LLItemActions
@@ -226,9 +230,20 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 				return Im.produce(state, (draft) => {
 					const itemResult = LL.findItemById(state.layerList, id)
 					if (!itemResult) return
-					const updated = typeof update === 'function' ? update(itemResult.item) : update
-					LL.splice(draft.layerList, itemResult, 1, updated)
+					const originalItem = itemResult.item
+					const updatedItem = typeof update === 'function' ? update(itemResult.item) : update
+					LL.splice(draft.layerList, itemResult, 1, updatedItem)
 					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
+					// here we handle potential edits only
+					if (LL.isParentVoteItem(updatedItem) && LL.isParentVoteItem(originalItem)) {
+						for (let i = 0; i < Math.max(updatedItem.choices.length, originalItem.choices.length); i++) {
+							const choice = updatedItem.choices[i]
+							const originalChoice = originalItem.choices[i]
+							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !deepEqual(choice, originalChoice)) {
+								ItemMut.tryApplyMutation('edited', choice.itemId, draft.listMutations)
+							}
+						}
+					}
 					onMutate?.()
 				})
 			})
@@ -251,7 +266,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 				console.debug('before', state)
 				return Im.produce(state, (draft) => {
 					if (movedItemId === targetCursor.itemId) return
-					const targetCursorParent = LL.findParentItem(targetCursor.itemId, state.layerList)
+					const targetCursorParent = LL.findParentItem(targetCursor.itemId, draft.layerList)
 					if (targetCursorParent?.itemId == movedItemId) return
 
 					const movedItemRes = LL.findItemById(state.layerList, movedItemId)
@@ -289,6 +304,9 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 						case 'before': {
 							const movedAndModifiedItem: LL.LayerListItem = { ...movedItemRes.item, source: { type: 'manual', userId: modifiedBy } }
 							LL.splice(draft.layerList, targetCursor, 0, movedAndModifiedItem)
+							if (targetCursorParent && LL.isParentVoteItem(targetCursorParent)) {
+								LL.setCorrectChosenLayerIdInPlace(targetCursorParent as LL.ParentVoteItem)
+							}
 							if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
 								ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
 							}
@@ -403,12 +421,23 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			if (!res) return null
 			const parentItem = LL.findParentItem(itemId, layerList)
 			const { item, outerIndex, innerIndex } = res
+			const isLocallyLast = LL.isLocallyLastItem(itemId, layerList)
+
+			let backfillLayerId: string | undefined
+			if (outerIndex === 0 || innerIndex !== null && parentItem && parentItem?.layerId === item.layerId) {
+				if (llState.nextLayerBackfillId && L.areLayersCompatible(item.layerId, llState.nextLayerBackfillId)) {
+					backfillLayerId = llState.nextLayerBackfillId
+				}
+			}
+
 			return {
 				index: outerIndex,
 				innerIndex,
 				isVoteChoice: innerIndex != null,
 				item,
 				mutationState: ItemMut.toItemMutationState(llState.listMutations, itemId, parentItem?.layerId),
+				isLocallyLast,
+				backfillLayerId,
 			}
 		}
 

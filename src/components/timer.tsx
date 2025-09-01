@@ -7,9 +7,15 @@ export function Timer(props: {
 	className?: string
 	zeros?: boolean
 	useHourMinuteFormat?: boolean
+	formatTime?: (timeMs: number) => string
 }) {
 	const eltRef = React.useRef<HTMLDivElement>(null)
-	const formatTime = React.useMemo(() => props.zeros ? formatTimeLeftWithZeros : formatTimeLeft, [props.zeros])
+	const formatTime = React.useMemo(() => {
+		if (props.formatTime) {
+			return props.formatTime
+		}
+		return props.zeros ? formatTimeLeftWithZeros : formatTimeLeft
+	}, [props.formatTime, props.zeros])
 	if (!props.start && !props.deadline) {
 		throw new Error('Timer requires exclusively either start or deadline')
 	}
@@ -38,7 +44,7 @@ export function Timer(props: {
 	return <div ref={eltRef} className={props.className} />
 }
 
-function formatTimeLeft(timeLeft: number) {
+export function formatTimeLeft(timeLeft: number) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: timeLeft })
 	const hours = duration.hours || 0
 	const minutes = duration.minutes || 0
@@ -53,7 +59,7 @@ function formatTimeLeft(timeLeft: number) {
 	}
 }
 
-function formatTimeLeftWithZeros(timeLeft: number) {
+export function formatTimeLeftWithZeros(timeLeft: number) {
 	const duration = dateFns.intervalToDuration({ start: 0, end: timeLeft })
 	const hours = duration.hours || 0
 	const minutes = duration.minutes || 0

@@ -104,6 +104,7 @@ export type LQServerStateUpdate = {
 				| 'app-startup'
 				| 'vote-timeout'
 				| 'vote-abort'
+				| 'vote-cleared'
 				| 'next-layer-override'
 				| 'vote-start'
 				| 'admin-change-layer'

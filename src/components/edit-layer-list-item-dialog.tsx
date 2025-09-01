@@ -48,7 +48,7 @@ export default function EditLayerListItemDialogWrapper(props: EditLayerListItemD
 }
 
 function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
-	const [initialItem, index, innerIndex, isVoteChoice] = ZusUtils.useStoreDeep(
+	const [initialItem] = ZusUtils.useStoreDeep(
 		props.itemStore,
 		(s) => [s.item, s.index, s.innerIndex, s.isVoteChoice],
 		{ dependencies: [] },
@@ -56,9 +56,9 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 
 	const editedItemStore = React.useMemo(() => {
 		return Zus.create<QD.LLItemStore>((set, get) =>
-			QD.createLLItemStore(set, get, { item: initialItem, mutationState: initMutationState(), index, isVoteChoice, innerIndex })
+			QD.createLLItemStore(set, get, { ...props.itemStore.getState(), mutationState: initMutationState() })
 		)
-	}, [initialItem, index, isVoteChoice, innerIndex])
+	}, [props.itemStore])
 	const editedItem = Zus.useStore(editedItemStore, (s) => s.item)
 
 	const colConfig = ConfigClient.useEffectiveColConfig()
