@@ -1,11 +1,13 @@
+import * as DH from '@/lib/display-helpers'
+import * as Obj from '@/lib/object'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
+import * as L from '@/models/layer'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
 import * as LL from './layer-list.models'
 
 export const VOTER_TYPE = z.enum(['public', 'internal'])
-
 export type VoterType = z.infer<typeof VOTER_TYPE>
 
 export const AdvancedVoteConfigSchema = z.object({
@@ -19,6 +21,23 @@ export const StartVoteInputSchema = z.object({
 	voterType: VOTER_TYPE.optional(),
 	...AdvancedVoteConfigSchema.shape,
 })
+
+export function validateChoicesWithDisplayProps(_choices: L.LayerId[], displayProps: DH.LayerDisplayProp[]) {
+	const chosenCols: Set<keyof L.UnvalidatedLayer> = new Set()
+	if (displayProps.length === 0) displayProps = DH.LAYER_DISPLAY_PROP.options
+	if (displayProps.includes('layer')) chosenCols.add('Layer').add('Map').add('Gamemode').add('LayerVersion')
+	if (displayProps.includes('map')) chosenCols.add('Map')
+	if (displayProps.includes('gamemode')) chosenCols.add('Gamemode')
+	if (displayProps.includes('units')) chosenCols.add('Unit_1').add('Unit_2')
+	if (displayProps.includes('factions')) chosenCols.add('Faction_1').add('Faction_2')
+	const choices = _choices.map(c => {
+		const layer = L.toLayer(c)
+		// @ts-expect-error idgaf
+		return Obj.selectProps(layer, Array.from(chosenCols))
+	})
+	const uniqueChoices = new Set(choices.map(c => JSON.stringify(c)))
+	return uniqueChoices.size === choices.length
+}
 
 export type StartVoteInput = z.infer<typeof StartVoteInputSchema>
 

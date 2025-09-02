@@ -143,7 +143,8 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 				case 'err:public-vote-not-first':
 				case 'err:vote-not-allowed':
 				case 'err:item-not-found':
-				case 'err:vote-in-progress': {
+				case 'err:vote-in-progress':
+				case 'err:editing-in-progress': {
 					return await showError('vote-error', res.msg)
 				}
 				case 'err:rcon': {

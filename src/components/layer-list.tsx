@@ -3,22 +3,26 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
+import { BROADCASTS } from '@/messages.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
+import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -28,6 +32,7 @@ import * as VotesClient from '@/systems.client/votes.client'
 import { CSS } from '@dnd-kit/utilities'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
+import deepEqual from 'fast-deep-equal'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -346,6 +351,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const beforeItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
+	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = React.useState(false)
 
 	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
 	async function startVote() {
@@ -534,15 +540,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									<Button
 										variant="ghost"
 										size="icon"
-										disabled={!canEdit}
-										data-canedit={canEdit}
-										data-mobile={isMobile}
 										title="Add Vote Choices"
-										className="data-[mobile=false]:invisible group-hover/parent-item:visible"
+										{...editButtonProps()}
 									>
 										<Icons.Plus />
 									</Button>
 								</SelectLayersDialog>
+								<VoteDisplayPropsPopover llItemStore={itemStore} open={voteDisplayPropsOpen} onOpenChange={setVoteDisplayPropsOpen}>
+									<Button variant="ghost" size="icon" {...editButtonProps()} disabled={!canEdit || !canManageVote}>
+										<Icons.Settings2 />
+									</Button>
+								</VoteDisplayPropsPopover>
 								<ItemDropdown {...dropdownProps}>
 									<Button
 										disabled={!canEdit}
@@ -573,6 +581,155 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			</li>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
 		</>
+	)
+}
+
+export function VoteDisplayPropsPopover(
+	props: {
+		llItemStore: Zus.StoreApi<QD.LLItemStore>
+		open: boolean
+		onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
+		children: React.ReactNode
+	},
+) {
+	const config = ConfigClient.useConfig()
+	const [statuses, usingDefault, preview, valid] = ZusUtils.useStoreDeep(props.llItemStore, s => {
+		const itemDisplayProps = s.item.displayProps
+		const displayProps = itemDisplayProps ?? config?.defaults.voteDisplayProps ?? []
+		const choices = s.item.choices?.map(c => c.layerId) ?? []
+		const preview = BROADCASTS.vote.started({ choices, voterType: 'public' }, config?.defaults.voteDuration ?? 120, displayProps)
+		const valid = V.validateChoicesWithDisplayProps(choices, displayProps)
+		return [DH.toDisplayPropStatuses(displayProps), !itemDisplayProps && !!config?.defaults.voteDisplayProps, preview, valid]
+	}, { dependencies: [config] })
+
+	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
+		update = { ...update }
+
+		props.llItemStore.getState().setItem(state =>
+			Im.produce(state, draft => {
+				const updated = { ...statuses, ...update }
+				if (update.layer) {
+					updated.map = true
+					updated.gamemode = true
+				} else if (update.layer === false) {
+					updated.map = false
+					updated.gamemode = false
+				} else if (update.gamemode === false || update.map === false) {
+					updated.layer = false
+				}
+
+				if (config && deepEqual(updated, DH.toDisplayPropStatuses(config.defaults.voteDisplayProps))) {
+					delete draft.displayProps
+				} else {
+					draft.displayProps = DH.fromDisplayPropStatuses(updated)
+				}
+			})
+		)
+	}
+
+	function resetToDefault() {
+		if (usingDefault) return
+		props.llItemStore.getState().setItem(state =>
+			Im.produce(state, draft => {
+				delete draft.displayProps
+			})
+		)
+	}
+
+	return (
+		<Popover open={props.open} onOpenChange={props.onOpenChange}>
+			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
+			<PopoverContent className="w-80">
+				<div className="grid gap-4">
+					<div className="space-y-2">
+						<h4 className="font-medium leading-none">Vote Display Options</h4>
+						<p className="text-sm text-muted-foreground">
+							Choose what to show in vote choices
+						</p>
+					</div>
+					<div className="grid gap-4">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="space-y-2">
+								<div className="grid gap-2">
+									<div className="flex items-center space-x-2">
+										<Checkbox
+											id="layer"
+											checked={statuses.layer}
+											onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
+										/>
+										<Label htmlFor="layer">Layer</Label>
+									</div>
+									<div className="ml-6 grid gap-2">
+										<div className="flex items-center space-x-2">
+											<Checkbox
+												id="map"
+												checked={statuses.map}
+												onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
+											/>
+											<Label htmlFor="map">
+												Map
+											</Label>
+										</div>
+										<div className="flex items-center space-x-2">
+											<Checkbox
+												id="gamemode"
+												checked={statuses.gamemode}
+												onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
+											/>
+											<Label htmlFor="gamemode">
+												Gamemode
+											</Label>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div className="space-y-2">
+								<div className="grid gap-2">
+									<div className="flex items-center space-x-2">
+										<Checkbox
+											id="factions"
+											checked={statuses.factions}
+											onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
+										/>
+										<Label htmlFor="factions">Factions</Label>
+									</div>
+									<div className="flex items-center space-x-2">
+										<Checkbox
+											id="units"
+											checked={statuses.units}
+											onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
+										/>
+										<Label htmlFor="units">Units</Label>
+									</div>
+								</div>
+							</div>
+						</div>
+						{!valid && (
+							<div className="bg-destructive/10 border border-destructive rounded p-2">
+								<p className="text-sm text-destructive">
+									Warning: Can't distinguish between vote choices.
+								</p>
+							</div>
+						)}
+						<div className="space-y-2">
+							<Label>Preview</Label>
+							<pre className="font-mono text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap">
+         {preview}
+							</pre>
+						</div>
+						<Separator />
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={resetToDefault}
+							disabled={usingDefault}
+						>
+							Reset to Defaults
+						</Button>
+					</div>
+				</div>
+			</PopoverContent>
+		</Popover>
 	)
 }
 

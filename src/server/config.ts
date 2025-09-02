@@ -1,3 +1,4 @@
+import * as DH from '@/lib/display-helpers.ts'
 import { selectProps } from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -26,6 +27,9 @@ export const ConfigSchema = z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
 			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
+		),
+		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(DH.LAYER_DISPLAY_PROP.options).describe(
+			'What parts of a layer setup should be displayed',
 		),
 	}),
 	// we have to ues .optional instead of .default here to avoid circular type definitions

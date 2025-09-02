@@ -276,6 +276,7 @@ function EditingCard() {
 				})
 				break
 			case 'err:too-many-vote-choices':
+			case 'err:not-enough-visible-info':
 				toaster.toast({
 					title: res.msg,
 					variant: 'destructive',

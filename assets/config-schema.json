@@ -32,6 +32,15 @@
             {"type": "null"}
           ],
           "description": "Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes"
+        },
+        "voteDisplayProps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["map", "gamemode", "layer", "factions", "units"]
+          },
+          "default": ["map", "gamemode", "layer", "factions", "units"],
+          "description": "What parts of a layer setup should be displayed"
         }
       },
       "additionalProperties": false

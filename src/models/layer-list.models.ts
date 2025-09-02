@@ -1,3 +1,4 @@
+import * as DH from '@/lib/display-helpers'
 import * as Generator from '@/lib/generator'
 import { getAllMutationIds, ItemMutations } from '@/lib/item-mutations'
 import { assertNever } from '@/lib/type-guards'
@@ -38,6 +39,8 @@ export const LayerListItemSchema = z.object({
 	// should set after a vote has been resolved
 	endingVoteState: V.EndingVoteStateSchema.optional(),
 
+	displayProps: z.lazy(() => z.array(DH.LAYER_DISPLAY_PROP).optional()),
+
 	source: LayerSourceSchema,
 })
 	.refine((item) => {
@@ -48,7 +51,7 @@ export const LayerListItemSchema = z.object({
 			choiceSet.add(choice.layerId)
 		}
 		return true
-	}, { message: 'Duplicate layer IDs found in choices' })
+	}, { message: 'Duplicate layer IDs in choices' })
 	.refine((item): boolean => {
 		if (!isParentVoteItem(item)) return true
 		return item.choices!.some(choice => choice.layerId === item.layerId)
@@ -59,7 +62,11 @@ export const LayerListItemSchema = z.object({
 		return !!item.choices && item.choices[0].layerId === item.layerId
 	}, { message: "if vote isn't complete, then the layerId should always be the first layer choice" })
 
-export type ParentVoteItem = LayerListItem & { choices: InnerLayerListItem[]; voteConfig: V.AdvancedVoteConfig }
+export type ParentVoteItem = LayerListItem & {
+	choices: InnerLayerListItem[]
+	voteConfig: V.AdvancedVoteConfig
+	voteDisplayProps?: DH.LayerDisplayProp[]
+}
 
 export type LLItemRelativeCursor = {
 	itemId: LayerListItemId
@@ -102,6 +109,13 @@ export function llItemCursorsToDropItem(cursors: LLItemRelativeCursor[]): DND.Dr
 			position: cursor.position,
 		})),
 	}
+}
+
+export function resolveParentVoteItem(itemId: LayerListItemId, list: LayerList): ParentVoteItem | undefined {
+	const itemRes = findItemById(list, itemId)
+	if (!itemRes) return
+	if (!isParentVoteItem(itemRes.item)) return
+	return itemRes.item
 }
 
 export function dropItemToLLItemCursors(dropItem: DND.DropItem): LLItemRelativeCursor[] {

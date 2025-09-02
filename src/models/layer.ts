@@ -39,6 +39,7 @@ export function lockStaticFactionUnitConfigs() {
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
 
+
 export type KnownLayer = {
 	id: string
 	Map: string

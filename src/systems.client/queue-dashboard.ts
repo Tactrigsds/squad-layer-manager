@@ -785,6 +785,7 @@ export function useSaveChangesMutation() {
 					variant: 'destructive',
 				})
 				break
+			case 'err:not-enough-visible-info':
 			case 'err:too-many-vote-choices':
 				toaster.toast({
 					title: res.msg,

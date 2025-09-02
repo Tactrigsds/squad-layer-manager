@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireReentrant, distinctDeepEquals, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { acquireReentrant, distinctDeepEquals, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
@@ -526,6 +526,7 @@ export const startVote = C.spanOp(
 			const msgMap = {
 				'err:item-not-found': Messages.WARNS.vote.start.itemNotFound,
 				'err:invalid-item-type': Messages.WARNS.vote.start.invalidItemType,
+				'err:editing-in-progress': Messages.WARNS.vote.start.editingInProgress,
 				'err:public-vote-not-first': Messages.WARNS.vote.start.publicVoteNotFirst,
 				'err:vote-in-progress': Messages.WARNS.vote.start.voteAlreadyInProgress,
 				'ok': null,
@@ -575,10 +576,10 @@ export const startVote = C.spanOp(
 			registerVoteDeadlineAndReminder$(getBaseCtx())
 			void broadcastVoteUpdate(
 				ctx,
-				voteState,
 				Messages.BROADCASTS.vote.started(
 					voteState,
 					duration,
+					item.displayProps ?? CONFIG.defaults.voteDisplayProps,
 				),
 			)
 
@@ -592,8 +593,7 @@ export const startVote = C.spanOp(
 export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	tracer,
 	attrs: (_, msg) => ({ messageId: msg.message, playerId: msg.playerId }),
-}, async (ctx: CS.Log & C.Db, msg: SM.ChatMessage) => {
-	// no need to acquire vote mutex here, this is a safe operation
+}, (ctx: CS.Log & C.Db, msg: SM.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	if (!voteState) {
@@ -602,23 +602,23 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	}
 	if (voteState.voterType === 'public') {
 		if (msg.chat !== 'ChatAll') {
-			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AllChat'))
+			void SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AllChat'))
 			return
 		}
 	}
 	if (voteState.voterType === 'internal') {
 		if (msg.chat !== 'ChatAdmin') {
-			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AdminChat'))
+			void SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AdminChat'))
 			return
 		}
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-		await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.invalidChoice)
+		void SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.invalidChoice)
 		return
 	}
 	if (voteState.code !== 'in-progress') {
-		await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.noVoteInProgress)
+		void SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.noVoteInProgress)
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 		return
 	}
@@ -635,7 +635,15 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	}
 
 	voteStateUpdate$.next([ctx, update])
-	await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast(choice))
+	void (async () => {
+		const serverState = await getServerState(ctx)
+		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
+		SquadServer.rcon.warn(
+			ctx,
+			msg.playerId,
+			Messages.WARNS.vote.voteCast(choice, voteItem?.displayProps ?? CONFIG.defaults.voteDisplayProps),
+		)
+	})()
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
@@ -666,6 +674,7 @@ export const abortVote = C.spanOp(
 					event: 'abort-vote',
 				},
 			}
+			await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.aborted)
 			voteState = null
 			ctx.locks.releaseTasks.push(() => voteStateUpdate$.next([ctx, update]))
 			voteEndTask?.unsubscribe()
@@ -677,8 +686,6 @@ export const abortVote = C.spanOp(
 			item.endingVoteState = newVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
 			await updatelqServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
-
-			void broadcastVoteUpdate(ctx, newVoteState, Messages.BROADCASTS.vote.aborted)
 
 			return { code: 'ok' as const }
 		})
@@ -722,11 +729,19 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
+				C.durableSub('layer-queue:regular-vote-reminders', { ctx: getBaseCtx(), tracer }, async () => {
+					const ctx = getBaseCtx()
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
-					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, timeLeft, voteState.choices)
-					await broadcastVoteUpdate(ctx, voteState, msg, { onlyNotifyNonVotingAdmins: true })
+					const serverState = await getServerState(ctx)
+					const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
+					const msg = Messages.BROADCASTS.vote.voteReminder(
+						voteState,
+						timeLeft,
+						voteState.choices,
+						voteItem?.displayProps ?? CONFIG.defaults.voteDisplayProps,
+					)
+					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
 			)
 			.subscribe(),
@@ -736,10 +751,17 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 	if (finalReminderWaitTime > 0) {
 		voteEndTask.add(
 			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
+				C.durableSub('layer-queue:final-vote-reminder', { ctx: getBaseCtx(), tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
-					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, CONFIG.reminders.finalVote, true)
-					await broadcastVoteUpdate(ctx, voteState, msg, { onlyNotifyNonVotingAdmins: true })
+					const serverState = await getServerState(getBaseCtx())
+					const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
+					const msg = Messages.BROADCASTS.vote.voteReminder(
+						voteState,
+						CONFIG.reminders.finalVote,
+						true,
+						voteItem?.displayProps ?? CONFIG.defaults.voteDisplayProps,
+					)
+					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true, repeatWarn: false })
 				}),
 			).subscribe(),
 		)
@@ -802,11 +824,16 @@ const handleVoteTimeout = C.spanOp(
 			}
 			listItem.endingVoteState = endingVoteState
 			LL.setCorrectChosenLayerIdInPlace(listItem)
+			const displayProps = listItem.displayProps ?? CONFIG.defaults.voteDisplayProps
 			if (endingVoteState.code === 'ended:winner') {
-				await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.winnerSelected(tally!, endingVoteState!.winner))
+				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.winnerSelected(tally!, endingVoteState!.winner, displayProps), {
+					repeatWarn: false,
+				})
 			}
 			if (endingVoteState.code === 'ended:insufficient-votes') {
-				await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(endingVoteState)))
+				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(endingVoteState), displayProps), {
+					repeatWarn: false,
+				})
 			}
 			voteState = null
 			const voteUpdate: V.VoteStateUpdate = {
@@ -825,10 +852,10 @@ const handleVoteTimeout = C.spanOp(
 
 async function broadcastVoteUpdate(
 	ctx: CS.Log,
-	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
-	opts?: { onlyNotifyNonVotingAdmins?: boolean },
+	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
 ) {
+	const repeatWarn = opts?.repeatWarn ?? true
 	if (!voteState) return
 	switch (voteState.voterType) {
 		case 'public':
@@ -836,16 +863,18 @@ async function broadcastVoteUpdate(
 			break
 		case 'internal':
 			{
-				const cfg = { repeat: 3, msg }
-				await SquadServer.warnAllAdmins(
-					ctx,
-					({ player }) => {
-						if (!opts?.onlyNotifyNonVotingAdmins) return cfg
-						if (!V.isVoteStateWithVoteData(voteState)) return
-						if (voteState.votes[player.steamID.toString()]) return
-						return cfg
-					},
-				)
+				for (let i = 0; i < (repeatWarn ? 3 : 1); i++) {
+					await SquadServer.warnAllAdmins(
+						ctx,
+						({ player }) => {
+							if (!voteState || !opts?.onlyNotifyNonVotingAdmins) return msg
+							if (!V.isVoteStateWithVoteData(voteState)) return
+							if (voteState.votes[player.steamID.toString()]) return
+							return msg
+						},
+					)
+					if (i < 2) await sleep(5000)
+				}
 			}
 			break
 		default:
@@ -1006,6 +1035,15 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 			if (denyRes) return denyRes
 		}
 
+		for (const item of input.layerQueue) {
+			if (LL.isParentVoteItem(item) && item.choices.length > CONFIG.maxNumVoteChoices) {
+				return {
+					code: 'err:too-many-vote-choices' as const,
+					msg: `Max choices allowed is ${CONFIG.maxNumVoteChoices}`,
+				}
+			}
+		}
+
 		if (input.layerQueue.length > CONFIG.maxQueueSize) {
 			return { code: 'err:queue-too-large' as const }
 		}
@@ -1015,6 +1053,15 @@ export async function updateQueue({ input, ctx }: { input: SS.UserModifiableServ
 				return {
 					code: 'err:too-many-vote-choices' as const,
 					msg: `Max choices allowed is ${CONFIG.maxNumVoteChoices}`,
+				}
+			}
+			if (
+				LL.isParentVoteItem(item)
+				&& !V.validateChoicesWithDisplayProps(item.choices.map(c => c.layerId), item.displayProps ?? CONFIG.defaults.voteDisplayProps)
+			) {
+				return {
+					code: 'err:not-enough-visible-info' as const,
+					msg: "Can't distinguish between vote choices.",
 				}
 			}
 		}
