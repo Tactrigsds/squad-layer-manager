@@ -12,8 +12,14 @@ import * as Rx from 'rxjs'
 export const [useLayersStatus, layersStatus$] = ReactRx.bind<SM.LayersStatusResExt>(
 	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchLayersStatus.subscribe),
 )
-export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfoRes>(
+export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind<SM.ServerInfoRes>(
 	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchServerInfo.subscribe),
+)
+export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
+	serverInfoRes$.pipe(
+		Rx.map(res => res.code === 'ok' ? res.data : null),
+	),
+	null,
 )
 
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | null>(
@@ -41,6 +47,6 @@ export function useDisableFogOfWarMutation() {
 }
 
 export function setup() {
-	serverInfo$.subscribe()
+	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
 }

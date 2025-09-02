@@ -52,7 +52,7 @@ let serverRolling = false
 
 const voteStateUpdate$ = new Rx.Subject<[CS.Log & C.Db, V.VoteStateUpdate]>()
 
-const userPresence: USR.UserPresenceState = {}
+let userPresence: USR.UserPresenceState = {}
 const userPresenceUpdate$ = new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>()
 
 let postRollEventsSub: Rx.Subscription | undefined
@@ -108,6 +108,11 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		ctx.log.info('vote state initialized')
 	})
 	ctx.log.info('initial update complete')
+
+	// -------- log vote state updates --------
+	voteStateUpdate$.subscribe(([ctx, update]) => {
+		ctx.log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
+	})
 
 	// -------- set next layer on server when rcon is connected--------
 	SquadServer.rcon.core.connected$.pipe(
@@ -398,7 +403,7 @@ async function processLayerStatusChange(_ctx: CS.Log & C.Db & C.Tx & C.Locks, st
 //
 
 async function syncVoteStateWithQueueStateInPlace(
-	_ctx: CS.Log & C.Locks & C.Db,
+	_ctx: CS.Log & C.Locks,
 	oldQueue: LL.LayerList,
 	newQueue: LL.LayerList,
 ) {
@@ -406,19 +411,18 @@ async function syncVoteStateWithQueueStateInPlace(
 	using ctx = await acquireReentrant(_ctx, voteStateMtx)
 	let newVoteState: V.VoteState | undefined | null
 
-	if (voteState?.code === 'in-progress') {
-		if (newQueue.some(item => item.itemId === voteState!.itemId)) return
-
-		// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
-		newVoteState = null
-	}
-
 	const oldQueueItem = oldQueue[0] as LL.LayerListItem | undefined
 	const newQueueItem = newQueue[0]
 
 	// check if we need to set 'ready'. we only want to do this if there's been a meaningul state change that means we have to initialize it or restart the autostart time. Also if we already have a .endingVoteState we don't want to overwrite that here
 	const currentMatch = MatchHistory.getCurrentMatch()
-	if (
+
+	if (voteState?.code === 'in-progress') {
+		if (newQueue.some(item => item.itemId === voteState!.itemId)) return
+
+		// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
+		newVoteState = null
+	} else if (
 		newQueueItem && LL.isParentVoteItem(newQueueItem) && !newQueueItem.endingVoteState
 		&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isParentVoteItem(oldQueueItem))
 		&& currentMatch.status !== 'post-game'
@@ -436,6 +440,8 @@ async function syncVoteStateWithQueueStateInPlace(
 			voterType: voteState?.voterType ?? 'public',
 			autostartTime,
 		}
+	} else if (!newQueueItem || !LL.isParentVoteItem(newQueueItem)) {
+		newVoteState = null
 	}
 
 	if (newVoteState || newVoteState === null) {
@@ -531,6 +537,9 @@ export const startVote = C.spanOp(
 					msg: msgMap[initiateVoteRes.code]!,
 				}
 			}
+
+			clearEditing()
+
 			const item = initiateVoteRes.item
 			delete item.endingVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
@@ -564,7 +573,7 @@ export const startVote = C.spanOp(
 			voteState = updatedVoteState
 			ctx.locks.releaseTasks.push(() => voteStateUpdate$.next([getBaseCtx(), update]))
 			registerVoteDeadlineAndReminder$(getBaseCtx())
-			void SquadServer.rcon.broadcast(
+			void broadcastVoteUpdate(
 				ctx,
 				Messages.BROADCASTS.vote.started(
 					voteState,
@@ -592,13 +601,13 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	}
 	if (voteState.voterType === 'public') {
 		if (msg.chat !== 'ChatAll') {
-			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast('AllChat'))
+			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AllChat'))
 			return
 		}
 	}
 	if (voteState.voterType === 'internal') {
 		if (msg.chat !== 'ChatAdmin') {
-			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.voteCast('AdminChat'))
+			await SquadServer.rcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AdminChat'))
 			return
 		}
 	}
@@ -680,6 +689,7 @@ export const abortVote = C.spanOp(
 			if (!voteState || voteState?.code !== 'in-progress') {
 				return {
 					code: 'err:no-vote-in-progress' as const,
+					msg: 'No vote in progress',
 				}
 			}
 			const serverState = await getServerState(ctx)
@@ -716,6 +726,27 @@ export const abortVote = C.spanOp(
 	},
 )
 
+export async function cancelVoteAutostart(_ctx: C.Locks, opts: { user: USR.GuiOrChatUserId }) {
+	using ctx = await acquireReentrant(_ctx, voteStateMtx)
+	if (voteState?.autostartCancelled) return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
+	if (!voteState || voteState.code !== 'ready' || !voteState.autostartTime) {
+		return { code: 'err:vote-not-queued' as const, msg: 'No vote is currently scheduled' }
+	}
+
+	const newVoteState = Obj.deepClone(voteState)
+	newVoteState.autostartCancelled = true
+	delete newVoteState.autostartTime
+	voteState = newVoteState
+
+	ctx.locks.releaseTasks.push(() => {
+		voteStateUpdate$.next([getBaseCtx(), {
+			source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
+			state: voteState,
+		}])
+	})
+	return { code: 'ok' as const }
+}
+
 function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 	voteEndTask?.unsubscribe()
 
@@ -735,7 +766,8 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 				C.durableSub('layer-queue:regular-vote-reminders', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
-					await SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.voteReminder(voteState, timeLeft, voteState.choices))
+					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, timeLeft, voteState.choices)
+					await broadcastVoteUpdate(ctx, msg)
 				}),
 			)
 			.subscribe(),
@@ -747,10 +779,21 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 			Rx.timer(finalReminderWaitTime).pipe(
 				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
-					await SquadServer.rcon.broadcast(
-						getBaseCtx(),
-						Messages.BROADCASTS.vote.voteReminder(voteState, CONFIG.reminders.finalVote, true),
-					)
+					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, CONFIG.reminders.finalVote, true)
+					await broadcastVoteUpdate(ctx, msg)
+					switch (voteState.voterType) {
+						case 'public':
+							await SquadServer.rcon.broadcast(ctx, msg)
+							break
+						case 'internal':
+							await SquadServer.warnAllAdmins(ctx, {
+								repeat: 3,
+								msg,
+							})
+							break
+						default:
+							assertNever(voteState.voterType)
+					}
 				}),
 			).subscribe(),
 		)
@@ -835,6 +878,23 @@ const handleVoteTimeout = C.spanOp(
 	},
 )
 
+async function broadcastVoteUpdate(ctx: CS.Log, msg: string) {
+	if (!voteState) return
+	switch (voteState.voterType) {
+		case 'public':
+			await SquadServer.rcon.broadcast(ctx, msg)
+			break
+		case 'internal':
+			await SquadServer.warnAllAdmins(ctx, {
+				repeat: 3,
+				msg,
+			})
+			break
+		default:
+			assertNever(voteState.voterType)
+	}
+}
+
 async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStateUpdate) {
 	let discordIds: Set<bigint> = new Set()
 	if (update.source.type === 'manual') {
@@ -875,6 +935,7 @@ export async function startEditing({ ctx }: { ctx: C.TrpcRequest }) {
 	if (userPresence.editState) {
 		return { code: 'err:already-editing' as const, userPresence }
 	}
+	userPresence = Obj.deepClone(userPresence)
 	userPresence.editState = {
 		startTime: Date.now(),
 		userId: ctx.user.discordId,
@@ -897,7 +958,7 @@ export function endEditing({ ctx }: { ctx: C.TrpcRequest }) {
 	if (!userPresence.editState || ctx.wsClientId !== userPresence.editState.wsClientId) {
 		return { code: 'err:not-editing' as const }
 	}
-
+	userPresence = Obj.deepClone(userPresence)
 	delete userPresence.editState
 	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
 		event: 'edit-end',
@@ -910,12 +971,24 @@ export function endEditing({ ctx }: { ctx: C.TrpcRequest }) {
 	return { code: 'ok' as const }
 }
 
+function clearEditing() {
+	userPresence = Obj.deepClone(userPresence)
+	delete userPresence.editState
+	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
+		event: 'edit-end',
+		state: userPresence,
+		parts: { users: [] },
+	}
+	userPresenceUpdate$.next(update)
+}
+
 async function kickEditor({ ctx }: { ctx: C.TrpcRequest }) {
 	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('queue:write'))
 	if (denyRes) return denyRes
 	if (!userPresence.editState) {
 		return { code: 'err:no-editor' as const }
 	}
+	userPresence = Obj.deepClone(userPresence)
 	delete userPresence.editState
 	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
 		event: 'edit-kick',
@@ -1186,6 +1259,11 @@ export const layerQueueRouter = router({
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
+	}),
+	cancelVoteAutostart: procedure.mutation(async ({ ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		if (denyRes) return denyRes
+		return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 	}),
 
 	startEditing: procedure.mutation(startEditing),

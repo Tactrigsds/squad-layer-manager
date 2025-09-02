@@ -54,7 +54,7 @@ import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
 export default function LayerQueueDashboard() {
-	const serverStatusRes = SquadServerClient.useServerInfo()
+	const serverStatusRes = SquadServerClient.useServerInfoRes()
 
 	// -------- set title --------
 	React.useEffect(() => {
@@ -792,7 +792,7 @@ function UnexpectedNextLayerAlert() {
 function SyncToSquadServerDisabledAlert() {
 	const { enableUpdates } = QD.useToggleSquadServerUpdates()
 	const layerStatusRes = SquadServerClient.useLayersStatus()
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	const loggedInUser = useLoggedInUser()
 	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
 	const nextLayerDisplay = (layerStatusRes.code === 'ok' && layerStatusRes.data.nextLayer)

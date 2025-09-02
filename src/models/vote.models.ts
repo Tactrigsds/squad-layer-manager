@@ -39,6 +39,7 @@ const LayerVoteSchema = z.object({
 	itemId: z.string(),
 	choices: z.array(z.string()),
 	voterType: VOTER_TYPE,
+	autostartCancelled: z.boolean().optional(),
 })
 
 type LayerVote = z.infer<typeof LayerVoteSchema>
@@ -89,6 +90,11 @@ export type VoteStateWithVoteData = Extract<
 	{ code: 'in-progress' | 'ended:winner' | 'ended:aborted' | 'ended:insufficient-votes' }
 >
 
+export function isVoteStateWithVoteData(state: VoteState | EndingVoteState): state is VoteStateWithVoteData {
+	return state.code === 'in-progress' || state.code === 'ended:winner' || state.code === 'ended:aborted'
+		|| state.code === 'ended:insufficient-votes'
+}
+
 export const TallySchema = z.object({
 	totals: z.map(z.string(), z.number()),
 	totalVotes: z.number(),
@@ -123,10 +129,8 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 	}
 	const totalVotes = Object.values(currentVote.votes).length
 	const percentages = new Map<string, number>()
-	if (totalVotes > 0) {
-		for (const [choice, votes] of tally.entries()) {
-			percentages.set(choice, (votes / totalVotes) * 100)
-		}
+	for (const [choice, votes] of tally.entries()) {
+		percentages.set(choice, (totalVotes > 0 ? votes / totalVotes : 0) * 100)
 	}
 	const turnoutPercentage = (totalVotes / numPlayers) * 100
 	return {
@@ -160,11 +164,17 @@ export type VoteStateUpdate = {
 	source:
 		| {
 			type: 'system'
-			event: 'automatic-start-vote' | 'vote-timeout' | 'queue-change' | 'next-layer-override' | 'app-startup' | 'new-game'
+			event:
+				| 'automatic-start-vote'
+				| 'vote-timeout'
+				| 'queue-change'
+				| 'next-layer-override'
+				| 'app-startup'
+				| 'new-game'
 		}
 		| {
 			type: 'manual'
-			event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change'
+			event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change' | 'autostart-cancelled'
 			user: USR.GuiOrChatUserId
 		}
 }

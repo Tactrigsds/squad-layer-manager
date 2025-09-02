@@ -30,7 +30,7 @@
 		--edited-foreground: 0 0% 0%;
 		--warning: 30 100% 50%;
 		--warning-foreground: 0 0% 0%;
-		--added: 120 60% 70%;
+		--added: 120 60% 50%;
 		--added-foreground: 0 0% 100%;
 		--deleted: 0 100% 50%;
 		--deleted-foreground: 0 0% 100%;
@@ -65,7 +65,7 @@
 		--ring: 240 4.9% 83.9%;
 		--moved: 210 100% 50%;
 		--moved-foreground: 0 0% 100%;
-		--edited: 30 100% 50%;
+		--edited: 30 100% 30%;
 		--edited-foreground: 0 0% 100%;
 		--warning: 30 100% 50%;
 		--warning-foreground: 0 0% 0%;

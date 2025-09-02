@@ -20,8 +20,8 @@ export const ConfigSchema = z.object({
 	serverId: z.string().min(1).max(256),
 	serverDisplayName: z.string().min(1).max(256),
 	commandPrefix: BasicStrNoWhitespace,
-	topBarColor: z.string().default('#033e03').nullable().describe('this should be set to null for production'),
-	warnPrefix: z.string().optional().default('SLM: ').describe('Prefix to use for warnings'),
+	topBarColor: z.string().default('green').nullable().describe('this should be set to null for production'),
+	warnPrefix: z.string().nullable().default('SLM: ').describe('Prefix to use for warnings'),
 	defaults: z.object({
 		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
@@ -87,7 +87,7 @@ export const ConfigSchema = z.object({
 			{ name: 'Unit_2' },
 			{ name: 'Alliance_2', visible: false },
 		],
-		defaultSortBy: { type: 'column', sortBy: 'Layer', sortDirection: 'ASC' },
+		defaultSortBy: { type: 'random' },
 	}),
 })
 

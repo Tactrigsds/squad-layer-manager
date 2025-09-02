@@ -321,16 +321,14 @@ export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexe
 		mutexesToAcquire.map(mutex => mutex.acquire()),
 	)
 
-	// wait for referenced mutexes to be released and then process releaseTask. There is no execution ordering guarantee
-	for (const entry of ctx.locks.releaseTasks) {
-		const pairedMutexes = entry instanceof Array ? entry[0] : mutexes
-		const allReleased = Promise.all(pairedMutexes.map(mutex => mutex.waitForUnlock()))
-		void allReleased.then(() => {
-			const task = entry instanceof Array ? entry[1] : entry
-			task()
-		})
-	}
+	const allReleased = Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
+	allReleased.then(async () => {
+		for (const task of ctx.locks.releaseTasks) {
+			await task()
+		}
+	})
 
+	// wait for referenced mutexes to be released and then process releaseTask. There is no execution ordering guarantee
 	return {
 		...ctx,
 		[Symbol.dispose]() {

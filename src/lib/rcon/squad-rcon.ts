@@ -23,7 +23,7 @@ export default class SquadRcon {
 	constructor(
 		ctx: CS.Log,
 		public core: Rcon,
-		private opts?: { warnPrefix?: string },
+		private opts?: { warnPrefix: string | null },
 	) {
 		this.layersStatus = new AsyncResource('serverStatus', (ctx) => this.getServerLayerStatus(ctx), { defaultTTL: 5000 })
 		this.serverInfo = new AsyncResource('serverInfo', (ctx) => this.getServerInfo(ctx), { defaultTTL: 10_000 })

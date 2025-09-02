@@ -242,6 +242,9 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !deepEqual(choice, originalChoice)) {
 								ItemMut.tryApplyMutation('edited', choice.itemId, draft.listMutations)
 							}
+							if (choice && !LL.findItemById([originalItem], choice.itemId)) {
+								ItemMut.tryApplyMutation('added', choice.itemId, draft.listMutations)
+							}
 						}
 					}
 					onMutate?.()

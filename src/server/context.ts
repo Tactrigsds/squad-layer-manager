@@ -181,7 +181,7 @@ export type Locks = {
 		locked: Set<Mutex>
 
 		// tasks to be executed after mutex is released
-		releaseTasks: ([Mutex[], ReleaseTask] | ReleaseTask)[]
+		releaseTasks: ReleaseTask[]
 	}
 }
 export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Locks {

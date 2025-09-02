@@ -20,7 +20,7 @@ import UserPermissionsDialog from './user-permissions-dialog'
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useTrpcConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`

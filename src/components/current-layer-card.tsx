@@ -26,7 +26,7 @@ import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 export default function CurrentLayerCard() {
 	const loggedInUser = useLoggedInUser()
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
-	const serverInfoStatusRes = SquadServerClient.useServerInfo()
+	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
 
 	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
 	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
@@ -172,7 +172,7 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 
 	const loggedInUser = useLoggedInUser()
 	const endMatchMutation = SquadServerClient.useEndMatch()
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
 

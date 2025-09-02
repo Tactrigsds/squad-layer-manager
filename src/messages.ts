@@ -30,7 +30,8 @@ export const BROADCASTS = {
 		started(state: Extract<V.VoteState, { code: 'in-progress' }>, duration: number) {
 			const lines = voteChoicesLines(state.choices).join('\n')
 			const formattedInterval = formatInterval(duration, false)
-			const fullText = `\nVote for the next layer:\n${lines}\nYou have ${formattedInterval} to vote`
+			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
+			const fullText = `\nVote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote`
 			return fullText
 		},
 		winnerSelected(tally: V.Tally, winner: L.LayerId) {

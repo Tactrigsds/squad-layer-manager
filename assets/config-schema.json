@@ -5,11 +5,11 @@
     "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
     "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
     "topBarColor": {
-      "anyOf": [{"type": "string", "default": "#033e03"}, {"type": "null"}],
+      "anyOf": [{"type": "string", "default": "green"}, {"type": "null"}],
       "description": "this should be set to null for production"
     },
     "warnPrefix": {
-      "type": "string",
+      "type": ["string", "null"],
       "default": "SLM: ",
       "description": "Prefix to use for warnings"
     },
@@ -477,7 +477,7 @@
                 "type": {"type": "string", "const": "random"},
                 "seed": {"type": "integer", "exclusiveMinimum": 0}
               },
-              "required": ["type", "seed"],
+              "required": ["type"],
               "additionalProperties": false
             }
           ],
@@ -578,11 +578,7 @@
           {"name": "Unit_2"},
           {"name": "Alliance_2", "visible": false}
         ],
-        "defaultSortBy": {
-          "type": "column",
-          "sortBy": "Layer",
-          "sortDirection": "ASC"
-        }
+        "defaultSortBy": {"type": "random"}
       }
     },
     "$schema": {"type": "string"}

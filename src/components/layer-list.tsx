@@ -3,8 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
@@ -19,12 +21,14 @@ import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
+import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import { CSS } from '@dnd-kit/utilities'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
+import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -34,7 +38,6 @@ import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Timer } from './timer.tsx'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
 
 export function LayerList(
@@ -94,20 +97,33 @@ function LayerListItem(props: LayerListItemProps) {
 	if (!itemRes) return null
 	const item = itemRes.item
 	if (LL.isParentVoteItem(item)) {
-		return <ParentLayerListItem {...props} />
+		return <VoteLayerListItem {...props} />
 	}
 	return <SingleLayerListItem {...props} />
 }
 
 function SingleLayerListItem(props: LayerListItemProps) {
 	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
+	const parentItem = ZusUtils.useStoreDeep(props.llStore, s => {
+		const parentItem = LL.findParentItem(props.itemId, s.layerList)
+		if (!parentItem || !LL.isParentVoteItem(parentItem)) return undefined
+		return parentItem
+	}, {
+		dependencies: [props.itemId],
+	})
 
 	const [item, isVoteChoice, index, innerIndex, backfillLayerId, isLocallyLast, displayedMutation] = ZusUtils.useStoreDeep(
 		itemStore,
 		(s) => [s.item, s.isVoteChoice, s.index, s.innerIndex, s.backfillLayerId, s.isLocallyLast, getDisplayedMutation(s.mutationState)],
 	)
 
-	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+	const [_canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+
+	const globalVoteState = VotesClient.useVoteState()
+	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
+		?? parentItem?.endingVoteState
+	const voteInProgress = voteState?.code === 'in-progress'
+	const canEdit = _canEdit && !voteInProgress
 
 	const draggableItem = LL.layerItemToDragItem(item)
 	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(draggableItem)
@@ -124,20 +140,13 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const badges: React.ReactNode[] = []
 
 	badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
-	if (innerIndex === 0) {
-		badges.push(
-			<Badge key="default-choice" variant="secondary">
-				Default
-			</Badge>,
-		)
-	}
 
 	const editButtonProps = (className?: string) => ({
 		'data-can-edit': canEdit,
 		'data-is-editing': isEditing,
 		'data-mobile': isMobile,
 		disabled: !canEdit,
-		className: cn('data-[mobile=false]:invisible data-[can-edit=true]:group-hover/single-item:visible', className),
+		className: cn('data-[mobile=false]:invisible group-hover/single-item:visible', className),
 	})
 
 	const dropdownProps = {
@@ -148,6 +157,29 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	} satisfies Partial<ItemDropdownProps>
 
 	const layersStatus = resToOptional(SquadServerClient.useLayersStatus())?.data
+	const serverInfo = SquadServerClient.useServerInfo()
+	const tally = voteState && V.isVoteStateWithVoteData(voteState) && serverInfo
+		? V.tallyVotes(voteState, serverInfo.playerCount)
+		: undefined
+
+	const itemChoiceTallyPercentage = (isVoteChoice && voteState) ? tally?.percentages?.get(item.layerId) : undefined
+	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winner === item.layerId
+	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
+
+	if (innerIndex === 0 && !isVoteWinner) {
+		badges.push(
+			<Badge key="default-choice" variant="secondary">
+				Default
+			</Badge>,
+		)
+	}
+	if (isVoteWinner) {
+		badges.push(
+			<Badge key="winner" variant="added">
+				Selected
+			</Badge>,
+		)
+	}
 
 	if (
 		!isEditing && layersStatus?.nextLayer && index === 0 && !isVoteChoice
@@ -168,7 +200,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			{...listeners}
 			variant="ghost"
 			size="icon"
-			{...editButtonProps(cn('invisible data-[canedit=true]:cursor-grab', props.className))}
+			{...editButtonProps(cn('data-[can-edit=true]:cursor-grab', props.className))}
 		>
 			<Icons.GripVertical />
 		</Button>
@@ -201,16 +233,16 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						<span className="grid">
 							<span
 								data-can-edit={canEdit}
-								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 data-[can-edit=true]:group-hover/single-item:invisible"
+								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:invisible"
 							>
 								{index + 1}.{innerIndex != null ? innerIndex + 1 : ''}
 							</span>
-							<GripElt className="col-start-1 row-start-1 data-[canedit=true]:group-hover/single-item:visible" />
+							<GripElt className="col-start-1 row-start-1" />
 						</span>
 						<span
 							ref={dropOnAttrs.setNodeRef}
 							data-over={dropOnAttrs.isOver}
-							className="data-[over=true]:bg-secondary rounded flex space-x-1 w-full"
+							className="data-[over=true]:bg-secondary rounded flex space-x-1 w-full flex-col"
 						>
 							<LayerDisplay
 								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
@@ -218,6 +250,16 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								backfillLayerId={backfillLayerId}
 								addedLayerQueryInput={addedLayerQueryInput}
 							/>
+							{itemChoiceTallyPercentage !== undefined && (
+								<span className="flex space-x-1 items-center">
+									<Progress
+										value={itemChoiceTallyPercentage}
+										className="h-2 data-[winner=true][&>div]:bg-added"
+										data-winner={isVoteWinner}
+									/>
+									<span>{voteCount}</span>
+								</span>
+							)}
 						</span>
 						<ItemDropdown {...dropdownProps}>
 							<Button
@@ -236,7 +278,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	)
 }
 
-export function ParentLayerListItem(props: LayerListItemProps) {
+function VoteLayerListItem(props: LayerListItemProps) {
 	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
 
 	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStoreDeep(
@@ -294,21 +336,59 @@ export function ParentLayerListItem(props: LayerListItemProps) {
 	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
 
-	const activeVoteState = VotesClient.useVoteState()
-	const voteState = (activeVoteState?.itemId === item.itemId ? activeVoteState : undefined) ?? endingVoteState
+	const globalVoteState = VotesClient.useVoteState()
+	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
-	function startVote() {
-		startVoteMutation.mutate({ itemId: item.itemId, ...(item.voteConfig ?? V.getDefaultVoteConfig()), ...{ voterType } })
-	}
-	const abortVoteMutation = ReactQuery.useMutation(VotesClient.abortVoteOpts)
-	function abortVote() {
-		abortVoteMutation.mutate()
+	async function startVote() {
+		const res = await startVoteMutation.mutateAsync({ itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				break
+			case 'ok':
+				globalToast$.next({ title: 'Vote started!' })
+				break
+			default:
+				globalToast$.next({ variant: 'destructive', title: res.msg })
+		}
 	}
 
-	const serverInfoRes = SquadServerClient.useServerInfo()
+	const abortVoteMutation = ReactQuery.useMutation(VotesClient.abortVoteOpts)
+	async function abortVote() {
+		const res = await abortVoteMutation.mutateAsync()
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				break
+			case 'ok':
+				globalToast$.next({ title: 'Vote aborted!' })
+				break
+			default:
+				globalToast$.next({ variant: 'destructive', title: res.msg })
+		}
+	}
+
+	const cancelAutostartMutation = ReactQuery.useMutation(VotesClient.cancelVoteAutostartOpts)
+	async function cancelAutostart() {
+		const res = await cancelAutostartMutation.mutateAsync()
+		switch (res.code) {
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				break
+			case 'ok':
+				globalToast$.next({ title: 'Vote aborted!' })
+				break
+			default:
+				globalToast$.next({ variant: 'destructive', title: res.msg })
+		}
+
+		globalToast$.next({ title: 'Vote autostart cancelled!' })
+	}
+
+	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	const serverInfo = serverInfoRes.code === 'ok' ? serverInfoRes.data : undefined
 
-	const [voterType, setVoterType] = React.useState<V.VoterType>('public')
+	const [voterType, setVoterType] = React.useState<V.VoterType>(voteState?.voterType ?? 'public')
 	const internalVoteCheckboxId = React.useId()
 	const { canInitiateVote, voteAutostartTime, voteTally } = ZusUtils.useStoreDeep(
 		props.llStore,
@@ -317,18 +397,17 @@ export function ParentLayerListItem(props: LayerListItemProps) {
 				item.itemId,
 				store.layerList,
 				voterType,
-				activeVoteState ? { code: activeVoteState.code } : undefined,
+				globalVoteState ? { code: globalVoteState.code } : undefined,
 			)
 			const res = {
 				canInitiateVote,
 				voteAutostartTime: (voteState?.code === 'ready') ? voteState.autostartTime : undefined,
 				voteTally: voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined,
 			}
-			console.log(res)
 			return res
 		},
 		{
-			dependencies: [item.itemId, voteState, activeVoteState?.code, voterType, serverInfo?.playerCount],
+			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount],
 		},
 	)
 	React.useEffect(() => {
@@ -367,30 +446,42 @@ export function ParentLayerListItem(props: LayerListItemProps) {
 										<span>:</span>
 										<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
 											<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+											<Button variant="ghost" size="icon" title="Cancel Autostart" onClick={cancelAutostart} {...manageVoteButtonProps()}>
+												<Icons.X />
+											</Button>
 										</span>
 									</>
 								)}
-								{voteState && voteState.code === 'in-progress' && (
+								{voteState && voteState.code !== 'ready' && (
 									<div className="flex space-x-2 items-center">
 										<Icons.Dot width={20} height={20} />
 										<span>{statusCodeToTitleCase(voteState.code)}</span>
 										<Icons.Dot width={20} height={20} />
-										<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount}</span>}</span>
-										<Icons.Dot width={20} height={20} />
+										<span>{voteTally && serverInfo && <span>{voteTally.totalVotes} of {serverInfo.playerCount} votes received</span>}</span>
 										{voteState.code === 'in-progress' && (
-											<Badge variant="outline">
-												<Timer formatTime={ms => dateFns.format(new Date(ms), 'm:ss')} deadline={voteState.deadline} zeros={true} />
-											</Badge>
+											<>
+												<Icons.Dot width={20} height={20} />
+												<Badge variant="outline">
+													<Timer
+														className="font-mono"
+														formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
+														deadline={voteState.deadline}
+														zeros={true}
+													/>
+												</Badge>
+											</>
 										)}
-										<Button
-											title="Abort Vote"
-											variant="ghost"
-											size="icon"
-											onClick={abortVote}
-											{...manageVoteButtonProps({ hideWhenNotHovering: false })}
-										>
-											<Icons.X />
-										</Button>
+										{voteState.code === 'in-progress' && (
+											<Button
+												title="Abort Vote"
+												variant="ghost"
+												size="icon"
+												onClick={abortVote}
+												{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+											>
+												<Icons.X />
+											</Button>
+										)}
 									</div>
 								)}
 							</span>
@@ -401,6 +492,7 @@ export function ParentLayerListItem(props: LayerListItemProps) {
 									<Checkbox
 										{...manageVoteButtonProps()}
 										id={internalVoteCheckboxId}
+										disabled={!canManageVote || voteState?.code === 'in-progress'}
 										checked={voterType === 'internal'}
 										onCheckedChange={checked => setVoterType(checked ? 'internal' : 'public')}
 									/>
@@ -595,8 +687,15 @@ function ItemDropdown(props: ItemDropdownProps) {
 				open={subDropdownState === 'create-vote'}
 				onOpenChange={(open) => setSubDropdownState(open ? 'create-vote' : null)}
 				pinMode="layers"
-				selectQueueItems={(items) => {
-					props.itemStore.getState().addVoteItems(items)
+				defaultSelected={Array.from(LL.getAllItemLayerIds(item))}
+				selectQueueItems={(newItems) => {
+					const items = newItems.map(choiceItem => LL.createLayerListItem(choiceItem))
+					props.itemStore.getState().setItem({
+						itemId: item.itemId,
+						choices: items as LL.LayerListItem[],
+						layerId: items[0].layerId,
+						source: items[0].source!,
+					})
 				}}
 				layerQueryBaseInput={queryContexts.editOrInsert}
 			/>
