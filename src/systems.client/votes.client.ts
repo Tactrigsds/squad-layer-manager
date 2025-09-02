@@ -34,18 +34,6 @@ export const [useVoteState, voteState$] = bind(
 	null,
 )
 
-export const [useVoteTally, voteTally$] = bind(
-	voteState$.pipe(
-		Rx.withLatestFrom(SquadServerClient.serverInfoRes$),
-		map(([state, squadServerRes]) => {
-			if (!state || squadServerRes.code !== 'ok' || !V.isVoteStateWithVoteData(state)) return null
-			return V.tallyVotes(state, squadServerRes.data.playerCount)
-		}),
-		distinctDeepEquals(),
-	),
-	null,
-)
-
 export const startVoteOpts = {
 	mutationFn: trpc.layerQueue.startVote.mutate,
 }

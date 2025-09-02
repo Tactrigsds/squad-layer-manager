@@ -51,6 +51,13 @@ export function LayerList(
 		if (event.active.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
 		if (cursors.length === 0) return
+		const voteState = VotesClient.voteState$.getValue()
+		const layerList = props.store.getState().layerList
+		if (voteState?.code === 'in-progress') {
+			for (const cursor of cursors) {
+				if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
+			}
+		}
 		props.store.getState().move(event.active.id, cursors[0], user.discordId)
 	}, [user, props.store]))
 
@@ -166,7 +173,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winner === item.layerId
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
 
-	if (innerIndex === 0 && !isVoteWinner) {
+	if (innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.push(
 			<Badge key="default-choice" variant="secondary">
 				Default
@@ -219,13 +226,14 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	}
 	return (
 		<>
-			{(isVoteChoice ? innerIndex! : index) === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
+			{(isVoteChoice ? innerIndex! : index) === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<li
 				style={style}
 				{...attributes}
-				className="group/single-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default"
+				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default"
 				data-mutation={displayedMutation}
 				data-is-dragging={isDragging}
+				data-is-voting={voteState?.code === 'in-progress'}
 				ref={setNodeRef}
 			>
 				{isDragging ? <span className="w-[20px] mx-auto">...</span> : (
@@ -241,7 +249,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						</span>
 						<span
 							ref={dropOnAttrs.setNodeRef}
-							data-over={dropOnAttrs.isOver}
+							data-over={canEdit && dropOnAttrs.isOver}
 							className="data-[over=true]:bg-secondary rounded flex space-x-1 w-full flex-col"
 						>
 							<LayerDisplay
@@ -254,8 +262,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								<span className="flex space-x-1 items-center">
 									<Progress
 										value={itemChoiceTallyPercentage}
-										className="h-2 data-[winner=true][&>div]:bg-added"
-										data-winner={isVoteWinner}
+										className={cn('h-2', isVoteWinner && '[&>div]:bg-added')}
 									/>
 									<span>{voteCount}</span>
 								</span>
@@ -273,7 +280,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 					</>
 				)}
 			</li>
-			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} />
+			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
 		</>
 	)
 }
@@ -285,7 +292,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		itemStore,
 		(s) => [s.item as LL.ParentVoteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, s.item.endingVoteState],
 	)
-	const [canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+	const globalVoteState = VotesClient.useVoteState()
+	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
+
+	const [_canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+	const canEdit = _canEdit && voteState?.code !== 'in-progress'
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
 	const draggableItem = LL.layerItemToDragItem(item)
@@ -336,8 +347,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
 
-	const globalVoteState = VotesClient.useVoteState()
-	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
 	async function startVote() {
 		const res = await startVoteMutation.mutateAsync({ itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
@@ -398,6 +407,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				store.layerList,
 				voterType,
 				globalVoteState ? { code: globalVoteState.code } : undefined,
+				isEditing,
 			)
 			const res = {
 				canInitiateVote,
@@ -407,7 +417,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			return res
 		},
 		{
-			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount],
+			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isEditing],
 		},
 	)
 	React.useEffect(() => {
@@ -527,7 +537,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										disabled={!canEdit}
 										data-canedit={canEdit}
 										data-mobile={isMobile}
-										className="data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible"
+										title="Add Vote Choices"
+										className="data-[mobile=false]:invisible group-hover/parent-item:visible"
 									>
 										<Icons.Plus />
 									</Button>
@@ -539,7 +550,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										data-mobile={isMobile}
 										variant="ghost"
 										size="icon"
-										className={cn('data-[mobile=false]:invisible data-[canedit=true]:group-hover/parent-item:visible')}
+										className={cn('data-[mobile=false]:invisible group-hover/parent-item:visible')}
 									>
 										<Icons.EllipsisVertical />
 									</Button>
@@ -612,7 +623,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isParentVoteItem(item) && <DropdownMenuItem onClick={() => setSubDropdownState('edit')}>Edit</DropdownMenuItem>}
 						<DropdownMenuItem
-							disabled={props.allowVotes && !!item.layerId && layerIds?.has(L.swapFactionsInId(item.layerId))}
+							disabled={!!item.layerId && layerIds?.has(L.swapFactionsInId(item.layerId))}
 							onClick={() => props.itemStore.getState().swapFactions()}
 						>
 							Swap Factions
@@ -735,15 +746,15 @@ function QueueItemSeparator(props: {
 	// null means we're before the first item in the list
 	links: LL.LLItemRelativeCursor[]
 	isAfterLast?: boolean
+	disabled?: boolean
 }) {
 	const { isOver, setNodeRef } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links))
-	const isDragging = DndKit.useDragging()
+	const disabled = props.disabled || false
 	return (
 		<Separator
 			ref={setNodeRef}
 			className="w-full min-w-0 bg-transparent h-2 data-[is-last=true]:invisible data-[is-over=true]:bg-primary" // data-is-last={props.isAfterLast && !isOver}
-			data-is-over={isOver}
-			data-is-dragging={!!isDragging}
+			data-is-over={!disabled && isOver}
 		/>
 	)
 }

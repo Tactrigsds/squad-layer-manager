@@ -1,4 +1,5 @@
 import * as Generator from '@/lib/generator'
+import { getAllMutationIds, ItemMutations } from '@/lib/item-mutations'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import * as DND from '@/models/dndkit.models'
@@ -155,6 +156,12 @@ export function isParentVoteItem(item: LayerListItem): item is ParentVoteItem {
 	return !!item.choices
 }
 
+export function isChildItem(itemId: LayerListItemId, parentItemId: LayerListItemId, layerList: LayerList): boolean {
+	const parentItem = findParentItem(itemId, layerList)
+	if (!parentItem || parentItem.itemId === itemId) return false
+	return true
+}
+
 export function resolveParentItemIndex(itemId: LayerListItemId, layerQueue: LayerList): number | undefined {
 	const index = layerQueue.findIndex((layer) => layer.itemId === itemId || layer.choices?.some(l => l.itemId === itemId))
 	if (index === -1) return undefined
@@ -284,6 +291,19 @@ export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
 	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return item
 	item.layerId = item.choices[0].layerId
 	return item
+}
+
+// if layers are placed before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
+export function changeGeneratedLayerAttributionInPlace(layerList: LayerList, mutations: ItemMutations, userId: bigint) {
+	let modified = false
+	const allModifiedItems = getAllMutationIds(mutations)
+	for (const { item } of iterLayerList(layerList)) {
+		if (item.source.type === 'generated') {
+			if (modified) item.source = { type: 'manual', userId }
+		} else if (!modified && allModifiedItems.has(item.itemId)) {
+			modified = true
+		}
+	}
 }
 
 export function swapFactions(existingItem: LayerListItem) {

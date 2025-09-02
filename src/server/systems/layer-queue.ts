@@ -575,6 +575,7 @@ export const startVote = C.spanOp(
 			registerVoteDeadlineAndReminder$(getBaseCtx())
 			void broadcastVoteUpdate(
 				ctx,
+				voteState,
 				Messages.BROADCASTS.vote.started(
 					voteState,
 					duration,
@@ -638,48 +639,6 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 })
 
-// resets the vote state
-export const clearVote = C.spanOp(
-	'layer-queue:vote:clear',
-	{ tracer, eventLogLevel: 'info', attrs: (_, { source }) => ({ source }) },
-	async (_ctx: C.Db & C.Locks, opts: { source: V.VoteStateUpdateSource }) => {
-		using ctx = await acquireReentrant(_ctx, voteStateMtx)
-		return await DB.runTransaction(ctx, async (ctx) => {
-			const update: V.VoteStateUpdate = {
-				state: null,
-				source: opts.source,
-			}
-
-			const oldVoteState = voteState
-			voteState = null
-			voteEndTask?.unsubscribe()
-			voteEndTask = null
-			autostartVoteSub?.unsubscribe()
-			autostartVoteSub = undefined
-			ctx.locks.releaseTasks.push(() => voteStateUpdate$.next([getBaseCtx(), update]))
-			if (oldVoteState) {
-				const serverState = await getServerState(ctx)
-				const newServerState = Obj.deepClone(serverState)
-				const llItemRes = LL.findItemById(newServerState.layerQueue, oldVoteState?.itemId)
-				if (!llItemRes || !LL.isParentVoteItem(llItemRes.item)) {
-					throw new Error('Invalid vote item')
-				}
-				const item = llItemRes.item as LL.ParentVoteItem
-				delete item.endingVoteState
-				LL.setCorrectChosenLayerIdInPlace(item)
-				await updatelqServerState(ctx, newServerState, { type: 'system', event: 'vote-cleared' })
-			}
-
-			// skip system queue change events since these are typically server-roll related, and the resulting broadcast would be confusing
-			if (oldVoteState?.code === 'in-progress' && opts.source.type === 'system' && opts.source.event !== 'queue-change') {
-				void SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.inProgressVoteCleared())
-				C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote cleared unexpectedly')
-				return
-			}
-		})
-	},
-)
-
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
@@ -719,7 +678,7 @@ export const abortVote = C.spanOp(
 			LL.setCorrectChosenLayerIdInPlace(item)
 			await updatelqServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
 
-			void SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.aborted)
+			void broadcastVoteUpdate(ctx, newVoteState, Messages.BROADCASTS.vote.aborted)
 
 			return { code: 'ok' as const }
 		})
@@ -767,7 +726,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const timeLeft = voteState.deadline - Date.now()
 					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, timeLeft, voteState.choices)
-					await broadcastVoteUpdate(ctx, msg)
+					await broadcastVoteUpdate(ctx, voteState, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
 			)
 			.subscribe(),
@@ -780,20 +739,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db) {
 				C.durableSub('layer-queue:final-vote-reminder', { ctx, tracer }, async () => {
 					if (!voteState || voteState.code !== 'in-progress') return
 					const msg = Messages.BROADCASTS.vote.voteReminder(voteState, CONFIG.reminders.finalVote, true)
-					await broadcastVoteUpdate(ctx, msg)
-					switch (voteState.voterType) {
-						case 'public':
-							await SquadServer.rcon.broadcast(ctx, msg)
-							break
-						case 'internal':
-							await SquadServer.warnAllAdmins(ctx, {
-								repeat: 3,
-								msg,
-							})
-							break
-						default:
-							assertNever(voteState.voterType)
-					}
+					await broadcastVoteUpdate(ctx, voteState, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
 			).subscribe(),
 		)
@@ -856,6 +802,12 @@ const handleVoteTimeout = C.spanOp(
 			}
 			listItem.endingVoteState = endingVoteState
 			LL.setCorrectChosenLayerIdInPlace(listItem)
+			if (endingVoteState.code === 'ended:winner') {
+				await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.winnerSelected(tally!, endingVoteState!.winner))
+			}
+			if (endingVoteState.code === 'ended:insufficient-votes') {
+				await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(endingVoteState)))
+			}
 			voteState = null
 			const voteUpdate: V.VoteStateUpdate = {
 				state: null,
@@ -863,32 +815,38 @@ const handleVoteTimeout = C.spanOp(
 			}
 			ctx.locks.releaseTasks.push(() => voteStateUpdate$.next([getBaseCtx(), voteUpdate]))
 
+			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 			await updatelqServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
 			return { code: 'ok' as const, endingVoteState, tally }
 		})
-		if (res.code !== 'ok') return res
-
-		if (res.endingVoteState.code === 'ended:winner') {
-			void SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.winnerSelected(res.tally!, res.endingVoteState!.winner))
-		}
-		if (res.endingVoteState.code === 'ended:insufficient-votes') {
-			void SquadServer.rcon.broadcast(ctx, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(res.endingVoteState)))
-		}
 		return res
 	},
 )
 
-async function broadcastVoteUpdate(ctx: CS.Log, msg: string) {
+async function broadcastVoteUpdate(
+	ctx: CS.Log,
+	voteState: V.VoteState | V.EndingVoteState,
+	msg: string,
+	opts?: { onlyNotifyNonVotingAdmins?: boolean },
+) {
 	if (!voteState) return
 	switch (voteState.voterType) {
 		case 'public':
 			await SquadServer.rcon.broadcast(ctx, msg)
 			break
 		case 'internal':
-			await SquadServer.warnAllAdmins(ctx, {
-				repeat: 3,
-				msg,
-			})
+			{
+				const cfg = { repeat: 3, msg }
+				await SquadServer.warnAllAdmins(
+					ctx,
+					({ player }) => {
+						if (!opts?.onlyNotifyNonVotingAdmins) return cfg
+						if (!V.isVoteStateWithVoteData(voteState)) return
+						if (voteState.votes[player.steamID.toString()]) return
+						return cfg
+					},
+				)
+			}
 			break
 		default:
 			assertNever(voteState.voterType)

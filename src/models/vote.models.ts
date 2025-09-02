@@ -191,8 +191,14 @@ export function canInitiateVote(
 	queue: LL.LayerList,
 	voterType: VoterType,
 	voteState?: Pick<VoteState | EndingVoteState, 'code'>,
+	isEditing?: boolean,
 ) {
 	const itemRes = LL.findItemById(queue, itemId)
+	if (isEditing) {
+		return {
+			code: 'err:editing-in-progress' as const,
+		}
+	}
 	if (!itemRes) {
 		return {
 			code: 'err:item-not-found' as const,

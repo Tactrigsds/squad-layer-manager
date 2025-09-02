@@ -9,7 +9,8 @@ import Rcon, { DecodedPacket } from './core-rcon'
 import { capitalID, iterateIDs, lowerID } from './id-parser'
 
 export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | string | string[]
-export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase)
+// returning undefined indicates warning should be skipped
+export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 export default class SquadRcon {
@@ -25,7 +26,7 @@ export default class SquadRcon {
 		public core: Rcon,
 		private opts?: { warnPrefix: string | null },
 	) {
-		this.layersStatus = new AsyncResource('serverStatus', (ctx) => this.getServerLayerStatus(ctx), { defaultTTL: 5000 })
+		this.layersStatus = new AsyncResource('serverStatus', (ctx) => this.getLayerStatus(ctx), { defaultTTL: 5000 })
 		this.serverInfo = new AsyncResource('serverInfo', (ctx) => this.getServerInfo(ctx), { defaultTTL: 10_000 })
 		this.playerList = new AsyncResource('playerList', (ctx) => this.getListPlayers(ctx), { defaultTTL: 5000 })
 		this.squadList = new AsyncResource('squadList', (ctx) => this.getSquads(ctx), { defaultTTL: 5000 })
@@ -183,7 +184,9 @@ export default class SquadRcon {
 		if (typeof _opts === 'function') {
 			const playerRes = await this.getPlayer(ctx, anyID)
 			if (playerRes.code !== 'ok') return playerRes
-			opts = _opts({ player: playerRes.player })
+			const optsRes = _opts({ player: playerRes.player })
+			if (!optsRes) return
+			opts = optsRes
 		} else {
 			opts = _opts
 		}
@@ -287,8 +290,8 @@ export default class SquadRcon {
 		}
 	}
 
-	private getServerLayerStatus = C.spanOp(
-		'squad-rcon:getServerLayerstatus',
+	private getLayerStatus = C.spanOp(
+		'squad-rcon:getLayerStatus',
 		{ tracer },
 		async (_ctx: CS.Log): Promise<SM.LayerStatusRes> => {
 			const currentLayerTask = this.getCurrentLayer(_ctx)

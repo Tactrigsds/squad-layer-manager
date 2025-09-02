@@ -220,6 +220,8 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 				if (!(itemRes = LL.findItemById(prevState.layerList, id))) return
 				LL.splice(draft.layerList, itemRes, 1)
 				ItemMut.tryApplyMutation('removed', id, draft.listMutations)
+				// TODO current implementation of the below doesn't work for this scenario. will need some kind of structural diffing instead
+				LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 				onMutate?.()
 			})
 		)
@@ -247,6 +249,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 							}
 						}
 					}
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 					onMutate?.()
 				})
 			})
@@ -260,6 +263,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 					for (const { item } of LL.iterLayerList(items)) {
 						ItemMut.tryApplyMutation('added', item.itemId, draft.listMutations)
 					}
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 					onMutate?.()
 				}),
 			)
@@ -321,6 +325,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 					}
 
 					ItemMut.tryApplyMutation('moved', movedItemRes.item.itemId, draft.listMutations)
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
 					onMutate?.()
 				})
 				console.debug('after', state)

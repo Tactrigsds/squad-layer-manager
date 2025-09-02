@@ -31,7 +31,7 @@ export const BROADCASTS = {
 			const lines = voteChoicesLines(state.choices).join('\n')
 			const formattedInterval = formatInterval(duration, false)
 			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
-			const fullText = `\nVote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote`
+			const fullText = `\nVote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.`
 			return fullText
 		},
 		winnerSelected(tally: V.Tally, winner: L.LayerId) {
@@ -42,7 +42,7 @@ export const BROADCASTS = {
 					const layerName = DH.toShortLayerNameFromId(choice)
 					return `${votes} votes - (${tally.percentages.get(choice)?.toFixed(1)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
-			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie)` : ''
+			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
 			const fullText = `\nVote has ended:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`
 			return fullText
 		},
@@ -55,7 +55,7 @@ export const BROADCASTS = {
 		},
 		voteReminder(state: Extract<V.VoteState, { code: 'in-progress' }>, timeLeft: number, finalReminder = false) {
 			const durationStr = formatInterval(timeLeft, false)
-			const prefix = finalReminder ? `FINAL REMINDER: ${durationStr} left` : `${durationStr} to cast your vote!`
+			const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 			const fullText = `${prefix}\n${voteChoicesLines(state.choices).join('\n')}`
 			return fullText
 		},
@@ -124,13 +124,13 @@ export const WARNS = {
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
 
 			if (LL.isParentVoteItem(item)) {
-				if (item.layerId) {
-					const msg = `Next Layer (Chosen via vote)\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId)}`
+				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
+					const msg = `Next Layer (Chosen via vote)\n${DH.displayUnvalidatedLayer(item.endingVoteState.winner, playerNextTeamId)}`
 					return getOptions(msg)
 				} else {
 					const msg = [
 						'Upcoming vote:',
-						...voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId),
+						voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId).join('\n'),
 					]
 					msg.push(extraDisplay)
 					return getOptions(msg)

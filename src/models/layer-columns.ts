@@ -630,7 +630,7 @@ const GAMEMODE_ABBREVIATIONS = {
 
 const UNIT_SHORT_NAMES = {
 	CombinedArms: 'Combined',
-	Armored: 'Armored',
+	Armored: 'Armor',
 	LightInfantry: 'Light',
 	Mechanized: 'Mech',
 	Motorized: 'Motor',
