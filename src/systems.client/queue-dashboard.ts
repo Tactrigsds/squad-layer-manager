@@ -101,7 +101,6 @@ export function useExtraFiltersStore(useIndependentActiveState: boolean = false)
 		const activeStore = Zus.createStore(() => ({ active: new Set<F.FilterEntityId>() }))
 		const addActive = (draft: Im.WritableDraft<QDStore>, filterId: F.FilterEntityId) => {
 			if (useIndependentActiveState) {
-				console.log('setting active', filterId)
 				activeStore.setState(state => {
 					const newState = new Set(state.active)
 					newState.add(filterId)

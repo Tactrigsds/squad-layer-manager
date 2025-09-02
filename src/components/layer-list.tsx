@@ -426,9 +426,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isEditing],
 		},
 	)
-	React.useEffect(() => {
-		console.log({ voteState })
-	}, [voteState])
 
 	return (
 		<>
