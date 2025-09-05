@@ -611,6 +611,8 @@ const UNIT_ABBREVIATIONS = {
 	Motorized: 'MT',
 	Support: 'SP',
 	AmphibiousAssault: 'AM',
+	Seed: 'SD',
+	Skirmish: 'SK',
 }
 
 const GAMEMODE_ABBREVIATIONS = {
@@ -637,6 +639,8 @@ const UNIT_SHORT_NAMES = {
 	Support: 'Sup',
 	AirAssault: 'Air',
 	AmphibiousAssault: 'Amphib',
+	Seed: 'Seed',
+	Skirmish: 'Skirmish',
 }
 
 const baseProperties = {
@@ -724,9 +728,11 @@ export function buildFullLayerComponents(
 		for (const subfaction of components.units) {
 			if (subfaction === null) continue
 			if (!(subfaction in UNIT_ABBREVIATIONS)) {
+				throw new Error(`map ${mapLayer.Map} doesn't have an abbreviation`)
 				throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
 			}
 			if (!(subfaction in UNIT_SHORT_NAMES)) {
+				throw new Error(`map ${mapLayer.Map} doesn't have an abbreviation`)
 				throw new Error(`subfaction ${subfaction} doesn't have a short name`)
 			}
 		}

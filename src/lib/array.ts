@@ -51,3 +51,7 @@ export function coalesceArr<T>(input: T | T[]): T[] {
 	if (Array.isArray(input)) return input
 	return [input]
 }
+
+export function last<T>(arr: T[]): T | undefined {
+	return arr[arr.length - 1]
+}

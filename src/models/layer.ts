@@ -227,7 +227,10 @@ export function parseKnownLayerId(id: string, components = StaticLayerComponents
 			(l) => l.startsWith(`${map}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
 		)
 		if (!layer) {
-			return { code: 'err:unknown-layer' as const, msg: `Unknown layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion}` : ''}` }
+			return {
+				code: 'err:unknown-layer' as const,
+				msg: `Unknown layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion.toLowerCase()}` : ''}`,
+			}
 		}
 	}
 	const mapLayer = components.mapLayers.find(l => l.Layer === layer)
@@ -262,13 +265,13 @@ export function swapFactionsInId(id: LayerId) {
 export function areLayersPartialMatch(
 	toCompare: LayerId | UnvalidatedLayer,
 	target: LayerId | UnvalidatedLayer,
-	ignoreFraas: boolean = true,
+	coalesceFraas: boolean = true,
 ) {
 	if (toCompare === target) return true
 
 	const layerRes = typeof toCompare === 'string' ? toLayer(toCompare) : toCompare
 	const targetLayerRes = typeof target === 'string' ? toLayer(target) : target
-	if (ignoreFraas) {
+	if (coalesceFraas) {
 		if (layerRes.Layer) layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
 		if (targetLayerRes.Layer) targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
 		if (layerRes.Gamemode === 'FRAAS') layerRes.Gamemode = 'RAAS'
@@ -278,8 +281,8 @@ export function areLayersPartialMatch(
 	return Obj.isPartial(layerRes, targetLayerRes, ['id'])
 }
 
-export function areLayersCompatible(layer1: LayerId | UnvalidatedLayer, layer2: LayerId | UnvalidatedLayer, ignoreFraas = true) {
-	return areLayersPartialMatch(layer1, layer2, ignoreFraas) || areLayersPartialMatch(layer2, layer1, ignoreFraas)
+export function areLayersCompatible(layer1: LayerId | UnvalidatedLayer, layer2: LayerId | UnvalidatedLayer, coalesceFraas = true) {
+	return areLayersPartialMatch(layer1, layer2, coalesceFraas) || areLayersPartialMatch(layer2, layer1, coalesceFraas)
 }
 
 export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {

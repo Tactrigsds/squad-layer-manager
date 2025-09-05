@@ -141,7 +141,8 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	}
 	const shared = {
 		layerSource: layerSource,
-		layerId: entry.layerId,
+		// TODO: find a smart way to handle legacy layer ids
+		layerId: L.isKnownLayer(entry.layerId) ? entry.layerId : L.DEFAULT_LAYER_ID,
 		startTime: entry.startTime ?? undefined,
 		historyEntryId: entry.id,
 		ordinal: entry.ordinal,

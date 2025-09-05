@@ -13,8 +13,8 @@
   ],
   "paired": [
     {
-      "min": 12,
-      "max": 50.2,
+      "min": 12.5,
+      "max": 39.3,
       "field": "Logistics"
     },
     {
@@ -28,12 +28,12 @@
       "field": "Armor"
     },
     {
-      "min": 6.5,
+      "min": 7,
       "max": 70.74583333333334,
       "field": "Anti-Infantry"
     },
     {
-      "min": 7.948272367926356,
+      "min": 8.903608313038633,
       "max": 98.60657210780192,
       "field": "ZERO_Score"
     }

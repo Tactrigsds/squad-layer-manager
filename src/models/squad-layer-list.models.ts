@@ -32,7 +32,7 @@ export const MapSchema = z.object({
 	lightingLevel: z.string(),
 	persistentLightingType: z.string().nullable(),
 	mapId: z.string(),
-	teamConfigs: z.object({ team1: TeamSchema, team2: TeamSchema }),
+	teamConfigs: z.object({ team1: TeamSchema.optional(), team2: TeamSchema.optional() }),
 })
 
 export const VehicleSchema = z.object({

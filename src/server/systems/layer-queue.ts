@@ -284,7 +284,7 @@ export async function handleNewGame(ctx: C.Db & C.Locks, eventTime: Date) {
 		let currentMatchLqItem: LL.LayerListItem | undefined
 		const newServerState = Obj.deepClone(serverState)
 		newServerState.lastRoll = new Date()
-		if (nextLqItem) {
+		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, statusRes.data.currentLayer.id)) {
 			currentMatchLqItem = newServerState.layerQueue.shift()
 		}
 

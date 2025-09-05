@@ -1,5 +1,5 @@
+import * as Arr from '@/lib/array'
 import * as MapUtils from '@/lib/map'
-import * as ObjUtils from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
 import { upperSnakeCaseToPascalCase } from '@/lib/string'
@@ -39,7 +39,7 @@ let ENV!: ReturnType<typeof envBuilder>
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
-		args.push(...ObjUtils.objKeys(Steps.Values))
+		args.push('update-layers-table')
 	}
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
@@ -50,7 +50,7 @@ async function main() {
 
 	L.lockStaticFactionUnitConfigs()
 	L.lockStaticLayerComponents()
-	await ensureAllSheetsDownloaded(ctx)
+	await ensureAllSheetsDownloaded(ctx, { invalidate: args.includes('download-csvs') })
 
 	const data = await parseSquadLayerSheetData(ctx)
 	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
@@ -67,9 +67,8 @@ async function main() {
 	childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
 
 	if (args.includes('update-layers-table')) {
-		const scoresExtraction = await extractLayerScores(ctx, components)
+		await extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
-		await scoresExtraction
 
 		await calculateScoreRanges(ctx)
 
@@ -131,6 +130,7 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 				Unit_2: row['Unit_2'],
 			}
 			const ids = [L.getKnownLayerId(idArgs, components)!]
+			if (ids[0] == null || !L.isKnownLayer(ids[0], components)) return
 			// for now we're just using the same data for FRAAS as RAAS
 			if (segments.Gamemode === 'RAAS') {
 				ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
@@ -164,14 +164,21 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 			for (const layer of buf) {
 				for (const [key, value] of Object.entries(layer)) {
 					if (
-						value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint' && !Buffer.isBuffer(value)
+						value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint'
+						&& !Buffer.isBuffer(value)
 					) {
 						ctx.log.error(`Invalid value type for key "${key}":`, typeof value, value)
 						throw new Error(`Invalid SQLite value type for key "${key}": ${typeof value} (${JSON.stringify(value)})`)
 					}
 				}
 			}
-			await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(buf.map(layer => ({ ...layer, id: LC.packId(layer.id) })))
+			const values = buf.map(layer => ({
+				...layer,
+				id: LC.packId(layer.id, components),
+			}))
+			if (values.length > 0) {
+				await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(values)
+			}
 			ctx.log.info(`Inserted %s extraLayers`, buf.length * chunkCount)
 			chunkCount++
 		}),
@@ -247,6 +254,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 
 	const mapLayers: L.LayerConfig[] = []
 	for (const map of json.Maps) {
+		if (map.levelName.includes('Automation')) continue
 		if (map.levelName.toLowerCase().includes('tutorial')) continue
 		const segments = L.parseLayerStringSegment(map.levelName)
 		if (!segments) {
@@ -257,6 +265,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		if (!size) {
 			ctx.log.error(`${map.levelName} has unknown size`)
 		}
+		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
 		const teamConfigs = Object.entries(map.teamConfigs).sort((a, b) => a[0].localeCompare(b[0])).map(([_, team]) => team)
 		const baseConfig = {
 			...segments,
@@ -290,11 +299,11 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				teams: [
 					{
 						defaultFaction: segments.extraFactions[0],
-						tickets: map.teamConfigs.team1.tickets,
+						tickets: map.teamConfigs.team1!.tickets,
 					},
 					{
 						defaultFaction: segments.extraFactions[1],
-						tickets: map.teamConfigs.team2.tickets,
+						tickets: map.teamConfigs.team2!.tickets,
 					},
 				],
 			})
@@ -308,7 +317,6 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 			},
 			teams: teamConfigs.map((t): L.MapConfigTeam => {
 				const defaultFaction = t.defaultFactionUnit.split('_')[0]
-				const faction = map.factions.find(f => f.factionId === defaultFaction)
 				let role: L.MapConfigTeam['role']
 				if (L.ASYMM_GAMEMODES.includes(segments.Gamemode)) {
 					if (t.isAttackingTeam) role = 'attack'
@@ -316,7 +324,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				}
 
 				return {
-					defaultFaction: faction!.factionId,
+					defaultFaction,
 					tickets: t.tickets,
 					role,
 				}
@@ -324,7 +332,8 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		})
 		for (const faction of map.factions) {
 			const idDetails = json.Units[faction.defaultUnit]
-			const units = new Set([...faction.types, upperSnakeCaseToPascalCase(idDetails.type)])
+			const units = new Set(faction.types)
+			units.add(Arr.last(idDetails.unitObjectName.split('_'))!)
 			for (const unit of units) {
 				availForLayer.push({
 					Faction: faction.factionId,
@@ -513,7 +522,14 @@ function getMapLayerSizes() {
 async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: boolean }) {
 	const invalidate = opts?.invalidate ?? false
 	const ops: Promise<void>[] = []
-	for (const sheet of SHEETS) {
+	const sheets = [
+		{
+			name: 'mapLayers',
+			filename: 'map-layers.csv',
+			gid: ENV.SPREADSHEET_MAP_LAYERS_GID,
+		},
+	]
+	for (const sheet of sheets) {
 		const sheetPath = path.join(Paths.DATA, sheet.filename)
 		if (invalidate || !fs.existsSync(sheetPath)) {
 			ops.push(downloadPublicSheetAsCSV(ctx, sheet.gid, sheetPath))
@@ -523,7 +539,7 @@ async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: bool
 }
 
 function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
-	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADHSEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
+	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADSHEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
 
 	return new Promise<void>((resolve, reject) => {
 		const file = fs.createWriteStream(filepath)
@@ -572,14 +588,6 @@ async function calculateScoreRanges(ctx: CS.LayerDb) {
 	const finalScoreRanges = { regular, paired: Object.values(paired) }
 	await fsPromise.writeFile(path.join(Paths.ASSETS, 'score-ranges.json'), JSON.stringify(finalScoreRanges, null, 2))
 }
-
-const SHEETS = [
-	{
-		name: 'mapLayers',
-		filename: 'map-layers.csv',
-		gid: 1212962563,
-	},
-]
 
 await main()
 
