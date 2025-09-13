@@ -275,8 +275,12 @@ function checkForNextLayerStatusActions(
 }
 
 export async function handleNewGame(ctx: C.Db & C.Locks, eventTime: Date) {
-	const { value: statusRes } = await SquadServer.rcon.layersStatus.get(ctx, { ttl: 200 })
-	if (statusRes.code !== 'ok') return statusRes
+	const status = await Rx.firstValueFrom(
+		SquadServer.rcon.layersStatus.observe(ctx, { ttl: 200 }).pipe(
+			Rx.concatMap(v => v.code === 'ok' ? Rx.of(v.data) : Rx.EMPTY),
+			Rx.retry(10),
+		),
+	)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverState = await getServerState(ctx)
 		const nextLqItem = serverState.layerQueue[0]
@@ -284,14 +288,14 @@ export async function handleNewGame(ctx: C.Db & C.Locks, eventTime: Date) {
 		let currentMatchLqItem: LL.LayerListItem | undefined
 		const newServerState = Obj.deepClone(serverState)
 		newServerState.lastRoll = new Date()
-		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, statusRes.data.currentLayer.id)) {
+		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, status.currentLayer.id)) {
 			currentMatchLqItem = newServerState.layerQueue.shift()
 		}
 
 		await MatchHistory.addNewCurrentMatch(
 			ctx,
 			MH.getNewMatchHistoryEntry({
-				layerId: statusRes.data.currentLayer.id,
+				layerId: status.currentLayer.id,
 				startTime: eventTime,
 				lqItem: currentMatchLqItem,
 			}),
