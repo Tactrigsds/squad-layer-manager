@@ -278,7 +278,8 @@ export async function handleNewGame(ctx: C.Db & C.Locks, eventTime: Date) {
 	const status = await Rx.firstValueFrom(
 		SquadServer.rcon.layersStatus.observe(ctx, { ttl: 200 }).pipe(
 			Rx.concatMap(v => v.code === 'ok' ? Rx.of(v.data) : Rx.EMPTY),
-			Rx.retry(10),
+			Rx.retry(),
+			Rx.takeUntil(Rx.of(1).pipe(Rx.delay(10_000))),
 		),
 	)
 	const res = await DB.runTransaction(ctx, async (ctx) => {

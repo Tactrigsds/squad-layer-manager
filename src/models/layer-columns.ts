@@ -728,11 +728,9 @@ export function buildFullLayerComponents(
 		for (const subfaction of components.units) {
 			if (subfaction === null) continue
 			if (!(subfaction in UNIT_ABBREVIATIONS)) {
-				throw new Error(`map ${mapLayer.Map} doesn't have an abbreviation`)
 				throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
 			}
 			if (!(subfaction in UNIT_SHORT_NAMES)) {
-				throw new Error(`map ${mapLayer.Map} doesn't have an abbreviation`)
 				throw new Error(`subfaction ${subfaction} doesn't have a short name`)
 			}
 		}
