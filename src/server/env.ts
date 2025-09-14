@@ -59,7 +59,7 @@ export const groups = {
 
 	preprocess: {
 		SPREADSHEET_ID: z.string().default('1Rv7WpDN7UutQjyK7opSOr6BodGcZDrTnuAwp_4U63J4'),
-		SPREADSHEET_MAP_LAYERS_GID: z.number().default(1796438364),
+		SPREADSHEET_MAP_LAYERS_GID: z.number().default(1212962563),
 		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers.csv')),
 	},
 } satisfies { [key: string]: Record<string, z.ZodTypeAny> }

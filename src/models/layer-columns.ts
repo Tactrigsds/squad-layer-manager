@@ -573,76 +573,6 @@ export function toLayerComponents(json: LayerComponentsJson): LayerComponents {
 	}
 }
 
-const MAP_ABBREVIATIONS = {
-	AlBasrah: 'AB',
-	Anvil: 'AN',
-	Belaya: 'BL',
-	BlackCoast: 'BC',
-	Chora: 'CH',
-	Fallujah: 'FL',
-	FoolsRoad: 'FR',
-	GooseBay: 'GB',
-	Gorodok: 'GD',
-	Harju: 'HJ',
-	Kamdesh: 'KD',
-	Kohat: 'KH',
-	Kokan: 'KK',
-	Lashkar: 'LK',
-	Logar: 'LG',
-	Manicouagan: 'MN',
-	Mestia: 'MS',
-	Mutaha: 'MT',
-	Narva: 'NV',
-	PacificProvingGrounds: 'PPG',
-	Sanxian: 'SX',
-	Skorpo: 'SK',
-	Sumari: 'SM',
-	Tallil: 'TL',
-	Yehorivka: 'YH',
-	JensensRange: 'JR',
-} as Record<string, string>
-
-const UNIT_ABBREVIATIONS = {
-	AirAssault: 'AA',
-	Armored: 'AR',
-	CombinedArms: 'CA',
-	LightInfantry: 'LI',
-	Mechanized: 'MZ',
-	Motorized: 'MT',
-	Support: 'SP',
-	AmphibiousAssault: 'AM',
-	Seed: 'SD',
-	Skirmish: 'SK',
-}
-
-const GAMEMODE_ABBREVIATIONS = {
-	RAAS: 'RAAS',
-	FRAAS: 'FRAAS',
-	AAS: 'AAS',
-	TC: 'TC',
-	Invasion: 'INV',
-	Skirmish: 'SK',
-	Destruction: 'DES',
-	Insurgency: 'INS',
-	'Track Attack': 'TA',
-	Seed: 'SD',
-	Training: 'TR',
-	Tanks: 'TN',
-}
-
-const UNIT_SHORT_NAMES = {
-	CombinedArms: 'Combined',
-	Armored: 'Armor',
-	LightInfantry: 'Light',
-	Mechanized: 'Mech',
-	Motorized: 'Motor',
-	Support: 'Sup',
-	AirAssault: 'Air',
-	AmphibiousAssault: 'Amphib',
-	Seed: 'Seed',
-	Skirmish: 'Skirmish',
-}
-
 const baseProperties = {
 	name: z.string(),
 	displayName: z.string(),
@@ -719,6 +649,72 @@ export function buildFullLayerComponents(
 	components: BaseLayerComponents,
 	skipValidate = false,
 ) {
+	// these mappings are encapsulated intentionally. only consume these via layer-components.json
+	const MAP_ABBREVIATIONS = {
+		AlBasrah: 'AB',
+		Anvil: 'AN',
+		Belaya: 'BL',
+		BlackCoast: 'BC',
+		Chora: 'CH',
+		Fallujah: 'FL',
+		FoolsRoad: 'FR',
+		GooseBay: 'GB',
+		Gorodok: 'GD',
+		Harju: 'HJ',
+		Kamdesh: 'KD',
+		Kohat: 'KH',
+		Kokan: 'KK',
+		Lashkar: 'LK',
+		Logar: 'LG',
+		Manicouagan: 'MN',
+		Mestia: 'MS',
+		Mutaha: 'MT',
+		Narva: 'NV',
+		PacificProvingGrounds: 'PPG',
+		Sanxian: 'SX',
+		Skorpo: 'SK',
+		Sumari: 'SM',
+		Tallil: 'TL',
+		Yehorivka: 'YH',
+		JensensRange: 'JR',
+	} as Record<string, string>
+
+	const UNIT_ABBREVIATIONS = {
+		AirAssault: 'AA',
+		Armored: 'AR',
+		CombinedArms: 'CA',
+		LightInfantry: 'LI',
+		Mechanized: 'MZ',
+		Motorized: 'MT',
+		Support: 'SP',
+		AmphibiousAssault: 'AM',
+	}
+
+	const GAMEMODE_ABBREVIATIONS = {
+		RAAS: 'RAAS',
+		FRAAS: 'FRAAS',
+		AAS: 'AAS',
+		TC: 'TC',
+		Invasion: 'INV',
+		Skirmish: 'SK',
+		Destruction: 'DES',
+		Insurgency: 'INS',
+		'Track Attack': 'TA',
+		Seed: 'SD',
+		Training: 'TR',
+		Tanks: 'TN',
+	}
+
+	const UNIT_SHORT_NAMES = {
+		CombinedArms: 'Combined',
+		Armored: 'Armor',
+		LightInfantry: 'Light',
+		Mechanized: 'Mech',
+		Motorized: 'Motor',
+		Support: 'Sup',
+		AirAssault: 'Air',
+		AmphibiousAssault: 'Amphib',
+	}
 	if (!skipValidate) {
 		for (const mapLayer of components.mapLayers) {
 			if (!(mapLayer.Map in MAP_ABBREVIATIONS)) {
@@ -785,7 +781,7 @@ export function partitionScores(layer: any, cfg: EffectiveColumnConfig) {
 	}
 	for (const def of Object.values(cfg.defs)) {
 		if (def.table !== 'extra-cols' || def.type !== 'float') continue
-		if (def.name.endsWith('Diff')) partitioned.diffs[def.name.replace(/_Diff$/, '')] = layer[def.name]
+		if (def.name.endsWith('Diff') || def.name == 'Balance_Differential') partitioned.diffs[def.name.replace(/_Diff$/, '')] = layer[def.name]
 		else if (def.name.endsWith('_1')) partitioned.team1[def.name.replace(/_1$/, '')] = layer[def.name]
 		else if (def.name.endsWith('_2')) partitioned.team2[def.name.replace(/_2$/, '')] = layer[def.name]
 		else partitioned.other[def.name] = layer[def.name]

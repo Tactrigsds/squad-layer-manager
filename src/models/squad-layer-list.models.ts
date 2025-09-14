@@ -1,17 +1,71 @@
+import * as Obj from '@/lib/object'
 import { z } from 'zod'
 
+// do not expose these enums, use layer-components.json instead
+const FACTION_ID = z.string().transform(fixFactions).pipe(
+	z.enum(['ADF', 'PLA', 'PLANMC', 'PLAAGF', 'MEI', 'RGF', 'VDV', 'TLF', 'GFI', 'WPMC', 'BAF', 'CAF', 'USA', 'USMC', 'IMF', 'CRF', 'INS']),
+)
+
+const UNIT_TYPE = z.enum([
+	'Mechanized',
+	'AirAssault',
+	'Armored',
+	'LightInfantry',
+	'Motorized',
+	'Support',
+	'CombinedArms',
+	'AmphibiousAssault',
+])
+type UnitType = z.infer<typeof UNIT_TYPE>
+
+const unitIdRegex = /^(FSTemplate_[A-Z]+|[A-Z]+_[A-Z]+_\w+)\d?$/
+const UnitId = z.string().regex(unitIdRegex)
+
+export function parseUnitId(unitId: string) {
+	// Handle FSTemplate format (e.g., "FSTemplate_USMC")
+	if (unitId.startsWith('FSTemplate_')) {
+		const factionId = unitId.replace('FSTemplate_', '')
+		return { factionId, position: 'S', unit: UNIT_TYPE.parse('CombinedArms') }
+	}
+
+	// Handle standard format (e.g., "USMC_LO_CombinedArms")
+	const match = unitId.match(/^(?<factionId>[A-Z]+)_(?<position>[A-Z]+)_(?<unit>\w+)\d?$/)
+	if (!match || !match.groups) {
+		throw new Error(`Invalid unit ID format: ${unitId}`)
+	}
+	let { unit } = match.groups
+	unit = unit.replace(/_Seed$/, '')
+	unit = unit.replace(/_Skirmish/, '')
+	return { factionId: match.groups.factionId, position: match.groups.position, unit: UNIT_TYPE.parse(unit) }
+}
+
 export const AvailableFactionSchema = z.object({
-	factionId: z.string(),
-	defaultUnit: z.string(),
+	factionId: FACTION_ID,
+	defaultUnit: UnitId,
 	availableOnTeams: z.array(z.union([z.literal(1), z.literal(2)])),
 
 	// units
-	types: z.array(z.string()),
+	types: z.array(UNIT_TYPE),
 })
 export type AvailableFaction = z.infer<typeof AvailableFactionSchema>
 
+function detailedToGenericUnitType(detailed: string) {
+	if (detailed.includes('COMBINED')) return 'CombinedArms'
+	if (detailed.includes('AIR')) return 'AirAssault'
+	if (detailed.includes('ARMORED')) return 'Armored'
+	if (detailed.includes('MECHANIZED')) return 'Mechanized'
+	if (detailed.includes('SUPPORT')) return 'Support'
+	if (detailed.includes('MOTORIZED')) return 'Motorized'
+	if (detailed.includes('LIGHT')) return 'LightInfantry'
+	if (detailed.includes('INFANTRY')) return 'LightInfantry'
+	// I wasn't expecting special forces...
+	if (detailed === 'SPECIAL_FORCES') return 'LightInfantry'
+	if (detailed.includes('AMPHIBIOUS')) return 'AmphibiousAssault'
+	throw new Error(`Unknown detailed type: ${detailed}`)
+}
+
 export const TeamSchema = z.object({
-	defaultFactionUnit: z.string(),
+	defaultFactionUnit: UnitId,
 	index: z.number(),
 	playerPercent: z.number(),
 	tickets: z.number(),
@@ -19,7 +73,7 @@ export const TeamSchema = z.object({
 	isAttackingTeam: z.boolean(),
 	isDefendingTeam: z.boolean(),
 	allowedAlliances: z.array(z.string()),
-	allowedFactionUnitTypes: z.array(z.string()),
+	allowedFactionUnitTypes: z.array(z.string().transform(detailedToGenericUnitType)),
 })
 export type Team = z.infer<typeof TeamSchema>
 
@@ -52,11 +106,11 @@ export const VehicleSchema = z.object({
 export type Vehicle = z.infer<typeof VehicleSchema>
 
 export const UnitSchema = z.object({
-	unitObjectName: z.string(),
+	unitObjectName: UnitId,
 	factionName: z.string(),
-	factionID: z.string(),
+	factionID: FACTION_ID,
 	shortName: z.string(),
-	type: z.string(),
+	type: z.string().transform(detailedToGenericUnitType),
 	displayName: z.string(),
 	description: z.string(),
 	unitBadge: z.string(),
@@ -75,8 +129,18 @@ export const UnitSchema = z.object({
 export type Unit = z.infer<typeof UnitSchema>
 
 export const RootSchema = z.object({
-	Maps: z.array(MapSchema),
-	Units: z.record(z.string(), UnitSchema),
+	Maps: z.array(z.any()).transform(maps => maps.filter(map => !map.levelName.includes('Tutorial'))).pipe(z.array(MapSchema)),
+	Units: z.record(z.string(), z.any()).transform((units) =>
+		Obj.filterRecord(units, (value, key) => {
+			key = key.toLowerCase()
+			return !key.includes('tutorial') && !key.includes('test') && !key.startsWith('civ')
+		})
+	).pipe(z.record(UnitId, UnitSchema)),
 })
 
 export type Root = z.infer<typeof RootSchema>
+
+function fixFactions(faction: string) {
+	if (faction === 'INS') return 'MEI'
+	return faction
+}

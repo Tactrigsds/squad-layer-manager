@@ -108,6 +108,7 @@ export function map<O extends object, R>(obj: O, callback: (value: O[keyof O], k
 	}
 	return output
 }
+
 export function mapRecord<O extends Record<string, any>, R>(
 	obj: O,
 	callback: (value: O[keyof O], key: keyof O) => R,
@@ -115,6 +116,19 @@ export function mapRecord<O extends Record<string, any>, R>(
 	const output: { [K in keyof O]: R } = {} as { [K in keyof O]: R }
 	for (const [key, value] of Object.entries(obj)) {
 		output[key as keyof O] = callback(value, key as keyof O)
+	}
+	return output
+}
+
+export function filterRecord<O extends Record<string, any>, R>(
+	obj: O,
+	callback: (value: O[keyof O], key: keyof O) => boolean,
+): { [K in keyof O]: R } {
+	const output: { [K in keyof O]: R } = {} as { [K in keyof O]: R }
+	for (const [key, value] of Object.entries(obj)) {
+		if (callback(value, key as keyof O)) {
+			output[key as keyof O] = value as R
+		}
 	}
 	return output
 }

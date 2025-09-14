@@ -14,7 +14,8 @@ function findPairedColumns(columns: string[]): Array<[string, string, string]> {
 	const pairs: Array<[string, string, string]> = []
 
 	// Find columns ending with _1
-	const columns1 = columns.filter(col => col.endsWith('_1'))
+	const columns1 = columns.filter(col => col.endsWith('_1') && col !== 'SubFac_1')
+	const columns2 = columns.filter(col => col.endsWith('_2') && col !== 'SubFac_2')
 
 	for (const col1 of columns1) {
 		// Get the base name by removing _1
@@ -22,7 +23,7 @@ function findPairedColumns(columns: string[]): Array<[string, string, string]> {
 		const col2 = baseName + '_2'
 
 		// Check if corresponding _2 column exists
-		if (columns.includes(col2) && !Arr.includes(LC.COLUMN_KEYS, col2)) {
+		if (columns2.includes(col2) && !Arr.includes(LC.COLUMN_KEYS, col2)) {
 			pairs.push([col1, col2, baseName + '_Diff'])
 		}
 	}
@@ -41,8 +42,10 @@ function calculateDiff(val1: string, val2: string): string | null {
 }
 
 async function processCSV() {
-	const inputPath = path.join(Paths.DATA, 'layers_raw.csv')
-	const outputPath = path.join(Paths.DATA, 'layers.csv')
+	const inputPath = process.argv[2] ?? path.join(Paths.DATA, 'layers_raw.csv')
+	const outputPath = process.argv[3] ?? path.join(Paths.DATA, 'layers.csv')
+	console.log(`Input path: ${inputPath}`)
+	console.log(`Output path: ${outputPath}`)
 
 	let headers: string[] = []
 	let pairedColumns: Array<[string, string, string]> = []
@@ -108,7 +111,9 @@ async function processCSV() {
 
 				for (const [col1, col2, diffCol] of pairedColumns) {
 					processedRow[diffCol] = calculateDiff(row[col1], row[col2])
-					if (processedRow[diffCol] === null) return
+					if (processedRow[diffCol] === null) {
+						return
+					}
 				}
 
 				// Write the row with diff columns
@@ -126,7 +131,7 @@ async function processCSV() {
 		outputStream.on('error', reject)
 	})
 
-	console.log('Processing complete. Output written to layers_with_diffs.csv')
+	console.log(` Processing complete. Output written to ${outputPath}`)
 }
 
 // Run the processing

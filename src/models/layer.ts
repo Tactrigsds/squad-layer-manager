@@ -485,6 +485,10 @@ export type LayerFactionAvailabilityEntry = {
 	Unit: string
 	allowedTeams: (1 | 2)[]
 	isDefaultUnit: boolean
+	variants?: {
+		boats: boolean
+		noHeli: boolean
+	}
 }
 
 export type FactionUnitConfig = SLL.Unit
@@ -513,6 +517,7 @@ export function resolveLayerDetails(
 	}
 
 	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
+		const entry = components.layerFactionAvailability[layer.Layer].find(e => e.Faction === faction && e.Unit === unit)!
 		const teamConfig = layerConfig.teams[team - 1]
 		let size: string
 		switch (layer.Size) {
@@ -544,12 +549,12 @@ export function resolveLayerDetails(
 			}
 		}
 
-		// TODO finish impleeementing this
+		// TODO finish impleementing this
 		let id = `${faction}_${size}${role}_${unit}`
 		if (layer.Gamemode === 'Seed') id += '_Seed'
-		if (layerConfig.variants.boats) id += '-Boats'
+		if (entry.variants?.boats) id += '-Boats'
 		// what the helly
-		if (layerConfig.variants.noHeli) id += '-NoHeli'
+		if (entry.variants?.noHeli) id += '-NoHeli'
 		return id
 	}
 }
@@ -560,7 +565,6 @@ export type LayerConfig = {
 	Size: string
 	Gamemode: string
 	LayerVersion: string | null
-	variants: { boats?: boolean; noHeli?: boolean }
 	hasCommander: boolean
 	persistentLightingType: string | null
 	teams: MapConfigTeam[]

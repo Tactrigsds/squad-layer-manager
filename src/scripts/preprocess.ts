@@ -1,8 +1,6 @@
-import * as Arr from '@/lib/array'
 import * as MapUtils from '@/lib/map'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { OneToManyMap } from '@/lib/one-to-many-map'
-import { upperSnakeCaseToPascalCase } from '@/lib/string'
 import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -115,6 +113,8 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 		)
 		.on('data', (row) => {
 			if (row.Scored === 'False') return
+			if (row.SubFac_1) row.Unit_1 = row.SubFac_1
+			if (row.SubFac_2) row.Unit_2 = row.SubFac_2
 
 			const segments = L.parseLayerStringSegment(row['Layer'])
 			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
@@ -230,19 +230,6 @@ async function populateLayersTable(
 	ctx.log.info(`Inserting ${chunkCount * 500} rows took ${elapsedSecondsInsert} s`)
 }
 
-// {
-//     "factionId": "ADF",
-//     "defaultUnit": "ADF_LO_CombinedArms",
-//     "availableOnTeams": [
-//         1,
-//         2
-//     ],
-//     "types": [
-//         "AirAssault",
-//         "Mechanized"
-//     ]
-// }
-
 async function parseSquadLayerSheetData(ctx: CS.Log) {
 	const json = SLL.RootSchema.parse(
 		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then(res => res)),
@@ -295,7 +282,6 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 			)
 			mapLayers.push({
 				...baseConfig,
-				variants: {},
 				teams: [
 					{
 						defaultFaction: segments.extraFactions[0],
@@ -311,10 +297,6 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		}
 		mapLayers.push({
 			...baseConfig,
-			variants: {
-				boats: map.factions.some(f => f.defaultUnit.includes('Boats')),
-				noHeli: map.factions.some(f => f.defaultUnit.includes('NoHeli')),
-			},
 			teams: teamConfigs.map((t): L.MapConfigTeam => {
 				const defaultFaction = t.defaultFactionUnit.split('_')[0]
 				let role: L.MapConfigTeam['role']
@@ -333,13 +315,19 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		for (const faction of map.factions) {
 			const idDetails = json.Units[faction.defaultUnit]
 			const units = new Set(faction.types)
-			units.add(Arr.last(idDetails.unitObjectName.split('_'))!)
+			const parsedId = SLL.parseUnitId(idDetails.unitObjectName)
+			units.add(parsedId.unit)
+			const parsedDefaultUnit = SLL.parseUnitId(faction.defaultUnit)
 			for (const unit of units) {
 				availForLayer.push({
 					Faction: faction.factionId,
 					Unit: unit,
 					allowedTeams: faction.availableOnTeams,
-					isDefaultUnit: faction.defaultUnit.toLocaleLowerCase().includes(unit.toLocaleLowerCase()),
+					isDefaultUnit: parsedDefaultUnit.unit == unit,
+					variants: {
+						boats: faction.defaultUnit.includes('Boats'),
+						noHeli: faction.defaultUnit.includes('NoHeli'),
+					},
 				})
 			}
 		}
@@ -479,7 +467,7 @@ function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
 	for (const unit of Object.values(root.Units)) {
 		const alliance = unit.alliance
 		const faction = unit.factionID
-		const unitName = upperSnakeCaseToPascalCase(unit.type)
+		const unitName = unit.type
 
 		// Map alliance to faction
 		OneToMany.set(allianceToFaction, alliance, faction)

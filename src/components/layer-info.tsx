@@ -3,7 +3,7 @@ import * as AR from '@/app-routes.ts'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
 import useAppParams from '@/hooks/use-app-params.ts'
 import * as DH from '@/lib/display-helpers.ts'
-import { upperSnakeCaseToPascalCase } from '@/lib/string.ts'
+import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import * as SLL from '@/models/squad-layer-list.models'
@@ -194,7 +194,7 @@ function TeamInfoOnly({
 	return (
 		<section className="space-y-1">
 			<div className="text-sm">
-				<strong>{title}{role && ` (${role})`}</strong> - {faction} ({upperSnakeCaseToPascalCase(unit?.type || 'UNKNOWN')})
+				<strong>{title}{role && ` (${role})`}</strong> - {faction} ({unit?.type || 'Unknown'})
 			</div>
 			<div className="text-sm font-light">
 				{unit?.displayName || 'Unknown'}
@@ -333,7 +333,12 @@ function ScoreGrid(
 		layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 	},
 ) {
-	const scoreTypes = Object.keys(scores.diffs)
+	// crudly put balance differential at the bottom
+	const scoreTypes = Object.keys(scores.diffs).sort((a, b) => {
+		if (a === 'Balance_Differential') return 1
+		if (b === 'Balance_Differential') return -1
+		return a.localeCompare(b)
+	})
 	const otherScores = Object.keys(scores.other)
 
 	// Get team roles for headers
@@ -351,15 +356,15 @@ function ScoreGrid(
 				</div>
 			)}
 			{scoreTypes.map(scoreType => {
-				const scoreRange = scoreRanges.paired.find(range => range.field === scoreType)
+				const scoreRange = [...scoreRanges.paired, ...scoreRanges.regular].find(range => range.field === scoreType)
 				return (
 					<ScoreRow
 						key={scoreType}
 						scoreType={scoreType}
-						team1Score={scores.team1[scoreType] || 0}
-						team2Score={scores.team2[scoreType] || 0}
-						diff={scores.diffs[scoreType] || 0}
-						scoreRange={scoreRange}
+						team1Score={scores.team1[scoreType]}
+						team2Score={scores.team2[scoreType]}
+						diff={scores.diffs[scoreType]}
+						scoreRange={scoreRange!}
 					/>
 				)
 			})}
@@ -390,13 +395,13 @@ function ScoreRow({
 	scoreRange,
 }: {
 	scoreType: string
-	team1Score: number
-	team2Score: number
+	team1Score?: number
+	team2Score?: number
 	diff: number
-	scoreRange?: { min: number; max: number; field: string }
+	scoreRange: { min: number; max: number; field: string }
 }) {
 	// Use score range for better normalization
-	const range = scoreRange ? scoreRange.max - scoreRange.min : Math.max(Math.abs(team1Score), Math.abs(team2Score)) * 2
+	const range = scoreRange.max - scoreRange.min
 	const normalizedDiff = range > 0 ? (diff / range) : 0
 	const balancePercentage = 50 + (normalizedDiff * 50)
 
@@ -404,11 +409,11 @@ function ScoreRow({
 		<div className="space-y-1">
 			<div className="flex justify-between items-center">
 				<span className="text-xs text-muted-foreground">
-					{team1Score.toFixed(1)}
+					{team1Score?.toFixed(1)}
 				</span>
 				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
 				<span className="text-xs text-muted-foreground">
-					{team2Score.toFixed(1)}
+					{team2Score?.toFixed(1)}
 				</span>
 			</div>
 			<div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
