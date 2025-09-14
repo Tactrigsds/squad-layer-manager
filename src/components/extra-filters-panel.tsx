@@ -45,7 +45,7 @@ export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<QD.Ex
 						<ul>
 							{extraFilters.map(filterId => {
 								const excluded = extraFilters.filter(f => filterId !== f)
-								const active = state.filters.has(filterId)
+								const active = state.active.has(filterId)
 								return (
 									<li className="flex items-center space-x-0.5" key={filterId}>
 										<FilterEntitySelect

@@ -333,7 +333,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	}
 
 	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep([QD.QDStore, itemStore], ([qdStore, itemStore]) => {
-		const constraints = QD.selectBaseQueryConstraints(qdStore)
+		const constraints = QD.selectBaseQueryConstraints(qdStore, qdStore.poolApplyAs)
 		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
 		return {
 			constraints,
@@ -752,7 +752,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 	const item = Zus.useStore(props.itemStore, s => s.item)
 
 	const queryContexts = ZusUtils.useCombinedStoresDeep([QD.QDStore, props.itemStore], ([qdStore, itemStore]) => {
-		const constraints = QD.selectBaseQueryConstraints(qdStore)
+		const constraints = QD.selectBaseQueryConstraints(qdStore, qdStore.poolApplyAs)
 		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
 		return {
 			addLayersAfter: {

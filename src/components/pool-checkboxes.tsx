@@ -8,24 +8,10 @@ import { Label } from './ui/label.tsx'
 
 export default function PoolCheckboxes(
 	props: {
-		ephemeralState?: boolean
-		defaultState?: QD.QDState['poolApplyAs']
+		store: Zus.StoreApi<QD.ApplyAsStore>
 	},
 ) {
-	let poolApplyAs: QD.QDState['poolApplyAs']
-	let setPoolApplyAs: (key: 'dnr' | 'filter', value: 'field' | 'where-condition') => void
-
-	if (props.ephemeralState) {
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		const [_poolApplyAs, _setPoolApplyAs] = React.useState(props.defaultState!)
-		poolApplyAs = _poolApplyAs
-		setPoolApplyAs = (key, value) => {
-			_setPoolApplyAs(state => ({ ...state, [key]: value }))
-		}
-	} else {
-		// eslint-disable-next-line react-hooks/rules-of-hooks
-		;[poolApplyAs, setPoolApplyAs] = Zus.useStore(QD.QDStore, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
-	}
+	const [poolApplyAs, setPoolApplyAs] = Zus.useStore(props.store, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
 	const dnrCheckboxId = React.useId()
 	const filterCheckboxId = React.useId()
 

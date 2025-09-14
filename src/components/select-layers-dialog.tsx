@@ -141,7 +141,7 @@ export default function SelectLayersDialog(props: {
 							queryContext={queryContextWithFilter}
 							selected={selectedLayers}
 							onSelect={setSelectedLayers}
-							extraPanelItems={<PoolCheckboxes />}
+							extraPanelItems={<PoolCheckboxes store={QD.QDStore} />}
 							className="flex-grow"
 						/>
 

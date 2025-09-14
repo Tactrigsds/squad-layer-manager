@@ -57,7 +57,7 @@ export function useLayersQuery(
 			const res = await sendQuery('queryLayers', input)
 			if (res?.code === 'err:invalid-node') {
 				options?.errorStore?.setState({ errors: res.errors })
-				return undefined
+				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			} else {
 				options?.errorStore?.setState({ errors: undefined })
 			}
@@ -78,7 +78,7 @@ export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input, 0)
 			if (res?.code === 'err:invalid-node') {
-				return undefined
+				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			}
 			return res
 		},
@@ -133,7 +133,7 @@ export function useLayerComponents(
 			if (Array.isArray(res)) return res
 			if (res?.code === 'err:invalid-node') {
 				options?.errorStore?.setState({ errors: res.errors })
-				return undefined
+				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			} else if (options.errorStore) {
 				options.errorStore.setState({ errors: undefined })
 			}
@@ -148,7 +148,7 @@ export function useLayerItemStatuses(
 ) {
 	options ??= {}
 	const input: LQY.LayerItemStatusesInput = {
-		constraints: ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints, { dependencies: [] }),
+		constraints: ZusUtils.useStoreDeep(QD.QDStore, state => QD.selectBaseQueryConstraints(state, state.poolApplyAs), { dependencies: [] }),
 		numHistoryEntriesToResolve: 10,
 		...(options.addedInput ?? {}),
 	}
@@ -169,10 +169,10 @@ export function useLayerItemStatuses(
 				return PartsSys.getServerLayerItemStatuses()
 			}
 			const res = await sendQuery('getLayerItemStatuses', input)
-			if (!res) return
+			if (!res) throw new Error('Unknown error')
 			if (res.code === 'err:invalid-node') {
 				options?.errorStore?.setState({ errors: res.errors })
-				return undefined
+				throw new Error('err:invalid-node: ' + JSON.stringify(res.errors))
 			}
 			return res.statuses
 		},

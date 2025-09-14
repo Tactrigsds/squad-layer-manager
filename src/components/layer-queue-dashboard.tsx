@@ -177,7 +177,9 @@ function QueueControlPanel() {
 	}
 	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue, { dependencies: [] })
 
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints, { dependencies: [] })
+	const constraints = ZusUtils.useStoreDeep(QD.QDStore, state => QD.selectBaseQueryConstraints(state, state.poolApplyAs), {
+		dependencies: [],
+	})
 	const queryInputs = {
 		addtoQueue: { constraints },
 		playNext: {

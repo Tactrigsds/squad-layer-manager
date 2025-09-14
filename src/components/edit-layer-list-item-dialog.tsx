@@ -10,7 +10,6 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
-import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import deepEqual from 'fast-deep-equal'
@@ -100,12 +99,16 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	}
 	const layerItemsState = QD.useLayerItemsState()
 	const extraFiltersStore = QD.useExtraFiltersStore(true)
+	const applyAsStore = QD.useNewPoolApplyAsStore({ dnr: 'field', filter: 'field' })
+	React.useEffect(() => {
+		console.log(extraFiltersStore)
+	}, [extraFiltersStore])
 
 	const queryInputs = ZusUtils.useCombinedStoresDeep(
-		[QD.QDStore, filterMenuStore, editedItemStore, extraFiltersStore],
+		[QD.QDStore, filterMenuStore, editedItemStore, extraFiltersStore, applyAsStore],
 		(args) => {
-			const [qdState, filterMenuState, editedLayerListItemState, extraFiltersState] = args
-			let constraints = QD.selectBaseQueryConstraints(qdState)
+			const [qdState, filterMenuState, editedLayerListItemState, extraFiltersState, applyAsStore] = args
+			let constraints = QD.selectBaseQueryConstraints(qdState, applyAsStore.poolApplyAs)
 			const addVoteChoice: LQY.LayerQueryBaseInput = LQY.getBaseQueryInputForAddingVoteChoice(
 				layerItemsState,
 				constraints,
@@ -113,6 +116,7 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 			)
 			// it's  intentional to add this after addVoteChoice
 			constraints = [...constraints, ...QD.getExtraFiltersConstraints(extraFiltersState)]
+			console.log(constraints)
 			const editItem = {
 				constraints,
 				cursor: LQY.getQueryCursorForLayerItem(LQY.getLayerItemForLayerListItem(editedLayerListItemState.item), 'edit'),
@@ -135,25 +139,6 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 		},
 		{ selectorDeps: [layerItemsState, initialItem] },
 	)
-
-	const mainPoolConstraints = ZusUtils.useStoreDeep(QD.QDStore, QD.selectBaseQueryConstraints, { dependencies: [] })
-	const layerStatusesRes = LayerQueriesClient.useLayerItemStatuses()
-	let mainPoolFiltered = false
-	const item = LQY.getLayerItemForLayerListItem(editedItem)
-	if (!LQY.isParentVoteItem(item)) {
-		const layerItemId = LQY.toLayerItemId(item)
-		const blockedConstraintIds = layerStatusesRes.data?.blocked.get(layerItemId)
-		if (blockedConstraintIds) {
-			for (const constraint of mainPoolConstraints) {
-				if (blockedConstraintIds.has(constraint.id)) {
-					if (constraint.type === 'filter-entity') {
-						mainPoolFiltered = true
-					}
-					break
-				}
-			}
-		}
-	}
 
 	if (LL.isParentVoteItem(editedItem)) {
 		console.warn('Opened edit dialog for a parent vote item')
@@ -185,15 +170,7 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 								if (!id) return
 								return editedItemStore.getState().setItem((prev) => ({ ...prev, layerId: id }))
 							}}
-							extraPanelItems={
-								<PoolCheckboxes
-									ephemeralState={true}
-									defaultState={{
-										dnr: 'field',
-										filter: mainPoolFiltered ? 'field' : 'where-condition',
-									}}
-								/>
-							}
+							extraPanelItems={<PoolCheckboxes store={applyAsStore} />}
 						/>
 						<div className="flex justify-end">
 							<Button disabled={!canSubmit} onClick={submit}>

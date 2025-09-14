@@ -174,6 +174,25 @@ export function useExtraFiltersStore(useIndependentActiveState: boolean = false)
 	return storeRef.current
 }
 
+export const useNewPoolApplyAsStore = (defaultState: ApplyAsState): Zus.StoreApi<ApplyAsStore> => {
+	const storeRef = useRefConstructor(() => {
+		return Zus.createStore<ApplyAsStore>((set) => ({
+			poolApplyAs: defaultState,
+			setPoolApplyAs: (type, value) => {
+				set(state => ({
+					...state,
+					poolApplyAs: {
+						...state.poolApplyAs,
+						[type]: value,
+					},
+				}))
+			},
+		}))
+	})
+
+	return storeRef.current
+}
+
 // Queue Dashboard state
 export type QDState = {
 	initialized: boolean
@@ -187,16 +206,19 @@ export type QDState = {
 	stopEditingInProgress: boolean
 	canEditQueue: boolean
 	canEditSettings: boolean
-	poolApplyAs: {
-		dnr: LQY.LayerQueryConstraint['applyAs']
-		filter: LQY.LayerQueryConstraint['applyAs']
-	}
+	poolApplyAs: ApplyAsState
 	extraQueryFilters: Set<F.FilterEntityId>
 	activeExtraQueryFilters: Set<F.FilterEntityId>
 
 	// M.toQueueLayerKey and stuff to lookup the id
 	hoveredConstraintItemId?: string
 }
+
+type ApplyAsState = {
+	dnr: LQY.LayerQueryConstraint['applyAs']
+	filter: LQY.LayerQueryConstraint['applyAs']
+}
+export type ApplyAsStore = Pick<QDStore, 'poolApplyAs' | 'setPoolApplyAs'>
 
 export type QDStore = QDState & {
 	applyServerUpdate: (update: SS.LQServerStateUpdate) => void
@@ -675,6 +697,7 @@ export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get,
 		},
 	}
 }))
+
 // @ts-expect-error expose for debugging
 window.QDStore = QDStore
 
@@ -712,11 +735,11 @@ export function getExtraFiltersConstraints(extraFiltersState: ExtraQueryFiltersS
 	return constraints
 }
 
-export function selectBaseQueryConstraints(state: QDState): LQY.LayerQueryConstraint[] {
+export function selectBaseQueryConstraints(state: QDState, applyAs: ApplyAsState): LQY.LayerQueryConstraint[] {
 	const queryConstraints = SS.getPoolConstraints(
 		state.editedServerState.settings.queue.mainPool,
-		state.poolApplyAs.dnr,
-		state.poolApplyAs.filter,
+		applyAs.dnr,
+		applyAs.filter,
 	)
 
 	return queryConstraints

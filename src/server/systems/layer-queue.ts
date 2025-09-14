@@ -92,7 +92,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 					displayName: CONFIG.serverDisplayName,
 				})
 				.where(E.eq(Schema.servers.id, CONFIG.serverId))
-			server.displayName = CONFIG.serverDisplayName
+			initialServerState.displayName = CONFIG.serverDisplayName
 		}
 
 		// -------- prune main pool filters when filter entities are deleted  --------

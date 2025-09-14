@@ -451,7 +451,10 @@ export function useNodeValidationErrorStore() {
 	const storeRef = useRefConstructor(() => {
 		return Zus.createStore<NodeValidationErrorStore>((set) => ({
 			errors: [],
-			setErrors: (errors) => set({ errors }),
+			setErrors: (errors) => {
+				console.log('node errors:', JSON.stringify(errors))
+				return set({ errors })
+			},
 		}))
 	})
 	return storeRef.current
