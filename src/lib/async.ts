@@ -4,7 +4,7 @@ import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
-import { getNextIntId } from './id'
+import { createId } from './id'
 
 export function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms))
@@ -218,7 +218,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		if (this.observingTTLs.length > 0) this.fetchValue({ ...ctx, resOpts: { ttl: 0 } })
 	}
 
-	observingTTLs: [number, number][] = []
+	observingTTLs: [string, number][] = []
 	refetchSub: Rx.Subscription | null = null
 
 	// listen to all updates to this resource, refreshing at a minumum when the ttl expires
@@ -234,6 +234,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 					while (refetching) {
 						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
 						await sleep(activettl)
+						if (!refetching) break
 						await this.get(ctx, { ttl: 0 })
 					}
 				})()
@@ -244,8 +245,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 			this.refetchSub = refetch$.subscribe()
 		}
 
-		const refId = getNextIntId(this.observingTTLs.map(([id]) => id))
-		this.observingTTLs.push([refId, opts.ttl!])
+		const refId = createId(6)
 		return Rx.concat(
 			this.fetchedValue ?? Rx.EMPTY,
 			this.valueSubject.pipe(
@@ -254,13 +254,15 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 				Rx.observeOn(Rx.asapScheduler),
 				Rx.tap({
 					subscribe: () => {
+						this.observingTTLs.push([refId, opts.ttl!])
 						this.get(ctx, { ttl: opts.ttl })
-						if (this.observingTTLs.length > 0 && this.refetchSub === null) {
+						if (this.refetchSub === null) {
 							setupRefetches()
 						}
 					},
 					finalize: () => {
-						this.observingTTLs = this.observingTTLs.filter(([id]) => refId !== id)
+						const index = this.observingTTLs.findIndex(([id]) => refId === id)
+						this.observingTTLs.splice(index, 1)
 						if (this.observingTTLs.length === 0) {
 							this.refetchSub?.unsubscribe()
 							this.refetchSub = null
