@@ -251,7 +251,7 @@ function voteChoicesLines(choices: L.LayerId[], you?: 1 | 2, displayProps?: DH.L
 		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you, displayProps)}`
 	})
 
-	if (lines.join(' ').length < 70) {
+	if (lines.join(' ').length < 50) {
 		return [lines.join(' ')]
 	}
 	return lines
