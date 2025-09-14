@@ -100,9 +100,6 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	const layerItemsState = QD.useLayerItemsState()
 	const extraFiltersStore = QD.useExtraFiltersStore(true)
 	const applyAsStore = QD.useNewPoolApplyAsStore({ dnr: 'field', filter: 'field' })
-	React.useEffect(() => {
-		console.log(extraFiltersStore)
-	}, [extraFiltersStore])
 
 	const queryInputs = ZusUtils.useCombinedStoresDeep(
 		[QD.QDStore, filterMenuStore, editedItemStore, extraFiltersStore, applyAsStore],
@@ -116,7 +113,6 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 			)
 			// it's  intentional to add this after addVoteChoice
 			constraints = [...constraints, ...QD.getExtraFiltersConstraints(extraFiltersState)]
-			console.log(constraints)
 			const editItem = {
 				constraints,
 				cursor: LQY.getQueryCursorForLayerItem(LQY.getLayerItemForLayerListItem(editedLayerListItemState.item), 'edit'),
