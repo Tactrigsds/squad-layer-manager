@@ -9,7 +9,8 @@ export default function MapLayerDisplay(
 	},
 ) {
 	extraLayerStyles ??= {}
-	const segments = L.applyBackwardsCompatMappings(L.parseLayerStringSegment(layer))
+	let segments = L.parseLayerStringSegment(layer)
+	if (segments) segments = L.applyBackwardsCompatMappings(segments)
 	if (!segments || segments.Gamemode === 'Training') return segments?.Map ?? layer
 	return (
 		<span className={cn(extraLayerStyles.Layer, extraLayerStyles.Size, className)}>
