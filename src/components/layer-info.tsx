@@ -74,7 +74,7 @@ function LayerInfo(props: LayerInfoContentProps) {
 		if (config && layer.Gamemode && layer.Map) {
 			const params = new URLSearchParams()
 			params.set('map', layer.Map)
-			params.set('layer', layer.Gamemode + (layer.LayerVersion ? layer.LayerVersion.toLowerCase() : ''))
+			params.set('layer', layer.Gamemode.replace('FRAAS', 'RAAS') + (layer.LayerVersion ? layer.LayerVersion.toLowerCase() : ''))
 			squadcalcUrl = config.PUBLIC_SQUADCALC_URL + '?' + params.toString()
 		}
 	}
