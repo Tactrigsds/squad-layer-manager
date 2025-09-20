@@ -48,8 +48,6 @@ let voteEndTask: Rx.Subscription | null = null
 let voteState: V.VoteState | null = null
 let unexpectedNextLayerSet$!: Rx.BehaviorSubject<[CS.Log & C.Db, L.LayerId | null]>
 
-let serverRolling = false
-
 const voteStateUpdate$ = new Rx.Subject<[CS.Log & C.Db, V.VoteStateUpdate]>()
 
 let userPresence: USR.UserPresenceState = {}
@@ -135,7 +133,7 @@ export const setup = C.spanOp('layer-queue:setup', { tracer, eventLogLevel: 'inf
 		C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
 			const serverState = await getServerState(ctx)
 			const currentMatch = MatchHistory.getCurrentMatch()
-			if (serverRolling || currentMatch.status === 'post-game') return
+			if (SquadServer.state.serverRolling || currentMatch.status === 'post-game') return
 			if (
 				LL.isParentVoteItem(serverState.layerQueue[0])
 				&& voteState?.code === 'ready'
@@ -372,7 +370,7 @@ async function processLayerStatusChange(_ctx: CS.Log & C.Db & C.Tx & C.Locks, st
 	if (!currentLayerAction) return
 	switch (currentLayerAction.code) {
 		case 'current-layer-changed-with-players:set-server-rolling': {
-			serverRolling = true
+			SquadServer.state.serverRolling = true
 			break
 		}
 		case 'current-layer-changed-with-no-players:handle-new-game': {
@@ -383,7 +381,7 @@ async function processLayerStatusChange(_ctx: CS.Log & C.Db & C.Tx & C.Locks, st
 			assertNever(currentLayerAction)
 	}
 
-	const nextLayerAction = checkForNextLayerStatusActions(status, serverState, serverRolling)
+	const nextLayerAction = checkForNextLayerStatusActions(status, serverState, SquadServer.state.serverRolling)
 	C.setSpanOpAttrs({ nextLayerAction })
 	switch (nextLayerAction.code) {
 		case 'sync-disabled:no-action':

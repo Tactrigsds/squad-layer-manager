@@ -30,6 +30,7 @@ import { procedure, router } from '../trpc.server.ts'
 
 type SquadServerState = {
 	debug__ticketOutcome?: SME.DebugTicketOutcome
+	serverRolling: boolean
 }
 
 const tracer = Otel.trace.getTracer('squad-server')
@@ -210,7 +211,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 	const adminListTTL = 1000 * 60 * 60 * 60
 	const ctx = DB.addPooledDb({ log: baseLogger })
 
-	state = {}
+	state = { serverRolling: false }
 
 	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
 	void adminList.get(ctx)
@@ -244,7 +245,7 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 				}
 
 				if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-					await LayerQueue.handleVote(ctx, event.message)
+					LayerQueue.handleVote(ctx, event.message)
 				}
 			},
 		),
@@ -279,7 +280,11 @@ export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'in
 async function handleSquadEvent(ctx: C.Db & C.Locks, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			return await LayerQueue.handleNewGame(ctx, event.time)
+			try {
+				return await LayerQueue.handleNewGame(ctx, event.time)
+			} finally {
+				state.serverRolling = false
+			}
 		}
 		case 'ROUND_ENDED': {
 			const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
