@@ -3,7 +3,6 @@ import * as AR from '@/app-routes.ts'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
 import useAppParams from '@/hooks/use-app-params.ts'
 import * as DH from '@/lib/display-helpers.ts'
-import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import * as SLL from '@/models/squad-layer-list.models'
@@ -28,19 +27,21 @@ type LayerInfoContentProps = {
 	// expected to be known layer id
 	layerId: L.LayerId
 	hidePopoutButton?: boolean
+	close?: () => void
 }
 
 export default function LayerInfoDialog(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
+	const [open, setOpen] = React.useState(false)
 	if (!isKnownLayer) return null
 
 	return (
-		<Popover modal={true}>
+		<Popover modal={true} open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				{props.children}
 			</PopoverTrigger>
 			<PopoverContent align="center" className="w-max">
-				<LayerInfo layerId={props.layerId} />
+				<LayerInfo layerId={props.layerId} close={() => setOpen(false)} />
 			</PopoverContent>
 		</Popover>
 	)
@@ -102,6 +103,7 @@ function LayerInfo(props: LayerInfoContentProps) {
 		}
 
 		window.open(AR.link('/layers/:id', props.layerId), '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
+		props.close?.()
 	}
 
 	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
