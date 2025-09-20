@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React, { useRef, useState } from 'react'
 import MapLayerDisplay from './map-layer-display.tsx'
-import { Button } from './ui/button.tsx'
+import { Button, buttonVariants } from './ui/button.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -67,6 +67,17 @@ function LayerInfo(props: LayerInfoContentProps) {
 	const contentRef = useRef<HTMLDivElement>(null)
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
+	let squadcalcUrl: string | undefined
+	{
+		const config = ConfigClient.useConfig()
+		const layer = L.toLayer(props.layerId)
+		if (config && layer.Gamemode && layer.Map) {
+			const params = new URLSearchParams()
+			params.set('map', layer.Map)
+			params.set('layer', layer.Gamemode + (layer.LayerVersion ? layer.LayerVersion.toLowerCase() : ''))
+			squadcalcUrl = config.PUBLIC_SQUADCALC_URL + '?' + params.toString()
+		}
+	}
 	let scores: LC.PartitionedScores | undefined
 	const layerDetails = React.useMemo(() => {
 		const layer = L.toLayer(props.layerId)!
@@ -117,6 +128,9 @@ function LayerInfo(props: LayerInfoContentProps) {
 							<Icons.ExternalLink />
 						</Button>
 					)}
+					<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} title="Open in SquadCalc" href={squadcalcUrl} target="_blank">
+						<Icons.Map />
+					</a>
 					{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
 				</div>
 				<TabsList

@@ -97,7 +97,7 @@ export const ConfigSchema = z.object({
 
 export let CONFIG!: Config
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadcalc })
 let ENV!: ReturnType<typeof envBuilder>
 
 export async function ensureSetup() {
@@ -132,6 +132,7 @@ export function getPublicConfig() {
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
+		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,

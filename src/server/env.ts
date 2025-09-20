@@ -17,6 +17,10 @@ export const groups = {
 		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
 	},
 
+	squadcalc: {
+		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app'),
+	},
+
 	db: {
 		DB_HOST: z.string().nonempty().default('localhost'),
 		DB_PORT: ParsedIntSchema.default('3306'),
