@@ -100,6 +100,7 @@ export default function LayerDisplay(
 					teamParity={teamParity}
 					backfillLayerId={props.backfillLayerId}
 					violationDescriptors={localViolationDescriptors || hoveredReasonViolationDescriptors || undefined}
+					allowShowInfo={props.allowShowInfo}
 				/>
 			</span>
 			<span className="flex items-center space-x-1">

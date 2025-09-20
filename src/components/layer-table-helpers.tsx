@@ -31,9 +31,12 @@ function copyLayerId(selectedLayerIds: L.LayerId[]) {
 export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; selectedHistoryEntryIds?: number[] }) {
 	return (
 		<>
-			{props.selectedLayerIds.length === 1 && (
+			{props.selectedLayerIds.length === 1 && L.isKnownLayer(props.selectedLayerIds[0]) && (
 				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
-					<ContextMenuItem onSelect={(e) => e.preventDefault()}>
+					<ContextMenuItem
+						onSelect={(e) =>
+							e.preventDefault()}
+					>
 						Show layer info
 					</ContextMenuItem>
 				</LayerInfoDialog>

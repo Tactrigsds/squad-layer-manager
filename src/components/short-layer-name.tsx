@@ -97,7 +97,7 @@ export default function ShortLayerName(
 			)}
 		</div>
 	)
-	if (!allowShowInfo || L.isRawLayerId(layerId)) return content
+	if (!allowShowInfo || !L.isKnownLayer(layerId)) return content
 	return (
 		<LayerInfoDialog layerId={layerId}>
 			<Button className="px-0 py-1" variant="link">{content}</Button>
