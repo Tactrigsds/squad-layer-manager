@@ -735,7 +735,7 @@ function LayersInConfig(
 				<ul className="flex items-center space-x-1">
 					{filteredValues.map((layerId) => (
 						<li key={layerId} className="flex items-center justify-between px-2 py-1 bg-secondary rounded-md">
-							<span className="text-sm">{DH.displayUnvalidatedLayer(layerId)}</span>
+							<span className="text-sm">{DH.displayLayer(layerId)}</span>
 							<Button
 								size="sm"
 								variant="ghost"
@@ -802,7 +802,7 @@ export function LayerEqConfig(
 
 	return (
 		<div>
-			{props.value !== null && <li>{DH.displayUnvalidatedLayer(props.value)}</li>}
+			{props.value !== null && <li>{DH.displayLayer(props.value)}</li>}
 			<EditLayerListItemDialog
 				open={open}
 				onOpenChange={setOpen}

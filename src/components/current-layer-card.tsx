@@ -104,7 +104,7 @@ export default function CurrentLayerCard() {
 					<div>
 						{currentMatch
 							? <LayerDisplay item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
-							: (DH.displayUnvalidatedLayer(layersStatus.currentLayer))}
+							: (DH.displayLayer(layersStatus.currentLayer))}
 					</div>
 				</span>
 				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}

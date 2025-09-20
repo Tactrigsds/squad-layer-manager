@@ -135,7 +135,7 @@ export const WARNS = {
 			if (LL.isParentVoteItem(item)) {
 				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
 					const msg = `Next Layer (Chosen via vote)\n${
-						DH.displayUnvalidatedLayer(item.endingVoteState.winner, playerNextTeamId, ['layer', 'factions', 'units'])
+						DH.displayLayer(item.endingVoteState.winner, playerNextTeamId, ['layer', 'factions', 'units'])
 					}`
 					return getOptions(msg)
 				} else {
@@ -151,7 +151,7 @@ export const WARNS = {
 			// this shouldn't be possible
 			if (!item.layerId) return `No next layer set`
 
-			const msg = [`Next Layer\n${DH.displayUnvalidatedLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])}`]
+			const msg = [`Next Layer\n${DH.displayLayer(item.layerId, playerNextTeamId, ['layer', 'factions', 'units'])}`]
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},

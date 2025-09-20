@@ -14,7 +14,7 @@ export const MISSING_DISPLAY = ' - '
 export const LAYER_DISPLAY_PROP = z.enum(['map', 'gamemode', 'layer', 'factions', 'units'])
 export type LayerDisplayProp = z.infer<typeof LAYER_DISPLAY_PROP>
 
-export function displayUnvalidatedLayer(_possibleUnknown: L.UnvalidatedLayer | L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+export function displayLayer(_possibleUnknown: L.UnvalidatedLayer | L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	const possibleUnknown = typeof _possibleUnknown === 'string' ? L.fromPossibleRawId(_possibleUnknown) : _possibleUnknown
 	if (L.isKnownLayer(possibleUnknown)) {
 		return toShortLayerName(possibleUnknown, you, displayProps)
@@ -218,7 +218,7 @@ export function toShortTeamsDisplay(layer: Partial<L.KnownLayer>, you?: 1 | 2, d
 
 export function toShortLayerNameFromId(id: string, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	const res = L.fromPossibleRawId(id)
-	return displayUnvalidatedLayer(res, you, displayProps)
+	return displayLayer(res, you, displayProps)
 }
 
 export function toExtraShortLayerNameFromId(id: string, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {

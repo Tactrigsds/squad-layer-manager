@@ -51,7 +51,7 @@ export function LayerInfoPage() {
 	const params = useAppParams('/layers/:id')
 	// -------- set title --------
 	React.useLayoutEffect(() => {
-		document.title = `SLM - ${DH.displayUnvalidatedLayer(params.id)}`
+		document.title = `SLM - ${DH.displayLayer(params.id)}`
 	}, [params.id])
 
 	const isKnownLayer = L.isKnownLayer(params.id)

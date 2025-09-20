@@ -801,7 +801,7 @@ function SyncToSquadServerDisabledAlert() {
 	const nextLayerDisplay = (layerStatusRes.code === 'ok' && layerStatusRes.data.nextLayer)
 		? (
 			<>
-				Next Layer is set to: <b>{DH.displayUnvalidatedLayer(layerStatusRes.data.nextLayer)}</b>t
+				Next Layer is set to: <b>{DH.displayLayer(layerStatusRes.data.nextLayer)}</b>t
 			</>
 		)
 		: ''

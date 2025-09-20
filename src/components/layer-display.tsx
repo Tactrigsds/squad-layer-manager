@@ -85,7 +85,7 @@ export default function LayerDisplay(
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						This layer is unknown and was not able to be fully parsed: (<b>{DH.displayUnvalidatedLayer(layer)}</b>)
+						This layer is unknown and was not able to be fully parsed: (<b>{DH.displayLayer(layer)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,
