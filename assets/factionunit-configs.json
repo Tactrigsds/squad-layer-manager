@@ -30219,6 +30219,27 @@
         ]
       },
       {
+        "name": "ZTD05",
+        "rowName": "ZTD05",
+        "type": "ZTD05",
+        "count": 2,
+        "delay": 20,
+        "respawnTime": 15,
+        "vehType": "MGS",
+        "spawnerSize": "MBT",
+        "icon": "T_map_mgs",
+        "classNames": [
+          "BP_ZTD05_C"
+        ],
+        "tags": [
+          "WATERCRAFT",
+          "CLASS_HEAVY"
+        ],
+        "spawnCommands": [
+          "AdminCreateVehicle /Game/Vehicles/ZTD05/BP_ZTD05.BP_ZTD05_C"
+        ]
+      },
+      {
         "name": "Z-8J",
         "rowName": "Z-8J",
         "type": "Z-8J",

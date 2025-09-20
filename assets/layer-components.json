@@ -41996,38 +41996,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -49260,38 +49234,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -55325,38 +55273,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -55509,38 +55431,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -57364,38 +57260,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -57535,38 +57405,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -61233,38 +61077,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -77830,38 +77648,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -81350,38 +81142,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -86908,38 +86674,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -91952,38 +91692,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -94424,38 +94138,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -100694,38 +100382,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -100865,38 +100527,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -101036,38 +100672,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -101934,38 +101544,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -107187,38 +106771,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -127304,38 +126862,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -127488,38 +127020,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -127672,38 +127178,12 @@
       },
       {
         "Faction": "RGF",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "RGF",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
           2
         ],
         "isDefaultUnit": true,
-        "variants": {
-          "boats": false,
-          "noHeli": false
-        }
-      },
-      {
-        "Faction": "USA",
-        "Unit": "LightInfantry",
-        "allowedTeams": [
-          1,
-          2
-        ],
-        "isDefaultUnit": false,
         "variants": {
           "boats": false,
           "noHeli": false
@@ -137715,5 +137195,13 @@
     "Tallil": "TL",
     "Yehorivka": "YH",
     "JensensRange": "JR"
+  },
+  "backwardsCompat": {
+    "factions": {
+      "INS": "MEI"
+    },
+    "gamemodes": {},
+    "maps": {},
+    "units": {}
   }
 }

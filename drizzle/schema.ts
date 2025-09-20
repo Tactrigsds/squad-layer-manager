@@ -10,6 +10,9 @@ export const matchHistory = mysqlTable(
 
 		// may not be in layerId table (RAW: prefix or outdated)
 		layerId: varchar('layerId', { length: 256 }).notNull(),
+
+		// here for forwards compatibility & easy export to other systems
+		rawLayerCommandText: varchar('rawLayerCommandText', { length: 256 }),
 		lqItemId: varchar('lqItemId', { length: 256 }),
 		startTime: timestamp('startTime'),
 		endTime: timestamp('endTime'),

@@ -518,6 +518,9 @@ export type LayerComponents = BaseLayerComponents & {
 	unitAbbreviations: Record<string, string>
 	unitShortNames: Record<string, string>
 	gamemodeAbbreviations: Record<string, string>
+
+	// conversions to attempt after parsing different layer components
+	backwardsCompat: L.BackwardsCompatMappings
 }
 
 export type LayerComponentsJson = BaseLayerComponentsJson & {
@@ -525,6 +528,7 @@ export type LayerComponentsJson = BaseLayerComponentsJson & {
 	unitAbbreviations: Record<string, string>
 	unitShortNames: Record<string, string>
 	gamemodeAbbreviations: Record<string, string>
+	backwardsCompat: L.BackwardsCompatMappings
 }
 
 export function toLayerComponentsJson(components: LayerComponents): LayerComponentsJson {
@@ -547,6 +551,7 @@ export function toLayerComponentsJson(components: LayerComponents): LayerCompone
 		unitAbbreviations: components.unitAbbreviations,
 		unitShortNames: components.unitShortNames,
 		gamemodeAbbreviations: components.gamemodeAbbreviations,
+		backwardsCompat: components.backwardsCompat,
 	}
 }
 
@@ -715,6 +720,15 @@ export function buildFullLayerComponents(
 		AirAssault: 'Air',
 		AmphibiousAssault: 'Amphib',
 	}
+	const BACKWARDS_COMPAT = {
+		factions: {
+			INS: 'MEI',
+		},
+		gamemodes: {},
+		maps: {},
+		units: {},
+	}
+
 	if (!skipValidate) {
 		for (const mapLayer of components.mapLayers) {
 			if (!(mapLayer.Map in MAP_ABBREVIATIONS)) {
@@ -738,6 +752,7 @@ export function buildFullLayerComponents(
 		unitAbbreviations: UNIT_ABBREVIATIONS,
 		unitShortNames: UNIT_SHORT_NAMES,
 		mapAbbreviations: MAP_ABBREVIATIONS,
+		backwardsCompat: BACKWARDS_COMPAT,
 	}
 
 	return layerComponents

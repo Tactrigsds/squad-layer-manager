@@ -60,7 +60,7 @@ test('can set next layer', async () => {
 	if (status1.code !== 'ok') throw new Error('Failed to get server status')
 	const nextLayer1 = status1.data.nextLayer
 	expect(nextLayer1).toBeDefined()
-	if (L.isRawLayer(nextLayer1!)) {
+	if (!L.isKnownLayer(nextLayer1!)) {
 		throw new Error('nextLayer1 is unknown')
 	}
 	expect(nextLayer1!.id).toBe(layer1Id)
@@ -80,7 +80,7 @@ test('can set next layer', async () => {
 	const nextLayer2 = status2.data.nextLayer
 	expect(nextLayer2).toBeDefined()
 
-	if (L.isRawLayer(nextLayer2!)) {
+	if (!L.isKnownLayer(nextLayer2!)) {
 		throw new Error('nextLayer2 is unknown')
 	}
 	expect(nextLayer2!.id).toBe(layer2Id)

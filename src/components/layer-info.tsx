@@ -31,7 +31,7 @@ type LayerInfoContentProps = {
 }
 
 export default function LayerInfoDialog(props: LayerInfoProps) {
-	const isKnownLayer = L.isKnownLayer(props.layerId)
+	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
 	if (!isKnownLayer) return null
 
 	return (

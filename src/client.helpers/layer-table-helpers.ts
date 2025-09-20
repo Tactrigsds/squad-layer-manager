@@ -6,7 +6,7 @@ export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
 	let text = ''
 	for (const layerId of selectedLayerIds) {
 		if (text !== '') text += '\n'
-		text += L.getAdminSetNextLayerCommand(layerId)
+		text += L.getLayerCommand(layerId, 'set-next')
 	}
 	navigator.clipboard.writeText(text)
 	globalToast$.next({

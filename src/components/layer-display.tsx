@@ -1,4 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import * as DH from '@/lib/display-helpers.ts'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
@@ -59,9 +60,10 @@ export default function LayerDisplay(
 		)
 	}
 
+	const layer = L.toLayer(props.item.layerId)
 	if (layerStatusesRes.data) {
 		const exists = layerStatusesRes.data.present.has(props.item.layerId)
-		if (!exists && !L.isRawLayerId(props.item.layerId)) {
+		if (!exists) {
 			badges.push(
 				<Tooltip key="layer doesn't exist">
 					<TooltipTrigger>
@@ -75,15 +77,15 @@ export default function LayerDisplay(
 		}
 	}
 
-	if (L.isRawLayerId(props.item.layerId)) {
+	if (!L.isKnownLayer(layer)) {
 		badges.push(
-			<Tooltip key="is raw layer">
+			<Tooltip key="is unknown layer">
 				<TooltipTrigger>
 					<Icons.ShieldOff className="text-red-500" />
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						This layer is unknown and was not able to be fully parsed (<b>{props.item.layerId.slice('RAW:'.length)}</b>)
+						This layer is unknown and was not able to be fully parsed: (<b>{DH.displayUnvalidatedLayer(layer)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,

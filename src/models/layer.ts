@@ -1,9 +1,12 @@
 import _StaticFactionunitConfigs from '$root/assets/factionunit-configs.json'
 import _StaticLayerComponents from '$root/assets/layer-components.json'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
+import { KnownPublicKeys } from 'ssh2'
 import * as z from 'zod'
+import { getAllLayerIds } from './layer-queries.models'
 
 export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
 
@@ -73,7 +76,7 @@ export type RawLayer = UnvalidatedLayer & {
 
 export const LayerIdSchema = z.string().min(1).max(255).refine(id => {
 	if (id.startsWith('RAW:')) return true
-	const res = parseKnownLayerId(id)
+	const res = parseLayerId(id)
 	if (res.code !== 'ok') {
 		return false
 	}
@@ -86,30 +89,59 @@ export type LayerId = z.infer<typeof LayerIdSchema>
 
 export type UnvalidatedLayer = Partial<KnownLayer> & { Layer: string; id: string }
 
-function getKnownLayerIdRegex(components = StaticLayerComponents) {
-	const mapAbbrs = Object.values(components.mapAbbreviations).join('|')
-	const gamemodeAbbrs = Object.values(components.gamemodeAbbreviations).join('|')
-	const factions = components.factions.join('|')
-	const unitAbbrs = Object.values(components.unitAbbreviations).join('|')
+const knownLayerIdRegex =
+	/^(?<mapPart>[A-Za-z]+)-(?<gamemodePart>[A-Za-z]+)(?:-(?<versionPart>[A-Z0-9]+))?:(?<faction1>[A-Za-z]+)(?:-(?<unit1Abbr>[A-Za-z]+))?:(?<faction2>[A-Za-z]+)(?:-(?<unit2Abbr>[A-Za-z]+))?$/
 
-	return new RegExp(
-		`^(?<mapPart>${mapAbbrs})-(?<gamemodePart>${gamemodeAbbrs})(?:-(?<versionPart>[A-Z0-9]+))?:(?<faction1>${factions})(?:-(?<unit1Abbr>${unitAbbrs}))?:(?<faction2>${factions})(?:-(?<unit2Abbr>${unitAbbrs}))?$`,
-	)
-}
+// these two schemas should probably be kept internal to this module
+const LayerIdArgsSchema = z.object({
+	Map: z.string(),
+	Gamemode: z.string(),
+	LayerVersion: z.string().nullable(),
+	Faction_1: z.string(),
+	Faction_2: z.string(),
+	Unit_1: z.string(),
+	Unit_2: z.string(),
+})
 
-let knownLayerIdRegex!: RegExp
-function ensureIdRegexInitialized() {
-	if (knownLayerIdRegex) return
-	knownLayerIdRegex = getKnownLayerIdRegex(StaticLayerComponents)
-}
+const KnownLayerSchema = z.object({
+	// known layers can now have raw layer ids
+	id: z.string(),
+	...LayerIdArgsSchema.shape,
+	Alliance_1: z.string(),
+	Alliance_2: z.string(),
+})
 
+// expects and backwards compat mappings to be applied already
 export function isKnownLayer(layer: UnvalidatedLayer | LayerId, components = StaticLayerComponents): layer is KnownLayer {
-	const id = typeof layer === 'string' ? layer : layer.id
-	ensureIdRegexInitialized()
-	return (id !== undefined && !id.startsWith('RAW:') && parseKnownLayerId(id, components).code === 'ok')
+	layer = toLayer(layer)
+	if (!KnownLayerSchema.safeParse(layer).success) return false
+	const mapping = {
+		Map: components.maps,
+		Size: components.size,
+		Layer: components.layers,
+		Gamemode: components.gamemodes,
+		LayerVersion: components.versions,
+		Faction_1: components.factions,
+		Faction_2: components.factions,
+		Unit_1: components.units,
+		Unit_2: components.units,
+		Alliance_1: components.alliances,
+		Alliance_2: components.alliances,
+	}
+
+	for (const [key] of Obj.objEntries(mapping)) {
+		// @ts-expect-error idgaf
+		if (!mapping[key].includes(layer[key])) {
+			return false
+		}
+	}
+	return true
 }
 
 export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayerComponents) {
+	if (!LayerIdArgsSchema.safeParse(layer).success) {
+		return false
+	}
 	if (!components.mapAbbreviations[layer.Map] && !Object.values(components.mapAbbreviations).includes(layer.Map)) {
 		return false
 	}
@@ -152,6 +184,7 @@ export function getLayerIdTeamString(faction: string, unit: string, components =
 
 export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents) {
 	if (!areLayerIdArgsValid(layer, components)) {
+		debugger
 		return null
 	}
 	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
@@ -165,12 +198,14 @@ export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComp
 			const factionProp = `Faction_${prop}` as const
 			layer[unitProp] = lookupDefaultUnit(getLayerString(layer), layer[factionProp])
 			if (!layer[unitProp]) {
+				debugger
 				return null
 			}
 		}
 
 		// Validate unit exists
 		if (!components.unitAbbreviations[layer[unitProp]!]) {
+			debugger
 			return null
 		}
 	}
@@ -184,7 +219,7 @@ export function getKnownLayer(layer: LayerIdArgs): KnownLayer | null {
 	if (id === null) return null
 
 	// TODO kind of wasteful, could implement separate routine based directly on `layer`
-	const res = parseKnownLayerId(id)
+	const res = parseLayerId(id)
 	if (res.code !== 'ok') return null
 	return res.layer
 }
@@ -197,60 +232,59 @@ export function isRawLayerId(layerId: LayerId) {
 	return layerId.startsWith('RAW:')
 }
 
-export function parseKnownLayerId(id: string, components = StaticLayerComponents) {
-	ensureIdRegexInitialized()
+export function parseLayerId(id: string, components = StaticLayerComponents) {
 	const match = knownLayerIdRegex.exec(id)
 
 	if (!match || !match.groups) {
 		return { code: 'err:invalid-layer-id' as const, msg: `Invalid layer ID: ${id}` }
 	}
 
-	const { mapPart, gamemodePart, versionPart, faction1, unit1Abbr, faction2, unit2Abbr } = match.groups
+	const { mapPart, gamemodePart, versionPart, unit1Abbr, unit2Abbr } = match.groups
+	let { faction1, faction2 } = match.groups
+	const converted = applyBackwardsCompatMappings({ Faction_1: faction1, Faction_2: faction2 }, components)
+	faction1 = converted.Faction_1
+	faction2 = converted.Faction_2
 
-	const gamemode = Obj.revLookup(components.gamemodeAbbreviations, gamemodePart)
-	const map = Obj.revLookup(components.mapAbbreviations, mapPart)
-	const unit1 = Obj.revLookup(components.unitAbbreviations, unit1Abbr)
-	const unit2 = Obj.revLookup(components.unitAbbreviations, unit2Abbr)
+	const gamemode = Obj.revLookup(components.gamemodeAbbreviations, gamemodePart) as string | undefined
+	const map = Obj.revLookup(components.mapAbbreviations, mapPart) as string | undefined
+	const unit1 = Obj.revLookup(components.unitAbbreviations, unit1Abbr) as string | undefined
+	const unit2 = Obj.revLookup(components.unitAbbreviations, unit2Abbr) as string | undefined
 
 	const layerVersion = versionPart ? versionPart.toUpperCase() : null
-	let layer: string | undefined
+	let layerString: string | undefined
 	if (gamemode === 'Training') {
-		layer = `${map}_${faction1}-${faction2}`
-		if (!components.layers.includes(layer)) {
+		layerString = `${map}_${faction1}-${faction2}`
+		if (!components.layers.includes(layerString)) {
 			return {
 				code: 'err:unknown-training-layer' as const,
 				msg: `Unknown Training layer: ${id}`,
 			}
 		}
 	} else {
-		layer = components.layers.find(
-			(l) => l.startsWith(`${map}_${gamemode}`) && (!layerVersion || l.endsWith(layerVersion.toLowerCase())),
-		)
-		if (!layer) {
-			return {
-				code: 'err:unknown-layer' as const,
-				msg: `Unknown layer: ${map}_${gamemode}${layerVersion ? `_${layerVersion.toLowerCase()}` : ''}`,
-			}
-		}
+		layerString = `${map}_${gamemode}${layerVersion ? `_${layerVersion.toLowerCase()}` : ''}`
 	}
-	const mapLayer = components.mapLayers.find(l => l.Layer === layer)
+	const mapLayer = components.mapLayers.find(l => l.Layer === layerString)
+
+	const layer = {
+		id,
+		Map: map,
+		Layer: layerString,
+		Size: mapLayer?.Size,
+		Gamemode: gamemode,
+		LayerVersion: layerVersion,
+		Faction_1: faction1,
+		Unit_1: unit1,
+		Alliance_1: components.factionToAlliance[faction1],
+		Faction_2: faction2,
+		Unit_2: unit2,
+		Alliance_2: components.factionToAlliance[faction2],
+	}
+
+	if (!isKnownLayer(layer)) return { code: 'err:unknown-layer' as const, layer }
 
 	return {
 		code: 'ok' as const,
-		layer: {
-			id,
-			Map: map,
-			Layer: layer,
-			Size: mapLayer!.Size,
-			Gamemode: gamemode,
-			LayerVersion: layerVersion,
-			Faction_1: faction1,
-			Unit_1: unit1,
-			Alliance_1: components.factionToAlliance[faction1],
-			Faction_2: faction2,
-			Unit_2: unit2,
-			Alliance_2: components.factionToAlliance[faction2],
-		},
+		layer,
 	}
 }
 
@@ -296,39 +330,50 @@ export function fromPossibleRawId(id: string, components = StaticLayerComponents
 	if (id.startsWith('RAW:')) {
 		return parseRawLayerText(id.slice('RAW:'.length))!
 	}
-	const res = parseKnownLayerId(id, components)
-	if (res.code !== 'ok') throw new Error(res.msg)
-	return res.layer
+	const res = parseLayerId(id, components)
+	switch (res.code) {
+		case 'ok':
+			return res.layer
+		case 'err:unknown-layer':
+			return res.layer
+		case 'err:invalid-layer-id':
+		case 'err:unknown-training-layer':
+			throw new Error(res.msg)
+		default:
+			assertNever(res)
+	}
 }
 
-export function getAdminSetNextLayerCommand(layerOrId: UnvalidatedLayer | LayerId) {
+export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 'set-next' | 'change-layer') {
+	cmdType ??= 'set-next'
 	if (layerOrId === 'string' && layerOrId.startsWith('RAW')) return layerOrId.slice('RAW:'.length)
 	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId) : layerOrId
 	if (isRawLayer(layer)) return layer.id.slice('RAW:'.length)
 	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
 		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
+	const cmd = cmdType === 'set-next' ? 'AdminSetNextLayer' : 'AdminChangeLayer'
 	if (layer.Layer.startsWith('JensensRange')) {
-		return `AdminSetNextLayer ${layer.Layer}`
+		return `${cmd} ${layer.Layer}`
 	}
 
-	let cmd = `AdminSetNextLayer ${layer.Layer?.replace('FRAAS', 'RAAS')}`
+	let fullCommand = `${cmd} ${layer.Layer?.replace('FRAAS', 'RAAS')}`
 	if (layer.Faction_1) {
-		cmd += ' '
-		cmd += getFactionModifier(layer.Faction_1, layer.Unit_1 ?? lookupDefaultUnit(layer.Layer, layer.Faction_1)!)
+		fullCommand += ' '
+		fullCommand += getFactionModifier(layer.Faction_1, layer.Unit_1 ?? lookupDefaultUnit(layer.Layer, layer.Faction_1)!)
 	}
 	if (layer.Faction_1 && layer.Faction_2) {
-		cmd += ' '
-		cmd += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2)!)
+		fullCommand += ' '
+		fullCommand += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2)!)
 	}
 
-	return cmd
+	return fullCommand
 }
 
 export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null {
-	let knownLayerRes = parseKnownLayerId(rawLayerText)
+	let knownLayerRes = parseLayerId(rawLayerText)
 	if (knownLayerRes.code === 'ok') return knownLayerRes.layer
-	rawLayerText = rawLayerText.replace(/^AdminSetNextLayer/, '').trim().replace(/\s+/g, ' ')
+	rawLayerText = rawLayerText.replace(/^(AdminSetNextLayer|AdminChangeLayer)/, '').trim().replace(/\s+/g, ' ')
 	const [layerString, faction1String, faction2String] = rawLayerText.split(' ')
 	if (!layerString?.trim()) return null
 	const parsedLayer = parseLayerStringSegment(layerString)
@@ -342,14 +387,16 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 	if (!parsedLayer || !faction1 || !faction2) {
 		return {
 			id: 'RAW:' + rawLayerText,
-			Map: parsedLayer?.Map,
-			Layer: layerString,
-			Gamemode: parsedLayer?.Gamemode,
-			LayerVersion: parsedLayer?.LayerVersion ?? null,
-			Faction_1: faction1?.faction,
-			Unit_1: faction1?.unit ?? undefined,
-			Faction_2: faction2?.faction,
-			Unit_2: faction2?.unit ?? undefined,
+			...applyBackwardsCompatMappings({
+				Map: parsedLayer?.Map,
+				Layer: layerString,
+				Gamemode: parsedLayer?.Gamemode,
+				LayerVersion: parsedLayer?.LayerVersion ?? null,
+				Faction_1: faction1?.faction,
+				Unit_1: faction1?.unit ?? undefined,
+				Faction_2: faction2?.faction,
+				Unit_2: faction2?.unit ?? undefined,
+			}),
 		}
 	}
 	const {
@@ -358,7 +405,7 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 		LayerVersion: version,
 	} = parsedLayer
 
-	const layerIdArgs: LayerIdArgs = {
+	const layerIdArgs: LayerIdArgs = applyBackwardsCompatMappings({
 		Map: map,
 		Gamemode: gamemode,
 		LayerVersion: version ?? null,
@@ -366,23 +413,25 @@ export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null
 		Unit_1: faction1.unit ?? undefined,
 		Faction_2: faction2.faction,
 		Unit_2: faction2.unit ?? undefined,
-	}
+	})
 
 	const id = getKnownLayerId(layerIdArgs)
 	if (id != null) {
-		knownLayerRes = parseKnownLayerId(id)
+		knownLayerRes = parseLayerId(id)
 		if (knownLayerRes.code === 'ok') return knownLayerRes.layer
 	}
 	return {
 		id: `RAW:${rawLayerText}`,
-		Map: map,
-		Layer: layerString,
-		Gamemode: gamemode,
-		LayerVersion: version ?? null,
-		Faction_1: faction1.faction,
-		Unit_1: faction1.unit ?? undefined,
-		Faction_2: faction2.faction,
-		Unit_2: faction2.unit ?? undefined,
+		...applyBackwardsCompatMappings({
+			Map: map,
+			Layer: layerString,
+			Gamemode: gamemode,
+			LayerVersion: version ?? null,
+			Faction_1: faction1.faction,
+			Unit_1: faction1.unit ?? undefined,
+			Faction_2: faction2.faction,
+			Unit_2: faction2.unit ?? undefined,
+		}),
 	}
 }
 
@@ -458,7 +507,11 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 	for (let i = 0; i < 2; i++) {
 		const factionString = i === 0 ? faction1String : faction2String
 		if (!factionString) continue
-		const [faction, unit] = factionString.split('+').map(s => s.trim())
+		let [faction, unit] = factionString.split('+').map(s => s.trim())
+		// 1/2 doesn't matter with this function application
+		const converted = applyBackwardsCompatMappings({ Faction_1: faction, Unit_1: unit })
+		faction = converted.Faction_1
+		unit = converted.Unit_1
 		if (!faction) continue
 		parsedFactions[i] = {
 			faction: faction.trim(),
@@ -574,4 +627,26 @@ export type MapConfigTeam = {
 	defaultFaction: string
 	tickets: number
 	role?: 'attack' | 'defend'
+}
+
+export type BackwardsCompatMappings = Record<'factions' | 'units' | 'gamemodes' | 'maps', Record<string, string>>
+
+export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(layer: T, components = StaticLayerComponents) {
+	const updated = { ...layer }
+	const mapping = {
+		Faction_1: components.backwardsCompat.factions,
+		Faction_2: components.backwardsCompat.factions,
+		Gamemode: components.backwardsCompat.gamemodes,
+		Map: components.backwardsCompat.maps,
+		Unit: components.backwardsCompat.units,
+	}
+	for (const [_key, value] of Object.entries(updated)) {
+		const key = _key as keyof KnownLayer
+		if (value === null) continue
+		if (key in mapping) {
+			// @ts-expect-error idgaf
+			updated[key] = mapping[key][value] ?? value
+		}
+	}
+	return updated
 }

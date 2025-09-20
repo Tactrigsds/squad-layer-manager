@@ -226,7 +226,7 @@ export default class SquadRcon {
 	}
 
 	setNextLayer = C.spanOp('squad-rcon:setNextLayer', { tracer }, async (ctx: CS.Log, layer: L.LayerId | L.UnvalidatedLayer) => {
-		const cmd = L.getAdminSetNextLayerCommand(layer)
+		const cmd = L.getLayerCommand(layer, 'set-next')
 		ctx.log.info(`Setting next layer: %s, `, cmd)
 		await this.core.execute(ctx, cmd)
 		this.layersStatus.invalidate(ctx)

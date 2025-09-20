@@ -1,0 +1,1 @@
+ALTER TABLE `matchHistory` ADD `rawLayerId` varchar(256);

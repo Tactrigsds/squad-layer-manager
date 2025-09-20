@@ -130,13 +130,18 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 				Unit_2: row['Unit_2'],
 			}
 			const ids = [L.getKnownLayerId(idArgs, components)!]
-			if (ids[0] == null || !L.isKnownLayer(ids[0], components)) return
+			if (ids[0] == null) return
 			// for now we're just using the same data for FRAAS as RAAS
 			if (segments.Gamemode === 'RAAS') {
 				ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
 			}
 			const extraColsRow = extraColsZodSchema.parse(row)
 			for (const layerId of ids) {
+				if (!L.isKnownLayer(L.toLayer(layerId, components), components)) {
+					ctx.log.warn(`Unknown layer ${layerId}`)
+					debugger
+					continue
+				}
 				if (seenIds.has(layerId)) {
 					ctx.log.warn(`Duplicate extra layer ${layerId} found`)
 					continue
@@ -389,7 +394,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				if (availEntry1.Unit) components.units.add(availEntry1.Unit)
 				if (availEntry2.Unit) components.units.add(availEntry2.Unit)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
-				const layerId = L.getKnownLayerId({
+				const idArgs = {
 					Map: layer.Map,
 					LayerVersion: parsedSegments.LayerVersion,
 					Gamemode: parsedSegments.Gamemode,
@@ -397,8 +402,10 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
 					Unit_2: availEntry2.Unit ?? null,
-				}, LC.toLayerComponentsJson(components))!
-				const baseLayer = {
+				}
+				const layerId = L.getKnownLayerId(idArgs, LC.toLayerComponentsJson(components))!
+				if (layerId === null) throw new Error(`Invalid layer ID: ${JSON.stringify(idArgs)}`)
+				const baseLayer: L.KnownLayer = {
 					id: layerId,
 					Map: layer.Map,
 					Layer: layer.Layer,

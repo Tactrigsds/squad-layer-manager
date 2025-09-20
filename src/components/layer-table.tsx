@@ -649,7 +649,7 @@ export default function LayerTable(props: {
 					open={rawSetDialogOpen}
 					setOpen={setRawSetDialogOpen}
 					defaultValue={props.editingSingleValue && props.selected.length === 1
-						? L.getAdminSetNextLayerCommand(props.selected[0])
+						? L.getLayerCommand(props.selected[0], 'set-next')
 						: undefined}
 					onSubmit={layers => {
 						if (props.editingSingleValue) {

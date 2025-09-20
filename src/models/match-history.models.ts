@@ -11,11 +11,14 @@ export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 type MatchDetailsCommon = {
 	layerSource: LL.LayerSource
 	ordinal: number
+	// parsed layerId may be from NewMatchHistory.rawLayerCommandText if the layerId is not known
 	layerId: L.LayerId
+	rawLayerCommandText?: string
 	lqItemId?: string
 	historyEntryId: number
 	startTime?: Date
 }
+
 // Details about current match besides the layer
 export type MatchDetails =
 	| ({
@@ -142,7 +145,8 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	const shared = {
 		layerSource: layerSource,
 		// TODO: find a smart way to handle legacy layer ids
-		layerId: L.isKnownLayer(entry.layerId) ? entry.layerId : L.DEFAULT_LAYER_ID,
+		layerId: entry.layerId,
+		rawLayerCommandText: entry.rawLayerCommandText ?? undefined,
 		startTime: entry.startTime ?? undefined,
 		historyEntryId: entry.id,
 		ordinal: entry.ordinal,
@@ -194,9 +198,15 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 }
 
 export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails, layerVote?: V.VoteState): SchemaModels.MatchHistory {
+	let layerId = matchDetails.layerId
+	if (!L.isKnownLayer(layerId) && matchDetails.rawLayerCommandText) {
+		const layer = L.parseRawLayerText(matchDetails.rawLayerCommandText)
+		if (layer && L.isKnownLayer(layer)) layerId = layer.id
+	}
 	const entry: SchemaModels.MatchHistory = {
 		id: matchDetails.historyEntryId,
-		layerId: matchDetails.layerId,
+		layerId,
+		rawLayerCommandText: matchDetails.rawLayerCommandText ?? null,
 		lqItemId: matchDetails.lqItemId ?? null,
 		layerVote: layerVote ?? null,
 		ordinal: matchDetails.ordinal,
@@ -259,6 +269,7 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; startTime: Date; lqItem?: LL.LayerListItem }) {
 	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
 		layerId: opts.layerId,
+		rawLayerCommandText: L.getLayerCommand(opts.layerId, 'set-next'),
 		startTime: opts.startTime,
 		setByType: 'unknown',
 	}
