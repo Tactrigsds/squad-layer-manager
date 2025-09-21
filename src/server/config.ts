@@ -1,5 +1,5 @@
 import * as DH from '@/lib/display-helpers.ts'
-import { selectProps } from '@/lib/object.ts'
+import * as Obj from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CMD from '@/models/command.models.ts'
@@ -31,14 +31,10 @@ export const ConfigSchema = z.object({
 		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(['map', 'gamemode']).describe(
 			'What parts of a layer setup should be displayed',
 		),
+		steamLinkCodeExpiry: HumanTime.default('15m').describe('Duration of a steam account link code'),
 	}),
 	// we have to ues .optional instead of .default here to avoid circular type definitions
-	commands: z.object(
-		Object.fromEntries(CMD.COMMAND_IDS.options.map(id => [id, CMD.CommandConfigSchema(id)])) as Record<
-			CMD.CommandId,
-			ReturnType<typeof CMD.CommandConfigSchema>
-		>,
-	).default(CMD.COMMAND_DEFAULTS),
+	commands: CMD.AllCommandConfigSchema,
 	reminders: z.object({
 		lowQueueWarningThreshold: z
 			.number()
@@ -128,7 +124,7 @@ export type PublicConfig = ReturnType<typeof getPublicConfig>
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
-		...selectProps(CONFIG, ['maxQueueSize', 'defaults', 'topBarColor', 'layerTable']),
+		...Obj.selectProps(CONFIG, ['maxQueueSize', 'defaults', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,

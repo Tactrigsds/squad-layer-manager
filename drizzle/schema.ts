@@ -114,6 +114,16 @@ export const users = mysqlTable('users', {
 	avatar: varchar('avatar', { length: 255 }),
 })
 
+export const steamAccounts = mysqlTable('steamAccounts', {
+	discordId: bigint('discordId', { mode: 'bigint', unsigned: true })
+		.notNull()
+		.primaryKey().references(() => users.discordId, { onDelete: 'cascade' }),
+	steam64Id: bigint('steam64Id', { mode: 'bigint', unsigned: true })
+		.notNull()
+		.primaryKey(),
+	rowTimestamp: timestamp('rowTimestamp').notNull().defaultNow(),
+})
+
 export type User = typeof users.$inferSelect
 
 export const sessions = mysqlTable(
