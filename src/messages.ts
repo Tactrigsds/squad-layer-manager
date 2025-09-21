@@ -181,6 +181,8 @@ export const WARNS = {
 
 			return { msg: groupsJoined, repeat: 3 }
 		},
+		missingSteamId: () => `You are not signed in as a Steam user.`,
+		steamAccountLinked: (username: string) => `Your Steam account has been linked to discord user ${username}.`,
 	},
 	permissionDenied(res: RBAC.PermissionDeniedResponse) {
 		return `Permission denied. You need ${res.check} of the following ${res.permits.map((p) => p.type).join(', ')}`
@@ -233,6 +235,7 @@ export const GENERAL = {
 			enableSlmUpdates: 'Allow SLM to set the next layer',
 			disableSlmUpdates: 'Prevent SLM from setting the next layer',
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
+			linkSteamAccount: 'Link your Steam account to your Squad account',
 		},
 	},
 }

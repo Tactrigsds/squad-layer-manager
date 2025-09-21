@@ -41,6 +41,11 @@
           },
           "default": ["map", "gamemode"],
           "description": "What parts of a layer setup should be displayed"
+        },
+        "steamLinkCodeExpiry": {
+          "$ref": "#/properties/defaults/properties/voteDuration",
+          "default": "15m",
+          "description": "Duration of a steam account link code"
         }
       },
       "additionalProperties": false
@@ -234,6 +239,33 @@
             "strings": ["get-slm-status"],
             "enabled": true
           }
+        },
+        "linkSteamAccount": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["link-steam-account"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Scopes in which this command is available"
+            },
+            "enabled": {"type": "boolean", "default": true}
+          },
+          "additionalProperties": false,
+          "description": "Link your Steam account to your Squad account",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["link-steam-account"],
+            "enabled": true
+          }
         }
       },
       "additionalProperties": false,
@@ -271,6 +303,11 @@
         "getSlmUpdatesEnabled": {
           "scopes": ["admin"],
           "strings": ["get-slm-status"],
+          "enabled": true
+        },
+        "linkSteamAccount": {
+          "scopes": ["admin"],
+          "strings": ["link-steam-account"],
           "enabled": true
         }
       }

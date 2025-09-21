@@ -21,6 +21,7 @@ import { baseLogger } from '@/server/logger'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as Users from '@/server/systems/users.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 import StringComparison from 'string-comparison'
@@ -102,22 +103,14 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 		}
 	}
 
-	const words = msg.message.split(/\s+/)
-	const cmdText = words[0].slice(1)
-	// const args = words.slice(1)
-	const cmd = CMD.matchCommandText(CONFIG.commands, cmdText)
-	if (cmd === null) {
-		const allCommandStrings = Object.values(CONFIG.commands)
-			.filter((c) => CMD.chatInScope(c.scopes, msg.chat))
-			.flatMap((c) => c.strings)
-			.map((s) => CONFIG.commandPrefix + s)
-		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
-		if (sortedMatches.length === 0) {
-			return await showError('unknown-command', `Unknown command "${words[0]}"`)
-		}
-		const matched = sortedMatches[sortedMatches.length - 1].member
-		return await showError('unknown-command', `Unknown command "${words[0]}". Did you mean ${matched}?`)
+	const parseRes = CMD.parseCommand(msg, CONFIG.commands, CONFIG.commandPrefix)
+	if (parseRes.code === 'err:unknown-command') {
+		await rcon.warn(ctx, msg.playerId, parseRes.msg)
+		return
 	}
+
+	const { cmd, args } = parseRes
+
 	ctx.log.info('Command received: %s', cmd)
 
 	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
@@ -198,6 +191,25 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 			const res = await LayerQueue.getSlmUpdatesEnabled(ctx)
 			await rcon.warn(ctx, msg.playerId, Messages.WARNS.slmUpdatesStatus(res.enabled))
 			return { code: 'ok' as const }
+		}
+		case 'linkSteamAccount': {
+			if (!msg.steamID) {
+				await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.missingSteamId())
+				return { code: 'err:missing-steam-id' as const }
+			}
+			const res = await Users.completeSteamAccountLink(ctx, args.code, BigInt(msg.steamID))
+			switch (res.code) {
+				case 'ok':
+					await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.steamAccountLinked(res.linkedUsername))
+					return { code: 'ok' as const }
+				case 'err:invalid-code':
+				case 'err:discord-user-not-found':
+					await rcon.warn(ctx, msg.playerId, res.msg)
+					return res
+				default:
+					assertNever(res)
+					return res
+			}
 		}
 		default: {
 			assertNever(cmd)

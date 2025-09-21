@@ -11,6 +11,7 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import * as Zus from 'zustand'
 import CommandsHelpDialog from './commands-help-dialog'
+import LinkSteamAccountDialog from './link-steam-account-dialog'
 import { ServerUnreachable } from './server-offline-display'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
@@ -26,7 +27,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
 		: 'https://cdn.discordapp.com/embed/avatars/0.png'
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -36,6 +37,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	}
 	const onCommandsHelpOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'commands' : null)
+	}
+	const onSteamLinkOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'steam-link' : null)
 	}
 	const { theme, setTheme } = ThemeClient.useTheme()
 	const config = ConfigClient.useConfig()
@@ -146,6 +150,12 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										Commands
 									</DropdownMenuItem>
 								</CommandsHelpDialog>
+								<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
+									<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
+										<Icons.Link className="mr-2 h-4 w-4" />
+										Link Steam Account
+									</DropdownMenuItem>
+								</LinkSteamAccountDialog>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}
