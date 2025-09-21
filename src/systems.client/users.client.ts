@@ -1,11 +1,14 @@
+import { fromTrpcSub } from '@/lib/trpc-helpers'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
 import * as RbacClient from '@/systems.client/rbac.client'
 import { reactQueryClient, trpc } from '@/trpc.client'
+import * as ReactRx from '@react-rxjs/core'
 import { useQuery } from '@tanstack/react-query'
 import deepEqual from 'fast-deep-equal'
 import * as React from 'react'
+import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 
@@ -73,9 +76,7 @@ export async function fetchLoggedInUser() {
 }
 
 export function invalidateLoggedInUser() {
-	reactQueryClient.invalidateQueries({
-		queryKey: ['getLoggedInUser'],
-	})
+	reactQueryClient.invalidateQueries(loggedInUserBaseQuery)
 }
 
 export function setup() {
@@ -87,3 +88,11 @@ export function setup() {
 		invalidateLoggedInUser()
 	})
 }
+
+export const [useSteamAccountLinkCompleted, steamAccountLinkCompleted$] = ReactRx.bind<{ discordId: bigint }>(
+	fromTrpcSub(undefined, trpc.users.watchSteamAccountLinkCompletion.subscribe).pipe(Rx.tap({
+		next: () => {
+			return invalidateLoggedInUser()
+		},
+	})),
+)

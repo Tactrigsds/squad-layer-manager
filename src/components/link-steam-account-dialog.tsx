@@ -1,9 +1,11 @@
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { cn } from '@/lib/utils'
+import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
+import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -13,11 +15,20 @@ interface LinkSteamAccountDialogProps {
 	open?: boolean
 	onOpenChange?: (newState: boolean) => void
 }
+export default function LinkSteamAccountDialogWrapper(props: LinkSteamAccountDialogProps) {
+	return (
+		<ReactRx.Subscribe source$={UsersClient.steamAccountLinkCompleted$}>
+			<LinkSteamAccountDialog {...props} />
+		</ReactRx.Subscribe>
+	)
+}
 
-export default function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccountDialogProps) {
+function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccountDialogProps) {
 	const queryClient = useQueryClient()
 	const [command, setCommand] = React.useState<string | null>(null)
 	const [copyStatus, setCopyStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle')
+
+	const loggedInUser = UsersClient.useLoggedInUser()
 
 	const beginLinkMutation = useMutation({
 		mutationFn: () => trpc.users.beginSteamAccountLink.mutate(),
@@ -38,7 +49,7 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 		onSuccess: (result) => {
 			setCommand(null)
 			setCopyStatus('idle')
-			queryClient.invalidateQueries({ queryKey: ['getLoggedInUser'] })
+			UsersClient.invalidateLoggedInUser()
 			if (result.code === 'ok') {
 				globalToast$.next({
 					title: 'Steam account linking cancelled',
@@ -48,6 +59,31 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 		},
 		onError: (error) => {
 			console.error('Failed to cancel steam account links:', error)
+		},
+	})
+
+	const unlinkMutation = useMutation({
+		mutationFn: () => trpc.users.unlinkSteamAccount.mutate(),
+		onSuccess: (result) => {
+			UsersClient.invalidateLoggedInUser()
+			if (result.code === 'ok') {
+				globalToast$.next({
+					title: 'Steam account unlinked successfully',
+					variant: 'default',
+				})
+			} else {
+				globalToast$.next({
+					title: result.msg || 'Failed to unlink Steam account',
+					variant: 'destructive',
+				})
+			}
+		},
+		onError: (error) => {
+			console.error('Failed to unlink steam account:', error)
+			globalToast$.next({
+				title: 'Failed to unlink Steam account',
+				variant: 'destructive',
+			})
 		},
 	})
 
@@ -69,13 +105,17 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 		beginLinkMutation.mutate()
 	}
 
+	const handleUnlink = () => {
+		unlinkMutation.mutate()
+	}
+
 	const handleManualCopy = () => {
 		if (command) {
 			copyToClipboard(command)
 		}
 	}
 
-	const handleDialogOpenChange = (newState: boolean) => {
+	const handleDialogOpenChange = React.useCallback((newState: boolean) => {
 		if (!newState) {
 			// Reset state and cancel any pending link when closing dialog
 			if (command) {
@@ -85,7 +125,20 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 			setCopyStatus('idle')
 		}
 		onOpenChange?.(newState)
-	}
+	}, [cancelLinkMutation, command, onOpenChange])
+
+	React.useEffect(() => {
+		const sub = UsersClient.steamAccountLinkCompleted$.subscribe(() => {
+			globalToast$.next({
+				variant: 'default',
+				title: 'Steam account linked successfully!',
+			})
+			handleDialogOpenChange(false)
+		})
+		return () => {
+			sub.unsubscribe()
+		}
+	}, [handleDialogOpenChange])
 
 	const getCopyButtonContent = () => {
 		switch (copyStatus) {
@@ -120,18 +173,59 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 			</DialogTrigger>
 			<DialogContent className="max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>Link Steam Account</DialogTitle>
-					<DialogDescription>
-						Link your Steam account to your Discord profile for enhanced features and permissions.
-					</DialogDescription>
+					<DialogTitle>
+						Linked Accounts
+					</DialogTitle>
 				</DialogHeader>
 
 				<div className="space-y-4">
-					{!command
+					{loggedInUser?.steam64Id
+						? (
+							<div className="space-y-4">
+								<Alert>
+									<Icons.CheckCircle className="h-4 w-4" />
+									<AlertDescription>
+										<div className="space-y-2">
+											<div>Your Steam account is already linked!</div>
+											<div className="text-sm text-muted-foreground">
+												Steam64 ID: <code className="bg-muted px-1 py-0.5 rounded text-xs">{loggedInUser.steam64Id.toString()}</code>
+											</div>
+										</div>
+									</AlertDescription>
+								</Alert>
+
+								<div className="flex justify-center">
+									<Button
+										onClick={handleUnlink}
+										disabled={unlinkMutation.isPending}
+										variant="outline"
+										size="lg"
+									>
+										{unlinkMutation.isPending
+											? (
+												<>
+													<Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />
+													Unlinking...
+												</>
+											)
+											: (
+												<>
+													<Icons.Unlink className="mr-2 h-4 w-4" />
+													Unlink Steam Account
+												</>
+											)}
+									</Button>
+								</div>
+							</div>
+						)
+						: !command
 						? (
 							<div className="space-y-4">
 								<Alert>
 									<Icons.Info className="h-4 w-4" />
+									<AlertTitle>
+										Link Steam Account
+									</AlertTitle>
 									<AlertDescription>
 										Generate a command to execute in-game. It will be automatically copied to your clipboard.
 									</AlertDescription>
@@ -164,6 +258,10 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 							<div className="space-y-4">
 								<Alert>
 									<Icons.CheckCircle className="h-4 w-4" />
+
+									<AlertTitle>
+										Link Steam Account
+									</AlertTitle>
 									<AlertDescription className="flex items-center justify-between">
 										<span>
 											Command <code className="bg-muted px-1 py-0.5 rounded text-xs">{command}</code> was copied to your clipboard!
@@ -211,6 +309,15 @@ export default function LinkSteamAccountDialog({ children, open, onOpenChange }:
 							<Icons.AlertTriangle className="h-4 w-4" />
 							<AlertDescription>
 								Failed to cancel link. Please try again.
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{unlinkMutation.error && (
+						<Alert variant="destructive">
+							<Icons.AlertTriangle className="h-4 w-4" />
+							<AlertDescription>
+								Failed to unlink Steam account. Please try again.
 							</AlertDescription>
 						</Alert>
 					)}

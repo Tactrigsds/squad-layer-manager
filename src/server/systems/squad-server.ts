@@ -203,11 +203,13 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 					await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.steamAccountLinked(res.linkedUsername))
 					return { code: 'ok' as const }
 				case 'err:invalid-code':
+				case 'err:already-linked':
 				case 'err:discord-user-not-found':
 					await rcon.warn(ctx, msg.playerId, res.msg)
 					return res
 				default:
 					assertNever(res)
+					// return needed for typechecking the outer switch Sadge
 					return res
 			}
 		}

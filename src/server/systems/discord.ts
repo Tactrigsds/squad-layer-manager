@@ -29,8 +29,7 @@ let client!: D.Client
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
-const tracer = Otel.trace.getTracer('discord')
-export const setup = C.spanOp('discord:setup', { tracer }, async () => {
+export async function setup() {
 	ENV = envBuilder()
 	const ctx = { log: baseLogger }
 	client = new D.Client({
@@ -52,7 +51,7 @@ export const setup = C.spanOp('discord:setup', { tracer }, async () => {
 		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
 	return res
-})
+}
 
 export async function getOauthUser(token: AccessToken) {
 	const fetchDiscordUserRes = await fetch('https://discord.com/api/users/@me', {
@@ -66,7 +65,7 @@ export async function getOauthUser(token: AccessToken) {
 	return DiscordUserSchema.parse(data)
 }
 
-const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: CS.Log, guildId: bigint) => {
+async function fetchGuild(ctx: CS.Log, guildId: bigint) {
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }
@@ -82,12 +81,9 @@ const fetchGuild = C.spanOp('discord:fetch-guild', { tracer }, async (ctx: CS.Lo
 		}
 		throw err
 	}
-})
+}
 
-export const fetchMember = C.spanOp('discord:fetch-member', {
-	tracer,
-	attrs: (_, guildId, memberId) => ({ guildId: guildId.toString(), memberId: memberId.toString() }),
-}, async (ctx: CS.Log, guildId: bigint, memberId: bigint) => {
+export async function fetchMember(ctx: CS.Log, guildId: bigint, memberId: bigint) {
 	const guildRes = await fetchGuild(ctx, guildId)
 	if (guildRes.code !== 'ok') return guildRes
 
@@ -105,16 +101,16 @@ export const fetchMember = C.spanOp('discord:fetch-member', {
 		}
 		throw err
 	}
-})
+}
 
-export const fetchGuildRoles = C.spanOp('discord:get-guild-roles', { tracer }, async (baseCtx: CS.Log) => {
+export async function fetchGuildRoles(baseCtx: CS.Log) {
 	const res = await fetchGuild(baseCtx, CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
 		return res
 	}
 	const rolesMap = await res.guild.roles.fetch()
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
-})
+}
 
 // export async function getDiscordUserRoles(_ctx: CS.Log, discordId: bigint) {
 //   await using ctx = C.pushOperation(_ctx, 'discord:get-user-roles')

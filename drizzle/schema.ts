@@ -109,19 +109,10 @@ export const users = mysqlTable('users', {
 	discordId: bigint('discordId', { mode: 'bigint', unsigned: true })
 		.notNull()
 		.primaryKey(),
+	steam64Id: bigint('steam64Id', { mode: 'bigint', unsigned: true }),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: varchar('username', { length: 32 }).notNull(),
 	avatar: varchar('avatar', { length: 255 }),
-})
-
-export const steamAccounts = mysqlTable('steamAccounts', {
-	discordId: bigint('discordId', { mode: 'bigint', unsigned: true })
-		.notNull()
-		.primaryKey().references(() => users.discordId, { onDelete: 'cascade' }),
-	steam64Id: bigint('steam64Id', { mode: 'bigint', unsigned: true })
-		.notNull()
-		.primaryKey(),
-	rowTimestamp: timestamp('rowTimestamp').notNull().defaultNow(),
 })
 
 export type User = typeof users.$inferSelect

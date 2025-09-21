@@ -153,7 +153,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 								<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
 									<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
 										<Icons.Link className="mr-2 h-4 w-4" />
-										Link Steam Account
+										Linked Accounts
 									</DropdownMenuItem>
 								</LinkSteamAccountDialog>
 							</DropdownMenuContent>

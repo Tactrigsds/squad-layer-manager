@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `steam64Id` bigint unsigned;
