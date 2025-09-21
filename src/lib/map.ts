@@ -33,3 +33,12 @@ export function union<K, T>(...maps: Map<K, T>[]): Map<K, T> {
 	}
 	return newMap
 }
+
+export function some<K, T>(map: Map<K, T>, predicate: (key: K, value: T) => boolean): boolean {
+	for (const [key, value] of map.entries()) {
+		if (predicate(key, value)) {
+			return true
+		}
+	}
+	return false
+}

@@ -298,6 +298,7 @@ export async function createAuthorizedRequestContext<
 
 	const authedCtx: T & C.AuthedUser = {
 		...ctx,
+		// note: we actually modify this objefct in-place when linking/unlinking steam accounts in src/server/systems/users.ts
 		user: validSessionRes.user,
 		sessionId: validSessionRes.sessionId,
 		expiresAt: validSessionRes.expiresAt,

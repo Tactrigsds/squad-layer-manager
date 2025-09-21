@@ -26,18 +26,7 @@ export type ArgDefinition<Name extends string = string> = {
 	optional?: boolean
 } | Name
 
-export function CommandConfigSchema(commandId: CommandId) {
-	const defaultConfig = COMMAND_DEFAULTS[commandId]
-	return z.object({
-		strings: z.array(BasicStrNoWhitespace).default(defaultConfig.strings).describe(
-			'Command strings that trigger this command when prefixed with the command prefix',
-		),
-		scopes: z.array(COMMAND_SCOPES).default(defaultConfig.scopes).describe('Scopes in which this command is available'),
-		enabled: z.boolean().default(defaultConfig.enabled),
-	}).describe(Messages.GENERAL.command.descriptions[commandId as keyof typeof Messages.GENERAL.command.descriptions]).default(defaultConfig)
-}
-
-export function declareCommand<Id extends string, Args extends [ArgDefinition, ...ArgDefinition[]] | undefined>(
+function declareCommand<Id extends string, Args extends ArgDefinition[]>(
 	id: Id,
 	opts: { args: Args; defaults: CommandConfig },
 ) {
@@ -52,7 +41,7 @@ export function declareCommand<Id extends string, Args extends [ArgDefinition, .
 
 export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
-		args: undefined,
+		args: [],
 		defaults: {
 			scopes: ['admin'],
 			strings: ['help', 'h'],
@@ -60,81 +49,43 @@ export const COMMAND_DECLARATIONS = {
 		},
 	}),
 	...declareCommand('startVote', {
-		args: undefined,
+		args: [],
 		defaults: {
 			scopes: ['admin'],
 			strings: ['startvote', 'sv'],
 			enabled: true,
 		},
 	}),
-	...declareCommand('abortVote', {
-		args: undefined,
-		defaults: {
-			scopes: ['admin'],
-			strings: ['abortvote', 'av'],
-			enabled: true,
-		},
-	}),
-	...declareCommand('showNext', {
-		args: undefined,
-		defaults: {
-			scopes: ['admin'],
-			strings: ['shownext', 'sn'],
-			enabled: true,
-		},
-	}),
-	...declareCommand('enableSlmUpdates', {
-		args: undefined,
-		defaults: {
-			scopes: ['admin'],
-			strings: ['enable-slm'],
-			enabled: true,
-		},
-	}),
-	...declareCommand('disableSlmUpdates', {
-		args: undefined,
-		defaults: {
-			scopes: ['admin'],
-			strings: ['disable-slm'],
-			enabled: true,
-		},
-	}),
-	...declareCommand('getSlmUpdatesEnabled', {
-		args: undefined,
-		defaults: {
-			scopes: ['admin'],
-			strings: ['get-slm-status'],
-			enabled: true,
-		},
-	}),
+	...declareCommand('abortVote', { args: [], defaults: { scopes: ['admin'], strings: ['abortvote', 'av'], enabled: true } }),
+	...declareCommand('showNext', { args: [], defaults: { scopes: ['admin'], strings: ['shownext', 'sn'], enabled: true } }),
+	...declareCommand('enableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['enable-slm'], enabled: true } }),
+	...declareCommand('disableSlmUpdates', { args: [], defaults: { scopes: ['admin'], strings: ['disable-slm'], enabled: true } }),
+	...declareCommand('getSlmUpdatesEnabled', { args: [], defaults: { scopes: ['admin'], strings: ['get-slm-status'], enabled: true } }),
 	...declareCommand('linkSteamAccount', {
 		args: ['code'],
-		defaults: {
-			scopes: ['admin'],
-			strings: ['link-steam-account'],
-			enabled: true,
-		},
+		defaults: { scopes: ['admin'], strings: ['link-steam-account'], enabled: true },
 	}),
-} as const
+}
 
-export type CommandId = ([typeof COMMAND_DECLARATIONS])[number]['id']
+export type CommandId = (typeof COMMAND_DECLARATIONS)[number]['id']
+export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId, ...CommandId[]])
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
 
 // description is not configurable, rest of properties are
-export const COMMAND_DEFAULTS: CommandConfigs = Object.fromEntries(
+const COMMAND_DEFAULTS: CommandConfigs = Object.fromEntries(
 	Object.entries(COMMAND_DECLARATIONS).map(([id, declaration]) => [id, declaration.defaults]),
 ) as CommandConfigs
 
-export const COMMAND_IDS = z.enum([
-	'help',
-	'startVote',
-	'abortVote',
-	'showNext',
-	'enableSlmUpdates',
-	'disableSlmUpdates',
-	'getSlmUpdatesEnabled',
-	'linkSteamAccount',
-])
+function CommandConfigSchema(commandId: CommandId) {
+	const defaultConfig = COMMAND_DEFAULTS[commandId]
+	return z.object({
+		strings: z.array(BasicStrNoWhitespace).default(defaultConfig.strings).describe(
+			'Command strings that trigger this command when prefixed with the command prefix',
+		),
+		scopes: z.array(COMMAND_SCOPES).default(defaultConfig.scopes).describe('Scopes in which this command is available'),
+		enabled: z.boolean().default(defaultConfig.enabled),
+	}).describe(Messages.GENERAL.command.descriptions[commandId]).default(defaultConfig)
+}
 
 export const AllCommandConfigSchema = z.object(
 	Object.fromEntries(Object.keys(COMMAND_DECLARATIONS).map(id => [id, CommandConfigSchema(id as CommandId)])) as Record<
@@ -212,7 +163,7 @@ export function getScopesForChat(chat: SM.ChatChannel): CommandScope[] {
 	return matches
 }
 
-export function buildCommand(id: CommandId, argObj: Record<string, string>, configs: CommandConfigs) {
+export function buildCommand(id: CommandId, argObj: Record<string, string>, configs: CommandConfigs, prefix: string) {
 	const declaration = COMMAND_DECLARATIONS[id]
 	if (!declaration?.args) {
 		return configs[id].strings[0]
@@ -222,5 +173,5 @@ export function buildCommand(id: CommandId, argObj: Record<string, string>, conf
 	if (config.scopes.includes('admin')) unrealConsoleCommand = 'ChatToAdmin'
 	else if (config.scopes.includes('public')) unrealConsoleCommand = 'ChatToAll'
 	else throw new Error(`Invalid scope for command ${id}`)
-	return `${unrealConsoleCommand} ${config.strings[0]} ${declaration.args.map((arg) => argObj[arg as string] || '').join(' ')}`
+	return `${unrealConsoleCommand} ${prefix}${config.strings[0]} ${declaration.args.map((arg) => argObj[arg as string] || '').join(' ')}`
 }
