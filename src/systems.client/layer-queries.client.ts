@@ -162,12 +162,12 @@ export function useLayerItemStatuses(
 		],
 		enabled: options?.enabled,
 		queryFn: async () => {
-			const counters = layerCtxVersionStore.getState().counters
+			// const counters = layerCtxVersionStore.getState().counters
 			// if the layer context changes we can't trust the parts anymore
-			const layerContextUnchanged = Object.values(counters).every(c => c === 0)
-			if (!QD.QDStore.getState().isEditing && layerContextUnchanged) {
-				return PartsSys.getServerLayerItemStatuses()
-			}
+			// const layerContextUnchanged = Object.values(counters).every(c => c === 0)
+			// if (!QD.QDStore.getState().isEditing && layerContextUnchanged) {
+			// 	return PartsSys.getServerLayerItemStatuses()
+			// }
 			const res = await sendQuery('getLayerItemStatuses', input)
 			if (!res) throw new Error('Unknown error')
 			if (res.code === 'err:invalid-node') {
