@@ -1172,7 +1172,10 @@ async function includeLayerItemStatusesForLQServerUpdate(ctx: CS.Log, update: SS
 	const constraints = SS.getPoolConstraints(update.state.settings.queue.mainPool)
 	const statusRes = await LayerQueries.getLayerItemStatuses({ ctx: queryCtx, input: { constraints } })
 	if (statusRes.code !== 'ok') {
-		throw new Error(`Failed to get layer item statuses: ${statusRes}`)
+		ctx.log.error(`Failed to get layer item statuses: ${JSON.stringify(statusRes)}`)
+		return {
+			layerItemStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
+		}
 	}
 	return { layerItemStatuses: statusRes.statuses }
 }
