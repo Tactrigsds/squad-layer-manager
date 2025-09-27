@@ -98,7 +98,7 @@
             "enabled": {"type": "boolean", "default": true}
           },
           "additionalProperties": false,
-          "description": "Request feedback on the current layer",
+          "description": "Request feedback on a layer",
           "default": {
             "scopes": ["admin"],
             "strings": ["feedback", "fb"],

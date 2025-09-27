@@ -184,8 +184,8 @@ export function buildCommand(
 	else throw new Error(`Invalid scope for command ${id}`)
 	const argSubstring = declaration.args?.map((arg) => {
 		if (typeof arg === 'string') return arg
-		return argObj[arg.name] + (arg.optional ? '?' : '')
-	}).map(str => '<' + str + '>').join(' ')
+		return argObj[arg.name]
+	}).join(' ')
 	return config.strings
 		.sort((a, b) => b.length - a.length)
 		.map(str => {

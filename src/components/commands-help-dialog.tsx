@@ -24,11 +24,10 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 	}
 
 	const commands = config.commands
-	const prefix = config.commandPrefix
 
 	const copyCommandToClipboard = async (cmd: CMD.CommandConfig, cmdString: string) => {
 		const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
-		const consoleCommand = `${chatScope} ${prefix}${cmdString}`
+		const consoleCommand = `${chatScope} ${cmdString}`
 
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
@@ -67,7 +66,11 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 						{Object.entries(commands).map(([cmdName, cmd]) => {
 							const cmdId = cmdName as CMD.CommandId
 							const argObject = Object.fromEntries(
-								CMD.COMMAND_DECLARATIONS[cmdId].args.map(arg => [arg, `<${typeof arg === 'string' ? arg : arg.name}>`]),
+								CMD.COMMAND_DECLARATIONS[cmdId].args.map(arg => {
+									const name = typeof arg === 'string' ? arg : arg.name
+									const optional = typeof arg === 'string' ? false : arg.optional
+									return [name, optional ? `[${name}]` : ('<' + name + '>')]
+								}),
 							)
 							return (
 								<div key={cmdName} className="space-y-2">
