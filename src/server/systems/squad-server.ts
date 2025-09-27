@@ -53,12 +53,12 @@ export const warnAllAdmins = C.spanOp(
 	{ tracer, eventLogLevel: 'info' },
 	async (ctx: CS.Log, options: WarnOptions) => {
 		const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
-		const ops: Promise<void>[] = []
+		const ops: Promise<unknown>[] = []
 
 		if (playersRes.code === 'err:rcon') return
 		for (const player of playersRes.players) {
 			if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
-				await rcon.warn(ctx, player.steamID.toString(), options)
+				ops.push(rcon.warn(ctx, player.steamID.toString(), options))
 			}
 		}
 		await Promise.all(ops)
