@@ -48,7 +48,7 @@ export const usersRouter = router({
 			state.pendingSteamAccountLinks.delete(code)
 		}
 		state.pendingSteamAccountLinks.set(code, { discordId, expirySub: sub })
-		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix) }
+		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix)[0] }
 	}),
 	cancelSteamAccountLinks: procedure.mutation(async ({ ctx }) => {
 		let found = false

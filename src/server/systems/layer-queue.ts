@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { acquireReentrant, distinctDeepEquals, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import * as Gen from '@/lib/generator.ts'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import { Parts } from '@/lib/types'
@@ -32,6 +33,7 @@ import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import * as dateFns from 'date-fns'
+import { _AddUndefinedToPossiblyUndefinedPropertiesOfInterface } from 'discord.js'
 import * as E from 'drizzle-orm/expressions'
 import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
@@ -1250,6 +1252,18 @@ export async function toggleUpdatesToSquadServer({ ctx, input }: { ctx: CS.Log &
 export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer) {
 	const serverState = await getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
+}
+
+export async function requestFeedback(ctx: CS.Log & C.Db, username: string, layerQueueNumber: string | undefined) {
+	const serverState = await getServerState(ctx)
+	let index: LL.LLItemIndex | undefined
+	if (serverState.layerQueue.length === 0) return { code: 'err:empty' as const }
+	if (layerQueueNumber === undefined) index = LL.iterLayerList(serverState.layerQueue).next().value
+	else index = LL.resolveLayerQueueItemIndexForNumber(serverState.layerQueue, layerQueueNumber) ?? undefined
+	if (!index) return { code: 'err:not-found' as const }
+	const item = LL.resolveItemForIndex(serverState.layerQueue, index)!
+	await SquadServer.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, username, item))
+	return { code: 'ok' as const }
 }
 
 export function getBaseCtx() {

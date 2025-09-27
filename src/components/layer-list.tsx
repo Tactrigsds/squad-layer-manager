@@ -248,7 +248,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								data-can-edit={canEdit}
 								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:invisible"
 							>
-								{index + 1}.{innerIndex != null ? innerIndex + 1 : ''}
+								{LL.getItemNumber({ outerIndex: index, innerIndex: innerIndex })}
 							</span>
 							<GripElt className="col-start-1 row-start-1" />
 						</span>

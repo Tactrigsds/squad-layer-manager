@@ -78,6 +78,33 @@
             "enabled": true
           }
         },
+        "requestFeedback": {
+          "type": "object",
+          "properties": {
+            "strings": {
+              "type": "array",
+              "items": {"$ref": "#/properties/commandPrefix"},
+              "default": ["feedback", "fb"],
+              "description": "Command strings that trigger this command when prefixed with the command prefix"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
+              },
+              "default": ["admin"],
+              "description": "Scopes in which this command is available"
+            },
+            "enabled": {"type": "boolean", "default": true}
+          },
+          "additionalProperties": false,
+          "description": "Request feedback on the current layer",
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["feedback", "fb"],
+            "enabled": true
+          }
+        },
         "startVote": {
           "type": "object",
           "properties": {
@@ -273,6 +300,11 @@
         "help": {
           "scopes": ["admin"],
           "strings": ["help", "h"],
+          "enabled": true
+        },
+        "requestFeedback": {
+          "scopes": ["admin"],
+          "strings": ["feedback", "fb"],
           "enabled": true
         },
         "startVote": {

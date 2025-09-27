@@ -48,6 +48,10 @@ export const COMMAND_DECLARATIONS = {
 			enabled: true,
 		},
 	}),
+	...declareCommand('requestFeedback', {
+		args: [{ name: 'number', optional: true }],
+		defaults: { scopes: ['admin'], strings: ['feedback', 'fb'], enabled: true },
+	}),
 	...declareCommand('startVote', {
 		args: [],
 		defaults: {
@@ -129,7 +133,8 @@ function extractArgs(id: CommandId, words: string[]) {
 	const result: Record<string, string> = {}
 	words.slice(1).forEach((word, index) => {
 		if (config.args && config.args[index]) {
-			result[config.args[index] as string] = word
+			const name = typeof config.args[index] === 'string' ? config.args[index] : config.args[index].name
+			result[name] = word
 		}
 	})
 	return result
@@ -163,15 +168,27 @@ export function getScopesForChat(chat: SM.ChatChannel): CommandScope[] {
 	return matches
 }
 
-export function buildCommand(id: CommandId, argObj: Record<string, string>, configs: CommandConfigs, prefix: string) {
+export function buildCommand(
+	id: CommandId,
+	argObj: Record<string, string>,
+	configs: CommandConfigs,
+	prefix: string,
+	excludeConsoleCommand = false,
+) {
 	const declaration = COMMAND_DECLARATIONS[id]
-	if (!declaration?.args) {
-		return configs[id].strings[0]
-	}
 	const config = configs[id]
 	let unrealConsoleCommand: string
-	if (config.scopes.includes('admin')) unrealConsoleCommand = 'ChatToAdmin'
+	if (excludeConsoleCommand) unrealConsoleCommand = ''
+	else if (config.scopes.includes('admin')) unrealConsoleCommand = 'ChatToAdmin'
 	else if (config.scopes.includes('public')) unrealConsoleCommand = 'ChatToAll'
 	else throw new Error(`Invalid scope for command ${id}`)
-	return `${unrealConsoleCommand} ${prefix}${config.strings[0]} ${declaration.args.map((arg) => argObj[arg as string] || '').join(' ')}`
+	const argSubstring = declaration.args?.map((arg) => {
+		if (typeof arg === 'string') return arg
+		return argObj[arg.name] + (arg.optional ? '?' : '')
+	}).map(str => '<' + str + '>').join(' ')
+	return config.strings
+		.sort((a, b) => b.length - a.length)
+		.map(str => {
+			return `${unrealConsoleCommand} ${prefix}${str} ${argSubstring}`.trim()
+		})
 }
