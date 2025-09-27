@@ -1,5 +1,6 @@
 import * as DH from '@/lib/display-helpers'
 import * as Generator from '@/lib/generator'
+import * as Gen from '@/lib/generator'
 import { getAllMutationIds, ItemMutations } from '@/lib/item-mutations'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
@@ -345,4 +346,39 @@ export function isLocallyLastItem(itemId: LayerListItemId, list: LayerList) {
 		return parentRes.choices.length - 1 === res.innerIndex
 	}
 	return list.length - 1 === res.outerIndex
+}
+
+export function displayLayerListItem(item: LayerListItem, index: LLItemIndex) {
+	if (isParentVoteItem(item)) {
+		return item.choices.map((choice, innerIndex) =>
+			`${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`
+		).join('\n')
+	}
+	return `${getItemNumber(index)} ${DH.displayLayer(item.layerId)}`
+}
+
+export function getItemNumber(index: LLItemIndex) {
+	const inner = index.innerIndex !== null ? `${index.innerIndex + 1}` : ''
+	return `${index.outerIndex + 1}.${inner}`
+}
+
+export function resolveLayerQueueItemIndexForNumber(layerList: LayerList, number: string) {
+	const match = /^(\d+)(?:\.(\d+))?$/
+	const matchResult = match.exec(number)
+	if (!matchResult) return null
+	const outerIndex = parseInt(matchResult[1]) - 1
+	const innerIndex = matchResult[2] ? parseInt(matchResult[2]) - 1 : null
+	return { outerIndex, innerIndex }
+}
+
+export function resolveItemForIndex(layerList: LayerList, index: LLItemIndex): LayerListItem | undefined {
+	const { outerIndex, innerIndex } = index
+	if (innerIndex === null) return layerList[outerIndex]
+	return layerList[outerIndex]?.choices?.[innerIndex]
+}
+
+export function resolveLayerQueueItemForNumber(layerList: LayerList, number: string) {
+	const index = resolveLayerQueueItemIndexForNumber(layerList, number)
+	if (!index) return undefined
+	return resolveItemForIndex(layerList, index)
 }

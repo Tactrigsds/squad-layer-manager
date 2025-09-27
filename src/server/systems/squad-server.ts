@@ -124,6 +124,12 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 	if (cmdConfig.enabled === false) {
 		return await showError('command-disabled', `Command "${cmd}" is disabled`)
 	}
+	const playerListRes = (await rcon.playerList.get(ctx)).value
+	if (!msg.steamID) return
+	if (playerListRes.code === 'err:rcon') {
+		return await showError('rcon-error', 'RCON error')
+	}
+	const player = playerListRes.players.find((p) => p.steamID === BigInt(msg.steamID!))!
 
 	const user: USR.GuiOrChatUserId = { steamId: msg.steamID }
 	switch (cmd) {
@@ -212,6 +218,23 @@ async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) 
 					// return needed for typechecking the outer switch Sadge
 					return res
 			}
+		}
+		case 'requestFeedback': {
+			const res = await LayerQueue.requestFeedback(ctx, player.name, args.number)
+			switch (res.code) {
+				case 'err:empty':
+				case 'err:not-found': {
+					await rcon.warn(ctx, msg.playerId, 'Item not found')
+					return { code: 'err:not-found' as const }
+				}
+				case 'ok':
+					break
+				default: {
+					assertNever(res)
+					return res
+				}
+			}
+			break
 		}
 		default: {
 			assertNever(cmd)

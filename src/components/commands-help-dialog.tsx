@@ -64,55 +64,61 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 				</DialogHeader>
 				<ScrollArea className="max-h-[60vh] pr-4">
 					<div className="space-y-4">
-						{Object.entries(commands).map(([cmdName, cmd]) => (
-							<div key={cmdName} className="space-y-2">
-								<div className="flex items-center gap-2">
-									<div className="flex-1">
+						{Object.entries(commands).map(([cmdName, cmd]) => {
+							const cmdId = cmdName as CMD.CommandId
+							const argObject = Object.fromEntries(
+								CMD.COMMAND_DECLARATIONS[cmdId].args.map(arg => [arg, `<${typeof arg === 'string' ? arg : arg.name}>`]),
+							)
+							return (
+								<div key={cmdName} className="space-y-2">
+									<div className="flex items-center gap-2">
+										<div className="flex-1">
+											<div className="flex flex-wrap items-center gap-1">
+												{CMD.buildCommand(cmdId, argObject, commands, config.commandPrefix, true).map((
+													cmdString,
+												) => (
+													<div key={cmdString} className="flex items-center gap-1">
+														<code className="px-2 py-1 bg-muted rounded text-sm font-mono">
+															{cmdString}
+														</code>
+														<Button
+															variant="ghost"
+															size="sm"
+															className="h-6 w-6 p-0"
+															onClick={() => copyCommandToClipboard(cmd, cmdString)}
+														>
+															<Copy className="h-3 w-3" />
+														</Button>
+													</div>
+												))}
+											</div>
+										</div>
+										{!cmd.enabled && (
+											<Badge variant="destructive" className="text-xs">
+												Disabled
+											</Badge>
+										)}
+									</div>
+									<p className="text-sm text-muted-foreground">
+										{Messages.GENERAL.command.descriptions[cmdName as CMD.CommandId]}
+									</p>
+									{cmd.scopes.length > 0 && (
 										<div className="flex flex-wrap items-center gap-1">
-											{cmd.strings.sort((a, b) => a.length - b.length).map((cmdString, stringIndex) => (
-												<div key={stringIndex} className="flex items-center gap-1">
-													<code className="px-2 py-1 bg-muted rounded text-sm font-mono">
-														{prefix}
-														{cmdString}
-													</code>
-													<Button
-														variant="ghost"
-														size="sm"
-														className="h-6 w-6 p-0"
-														onClick={() =>
-															copyCommandToClipboard(cmd, cmdString)}
-													>
-														<Copy className="h-3 w-3" />
-													</Button>
-												</div>
+											<span className="text-xs text-muted-foreground">Scopes:</span>
+											{cmd.scopes.map((scope, scopeIndex) => (
+												<Badge
+													key={scopeIndex}
+													variant="outline"
+													className="text-xs"
+												>
+													{scope}
+												</Badge>
 											))}
 										</div>
-									</div>
-									{!cmd.enabled && (
-										<Badge variant="destructive" className="text-xs">
-											Disabled
-										</Badge>
 									)}
 								</div>
-								<p className="text-sm text-muted-foreground">
-									{Messages.GENERAL.command.descriptions[cmdName as CMD.CommandId]}
-								</p>
-								{cmd.scopes.length > 0 && (
-									<div className="flex flex-wrap items-center gap-1">
-										<span className="text-xs text-muted-foreground">Scopes:</span>
-										{cmd.scopes.map((scope, scopeIndex) => (
-											<Badge
-												key={scopeIndex}
-												variant="outline"
-												className="text-xs"
-											>
-												{scope}
-											</Badge>
-										))}
-									</div>
-								)}
-							</div>
-						))}
+							)
+						})}
 					</div>
 				</ScrollArea>
 			</DialogContent>

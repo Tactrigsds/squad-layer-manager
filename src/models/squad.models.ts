@@ -56,7 +56,7 @@ export type TeamId = z.infer<typeof TeamIdSchema>
 export const PlayerSchema = z.object({
 	playerID: z.number(),
 	steamID: zUtils.ParsedBigIntSchema,
-	name: z.string().min(1),
+	name: z.string().min(1).trim(),
 	teamID: TeamIdSchema.nullable(),
 	squadID: z.number().nullable(),
 	isLeader: z.boolean(),

@@ -155,6 +155,13 @@ export const WARNS = {
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
+		requestFeedback: (index: LL.LLItemIndex, username: string, item: LL.LayerListItem) => ({
+			msg: [
+				`${username} has requested feedback for`,
+				LL.displayLayerListItem(item, index),
+			].join('\n'),
+			repeat: 3,
+		}),
 	},
 	commands: {
 		unknownCommand(cmdText: string, closestMatch: string) {
@@ -236,6 +243,7 @@ export const GENERAL = {
 			disableSlmUpdates: 'Prevent SLM from setting the next layer',
 			getSlmUpdatesEnabled: 'Check if SLM is allowed to set the next layer',
 			linkSteamAccount: 'Link your Steam account to your Squad account',
+			requestFeedback: 'Request feedback on the current layer',
 		},
 	},
 }
