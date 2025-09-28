@@ -1,4 +1,4 @@
-import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 import { z } from 'zod'
 
@@ -130,3 +130,17 @@ export const sessions = mysqlTable(
 		expiresAtIndex: index('expiresAtIndex').on(table.expiresAt),
 	}),
 )
+
+export const layerNotes = mysqlTable('layerNotes', {
+	id: int('id').primaryKey().autoincrement(),
+	layer: varchar('layer', { length: 255 }).notNull(),
+	team1: varchar('team1', { length: 255 }).notNull(),
+	team2: varchar('team2', { length: 255 }).notNull(),
+	discordId: bigint('discordId', { mode: 'bigint', unsigned: true }).notNull(),
+	appliesTo: int('appliesTo').notNull().default(0),
+	valence: int('valence').notNull().default(0),
+	note: text('note'),
+	rowTimestamp: timestamp('rowTimestamp').notNull().defaultNow(),
+})
+
+export type LayerNote = typeof layerNotes.$inferSelect

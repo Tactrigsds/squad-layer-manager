@@ -659,6 +659,16 @@
         "defaultSortBy": {"type": "random"}
       }
     },
+    "layerNotes": {
+      "type": "object",
+      "properties": {
+        "feedbackDuration": {
+          "$ref": "#/properties/defaults/properties/voteDuration"
+        }
+      },
+      "required": ["feedbackDuration"],
+      "additionalProperties": false
+    },
     "$schema": {"type": "string"}
   },
   "required": [
@@ -671,6 +681,7 @@
     "homeDiscordGuildId",
     "globalRolePermissions",
     "roleAssignments",
+    "layerNotes",
     "$schema"
   ],
   "additionalProperties": false,

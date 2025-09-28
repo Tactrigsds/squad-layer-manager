@@ -344,7 +344,7 @@ export function fromPossibleRawId(id: string, components = StaticLayerComponents
 	}
 }
 
-export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 'set-next' | 'change-layer') {
+export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 'set-next' | 'change-layer' | 'none') {
 	cmdType ??= 'set-next'
 	if (layerOrId === 'string' && layerOrId.startsWith('RAW')) return layerOrId.slice('RAW:'.length)
 	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId) : layerOrId
@@ -352,9 +352,22 @@ export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 
 	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
 		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
-	const cmd = cmdType === 'set-next' ? 'AdminSetNextLayer' : 'AdminChangeLayer'
+	let cmd: string
+	switch (cmdType) {
+		case 'set-next':
+			cmd = 'AdminSetNextLayer'
+			break
+		case 'change-layer':
+			cmd = 'AdminChangeLayer'
+			break
+		case 'none':
+			cmd = ''
+			break
+		default:
+			assertNever(cmdType)
+	}
 	if (layer.Layer.startsWith('JensensRange')) {
-		return `${cmd} ${layer.Layer}`
+		return `${cmd} ${layer.Layer}`.trim()
 	}
 
 	let fullCommand = `${cmd} ${layer.Layer?.replace('FRAAS', 'RAAS')}`
@@ -367,7 +380,7 @@ export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 
 		fullCommand += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2)!)
 	}
 
-	return fullCommand
+	return fullCommand.trim()
 }
 
 export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null {

@@ -155,12 +155,12 @@ export const WARNS = {
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
-		requestFeedback: (index: LL.LLItemIndex, username: string, item: LL.LayerListItem) => ({
+		requestFeedback: (username: string, layerId: L.LayerId) => ({
 			msg: [
 				`${username} has requested feedback for`,
-				LL.displayLayerListItem(item, index),
+				DH.displayLayer(layerId),
 			].join('\n'),
-			repeat: 3,
+			repeat: 2,
 		}),
 	},
 	commands: {

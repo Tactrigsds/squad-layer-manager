@@ -89,6 +89,10 @@ export const ConfigSchema = z.object({
 		],
 		defaultSortBy: { type: 'random' },
 	}),
+
+	layerNotes: z.object({
+		feedbackDuration: HumanTime,
+	}),
 })
 
 export let CONFIG!: Config
