@@ -234,7 +234,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
-			case 'err:expired':
+			case 'unauthorized:expired':
 			case 'err:not-found':
 				return await Sessions.clearInvalidSession({ ...ctx, res })
 			case 'err:permission-denied':
@@ -329,7 +329,7 @@ export async function createTrpcRequestContext(
 		switch (result.code) {
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
-			case 'err:expired':
+			case 'unauthorized:expired':
 			case 'err:not-found':
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.code })
 			case 'err:permission-denied':

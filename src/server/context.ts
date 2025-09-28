@@ -83,10 +83,12 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 				logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - executed`)
 				try {
 					const result = await cb(...args)
-					if (result !== null && typeof result === 'object' && 'code' in result) {
+					let statusString: string
+					if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
+						statusString = result.code
 						if (result.code === 'ok') {
 							setSpanStatus(Otel.SpanStatusCode.OK)
-						} else {
+						} else if (result.code.includes('err')) {
 							const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
 							logger?.[opts.eventLogLevel ?? 'debug'](`Error running ${name}: ${msg}`)
 							setSpanStatus(Otel.SpanStatusCode.ERROR, msg)
@@ -98,9 +100,8 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
 					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? 'warn' : (opts.eventLogLevel ?? 'debug')
-					logger?.[logLevel](
-						`${name}(${id}) : ${spanStatus.code === Otel.SpanStatusCode.ERROR ? `error : ${spanStatus?.message}` : 'ok'}`,
-					)
+					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? `${spanStatus?.message ?? 'error'}` : 'ok'
+					logger?.[logLevel](`${name}(${id}) : ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)

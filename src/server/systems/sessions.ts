@@ -65,7 +65,7 @@ export const validateAndUpdate = C.spanOp(
 			if (!row) return { code: 'err:not-found' as const }
 			const currentTime = new Date()
 			if (currentTime > row.session.expiresAt) {
-				return { code: 'err:expired' as const }
+				return { code: 'unauthorized:expired' as const }
 			}
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, row.user.discordId, RBAC.perm('site:authorized'))
 			if (denyRes) return denyRes
