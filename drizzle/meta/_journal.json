@@ -218,6 +218,13 @@
 			"when": 1758475768137,
 			"tag": "0030_volatile_shaman",
 			"breakpoints": true
+		},
+		{
+			"idx": 31,
+			"version": "5",
+			"when": 1759524262862,
+			"tag": "0031_majestic_living_mummy",
+			"breakpoints": true
 		}
 	]
 }

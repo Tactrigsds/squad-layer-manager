@@ -1,7 +1,5 @@
-import * as Schema from '$root/drizzle/schema'
 import { sleep } from '@/lib/async.ts'
 import { formatVersion } from '@/lib/versioning.ts'
-import * as CS from '@/models/context-shared'
 import * as FilterEntity from '@/server/systems/filter-entity'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
@@ -14,8 +12,6 @@ import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
 import * as Fastify from './systems/fastify.ts'
 import * as LayerDb from './systems/layer-db.server.ts'
-import * as LayerQueue from './systems/layer-queue.ts'
-import * as MatchHistory from './systems/match-history.ts'
 import * as Rbac from './systems/rbac.system.ts'
 import * as Sessions from './systems/sessions.ts'
 import * as SquadServer from './systems/squad-server'
@@ -34,9 +30,7 @@ await C.spanOp('main', { tracer }, async () => {
 	Rbac.setup()
 	Sessions.setup()
 	TrpcRouter.setup()
-	await MatchHistory.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
-	await LayerQueue.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')

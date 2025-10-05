@@ -14,10 +14,9 @@ import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import { baseLogger } from '@/server/logger'
+import * as SquadServer from '@/server/systems/squad-server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { CONFIG } from '../config'
@@ -26,14 +25,25 @@ import { procedure, router } from '../trpc.server'
 export const MAX_RECENT_MATCHES = 100
 const tracer = Otel.trace.getTracer('match-history')
 
-export let state!: {
-	tempCurrentMatch?: L.LayerId
+export type MatchHistoryContext = {
+	historyMtx: Mutex
+	update$: Rx.Subject<CS.Log>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
-export const stateUpdated$ = new Rx.Subject<CS.Log>()
 
-export function getPublicMatchHistoryState(): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
+export function initMatchHistoryContext(): MatchHistoryContext {
+	return {
+		historyMtx: new Mutex(),
+		update$: new Rx.Subject<CS.Log>(),
+		parts: { users: [] },
+		recentMatches: [],
+		recentBalanceTriggerEvents: [],
+	}
+}
+
+export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
+	const state = ctx.matchHistory
 	return {
 		recentMatches: state.recentMatches,
 		recentBalanceTriggerEvents: state.recentBalanceTriggerEvents,
@@ -43,8 +53,9 @@ export function getPublicMatchHistoryState(): MH.PublicMatchHistoryState & Parts
 
 export const historyMtx = new Mutex()
 
-export async function getRecentMatchHistory() {
+export async function getRecentMatchHistory(ctx: C.MatchHistory) {
 	using _lock = await acquireInBlock(historyMtx)
+	const state = ctx.matchHistory
 	if (state.recentMatches[state.recentMatches.length - 1]?.status === 'in-progress') {
 		return state.recentMatches.slice(0, state.recentMatches.length - 1)
 	}
@@ -54,9 +65,13 @@ export async function getRecentMatchHistory() {
 export const loadState = C.spanOp(
 	'match-history:load-state',
 	{ tracer },
-	async (ctx: CS.Log & C.Db, opts?: { startAtOrdinal?: number }) => {
+	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
+		const state = ctx.matchHistory
 		const recentMatchesCte = ctx.db().select().from(Schema.matchHistory).where(
-			opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gt(Schema.matchHistory.ordinal, 0),
+			E.and(
+				opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gt(Schema.matchHistory.ordinal, 0),
+				E.eq(Schema.matchHistory.serverId, ctx.serverId),
+			),
 		).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(100).as(
 			'recent_matches',
 		)
@@ -84,15 +99,17 @@ export const loadState = C.spanOp(
 	},
 )
 
-export function getCurrentMatch() {
-	return state.recentMatches[state.recentMatches.length - 1]
+export function getCurrentMatch(ctx: C.MatchHistory) {
+	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
 }
 
 export const loadCurrentMatch = C.spanOp(
 	'match-history:get-previous-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db, opts?: { lock?: boolean }) => {
-		const query = ctx.db().select().from(Schema.matchHistory).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(1)
+	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { lock?: boolean }) => {
+		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
+			E.desc(Schema.matchHistory.ordinal),
+		).limit(1)
 		let match: SchemaModels.MatchHistory
 		if (opts?.lock) [match] = await query.for('update')
 		else [match] = await query.execute()
@@ -101,35 +118,29 @@ export const loadCurrentMatch = C.spanOp(
 	},
 )
 
-export const setup = C.spanOp('match-history:setup', { tracer, eventLogLevel: 'info' }, async () => {
-	using _lock = await acquireInBlock(historyMtx)
-
-	const ctx = DB.addPooledDb({ log: baseLogger })
-	state = {
-		parts: { users: [] },
-		recentMatches: [],
-		recentBalanceTriggerEvents: [],
-	}
-	await loadState(ctx)
-
-	stateUpdated$.pipe(Rx.startWith(0)).subscribe(() => {
-		ctx.log.info('active match id: %s, status: %s', getCurrentMatch()?.historyEntryId, getCurrentMatch()?.status)
-	})
-})
-
 export const matchHistoryRouter = router({
-	watchMatchHistoryState: procedure.subscription(async function*({ signal }) {
-		yield getPublicMatchHistoryState()
-		for await (const _ of toAsyncGenerator(stateUpdated$.pipe(withAbortSignal(signal!)))) {
-			yield getPublicMatchHistoryState()
-		}
+	watchMatchHistoryState: procedure.subscription(async function*({ signal, ctx: _ctx }) {
+		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
+		const state$ = server$.pipe(
+			Rx.switchMap(async function*(ctx) {
+				const serverId = ctx.serverId
+				yield getPublicMatchHistoryState(ctx)
+				const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
+				for await (const _ of toAsyncGenerator(historyUpdate$)) {
+					yield getPublicMatchHistoryState(SquadServer.resolveSliceCtx({}, serverId))
+				}
+			}),
+			withAbortSignal(signal!),
+		)
+
+		yield* toAsyncGenerator(state$)
 	}),
 })
 
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
+	async (ctx: CS.Log & C.Db & C.MatchHistory, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
@@ -137,14 +148,14 @@ export const addNewCurrentMatch = C.spanOp(
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
-		stateUpdated$.next(ctx)
+		ctx.matchHistory.update$.next(ctx)
 
-		return { code: 'ok' as const, match: getCurrentMatch() }
+		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
 )
 
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
-	ctx: CS.Log & C.Db,
+	ctx: CS.Log & C.Db & C.MatchHistory,
 	currentLayerId: string,
 	event: SME.RoundEnded,
 ) => {
@@ -182,7 +193,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {
 				ctx.log.info('Evaluating trigger %s', trig.id)
-				const input = trig.resolveInput({ history: state.recentMatches })
+				const input = trig.resolveInput({ history: ctx.matchHistory.recentMatches })
 				inputStored = input
 				const res = trig.evaluate(ctx, input)
 				if (!res) continue
@@ -210,7 +221,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	stateUpdated$.next(ctx)
+	ctx.matchHistory.update$.next(ctx)
 	return { ...res }
 })
 
@@ -220,24 +231,20 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Db, currentLayerOnServer: L.UnvalidatedLayer) => {
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
 		await DB.runTransaction(ctx, async ctx => {
 			using _lock = await acquireInBlock(historyMtx)
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
+				serverId: ctx.serverId,
 				layerId: currentLayerOnServer.id,
 				ordinal,
 				setByType: 'unknown',
 			}))
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
-		stateUpdated$.next(ctx)
+		ctx.matchHistory.update$.next(ctx)
 	},
 )
-
-export async function getMatchHistoryCount(ctx: CS.Log & C.Db): Promise<number> {
-	const [{ count }] = await ctx.db().select({ count: sql<string>`count(*)` }).from(Schema.matchHistory)
-	return parseInt(count)
-}

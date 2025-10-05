@@ -11,6 +11,7 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as LayerQueue from '@/server/systems/layer-queue'
 import * as Rbac from '@/server/systems/rbac.system'
+import * as SquadServer from '@/server/systems/squad-server'
 import { procedure, router } from '@/server/trpc.server.ts'
 import { TRPCError } from '@trpc/server'
 import { aliasedTable } from 'drizzle-orm'
@@ -167,21 +168,24 @@ export const filtersRouter = router({
 			return res
 		}),
 	deleteFilter: procedure.input(F.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
-		const serverState = await LayerQueue.getServerState(ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes
 		}
 
-		// TODO: right now we are not handling sub-filters here. we should do the following:
-		// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies
-		// 2. disallow any dependent filters from those applied in the filter pool from being deleted
-		// 3. include a filter entity status notification(novel concept at time of writing) on the filter-edit screen that indicates that this filter is part of the currently active layer pool setup
-		for (const filterId of serverState.settings.queue.mainPool.filters) {
-			if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
-		}
-		for (const filterId of serverState.settings.queue.generationPool.filters) {
-			if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
+		for (const serverId of SquadServer.state.slices.keys()) {
+			const serverCtx = SquadServer.resolveSliceCtx(ctx, serverId)
+			const serverState = await LayerQueue.getServerState(serverCtx)
+			// TODO: right now we are not handling sub-filters here. we should do the following:
+			// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies
+			// 2. disallow any dependent filters from those applied in the filter pool from being deleted
+			// 3. include a filter entity status notification(novel concept at time of writing) on the filter-edit screen that indicates that this filter is part of the currently active layer pool setup
+			for (const filterId of serverState.settings.queue.mainPool.filters) {
+				if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
+			}
+			for (const filterId of serverState.settings.queue.generationPool.filters) {
+				if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
+			}
 		}
 
 		const allFilters = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))

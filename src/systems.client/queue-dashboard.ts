@@ -22,7 +22,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import { Mutex } from 'async-mutex'
 import { derive } from 'derive-zustand'
-import deepEqual from 'fast-deep-equal'
+
 import * as Im from 'immer'
 import React from 'react'
 import * as ReactRouterDOM from 'react-router-dom'
@@ -221,7 +221,7 @@ type ApplyAsState = {
 export type ApplyAsStore = Pick<QDStore, 'poolApplyAs' | 'setPoolApplyAs'>
 
 export type QDStore = QDState & {
-	applyServerUpdate: (update: SS.LQServerStateUpdate) => void
+	applyServerUpdate: (update: SS.LQStateUpdate) => void
 	reset: () => Promise<void>
 	setSetting: (updater: (settings: Im.Draft<SS.ServerSettings>) => void) => void
 	setQueue: Setter<LLState>
@@ -262,7 +262,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 						for (let i = 0; i < Math.max(updatedItem.choices.length, originalItem.choices.length); i++) {
 							const choice = updatedItem.choices[i]
 							const originalChoice = originalItem.choices[i]
-							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !deepEqual(choice, originalChoice)) {
+							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !Obj.deepEqual(choice, originalChoice)) {
 								ItemMut.tryApplyMutation('edited', choice.itemId, draft.listMutations)
 							}
 							if (choice && !LL.findItemById([originalItem], choice.itemId)) {
@@ -633,7 +633,7 @@ export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get,
 
 	let maxQueueSize: number = 10
 	fetchConfig().then(config => {
-		maxQueueSize = config.maxQueueSize ?? 10
+		maxQueueSize = config.layerQueue.maxQueueSize ?? 10
 	})
 
 	return {

@@ -2,8 +2,8 @@ import * as AR from '@/app-routes.ts'
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import useAppParams from '@/hooks/use-app-params'
 import { useToast } from '@/hooks/use-toast'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,7 @@ import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
+import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
@@ -20,7 +21,6 @@ import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import deepEqual from 'fast-deep-equal'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
@@ -41,7 +41,7 @@ import { Textarea } from './ui/textarea'
 
 export default function FilterWrapper() {
 	// could also be /filters/new, in which case we're creating a new filter and id is undefined
-	const editParams = useAppParams('/filters/:id')
+	const editParams = AppRoutesClient.useAppParams('/filters/:id')
 	const { toast } = useToast()
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const navigate = useNavigate()
@@ -234,7 +234,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 	const saveBtn = (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
 			{([canSubmit, isDirty]) => {
-				const filterModified = !deepEqual(props.entity.filter, editedFilter)
+				const filterModified = !Obj.deepEqual(props.entity.filter, editedFilter)
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}

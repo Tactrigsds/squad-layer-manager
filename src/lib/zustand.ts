@@ -3,7 +3,7 @@ import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
 import { StateObservable } from '@rx-state/core'
 import { derive } from 'derive-zustand'
-import deepEqual from 'fast-deep-equal'
+
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -27,7 +27,7 @@ export function useStoreDeep<S, O>(store: StoreApi<S>, selector: (s: S) => O, op
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	selector = React.useCallback(selector, opts?.dependencies ?? [])
 
-	return useStoreWithEqualityFn(store, selector, deepEqual)
+	return useStoreWithEqualityFn(store, selector, Obj.deepEqual)
 }
 
 export function useCombinedStoresDeep<States extends unknown[], Selector extends (states: States) => any>(

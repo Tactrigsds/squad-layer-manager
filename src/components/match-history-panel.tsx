@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
+import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
@@ -17,7 +18,7 @@ import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
-import deepEqual from 'fast-deep-equal'
+
 import { AlertOctagon, AlertTriangle, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
@@ -206,7 +207,7 @@ export default function MatchHistoryPanel() {
 									/>
 								)
 								const relevantDesciptorsForHovered = (hoveredConstraintItemId
-									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => deepEqual(layerItem, d.reasonItem))) || undefined
+									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => Obj.deepEqual(layerItem, d.reasonItem))) || undefined
 
 								const extraLayerStyles = DH.getAllExtraStyles(
 									entry.layerId,

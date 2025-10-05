@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes.ts'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -8,11 +9,10 @@ import { useLoggedInUser } from '@/systems.client/users.client'
 import { useTrpcConnected } from '@/trpc.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import * as Zus from 'zustand'
 import CommandsHelpDialog from './commands-help-dialog'
 import LinkSteamAccountDialog from './link-steam-account-dialog'
-import { ServerUnreachable } from './server-offline-display'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -21,7 +21,7 @@ import UserPermissionsDialog from './user-permissions-dialog'
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const trpcConnected = useTrpcConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
+	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
 	const avatarUrl = user?.avatar
 		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
@@ -41,8 +41,14 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onSteamLinkOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'steam-link' : null)
 	}
+
 	const { theme, setTheme } = ThemeClient.useTheme()
 	const config = ConfigClient.useConfig()
+	const selectedServerId = SquadServerClient.useSelectedServerId()
+	const selectedServer = config?.servers.find(server => server.id === selectedServerId)
+	React.useEffect(() => {
+		console.table(config?.servers)
+	}, [config?.servers])
 	return (
 		<div className="h-full w-full">
 			<nav
@@ -50,12 +56,15 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 				style={{ backgroundColor: config?.topBarColor ?? undefined }}
 			>
 				<div className="flex items-start space-x-3 sm:space-x-6">
-					<Link to={AR.link('/')} className={`text-sm sm:text-base font-medium ${location.pathname === '/' ? 'underline' : ''}`}>
+					<Link
+						to={AR.link('/servers/:id', selectedServerId)}
+						className={`text-sm sm:text-base font-medium ${route?.id === '/servers/:id' ? 'underline' : ''}`}
+					>
 						Queue
 					</Link>
 					<Link
 						to={AR.link('/filters')}
-						className={`text-sm sm:text-base font-medium ${location.pathname === '/filters' ? 'underline' : ''}`}
+						className={`text-sm sm:text-base font-medium ${route?.id === '/filters' ? 'underline' : ''}`}
 					>
 						Filters
 					</Link>
@@ -69,23 +78,34 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 							</Button>
 						</div>
 					)}
-					{serverInfoRes?.code === 'ok' && (
-						<>
-							{trpcConnected === false && (
-								<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
-									<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
-								</Alert>
-							)}
-							<h3 className="hidden sm:block text-sm sm:text-base font-medium truncate max-w-[120px] sm:max-w-[200px] lg:max-w-none">
-								{serverInfoRes.data.name}
-							</h3>
-						</>
+
+					{trpcConnected === false && (
+						<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
+							<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
+						</Alert>
 					)}
-					{serverInfoRes?.code === 'err:rcon' && (
-						<div className="hidden sm:block">
-							<ServerUnreachable statusRes={serverInfoRes} />
-						</div>
-					)}
+					{selectedServer && config && (config.servers.length === 1
+						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
+						: (
+							<>
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button variant="outline">
+											{selectedServer.displayName}
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent>
+										{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
+											<DropdownMenuItem asChild>
+												<Link to={AR.link('/servers/:id', server.id)}>
+													{server.displayName}
+												</Link>
+											</DropdownMenuItem>
+										))}
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</>
+						))}
 					{user && (
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>

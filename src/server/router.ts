@@ -14,7 +14,7 @@ export type AppRouter = typeof appRouter
 export function setup() {
 	const _appRouter = router({
 		layerQueue: LayerQueue.layerQueueRouter,
-		squadServer: SquadServer.squadServerRouter,
+		squadServer: SquadServer.router,
 		filters: FilterEntity.filtersRouter,
 		config: procedure.query(() => {
 			return Config.getPublicConfig()

@@ -1,5 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as DH from '@/lib/display-helpers.ts'
+import * as Obj from '@/lib/object'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
@@ -8,7 +9,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import { useLayerItemStatuses } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-import deepEqual from 'fast-deep-equal'
+
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -39,7 +40,7 @@ export default function LayerDisplay(
 	const layerItemId = LQY.toLayerItemId(props.item)
 	// violations that this item has caused for the hovered item
 	const hoveredReasonViolationDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== layerItemId
-		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.reasonItem && deepEqual(vd.reasonItem, props.item)))
+		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.reasonItem && Obj.deepEqual(vd.reasonItem, props.item)))
 		|| undefined
 
 	const localViolationDescriptors = hoveredConstraintItemId === layerItemId && allViolationDescriptors?.get(layerItemId)

@@ -15,6 +15,7 @@ import * as Discord from '@/server/systems/discord.ts'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
+import * as SquadServer from '@/server/systems/squad-server'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
@@ -67,10 +68,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			request.url,
 		)
 		if (path.startsWith('/trpc')) return
+
 		const ctx = DB.addPooledDb({ log: instance.log as CS.Logger })
 
 		request.log = ctx.log
-		// @ts-expect-error monkey patching
+
+		// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 		request.ctx = ctx
 	})
 
@@ -168,20 +171,16 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 				expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE),
 			})
 		})
+		const requestCtx = buildRequestContext(ctx, req, reply)
 
-		await Sessions.setSessionCookie({ ...ctx, req, res: reply }, sessionId).redirect(AR.route('/'))
+		await Sessions.setSessionCookie(requestCtx, sessionId).redirect(AR.route('/'))
 	})
 
 	instance.post(AR.route('/logout'), async function(req, res) {
-		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({
-			...ctx,
-			req,
-			res,
-			span: Otel.trace.getActiveSpan(),
-		})
+		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
+		const authRes = await createAuthorizedRequestContext(ctx)
 		if (authRes.code !== 'ok') {
-			return Sessions.clearInvalidSession({ ...ctx, res })
+			return Sessions.clearInvalidSession(ctx)
 		}
 
 		return await Sessions.logout({ ...authRes.ctx, res })
@@ -223,12 +222,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
 		}
-		const ctx = getCtx(req)
-		const authRes = await createAuthorizedRequestContext({
-			...ctx,
-			req,
-			span: Otel.trace.getActiveSpan(),
-		})
+		let ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
+		const authRes = await createAuthorizedRequestContext(ctx)
 		switch (authRes.code) {
 			case 'ok':
 				break
@@ -236,12 +231,14 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'unauthorized:no-session':
 			case 'unauthorized:expired':
 			case 'err:not-found':
-				return await Sessions.clearInvalidSession({ ...ctx, res })
+				return await Sessions.clearInvalidSession(ctx)
 			case 'err:permission-denied':
-				return res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+				return ctx.res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 			default:
 				assertNever(authRes)
 		}
+
+		ctx = SquadServer.manageDefaultServerIdForRequest(ctx)
 
 		switch (ENV.NODE_ENV) {
 			case 'development': {
@@ -253,7 +250,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 					return err
 				})
 				const body = await htmlRes.text()
-				return res
+				return ctx.res
 					.type('text/html')
 					.header('Access-Control-Allow-Origin', '*')
 					.header('Access-Control-Allow-Methods', '*')
@@ -261,7 +258,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 					.send(body)
 			}
 			case 'production': {
-				return res.sendFile('index.html')
+				return ctx.res.sendFile('index.html')
 			}
 			case 'test': {
 				throw new Error('Not implemented')
@@ -289,7 +286,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 })
 
 export async function createAuthorizedRequestContext<
-	T extends CS.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req'>,
+	T extends CS.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req' | 'cookies'>,
 >(ctx: T) {
 	const validSessionRes = await Sessions.validateAndUpdate(ctx)
 	if (validSessionRes.code !== 'ok') {
@@ -322,8 +319,14 @@ export async function createAuthorizedRequestContext<
 export async function createTrpcRequestContext(
 	options: CreateFastifyContextOptions,
 ): Promise<C.TrpcRequest> {
+	const cookies = options.req.headers.cookie!
+	if (!cookies) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'unauthorized:no-cookie' })
 	const result = await createAuthorizedRequestContext(
-		DB.addPooledDb({ log: baseLogger, req: options.req }),
+		DB.addPooledDb({
+			log: baseLogger,
+			req: options.req,
+			cookies: AR.parseCookies(cookies),
+		}),
 	)
 	if (result.code !== 'ok') {
 		switch (result.code) {
@@ -342,6 +345,12 @@ export async function createTrpcRequestContext(
 		}
 	}
 	const wsClientId = createId(32)
+
+	if (options.req.headers.cookie) {
+		// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
+		const defaultServerId = AR.parseCookies(options.req.headers.cookie)['default-server-id']!
+		SquadServer.state.selectedServers.set(wsClientId, defaultServerId)
+	}
 	const ctx: C.TrpcRequest = C.initLocks({
 		wsClientId,
 		user: result.ctx.user,
@@ -354,4 +363,17 @@ export async function createTrpcRequestContext(
 	})
 	WsSessionSys.registerClient(ctx)
 	return ctx
+}
+
+// only works for known resolved paths
+function buildRequestContext<Ctx extends object>(ctx: Ctx, req: FastifyRequest, res: FastifyReply): C.HttpRequest & Ctx {
+	const route = AR.resolveRoute(req.url) ?? undefined
+	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : {} as AR.Cookies
+	return {
+		...ctx,
+		req,
+		res,
+		route,
+		cookies,
+	}
 }

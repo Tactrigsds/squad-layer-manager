@@ -29,31 +29,23 @@ export const groups = {
 		DB_DATABASE: z.string().nonempty().default('squadLayerManager'),
 	},
 
+	// only needed when running integration tests for the rcon modules
+	testRcon: {
+		TEST_RCON_HOST: z.string().nonempty().default('localhost'),
+		TEST_RCON_PORT: ParsedIntSchema.default('27015'),
+		TEST_RCON_PASSWORD: z.string().nonempty().default('test'),
+	},
+
 	discord: {
 		DISCORD_CLIENT_ID: z.string().nonempty(),
 		DISCORD_CLIENT_SECRET: z.string().nonempty(),
 		DISCORD_BOT_TOKEN: z.string().nonempty(),
 	},
 
-	rcon: {
-		RCON_HOST: z.string().nonempty().default('localhost'),
-		RCON_PORT: ParsedIntSchema.default('21114').pipe(z.number().positive()),
-		RCON_PASSWORD: z.string().default('testpassword'),
-	},
-
 	httpServer: {
 		PORT: ParsedIntSchema.default('3000'),
 		HOST: z.string().default('127.0.0.1'),
 		ORIGIN: NormedUrl.default('https://localhost:5173'),
-	},
-
-	squadSftpLogs: {
-		SQUAD_SFTP_HOST: z.string().default('localhost'),
-		SQUAD_SFTP_PORT: ParsedIntSchema.default('22'),
-		SQUAD_SFTP_LOG_FILE: z.string().default('squad-sftp.log'),
-		SQUAD_SFTP_USERNAME: z.string().default('squad'),
-		SQUAD_SFTP_PASSWORD: z.string().default('password'),
-		SQUAD_SFTP_POLL_INTERVAL: HumanTime.default('5s').pipe(z.number().positive()),
 	},
 
 	layerDb: {

@@ -41,3 +41,5 @@ layer-db.json
 
 certs/
 .million/
+docker/logs
+docker/squad-dedicated

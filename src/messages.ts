@@ -9,8 +9,8 @@ import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
+import type { WarnOptions } from '@/server/systems/squad-rcon'
 import * as dateFns from 'date-fns'
-import { WarnOptions } from './lib/rcon/squad-rcon'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
 function formatInterval(interval: number, terse = true) {

@@ -1,11 +1,11 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import * as AR from '@/app-routes.ts'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
-import useAppParams from '@/hooks/use-app-params.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import * as SLL from '@/models/squad-layer-list.models'
+import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
@@ -48,7 +48,7 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 }
 
 export function LayerInfoPage() {
-	const params = useAppParams('/layers/:id')
+	const params = AppRoutesClient.useAppParams('/layers/:id')
 	// -------- set title --------
 	React.useLayoutEffect(() => {
 		document.title = `SLM - ${DH.displayLayer(params.id)}`

@@ -4,6 +4,7 @@ import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as SS from '@/models/server-state.models.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as Paths from '@/server/paths'
@@ -18,24 +19,19 @@ import zodToJsonSchema from 'zod-to-json-schema'
 import * as Env from './env.ts'
 
 export const ConfigSchema = z.object({
-	serverId: z.string().min(1).max(256),
-	serverDisplayName: z.string().min(1).max(256),
-	commandPrefix: BasicStrNoWhitespace,
 	topBarColor: z.string().default('green').nullable().describe('this should be set to null for production'),
 	warnPrefix: z.string().nullable().default('SLM: ').describe('Prefix to use for warnings'),
-	defaults: z.object({
-		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
-		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
-			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
-		),
-		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(['map', 'gamemode']).describe(
-			'What parts of a layer setup should be displayed',
-		),
-		steamLinkCodeExpiry: HumanTime.default('15m').describe('Duration of a steam account link code'),
-	}),
-	// we have to ues .optional instead of .default here to avoid circular type definitions
-	commands: CMD.AllCommandConfigSchema,
-	reminders: z.object({
+	postRollAnnouncementsTimeout: HumanTime.default('5m').describe('How long to wait before sending post-roll reminders'),
+	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
+	servers: z.array(
+		z.object({
+			id: z.string().describe('ID of the server'),
+			displayName: z.string().describe('Display name of the server'),
+			description: z.string().describe('Description of the server'),
+			connections: SS.ServerConnectionSchema,
+		}),
+	),
+	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
 			.positive()
@@ -44,14 +40,29 @@ export const ConfigSchema = z.object({
 		adminQueueReminderInterval: HumanTime.default('10m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
-		voteReminderInterval: HumanTime.default('45s').describe('How often to remind users to vote'),
+		maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
+	}),
+	vote: z.object({
+		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
 		startVoteReminderThreshold: HumanTime.default('20m').describe('How far into a match to start reminding admins to start a vote'),
-		finalVote: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
-		postRollAnnouncementsTimeout: HumanTime.default('5m').describe('How long to wait before sending post-roll reminders'),
-	}).default({}),
-	maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
-	maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
-	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
+		voteReminderInterval: HumanTime.default('45s').describe('How often to remind users to vote'),
+		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
+			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
+		),
+		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(['map', 'gamemode']).describe(
+			'What parts of a layer setup should be displayed',
+		),
+		finalVoteReminder: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
+		maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
+	}),
+	squadServer: z.object({
+		sftpPollInterval: HumanTime.default('5s'),
+		sftpReconnectInterval: HumanTime.default('10s'),
+	}),
+	steamLinkCodeExpiry: HumanTime.default('15m').describe('Duration of a steam account link code'),
+	// we have to ues .optional instead of .default here to avoid circular type definitions
+	commandPrefix: BasicStrNoWhitespace,
+	commands: CMD.AllCommandConfigSchema,
 
 	adminListSources: z.array(SM.AdminListSourceSchema),
 	adminListAdminRole: z.string().describe("The role in the adminlist which identifies an admin for SLM's purposes"),
@@ -121,10 +132,15 @@ export async function ensureSetup() {
 }
 
 export type PublicConfig = ReturnType<typeof getPublicConfig>
+export type ServerEntry = {
+	id: string
+	displayName: string
+	description: string
+}
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
-		...Obj.selectProps(CONFIG, ['maxQueueSize', 'defaults', 'topBarColor', 'layerTable']),
+		...Obj.selectProps(CONFIG, ['layerQueue', 'vote', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
@@ -132,6 +148,11 @@ export function getPublicConfig() {
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
+		servers: CONFIG.servers.map((server): ServerEntry => ({
+			id: server.id,
+			displayName: server.displayName,
+			description: server.description,
+		})),
 	}
 }
 

@@ -17,10 +17,27 @@ export const PoolConfigurationSchema = z.object({
 	repeatRules: z.array(LQY.RepeatRuleSchema),
 })
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
+export const ServerConnectionSchema = z.object({
+	rcon: z.object({
+		host: z.string().nonempty(),
+		port: z.number().min(1).max(65535),
+		password: z.string().nonempty(),
+	}),
+	sftp: z.object({
+		host: z.string().nonempty(),
+		port: z.number().min(1).max(65535),
+		username: z.string().nonempty(),
+		password: z.string().nonempty(),
+		logFile: z.string().nonempty(),
+	}),
+})
+export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const ServerSettingsSchema = z
 	.object({
 		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
+		// should *always* be omitted on the frontend
+		connections: ServerConnectionSchema.optional(),
 		queue: z
 			.object({
 				mainPool: PoolConfigurationSchema.default({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
@@ -94,7 +111,7 @@ export const UserModifiableServerStateSchema = z.object({
 })
 
 export type UserModifiableServerState = z.infer<typeof UserModifiableServerStateSchema>
-export type LQServerStateUpdate = {
+export type LQStateUpdate = {
 	state: LQServerState
 	source:
 		| {
@@ -126,7 +143,6 @@ export type ServerId = z.infer<typeof ServerIdSchema>
 export const ServerStateSchema = UserModifiableServerStateSchema.extend({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
-	online: z.boolean(),
 	lastRoll: z.date().nullable(),
 })
 

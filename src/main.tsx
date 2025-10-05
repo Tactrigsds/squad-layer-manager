@@ -1,6 +1,7 @@
+import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import * as AR from './app-routes.ts'
 import { InnerRouterProviders, Providers } from './components/providers.tsx'
 import './index.css'
@@ -11,6 +12,7 @@ import { enableMapSet } from 'immer'
 import * as Rx from 'rxjs'
 
 import FullPageSpinner from './components/full-page-spinner.tsx'
+import { assertNever } from './lib/type-guards.ts'
 import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
 // Lazy load components
@@ -27,6 +29,10 @@ console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH,
 const router = createBrowserRouter([
 	{
 		path: AR.route('/'),
+		element: <Navigate to={AR.link('/servers/:id', AppRoutesClient.getCookie('default-server-id')!)} />,
+	},
+	{
+		path: AR.route('/servers/:id'),
 		element: (
 			<InnerRouterProviders>
 				<React.Suspense fallback={<FullPageSpinner />}>
@@ -92,14 +98,15 @@ ConfigClient.setup()
 let setupState: 'all' | 'layer-info' | null = null
 async function ensureSystemsSetup() {
 	if (setupState == 'all') return
-	const route = AR.getRouteForPath(window.location.pathname)
+	const route = AR.resolveRoute(window.location.pathname)
 	if (!route) {
 		console.warn('No route found for path:', window.location.pathname)
 		throw new Error('No configured route found for path ' + window.location.pathname)
 	}
-	if (AR.isRouteType(route, 'custom')) return
-	switch (route.server) {
+	if (AR.isRouteType(route.def, 'custom')) return
+	switch (route.id) {
 		case '/':
+		case '/servers/:id':
 		case '/filters':
 		case '/filters/:id':
 		case '/filters/new': {
@@ -143,7 +150,7 @@ Rx.merge([
 	Rx.fromEvent(window, 'pushstate'),
 	Rx.fromEvent(window, 'replacestate'),
 	Rx.fromEvent(window, 'hashchange'),
-]).subscribe(() => {
+]).pipe(Rx.mergeAll()).subscribe(() => {
 	void ensureSystemsSetup()
 })
 

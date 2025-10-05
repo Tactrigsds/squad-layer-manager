@@ -1,3 +1,4 @@
+import * as Obj from '@/lib/object'
 import { fromTrpcSub } from '@/lib/trpc-helpers'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
@@ -6,7 +7,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useQuery } from '@tanstack/react-query'
-import deepEqual from 'fast-deep-equal'
+
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -59,7 +60,7 @@ export function useLoggedInUser() {
 
 		if (!simulateRoles) return loggedInUser
 		const simulatedPerms = loggedInUser.perms.filter(p =>
-			p.allowedByRoles.some(r => !disabledRoles.some(toCompare => deepEqual(r, toCompare)))
+			p.allowedByRoles.some(r => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
 		)
 
 		return {

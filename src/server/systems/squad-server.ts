@@ -1,397 +1,265 @@
+import * as Schema from '$root/drizzle/schema.ts'
+import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
-import * as OneToMany from '@/lib/one-to-many-map.ts'
-import Rcon from '@/lib/rcon/core-rcon.ts'
+import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import * as Obj from '@/lib/object'
+import Rcon, { DecodedPacket } from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
-import SquadRcon, { WarnOptions } from '@/lib/rcon/squad-rcon.ts'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
-import { assertNever } from '@/lib/type-guards.ts'
+import { Parts } from '@/lib/types'
+import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
-import * as CMD from '@/models/command.models.ts'
+import * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as MH from '@/models/match-history.models.ts'
+import * as LL from '@/models/layer-list.models'
+import * as MH from '@/models/match-history.models'
+import * as SS from '@/models/server-state.models'
 import * as SME from '@/models/squad-models.events.ts'
-import * as SM from '@/models/squad.models.ts'
-import * as USR from '@/models/users.models.ts'
+import * as SM from '@/models/squad.models'
+import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
-import { CONFIG } from '@/server/config'
+import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
-import * as DB from '@/server/db.ts'
-import { baseLogger } from '@/server/logger'
+import * as DB from '@/server/db'
+import * as Commands from '@/server/systems/commands'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
-import * as Users from '@/server/systems/users.ts'
+import * as SquadRcon from '@/server/systems/squad-rcon'
+import * as TrpcServer from '@/server/trpc.server'
 import * as Otel from '@opentelemetry/api'
+import { TRPCError } from '@trpc/server'
+import { Mutex } from 'async-mutex'
+import * as E from 'drizzle-orm/expressions'
+
 import * as Rx from 'rxjs'
 import { z } from 'zod'
-import * as Env from '../env'
-import { procedure, router } from '../trpc.server.ts'
+import { baseLogger } from '../logger'
 
-type SquadServerState = {
+const tracer = Otel.trace.getTracer('squad-server')
+
+type State = {
+	slices: Map<string, C.ServerSlice>
+	// wsClientId => server id
+	selectedServers: Map<string, string>
+	selectedServerUpdate$: Rx.Subject<{ wsClientId: string; serverId: string }>
 	debug__ticketOutcome?: SME.DebugTicketOutcome
 	serverRolling: boolean
 }
 
-const tracer = Otel.trace.getTracer('squad-server')
+export let state!: State
+export type SquadServer = {
+	logEmitter: SquadEventEmitter
 
-export let rcon!: SquadRcon
-export let squadLogEvents!: SquadEventEmitter
+	layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
 
-export let adminList!: AsyncResource<SM.AdminList>
-let layersStatusExt$!: Rx.Observable<SM.LayersStatusResExt>
+	adminList: AsyncResource<SM.AdminList, CS.Log & C.Rcon>
 
-// be a good citizen and don't update this from outside of squad-server
-export let state!: SquadServerState
+	postRollEventsSub: Rx.Subscription | null
+} & SquadRcon.SquadRconContext
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadSftpLogs, ...Env.groups.rcon })
-let ENV!: ReturnType<typeof envBuilder>
+export type MatchHistoryState = {
+	historyMtx: Mutex
+	update$: Rx.Subject<CS.Log>
+	recentMatches: MH.MatchDetails[]
+	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
+} & Parts<USR.UserPart>
 
-export const warnAllAdmins = C.spanOp(
-	'squad-server:warn-all-admins',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log, options: WarnOptions) => {
-		const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([adminList.get(ctx), rcon.playerList.get(ctx)])
-		const ops: Promise<unknown>[] = []
+export async function setup() {
+	const ctx = getBaseCtx()
 
-		if (playersRes.code === 'err:rcon') return
-		for (const player of playersRes.players) {
-			if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
-				ops.push(rcon.warn(ctx, player.steamID.toString(), options))
+	state = {
+		slices: new Map(),
+		serverRolling: false,
+		selectedServers: new Map(),
+		selectedServerUpdate$: new Rx.Subject(),
+	}
+
+	for (const serverConfig of CONFIG.servers) {
+		let settings: SS.ServerSettings | undefined
+
+		await DB.runTransaction(ctx, async () => {
+			let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
+			server = unsuperjsonify(Schema.servers, server) as typeof server
+			const settingsParsedRes = server?.settings
+				? SS.ServerSettingsSchema.safeParse(server.settings)
+				: undefined
+			settings = settingsParsedRes?.success ? settingsParsedRes.data : undefined
+			if (!server) {
+				settings = SS.ServerSettingsSchema.parse({ connections: serverConfig.connections })
+				await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, {
+					id: serverConfig.id,
+					settings,
+					displayName: serverConfig.displayName,
+					layerQueue: LL.LayerListSchema.parse([]),
+				}))
 			}
-		}
-		await Promise.all(ops)
-	},
-)
 
-async function* watchLayersStatus({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
-	yield await fetchLayersStatusExt(ctx)
-	for await (const res of toAsyncGenerator(layersStatusExt$.pipe(withAbortSignal(signal!)))) {
-		yield res
-	}
-}
-
-async function* watchServerInfo({ ctx, signal }: { ctx: CS.Log; signal?: AbortSignal }) {
-	yield* toAsyncGenerator(rcon.serverInfo.observe(ctx).pipe(distinctDeepEquals(), withAbortSignal(signal!)))
-}
-
-async function endMatch({ ctx }: { ctx: C.TrpcRequest }) {
-	const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-		check: 'all',
-		permits: [RBAC.perm('squad-server:end-match')],
-	})
-	if (deniedRes) return deniedRes
-	await rcon.endMatch(ctx)
-	await warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
-	return { code: 'ok' as const }
-}
-
-async function handleCommand(ctx: CS.Log & C.Db & C.Locks, msg: SM.ChatMessage) {
-	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
-		return {
-			code: 'err:invalid-chat-channel' as const,
-			msg: 'Invalid chat channel',
-		}
-	}
-
-	async function showError<T extends string>(reason: T, errorMessage: string) {
-		await rcon.warn(ctx, msg.playerId, errorMessage)
-		return {
-			code: `err:${reason}` as const,
-			msg: errorMessage,
-		}
-	}
-
-	const parseRes = CMD.parseCommand(msg, CONFIG.commands, CONFIG.commandPrefix)
-	if (parseRes.code === 'err:unknown-command') {
-		await rcon.warn(ctx, msg.playerId, parseRes.msg)
-		return
-	}
-
-	const { cmd, args } = parseRes
-
-	ctx.log.info('Command received: %s', cmd)
-
-	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
-	if (!CMD.chatInScope(cmdConfig.scopes, msg.chat)) {
-		const scopes = CMD.getScopesForChat(msg.chat)
-		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
-		await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.wrongChat(correctChats))
-		return
-	}
-
-	if (cmdConfig.enabled === false) {
-		return await showError('command-disabled', `Command "${cmd}" is disabled`)
-	}
-	const playerListRes = (await rcon.playerList.get(ctx)).value
-	if (!msg.steamID) return
-	if (playerListRes.code === 'err:rcon') {
-		return await showError('rcon-error', 'RCON error')
-	}
-	const player = playerListRes.players.find((p) => p.steamID === BigInt(msg.steamID!))!
-
-	const user: USR.GuiOrChatUserId = { steamId: msg.steamID }
-	switch (cmd) {
-		case 'startVote': {
-			const res = await LayerQueue.startVote(ctx, { initiator: user })
-			switch (res.code) {
-				case 'err:permission-denied': {
-					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
-				}
-				case 'err:invalid-item-type':
-				case 'err:public-vote-not-first':
-				case 'err:vote-not-allowed':
-				case 'err:item-not-found':
-				case 'err:vote-in-progress':
-				case 'err:editing-in-progress': {
-					return await showError('vote-error', res.msg)
-				}
-				case 'err:rcon': {
-					throw new Error(`RCON error`)
-				}
-				case 'ok':
-					return { code: 'ok' as const }
-				default:
-					assertNever(res)
-					return
+			if (server && server.displayName !== serverConfig.displayName) {
+				await ctx.db().update(Schema.servers).set({ displayName: serverConfig.displayName }).where(E.eq(Schema.servers.id, serverConfig.id))
 			}
-		}
-		case 'abortVote': {
-			const res = await LayerQueue.abortVote(ctx, { aborter: user })
-			switch (res.code) {
-				case 'ok':
-					return { code: 'ok' as const }
-				case 'err:no-vote-in-progress':
-					return await showError('no-vote-in-progress', Messages.WARNS.vote.noVoteInProgress)
-				default: {
-					assertNever(res)
-					return
-				}
+
+			if (server && !Obj.deepEqual(serverConfig.connections, settings?.connections)) {
+				settings = SS.ServerSettingsSchema.parse({ ...(settings ?? {}), connections: serverConfig.connections })
+				await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
+					E.eq(Schema.servers.id, serverConfig.id),
+				)
 			}
-			break
-		}
-		case 'help': {
-			await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.help(CONFIG.commands, CONFIG.commandPrefix))
-			return { code: 'ok' as const }
-		}
-		case 'showNext': {
-			await LayerQueue.warnShowNext(ctx, msg.playerId, { repeat: 3 })
-			return { code: 'ok' as const }
-		}
-		case 'disableSlmUpdates':
-		case 'enableSlmUpdates': {
-			const res = await LayerQueue.toggleUpdatesToSquadServer({ ctx, input: { disabled: cmd === 'disableSlmUpdates' } })
-			switch (res.code) {
-				case 'ok':
-					return { code: 'ok' as const }
-				case 'err:permission-denied':
-					await rcon.warn(ctx, msg.playerId, Messages.WARNS.permissionDenied(res))
-					return res
-				default:
-					assertNever(res)
-					return res
-			}
-		}
-		case 'getSlmUpdatesEnabled': {
-			const res = await LayerQueue.getSlmUpdatesEnabled(ctx)
-			await rcon.warn(ctx, msg.playerId, Messages.WARNS.slmUpdatesStatus(res.enabled))
-			return { code: 'ok' as const }
-		}
-		case 'linkSteamAccount': {
-			if (!msg.steamID) {
-				await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.missingSteamId())
-				return { code: 'err:missing-steam-id' as const }
-			}
-			const res = await Users.completeSteamAccountLink(ctx, args.code, BigInt(msg.steamID))
-			switch (res.code) {
-				case 'ok':
-					await rcon.warn(ctx, msg.playerId, Messages.WARNS.commands.steamAccountLinked(res.linkedUsername))
-					return { code: 'ok' as const }
-				case 'err:invalid-code':
-				case 'err:already-linked':
-				case 'err:discord-user-not-found':
-					await rcon.warn(ctx, msg.playerId, res.msg)
-					return res
-				default:
-					assertNever(res)
-					// return needed for typechecking the outer switch Sadge
-					return res
-			}
-		}
-		case 'requestFeedback': {
-			const res = await LayerQueue.requestFeedback(ctx, player.name, args.number)
-			switch (res.code) {
-				case 'err:empty':
-				case 'err:not-found': {
-					await rcon.warn(ctx, msg.playerId, 'Item not found')
-					return { code: 'err:not-found' as const }
-				}
-				case 'ok':
-					break
-				default: {
-					assertNever(res)
-					return res
-				}
-			}
-			break
-		}
-		default: {
-			assertNever(cmd)
-		}
-	}
-}
-
-export const setup = C.spanOp('squad-server:setup', { tracer, eventLogLevel: 'info' }, async () => {
-	ENV = envBuilder()
-	// -------- set up admin list --------
-	const adminListTTL = 1000 * 60 * 60 * 60
-	const ctx = DB.addPooledDb({ log: baseLogger })
-
-	state = { serverRolling: false }
-
-	adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
-	void adminList.get(ctx)
-
-	// -------- set up rcon --------
-	const coreRcon = new Rcon({
-		host: ENV.RCON_HOST,
-		port: ENV.RCON_PORT,
-		password: ENV.RCON_PASSWORD,
-	})
-
-	coreRcon.ensureConnected(ctx)
-
-	coreRcon.connected$
-		.pipe()
-		.subscribe(async (connected) => {
-			if (!connected) return
-			const { value: statusRes } = await rcon.layersStatus.get(ctx)
-			if (statusRes.code === 'err:rcon') return
-			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
 		})
-	rcon = new SquadRcon(ctx, coreRcon, { warnPrefix: CONFIG.warnPrefix })
 
-	rcon.event$.pipe(
-		C.durableSub(
-			'squad-server:handle-rcon-event',
-			{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
-			async (event) => {
-				if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-					await handleCommand(C.initLocks(ctx), event.message)
-				}
+		if (!settings) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
+		const slice = await instantiateServer(ctx, serverConfig.id, settings)
+		state.slices.set(serverConfig.id, slice)
+	}
+}
 
-				if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-					LayerQueue.handleVote(ctx, event.message)
-				}
-			},
-		),
-	).subscribe()
+async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string, settings: SS.ServerSettings): Promise<C.ServerSlice> {
+	const layersStatus: SquadServer['layersStatus'] = new AsyncResource('serverStatus', (ctx) => SquadRcon.getLayerStatus(ctx), {
+		defaultTTL: 5000,
+	})
 
-	// -------- set up squad events (events from logger) --------
-	squadLogEvents = new SquadEventEmitter(ctx, {
+	const rcon = new Rcon({ serverId: serverId, settings: settings.connections!.rcon })
+	rcon.ensureConnected(ctx)
+
+	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
+
+	const adminListTTL = HumanTime.parse('1h')
+	const adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
+
+	const sub = new Rx.Subscription()
+
+	const rconEvent$: Rx.Observable<SM.SquadRconEvent> = Rx.fromEvent(rcon, 'server').pipe(
+		Rx.concatMap((pkt): Rx.Observable<SM.SquadRconEvent> => {
+			const ctx = getBaseCtx()
+			const message = SquadRcon.processChatPacket(ctx, pkt as DecodedPacket)
+			if (message === null) return Rx.EMPTY
+			ctx.log.debug(`Chat : %s : %s`, message.name, message.message)
+			return Rx.of({ type: 'chat-message', message })
+		}),
+		Rx.share(),
+	)
+
+	const logEmitter = new SquadEventEmitter(getBaseCtx(), {
 		sftp: {
-			host: ENV.SQUAD_SFTP_HOST,
-			port: ENV.SQUAD_SFTP_PORT,
-			username: ENV.SQUAD_SFTP_USERNAME,
-			password: ENV.SQUAD_SFTP_PASSWORD,
-			filePath: ENV.SQUAD_SFTP_LOG_FILE,
-			pollInterval: ENV.SQUAD_SFTP_POLL_INTERVAL,
-			reconnectInterval: 5_000,
+			filePath: settings.connections!.sftp.logFile,
+			host: settings.connections!.sftp.host,
+			port: settings.connections!.sftp.port,
+			username: settings.connections!.sftp.username,
+			password: settings.connections!.sftp.password,
+			pollInterval: CONFIG.squadServer.sftpPollInterval,
+			reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
 		},
 	})
+	logEmitter.connect()
 
-	squadLogEvents.event$.pipe(
-		C.durableSub(
-			'squad-server:handle-squad-log-event',
-			{ tracer, ctx, eventLogLevel: 'info' },
-			([ctx, event]) => handleSquadEvent(C.initLocks(DB.addPooledDb(ctx)), event),
-		),
-	).subscribe()
+	const server: SquadServer = {
+		layersStatusExt$,
+		...SquadRcon.initSquadRcon(ctx, serverId, settings.connections!.rcon, sub),
 
-	void squadLogEvents.connect()
+		adminList,
+		logEmitter,
+		postRollEventsSub: null,
+	}
 
-	layersStatusExt$ = getLayersStatusExt$(ctx)
-})
+	const slice: C.ServerSlice = {
+		serverId,
 
-async function handleSquadEvent(ctx: C.Db & C.Locks, event: SME.Event) {
-	switch (event.type) {
-		case 'NEW_GAME': {
-			try {
-				return await LayerQueue.handleNewGame(ctx, event.time)
-			} finally {
-				state.serverRolling = false
-			}
-		}
-		case 'ROUND_ENDED': {
-			const { value: statusRes } = await rcon.layersStatus.get(ctx, { ttl: 200 })
-			if (statusRes.code !== 'ok') return statusRes
-			// -------- use debug ticketOutcome if one was set --------
-			if (state.debug__ticketOutcome) {
-				let winner: SM.TeamId | null
-				let loser: SM.TeamId | null
-				if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
-					winner = null
-					loser = null
-				} else {
-					winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
-					loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
-				}
-				const partial = L.toLayer(statusRes.data.currentLayer)
-				const teams: SM.SquadOutcomeTeam[] = [
-					{
-						faction: partial.Faction_1!,
-						unit: partial.Unit_1!,
-						team: 1,
-						tickets: state.debug__ticketOutcome.team1,
-					},
-					{
-						faction: partial.Faction_2!,
-						unit: partial.Unit_2!,
-						team: 2,
-						tickets: state.debug__ticketOutcome.team2,
-					},
-				]
-				const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
-				const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
-				event = {
-					...event,
-					loser: loserTeam,
-					winner: winnerTeam,
-				}
-				delete state.debug__ticketOutcome
-			}
-			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
-			return res
-		}
-		default:
-			assertNever(event)
+		server,
+		rcon,
+
+		matchHistory: MatchHistory.initMatchHistoryContext(),
+
+		layerQueue: LayerQueue.initLayerQueueContext(),
+
+		userPresence: {
+			state: {},
+			update$: new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>(),
+		},
+
+		vote: {
+			autostartVoteSub: null,
+			voteEndTask: null,
+			state: null,
+			mtx: new Mutex(),
+
+			update$: new Rx.Subject<V.VoteStateUpdate>(),
+		},
+		serverSliceSub: sub,
+	}
+
+	sub.add(rcon.connected$.subscribe(async (connected) => {
+		if (!connected) return
+		const ctx = { ...getBaseCtx(), ...slice }
+
+		const { value: statusRes } = await layersStatus.get(ctx)
+		if (statusRes.code === 'err:rcon') return
+		await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
+	}))
+
+	sub.add(
+		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
+			const ctx = { ...getBaseCtx(), ...slice }
+			ctx.log.info(
+				'active match id: %s, status: %s',
+				MatchHistory.getCurrentMatch(ctx)?.historyEntryId,
+				MatchHistory.getCurrentMatch(ctx)?.status,
+			)
+		}),
+	)
+
+	sub.add(
+		rconEvent$.pipe(
+			C.durableSub(
+				'squad-server:handle-rcon-event',
+				{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
+				async (event) => {
+					const ctx = C.initLocks(resolveSliceCtx(getBaseCtx(), serverId))
+					if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
+						await Commands.handleCommand(ctx, event.message)
+					} else if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
+						LayerQueue.handleVote(ctx, event.message)
+					}
+				},
+			),
+		).subscribe(),
+	)
+
+	await MatchHistory.loadState({ ...ctx, ...slice })
+	await LayerQueue.initLayerQueue({ ...ctx, ...slice })
+
+	return slice
+}
+
+export function destroyServer(ctx: C.ServerSlice & CS.Log) {
+	ctx.serverSliceSub.unsubscribe()
+	ctx.server.logEmitter.disconnect()
+	ctx.rcon.disconnect(ctx)
+	ctx.matchHistory.update$.complete()
+
+	state.slices.delete(ctx.serverId)
+	for (const [wsClientId, serverId] of Array.from(state.selectedServers.entries())) {
+		if (ctx.serverId === serverId) state.selectedServers.delete(wsClientId)
 	}
 }
 
-export async function toggleFogOfWar({ ctx, input }: { ctx: CS.Log & C.Db & C.User; input: { disabled: boolean } }) {
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
-	if (denyRes) return denyRes
-	const { value: serverStatusRes } = await rcon.layersStatus.get(ctx)
-	if (serverStatusRes.code !== 'ok') return serverStatusRes
-	await rcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
-	if (input.disabled) {
-		await rcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
-	}
-	return { code: 'ok' as const }
+export async function getFullServerState(ctx: C.Db & CS.Log & C.LayerQueue) {
+	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
+	let serverRaw: any
+	if (ctx.tx) [serverRaw] = await query.for('update')
+	else [serverRaw] = await query
+	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-export const squadServerRouter = router({
-	watchLayersStatus: procedure.subscription(watchLayersStatus),
-	watchServerInfo: procedure.subscription(watchServerInfo),
-	endMatch: procedure.mutation(endMatch),
-	toggleFogOfWar: procedure.input(z.object({ disabled: z.boolean() })).mutation(toggleFogOfWar),
-})
-
-function getLayersStatusExt$(ctx: CS.Log) {
+function getLayersStatusExt$(
+	serverId: string,
+) {
 	return new Rx.Observable<SM.LayersStatusResExt>(s => {
+		const ctx = { ...getBaseCtx(), ...state.slices.get(serverId)! }
 		const sub = new Rx.Subscription()
 		sub.add(
-			rcon.layersStatus.observe(ctx).subscribe({
+			ctx.server.layersStatus.observe(ctx).subscribe({
 				next: async () => {
 					s.next(await fetchLayersStatusExt(ctx))
 				},
@@ -399,7 +267,7 @@ function getLayersStatusExt$(ctx: CS.Log) {
 				complete: () => s.complete(),
 			}),
 		)
-		sub.add(MatchHistory.stateUpdated$.subscribe({
+		sub.add(ctx.matchHistory.update$.subscribe({
 			next: async () => {
 				s.next(await fetchLayersStatusExt(ctx))
 			},
@@ -410,10 +278,10 @@ function getLayersStatusExt$(ctx: CS.Log) {
 	}).pipe(distinctDeepEquals(), Rx.share())
 }
 
-async function fetchLayersStatusExt(ctx: CS.Log) {
-	const { value: statusRes } = await rcon.layersStatus.get(ctx)
+async function fetchLayersStatusExt(ctx: CS.Log & C.SquadServer & C.MatchHistory) {
+	const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
-	return buildServerStatusRes(statusRes.data, MatchHistory.getCurrentMatch())
+	return buildServerStatusRes(statusRes.data, MatchHistory.getCurrentMatch(ctx))
 }
 
 function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.MatchDetails) {
@@ -423,3 +291,116 @@ function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.Matc
 	}
 	return res
 }
+
+// resolves a default server id for a request given the route and a previously stored default server id
+export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: Ctx) {
+	const defaultServerId = ctx.cookies['default-server-id']
+
+	let serverId: string | undefined
+	if (C.isRoutedHttpRequestContext(ctx) && ctx.route === AR.route('/servers/:id')) {
+		serverId = ctx.route.params.id
+	} else if (defaultServerId) {
+		serverId = defaultServerId
+	} else {
+		serverId = (state.slices.keys().next().value)!
+	}
+
+	if (defaultServerId && serverId === defaultServerId) return ctx
+	const res = ctx.res.setCookie(AR.COOKIE_KEY.Values['default-server-id'], serverId)
+	return {
+		...ctx,
+		res,
+	}
+}
+
+export function resolveWsClientSliceCtx(ctx: C.TrpcRequest) {
+	let serverId = state.selectedServers.get(ctx.wsClientId)
+	serverId ??= CONFIG.servers[0].id
+	if (!serverId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No server selected' })
+	const slice = state.slices.get(serverId)
+	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server slice not found' })
+	return {
+		...ctx,
+		...slice,
+	}
+}
+
+export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
+	const slice = state.slices.get(serverId)
+	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server slice not found' })
+	return {
+		...ctx,
+		...slice,
+	}
+}
+
+function getBaseCtx() {
+	return C.initLocks(DB.addPooledDb({ log: baseLogger }))
+}
+
+export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
+	return state.selectedServerUpdate$.pipe(
+		Rx.concatMap(s => s.wsClientId === ctx.wsClientId ? Rx.of(s.serverId) : Rx.EMPTY),
+		Rx.startWith(state.selectedServers.get(ctx.wsClientId)!),
+		Rx.map(serverId => resolveSliceCtx(ctx, serverId)),
+	)
+}
+
+export const router = TrpcServer.router({
+	setSelectedServer: TrpcServer.procedure.input(z.string()).mutation(async ({ ctx, input: serverId }) => {
+		const slice = state.slices.get(serverId)
+		if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server not found' })
+		state.selectedServers.set(ctx.wsClientId, serverId)
+		state.selectedServerUpdate$.next({ wsClientId: ctx.wsClientId, serverId })
+		return { code: 'ok' as const }
+	}),
+
+	watchLayersStatus: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
+		const obs = selectedServerCtx$(ctx)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return ctx.server.layersStatusExt$
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	watchServerInfo: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
+		const obs = selectedServerCtx$(ctx)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return ctx.server.serverInfo.observe(ctx).pipe(
+						distinctDeepEquals(),
+					)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	endMatch: TrpcServer.procedure.mutation(async ({ ctx: _ctx }) => {
+		const ctx = resolveWsClientSliceCtx(_ctx)
+		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
+			check: 'all',
+			permits: [RBAC.perm('squad-server:end-match')],
+		})
+		if (deniedRes) return deniedRes
+		SquadRcon.endMatch(ctx)
+		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
+		return { code: 'ok' as const }
+	}),
+
+	toggleFogOfWar: TrpcServer.procedure.input(z.object({ disabled: z.boolean() })).mutation(async ({ ctx: _ctx, input }) => {
+		const ctx = resolveWsClientSliceCtx(_ctx)
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
+		if (denyRes) return denyRes
+		const { value: serverStatusRes } = await ctx.server.layersStatus.get(ctx)
+		if (serverStatusRes.code !== 'ok') return serverStatusRes
+		await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+		if (input.disabled) {
+			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+		}
+		return { code: 'ok' as const }
+	}),
+})

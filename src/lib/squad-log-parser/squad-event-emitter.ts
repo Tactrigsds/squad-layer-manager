@@ -122,6 +122,7 @@ export class SquadEventEmitter {
 	}
 
 	async disconnect() {
+		this.event$.complete()
 		await this.reader.disconnect()
 	}
 }

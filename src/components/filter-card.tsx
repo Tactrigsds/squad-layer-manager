@@ -15,7 +15,7 @@ import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-import deepEqual from 'fast-deep-equal'
+
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
@@ -1273,7 +1273,7 @@ function FactionMaskListConfig(props: {
 		newMask = Obj.map(newMask, (value) => value ?? undefined)
 		for (let mask of masks) {
 			mask = Obj.map(mask, (value) => value ?? undefined)
-			if (deepEqual(mask, newMask)) {
+			if (Obj.deepEqual(mask, newMask)) {
 				globalToast$.next({
 					variant: 'destructive',
 					title: 'Duplicate Faction Mask',

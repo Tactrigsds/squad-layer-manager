@@ -11,6 +11,7 @@ import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import * as Obj from '@/lib/object'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -32,7 +33,7 @@ import * as VotesClient from '@/systems.client/votes.client'
 import { CSS } from '@dnd-kit/utilities'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
-import deepEqual from 'fast-deep-equal'
+
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -592,11 +593,11 @@ export function VoteDisplayPropsPopover(
 	const config = ConfigClient.useConfig()
 	const [statuses, usingDefault, preview, valid] = ZusUtils.useStoreDeep(props.llItemStore, s => {
 		const itemDisplayProps = s.item.displayProps
-		const displayProps = itemDisplayProps ?? config?.defaults.voteDisplayProps ?? []
+		const displayProps = itemDisplayProps ?? config?.vote.voteDisplayProps ?? []
 		const choices = s.item.choices?.map(c => c.layerId) ?? []
-		const preview = BROADCASTS.vote.started({ choices, voterType: 'public' }, config?.defaults.voteDuration ?? 120, displayProps)
+		const preview = BROADCASTS.vote.started({ choices, voterType: 'public' }, config?.vote.voteDuration ?? 120, displayProps)
 		const valid = V.validateChoicesWithDisplayProps(choices, displayProps)
-		return [DH.toDisplayPropStatuses(displayProps), !itemDisplayProps && !!config?.defaults.voteDisplayProps, preview, valid]
+		return [DH.toDisplayPropStatuses(displayProps), !itemDisplayProps && !!config?.vote.voteDisplayProps, preview, valid]
 	}, { dependencies: [config] })
 
 	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
@@ -615,7 +616,7 @@ export function VoteDisplayPropsPopover(
 					updated.layer = false
 				}
 
-				if (config && deepEqual(updated, DH.toDisplayPropStatuses(config.defaults.voteDisplayProps))) {
+				if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps))) {
 					delete draft.displayProps
 				} else {
 					draft.displayProps = DH.fromDisplayPropStatuses(updated)

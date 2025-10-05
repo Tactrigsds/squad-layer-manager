@@ -1,4 +1,4 @@
-import deepEqual from 'fast-deep-equal'
+import * as Obj from '@/lib/object'
 import React from 'react'
 
 export type SetStateCallback<T> = (prevState: T) => T
@@ -48,7 +48,7 @@ export function eltToFocusable(elt: HTMLElement): Focusable {
 export function useStableReferenceDeepEquals<T>(value: T) {
 	const ref = React.useRef<T>(value)
 	if (value !== ref.current) {
-		if (!deepEqual(value, ref.current)) {
+		if (!Obj.deepEqual(value, ref.current)) {
 			ref.current = value
 		}
 	}
@@ -59,7 +59,7 @@ export function useDeepEqualsMemo<T>(cb: () => T, deps: unknown[]) {
 	const ref = React.useRef<T>(null)
 	return React.useMemo(() => {
 		const newValue = cb()
-		if (!deepEqual(ref.current, newValue)) {
+		if (!Obj.deepEqual(ref.current, newValue)) {
 			ref.current = newValue
 		}
 		return ref.current

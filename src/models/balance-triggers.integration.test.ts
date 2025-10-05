@@ -15,6 +15,7 @@ let ctx!: CS.Log
 let sampleLayers: L.KnownLayer[] = []
 
 let terminatingLayers!: L.KnownLayer[]
+const testServerId = 'test-server-id'
 
 beforeAll(async () => {
 	env.ensureEnvSetup()
@@ -71,6 +72,7 @@ function createMockMatch(
 ): MH.PostGameMatchDetails {
 	return {
 		status: 'post-game',
+		serverId: testServerId,
 		historyEntryId: ordinal,
 		ordinal,
 		layerId: terminating ? terminatingLayers[ordinal % terminatingLayers.length].id : sampleLayers[ordinal % sampleLayers.length].id,
@@ -380,6 +382,7 @@ describe('Balance Triggers', () => {
 		test('filters out non-post-game matches', () => {
 			const history: MH.MatchDetails[] = [
 				{
+					serverId: testServerId,
 					status: 'in-progress',
 					historyEntryId: 999,
 					ordinal: 0,

@@ -5,7 +5,7 @@ import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { Observable } from 'rxjs'
 
-const lqServerStateUpdateCold$ = new Observable<SS.LQServerStateUpdate>((s) => {
+const lqServerStateUpdateCold$ = new Observable<SS.LQStateUpdate>((s) => {
 	const sub = trpc.layerQueue.watchLayerQueueState.subscribe(undefined, {
 		onData: (update) => {
 			PartSys.stripParts(update)
@@ -17,8 +17,8 @@ const lqServerStateUpdateCold$ = new Observable<SS.LQServerStateUpdate>((s) => {
 	return () => sub.unsubscribe()
 })
 
-export const [useLqServerStateUpdate, lqServerStateUpdate$] = ReactRx.bind<SS.LQServerStateUpdate>(
-	lqServerStateUpdateCold$ as Observable<SS.LQServerStateUpdate>,
+export const [useLqServerStateUpdate, lqServerStateUpdate$] = ReactRx.bind<SS.LQStateUpdate>(
+	lqServerStateUpdateCold$ as Observable<SS.LQStateUpdate>,
 )
 
 const unexpectedNextLayerCold$ = new Observable<L.LayerId | null>((s) => {

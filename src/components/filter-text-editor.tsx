@@ -1,7 +1,7 @@
 import Ace from 'ace-builds'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
-import deepEqual from 'fast-deep-equal'
+import * as Obj from '@/lib/object'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
 
@@ -30,7 +30,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorValueObjRef = React.useRef(props.node as any)
 	const editorRef = React.useRef<Editor>(null)
 	function trySetEditorValue(obj: any) {
-		if (editorValueObjRef.current !== null && deepEqual(obj, editorValueObjRef.current)) return
+		if (editorValueObjRef.current !== null && Obj.deepEqual(obj, editorValueObjRef.current)) return
 		editorValueObjRef.current = obj
 		editorRef.current?.setValue(stringifyCompact(obj))
 	}
@@ -58,7 +58,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			}
 
 			errorViewRef.current!.setValue('')
-			const valueChanged = !deepEqual(res.data, props.node)
+			const valueChanged = !Obj.deepEqual(res.data, props.node)
 			if (valueChanged) setNode(res.data)
 		},
 		[setNode, props.node],

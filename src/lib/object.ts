@@ -1,6 +1,7 @@
-import deepEqual from 'fast-deep-equal'
+import fastDeepEqual from 'fast-deep-equal'
 import superjson from 'superjson'
 import { isNullOrUndef } from './type-guards'
+
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 	// @ts-expect-error it works
 	const reversed: { [key in T[keyof T]]: keyof T } = {}
@@ -33,6 +34,8 @@ export function selectProps<T extends object, K extends keyof T>(obj: T, selecte
 	}
 	return result as Pick<T, (typeof selected)[number]>
 }
+
+export const deepEqual = fastDeepEqual
 
 /*
 assumes that both objects have the same keys

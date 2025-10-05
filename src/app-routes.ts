@@ -1,3 +1,6 @@
+import Cookie from 'cookie'
+import { z } from 'zod'
+
 export type RouteDefinition<Params extends string[] = string[], Handle extends 'page' | 'custom' = 'page' | 'custom'> = {
 	server: string
 	client?: string
@@ -8,6 +11,7 @@ export type RouteDefinition<Params extends string[] = string[], Handle extends '
 }
 export const routes = {
 	...defRoute('/', [], 'page'),
+	...defRoute('/servers/:id', ['id'], 'page', { link: (id) => `/servers/${id}` }),
 
 	...defRoute('/filters', [], 'page'),
 	...defRoute('/filters/new', [], 'page'),
@@ -23,6 +27,15 @@ export const routes = {
 } as const satisfies Record<string, RouteDefinition>
 export type Platform = 'client' | 'server'
 export type Route<P extends Platform> = (typeof routes)[number][P]
+
+export type RouteParamObj<R extends Route<'server'>> = (typeof routes)[number]['params'] extends never[] ? never
+	: Record<(typeof routes)[R]['params'][number], string>
+
+export type ResolvedRoute<R extends Route<'server'> = Route<'server'>> = {
+	id: R
+	def: (typeof routes)[number]
+	params: RouteParamObj<R>
+}
 
 function defRoute<T extends string, GetLink extends RouteDefinition['link'], Params extends string[], Handle extends 'page' | 'custom'>(
 	str: T,
@@ -65,12 +78,13 @@ export function isRouteType<T extends 'page' | 'custom'>(
 	return route.handle === handle
 }
 
-export function getRouteForPath(path: string, opts?: { expectedHandleType?: 'page' | 'custom' }) {
+export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' | 'custom' }): ResolvedRoute<Route<'server'>> | null {
 	const pathSplit = path.replace(/\/$/, '').split('/')
 	for (const routePath in routes) {
 		const routeSplit = routePath.replace(/\/$/, '').split('/')
 		if (routeSplit.length !== pathSplit.length) continue
 		let found = true
+		const params: Record<string, string> = {}
 		for (let i = 0; i < routeSplit.length; i++) {
 			const routeSegment = routeSplit[i]
 			const pathSegment = pathSplit[i]
@@ -79,6 +93,8 @@ export function getRouteForPath(path: string, opts?: { expectedHandleType?: 'pag
 					found = false
 					break
 				}
+				const paramName = routeSegment.substring(1)
+				params[paramName] = pathSegment
 				continue
 			}
 			if (routeSegment !== pathSegment) {
@@ -89,9 +105,28 @@ export function getRouteForPath(path: string, opts?: { expectedHandleType?: 'pag
 		if (found) {
 			const route = routes[routePath as Route<'server'>]
 			if (opts?.expectedHandleType && route.handle !== opts.expectedHandleType) return null
-			return route
+			return {
+				id: routePath as Route<'server'>,
+				def: route,
+				params: params as RouteParamObj<Route<'server'>>,
+			}
 		}
 	}
 
 	return null
+}
+
+export const COOKIE_KEY = z.enum([
+	// stores the squad server that should be defaulted to on page load.
+	'default-server-id',
+
+	// stores the session id for the user. the client always expects this cookie to be present.
+	'session-id',
+])
+export type CookieKey = z.infer<typeof COOKIE_KEY>
+
+export type Cookies = Record<CookieKey, string | undefined>
+
+export function parseCookies(raw: string) {
+	return Cookie.parse(raw) as Cookies
 }

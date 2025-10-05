@@ -107,7 +107,7 @@ export async function completeSteamAccountLink(ctx: CS.Log & C.Db, code: string,
 }
 
 function scheduleCodeExpiry(code: string) {
-	return Rx.of(1).pipe(Rx.delay(CONFIG.defaults.steamLinkCodeExpiry)).subscribe(() => {
+	return Rx.of(1).pipe(Rx.delay(CONFIG.steamLinkCodeExpiry)).subscribe(() => {
 		state.pendingSteamAccountLinks.delete(code)
 	})
 }

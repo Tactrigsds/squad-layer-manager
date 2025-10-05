@@ -12,7 +12,7 @@ import * as ConfigClient from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import deepEqual from 'fast-deep-equal'
+
 import React from 'react'
 import * as Zus from 'zustand'
 import ExtraFiltersPanel from './extra-filters-panel.tsx'
@@ -88,7 +88,7 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 
 	const canSubmit = Zus.useStore(
 		editedItemStore,
-		(s) => !deepEqual(initialItem, s.item) && (!LL.isParentVoteItem(s.item) || s.item.choices.length > 0),
+		(s) => !Obj.deepEqual(initialItem, s.item) && (!LL.isParentVoteItem(s.item) || s.item.choices.length > 0),
 	)
 
 	function submit() {

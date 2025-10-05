@@ -1,10 +1,11 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
+import * as Obj from '@/lib/object'
 import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
-import deepEqual from 'fast-deep-equal'
+
 import type * as React from 'react'
 import * as Zus from 'zustand'
 
@@ -46,11 +47,11 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	disableRole: (roleToDisable: RBAC.CompositeRole) => {
 		const disabledRoles = get().disabledRoles
 		for (const roleToCompare of disabledRoles) {
-			if (deepEqual(roleToDisable, roleToCompare)) {
+			if (Obj.deepEqual(roleToDisable, roleToCompare)) {
 				return
 			}
 		}
 		set({ disabledRoles: [...disabledRoles, roleToDisable] })
 	},
-	enableRole: (role: RBAC.CompositeRole) => set({ disabledRoles: get().disabledRoles.filter(r => !deepEqual(r, role)) }),
+	enableRole: (role: RBAC.CompositeRole) => set({ disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, role)) }),
 }))

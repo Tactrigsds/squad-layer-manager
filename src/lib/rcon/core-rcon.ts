@@ -1,7 +1,9 @@
 import * as CS from '@/models/context-shared'
+import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
+import { distinctUntilChanged } from '@trpc/server/observable'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Rx from 'rxjs'
@@ -17,9 +19,8 @@ export type DecodedPacket = {
 const tracer = Otel.trace.getTracer('core-rcon')
 
 export default class Rcon extends EventEmitter {
-	private host: string
-	private port: number
-	private password: string
+	serverId: string
+	private settings: SS.ServerConnection['rcon']
 	private client: net.Socket | null
 	private stream: Buffer
 	private type: {
@@ -39,19 +40,18 @@ export default class Rcon extends EventEmitter {
 	private msgId: number
 	private responseString: { id: number; body: string }
 
-	constructor(options: { host: string; port: number; password: string; autoReconnectDelay?: number }) {
+	constructor(options: { serverId: string; settings: SS.ServerConnection['rcon']; autoReconnectDelay?: number }) {
 		super()
 		for (const option of ['host', 'port', 'password']) {
-			if (!(option in options)) throw new Error(`${option} must be specified.`)
+			if (!(option in options.settings)) throw new Error(`${option} must be specified.`)
 		}
-		this.host = options.host
-		this.port = options.port
-		this.password = options.password
+		this.serverId = options.serverId
+		this.settings = options.settings
 		this.client = null
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
-		this.autoReconnectDelay = options.autoReconnectDelay || 5000
+		this.autoReconnectDelay = options.autoReconnectDelay ?? 5000
 		this.msgId = 20
 		this.responseString = { id: 0, body: '' }
 	}
@@ -59,7 +59,7 @@ export default class Rcon extends EventEmitter {
 	processChatPacket(_decodedPacket: any): void {}
 
 	private addLogProps(ctx: CS.Log & { module?: string }): CS.Log {
-		if (ctx.module !== 'rcon') return C.includeLogProperties(ctx, { module: 'rcon' })
+		if (ctx.module !== 'rcon') return C.includeLogProperties(ctx, { module: 'rcon', serverId: this.serverId })
 		return ctx
 	}
 
@@ -73,12 +73,13 @@ export default class Rcon extends EventEmitter {
 		this.ensureConnectedSub = sub
 		sub.add(
 			Rx.fromEvent(this, 'auth').subscribe(() => {
-				ctx.log.info('RCON Connected to: %s', `${this.host}:${this.port}`)
+				ctx.log.info('RCON Connected to: %s', `${this.settings.host}:${this.settings.port}`)
 				this.connected$.next(true)
 			}),
 		)
 		sub.add(
 			this.connected$.pipe(
+				Rx.distinctUntilChanged(),
 				// switchMap means a successful connection will cancel reconnect attempts
 				Rx.switchMap((connected) => {
 					if (connected) return Rx.EMPTY
@@ -86,10 +87,10 @@ export default class Rcon extends EventEmitter {
 					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
 				}),
 			).subscribe(() => {
-				ctx.log.info('Attempting to connect to RCON: %s', `${this.host}:${this.port}`)
+				ctx.log.info('Attempting to connect to RCON: %s', `${this.settings.host}:${this.settings.port}`)
 				this.client?.destroy()
 				this.client = net
-					.createConnection({ port: this.port, host: this.host }, () => this.#sendAuth(ctx))
+					.createConnection({ port: this.settings.port, host: this.settings.host }, () => this.#sendAuth(ctx))
 					.on('data', (data) => this.#onData(ctx, data))
 					.on('end', () => this.#onClose(ctx))
 					.on('error', (error) => this.#onNetError(ctx, error))
@@ -105,7 +106,7 @@ export default class Rcon extends EventEmitter {
 
 	disconnect(ctx: CS.Log) {
 		ctx = this.addLogProps(ctx)
-		ctx.log.info('Disconnecting from: %s', `${this.host}:${this.port}`)
+		ctx.log.info('Disconnecting from: %s', `${this.settings.host}:${this.settings.port}`)
 		this.removeAllListeners()
 		this.ensureConnectedSub?.unsubscribe()
 		this.ensureConnectedSub = undefined
@@ -144,9 +145,9 @@ export default class Rcon extends EventEmitter {
 
 	#sendAuth(ctx: CS.Log): void {
 		ctx = this.addLogProps(ctx)
-		ctx.log.trace(`Sending Token to: ${this.host}:${this.port}`)
-		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.password}".`)
-		this.client?.write(this.#encode(this.type.auth, 2147483647, this.password).toString('binary'), 'binary')
+		ctx.log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
+		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
+		this.client?.write(this.#encode(this.type.auth, 2147483647, this.settings.password).toString('binary'), 'binary')
 	}
 
 	#send(ctx: CS.Log, body: string, id = 99): void {
@@ -242,14 +243,14 @@ export default class Rcon extends EventEmitter {
 	#onClose(ctx: CS.Log): void {
 		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Socket closed.`)
-		this.connected$.next(false)
+		if (this.connected$.value) this.connected$.next(false)
 	}
 
 	#onNetError(ctx: CS.Log, error: Error): void {
 		ctx = this.addLogProps(ctx)
 		ctx.log.error(error, `node:net error`)
 		this.emit('RCON_ERROR', error)
-		this.connected$.next(false)
+		if (this.connected$.value) this.connected$.next(false)
 	}
 
 	#bufToHexString(buf: Buffer): string {

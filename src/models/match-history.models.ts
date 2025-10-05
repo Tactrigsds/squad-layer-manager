@@ -1,7 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models'
-import * as V from '@/models/vote.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -13,6 +12,7 @@ type MatchDetailsCommon = {
 	ordinal: number
 	// parsed layerId may be from NewMatchHistory.rawLayerCommandText if the layerId is not known
 	layerId: L.LayerId
+	serverId: string
 	rawLayerCommandText?: string
 	lqItemId?: string
 	historyEntryId: number
@@ -151,6 +151,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		historyEntryId: entry.id,
 		ordinal: entry.ordinal,
 		lqItemId: entry.lqItemId ?? undefined,
+		serverId: entry.serverId,
 	} satisfies Partial<MatchDetailsCommon>
 
 	if (!isNullOrUndef(entry.endTime) && isNullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
@@ -197,7 +198,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	throw new Error('Invalid match state: unknown')
 }
 
-export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails, layerVote?: V.VoteState): SchemaModels.MatchHistory {
+export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): SchemaModels.MatchHistory {
 	let layerId = matchDetails.layerId
 	if (!L.isKnownLayer(layerId) && matchDetails.rawLayerCommandText) {
 		const layer = L.parseRawLayerText(matchDetails.rawLayerCommandText)
@@ -206,9 +207,9 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails, la
 	const entry: SchemaModels.MatchHistory = {
 		id: matchDetails.historyEntryId,
 		layerId,
+		serverId: matchDetails.serverId,
 		rawLayerCommandText: matchDetails.rawLayerCommandText ?? null,
 		lqItemId: matchDetails.lqItemId ?? null,
-		layerVote: layerVote ?? null,
 		ordinal: matchDetails.ordinal,
 		startTime: matchDetails.startTime ?? null,
 		setByType: matchDetails.layerSource.type,
@@ -266,9 +267,10 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	return Array.from(active)
 }
 
-export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; startTime: Date; lqItem?: LL.LayerListItem }) {
+export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: string; startTime: Date; lqItem?: LL.LayerListItem }) {
 	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
 		layerId: opts.layerId,
+		serverId: opts.serverId,
 		rawLayerCommandText: L.getLayerCommand(opts.layerId, 'set-next'),
 		startTime: opts.startTime,
 		setByType: 'unknown',
@@ -277,7 +279,6 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; startTime: D
 	if (opts.lqItem) {
 		newEntry.layerId = LL.getActiveItemLayerId(opts.lqItem) ?? newEntry.layerId
 		newEntry.lqItemId = opts.lqItem.itemId
-		newEntry.layerVote = { choices: opts.lqItem.choices }
 		newEntry.setByType = opts.lqItem.source.type
 
 		const setByUserId = opts.lqItem.source.type === 'manual'

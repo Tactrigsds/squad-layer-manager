@@ -2,7 +2,7 @@ import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import * as F from '@/models/filter.models'
 import * as USR from '@/models/users.models'
-import deepEqual from 'fast-deep-equal'
+
 import { z } from 'zod'
 
 // roles which are inferred by other state, for example the owner of a filter will get the filter-owner role. when an inferred role is present, it's expected to also have access to a particular permission to know what entity the inferred role is associated with.
@@ -96,7 +96,7 @@ export function recalculateNegations(perms: TracedPermission[]) {
 	const recalculated = perms.map(perm => {
 		let negated: boolean
 		if (perm.negating) negated = false
-		else negated = perms.some(p => p.type === perm.type && deepEqual(p.args, perm.args) && p.negating)
+		else negated = perms.some(p => p.type === perm.type && Obj.deepEqual(p.args, perm.args) && p.negating)
 		return ({ ...perm, negated })
 	})
 	return recalculated
@@ -233,7 +233,7 @@ export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm
 	if (!perm2.negated === false) delete perm2.negated
 	if (!perm1.negating === false) delete perm1.negating
 	if (!perm2.negating === false) delete perm2.negating
-	return deepEqual(perm1, perm2)
+	return Obj.deepEqual(perm1, perm2)
 }
 
 export function getWritePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {

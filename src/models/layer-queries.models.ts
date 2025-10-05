@@ -1,8 +1,9 @@
+import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as FB from '@/models/filter-builders'
 import { VisibilityState } from '@tanstack/react-table'
-import deepEqual from 'fast-deep-equal'
+
 import * as Im from 'immer'
 import { z } from 'zod'
 import * as F from './filter.models'
@@ -460,7 +461,7 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
 
 	if (!state.layerItems) return 0
-	const itemIndex = state.layerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => deepEqual(currItem, item)))
+	const itemIndex = state.layerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => Obj.deepEqual(currItem, item)))
 	if (isNullOrUndef(itemIndex)) throw new Error('Item not found')
 	const parity = itemIndex + (state.firstLayerItemParity ?? 0)
 	return parity

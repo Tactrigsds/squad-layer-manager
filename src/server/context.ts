@@ -1,3 +1,4 @@
+import * as AR from '@/app-routes.ts'
 import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
@@ -6,6 +7,10 @@ import * as CS from '@/models/context-shared.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
+import * as LayerQueueSys from '@/server/systems/layer-queue.ts'
+import * as MatchHistorySys from '@/server/systems/match-history.ts'
+import * as SquadRconSys from '@/server/systems/squad-rcon.ts'
+import * as SquadServerSys from '@/server/systems/squad-server.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import { FastifyReply, FastifyRequest } from 'fastify'
@@ -67,6 +72,14 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 			{ root: opts.root ?? !Otel.trace.getActiveSpan(), links: opts.links },
 			context,
 			async (span) => {
+				// try to extract current serverId from context
+				if (args[0]?.serverId) {
+					setSpanOpAttrs({ server_id: args[0].serverId })
+				}
+				if (args[0]?.[0]?.serverId) {
+					setSpanOpAttrs({ server_id: args[0][0].serverId })
+				}
+
 				if (typeof opts.attrs === 'function') {
 					opts.attrs = opts.attrs(...args as Parameters<Cb>)
 				}
@@ -189,11 +202,11 @@ export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Locks {
 	return { ...(ctx ?? {} as Ctx), locks: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
-export type Rcon = {
-	rcon: RconCore
+export type HttpRequest = { req: FastifyRequest; res: FastifyReply; cookies: AR.Cookies; route?: AR.ResolvedRoute }
+export type RoutedHttpRequest = HttpRequest & { route: AR.Route<'server'> }
+export function isRoutedHttpRequestContext<Ctx extends HttpRequest>(req: Ctx): req is Ctx & RoutedHttpRequest {
+	return 'route' in req
 }
-
-export type HttpRequest = { req: FastifyRequest; res: FastifyReply }
 
 export type User = {
 	user: USR.User
@@ -218,11 +231,49 @@ export type WSSession = {
 
 export type AuthedUser = User & AuthSession
 
-export type TrpcRequest = User & AuthSession & { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket } & Db & CS.Log & Locks
+export type TrpcRequest =
+	& User
+	& AuthSession
+	& { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket }
+	& Db
+	& CS.Log
+	& Locks
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
 }
+
+export type Rcon = {
+	rcon: RconCore
+}
+
+export type ServerId = {
+	serverId: string
+}
+
+export type SquadRcon = { server: SquadRconSys.SquadRconContext } & Rcon & ServerId
+
+export type LayerQueue = {
+	layerQueue: LayerQueueSys.LayerQueueContext
+} & ServerId
+
+export type UserPresence = {
+	userPresence: LayerQueueSys.UserPresenceContext
+} & ServerId
+
+export type Vote = {
+	vote: LayerQueueSys.VoteContext
+} & ServerId
+
+export type MatchHistory = {
+	matchHistory: MatchHistorySys.MatchHistoryContext
+} & ServerId
+
+export type SquadServer = Rcon & {
+	server: SquadServerSys.SquadServer
+} & ServerId
+
+export type ServerSlice = Rcon & SquadServer & UserPresence & Vote & LayerQueue & MatchHistory & { serverSliceSub: Rx.Subscription }
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

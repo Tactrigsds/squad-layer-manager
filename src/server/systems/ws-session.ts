@@ -1,5 +1,6 @@
 import * as CS from '@/models/context-shared'
 import * as C from '@/server/context'
+import * as SquadServer from '@/server/systems/squad-server'
 import { Subject } from 'rxjs'
 const wsSessions = new Map<string, C.TrpcRequest>()
 export const disconnect$ = new Subject<C.TrpcRequest>()
@@ -14,6 +15,7 @@ export function registerClient(ctx: C.TrpcRequest) {
 	ctx.ws.on('close', () => {
 		disconnect$.next(ctx)
 		wsSessions.delete(ctx.wsClientId)
+		SquadServer.state.selectedServers.delete(ctx.wsClientId)
 	})
 }
 

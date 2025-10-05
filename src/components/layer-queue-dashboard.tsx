@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
@@ -34,7 +35,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client.ts'
 import { useMutation } from '@tanstack/react-query'
-import deepEqual from 'fast-deep-equal'
+
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -72,7 +73,7 @@ export default function LayerQueueDashboard() {
 		&& PartsSys.findUser(userPresenceState.editState.userId)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
-	const maxQueueSize = useConfig()?.maxQueueSize
+	const maxQueueSize = useConfig()?.layerQueue.maxQueueSize
 	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
 	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
 	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
@@ -297,7 +298,7 @@ function EditingCard() {
 		QD.QDStore,
 		(s) =>
 			s.serverState?.settings
-			&& !deepEqual(s.serverState.settings, s.editedServerState.settings),
+			&& !Obj.deepEqual(s.serverState.settings, s.editedServerState.settings),
 	)
 
 	return (
@@ -429,7 +430,7 @@ function PoolConfigurationPopover(
 	const storedSettingsChanged = Zus.useStore(
 		QD.QDStore,
 		(state) =>
-			!deepEqual(
+			!Obj.deepEqual(
 				state.serverState?.settings,
 				state.editedServerState.settings,
 			),
@@ -451,8 +452,8 @@ function PoolConfigurationPopover(
 		setGenerationPoolRules(storedGenerationPoolDnrRules)
 	}, [storedMainPoolDnrRules, storedGenerationPoolDnrRules])
 	const settingsChanged = React.useMemo(() => {
-		const mainPoolRulesChanged = !deepEqual(storedMainPoolDnrRules, mainPoolRules)
-		const generationPoolRulesChanged = !deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
+		const mainPoolRulesChanged = !Obj.deepEqual(storedMainPoolDnrRules, mainPoolRules)
+		const generationPoolRulesChanged = !Obj.deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
 		const res = storedSettingsChanged || mainPoolRulesChanged || generationPoolRulesChanged
 		return res
 	}, [

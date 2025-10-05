@@ -8,7 +8,6 @@ import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger'
 import * as Rbac from '@/server/systems/rbac.system'
 import * as Otel from '@opentelemetry/api'
-import Cookie from 'cookie'
 import * as DateFns from 'date-fns'
 import { eq } from 'drizzle-orm'
 
@@ -39,7 +38,7 @@ export async function setup() {
 export const validateAndUpdate = C.spanOp(
 	'sessions:validate-and-update',
 	{ tracer },
-	async (ctx: CS.Log & C.Db & Pick<C.HttpRequest, 'req'>, allowRefresh = false) => {
+	async (ctx: CS.Log & C.Db & Pick<C.HttpRequest, 'req' | 'cookies'>, allowRefresh = false) => {
 		const cookie = ctx.req.headers.cookie
 		if (!cookie) {
 			return {
@@ -47,7 +46,7 @@ export const validateAndUpdate = C.spanOp(
 				message: 'No cookie provided',
 			}
 		}
-		const sessionId = Cookie.parse(cookie).sessionId
+		const sessionId = ctx.cookies['session-id']
 		if (!sessionId) {
 			return {
 				code: 'unauthorized:no-session' as const,
@@ -89,11 +88,11 @@ export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresA
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	return ctx.res.cookie('sessionId', sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
+	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
 }
 
 export function clearInvalidSession(ctx: Pick<C.HttpRequest, 'res'>) {
-	return ctx.res.cookie('sessionId', '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.route('/login'))
+	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.route('/login'))
 }
 
 export const getUser = C.spanOp(

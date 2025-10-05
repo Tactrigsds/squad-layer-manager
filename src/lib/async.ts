@@ -1,8 +1,8 @@
+import * as Obj from '@/lib/object'
 import * as CS from '@/models/context-shared'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-import deepEqual from 'fast-deep-equal'
 import * as Rx from 'rxjs'
 import { createId } from './id'
 
@@ -11,7 +11,7 @@ export function sleep(ms: number) {
 }
 
 export function distinctDeepEquals<T>() {
-	return (o: Rx.Observable<T>) => o.pipe(Rx.distinctUntilChanged((a, b) => deepEqual(a, b)))
+	return (o: Rx.Observable<T>) => o.pipe(Rx.distinctUntilChanged((a, b) => Obj.deepEqual(a, b)))
 }
 
 /**

@@ -1,9 +1,6 @@
 {
   "type": "object",
   "properties": {
-    "serverId": {"type": "string", "minLength": 1, "maxLength": 256},
-    "serverDisplayName": {"type": "string", "minLength": 1, "maxLength": 256},
-    "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
     "topBarColor": {
       "anyOf": [{"type": "string", "default": "green"}, {"type": "null"}],
       "description": "this should be set to null for production"
@@ -13,19 +10,111 @@
       "default": "SLM: ",
       "description": "Prefix to use for warnings"
     },
-    "defaults": {
+    "postRollAnnouncementsTimeout": {
+      "type": "string",
+      "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
+      "description": "How long to wait before sending post-roll reminders",
+      "default": "5m"
+    },
+    "fogOffDelay": {
+      "$ref": "#/properties/postRollAnnouncementsTimeout",
+      "default": "25s",
+      "description": "the delay before fog is automatically turned off"
+    },
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "description": "ID of the server"},
+          "displayName": {
+            "type": "string",
+            "description": "Display name of the server"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the server"
+          },
+          "connections": {
+            "type": "object",
+            "properties": {
+              "rcon": {
+                "type": "object",
+                "properties": {
+                  "host": {"type": "string", "minLength": 1},
+                  "port": {"type": "number", "minimum": 1, "maximum": 65535},
+                  "password": {"type": "string", "minLength": 1}
+                },
+                "required": ["host", "port", "password"],
+                "additionalProperties": false
+              },
+              "sftp": {
+                "type": "object",
+                "properties": {
+                  "host": {"type": "string", "minLength": 1},
+                  "port": {"type": "number", "minimum": 1, "maximum": 65535},
+                  "username": {"type": "string", "minLength": 1},
+                  "password": {"type": "string", "minLength": 1},
+                  "logFile": {"type": "string", "minLength": 1}
+                },
+                "required": ["host", "port", "username", "password", "logFile"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["rcon", "sftp"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "displayName", "description", "connections"],
+        "additionalProperties": false
+      }
+    },
+    "layerQueue": {
+      "type": "object",
+      "properties": {
+        "lowQueueWarningThreshold": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 2,
+          "description": "Number of layers in the queue to trigger a low queue size warning"
+        },
+        "adminQueueReminderInterval": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "10m",
+          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often."
+        },
+        "maxQueueSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "description": "Maximum number of layers that can be in the queue"
+        }
+      },
+      "additionalProperties": false
+    },
+    "vote": {
       "type": "object",
       "properties": {
         "voteDuration": {
-          "type": "string",
-          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
-          "description": "Duration of a vote",
-          "default": "120s"
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "120s",
+          "description": "Duration of a vote"
+        },
+        "startVoteReminderThreshold": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "20m",
+          "description": "How far into a match to start reminding admins to start a vote"
+        },
+        "voteReminderInterval": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "45s",
+          "description": "How often to remind users to vote"
         },
         "autoStartVoteDelay": {
           "anyOf": [
             {
-              "$ref": "#/properties/defaults/properties/voteDuration",
+              "$ref": "#/properties/postRollAnnouncementsTimeout",
               "default": "20m",
               "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
             },
@@ -42,14 +131,43 @@
           "default": ["map", "gamemode"],
           "description": "What parts of a layer setup should be displayed"
         },
-        "steamLinkCodeExpiry": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "15m",
-          "description": "Duration of a steam account link code"
+        "finalVoteReminder": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "10s",
+          "description": "How far in advance the final vote reminder should be sent"
+        },
+        "maxNumVoteChoices": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5,
+          "description": "Maximum number of choices allowed in a vote"
         }
       },
       "additionalProperties": false
     },
+    "squadServer": {
+      "type": "object",
+      "properties": {
+        "sftpPollInterval": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "5s",
+          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+        },
+        "sftpReconnectInterval": {
+          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "default": "10s",
+          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+        }
+      },
+      "additionalProperties": false
+    },
+    "steamLinkCodeExpiry": {
+      "$ref": "#/properties/postRollAnnouncementsTimeout",
+      "default": "15m",
+      "description": "Duration of a steam account link code"
+    },
+    "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
     "commands": {
       "type": "object",
       "properties": {
@@ -344,63 +462,6 @@
         }
       }
     },
-    "reminders": {
-      "type": "object",
-      "properties": {
-        "lowQueueWarningThreshold": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "default": 2,
-          "description": "Number of layers in the queue to trigger a low queue size warning"
-        },
-        "adminQueueReminderInterval": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "10m",
-          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often."
-        },
-        "voteReminderInterval": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "45s",
-          "description": "How often to remind users to vote"
-        },
-        "startVoteReminderThreshold": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "20m",
-          "description": "How far into a match to start reminding admins to start a vote"
-        },
-        "finalVote": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "10s",
-          "description": "How far in advance the final vote reminder should be sent"
-        },
-        "postRollAnnouncementsTimeout": {
-          "$ref": "#/properties/defaults/properties/voteDuration",
-          "default": "5m",
-          "description": "How long to wait before sending post-roll reminders"
-        }
-      },
-      "additionalProperties": false,
-      "default": {}
-    },
-    "maxQueueSize": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 100,
-      "default": 20,
-      "description": "Maximum number of layers that can be in the queue"
-    },
-    "maxNumVoteChoices": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 50,
-      "default": 5,
-      "description": "Maximum number of choices allowed in a vote"
-    },
-    "fogOffDelay": {
-      "$ref": "#/properties/defaults/properties/voteDuration",
-      "default": "25s",
-      "description": "the delay before fog is automatically turned off"
-    },
     "adminListSources": {
       "type": "array",
       "items": {
@@ -662,10 +723,11 @@
     "$schema": {"type": "string"}
   },
   "required": [
-    "serverId",
-    "serverDisplayName",
+    "servers",
+    "layerQueue",
+    "vote",
+    "squadServer",
     "commandPrefix",
-    "defaults",
     "adminListSources",
     "adminListAdminRole",
     "homeDiscordGuildId",

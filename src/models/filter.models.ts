@@ -1,8 +1,9 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import type { SQL } from 'drizzle-orm'
-import deepEqual from 'fast-deep-equal'
+
 import { z } from 'zod'
 import * as Zus from 'zustand'
 import * as LC from './layer-columns'
@@ -354,7 +355,7 @@ export function editableComparisonHasValue(comp: EditableComparison) {
 		|| comp.value !== undefined
 		|| comp.values !== undefined
 		|| (comp.range !== undefined
-			&& !deepEqual(comp.range, [undefined, undefined]))
+			&& !Obj.deepEqual(comp.range, [undefined, undefined]))
 		|| comp.allMasks?.some((side) => side.length > 0)
 	)
 }

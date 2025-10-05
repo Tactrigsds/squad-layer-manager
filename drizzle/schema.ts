@@ -1,4 +1,4 @@
-import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 import { z } from 'zod'
 
@@ -6,7 +6,8 @@ export const matchHistory = mysqlTable(
 	'matchHistory',
 	{
 		id: int('id').primaryKey().autoincrement(),
-		ordinal: int('ordinal').notNull().unique(),
+		serverId: varchar('serverId', { length: 256 }).notNull().references(() => servers.id, { onDelete: 'no action' }),
+		ordinal: int('ordinal').notNull(),
 
 		// may not be in layerId table (RAW: prefix or outdated)
 		layerId: varchar('layerId', { length: 256 }).notNull(),
@@ -17,7 +18,6 @@ export const matchHistory = mysqlTable(
 		startTime: timestamp('startTime'),
 		endTime: timestamp('endTime'),
 		outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
-		layerVote: json('layerVote'),
 
 		team1Tickets: int('team1Tickets'),
 		team2Tickets: int('team2Tickets'),
@@ -34,6 +34,7 @@ export const matchHistory = mysqlTable(
 		startTimeIndex: index('startTimeIndex').on(table.startTime),
 		endTimeIndex: index('endTimeIndex').on(table.endTime),
 		userIndex: index('userIndex').on(table.setByUserId),
+		serverOrdinalUnique: unique('serverOrdinalUnique').on(table.serverId, table.ordinal),
 	}),
 )
 
