@@ -30,16 +30,25 @@ const wsClient = createWSClient({
 		return delay
 	},
 	url: wsUrl,
-	onError: (error) => {
+	onError: async (error) => {
 		console.error(error)
 		globalToast$.next({
 			title: 'An error occurred while communicating with the server. Try refreshing the page.',
 			variant: 'destructive',
 		})
+
+		const res = await fetch(AR.link('/check-auth'))
+		if (!res.ok) {
+			window.location.reload()
+		}
 	},
-	onClose: (error) => {
+	onClose: async (error) => {
 		console.error('WebSocket connection closed: ', JSON.stringify(error))
 		setTrpcConnected(false)
+		const res = await fetch(AR.link('/check-auth'))
+		if (!res.ok) {
+			window.location.reload()
+		}
 	},
 	onOpen: async () => {
 		setTrpcConnected(true)

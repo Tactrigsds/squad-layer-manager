@@ -193,6 +193,15 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		return res.send(stream)
 	})
 
+	instance.get(AR.route('/check-auth'), async (req, res) => {
+		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
+		const authRes = await createAuthorizedRequestContext(ctx)
+		if (authRes.code !== 'ok') {
+			return ctx.res.status(401).send({ error: 'Unauthorized' })
+		}
+		return res.status(200).send({ status: 'ok' })
+	})
+
 	instance.register(ws)
 
 	instance.register(fastifyTRPCPlugin, {

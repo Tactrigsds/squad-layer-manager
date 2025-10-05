@@ -22,6 +22,7 @@ export const routes = {
 	...defRoute('/login/callback', [], 'custom'),
 	...defRoute('/logout', [], 'custom'),
 	...defRoute('/layers.sqlite3', [], 'custom'),
+	...defRoute('/check-auth', [], 'custom'),
 
 	...defRoute('/trpc', [], 'custom', { websocket: true }),
 } as const satisfies Record<string, RouteDefinition>
