@@ -35,7 +35,7 @@ export const ConfigSchema = z.object({
 		lowQueueWarningThreshold: z
 			.number()
 			.positive()
-			.default(2)
+			.default(1)
 			.describe('Number of layers in the queue to trigger a low queue size warning'),
 		adminQueueReminderInterval: HumanTime.default('10m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',

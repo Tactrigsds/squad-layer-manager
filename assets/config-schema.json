@@ -75,7 +75,7 @@
         "lowQueueWarningThreshold": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "default": 2,
+          "default": 1,
           "description": "Number of layers in the queue to trigger a low queue size warning"
         },
         "adminQueueReminderInterval": {
