@@ -37,17 +37,21 @@ const wsClient = createWSClient({
 			variant: 'destructive',
 		})
 
-		const res = await fetch(AR.link('/check-auth'))
-		if (!res.ok) {
-			window.location.reload()
+		if (attempt > 5) {
+			const res = await fetch(AR.link('/check-auth'))
+			if (!res.ok) {
+				window.location.reload()
+			}
 		}
 	},
 	onClose: async (error) => {
 		console.error('WebSocket connection closed: ', JSON.stringify(error))
 		setTrpcConnected(false)
-		const res = await fetch(AR.link('/check-auth'))
-		if (!res.ok) {
-			window.location.reload()
+		if (attempt > 5) {
+			const res = await fetch(AR.link('/check-auth'))
+			if (!res.ok) {
+				window.location.reload()
+			}
 		}
 	},
 	onOpen: async () => {
