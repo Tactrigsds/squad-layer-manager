@@ -56,7 +56,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	// --------  logging --------
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
-		const path = request.url.replace(/^(.*\/\/[^\\/]+)/i, '').split('?')[0]
+		const route = AR.resolveRoute(request.url)
 		baseLogger.debug(
 			{
 				method: request.method,
@@ -67,7 +67,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			request.method,
 			request.url,
 		)
-		if (path.startsWith('/trpc')) return
+		if (route?.id === '/trpc') return
 
 		const ctx = DB.addPooledDb({ log: instance.log as CS.Logger })
 
@@ -202,8 +202,9 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		return res.send(stream)
 	})
 
-	await instance.register(ws)
-	await instance.register(fastifyTRPCPlugin, {
+	instance.register(ws)
+
+	instance.register(fastifyTRPCPlugin, {
 		prefix: AR.route('/trpc'),
 		useWSS: true,
 		keepAlive: {

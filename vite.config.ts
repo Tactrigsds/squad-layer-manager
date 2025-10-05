@@ -4,6 +4,7 @@ import path from 'node:path'
 import { defineConfig, UserConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 import * as AR from './src/app-routes.ts'
+import * as Dbg from './src/lib/debug.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
 
@@ -44,7 +45,7 @@ function buildDevServerConfig(): UserConfig['server'] {
 			const protocol = r.websocket ? 'ws://' : 'http://'
 			const target = `${protocol}${ENV.HOST}:${ENV.PORT}`
 			return [
-				`^${r.client}(\\?.+)?$`,
+				AR.getRouteRegex(r.server).source,
 				{
 					target,
 					changeOrigin: true,

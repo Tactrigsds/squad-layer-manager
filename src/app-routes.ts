@@ -116,6 +116,26 @@ export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' 
 	return null
 }
 
+export function getRouteRegex(id: string): RegExp {
+	// Handle root path specially
+	if (id === '/') {
+		return new RegExp(`^/?(?:\\?.*)?$`)
+	}
+
+	// Remove trailing slash and escape special regex characters
+	const cleanPath = id.replace(/\/$/, '')
+	const regex = cleanPath.split('/').map((segment) => {
+		if (segment.startsWith(':')) {
+			// Ensure parameter captures at least one character, but stop at query params
+			return `([^/?]+)`
+		}
+		// Escape special regex characters
+		return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+	}).join('/')
+
+	return new RegExp(`^${regex}/?(?:\\?.*)?$`)
+}
+
 export const COOKIE_KEY = z.enum([
 	// stores the squad server that should be defaulted to on page load.
 	'default-server-id',

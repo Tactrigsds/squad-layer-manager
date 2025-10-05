@@ -49,11 +49,6 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 
 export function LayerInfoPage() {
 	const params = AppRoutesClient.useAppParams('/layers/:id')
-	// -------- set title --------
-	React.useLayoutEffect(() => {
-		document.title = `SLM - ${DH.displayLayer(params.id)}`
-	}, [params.id])
-
 	const isKnownLayer = L.isKnownLayer(params.id)
 	if (!isKnownLayer) return null
 	return (

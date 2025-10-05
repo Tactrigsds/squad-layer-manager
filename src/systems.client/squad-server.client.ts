@@ -4,6 +4,7 @@ import * as TrpcHelpers from '@/lib/trpc-helpers'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { ServerEntry } from '@/server/config'
+import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as Cookies from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import { trpc } from '@/trpc.client'
@@ -77,33 +78,13 @@ export function setup() {
 	}))
 
 	// -------- persist selected server id according to navigation, and inform backend of any changes --------
-	// Create observable from MutationObserver to watch for URL changes
-	const urlChanges$ = new Rx.Observable<void>(observer => {
-		let lastPathname = window.location.pathname
-
-		const mutationObserver = new MutationObserver(() => {
-			if (window.location.pathname !== lastPathname) {
-				lastPathname = window.location.pathname
-				observer.next()
-			}
-		})
-
-		// Observe changes to document body that might indicate navigation
-		mutationObserver.observe(document.body, {
-			childList: true,
-			subtree: true,
-		})
-
-		return () => mutationObserver.disconnect()
-	})
-
+	//
 	Rx.merge(
-		urlChanges$,
+		AppRoutesClient.route$,
 		// when this window is the last focused it should decide what server is selected for new tabs
-		Rx.fromEvent(window, 'focus'),
-	).subscribe((event) => {
+		Rx.fromEvent(window, 'focus').pipe(Rx.map(() => AR.resolveRoute(window.location.pathname))),
+	).subscribe((route) => {
 		const state = selectedServerStore.getState()
-		const route = AR.resolveRoute(window.location.pathname)
 		if (!route || route.id !== '/servers/:id' || route.params.id === state.selectedServerId) return
 
 		Cookies.setCookie('default-server-id', route.params.id)

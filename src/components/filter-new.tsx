@@ -23,11 +23,6 @@ import { Textarea } from './ui/textarea'
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
 export default function FilterNew() {
-	// -------- set title --------
-	React.useEffect(() => {
-		document.title = 'SLM - New Filter'
-	}, [])
-
 	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()

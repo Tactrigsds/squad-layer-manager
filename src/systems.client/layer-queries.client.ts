@@ -769,3 +769,6 @@ export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 		staleTime: Infinity,
 	}
 }
+export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
+	return reactQueryClient.getQueryCache().build(reactQueryClient, getLayerInfoQueryOptions(layer)).fetch()
+}

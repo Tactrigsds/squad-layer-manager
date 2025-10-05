@@ -57,16 +57,6 @@ import TabsList from './ui/tabs-list.tsx'
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useServerInfoRes()
 
-	// -------- set title --------
-	React.useEffect(() => {
-		if (!serverStatusRes) return
-		if (serverStatusRes.code !== 'ok') {
-			document.title = 'Squad Layer Manager'
-		} else if (serverStatusRes.code === 'ok') {
-			document.title = `SLM - ${serverStatusRes.data.name}`
-		}
-	}, [serverStatusRes])
-
 	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
 	const userPresenceState = useUserPresenceState()
 	const editingUser = userPresenceState?.editState

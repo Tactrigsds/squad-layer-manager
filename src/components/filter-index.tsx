@@ -13,10 +13,6 @@ import { Link } from 'react-router-dom'
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
-	// -------- set title --------
-	React.useEffect(() => {
-		document.title = 'SLM - Filters'
-	}, [])
 	const cfg = ConfigClient.useEffectiveColConfig()
 
 	const filterEntities = FilterEntityClient.useFilterEntities()
