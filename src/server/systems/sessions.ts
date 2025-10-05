@@ -39,16 +39,13 @@ async function loadValidSessionsIntoCache(ctx: C.Db & CS.Log) {
 
 	let validCount = 0
 	for (const row of sessions) {
-		// Only cache sessions that haven't expired
-		if (row.session.expiresAt > currentTime) {
-			sessionCache.set(row.session.id, {
-				id: row.session.id,
-				userId: row.session.userId,
-				expiresAt: row.session.expiresAt,
-				user: row.user,
-			})
-			validCount++
-		}
+		sessionCache.set(row.session.id, {
+			id: row.session.id,
+			userId: row.session.userId,
+			expiresAt: row.session.expiresAt,
+			user: row.user,
+		})
+		validCount++
 	}
 
 	ctx.log.info(`Loaded ${validCount} valid sessions into cache`)
@@ -115,26 +112,18 @@ export async function setup() {
 		await sleep(1000 * 60 * 60)
 		tracer.startActiveSpan('sessions:cleanup', async (span) => {
 			const currentTime = new Date()
-			const expiredSessions: string[] = []
 
-			// Check cache for expired sessions
-			for (const [sessionId, session] of sessionCache.entries()) {
-				if (currentTime > session.expiresAt) {
-					expiredSessions.push(sessionId)
-				}
-			}
-
-			// Remove expired sessions from both cache and database
 			await ctx.db().transaction(async (tx) => {
-				for (const sessionId of expiredSessions) {
-					await tx.delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionId))
-					sessionCache.delete(sessionId)
+				// Delete all expired sessions from database
+				await tx.delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, currentTime))
+
+				// Remove expired sessions from cache
+				for (const [sessionId, session] of sessionCache.entries()) {
+					if (currentTime > session.expiresAt) {
+						sessionCache.delete(sessionId)
+					}
 				}
 			})
-
-			if (expiredSessions.length > 0) {
-				baseLogger.info(`Cleaned up ${expiredSessions.length} expired sessions`)
-			}
 
 			span.setStatus({ code: Otel.SpanStatusCode.OK })
 			span.end()
