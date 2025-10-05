@@ -46,9 +46,6 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const config = ConfigClient.useConfig()
 	const selectedServerId = SquadServerClient.useSelectedServerId()
 	const selectedServer = config?.servers.find(server => server.id === selectedServerId)
-	React.useEffect(() => {
-		console.table(config?.servers)
-	}, [config?.servers])
 	return (
 		<div className="h-full w-full">
 			<nav

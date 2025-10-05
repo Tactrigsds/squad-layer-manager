@@ -68,11 +68,9 @@ export function setup() {
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
 	const serverId = Cookies.getCookie('default-server-id')!
 
-	console.log('serverId', serverId)
 	selectedServerStore = Zus.createStore((set) => ({
 		selectedServerId: serverId,
 		setSelectedServer: async (serverId: string) => {
-			console.log('serverId', serverId)
 			return set({ selectedServerId: serverId })
 		},
 	}))
