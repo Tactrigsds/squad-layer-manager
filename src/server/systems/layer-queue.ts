@@ -268,7 +268,7 @@ function checkForNextLayerStatusActions(
 export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory, eventTime: Date) {
 	const serverId = ctx.serverId
 	const status = await Rx.firstValueFrom(
-		ctx.server.layersStatus.observe(ctx, { ttl: 1_000 }).pipe(
+		ctx.server.layersStatus.observe(ctx, { ttl: 0 }).pipe(
 			Rx.concatMap(v => v.code === 'ok' ? Rx.of(v.data) : Rx.EMPTY),
 			Rx.retry(),
 			Rx.takeUntil(Rx.of(1).pipe(Rx.delay(60_000))),

@@ -267,7 +267,7 @@ async function handleSquadEvent(ctx: C.Db & C.Locks & C.SquadServer & C.MatchHis
 			}
 		}
 		case 'ROUND_ENDED': {
-			const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 200 })
+			const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
 			if (statusRes.code !== 'ok') return statusRes
 			// -------- use debug ticketOutcome if one was set --------
 			if (state.debug__ticketOutcome) {
