@@ -138,28 +138,37 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 
 		const sessionId = createId(64)
-		await ctx.db().transaction(async (tx) => {
-			const [user] = await tx
+		const expiresAt = new Date(Date.now() + Sessions.SESSION_MAX_AGE)
+
+		await DB.runTransaction(ctx, async (ctx) => {
+			const [user] = await ctx.db()
 				.select()
 				.from(Schema.users)
 				.where(eq(Schema.users.discordId, discordUser.id))
 				.for('update')
 			if (!user) {
-				await tx.insert(Schema.users).values({
+				await ctx.db().insert(Schema.users).values({
 					discordId: discordUser.id,
 					username: discordUser.username,
 					avatar: discordUser.avatar,
 				})
 			} else {
-				await tx
+				await ctx.db()
 					.update(Schema.users)
 					.set({ username: discordUser.username, avatar: discordUser.avatar })
 					.where(eq(Schema.users.discordId, discordUser.id))
 			}
-			await tx.insert(Schema.sessions).values({
+			// Use the transaction-aware write-through cache for session creation
+			await Sessions.createSessionTx(ctx, {
 				id: sessionId,
 				userId: discordUser.id,
-				expiresAt: new Date(Date.now() + Sessions.SESSION_MAX_AGE),
+				expiresAt,
+				user: {
+					discordId: discordUser.id,
+					username: discordUser.username,
+					avatar: discordUser.avatar,
+					steam64Id: user?.steam64Id || null,
+				},
 			})
 		})
 		const requestCtx = buildRequestContext(ctx, req, reply)
@@ -231,7 +240,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
 			case 'unauthorized:expired':
-			case 'err:not-found':
+			case 'unauthorized:not-found':
 				return await Sessions.clearInvalidSession(ctx)
 			case 'err:permission-denied':
 				return ctx.res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
@@ -334,7 +343,7 @@ export async function createTrpcRequestContext(
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
 			case 'unauthorized:expired':
-			case 'err:not-found':
+			case 'unauthorized:not-found':
 				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.code })
 			case 'err:permission-denied':
 				throw new TRPCError({
