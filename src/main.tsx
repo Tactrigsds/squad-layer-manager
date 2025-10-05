@@ -37,9 +37,11 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<LayerQueueDashboard />
-					</AppContainer>
+					<SetupCompleteProvider targetState="all">
+						<AppContainer>
+							<LayerQueueDashboard />
+						</AppContainer>
+					</SetupCompleteProvider>
 				</React.Suspense>
 			</InnerRouterProviders>
 		),
@@ -51,9 +53,11 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterIndex />
-					</AppContainer>
+					<SetupCompleteProvider targetState="all">
+						<AppContainer>
+							<FilterIndex />
+						</AppContainer>
+					</SetupCompleteProvider>
 				</React.Suspense>
 			</InnerRouterProviders>
 		),
@@ -63,9 +67,11 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterEdit />
-					</AppContainer>
+					<SetupCompleteProvider targetState="all">
+						<AppContainer>
+							<FilterEdit />
+						</AppContainer>
+					</SetupCompleteProvider>
 				</React.Suspense>
 			</InnerRouterProviders>
 		),
@@ -75,9 +81,11 @@ const router = createBrowserRouter([
 		element: (
 			<InnerRouterProviders>
 				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterNew />
-					</AppContainer>
+					<SetupCompleteProvider targetState="all">
+						<AppContainer>
+							<FilterNew />
+						</AppContainer>
+					</SetupCompleteProvider>
 				</React.Suspense>
 			</InnerRouterProviders>
 		),
@@ -86,7 +94,13 @@ const router = createBrowserRouter([
 	// -------- Layer Info --------
 	{
 		path: AR.route('/layers/:id'),
-		element: <LayerInfoPage />,
+		element: (
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<SetupCompleteProvider targetState="layer-info">
+					<LayerInfoPage />
+				</SetupCompleteProvider>
+			</React.Suspense>
+		),
 	},
 ])
 
@@ -96,10 +110,13 @@ console.log('running system initialization')
 ThemeSys.setup()
 ConfigClient.setup()
 
+type SetupState = 'all' | 'layer-info'
 let setupState: 'all' | 'layer-info' | null = null
 let setupPromise: Promise<void> | null = null
-async function ensureSystemsSetup() {
-	if (setupState == 'all') return await setupPromise
+function ensureSystemsSetup() {
+	const target = resolveState(AR.resolveRoute(window.location.pathname)?.id)
+	if (!target) return
+	if (setupState == target || setupState == 'all' && target == 'layer-info') return
 	const route = AR.resolveRoute(window.location.pathname)
 	if (!route) {
 		console.warn('No route found for path:', window.location.pathname)
@@ -176,6 +193,7 @@ async function ensureSystemsSetup() {
 					})
 
 				setupState = 'all'
+				console.log('full app loaded')
 			})()
 			break
 		}
@@ -188,19 +206,33 @@ async function ensureSystemsSetup() {
 	}
 
 	setupPromise ??= Promise.resolve()
-	return await setupPromise
+	return setupPromise
 }
 
-Rx.merge([
-	Rx.fromEvent(window, 'popstate'),
-	Rx.fromEvent(window, 'pushstate'),
-	Rx.fromEvent(window, 'replacestate'),
-	Rx.fromEvent(window, 'hashchange'),
-]).pipe(Rx.mergeAll()).subscribe(() => {
-	void ensureSystemsSetup()
-})
+function SetupCompleteProvider({ children, targetState }: { children: React.ReactNode; targetState: 'all' | 'layer-info' }) {
+	if ((!setupState || targetState === 'all' && setupState === 'layer-info') && setupPromise) throw setupPromise
+	return children
+}
 
-await ensureSystemsSetup()
+function resolveState(route: AR.Route<'server'> | undefined): SetupState | null {
+	switch (route) {
+		case undefined:
+			return null
+		case '/filters':
+		case '/filters/new':
+		case '/filters/:id':
+		case '/servers/:id': {
+			return 'all'
+		}
+		case '/layers/:id': {
+			return 'layer-info'
+		}
+		default:
+			return null
+	}
+}
+
+void ensureSystemsSetup()
 
 createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>

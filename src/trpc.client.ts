@@ -5,7 +5,7 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import { QueryClient } from '@tanstack/react-query'
-import { createTRPCClient, createWSClient, wsLink } from '@trpc/client'
+import { createTRPCClient, createWSClient, loggerLink, wsLink } from '@trpc/client'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 import { sleep } from './lib/async'
@@ -78,12 +78,13 @@ const wsClient = createWSClient({
 	},
 })
 
-const link = wsLink<AppRouter>({
-	client: wsClient,
-	transformer: superjson,
-})
-
-export const links = [link]
+export const links = [
+	loggerLink({ enabled: () => !!import.meta.env.PUBLIC_TRPC_CLIENT_LOGS_ENABLED }),
+	wsLink<AppRouter>({
+		client: wsClient,
+		transformer: superjson,
+	}),
+]
 
 export const reactQueryClient = new QueryClient()
 

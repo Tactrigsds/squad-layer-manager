@@ -15,6 +15,7 @@ export const groups = {
 		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
 
 		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
+		PUBLIC_TRPC_CLIENT_LOGS_ENABLED: StrFlag.optional(),
 	},
 
 	squadcalc: {
