@@ -143,6 +143,7 @@ async function ensureSystemsSetup() {
 					.pipe(Rx.startWith(AR.resolveRoute(window.location.pathname)))
 					.subscribe(async (route) => {
 						let title = 'Squad Layer Manager'
+						console.log('route:', route?.id)
 						switch (route?.id) {
 							case undefined:
 								break
@@ -155,7 +156,9 @@ async function ensureSystemsSetup() {
 								break
 							}
 							case '/filters/:id': {
-								const filterEntity = FilterEntityClient.useFilterEntities().get(route.params.id)
+								const filterEntity = await Rx.firstValueFrom(
+									FilterEntityClient.initializedFilterEntities$().pipe(Rx.map(entities => entities.get(route.params.id))),
+								)
 								if (!filterEntity) break
 								title = `SLM - ${filterEntity.name}`
 								break
@@ -177,7 +180,6 @@ async function ensureSystemsSetup() {
 			break
 		}
 		case '/layers/:id': {
-			console.debug('only loading layer info systems')
 			setupState = 'layer-info'
 			const title = `SLM - ${DH.displayLayer(route.params.id)}`
 			document.title = title
