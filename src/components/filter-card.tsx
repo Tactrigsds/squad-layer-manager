@@ -415,7 +415,8 @@ export function Comparison(props: {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
-	const columnOptions = (props.allowedColumns ? props.allowedColumns : LC.COLUMN_KEYS).map((c) => ({
+	const baseCols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
+	const columnOptions = (props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols).map((c) => ({
 		value: c,
 	}))
 
