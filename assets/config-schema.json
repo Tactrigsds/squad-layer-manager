@@ -31,10 +31,6 @@
             "type": "string",
             "description": "Display name of the server"
           },
-          "description": {
-            "type": "string",
-            "description": "Description of the server"
-          },
           "connections": {
             "type": "object",
             "properties": {
@@ -65,7 +61,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["id", "displayName", "description", "connections"],
+        "required": ["id", "displayName", "connections"],
         "additionalProperties": false
       }
     },

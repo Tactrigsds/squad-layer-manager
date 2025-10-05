@@ -27,7 +27,6 @@ export const ConfigSchema = z.object({
 		z.object({
 			id: z.string().describe('ID of the server'),
 			displayName: z.string().describe('Display name of the server'),
-			description: z.string().describe('Description of the server'),
 			connections: SS.ServerConnectionSchema,
 		}),
 	),
@@ -135,8 +134,8 @@ export type PublicConfig = ReturnType<typeof getPublicConfig>
 export type ServerEntry = {
 	id: string
 	displayName: string
-	description: string
 }
+
 // we also include public env variables here for expediency
 export function getPublicConfig() {
 	return {
@@ -151,7 +150,6 @@ export function getPublicConfig() {
 		servers: CONFIG.servers.map((server): ServerEntry => ({
 			id: server.id,
 			displayName: server.displayName,
-			description: server.description,
 		})),
 	}
 }
