@@ -29,6 +29,7 @@ export const ConfigSchema = z.object({
 			displayName: z.string().describe('Display name of the server'),
 			enabled: z.boolean().default(true).describe('Whether the server is enabled'),
 			connections: SS.ServerConnectionSchema,
+			remindersAndAnnouncementsEnabled: z.boolean().default(true).describe('Whether reminders/annoucements for admins are enabled'),
 		}),
 	).transform(servers => servers.filter(server => server.enabled)),
 	layerQueue: z.object({

@@ -64,6 +64,11 @@
             },
             "required": ["rcon", "sftp"],
             "additionalProperties": false
+          },
+          "remindersAndAnnouncementsEnabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether reminders/annoucements for admins are enabled"
           }
         },
         "required": ["id", "displayName", "connections"],

@@ -98,47 +98,34 @@ export const initLayerQueue = C.spanOp(
 			ctx.log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
 		}))
 
-		// -------- set next layer on server when rcon is connected--------
-		ctx.serverSliceSub.add(
-			ctx.rcon.connected$.pipe(
-				C.durableSub('layer-queue:set-next-layer-on-connected', { ctx, tracer, eventLogLevel: 'info' }, async (isConnected) => {
-					if (!isConnected) return
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-					const oldServerState = await getServerState(ctx)
-					const newServerState = Obj.deepClone(oldServerState)
-					await syncNextLayerInPlace(ctx, newServerState)
-					await syncVoteStateWithQueueStateInPlace(ctx, oldServerState.layerQueue, newServerState.layerQueue)
-					C.setSpanStatus(Otel.SpanStatusCode.OK)
-				}),
-			).subscribe(),
-		)
-
 		ctx.serverSliceSub.add(ctx.layerQueue.update$.subscribe(([state, ctx]) => {
 			ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
 		}))
 
 		// -------- schedule generic admin reminders --------
-		ctx.serverSliceSub.add(
-			Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
-				C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-					const serverState = await getServerState(ctx)
-					const currentMatch = MatchHistory.getCurrentMatch(ctx)
-					const voteState = ctx.vote.state
-					if (SquadServer.state.serverRolling || currentMatch.status === 'post-game') return
-					if (
-						LL.isParentVoteItem(serverState.layerQueue[0])
-						&& voteState?.code === 'ready'
-						&& serverState.lastRoll
-						&& serverState.lastRoll.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
-					) {
-						await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
-					} else if (serverState.layerQueue.length === 0) {
-						await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
-					}
-				}),
-			).subscribe(),
-		)
+		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
+			ctx.serverSliceSub.add(
+				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
+					C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
+						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+						const serverState = await getServerState(ctx)
+						const currentMatch = MatchHistory.getCurrentMatch(ctx)
+						const voteState = ctx.vote.state
+						if (SquadServer.state.serverRolling || currentMatch.status === 'post-game') return
+						if (
+							LL.isParentVoteItem(serverState.layerQueue[0])
+							&& voteState?.code === 'ready'
+							&& serverState.lastRoll
+							&& serverState.lastRoll.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
+						) {
+							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
+						} else if (serverState.layerQueue.length === 0) {
+							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.empty)
+						}
+					}),
+				).subscribe(),
+			)
+		}
 
 		// -------- when SLM is not able to set a layer on the server, notify admins.
 		ctx.serverSliceSub.add(
@@ -287,6 +274,7 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 			Rx.takeUntil(Rx.of(1).pipe(Rx.delay(60_000))),
 		),
 	)
+
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverState = await getServerState(ctx)
 		const nextLqItem = serverState.layerQueue[0]
@@ -335,41 +323,43 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 	}
 
 	// -------- schedule post-roll announcements --------
-	const announcementTasks: (Rx.Observable<void>)[] = []
-	announcementTasks.push(toCold(async () => {
-		const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-		const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
-		const currentMatch = MatchHistory.getCurrentMatch(ctx)
-		if (!currentMatch) return
-		const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
-		if (!mostRelevantEvent) return
-		await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
-	}))
+	if (CONFIG.servers.find(s => s.id === ctx.serverId)?.remindersAndAnnouncementsEnabled) {
+		const announcementTasks: (Rx.Observable<void>)[] = []
+		announcementTasks.push(toCold(async () => {
+			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+			const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
+			const currentMatch = MatchHistory.getCurrentMatch(ctx)
+			if (!currentMatch) return
+			const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
+			if (!mostRelevantEvent) return
+			await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
+		}))
 
-	announcementTasks.push(toCold(async () => {
-		const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-		warnShowNext(ctx, 'all-admins')
-	}))
+		announcementTasks.push(toCold(async () => {
+			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+			warnShowNext(ctx, 'all-admins')
+		}))
 
-	announcementTasks.push(toCold(async () => {
-		const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-		const serverState = await getServerState(ctx)
-		if (serverState.layerQueue.length <= CONFIG.layerQueue.lowQueueWarningThreshold) {
-			await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+		announcementTasks.push(toCold(async () => {
+			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+			const serverState = await getServerState(ctx)
+			if (serverState.layerQueue.length <= CONFIG.layerQueue.lowQueueWarningThreshold) {
+				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
+			}
+		}))
+
+		const withWaits: Rx.Observable<unknown>[] = []
+		withWaits.push(Rx.timer(CONFIG.postRollAnnouncementsTimeout))
+
+		for (let i = 0; i < announcementTasks.length; i++) {
+			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
+			if (i !== announcementTasks.length - 1) {
+				withWaits.push(Rx.timer(2000))
+			}
 		}
-	}))
 
-	const withWaits: Rx.Observable<unknown>[] = []
-	withWaits.push(Rx.timer(CONFIG.postRollAnnouncementsTimeout))
-
-	for (let i = 0; i < announcementTasks.length; i++) {
-		withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
-		if (i !== announcementTasks.length - 1) {
-			withWaits.push(Rx.timer(2000))
-		}
+		ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
 	}
-
-	ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
 }
 
 async function processLayerStatusChange(
@@ -380,7 +370,7 @@ async function processLayerStatusChange(
 	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 	const eventTime = new Date()
 	const serverState = await getServerState(ctx)
-	const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 100 })
+	const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 3_000 })
 	if (serverInfoRes.value.code !== 'ok') return serverInfoRes.value
 	const serverInfo = serverInfoRes.value.data
 	const currentLayerAction = checkForCurrentLayerChangeActions(status, prevStatus, serverState, serverInfo)
@@ -422,7 +412,6 @@ async function processLayerStatusChange(
 
 // -------- voting --------
 //
-
 async function syncVoteStateWithQueueStateInPlace(
 	_ctx: CS.Log & C.Locks & C.SquadServer & C.Vote & C.MatchHistory,
 	oldQueue: LL.LayerList,

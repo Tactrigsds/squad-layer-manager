@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { acquireInBlock, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { acquireInBlock, acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
@@ -26,7 +26,7 @@ export const MAX_RECENT_MATCHES = 100
 const tracer = Otel.trace.getTracer('match-history')
 
 export type MatchHistoryContext = {
-	historyMtx: Mutex
+	mtx: Mutex
 	update$: Rx.Subject<CS.Log>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
@@ -34,7 +34,7 @@ export type MatchHistoryContext = {
 
 export function initMatchHistoryContext(): MatchHistoryContext {
 	return {
-		historyMtx: new Mutex(),
+		mtx: new Mutex(),
 		update$: new Rx.Subject<CS.Log>(),
 		parts: { users: [] },
 		recentMatches: [],
@@ -51,10 +51,8 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 	}
 }
 
-export const historyMtx = new Mutex()
-
-export async function getRecentMatchHistory(ctx: C.MatchHistory) {
-	using _lock = await acquireInBlock(historyMtx)
+export async function getRecentMatchHistory(ctx: C.MatchHistory & C.Locks) {
+	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const state = ctx.matchHistory
 	if (state.recentMatches[state.recentMatches.length - 1]?.status === 'in-progress') {
 		return state.recentMatches.slice(0, state.recentMatches.length - 1)
@@ -140,7 +138,8 @@ export const matchHistoryRouter = router({
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.MatchHistory, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
+	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Locks, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
+		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
@@ -148,17 +147,18 @@ export const addNewCurrentMatch = C.spanOp(
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
-		ctx.matchHistory.update$.next(ctx)
+		ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next(ctx))
 
 		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
 )
 
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
-	ctx: CS.Log & C.Db & C.MatchHistory,
+	ctx: CS.Log & C.Db & C.MatchHistory & C.Locks,
 	currentLayerId: string,
 	event: SME.RoundEnded,
 ) => {
+	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const res = await DB.runTransaction(ctx, async ctx => {
 		const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 		if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
@@ -221,7 +221,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	ctx.matchHistory.update$.next(ctx)
+	ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next(ctx))
 	return { ...res }
 })
 
@@ -231,9 +231,9 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer & C.Locks, currentLayerOnServer: L.UnvalidatedLayer) => {
 		await DB.runTransaction(ctx, async ctx => {
-			using _lock = await acquireInBlock(historyMtx)
+			using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
