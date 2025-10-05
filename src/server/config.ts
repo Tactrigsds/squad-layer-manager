@@ -27,9 +27,10 @@ export const ConfigSchema = z.object({
 		z.object({
 			id: z.string().describe('ID of the server'),
 			displayName: z.string().describe('Display name of the server'),
+			enabled: z.boolean().default(true).describe('Whether the server is enabled'),
 			connections: SS.ServerConnectionSchema,
 		}),
-	),
+	).transform(servers => servers.filter(server => server.enabled)),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
