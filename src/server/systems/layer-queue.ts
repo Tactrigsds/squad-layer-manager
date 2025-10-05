@@ -1230,7 +1230,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	}
 	const currentStatusRes = (await ctx.server.layersStatus.get(ctx)).value
 	if (currentStatusRes.code !== 'ok') return currentStatusRes
-	if (!serverState.settings.updatesToSquadServerDisabled && currentStatusRes.data.nextLayer?.id === nextLayerId) {
+	if (!serverState.settings.updatesToSquadServerDisabled) {
 		const res = await SquadRcon.setNextLayer(ctx, nextLayerId)
 		switch (res.code) {
 			case 'err:unable-to-set-next-layer':
