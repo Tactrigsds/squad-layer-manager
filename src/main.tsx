@@ -106,6 +106,7 @@ async function ensureSystemsSetup() {
 		throw new Error('No configured route found for path ' + window.location.pathname)
 	}
 	if (AR.isRouteType(route.def, 'custom')) return
+	setupPromise = null
 	switch (route.id) {
 		case '/':
 		case '/servers/:id':
