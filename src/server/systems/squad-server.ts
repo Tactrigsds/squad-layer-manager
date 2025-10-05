@@ -34,6 +34,7 @@ import { TRPCError } from '@trpc/server'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 
+import { assertNever } from '@/lib/type-guards'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { baseLogger } from '../logger'
@@ -76,43 +77,49 @@ export async function setup() {
 		selectedServers: new Map(),
 		selectedServerUpdate$: new Rx.Subject(),
 	}
+	const ops: Promise<void>[] = []
 
 	for (const serverConfig of CONFIG.servers) {
-		let settings: SS.ServerSettings | undefined
+		ops.push((async () => {
+			let settings: SS.ServerSettings | undefined
+			await DB.runTransaction(ctx, async () => {
+				const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
+				const server: typeof serverRaw | undefined = serverRaw ? (unsuperjsonify(Schema.servers, serverRaw) as typeof serverRaw) : undefined
+				const settingsParsedRes = server?.settings
+					? SS.ServerSettingsSchema.safeParse(server.settings)
+					: undefined
+				settings = settingsParsedRes?.success ? settingsParsedRes.data : undefined
+				if (!server) {
+					settings = SS.ServerSettingsSchema.parse({ connections: serverConfig.connections })
+					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, {
+						id: serverConfig.id,
+						settings,
+						displayName: serverConfig.displayName,
+						layerQueue: LL.LayerListSchema.parse([]),
+					}))
+				}
 
-		await DB.runTransaction(ctx, async () => {
-			const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
-			const server: typeof serverRaw | undefined = serverRaw ? (unsuperjsonify(Schema.servers, serverRaw) as typeof serverRaw) : undefined
-			const settingsParsedRes = server?.settings
-				? SS.ServerSettingsSchema.safeParse(server.settings)
-				: undefined
-			settings = settingsParsedRes?.success ? settingsParsedRes.data : undefined
-			if (!server) {
-				settings = SS.ServerSettingsSchema.parse({ connections: serverConfig.connections })
-				await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, {
-					id: serverConfig.id,
-					settings,
-					displayName: serverConfig.displayName,
-					layerQueue: LL.LayerListSchema.parse([]),
-				}))
-			}
+				if (server && server.displayName !== serverConfig.displayName) {
+					await ctx.db().update(Schema.servers).set({ displayName: serverConfig.displayName }).where(
+						E.eq(Schema.servers.id, serverConfig.id),
+					)
+				}
 
-			if (server && server.displayName !== serverConfig.displayName) {
-				await ctx.db().update(Schema.servers).set({ displayName: serverConfig.displayName }).where(E.eq(Schema.servers.id, serverConfig.id))
-			}
+				if (server && !Obj.deepEqual(serverConfig.connections, settings?.connections)) {
+					settings = SS.ServerSettingsSchema.parse({ ...(settings ?? {}), connections: serverConfig.connections })
+					await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
+						E.eq(Schema.servers.id, serverConfig.id),
+					)
+				}
+			})
 
-			if (server && !Obj.deepEqual(serverConfig.connections, settings?.connections)) {
-				settings = SS.ServerSettingsSchema.parse({ ...(settings ?? {}), connections: serverConfig.connections })
-				await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
-					E.eq(Schema.servers.id, serverConfig.id),
-				)
-			}
-		})
-
-		if (!settings) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
-		const slice = await instantiateServer(ctx, serverConfig.id, settings)
-		state.slices.set(serverConfig.id, slice)
+			if (!settings) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
+			const slice = await instantiateServer(ctx, serverConfig.id, settings)
+			state.slices.set(serverConfig.id, slice)
+		})())
 	}
+
+	await Promise.all(ops)
 }
 
 async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string, settings: SS.ServerSettings): Promise<C.ServerSlice> {
@@ -189,14 +196,22 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 		serverSliceSub: sub,
 	}
 
-	sub.add(rcon.connected$.subscribe(async (connected) => {
-		if (!connected) return
-		const ctx = { ...getBaseCtx(), ...slice }
+	const sync$ = rcon.connected$.pipe(
+		Rx.concatMap(async (connected) => {
+			if (!connected) return Rx.EMPTY
+			const ctx = { ...getBaseCtx(), ...slice }
 
-		const { value: statusRes } = await layersStatus.get(ctx)
-		if (statusRes.code === 'err:rcon') return
-		await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
-	}))
+			const { value: statusRes } = await layersStatus.get(ctx)
+			if (statusRes.code === 'err:rcon') return Rx.EMPTY
+			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
+			return Rx.of(1)
+		}),
+		Rx.concatAll(),
+		Rx.share(),
+	)
+
+	sub.add(sync$.subscribe())
+	await Rx.firstValueFrom(sync$)
 
 	sub.add(
 		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
@@ -226,10 +241,75 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 		).subscribe(),
 	)
 
+	sub.add(
+		slice.server.logEmitter.event$.pipe(
+			C.durableSub(
+				'squad-server:handle-squad-log-event',
+				{ tracer, ctx, eventLogLevel: 'info' },
+				([_ctx, event]) => handleSquadEvent(resolveSliceCtx(getBaseCtx(), serverId), event),
+			),
+		).subscribe(),
+	)
+
 	await MatchHistory.loadState({ ...ctx, ...slice })
 	await LayerQueue.initLayerQueue({ ...ctx, ...slice })
 
 	return slice
+}
+
+async function handleSquadEvent(ctx: C.Db & C.Locks & C.SquadServer & C.MatchHistory & C.LayerQueue & C.Vote, event: SME.Event) {
+	switch (event.type) {
+		case 'NEW_GAME': {
+			try {
+				return await LayerQueue.handleNewGame(ctx, event.time)
+			} finally {
+				state.serverRolling = false
+			}
+		}
+		case 'ROUND_ENDED': {
+			const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 200 })
+			if (statusRes.code !== 'ok') return statusRes
+			// -------- use debug ticketOutcome if one was set --------
+			if (state.debug__ticketOutcome) {
+				let winner: SM.TeamId | null
+				let loser: SM.TeamId | null
+				if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
+					winner = null
+					loser = null
+				} else {
+					winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
+					loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
+				}
+				const partial = L.toLayer(statusRes.data.currentLayer)
+				const teams: SM.SquadOutcomeTeam[] = [
+					{
+						faction: partial.Faction_1!,
+						unit: partial.Unit_1!,
+						team: 1,
+						tickets: state.debug__ticketOutcome.team1,
+					},
+					{
+						faction: partial.Faction_2!,
+						unit: partial.Unit_2!,
+						team: 2,
+						tickets: state.debug__ticketOutcome.team2,
+					},
+				]
+				const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
+				const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
+				event = {
+					...event,
+					loser: loserTeam,
+					winner: winnerTeam,
+				}
+				delete state.debug__ticketOutcome
+			}
+			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+			return res
+		}
+		default:
+			assertNever(event)
+	}
 }
 
 export function destroyServer(ctx: C.ServerSlice & CS.Log) {

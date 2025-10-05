@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { acquireInBlock, acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
@@ -27,7 +27,7 @@ const tracer = Otel.trace.getTracer('match-history')
 
 export type MatchHistoryContext = {
 	mtx: Mutex
-	update$: Rx.Subject<CS.Log>
+	update$: Rx.Subject<void>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
@@ -35,7 +35,7 @@ export type MatchHistoryContext = {
 export function initMatchHistoryContext(): MatchHistoryContext {
 	return {
 		mtx: new Mutex(),
-		update$: new Rx.Subject<CS.Log>(),
+		update$: new Rx.Subject(),
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
@@ -138,16 +138,17 @@ export const matchHistoryRouter = router({
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Locks, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal'>) => {
+	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Locks, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
 		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, { ...entry, ordinal })).$returningId()
+			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }))
+				.$returningId()
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
-		ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next(ctx))
+		ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
 
 		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
@@ -221,7 +222,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next(ctx))
+	ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
 	return { ...res }
 })
 
@@ -232,8 +233,8 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
 	{ tracer, eventLogLevel: 'info' },
 	async (ctx: C.Db & C.MatchHistory & C.SquadServer & C.Locks, currentLayerOnServer: L.UnvalidatedLayer) => {
+		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async ctx => {
-			using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
@@ -244,7 +245,7 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 				setByType: 'unknown',
 			}))
 			await loadState(ctx, { startAtOrdinal: ordinal })
+			ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
 		})
-		ctx.matchHistory.update$.next(ctx)
 	},
 )
