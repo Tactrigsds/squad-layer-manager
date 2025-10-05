@@ -93,7 +93,6 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 				}
 				const id = createId(6)
 				setSpanOpAttrs({ op_id: id })
-				logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) - executed`)
 				try {
 					const result = await cb(...args)
 					let statusString: string

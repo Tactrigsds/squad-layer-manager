@@ -57,16 +57,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
-		baseLogger.debug(
-			{
-				method: request.method,
-				url: request.url,
-				ip: request.ip,
-			},
-			'incoming request %s %s',
-			request.method,
-			request.url,
-		)
+		baseLogger.debug('incoming request %s %s', request.method, request.url)
 		if (route?.id === '/trpc') return
 
 		const ctx = DB.addPooledDb({ log: instance.log as CS.Logger })
