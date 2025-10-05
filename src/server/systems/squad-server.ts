@@ -82,7 +82,7 @@ export async function setup() {
 
 		await DB.runTransaction(ctx, async () => {
 			const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
-			let server = serverRaw ? (unsuperjsonify(Schema.servers, serverRaw) as typeof server) : undefined
+			const server: typeof serverRaw | undefined = serverRaw ? (unsuperjsonify(Schema.servers, serverRaw) as typeof serverRaw) : undefined
 			const settingsParsedRes = server?.settings
 				? SS.ServerSettingsSchema.safeParse(server.settings)
 				: undefined
