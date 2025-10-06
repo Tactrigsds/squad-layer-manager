@@ -404,9 +404,14 @@ export const createLLItemStore = (
 				set({ item: update })
 			}
 		},
-		swapFactions: () => {
+		swapFactions: async () => {
 			const item = get().item
-			set({ item: LL.swapFactions(item) })
+			const source: LL.LayerSource | undefined = UsersClient.logggedInUserId
+				? { type: 'manual', userId: UsersClient.logggedInUserId }
+				: undefined
+			set({
+				item: LL.swapFactions(item, source),
+			})
 		},
 		addVoteItems: (choices) => {
 			const newItem = LL.mergeItems(get().item, ...choices.map(LL.createLayerListItem))
@@ -440,7 +445,10 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			remove: () => llStore.getState().remove(itemId),
 			swapFactions: () => {
 				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				llStore.getState().setItem(itemId, LL.swapFactions(item))
+				const source: LL.LayerSource | undefined = UsersClient.logggedInUserId
+					? { type: 'manual', userId: UsersClient.logggedInUserId }
+					: undefined
+				llStore.getState().setItem(itemId, LL.swapFactions(item, source))
 			},
 		}
 		function deriveState(llState: LLStore): LLItemState | null {

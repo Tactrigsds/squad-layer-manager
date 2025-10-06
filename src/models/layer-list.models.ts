@@ -321,12 +321,13 @@ export function changeGeneratedLayerAttributionInPlace(layerList: LayerList, mut
 	}
 }
 
-export function swapFactions(existingItem: LayerListItem) {
+export function swapFactions(existingItem: LayerListItem, newSource?: LayerSource) {
 	const updated: LayerListItem = { ...existingItem }
 	const layerId = L.swapFactionsInId(existingItem.layerId)
 	updated.layerId = layerId
+	if (newSource) updated.source = newSource
 	if (isParentVoteItem(existingItem)) {
-		updated.choices = existingItem.choices.map(swapFactions)
+		updated.choices = existingItem.choices.map(choice => swapFactions(choice, newSource))
 	}
 	return updated
 }
