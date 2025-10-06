@@ -1,5 +1,5 @@
 import { Check, ChevronsUpDown, LoaderCircle, Trash2, X } from 'lucide-react'
-import React, { useImperativeHandle, useRef, useState } from 'react'
+import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 
+import { sleep } from '@/lib/async.ts'
 import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 
@@ -22,12 +23,39 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	onSelect: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
 	restrictValueSize?: boolean
+	selectOnClose?: boolean
 }
 
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values, selectionLimit, disabled, onSelect: _onSelect } = props
-	const [open, setOpen] = useState(false)
+	const { values, selectionLimit, disabled, onSelect: _onSelect, selectOnClose = false } = props
+	const [open, _setOpen] = useState(false)
+	const [internalValues, setInternalValues] = useState<T[]>(values)
+	const selectOnCloseRef = useRef(selectOnClose)
+
+	// Throw error if selectOnClose flag changes during component lifecycle
+	useEffect(() => {
+		if (selectOnCloseRef.current !== selectOnClose) {
+			throw new Error('selectOnClose flag cannot be changed during component lifecycle')
+		}
+	}, [selectOnClose])
+
+	// Initialize internal values when component mounts or values prop changes
+	useEffect(() => {
+		if (selectOnClose) {
+			setInternalValues(values)
+		}
+	}, [values, selectOnClose])
+
+	const setOpen = (value: boolean) => {
+		if (!value) {
+			// When closing, if selectOnClose is true, apply internal state to props
+			if (selectOnClose) {
+				_onSelect(internalValues)
+			}
+		}
+		_setOpen(value)
+	}
 	const restrictValueSize = props.restrictValueSize ?? true
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
@@ -36,20 +64,36 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		get isFocused() {
 			return open
 		},
-		clear: () => {
-			setOpen(false)
-			_onSelect([])
+		clear: (ephemeral) => {
+			if (selectOnClose) {
+				setInternalValues([])
+				if (!ephemeral) _onSelect([])
+			} else {
+				if (!ephemeral) _onSelect([])
+			}
 		},
-	}), [open, _onSelect])
+	}), [open, _onSelect, selectOnClose, internalValues])
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
-		props.onSelect((currentValues) => {
-			const newValues = typeof updater === 'function' ? updater(currentValues) : updater
-			if (selectionLimit && newValues.length > selectionLimit) {
-				return currentValues
-			}
-			return newValues
-		})
+		if (selectOnClose) {
+			// Use internal state when selectOnClose is true
+			setInternalValues((currentValues) => {
+				const newValues = typeof updater === 'function' ? updater(currentValues) : updater
+				if (selectionLimit && newValues.length > selectionLimit) {
+					return currentValues
+				}
+				return newValues
+			})
+		} else {
+			// Use props directly when selectOnClose is false
+			props.onSelect((currentValues) => {
+				const newValues = typeof updater === 'function' ? updater(currentValues) : updater
+				if (selectionLimit && newValues.length > selectionLimit) {
+					return currentValues
+				}
+				return newValues
+			})
+		}
 	}
 
 	let options: ComboBoxOption<T>[] | typeof LOADING
@@ -59,16 +103,18 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		options = props.options as ComboBoxOption<T>[] | typeof LOADING
 	}
 
+	// Use internal values for display when selectOnClose is true
+	const displayValues = selectOnClose ? internalValues : values
 	let valuesDisplay = ''
-	if (values.length > 0) {
-		const displayText = values
+	if (displayValues.length > 0) {
+		const displayText = displayValues
 			.map((value) => {
 				const option = options !== LOADING && options.find((opt) => opt.value === value)
 				return option ? (option.label ?? option.value) : value
 			})
 			.join(', ')
 
-		valuesDisplay = selectionLimit ? `${displayText} (${values.length}/${selectionLimit})` : displayText
+		valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
 	} else {
 		valuesDisplay = 'Select...'
 	}
@@ -110,7 +156,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 											<CommandItem
 												key={option.value}
 												value={option.value === null ? NULL.current : option.value}
-												disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
+												disabled={selectionLimit ? displayValues.length >= selectionLimit && !displayValues.includes(option.value) : false}
 												onSelect={() => {
 													onSelect((prevValues) => {
 														if (prevValues.includes(option.value)) {
@@ -121,7 +167,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 													})
 												}}
 											>
-												<Check className={cn('mr-2 h-4 w-4', values.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
+												<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
 												{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
 											</CommandItem>
 										))}
@@ -134,10 +180,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					<div className="flex-1 flex flex-col">
 						<div className="p-2 border-b flex items-center justify-between">
 							<span className="text-sm font-medium">
-								Selected {props.title ? props.title + 's ' : ''}({values.length}
+								Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
 								{selectionLimit ? `/${selectionLimit}` : ''})
 							</span>
-							{values.length > 0 && (
+							{displayValues.length > 0 && (
 								<Button
 									variant="ghost"
 									size="sm"
@@ -149,14 +195,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 							)}
 						</div>
 						<div className="flex-1 overflow-y-auto p-2 space-y-1">
-							{values.length === 0
+							{displayValues.length === 0
 								? (
 									<div className="text-sm text-muted-foreground text-center py-8">
 										No items selected
 									</div>
 								)
 								: (
-									values.map((value) => {
+									displayValues.map((value) => {
 										const option = options !== LOADING && options.find((opt) => opt.value === value)
 										const displayText = option ? (option.label ?? option.value) : value
 										return (

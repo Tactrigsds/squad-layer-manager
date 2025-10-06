@@ -1221,6 +1221,8 @@ function FactionMaskConfig(props: {
 		})
 	}
 
+	// Right now we're setting the selectOnClose flag because otherwise the mask selection is slow/will auto-close the dialog due to component remounting. There are probably better solutions.
+
 	return (
 		<div className={cn(props.className, 'flex flex-col space-y-2 w-[300px]')}>
 			<div className="flex items-center space-x-2">
@@ -1228,6 +1230,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Alliance"
+					selectOnClose={true}
 					values={mask.alliance ?? []}
 					options={allPopulated ? alliances : LOADING}
 					onSelect={(v) => updateMask('alliance', v as string[])}
@@ -1238,6 +1241,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Faction"
+					selectOnClose={true}
 					values={mask.faction ?? []}
 					options={allPopulated ? factions : LOADING}
 					onSelect={(v) => updateMask('faction', v as string[])}
@@ -1248,6 +1252,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Unit"
+					selectOnClose={true}
 					values={mask.unit ?? []}
 					options={allPopulated ? units : LOADING}
 					onSelect={(v) => updateMask('unit', v as string[])}
