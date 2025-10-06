@@ -290,7 +290,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		return (
 			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
-				<Comparison comp={node.comp} setComp={setComp} />
+				<Comparison comp={node.comp} setComp={setComp} restrictValueSize={false} />
 				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
 					<Minus color="hsl(var(--destructive))" />
 				</Button>
@@ -377,6 +377,7 @@ export function Comparison(props: {
 	columnEditable?: boolean
 	allowedColumns?: string[]
 	allowedComparisonCodes?: F.ComparisonCode[]
+	restrictValueSize?: boolean
 	baseQueryInput?: LQY.LayerQueryBaseInput
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
@@ -393,6 +394,7 @@ export function Comparison(props: {
 	const columnBoxRef = React.useRef<ComboBoxHandle>(null)
 	const codeBoxRef = React.useRef<ComboBoxHandle>(null)
 	const valueBoxRef = React.useRef<Focusable & Clearable>(null)
+	const restrictValueSize = props.restrictValueSize ?? true
 
 	React.useImperativeHandle(props.ref, () => ({
 		clear: (ephemeral) => {
@@ -521,7 +523,6 @@ export function Comparison(props: {
 				valueBox = (
 					<StringEqConfig
 						ref={valueBoxRef}
-						className={componentStyles}
 						lockOnSingleOption={lockOnSingleOption}
 						column={comp.column as LC.GroupByColumn}
 						value={comp.value as string | undefined | null}
@@ -557,6 +558,7 @@ export function Comparison(props: {
 						className={componentStyles}
 						ref={valueBoxRef}
 						column={comp.column as LC.GroupByColumn}
+						restrictValueSize={restrictValueSize}
 						values={(comp.values ?? []) as string[]}
 						baseQueryInput={props.baseQueryInput}
 						setValues={(action) => {
@@ -699,6 +701,7 @@ function StringInConfig(
 		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 		ref?: React.ForwardedRef<ComboBoxHandle>
+		restrictValueSize?: boolean
 	},
 ) {
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
@@ -711,6 +714,7 @@ function StringInConfig(
 			options={options}
 			onSelect={props.setValues}
 			className={props.className}
+			restrictValueSize={props.restrictValueSize}
 		/>
 	)
 }
@@ -775,7 +779,6 @@ export function LayerEqConfig(
 		value: string | null
 		setValue: React.Dispatch<React.SetStateAction<string | null>>
 		baseQueryInput?: LQY.LayerQueryBaseInput
-		className?: string
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
@@ -791,26 +794,23 @@ export function LayerEqConfig(
 			})
 		)
 	})
-	// React.useEffect(() => {
-	// 	console.log('rerender')
-	// 	// storeRef.current.getState().setItem({ itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? undefined })
-	// }, [props.value, storeRef])
-	// React.useEffect(() => {
-	// 	const unsub = storeRef.current.subscribe((state) => {
-	// 		props.setValue(state.item.layerId!)
-	// 	})
-	// 	return () => unsub()
-	// }, [props, props.setValue, storeRef])
+
+	React.useEffect(() => {
+		const unsub = storeRef.current.subscribe((state) => {
+			props.setValue(state.item.layerId!)
+		})
+		return () => unsub()
+	}, [props, props.setValue, storeRef])
 
 	return (
-		<div>
-			{props.value !== null && <li>{DH.displayLayer(props.value)}</li>}
+		<div className="flex space-x-2 items-center">
 			<EditLayerListItemDialog
 				open={open}
 				onOpenChange={setOpen}
 				itemStore={storeRef.current}
 			>
-				<Button size="icon" variant="ghost" onClick={() => setOpen(true)}>
+				<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
+					{props.value !== null && DH.displayLayer(props.value)}
 					<Icons.Edit />
 				</Button>
 			</EditLayerListItemDialog>

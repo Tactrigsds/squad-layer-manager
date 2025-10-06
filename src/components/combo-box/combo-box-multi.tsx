@@ -21,12 +21,14 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
+	restrictValueSize?: boolean
 }
 
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	const { values, selectionLimit, disabled, onSelect: _onSelect } = props
 	const [open, setOpen] = useState(false)
+	const restrictValueSize = props.restrictValueSize ?? true
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
@@ -71,7 +73,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		valuesDisplay = 'Select...'
 	}
 
-	if (valuesDisplay.length > 25) {
+	if (restrictValueSize && valuesDisplay.length > 25) {
 		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
 	}
 	return (
@@ -82,7 +84,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					disabled={disabled}
 					role="combobox"
 					aria-expanded={open}
-					className={cn(props.className, 'max-w-[400px] justify-between font-mono')}
+					className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
 				>
 					{valuesDisplay}
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
