@@ -353,7 +353,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			}
 		}
 		return (
-			<div className="flex items-center w-max">
+			<div className="flex items-center w-max space-x-1">
+				{negationToggle}
 				<FactionsAllowMatchupsConfig
 					masks={node.allowMatchups.allMasks}
 					mode={node.allowMatchups.mode}
@@ -960,7 +961,7 @@ function FactionsAllowMatchupsConfig(props: {
 			<div className="flex-1 min-w-0">
 				<div className="space-y-1">
 					<div className="text-sm">
-						<span className="font-medium">Mode:</span> {props.mode ?? 'either'}
+						<span className="font-medium">Allow Matchups:</span> (mode <span className="font-mono">{props.mode ?? 'either'}</span>)
 					</div>
 					{masks.length === 0
 						? <span className="text-sm text-muted-foreground italic">No faction masks configured</span>

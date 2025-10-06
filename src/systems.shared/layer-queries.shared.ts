@@ -223,9 +223,13 @@ export function getFilterNodeSQLConditions(
 		switch (mode) {
 			case 'both': {
 				if (config.allMasks[0].length > 0) {
-					condition = E.and(
-						E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
-						E.or(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+					condition = E.or(
+						...config.allMasks[0].map(mask =>
+							E.and(
+								factionMaskToSqlCondition(mask, 1, path, errors, ctx),
+								factionMaskToSqlCondition(mask, 2, path, errors, ctx),
+							)
+						),
 					)
 				} else {
 					condition = sql`1 = 1`
@@ -235,8 +239,12 @@ export function getFilterNodeSQLConditions(
 			case 'either': {
 				if (config.allMasks[0].length > 0) {
 					condition = E.or(
-						E.and(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 1, path, errors, ctx))),
-						E.and(...config.allMasks[0].map(mask => factionMaskToSqlCondition(mask, 2, path, errors, ctx))),
+						...config.allMasks[0].map(mask =>
+							E.or(
+								factionMaskToSqlCondition(mask, 1, path, errors, ctx),
+								factionMaskToSqlCondition(mask, 2, path, errors, ctx),
+							)
+						),
 					)
 				} else {
 					condition = sql`1 = 1`
