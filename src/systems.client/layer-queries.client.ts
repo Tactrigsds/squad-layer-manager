@@ -56,6 +56,7 @@ export function useLayersQuery(
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input)
 			if (res?.code === 'err:invalid-node') {
+				console.error('queryLayers: Invalid node error:', res.errors)
 				options?.errorStore?.setState({ errors: res.errors })
 				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			} else {
@@ -78,6 +79,7 @@ export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input, 0)
 			if (res?.code === 'err:invalid-node') {
+				console.error('queryLayers: Invalid node error:', res.errors)
 				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			}
 			return res
@@ -132,6 +134,7 @@ export function useLayerComponents(
 			const res = await sendQuery('queryLayerComponent', input)
 			if (Array.isArray(res)) return res
 			if (res?.code === 'err:invalid-node') {
+				console.error('queryLayerComponents: Invalid node error:', res.errors)
 				options?.errorStore?.setState({ errors: res.errors })
 				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
 			} else if (options.errorStore) {
@@ -171,6 +174,7 @@ export function useLayerItemStatuses(
 			const res = await sendQuery('getLayerItemStatuses', input)
 			if (!res) throw new Error('Unknown error')
 			if (res.code === 'err:invalid-node') {
+				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
 				options?.errorStore?.setState({ errors: res.errors })
 				throw new Error('err:invalid-node: ' + JSON.stringify(res.errors))
 			}
