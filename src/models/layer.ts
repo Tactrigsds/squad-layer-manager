@@ -184,7 +184,6 @@ export function getLayerIdTeamString(faction: string, unit: string, components =
 
 export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents) {
 	if (!areLayerIdArgsValid(layer, components)) {
-		debugger
 		return null
 	}
 	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
@@ -198,14 +197,12 @@ export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComp
 			const factionProp = `Faction_${prop}` as const
 			layer[unitProp] = lookupDefaultUnit(getLayerString(layer), layer[factionProp])
 			if (!layer[unitProp]) {
-				debugger
 				return null
 			}
 		}
 
 		// Validate unit exists
 		if (!components.unitAbbreviations[layer[unitProp]!]) {
-			debugger
 			return null
 		}
 	}

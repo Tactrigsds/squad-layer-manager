@@ -139,7 +139,6 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 			for (const layerId of ids) {
 				if (!L.isKnownLayer(L.toLayer(layerId, components), components)) {
 					ctx.log.warn(`Unknown layer ${layerId}`)
-					debugger
 					continue
 				}
 				if (seenIds.has(layerId)) {

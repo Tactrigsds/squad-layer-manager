@@ -75,7 +75,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
 	}
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover open={open} onOpenChange={setOpen} modal={true}>
 			<PopoverTrigger asChild>
 				<Button
 					variant="outline"
