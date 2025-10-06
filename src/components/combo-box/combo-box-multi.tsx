@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, LoaderCircle, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, ChevronsUpDown, LoaderCircle, Trash2, X } from 'lucide-react'
 import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -47,7 +47,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}, [values, selectOnClose])
 
-	const setOpen = (value: boolean) => {
+	const setOpen = React.useCallback((value: boolean) => {
 		if (!value) {
 			// When closing, if selectOnClose is true, apply internal state to props
 			if (selectOnClose) {
@@ -55,7 +55,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			}
 		}
 		_setOpen(value)
-	}
+	}, [_onSelect, internalValues, selectOnClose])
+
 	const restrictValueSize = props.restrictValueSize ?? true
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
@@ -72,7 +73,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				if (!ephemeral) _onSelect([])
 			}
 		},
-	}), [open, _onSelect, selectOnClose, internalValues])
+	}), [open, _onSelect, selectOnClose, setOpen])
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
 		if (selectOnClose) {
@@ -138,7 +139,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="min-w-[600px] p-0">
+			<PopoverContent className="min-w-[600px] p-0 overflow-hidden">
 				<div className="flex h-[400px]">
 					{/* Left Column - Available Options */}
 					<div className="flex-1 border-r">
@@ -185,16 +186,44 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
 								{selectionLimit ? `/${selectionLimit}` : ''})
 							</span>
-							{displayValues.length > 0 && (
+							<span className="flex items-center space-x-1">
+								{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => {
+											const allValues = options.map(opt => opt.value).filter(val =>
+												!selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit
+											)
+											onSelect(allValues)
+										}}
+										className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+										title="Select All"
+									>
+										<CheckCheck className="h-4 w-4" />
+									</Button>
+								)}
+								{displayValues.length > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => onSelect([])}
+										className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+										title="Clear All"
+									>
+										<Trash2 className="h-4 w-4" />
+									</Button>
+								)}
 								<Button
 									variant="ghost"
 									size="sm"
-									onClick={() => onSelect([])}
-									className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+									onClick={() => setOpen(false)}
+									className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+									title="Close"
 								>
-									<Trash2 className="h-4 w-4" />
+									<X className="h-4 w-4" />
 								</Button>
-							)}
+							</span>
 						</div>
 						<div className="flex-1 overflow-y-auto p-2 space-y-1">
 							{displayValues.length === 0
@@ -210,7 +239,13 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										return (
 											<div
 												key={value}
-												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm"
+												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
+												onMouseDown={(e) => {
+													if (e.button === 1) { // Middle mouse button
+														e.preventDefault()
+														onSelect((prevValues) => prevValues.filter((v) => v !== value))
+													}
+												}}
 											>
 												<span className="flex-1 truncate">
 													{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}

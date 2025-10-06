@@ -147,7 +147,13 @@ export function getFilterNodeSQLConditions(
 		const dbVal = (v: LC.InputValue) => {
 			let dbValue = LC.dbValue(comp.column, v, ctx)
 			if (LC.isUnmappedDbValue(dbValue)) {
-				errors.push({ type: 'unmapped-value', path, column: comp.column, value: v, msg: `Value ${v} is not mapped for ${comp.column}` })
+				errors.push({
+					type: 'unmapped-value',
+					path,
+					column: comp.column,
+					value: v,
+					msg: `Value ${v} is not mapped for column ${comp.column}`,
+				})
 				dbValue = null
 			}
 			return dbValue as LC.DbValue
@@ -157,7 +163,13 @@ export function getFilterNodeSQLConditions(
 			for (const v of vs) {
 				const res = LC.dbValue(comp.column, v, ctx)
 				if (LC.isUnmappedDbValue(res)) {
-					errors.push({ type: 'unmapped-value', path, column: comp.column, value: v, msg: 'Value is not mapped to a database column' })
+					errors.push({
+						type: 'unmapped-value',
+						path,
+						column: comp.column,
+						value: v,
+						msg: `Value ${v} is not mapped for column ${comp.column}`,
+					})
 				} else {
 					dbValues.push(res)
 				}

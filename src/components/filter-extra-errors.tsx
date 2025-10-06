@@ -10,7 +10,7 @@ export function FilterValidationErrorDisplay(props: { store: Zus.StoreApi<F.Node
 			{extraErrors.map((error, index) => (
 				<Alert key={index} variant="destructive">
 					<AlertTitle>{error.path.slice(1).join('.')}</AlertTitle>
-					<AlertDescription>{error.msg} {error.type === 'unmapped-value' && (error.value)}</AlertDescription>
+					<AlertDescription>{error.msg}</AlertDescription>
 				</Alert>
 			))}
 		</div>
