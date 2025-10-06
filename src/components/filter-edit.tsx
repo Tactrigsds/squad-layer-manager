@@ -28,6 +28,7 @@ import Markdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import FilterCard from './filter-card'
+import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import FullPageSpinner from './full-page-spinner'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
@@ -118,6 +119,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
+	const validationErrorStore = F.useNodeValidationErrorStore()
 
 	const [editingDetails, setEditingDetails] = useState(false)
 	const form = Form.useForm({
@@ -359,6 +361,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 						</div>
 					)}
 			</div>
+			<FilterValidationErrorDisplay store={validationErrorStore} />
 			<div className="mt-2 flex space-x-2">
 				<FilterCard
 					node={editedFilter}
@@ -380,6 +383,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				baseInput={queryContext}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
+				errorStore={validationErrorStore}
 			/>
 		</div>
 	)

@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 import FilterCard from './filter-card'
+import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Label } from './ui/label'
@@ -44,8 +45,7 @@ export default function FilterNew() {
 			return newFilter
 		})
 	}
-	const extraErrorStore = F.useNodeValidationErrorStore()
-	const extraErrors = Zus.useStore(extraErrorStore, state => state.errors)
+	const validationErrorStore = F.useNodeValidationErrorStore()
 
 	const form = Form.useForm({
 		defaultValues: {
@@ -175,16 +175,7 @@ export default function FilterNew() {
 					)}
 				</form.Field>
 			</div>
-			{extraErrors && (
-				<div className="mt-4 space-y-2">
-					{extraErrors.map((error, index) => (
-						<Alert key={index} variant="destructive">
-							<AlertTitle>{error.path.slice(1).join('.')}</AlertTitle>
-							<AlertDescription>{error.msg}</AlertDescription>
-						</Alert>
-					))}
-				</div>
-			)}
+			<FilterValidationErrorDisplay store={validationErrorStore} />
 			<FilterCard
 				node={editedFilter}
 				setNode={setEditedFilter}
@@ -198,7 +189,7 @@ export default function FilterNew() {
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				errorStore={extraErrorStore}
+				errorStore={validationErrorStore}
 				baseInput={{
 					constraints: validFilter
 						? [{ type: 'filter-anon', filter: validFilter, applyAs: 'where-condition', id: 'filter-new' }]

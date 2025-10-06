@@ -158,7 +158,6 @@ export function getFilterNodeSQLConditions(
 				const res = LC.dbValue(comp.column, v, ctx)
 				if (LC.isUnmappedDbValue(res)) {
 					errors.push({ type: 'unmapped-value', path, column: comp.column, value: v, msg: 'Value is not mapped to a database column' })
-					dbValues.push(null)
 				} else {
 					dbValues.push(res)
 				}
