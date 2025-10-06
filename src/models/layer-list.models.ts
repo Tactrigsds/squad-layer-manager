@@ -310,13 +310,13 @@ export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
 
 // if layers are placed before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
 export function changeGeneratedLayerAttributionInPlace(layerList: LayerList, mutations: ItemMutations, userId: bigint) {
-	let modified = false
+	let afterModified = false
 	const allModifiedItems = getAllMutationIds(mutations)
 	for (const { item } of iterLayerList(layerList)) {
 		if (item.source.type === 'generated') {
-			if (modified) item.source = { type: 'manual', userId }
-		} else if (!modified && allModifiedItems.has(item.itemId)) {
-			modified = true
+			if (afterModified) item.source = { type: 'manual', userId }
+		} else if (!afterModified && allModifiedItems.has(item.itemId)) {
+			afterModified = true
 		}
 	}
 }
