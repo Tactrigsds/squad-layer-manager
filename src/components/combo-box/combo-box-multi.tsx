@@ -26,7 +26,7 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
 	const { values, selectionLimit, disabled, onSelect: _onSelect } = props
-	const [open, setOpen] = useState(true)
+	const [open, setOpen] = useState(false)
 	useImperativeHandle(props.ref, () => ({
 		focus: () => {
 			setOpen(true)
