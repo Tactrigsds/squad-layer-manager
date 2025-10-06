@@ -34,6 +34,11 @@ export const [useVoteState, voteState$] = bind(
 	null,
 )
 
+export function setup() {
+	voteStateUpdate$.subscribe()
+	voteState$.subscribe()
+}
+
 export const startVoteOpts = {
 	mutationFn: trpc.layerQueue.startVote.mutate,
 }

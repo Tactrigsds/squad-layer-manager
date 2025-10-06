@@ -1,5 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
+import * as VotesClient from '@/systems.client/votes.client.ts'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
@@ -106,6 +107,8 @@ MatchHistoryClient.setup()
 SquadServerClient.setup()
 UsersClient.setup()
 QueueDashboard.setup()
+VotesClient.setup()
+
 const route = AR.resolveRoute(window.location.pathname)
 if (route && route?.id !== '/layers/:id') {
 	void LayerQueriesClient.ensureFullSetup()
