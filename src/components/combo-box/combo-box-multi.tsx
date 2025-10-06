@@ -119,8 +119,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		valuesDisplay = 'Select...'
 	}
 
-	if (restrictValueSize && valuesDisplay.length > 25) {
-		valuesDisplay = valuesDisplay.slice(0, 25) + '...'
+	// we don't fully unbound the size here, just relax the limit
+	const restrictSize = props.restrictValueSize ? 25 : 100
+	if (valuesDisplay.length > restrictSize) {
+		valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
 	}
 	return (
 		<Popover open={open} onOpenChange={setOpen} modal={true}>
