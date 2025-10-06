@@ -570,6 +570,7 @@ export function resolveLayerDetails(
 	const layerConfig = components.mapLayers.find(l => l.Layer === layer.Layer)!
 	const factionUnitTeam1 = resolveFactionUnit(layer.Faction_1, layer.Unit_1, 1)
 	const factionUnitTeam2 = resolveFactionUnit(layer.Faction_2, layer.Unit_2, 2)
+	if (!factionUnitTeam1 || !factionUnitTeam2) return null
 
 	return {
 		layer,
@@ -579,7 +580,8 @@ export function resolveLayerDetails(
 	}
 
 	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
-		const entry = components.layerFactionAvailability[layer.Layer].find(e => e.Faction === faction && e.Unit === unit)!
+		const entry = components.layerFactionAvailability[layer.Layer].find(e => e.Faction === faction && e.Unit === unit)
+		if (!entry) return null
 		const teamConfig = layerConfig.teams[team - 1]
 		let size: string
 		switch (layer.Size) {

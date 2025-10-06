@@ -141,7 +141,7 @@ function LayerInfo(props: LayerInfoContentProps) {
 			</div>
 			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
 			{activeTab === 'details' && !layerDetails && <div>No details available</div>}
-			{activeTab === 'scores' && scores && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
+			{activeTab === 'scores' && scores && layerDetails && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
 			{activeTab === 'scores' && !scores && <div>No scores available</div>}
 		</div>
 	)
