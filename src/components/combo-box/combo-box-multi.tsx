@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
+import { Check, ChevronsUpDown, LoaderCircle, Trash2, X } from 'lucide-react'
 import React, { useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -88,41 +88,100 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="max-[200px] p-0">
-				<Command shouldFilter={!props.setInputValue}>
-					<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search..." />
-					<CommandList>
-						<CommandEmpty>No results found.</CommandEmpty>
-						<CommandGroup>
-							{options === LOADING && (
-								<CommandItem>
-									<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-								</CommandItem>
+			<PopoverContent className="min-w-[600px] p-0">
+				<div className="flex h-[400px]">
+					{/* Left Column - Available Options */}
+					<div className="flex-1 border-r">
+						<Command shouldFilter={!props.setInputValue}>
+							<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
+							<CommandList>
+								<CommandEmpty>No results found.</CommandEmpty>
+								<CommandGroup>
+									{options === LOADING && (
+										<CommandItem>
+											<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+											Loading...
+										</CommandItem>
+									)}
+									{options !== LOADING
+										&& options.map((option) => (
+											<CommandItem
+												key={option.value}
+												value={option.value === null ? NULL.current : option.value}
+												disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
+												onSelect={() => {
+													onSelect((prevValues) => {
+														if (prevValues.includes(option.value)) {
+															return prevValues.filter((v) => v !== option.value)
+														} else {
+															return [...prevValues, option.value]
+														}
+													})
+												}}
+											>
+												<Check className={cn('mr-2 h-4 w-4', values.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
+												{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+											</CommandItem>
+										))}
+								</CommandGroup>
+							</CommandList>
+						</Command>
+					</div>
+
+					{/* Right Column - Selected Items */}
+					<div className="flex-1 flex flex-col">
+						<div className="p-2 border-b flex items-center justify-between">
+							<span className="text-sm font-medium">
+								Selected {props.title ? props.title + 's ' : ''}({values.length}
+								{selectionLimit ? `/${selectionLimit}` : ''})
+							</span>
+							{values.length > 0 && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => onSelect([])}
+									className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+								>
+									<Trash2 className="h-4 w-4" />
+								</Button>
 							)}
-							{options !== LOADING
-								&& options.map((option) => (
-									<CommandItem
-										key={option.value}
-										value={option.value === null ? NULL.current : option.value}
-										disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
-										onSelect={(selected) => {
-											onSelect((values) => {
-												const selectedValue = selected as T
-												if (values.includes(selectedValue)) {
-													return values.filter((v) => v !== option.value)
-												} else {
-													return [...values, option.value]
-												}
-											})
-										}}
-									>
-										<Check className={cn('mr-2 h-4 w-4', values.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
-										{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-									</CommandItem>
-								))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
+						</div>
+						<div className="flex-1 overflow-y-auto p-2 space-y-1">
+							{values.length === 0
+								? (
+									<div className="text-sm text-muted-foreground text-center py-8">
+										No items selected
+									</div>
+								)
+								: (
+									values.map((value) => {
+										const option = options !== LOADING && options.find((opt) => opt.value === value)
+										const displayText = option ? (option.label ?? option.value) : value
+										return (
+											<div
+												key={value}
+												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm"
+											>
+												<span className="flex-1 truncate">
+													{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+												</span>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => {
+														onSelect((prevValues) => prevValues.filter((v) => v !== value))
+													}}
+													className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+												>
+													<X className="h-3 w-3" />
+												</Button>
+											</div>
+										)
+									})
+								)}
+						</div>
+					</div>
+				</div>
 			</PopoverContent>
 		</Popover>
 	)
