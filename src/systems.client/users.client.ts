@@ -13,7 +13,7 @@ import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import * as Zus from 'zustand'
 
-export let logggedInUserId: bigint | undefined
+export let loggedInUserId: bigint | undefined
 
 export function useUser(id?: bigint) {
 	return useQuery({
@@ -35,7 +35,7 @@ export function useUsers() {
 async function _fetchLoggedInUser() {
 	const user = await trpc.users.getLoggedInUser.query()
 	PartSys.upsertParts({ users: [user] })
-	logggedInUserId = user.discordId
+	loggedInUserId = user.discordId
 	return user
 }
 const loggedInUserBaseQuery = {

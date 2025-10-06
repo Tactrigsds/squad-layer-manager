@@ -242,7 +242,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 				LL.splice(draft.layerList, itemRes, 1)
 				ItemMut.tryApplyMutation('removed', id, draft.listMutations)
 				// TODO current implementation of the below doesn't work for this scenario. will need some kind of structural diffing instead
-				LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
+				LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
 				onMutate?.()
 			})
 		)
@@ -270,7 +270,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 							}
 						}
 					}
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
 					onMutate?.()
 				})
 			})
@@ -284,7 +284,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 					for (const { item } of LL.iterLayerList(items)) {
 						ItemMut.tryApplyMutation('added', item.itemId, draft.listMutations)
 					}
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
 					onMutate?.()
 				}),
 			)
@@ -346,7 +346,7 @@ export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMu
 					}
 
 					ItemMut.tryApplyMutation('moved', movedItemRes.item.itemId, draft.listMutations)
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.logggedInUserId!)
+					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
 					onMutate?.()
 				})
 				console.debug('after', state)
@@ -404,10 +404,10 @@ export const createLLItemStore = (
 				set({ item: update })
 			}
 		},
-		swapFactions: async () => {
+		swapFactions: () => {
 			const item = get().item
-			const source: LL.LayerSource | undefined = UsersClient.logggedInUserId
-				? { type: 'manual', userId: UsersClient.logggedInUserId }
+			const source: LL.LayerSource | undefined = UsersClient.loggedInUserId
+				? { type: 'manual', userId: UsersClient.loggedInUserId }
 				: undefined
 			set({
 				item: LL.swapFactions(item, source),
@@ -445,8 +445,8 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			remove: () => llStore.getState().remove(itemId),
 			swapFactions: () => {
 				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				const source: LL.LayerSource | undefined = UsersClient.logggedInUserId
-					? { type: 'manual', userId: UsersClient.logggedInUserId }
+				const source: LL.LayerSource | undefined = UsersClient.loggedInUserId
+					? { type: 'manual', userId: UsersClient.loggedInUserId }
 					: undefined
 				llStore.getState().setItem(itemId, LL.swapFactions(item, source))
 			},
