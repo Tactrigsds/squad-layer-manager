@@ -2,6 +2,7 @@ import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import type { AppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as FeatureFlags from '@/systems.client/feature-flags'
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import { QueryClient } from '@tanstack/react-query'
@@ -79,7 +80,7 @@ const wsClient = createWSClient({
 })
 
 export const links = [
-	loggerLink({ enabled: () => !!import.meta.env.PUBLIC_TRPC_CLIENT_LOGS_ENABLED }),
+	loggerLink({ enabled: () => !!FeatureFlags.get('trpcLogs') }),
 	wsLink<AppRouter>({
 		client: wsClient,
 		transformer: superjson,

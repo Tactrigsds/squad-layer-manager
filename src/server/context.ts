@@ -73,11 +73,14 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 			context,
 			async (span) => {
 				// try to extract current serverId from context
-				if (args[0]?.serverId) {
-					setSpanOpAttrs({ server_id: args[0].serverId })
+				const serverId = args[0]?.serverId ?? args[0]?.[0]?.serverId
+				if (serverId) {
+					setSpanOpAttrs({ server_id: serverId })
 				}
-				if (args[0]?.[0]?.serverId) {
-					setSpanOpAttrs({ server_id: args[0][0].serverId })
+
+				const username = args[0]?.user?.username ?? args[0]?.[0]?.user?.username
+				if (username) {
+					setSpanOpAttrs({ username: username })
 				}
 
 				if (typeof opts.attrs === 'function') {

@@ -5,6 +5,7 @@ import { persist } from 'zustand/middleware'
 
 const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
+	trpcLogs: false,
 }
 
 interface FeatureFlagsState {
@@ -30,6 +31,10 @@ const featureFlagsStore = Zus.create<FeatureFlagsState>()(
 		},
 	),
 )
+
+export function get(key: keyof typeof FEATURE_FLAGS) {
+	return featureFlagsStore.getState().flags[key]
+}
 
 // @ts-expect-error expose to console
 window.featureFlags = {
