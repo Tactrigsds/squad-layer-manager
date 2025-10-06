@@ -353,7 +353,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			}
 		}
 		return (
-			<div className="flex items-center w-max space-x-1">
+			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
 				{negationToggle}
 				<FactionsAllowMatchupsConfig
 					masks={node.allowMatchups.allMasks}
