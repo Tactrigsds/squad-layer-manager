@@ -62,7 +62,7 @@ function MatchHistoryRow({
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
-	}, { feedback: 'clone' })
+	})
 	if (entry.historyEntryId === currentMatch?.historyEntryId) {
 		return null
 	}
@@ -158,7 +158,11 @@ function MatchHistoryRow({
 	return (
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
-				<TableRow className="whitespace-nowrap bg-background group" ref={dragProps.ref}>
+				<TableRow
+					ref={dragProps.ref}
+					data-is-dragging={dragProps.isDragging}
+					className="whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded"
+				>
 					<TableCell className="font-mono text-xs relative">
 						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center">
 							<Icons.GripVertical className="h-4 w-4" />
