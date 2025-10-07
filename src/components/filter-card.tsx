@@ -5,6 +5,7 @@ import * as DH from '@/lib/display-helpers'
 import { initMutationState } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object.ts'
 import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/react'
+import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders.ts'
@@ -326,7 +327,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 		)
 	}
 
-	if (node.type === 'comp' && node.comp) {
+	if (node.type === 'comp') {
 		const setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>> = (update) => {
 			setNode(
 				Im.produce((draft) => {
@@ -340,7 +341,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 		return (
 			<NodeWrapper className="flex items-center space-x-1">
 				{negationToggle}
-				<Comparison comp={node.comp} setComp={setComp} restrictValueSize={false} />
+				<Comparison comp={node.comp!} setComp={setComp} restrictValueSize={false} />
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -412,7 +413,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 		)
 	}
 
-	throw new Error('Invalid node type ' + node.type)
+	assertNever(node)
 }
 
 function ChildNodeSeparator(props: {
@@ -425,12 +426,19 @@ function ChildNodeSeparator(props: {
 	const isValid = activeItem ? (activeItem.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
 	const depth = props.path.length
 
+	// WARNING:  without this useEffect the component breaks. something fucky must be happening with dndkit or some memoization issue
+	React.useEffect(() => {
+		if (dropProps.isDropTarget) {
+			console.debug('Drop target', dropProps.isDropTarget, 'path', props.path)
+		}
+	}, [dropProps.isDropTarget, props.path])
+
 	return (
 		<Separator
 			ref={dropProps.ref}
 			className={cn(
 				Obj.deref('background', depthColors)[depth % depthColors.length],
-				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
+				'w-full min-w-0 h-1 m-0 data-[is-over=false]:invisible',
 			)}
 			data-is-over={!!isValid && dropProps.isDropTarget}
 		/>
