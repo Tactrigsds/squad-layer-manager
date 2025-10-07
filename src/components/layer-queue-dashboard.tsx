@@ -707,7 +707,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 						/>
 						<ComboBoxMulti
 							className="flex-grow"
-							title="Target Values"
+							title="Target"
 							options={targetValueOptions}
 							disabled={!canWriteSettings}
 							values={rule.targetValues ?? []}
