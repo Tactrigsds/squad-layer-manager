@@ -24,6 +24,11 @@ export const routes = {
 	...defRoute('/layers.sqlite3', [], 'custom'),
 	...defRoute('/check-auth', [], 'custom'),
 
+	// proxy avatars
+	...defRoute('/avatars/:discordId/:avatarId', ['discordId', 'avatarId'], 'custom', {
+		link: (discordId, avatarId) => `/avatars/${discordId}/${avatarId}`,
+	}),
+
 	...defRoute('/trpc', [], 'custom', { websocket: true }),
 } as const satisfies Record<string, RouteDefinition>
 export type Platform = 'client' | 'server'

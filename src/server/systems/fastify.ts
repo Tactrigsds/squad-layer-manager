@@ -29,6 +29,7 @@ import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapte
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
+import { Readable } from 'stream'
 import { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
@@ -209,6 +210,45 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			return ctx.res.status(401).send({ error: 'Unauthorized' })
 		}
 		return res.status(200).send({ status: 'ok' })
+	})
+
+	// Discord avatar proxy endpoint to escape CORS
+	instance.get(AR.route('/avatars/:discordId/:avatarId'), async (req, res) => {
+		const params = req.params as { discordId: string; avatarId: string }
+
+		// Determine the Discord URL to fetch
+		let discordAvatarUrl: string
+		if (params.avatarId === 'default') {
+			discordAvatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`
+		} else {
+			discordAvatarUrl = `https://cdn.discordapp.com/avatars/${params.discordId}/${params.avatarId}.png`
+		}
+
+		try {
+			const response = await fetch(discordAvatarUrl)
+
+			// Copy relevant headers from Discord's response
+			const contentType = response.headers.get('content-type')
+			const contentLength = response.headers.get('content-length')
+			const cacheControl = response.headers.get('cache-control')
+			const etag = response.headers.get('etag')
+
+			if (contentType) res.header('content-type', contentType)
+			if (response.ok) {
+				if (contentLength) res.header('content-length', contentLength)
+				if (cacheControl) res.header('cache-control', cacheControl)
+				if (etag) res.header('etag', etag)
+			}
+
+			res = res.status(response.status)
+			if (response.body) {
+				res = res.send(new Uint8Array(await response.arrayBuffer()))
+			}
+			return res
+		} catch (error) {
+			req.log.error(error, 'Failed to proxy Discord avatar')
+			return res.status(500).send({ error: 'Failed to fetch avatar' })
+		}
 	})
 
 	instance.register(ws)

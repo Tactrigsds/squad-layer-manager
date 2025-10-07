@@ -23,9 +23,8 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
-	const avatarUrl = user?.avatar
-		? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
-		: 'https://cdn.discordapp.com/embed/avatars/0.png'
+
+	const avatarUrl = user && AR.link('/avatars/:discordId/:avatarId', user.discordId.toString(), user.avatar ?? 'default')
 
 	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
@@ -107,7 +106,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+									<AvatarImage src={avatarUrl} />
 									<AvatarFallback className="text-xs sm:text-sm">{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
