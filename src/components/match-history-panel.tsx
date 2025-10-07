@@ -160,10 +160,10 @@ function MatchHistoryRow({
 			<ContextMenuTrigger asChild>
 				<TableRow className="whitespace-nowrap bg-background group" ref={dragProps.ref}>
 					<TableCell className="font-mono text-xs relative">
-						<div className="opacity-0 group-hover:opacity-100 transition-opacity absolute inset-0 flex items-center justify-center">
+						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-hover:opacity-0 transition-opacity">
+						<div className="group-hover:opacity-0">
 							{visibleIndex.toString().padStart(2, '0')}
 						</div>
 					</TableCell>
