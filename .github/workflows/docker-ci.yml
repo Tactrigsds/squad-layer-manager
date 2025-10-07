@@ -127,7 +127,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, quality-checks]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Run deployment script from secret
