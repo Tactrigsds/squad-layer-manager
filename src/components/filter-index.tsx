@@ -36,7 +36,7 @@ export default function FiltersIndex() {
 					return (
 						<li key={entity.id}>
 							<Link onMouseEnter={onHover} to={AR.link('/filters/:id', entity.id)} className="block h-full">
-								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground">
+								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground overflow-hidden">
 									<CardHeader>
 										<CardTitle>{entity.name}</CardTitle>
 										<CardDescription>{entity.description}</CardDescription>
