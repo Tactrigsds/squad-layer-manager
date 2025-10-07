@@ -68,7 +68,7 @@ const wsClient = createWSClient({
 		//  This only works as long as index.html is resolved directly from fastify and not cached.
 		if (config.PUBLIC_GIT_SHA !== buildGitSha) {
 			await sleep(1000)
-			globalToast$.next({ variant: 'destructive', title: 'SLM is being upgraded, window will refresh shortly...' })
+			globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
 			const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
 			const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
 			console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
