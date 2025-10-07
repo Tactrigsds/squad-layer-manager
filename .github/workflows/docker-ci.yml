@@ -124,3 +124,23 @@ jobs:
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           docker run --rm ghcr.io/$OWNER/squad-layer-manager:commit-${{ github.sha }} pnpm run format:check
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Run deployment script from secret
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          set -e
+
+          # Export all secrets except DEPLOY_JOB_SCRIPT as environment variables
+          echo "$SECRETS_JSON" | jq -r 'to_entries[] | select(.key != "DEPLOY_JOB_SCRIPT") | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
+          source /tmp/secrets.env
+          rm -f /tmp/secrets.env
+
+          # Run the deployment script directly from secrets JSON
+          echo "$SECRETS_JSON" | jq -r '.DEPLOY_JOB_SCRIPT' | bash
