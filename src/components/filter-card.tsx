@@ -425,18 +425,6 @@ function ChildNodeSeparator(props: {
 	const isValid = activeItem ? (activeItem.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
 	const depth = props.path.length
 
-	React.useEffect(() => {
-		if (!dropProps.isDropTarget) return
-		console.log('ChildNodeSeparator useEffect', {
-			dropProps,
-			activeItem,
-			isValid,
-			depth,
-			path: props.path,
-			isDropTarget: dropProps.isDropTarget,
-		})
-	}, [dropProps, activeItem, isValid, depth, props.path])
-
 	return (
 		<Separator
 			ref={dropProps.ref}

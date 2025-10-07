@@ -29,7 +29,6 @@ export function useDragging() {
 	DndKitReact.useDragDropMonitor({
 		onDragStart: (event) => {
 			const item = DND.deserializeDragItem(event.operation.source!.id as string)
-			console.log('active item set', item)
 			setActive(item)
 		},
 		onDragEnd: () => {
