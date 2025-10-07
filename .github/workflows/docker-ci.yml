@@ -130,17 +130,17 @@ jobs:
     needs: [build, quality-checks]
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Run deployment script from secret
+      - name: Run deployment script from variable
         env:
           SECRETS_JSON: ${{ toJSON(secrets) }}
           GITHUB_REF: ${{ github.ref }}
         run: |
           set -e
 
-          # Export all secrets except DEPLOY_JOB_SCRIPT as environment variables
-          echo "$SECRETS_JSON" | jq -r 'to_entries[] | select(.key != "DEPLOY_JOB_SCRIPT") | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
+          # Export all secrets as environment variables
+          echo "$SECRETS_JSON" | jq -r 'to_entries[] | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
           source /tmp/secrets.env
           rm -f /tmp/secrets.env
 
-          # Run the deployment script directly from secrets JSON
-          echo "$SECRETS_JSON" | jq -r '.DEPLOY_JOB_SCRIPT' | bash
+          # Run the deployment script from GitHub variable
+          echo "${{ vars.DEPLOY_JOB_SCRIPT }}" | bash
