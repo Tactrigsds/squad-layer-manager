@@ -20,8 +20,8 @@
 		"check-layer-compat": "tsx --tsconfig tsconfig.node.json src/scripts/check-layer-compat.ts ./broken-layers.csv"
 	},
 	"dependencies": {
-		"@dnd-kit/core": "^6.3.1",
-		"@dnd-kit/utilities": "^3.2.2",
+		"@dnd-kit/helpers": "^0.1.21",
+		"@dnd-kit/react": "^0.1.21",
 		"@fastify/cookie": "^10.0.1",
 		"@fastify/cors": "^10.1.0",
 		"@fastify/formbody": "^8.0.2",

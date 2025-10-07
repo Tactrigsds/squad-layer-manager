@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as DND from '@/models/dndkit.models'
+import * as DndKit from '@/systems.client/dndkit'
 
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
@@ -18,8 +20,7 @@ import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
-
-import { AlertOctagon, AlertTriangle, ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -30,6 +31,189 @@ import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+
+interface MatchHistoryRowProps {
+	entry: MH.MatchDetails
+	index: number
+	currentMatch: MH.MatchDetails | null
+	layerStatusesRes: LQY.LayerItemStatuses | undefined
+	constraints: LQY.LayerQueryConstraint[]
+	violationDescriptors: Map<string, LQY.ViolationDescriptor[]> | undefined
+	hoveredConstraintItemId: string | undefined
+	globalSettings: GlobalSettingsStore
+	historyState: MH.PublicMatchHistoryState
+	_currentStreak: BAL.CurrentStreak | null
+	createTriggerAlertsForEntry: (events: BAL.BalanceTriggerEvent[], entry: MH.MatchDetails) => React.ReactNode[]
+}
+
+function MatchHistoryRow({
+	entry,
+	index,
+	currentMatch,
+	layerStatusesRes,
+	constraints,
+	violationDescriptors,
+	hoveredConstraintItemId,
+	globalSettings,
+	historyState,
+	_currentStreak,
+	createTriggerAlertsForEntry,
+}: MatchHistoryRowProps) {
+	const dragProps = DndKit.useDraggable({
+		type: 'history-entry',
+		id: entry.historyEntryId,
+	}, { feedback: 'clone' })
+	if (entry.historyEntryId === currentMatch?.historyEntryId) {
+		return null
+	}
+
+	const layerItem: LQY.LayerItem = {
+		type: 'match-history-entry',
+		historyEntryId: entry.historyEntryId,
+		layerId: entry.layerId,
+	}
+	const layerItemId = LQY.toLayerItemId(layerItem)
+	const localBlockedConstraints = layerStatusesRes?.blocked.get(layerItemId)
+	const localDescriptors = violationDescriptors?.get(layerItemId)
+	const isHovered = hoveredConstraintItemId === layerItemId
+	const violationDisplayElt = localBlockedConstraints && (
+		<ConstraintViolationDisplay
+			violated={Array.from(localBlockedConstraints).map(id => constraints.find(c => c.id === id)).filter(c => c !== undefined)}
+			violationDescriptors={localDescriptors}
+			itemId={layerItemId}
+		/>
+	)
+	const relevantDesciptorsForHovered = (hoveredConstraintItemId
+		&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => Obj.deepEqual(layerItem, d.reasonItem))) || undefined
+
+	const extraLayerStyles = DH.getAllExtraStyles(
+		entry.layerId,
+		entry.ordinal,
+		globalSettings.displayTeamsNormalized,
+		(isHovered ? localDescriptors : undefined) ?? relevantDesciptorsForHovered,
+	)
+	const layer = L.toLayer(entry.layerId)
+	let outcomeDisp: React.ReactNode
+	if (entry.status === 'in-progress') {
+		outcomeDisp = '-'
+	} else if (entry.outcome.type === 'draw') {
+		outcomeDisp = 'draw'
+	} else {
+		// Determine win/loss status
+		let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
+		let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
+		let team1Tickets = entry.outcome.team1Tickets
+		let team2Tickets = entry.outcome.team2Tickets
+
+		if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
+			// Swap status if normalized
+			;[team1Status, team2Status] = [team2Status, team1Status]
+			;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
+		}
+
+		outcomeDisp = (
+			<span>
+				{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
+				<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
+			</span>
+		)
+	}
+	const gameRuntime = (entry.startTime && entry.status === 'post-game')
+		? entry.endTime.getTime() - entry.startTime.getTime()
+		: undefined
+	const visibleIndex = index + 1
+
+	const [leftTeam, rightTeam] = getTeamsDisplay(
+		layer,
+		entry.ordinal,
+		globalSettings.displayTeamsNormalized,
+		extraLayerStyles,
+	)
+
+	const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
+	// Get trigger info for this entry
+	const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
+	const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry)
+
+	// Determine trigger icon
+	let TriggerIcon = null
+	let triggerIconColor = ''
+	if (triggerLevel) {
+		switch (triggerLevel) {
+			case 'violation':
+				TriggerIcon = Icons.AlertOctagon
+				triggerIconColor = 'text-red-500'
+				break
+			case 'warn':
+				TriggerIcon = Icons.AlertTriangle
+				triggerIconColor = 'text-yellow-500'
+				break
+			case 'info':
+				TriggerIcon = Icons.Info
+				triggerIconColor = 'text-blue-500'
+				break
+		}
+	}
+
+	return (
+		<ContextMenu key={entry.historyEntryId}>
+			<ContextMenuTrigger asChild>
+				<TableRow className="whitespace-nowrap bg-background group" ref={dragProps.ref}>
+					<TableCell className="font-mono text-xs relative">
+						<div className="opacity-0 group-hover:opacity-100 transition-opacity absolute inset-0 flex items-center justify-center">
+							<Icons.GripVertical className="h-4 w-4" />
+						</div>
+						<div className="group-hover:opacity-0 transition-opacity">
+							{visibleIndex.toString().padStart(2, '0')}
+						</div>
+					</TableCell>
+					<TableCell className="text-xs hidden min-[820px]:table-cell">
+						{entry.startTime
+							? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
+							: <Badge variant="secondary">incomplete</Badge>}
+					</TableCell>
+					<TableCell>
+						<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+					</TableCell>
+					<TableCell>
+						{leftTeam}
+					</TableCell>
+					<TableCell className="text-center">{outcomeDisp}</TableCell>
+					<TableCell>
+						{rightTeam}
+					</TableCell>
+					<TableCell className="hidden min-[900px]:table-cell">
+						<LayerSourceDisplay source={entry.layerSource} />
+					</TableCell>
+					<TableCell className="text-center">
+						{TriggerIcon && entryTriggerAlerts.length > 0 && (
+							<Tooltip delayDuration={0}>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="sm"
+										className={`h-6 w-6 p-0 ${triggerIconColor}`}
+									>
+										<TriggerIcon className="h-4 w-4" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background">
+									<div className="flex flex-col space-y-2">
+										{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
+									</div>
+								</TooltipContent>
+							</Tooltip>
+						)}
+						{violationDisplayElt}
+					</TableCell>
+				</TableRow>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
+			</ContextMenuContent>
+		</ContextMenu>
+	)
+}
 
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
@@ -115,7 +299,7 @@ export default function MatchHistoryPanel() {
 							onClick={goToPrevPage}
 							disabled={currentPage === 1}
 						>
-							<ChevronLeft className="h-4 w-4" />
+							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
 						<span className="text-sm font-mono">
 							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
@@ -131,7 +315,7 @@ export default function MatchHistoryPanel() {
 							onClick={goToNextPage}
 							disabled={currentPage === availableDates.length}
 						>
-							<ChevronRight className="h-4 w-4" />
+							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 					</div>
 				)}
@@ -184,152 +368,22 @@ export default function MatchHistoryPanel() {
 									</TableCell>
 								</TableRow>
 							)
-							: currentEntries.map((entry, index) => {
-								if (entry.historyEntryId === currentMatch?.historyEntryId) {
-									return
-								}
-								const layerItem: LQY.LayerItem = {
-									type: 'match-history-entry',
-									historyEntryId: entry.historyEntryId,
-									layerId: entry.layerId,
-								}
-								const layerItemId = LQY.toLayerItemId(layerItem)
-								const localBlockedConstraints = layerStatusesRes?.blocked.get(layerItemId)
-								const localDescriptors = violationDescriptors?.get(layerItemId)
-								const isHovered = hoveredConstraintItemId === layerItemId
-								const violationDisplayElt = localBlockedConstraints && (
-									<ConstraintViolationDisplay
-										violated={Array.from(localBlockedConstraints).map(id => constraints.find(c => c.id === id)).filter(c =>
-											c !== undefined
-										)}
-										violationDescriptors={localDescriptors}
-										itemId={layerItemId}
-									/>
-								)
-								const relevantDesciptorsForHovered = (hoveredConstraintItemId
-									&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => Obj.deepEqual(layerItem, d.reasonItem))) || undefined
-
-								const extraLayerStyles = DH.getAllExtraStyles(
-									entry.layerId,
-									entry.ordinal,
-									globalSettings.displayTeamsNormalized,
-									(isHovered ? localDescriptors : undefined) ?? relevantDesciptorsForHovered,
-								)
-								const layer = L.toLayer(entry.layerId)
-								let outcomeDisp: React.ReactNode
-								if (entry.status === 'in-progress') {
-									outcomeDisp = '-'
-								} else if (entry.outcome.type === 'draw') {
-									outcomeDisp = 'draw'
-								} else {
-									// Determine win/loss status
-									let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
-									let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
-									let team1Tickets = entry.outcome.team1Tickets
-									let team2Tickets = entry.outcome.team2Tickets
-
-									if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
-										// Swap status if normalized
-										;[team1Status, team2Status] = [team2Status, team1Status]
-										;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
-									}
-
-									outcomeDisp = (
-										<span>
-											{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
-											<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
-										</span>
-									)
-								}
-								const gameRuntime = (entry.startTime && entry.status === 'post-game')
-									? entry.endTime.getTime() - entry.startTime.getTime()
-									: undefined
-								const visibleIndex = index + 1
-
-								const [leftTeam, rightTeam] = getTeamsDisplay(
-									layer,
-									entry.ordinal,
-									globalSettings.displayTeamsNormalized,
-									extraLayerStyles,
-								)
-
-								const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
-								// Get trigger info for this entry
-								const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
-								const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry)
-
-								// Determine trigger icon
-								let TriggerIcon = null
-								let triggerIconColor = ''
-								if (triggerLevel) {
-									switch (triggerLevel) {
-										case 'violation':
-											TriggerIcon = AlertOctagon
-											triggerIconColor = 'text-red-500'
-											break
-										case 'warn':
-											TriggerIcon = AlertTriangle
-											triggerIconColor = 'text-yellow-500'
-											break
-										case 'info':
-											TriggerIcon = Info
-											triggerIconColor = 'text-blue-500'
-											break
-									}
-								}
-
-								return (
-									<ContextMenu key={entry.historyEntryId}>
-										<ContextMenuTrigger asChild>
-											<TableRow className="whitespace-nowrap">
-												<TableCell className="font-mono text-xs">{visibleIndex.toString().padStart(2, '0')}</TableCell>
-												<TableCell className="text-xs hidden min-[820px]:table-cell">
-													{entry.startTime
-														? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
-														: <Badge variant="secondary">incomplete</Badge>}
-												</TableCell>
-												<TableCell>
-													<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
-												</TableCell>
-												<TableCell>
-													{leftTeam}
-												</TableCell>
-												<TableCell className="text-center">{outcomeDisp}</TableCell>
-												<TableCell>
-													{rightTeam}
-												</TableCell>
-												<TableCell className="hidden min-[900px]:table-cell">
-													<LayerSourceDisplay source={entry.layerSource} />
-												</TableCell>
-												<TableCell className="text-center">
-													{TriggerIcon && entryTriggerAlerts.length > 0 && (
-														<Tooltip delayDuration={0}>
-															<TooltipTrigger asChild>
-																<Button
-																	variant="ghost"
-																	size="sm"
-																	className={`h-6 w-6 p-0 ${triggerIconColor}`}
-																>
-																	<TriggerIcon className="h-4 w-4" />
-																</Button>
-															</TooltipTrigger>
-															<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background">
-																<div className="flex flex-col space-y-2">
-																	{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
-																</div>
-															</TooltipContent>
-														</Tooltip>
-													)}
-													{violationDisplayElt}
-												</TableCell>
-											</TableRow>
-										</ContextMenuTrigger>
-										<ContextMenuContent>
-											<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
-										</ContextMenuContent>
-									</ContextMenu>
-								)
-							})}
+							: currentEntries.map((entry, index) => (
+								<MatchHistoryRow
+									key={entry.historyEntryId}
+									entry={entry}
+									index={index}
+									currentMatch={currentMatch}
+									layerStatusesRes={layerStatusesRes}
+									constraints={constraints}
+									violationDescriptors={violationDescriptors}
+									hoveredConstraintItemId={hoveredConstraintItemId}
+									globalSettings={globalSettings}
+									historyState={historyState}
+									_currentStreak={currentStreak}
+									createTriggerAlertsForEntry={createTriggerAlertsForEntry}
+								/>
+							))}
 					</TableBody>
 				</Table>
 			</CardContent>

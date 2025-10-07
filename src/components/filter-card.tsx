@@ -17,8 +17,6 @@ import * as DndKit from '@/systems.client/dndkit.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-import { CSS } from '@dnd-kit/utilities'
-
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
@@ -201,26 +199,26 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 
 	const NodeWrapper = ({ children, className }: { children: React.ReactNode; className?: string }) => {
 		const dragItem: DND.DragItem = { type: 'filter-node', path: props.path }
-		const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(dragItem)
+		const dragProps = DndKit.useDraggable(dragItem, {})
 		const draggingPlaceholder = <span className="w-[20px] mx-auto">...</span>
 		return (
 			<div
-				style={{ transform: CSS.Translate.toString(transform) }}
-				ref={setNodeRef}
-				{...attributes}
+				ref={dragProps.ref}
 				className="bg-background flex space-x-1 min-h-[20px] min-w-[40px] data-[is-dragging=true]:outline rounded-md"
-				data-is-dragging={isDragging}
+				data-is-dragging={dragProps.isDragging}
 			>
-				{isDragging ? draggingPlaceholder : (
+				{false ? draggingPlaceholder : (
 					<>
-						{depth > 0 && (
-							<button
-								{...listeners}
-								className={cn(Obj.deref('background', depthColors)[depth % depthColors.length], 'cursor-grab rounded h-full')}
-							>
-								<Icons.GripVertical />
-							</button>
-						)}
+						<button
+							ref={dragProps.handleRef}
+							className={cn(
+								Obj.deref('background', depthColors)[depth % depthColors.length],
+								'cursor-grab rounded h-full',
+								depth === 0 && 'hidden',
+							)}
+						>
+							<Icons.GripVertical />
+						</button>
 						<div className={className}>
 							{children}
 						</div>
@@ -422,19 +420,31 @@ function ChildNodeSeparator(props: {
 	item: DND.DropItem
 	path: F.NodePath
 }) {
-	const { isOver, setNodeRef, active } = DndKit.useDroppable(props.item)
-	const activeItem = active ? DND.deserializeDragItem(active.id as string) : null
-	const isValid = activeItem ? (activeItem?.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
+	const dropProps = DndKit.useDroppable(props.item)
+	const activeItem = DndKit.useDragging()
+	const isValid = activeItem ? (activeItem.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
 	const depth = props.path.length
+
+	React.useEffect(() => {
+		if (!dropProps.isDropTarget) return
+		console.log('ChildNodeSeparator useEffect', {
+			dropProps,
+			activeItem,
+			isValid,
+			depth,
+			path: props.path,
+			isDropTarget: dropProps.isDropTarget,
+		})
+	}, [dropProps, activeItem, isValid, depth, props.path])
 
 	return (
 		<Separator
-			ref={setNodeRef}
+			ref={dropProps.ref}
 			className={cn(
 				Obj.deref('background', depthColors)[depth % depthColors.length],
 				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
 			)}
-			data-is-over={!!isValid && isOver}
+			data-is-over={!!isValid && dropProps.isDropTarget}
 		/>
 	)
 }

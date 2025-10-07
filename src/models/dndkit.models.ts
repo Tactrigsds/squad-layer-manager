@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { assertNever } from '@/lib/type-guards'
 
 export type DragEndHandler = (evt: { active: DragItem; over?: DropItem }) => void
 export type DragEndContext = {
@@ -12,14 +12,20 @@ export type DragItem = {
 } | {
 	type: 'filter-node'
 	path: number[]
+} | {
+	type: 'history-entry'
+	id: number
 }
+
 export type DragItemType = DragItem['type']
 
 export function serializeDragItem(item: DragItem) {
-	if (item.type === 'layer-item') {
+	if (item.type === 'layer-item' || item.type === 'history-entry') {
 		return JSON.stringify([item.type, item.id])
-	} else {
+	} else if (item.type === 'filter-node') {
 		return JSON.stringify([item.type, item.path])
+	} else {
+		assertNever(item)
 	}
 }
 
@@ -27,19 +33,11 @@ export function deserializeDragItem(str: string): DragItem {
 	const parsed = JSON.parse(str)
 	const type = parsed[0]
 
-	if (type === 'layer-item') {
-		return { type: 'layer-item', id: parsed[1] }
+	if (type === 'layer-item' || type === 'history-entry') {
+		return { type, id: parsed[1] }
 	} else {
-		return { type: 'filter-node', path: parsed[1] }
+		return { type, path: parsed[1] }
 	}
-}
-
-function serializeFilterNodePath(path: number[]) {
-	return path.join('-')
-}
-
-function deserializeFilterNodePath(id: string) {
-	return id.split('-').map(Number)
 }
 
 export type DropItem = {

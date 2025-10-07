@@ -35,7 +35,6 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client.ts'
 import { useMutation } from '@tanstack/react-query'
-
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'

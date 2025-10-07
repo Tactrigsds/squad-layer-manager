@@ -25,12 +25,12 @@ import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
+import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
-import { CSS } from '@dnd-kit/utilities'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 
@@ -51,9 +51,10 @@ export function LayerList(
 ) {
 	const user = UsersClient.useLoggedInUser()
 	const queueItemIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
-	DndKit.useDragEnd(React.useCallback((event) => {
+	DndKit.useDragEnd(React.useCallback(async (event) => {
 		if (!user || !event.over) return
-		if (event.active.type !== 'layer-item') return
+		const target = event.over.slots[0]
+		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
 		if (cursors.length === 0) return
 		const voteState = VotesClient.voteState$.getValue()
@@ -63,7 +64,20 @@ export function LayerList(
 				if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
 			}
 		}
-		props.store.getState().move(event.active.id, cursors[0], user.discordId)
+
+		const cursor = cursors[0]
+
+		if (event.active.type === 'history-entry') {
+			const history = await MatchHistoryClient.recentMatches$.getValue()
+			const activeId = event.active.id
+			const entry = history.find((entry) => entry.historyEntryId === activeId)
+			if (!entry) return
+			props.store.getState().add([{ layerId: entry.layerId, source: { type: 'manual', userId: UsersClient.loggedInUserId! } }], cursor)
+		}
+
+		if (event.active.type === 'layer-item') {
+			props.store.getState().move(event.active.id, cursor, user.discordId)
+		}
 	}, [user, props.store]))
 
 	return (
@@ -138,7 +152,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const canEdit = _canEdit && !voteInProgress
 
 	const draggableItem = LL.layerItemToDragItem(item)
-	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(draggableItem)
+	const dragProps = DndKit.useDraggable(draggableItem)
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
@@ -147,7 +161,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	}, [canEdit, _setDropdownOpen])
 
 	const isMobile = useIsMobile()
-	const style = { transform: CSS.Translate.toString(transform) }
 
 	const badges: React.ReactNode[] = []
 
@@ -209,7 +222,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	const GripElt = (props: { className?: string }) => (
 		<Button
-			{...listeners}
+			ref={dragProps.handleRef}
 			variant="ghost"
 			size="icon"
 			{...editButtonProps(cn('data-[can-edit=true]:cursor-grab', props.className))}
@@ -233,15 +246,13 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		<>
 			{(isVoteChoice ? innerIndex! : index) === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<li
-				style={style}
-				{...attributes}
+				ref={dragProps.ref}
 				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default"
 				data-mutation={displayedMutation}
-				data-is-dragging={isDragging}
+				data-is-dragging={dragProps.isDragging}
 				data-is-voting={voteState?.code === 'in-progress'}
-				ref={setNodeRef}
 			>
-				{isDragging ? <span className="w-[20px] mx-auto">...</span> : (
+				{dragProps.isDragging ? <span className="w-[20px] mx-auto">...</span> : (
 					<>
 						<span className="grid">
 							<span
@@ -253,8 +264,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							<GripElt className="col-start-1 row-start-1" />
 						</span>
 						<span
-							ref={dropOnAttrs.setNodeRef}
-							data-over={canEdit && dropOnAttrs.isOver}
+							ref={dropOnAttrs.ref}
+							data-over={canEdit && dropOnAttrs.isDropTarget}
 							className="data-[over=true]:bg-secondary rounded flex space-x-1 w-full flex-col"
 						>
 							<LayerDisplay
@@ -305,7 +316,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
 	const draggableItem = LL.layerItemToDragItem(item)
-	const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(draggableItem)
+	const dragProps = DndKit.useDraggable(draggableItem)
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
@@ -314,7 +325,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	}, [canEdit, _setDropdownOpen])
 
 	const isMobile = useIsMobile()
-	const style = { transform: CSS.Translate.toString(transform) }
 
 	const editButtonProps = (className?: string) => ({
 		['data-mobile']: isMobile,
@@ -431,22 +441,20 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		<>
 			{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
 			<li
-				ref={setNodeRef}
-				style={style}
-				{...attributes}
+				ref={dragProps.ref}
 				className={cn(
 					'group/parent-item flex data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
 					`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline cursor-default`,
 				)}
 				data-mutation={displayedMutation}
-				data-is-dragging={isDragging}
+				data-is-dragging={dragProps.isDragging}
 			>
-				{isDragging ? <span className="mx-auto w-[20px]">...</span> : (
+				{dragProps.isDragging ? <span className="mx-auto w-[20px]">...</span> : (
 					<div className="h-full flex flex-col flex-grow">
 						<div className="p-1 space-x-2 flex items-center justify-between w-full">
 							<span className="flex items-center space-x-1">
 								<Button
-									{...listeners}
+									ref={dragProps.handleRef}
 									{...editButtonProps('data-[can-edit=true]:cursor-grab')}
 									variant="ghost"
 									size="icon"
@@ -902,13 +910,13 @@ function QueueItemSeparator(props: {
 	isAfterLast?: boolean
 	disabled?: boolean
 }) {
-	const { isOver, setNodeRef } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links))
+	const { ref, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links))
 	const disabled = props.disabled || false
 	return (
 		<Separator
-			ref={setNodeRef}
+			ref={ref}
 			className="w-full min-w-0 bg-transparent h-2 data-[is-last=true]:invisible data-[is-over=true]:bg-primary" // data-is-last={props.isAfterLast && !isOver}
-			data-is-over={!disabled && isOver}
+			data-is-over={!disabled && isDropTarget}
 		/>
 	)
 }

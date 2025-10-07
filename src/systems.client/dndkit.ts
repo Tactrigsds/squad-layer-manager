@@ -1,14 +1,9 @@
 import * as DND from '@/models/dndkit.models'
-import * as DndKitCore from '@dnd-kit/core'
+import * as DndKitReact from '@dnd-kit/react'
+
 import React from 'react'
 
 export const DragEndContext = React.createContext<DND.DragEndContext>({ addHook: () => {}, removeHook: () => {} })
-
-export function useDragging() {
-	const ctx = DndKitCore.useDndContext()
-
-	return ctx.active
-}
 
 export function useDragEnd(handler: DND.DragEndHandler) {
 	const id = React.useId()
@@ -21,9 +16,25 @@ export function useDragEnd(handler: DND.DragEndHandler) {
 }
 
 export function useDroppable(item: DND.DropItem) {
-	return DndKitCore.useDroppable({ id: DND.serializeDropItem(item) })
+	return DndKitReact.useDroppable({ id: DND.serializeDropItem(item) })
 }
 
-export function useDraggable(item: DND.DragItem) {
-	return DndKitCore.useDraggable({ id: DND.serializeDragItem(item) })
+export function useDraggable(item: DND.DragItem, input?: Omit<DndKitReact.UseDraggableInput, 'id'>) {
+	return DndKitReact.useDraggable({ id: DND.serializeDragItem(item), ...(input ?? {}) })
+}
+
+export function useDragging() {
+	const [active, setActive] = React.useState<DND.DragItem | null>(null)
+
+	DndKitReact.useDragDropMonitor({
+		onDragStart: (event) => {
+			const item = DND.deserializeDragItem(event.operation.source!.id as string)
+			console.log('active item set', item)
+			setActive(item)
+		},
+		onDragEnd: () => {
+			setActive(null)
+		},
+	})
+	return active
 }
