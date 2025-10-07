@@ -25,6 +25,7 @@ import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -33,7 +34,6 @@ import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
-
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -774,8 +774,6 @@ function ItemDropdown(props: ItemDropdownProps) {
 		}
 	}, { selectorDeps: [] })
 
-	const layerIds = ZusUtils.useStoreDeep(props.itemStore, state => LL.getAllItemLayerIds(state.item), { dependencies: [] })
-
 	const user = UsersClient.useLoggedInUser()
 	return (
 		<>
@@ -785,7 +783,6 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isParentVoteItem(item) && <DropdownMenuItem onClick={() => setSubDropdownState('edit')}>Edit</DropdownMenuItem>}
 						<DropdownMenuItem
-							disabled={!!item.layerId && layerIds?.has(L.swapFactionsInId(item.layerId))}
 							onClick={() => props.itemStore.getState().swapFactions()}
 						>
 							Swap Factions
