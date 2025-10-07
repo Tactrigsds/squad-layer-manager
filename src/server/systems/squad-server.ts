@@ -211,7 +211,6 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 	)
 
 	sub.add(sync$.subscribe())
-	await Rx.firstValueFrom(sync$)
 
 	sub.add(
 		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
