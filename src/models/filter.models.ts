@@ -2,6 +2,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
+import * as DND from '@/models/dndkit.models'
 import type { SQL } from 'drizzle-orm'
 
 import { z } from 'zod'
@@ -314,7 +315,7 @@ export function isLocallyValidFilterNode(node: EditableFilterNode) {
 
 export function isEditableBlockNode(
 	node: EditableFilterNode,
-): node is Extract<EditableFilterNode, { type: BlockType }> {
+): node is EditableBlockNode {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -348,6 +349,7 @@ export const EditableComparisonSchema = z.object({
 	mode: z.enum(['split', 'both', 'either']).optional(),
 })
 export type EditableComparison = z.infer<typeof EditableComparisonSchema>
+export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
 
 export function editableComparisonHasValue(comp: EditableComparison) {
 	return (
@@ -459,4 +461,71 @@ export function useNodeValidationErrorStore() {
 		}))
 	})
 	return storeRef.current
+}
+
+export type NodePath = number[]
+
+export function buildNodePath(parent: NodePath, childIndex: number) {
+	return parent.concat(childIndex)
+}
+
+export function dragItemCursorToTargetPath(dropItem: DND.DragItemCursor) {
+	if (dropItem.dragItem.type !== 'filter-node') return null
+
+	const cursorPath = dropItem.dragItem.path
+
+	switch (dropItem.position) {
+		case 'after':
+			return [...cursorPath.slice(0, -1), cursorPath[cursorPath.length - 1] + 1]
+		case 'before':
+		case 'on':
+			return cursorPath
+	}
+}
+
+function derefPath(root: EditableFilterNode, path: NodePath) {
+	let node = root
+	for (const index of path) {
+		if (!isEditableBlockNode(node)) throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
+		node = node.children[index]
+	}
+	return node
+}
+
+export function isChildPath(parentPath: NodePath, childPath: NodePath) {
+	if (childPath.length <= parentPath.length) return false
+	return parentPath.every((val, index) => val === childPath[index])
+}
+
+const movePlaceholder = Symbol('movePlaceholder')
+export function moveNode(root: EditableFilterNode, sourcePath: NodePath, targetPath: NodePath) {
+	if (Obj.deepEqual(sourcePath, targetPath)) {
+		return root
+	}
+
+	// Check if targetPath is a child of sourcePath
+	if (isChildPath(sourcePath, targetPath)) {
+		throw new Error('Cannot move a node into its own child')
+	}
+
+	root = Obj.deepClone(root)
+
+	const sourceParent = derefPath(root, sourcePath.slice(0, -1))
+	if (!isEditableBlockNode(sourceParent)) {
+		throw new Error('Invalid source parent')
+	}
+	const targetParent = derefPath(root, targetPath.slice(0, -1))
+	if (!isEditableBlockNode(targetParent)) {
+		throw new Error('Invalid target parent')
+	}
+
+	const child = sourceParent.children[sourcePath[sourcePath.length - 1]]
+	// use a placeholder so that indexes aren't shifed when inserting at the target
+	sourceParent.children.splice(sourcePath[sourcePath.length - 1], 1, movePlaceholder as any)
+	targetParent.children.splice(targetPath[targetPath.length - 1], 0, child)
+
+	const placeholderIndex = sourceParent.children.indexOf(movePlaceholder as any)
+	sourceParent.children.splice(placeholderIndex, 1)
+
+	return root
 }

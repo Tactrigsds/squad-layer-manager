@@ -52,7 +52,6 @@ export function LayerList(
 	const user = UsersClient.useLoggedInUser()
 	const queueItemIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
 	DndKit.useDragEnd(React.useCallback((event) => {
-		if (!event.over) return
 		if (!user || !event.over) return
 		if (event.active.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)

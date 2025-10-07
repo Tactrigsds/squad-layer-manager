@@ -101,7 +101,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const [editedFilter, _setEditedFilter] = useState<F.EditableFilterNode>(props.entity.filter)
 	const [validFilter, setValidFilter] = useState<F.FilterNode | null>(props.entity.filter)
-	const setEditedFilter: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = (update) => {
+	const setEditedFilter: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = React.useCallback((update) => {
 		_setEditedFilter((filter) => {
 			const newFilter = typeof update === 'function' ? update(filter) : update
 			if (!newFilter) return props.entity.filter
@@ -115,7 +115,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 			setPageIndex(0)
 			return newFilter
 		})
-	}
+	}, [props.entity.filter])
 
 	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()

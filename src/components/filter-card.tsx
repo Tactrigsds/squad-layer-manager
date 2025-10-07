@@ -6,15 +6,18 @@ import { initMutationState } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object.ts'
 import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/react'
 import { cn } from '@/lib/utils.ts'
+import * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
+import * as DndKit from '@/systems.client/dndkit.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
+import { CSS } from '@dnd-kit/utilities'
 
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -33,17 +36,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from './ui/input'
 import { Label } from './ui/label.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
+import { Separator } from './ui/separator.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
-const depthColors = ['border-red-500', 'border-green-500', 'border-blue-500', 'border-yellow-500']
-
-function getNodeWrapperClasses(depth: number, invalid: boolean) {
-	const base = 'p-2 border-l-2 w-full'
-	const depthColor = depth === 0 ? 'border-secondary' : depthColors[depth % depthColors.length]
-	const validColor = invalid ? 'bg-red-400/10' : ''
-	return cn(base, depthColor, validColor)
-}
+const depthColors = [
+	{ border: 'border-red-700 dark:border-red-700', background: 'bg-red-500 dark:bg-red-700' },
+	{ border: 'border-green-700 dark:border-green-700', background: 'bg-green-500 dark:bg-green-700' },
+	{ border: 'border-blue-700 dark:border-blue-700', background: 'bg-blue-500 dark:bg-blue-700' },
+	{ border: 'border-yellow-700 dark:border-yellow-700', background: 'bg-yellow-500 dark:bg-yellow-700' },
+] satisfies { border: string; background: string }[]
 
 export type FilterCardProps = {
 	node: F.EditableFilterNode
@@ -59,11 +61,31 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	const validFilterNode = React.useMemo(() => F.isValidFilterNode(props.node), [props.node])
+	const setNode = props.setNode
+
+	DndKit.useDragEnd(React.useCallback(event => {
+		if (!event.over) return
+		if (event.active.type !== 'filter-node') return
+		const sourcePath = event.active.path
+		const targetPath = F.dragItemCursorToTargetPath(event.over.slots[0])
+
+		if (!targetPath) {
+			console.warn('Invalid target path')
+			return
+		}
+		if (F.isChildPath(sourcePath, targetPath)) {
+			console.warn('Cannot move node to its own child')
+			return
+		}
+
+		setNode(v => F.moveNode(v!, sourcePath, targetPath))
+	}, [setNode]))
+
 	return (
 		<div defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
-					<FilterNodeDisplay depth={0} {...props} />
+					<FilterNodeDisplay path={[]} {...props} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
 					<FilterTextEditor ref={editorRef} node={props.node} setNode={(node) => props.setNode(() => node as F.EditableFilterNode)} />
@@ -146,28 +168,9 @@ function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPres
 	)
 }
 
-export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
+export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 	const { node, setNode } = props
-	const isValid = F.isLocallyValidFilterNode(node)
-	const [showInvalid, setShowInvalid] = React.useState(false)
-	const invalid = !isValid && showInvalid
-	const wrapperRef = React.useRef<HTMLDivElement>(null)
-	React.useEffect(() => {
-		const elt = wrapperRef.current!
-		if (isValid || !elt) return
-		if (wrapperRef.current !== document.activeElement || elt.contains(document.activeElement)) {
-			setShowInvalid(true)
-			return
-		}
-		function onFocusLeave() {
-			if (isValid) return
-			setShowInvalid(true)
-		}
-		elt.addEventListener('focusout', onFocusLeave)
-		return () => {
-			elt.removeEventListener('focusout', onFocusLeave)
-		}
-	}, [isValid])
+	const depth = props.path.length
 
 	const negationToggle = (
 		<NegationToggle
@@ -183,8 +186,48 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		/>
 	)
 
-	const deleteNode = () => {
+	const deleteNode = React.useCallback(() => {
 		setNode(undefined)
+	}, [setNode])
+
+	const opCluster = React.useMemo(() =>
+		depth > 0 && (
+			<>
+				<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
+					<Minus color="hsl(var(--destructive))" />
+				</Button>
+			</>
+		), [deleteNode, depth])
+
+	const NodeWrapper = ({ children, className }: { children: React.ReactNode; className?: string }) => {
+		const dragItem: DND.DragItem = { type: 'filter-node', path: props.path }
+		const { attributes, listeners, setNodeRef, transform, isDragging } = DndKit.useDraggable(dragItem)
+		const draggingPlaceholder = <span className="w-[20px] mx-auto">...</span>
+		return (
+			<div
+				style={{ transform: CSS.Translate.toString(transform) }}
+				ref={setNodeRef}
+				{...attributes}
+				className="bg-background flex space-x-1 min-h-[20px] min-w-[40px] data-[is-dragging=true]:outline rounded-md"
+				data-is-dragging={isDragging}
+			>
+				{isDragging ? draggingPlaceholder : (
+					<>
+						{depth > 0 && (
+							<button
+								{...listeners}
+								className={cn(Obj.deref('background', depthColors)[depth % depthColors.length], 'cursor-grab rounded h-full')}
+							>
+								<Icons.GripVertical />
+							</button>
+						)}
+						<div className={className}>
+							{children}
+						</div>
+					</>
+				)}
+			</div>
+		)
 	}
 
 	if (node.type === 'and' || node.type === 'or') {
@@ -203,14 +246,27 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				)
 			}
 
+			const childPath = [...props.path, i]
 			return (
-				<FilterNodeDisplay
-					depth={props.depth + 1}
-					key={i}
-					node={child}
-					setNode={setChild}
-					filterId={props.filterId}
-				/>
+				<>
+					<ChildNodeSeparator
+						item={{ type: 'relative-to-drag-item', slots: [{ position: 'before', dragItem: { type: 'filter-node', path: childPath } }] }}
+						path={childPath}
+					/>
+					<FilterNodeDisplay
+						path={childPath}
+						key={i}
+						node={child}
+						setNode={setChild}
+						filterId={props.filterId}
+					/>
+					{i === node.children.length - 1 && (
+						<ChildNodeSeparator
+							item={{ type: 'relative-to-drag-item', slots: [{ position: 'after', dragItem: { type: 'filter-node', path: childPath } }] }}
+							path={childPath}
+						/>
+					)}
+				</>
 			)
 		})
 		const addNewChild = (type: F.EditableFilterNode['type']) => {
@@ -238,7 +294,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		}
 
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'relative flex flex-col space-y-2')}>
+			<NodeWrapper className="relative flex flex-col space-y-2">
 				<div className="flex items-center space-x-1">
 					{negationToggle}
 					<ComboBox
@@ -248,14 +304,6 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 						options={['and', 'or']}
 						onSelect={(v) => changeBlockNodeType(v as F.BlockType)}
 					/>
-					{props.depth > 0 && (
-						<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
-							<Minus color="hsl(var(--destructive))" />
-						</Button>
-					)}
-				</div>
-				{children!}
-				<span>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button className="min-h-0" size="icon" variant="outline">
@@ -271,8 +319,12 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 							<DropdownMenuItem onClick={() => addNewChild('or')}>or block</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
+					{opCluster}
+				</div>
+				{children!}
+				<span>
 				</span>
-			</div>
+			</NodeWrapper>
 		)
 	}
 
@@ -288,18 +340,16 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 		}
 
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
+			<NodeWrapper className="flex items-center space-x-1">
 				{negationToggle}
 				<Comparison comp={node.comp} setComp={setComp} restrictValueSize={false} />
-				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
-			</div>
+				{opCluster}
+			</NodeWrapper>
 		)
 	}
 	if (node.type === 'apply-filter') {
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
+			<NodeWrapper className="flex items-center space-x-1">
 				{negationToggle}
 				<ApplyFilter
 					filterId={node.filterId}
@@ -318,10 +368,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 				>
 					<ExternalLink color="hsl(var(--primary))" />
 				</Link>
-				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
-			</div>
+				{opCluster}
+			</NodeWrapper>
 		)
 	}
 
@@ -353,7 +401,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 			}
 		}
 		return (
-			<div ref={wrapperRef} className={cn(getNodeWrapperClasses(props.depth, invalid), 'flex items-center space-x-1')}>
+			<NodeWrapper className="flex items-center space-x-1">
 				{negationToggle}
 				<FactionsAllowMatchupsConfig
 					masks={node.allowMatchups.allMasks}
@@ -361,15 +409,36 @@ export function FilterNodeDisplay(props: FilterCardProps & { depth: number }) {
 					setMasks={setMasks}
 					setMode={setMode}
 				/>
-				<Button size="icon" variant="ghost" onClick={() => setNode(() => undefined)}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
-			</div>
+				{opCluster}
+			</NodeWrapper>
 		)
 	}
 
 	throw new Error('Invalid node type ' + node.type)
 }
+
+function ChildNodeSeparator(props: {
+	// null means we're before the first item in the list
+	item: DND.DropItem
+	path: F.NodePath
+}) {
+	const { isOver, setNodeRef, active } = DndKit.useDroppable(props.item)
+	const activeItem = active ? DND.deserializeDragItem(active.id as string) : null
+	const isValid = activeItem ? (activeItem?.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
+	const depth = props.path.length
+
+	return (
+		<Separator
+			ref={setNodeRef}
+			className={cn(
+				Obj.deref('background', depthColors)[depth % depthColors.length],
+				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
+			)}
+			data-is-over={!!isValid && isOver}
+		/>
+	)
+}
+
 export type ComparisonHandle = Clearable & Focusable
 export function Comparison(props: {
 	comp: F.EditableComparison

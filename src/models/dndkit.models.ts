@@ -6,21 +6,40 @@ export type DragEndContext = {
 	removeHook: (key: string) => void
 }
 
-export const DRAG_ITEM_TYPE = z.enum(['layer-item'])
-export type DragItemType = z.infer<typeof DRAG_ITEM_TYPE>
-
 export type DragItem = {
-	type: DragItemType
+	type: 'layer-item'
 	id: string
+} | {
+	type: 'filter-node'
+	path: number[]
 }
+export type DragItemType = DragItem['type']
 
 export function serializeDragItem(item: DragItem) {
-	return JSON.stringify([item.type, item.id])
+	if (item.type === 'layer-item') {
+		return JSON.stringify([item.type, item.id])
+	} else {
+		return JSON.stringify([item.type, item.path])
+	}
 }
 
 export function deserializeDragItem(str: string): DragItem {
-	const [type, id] = JSON.parse(str)
-	return { type, id }
+	const parsed = JSON.parse(str)
+	const type = parsed[0]
+
+	if (type === 'layer-item') {
+		return { type: 'layer-item', id: parsed[1] }
+	} else {
+		return { type: 'filter-node', path: parsed[1] }
+	}
+}
+
+function serializeFilterNodePath(path: number[]) {
+	return path.join('-')
+}
+
+function deserializeFilterNodePath(id: string) {
+	return id.split('-').map(Number)
 }
 
 export type DropItem = {
