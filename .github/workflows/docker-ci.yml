@@ -144,6 +144,7 @@ jobs:
         env:
           SECRETS_JSON: ${{ toJSON(secrets) }}
           GITHUB_REF: ${{ github.ref }}
+          DEPLOY_SCRIPT: ${{ vars.DEPLOY_JOB_SCRIPT }}
         run: |
           set -e
 
@@ -152,5 +153,5 @@ jobs:
           source /tmp/secrets.env
           rm -f /tmp/secrets.env
 
-          # Run the deployment script from GitHub variable
-          echo "${{ vars.DEPLOY_JOB_SCRIPT }}" | bash
+          # Run the deployment script from environment variable
+          echo "$DEPLOY_SCRIPT" | bash
