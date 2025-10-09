@@ -64,5 +64,5 @@ export function useDeepEqualsMemo<T>(cb: () => T, deps: unknown[]) {
 		}
 		return ref.current
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, deps)
+	}, deps) as T
 }

@@ -1,14 +1,14 @@
 import Ace from 'ace-builds'
+import * as Zus from 'zustand'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
-import * as Obj from '@/lib/object'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import React from 'react'
-
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'
+import * as Obj from '@/lib/object'
 import * as Typography from '@/lib/typography.ts'
 import * as F from '@/models/filter.models'
+import stringifyCompact from 'json-stringify-pretty-compact'
+import React from 'react'
 
 export type FilterTextEditorHandle = {
 	format: () => void
@@ -17,23 +17,19 @@ export type FilterTextEditorHandle = {
 
 type Editor = Ace.Ace.Editor
 export interface FilterTextEditorProps {
-	node: F.EditableFilterNode
-	setNode: (node: F.FilterNode) => void
+	store: Zus.StoreApi<F.FilterEditStore>
 	ref?: React.Ref<FilterTextEditorHandle>
 }
 export function FilterTextEditor(props: FilterTextEditorProps) {
-	const { setNode, ref } = props
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
-
-	// null if not currently valid node
-	const editorValueObjRef = React.useRef(props.node as any)
+	const store = props.store
+	const ref = props.ref
 	const editorRef = React.useRef<Editor>(null)
-	function trySetEditorValue(obj: any) {
-		if (editorValueObjRef.current !== null && Obj.deepEqual(obj, editorValueObjRef.current)) return
-		editorValueObjRef.current = obj
-		editorRef.current?.setValue(stringifyCompact(obj))
-	}
+
+	React.useEffect(() => {
+	}, [store])
+
 	const errorViewRef = React.useRef<Editor>(null)
 	const onChange = React.useCallback(
 		(value: string) => {
@@ -46,7 +42,6 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 				}
 				return
 			}
-			editorValueObjRef.current = obj
 			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
 				errorViewRef.current!.setValue(stringifyCompact(res.error.issues))
@@ -58,14 +53,15 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			}
 
 			errorViewRef.current!.setValue('')
-			const valueChanged = !Obj.deepEqual(res.data, props.node)
-			if (valueChanged) setNode(res.data)
+			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(store.getState().tree))
+			if (valueChanged) store.getState().updateRoot(res.data)
 		},
-		[setNode, props.node],
+		[store],
 	)
-	const { setValue } = useDebounced({
-		defaultValue: () => stringifyCompact(props.node),
-		onChange,
+
+	const { setValue: onChangeDebounced } = useDebounced({
+		defaultValue: () => stringifyCompact(F.treeToFilterNode(store.getState().tree)),
+		onChange: onChange,
 		delay: 100,
 	})
 
@@ -74,7 +70,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 	// -------- setup editor, handle events coming from editor, resizing --------
 	React.useEffect(() => {
 		const editor = Ace.edit(editorEltRef.current!, {
-			value: stringifyCompact(props.node),
+			value: '',
 			mode: 'ace/mode/json',
 			theme: 'ace/theme/dracula',
 			useWorker: false,
@@ -94,24 +90,27 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			errorView.resize()
 		})
 		editor.on('change', () => {
-			setValue(editor.getValue())
+			onChangeDebounced(editor.getValue())
 		})
+
+		let first = true
+		const unsub = store.subscribe((state, prevState) => {
+			if (!first && state.tree === prevState.tree) return
+			first = false
+			editor.setValue(stringifyCompact(F.treeToFilterNode(state.tree)))
+		})
+
 		editorRef.current = editor
 		errorViewRef.current = errorView
-		const initialRes = F.FilterNodeSchema.safeParse(props.node)
-		if (!initialRes.success) {
-			errorView.setValue(stringifyCompact(initialRes.error))
-		}
 
 		return () => {
 			editor.destroy()
 			ro.disconnect()
+			unsub()
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
-	React.useEffect(() => {
-		trySetEditorValue(props.node)
-	}, [props.node])
+
 	React.useImperativeHandle(ref, () => ({
 		format: () => {
 			const value = editorRef.current!.getValue()

@@ -1,3 +1,4 @@
+import { assertNever } from '@/lib/type-guards'
 import * as F from './filter.models'
 import * as LC from './layer-columns'
 
@@ -90,4 +91,12 @@ export const CODE_TO_EFB = {
 	eq,
 	neq,
 	in: inValues,
+}
+
+export function nodeOfType(type: F.NodeType) {
+	if (type === 'comp') return comp()
+	if (type === 'apply-filter') return applyFilter()
+	if (type === 'allow-matchups') return allowMatchups()
+	if (F.isBlockType(type)) return createBlock(type)()
+	assertNever(type)
 }

@@ -7,11 +7,8 @@ export type DragEndContext = {
 }
 
 export type DragItem = {
-	type: 'layer-item'
+	type: 'layer-item' | 'filter-node'
 	id: string
-} | {
-	type: 'filter-node'
-	path: number[]
 } | {
 	type: 'history-entry'
 	id: number
@@ -20,24 +17,13 @@ export type DragItem = {
 export type DragItemType = DragItem['type']
 
 export function serializeDragItem(item: DragItem) {
-	if (item.type === 'layer-item' || item.type === 'history-entry') {
-		return JSON.stringify([item.type, item.id])
-	} else if (item.type === 'filter-node') {
-		return JSON.stringify([item.type, item.path])
-	} else {
-		assertNever(item)
-	}
+	return JSON.stringify([item.type, item.id])
 }
 
 export function deserializeDragItem(str: string): DragItem {
 	const parsed = JSON.parse(str)
-	const type = parsed[0]
-
-	if (type === 'layer-item' || type === 'history-entry') {
-		return { type, id: parsed[1] }
-	} else {
-		return { type, path: parsed[1] }
-	}
+	const [type, id] = parsed
+	return { type, id }
 }
 
 export type DropItem = {

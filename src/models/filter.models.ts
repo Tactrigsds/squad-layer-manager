@@ -1,12 +1,18 @@
-import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object'
-import { useRefConstructor } from '@/lib/react'
-import { assertNever } from '@/lib/type-guards'
-import * as DND from '@/models/dndkit.models'
-import type { SQL } from 'drizzle-orm'
+// TODO rats nest from manic debugging, need to straighten out naming conventions & break out some modules
 
+import type * as SchemaModels from '$root/drizzle/schema.models'
+import { createId } from '@/lib/id'
+import * as MapUtils from '@/lib/map'
+import * as NodeMap from '@/lib/node-map'
+import * as Obj from '@/lib/object'
+import * as Sparse from '@/lib/sparse-tree'
+import { assertNever } from '@/lib/type-guards'
+import { type SQL } from 'drizzle-orm'
+import * as Im from 'immer'
+import * as React from 'react'
 import { z } from 'zod'
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import * as LC from './layer-columns'
 
 export type ComparisonType = {
@@ -77,17 +83,7 @@ export type FilterNode =
 		neg: boolean
 	}
 
-export type EditableFilterNode =
-	| {
-		type: 'and'
-		neg: boolean
-		children: EditableFilterNode[]
-	}
-	| {
-		type: 'or'
-		neg: boolean
-		children: EditableFilterNode[]
-	}
+export type EditableFilterNodeCommon =
 	| {
 		type: 'comp'
 		neg: boolean
@@ -104,12 +100,25 @@ export type EditableFilterNode =
 		neg: boolean
 	}
 
+export type EditableFilterNode = EditableFilterNodeCommon | {
+	type: BlockType
+	neg: boolean
+	children: EditableFilterNode[]
+}
+
+export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType; neg: boolean }
+
+export type ShallowEditableFilterNodeOfType<T extends NodeType> = Extract<ShallowEditableFilterNode, { type: T }>
+
 export type BlockTypeEditableFilterNode = Extract<
 	EditableFilterNode,
 	{ type: BlockType }
 >
 
 export const BLOCK_TYPES = ['and', 'or'] as const
+export const VALUE_TYPES = ['comp', 'apply-filter', 'allow-matchups'] as const
+export type NodeType = FilterNode['type']
+
 export function isBlockType(type: string): type is BlockType {
 	return BLOCK_TYPES.includes(type as BlockType)
 }
@@ -306,19 +315,21 @@ export function isValidFilterNode(
 
 // excludes children
 export function isLocallyValidFilterNode(node: EditableFilterNode) {
-	if (node.type === 'and' || node.type === 'or') return true
+	if (isEditableBlockNode(node)) return true
 	if (node.type === 'comp') return isValidComparison(node.comp)
 	if (node.type === 'apply-filter') return isValidApplyFilterNode(node)
 	if (node.type === 'allow-matchups') return isValidAllowMatchupsNode(node)
 	assertNever(node)
 }
 
-export function isEditableBlockNode(
-	node: EditableFilterNode,
-): node is EditableBlockNode {
+export function isEditableBlockNode<T extends { type: NodeType }>(
+	node: T,
+): node is Extract<T, { type: BlockType }> {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
+
 export type BlockType = (typeof BLOCK_TYPES)[number]
+export type ValueType = (typeof VALUE_TYPES)[number]
 
 export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
 	(column: string, cfg = LC.BASE_COLUMN_CONFIG) => {
@@ -331,7 +342,6 @@ export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
 		}
 	},
 )
-
 export const EditableComparisonSchema = z.object({
 	column: z.string().optional(),
 	code: z
@@ -350,6 +360,12 @@ export const EditableComparisonSchema = z.object({
 })
 export type EditableComparison = z.infer<typeof EditableComparisonSchema>
 export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
+export type EditableValueNode = Extract<EditableFilterNode, { type: 'value' }>
+export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
+
+export function isEditableValueNode(node: EditableFilterNode): node is EditableValueNode {
+	return VALUE_TYPES.includes(node.type as ValueType)
+}
 
 export function editableComparisonHasValue(comp: EditableComparison) {
 	return (
@@ -450,82 +466,571 @@ export type NodeValidationErrorStore = {
 	setErrors: (errors: NodeValidationError[]) => void
 }
 
-export function useNodeValidationErrorStore() {
-	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<NodeValidationErrorStore>((set) => ({
-			errors: [],
-			setErrors: (errors) => {
-				console.log('node errors:', JSON.stringify(errors))
-				return set({ errors })
-			},
-		}))
-	})
-	return storeRef.current
+export type NodePath = number[]
+
+type SerializedNodePath = string
+
+export function serializeNodePath(path: NodePath) {
+	return path.join('.') as SerializedNodePath
 }
 
-export type NodePath = number[]
+export function deserializeNodePath(path: SerializedNodePath) {
+	return path.split('.').map(Number)
+}
 
 export function buildNodePath(parent: NodePath, childIndex: number) {
 	return parent.concat(childIndex)
 }
 
-export function dragItemCursorToTargetPath(dropItem: DND.DragItemCursor) {
-	if (dropItem.dragItem.type !== 'filter-node') return null
-
-	const cursorPath = dropItem.dragItem.path
-
-	switch (dropItem.position) {
-		case 'after':
-			return [...cursorPath.slice(0, -1), cursorPath[cursorPath.length - 1] + 1]
-		case 'before':
-		case 'on':
-			return cursorPath
-	}
-}
-
-function derefPath(root: EditableFilterNode, path: NodePath) {
+export function tryDerefPath(root: EditableFilterNode, path: NodePath) {
 	let node = root
 	for (const index of path) {
-		if (!isEditableBlockNode(node)) throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
+		if (!isEditableBlockNode(node)) return null
 		node = node.children[index]
 	}
 	return node
 }
 
-export function isChildPath(parentPath: NodePath, childPath: NodePath) {
-	if (childPath.length <= parentPath.length) return false
-	return parentPath.every((val, index) => val === childPath[index])
+function derefPath(root: EditableFilterNode, path: NodePath) {
+	const node = tryDerefPath(root, path)
+	if (!node) {
+		console.log('Invalid path', path, 'for node', JSON.stringify(root))
+		throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
+	}
+	return node
 }
 
-const movePlaceholder = Symbol('movePlaceholder')
-export function moveNode(root: EditableFilterNode, sourcePath: NodePath, targetPath: NodePath) {
-	if (Obj.deepEqual(sourcePath, targetPath)) {
-		return root
+export function getCommonAncestorPath(a: NodePath, b: NodePath): NodePath {
+	let i = 0
+	while (i < a.length && i < b.length && a[i] === b[i]) i++
+	return a.slice(0, i)
+}
+
+export function* walkNodes(filter: EditableFilterNode, path: NodePath = []): IterableIterator<[EditableFilterNode, NodePath]> {
+	yield [filter, path]
+	if (isEditableBlockNode(filter)) {
+		for (const [child, index] of filter.children.map((child, index) => [child, index] as const)) {
+			yield* walkNodes(child, [...path, index])
+		}
+	}
+}
+
+export type FilterNodeTree = {
+	nodes: Map<string, ShallowEditableFilterNode>
+	paths: Map<string, NodePath>
+}
+
+export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: NodePath) {
+	for (const [id, path] of tree.paths.entries()) {
+		if (path.length === targetPath.length + 1 && Sparse.isChildPath(targetPath, path)) {
+			yield id
+		}
+	}
+}
+
+function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
+	if (isEditableBlockNode(node)) {
+		const { children: _c, _id, ...shallowNode } = node as any
+		return shallowNode
+	}
+	return node
+}
+function upsertTreeInPlaceFromSparse(
+	sparseTree: SparseTree,
+	basePath: NodePath = [],
+	tree?: Partial<FilterNodeTree>,
+) {
+	basePath ??= []
+	tree ??= {
+		nodes: new Map(),
+		paths: new Map(),
+	}
+	tree.paths ??= new Map()
+
+	const idsLeft = new Set<string>()
+
+	// add/update nodes
+	for (const [node, _path] of Sparse.walkNodes(sparseTree)) {
+		const path = [...basePath, ..._path]
+		tree.paths.set(node.id, path)
+		idsLeft.add(node.id)
 	}
 
-	// Check if targetPath is a child of sourcePath
-	if (isChildPath(sourcePath, targetPath)) {
-		throw new Error('Cannot move a node into its own child')
+	// delete nodes that are no longer in the tree
+	for (const [id, path] of tree.paths.entries()) {
+		if (idsLeft.has(id)) continue
+		if (!Sparse.isOwnedPath(basePath, path)) continue
+		tree.nodes?.delete(id)
+		tree.paths.delete(id)
 	}
 
-	root = Obj.deepClone(root)
+	return tree
+}
 
-	const sourceParent = derefPath(root, sourcePath.slice(0, -1))
-	if (!isEditableBlockNode(sourceParent)) {
-		throw new Error('Invalid source parent')
+function upsertFilterNodeTreeInPlace(
+	filter: EditableFilterNode,
+	baseFilterPath?: NodePath,
+	tree?: FilterNodeTree,
+): FilterNodeTree {
+	baseFilterPath ??= []
+	tree ??= {
+		nodes: new Map(),
+		paths: new Map(),
 	}
-	const targetParent = derefPath(root, targetPath.slice(0, -1))
-	if (!isEditableBlockNode(targetParent)) {
-		throw new Error('Invalid target parent')
+
+	const idsLeft = new Set<string>()
+
+	// add/update nodes
+	for (const [node, _path] of walkNodes(filter)) {
+		const path = [...baseFilterPath, ..._path]
+		const id: string = (node as any)._id ?? createId(4)
+		const shallowNode = toShallowNode(node)
+		if (Obj.deepEqual(shallowNode, tree.nodes.get(id))) {
+			continue
+		}
+		tree.nodes.set(id, shallowNode)
+		tree.paths.set(id, path)
+		idsLeft.add(id)
 	}
 
-	const child = sourceParent.children[sourcePath[sourcePath.length - 1]]
-	// use a placeholder so that indexes aren't shifed when inserting at the target
-	sourceParent.children.splice(sourcePath[sourcePath.length - 1], 1, movePlaceholder as any)
-	targetParent.children.splice(targetPath[targetPath.length - 1], 0, child)
+	// delete nodes that are no longer in the tree
+	for (const id of tree.paths.keys()) {
+		if (idsLeft.has(id)) continue
+		tree.nodes.delete(id)
+		tree.paths.delete(id)
+	}
 
-	const placeholderIndex = sourceParent.children.indexOf(movePlaceholder as any)
-	sourceParent.children.splice(placeholderIndex, 1)
+	return tree
+}
+
+function resolveImmediateChildren(tree: FilterNodeTree, id: string): string[] {
+	const targetPath = tree.paths.get(id)
+	if (!targetPath) return []
+	const children: string[] = []
+
+	for (const [id, path] of tree.paths) {
+		if (targetPath.length + 1 !== path.length) continue
+		if (!Sparse.isChildPath(targetPath, path)) continue
+		children[path[targetPath.length]] = id
+	}
+
+	return children
+}
+function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: NodePath = []): Sparse.SparseNode {
+	let root!: Sparse.SparseNode
+
+	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
+		console.log(id, path)
+		if (!Sparse.isOwnedPath(subtreePath, path)) continue
+		console.log('Valid path', path, 'for node', JSON.stringify(root))
+		const node: Sparse.SparseNode = { id }
+
+		if (!root) {
+			root = node
+			continue
+		}
+
+		const parent = Sparse.derefPath(root, path.slice(subtreePath.length, -1))!
+		parent.children ??= []
+		parent.children[path[path.length - 1]] = node
+		console.log('new root', JSON.stringify(root))
+	}
 
 	return root
+}
+
+export function treeToFilterNode(tree: FilterNodeTree, subtree: NodePath = []): EditableFilterNode {
+	let root!: EditableFilterNode
+
+	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
+		if (!Sparse.isOwnedPath(subtree, path)) continue
+		const shallowNode = tree.nodes.get(id)!
+		const node: EditableFilterNode = isEditableBlockNode(shallowNode)
+			? { ...shallowNode, children: [] }
+			: { ...shallowNode }
+		if (!root) {
+			root = node
+			continue
+		}
+		;(derefPath(root, path.slice(0, -1)) as EditableBlockNode).children[path[path.length - 1]] = node
+	}
+
+	return root
+}
+
+// outputs entries sorted in primarily order of depth, and secondarily in order of index
+export function toBreadthFirstTreePathEntries(paths: Map<string, NodePath>): [string, NodePath][] {
+	const pathsArr = Array.from(paths.entries())
+	pathsArr.sort(([_idA, pathA], [_idB, pathB]) => {
+		if (pathA.length !== pathB.length) {
+			return pathA.length - pathB.length
+		}
+		for (let i = 0; i < pathA.length; i++) {
+			if (pathA[i] !== pathB[i]) {
+				return pathA[i] - pathB[i]
+			}
+		}
+		return 0
+	})
+	return pathsArr
+}
+type SparseTree = { id: string; children?: SparseTree[] }
+
+export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: NodePath, targetPath: NodePath) {
+	if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+		return
+	}
+	const commonAncestor = getCommonAncestorPath(sourcePath, targetPath)
+	console.log('commonAncestor', commonAncestor)
+	let sparseTree = treeToSparseTree(tree, commonAncestor)
+	console.log('filter', sparseTree)
+	sparseTree = Sparse.moveNode(sparseTree, sourcePath.slice(commonAncestor.length), targetPath.slice(commonAncestor.length))
+	console.log('after', sparseTree)
+	upsertTreeInPlaceFromSparse(sparseTree, commonAncestor, tree)
+}
+
+export function old_moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: NodePath, targetPath: NodePath): void {
+	if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+		return
+	}
+
+	const sourceParentPath = sourcePath.slice(0, -1)
+	const targetParentPath = targetPath.slice(0, -1)
+
+	const sourceLevel = sourcePath.length - 1
+	const targetLevel = targetPath.length - 1
+	const updatedPaths = new Map<string, NodePath>()
+	const sameParents = Obj.deepEqual(sourceParentPath, targetParentPath)
+	console.log({ sourcePath, targetPath })
+	console.log({ tree })
+	for (const [id, _path] of tree.paths.entries()) {
+		const path = [..._path]
+		const isSource = Sparse.isOwnedPath(sourcePath, path)
+		if (isSource) {
+			const childSegment = path.slice(sourcePath.length)
+			const newPath = [...targetPath, ...childSegment]
+			updatedPaths.set(id, newPath)
+			console.log('move ', id)
+		} else {
+			let modified = false
+			if (sameParents) {
+				if (!Sparse.isChildPath(sourceParentPath, path)) continue
+				if (path[sourceLevel] > sourcePath[sourceLevel] && path[sourceLevel] <= targetPath[sourceLevel]) {
+					path[sourceLevel]--
+					console.log('decr(same)', id)
+					modified = true
+				}
+				if (path[sourceLevel] < sourcePath[sourceLevel] && path[sourceLevel] >= targetPath[sourceLevel]) {
+					path[sourceLevel]++
+					console.log('incr(same)', id)
+					modified = true
+				}
+			} else {
+				if (Sparse.isChildPath(sourceParentPath, path) && path[sourceLevel] > sourcePath[sourceLevel]) {
+					path[sourceLevel] -= 1
+					modified = true
+					console.log('decr(diff)', id)
+				}
+
+				if (Sparse.isChildPath(targetParentPath, path) && path[targetLevel] >= targetPath[targetLevel]) {
+					path[targetLevel] += 1
+					modified = true
+					console.log('incr(diff)', id)
+				}
+			}
+			if (modified) updatedPaths.set(id, path)
+		}
+	}
+	console.log({ updatedPaths })
+	MapUtils.apply(tree.paths, updatedPaths)
+}
+
+export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
+	const targetPath = tree.paths.get(targetId)!
+
+	for (const [id, path] of tree.paths.entries()) {
+		if (Sparse.isChildPath(targetPath, path)) {
+			tree.paths.delete(id)
+			tree.nodes.delete(id)
+		}
+	}
+
+	tree.paths.delete(targetId)
+	tree.nodes.delete(targetId)
+}
+
+export type FilterEditStore =
+	& {
+		tree: FilterNodeTree
+		getIdForPath: (path: NodePath) => string | undefined
+		validatedFilter: FilterNode | null
+		editedFilterId?: string
+		isValid: boolean
+		startingFilter: EditableFilterNode
+		moveNode(sourcePath: NodePath, targetPath: NodePath): void
+		updateRoot(filter: EditableFilterNode): void
+		updateNode(id: string, cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void): void
+		deleteNode(id: string): void
+		reset(): void
+		modified: boolean
+	}
+	& NodeValidationErrorStore
+	& NodeMap.NodeMapStore
+
+type FilterEditStoreViewCommonActions = {
+	delete(): void
+	setNegation(negative: boolean): void
+}
+
+type ViewActionsOfType<T extends NodeType> = Extract<FilterEditStoreViewActions, { type: T }>
+type FilterEditStoreViewActions =
+	& FilterEditStoreViewCommonActions
+	& (
+		| {
+			type: BlockType
+			setBlockType: (type: BlockType) => void
+			addChild: (type: NodeType) => void
+		}
+		| {
+			type: 'comp'
+			setComp: React.Dispatch<React.SetStateAction<EditableComparison>>
+		}
+		| {
+			type: 'apply-filter'
+			setFilterId: (filterId: FilterEntityId) => void
+		}
+		| {
+			type: 'allow-matchups'
+			setMasks: React.Dispatch<React.SetStateAction<FactionMask[][]>>
+			setMode: React.Dispatch<React.SetStateAction<FactionMaskMode>>
+		}
+	)
+
+export type FilterEditStoreView<T extends NodeType = NodeType> = ShallowEditableFilterNodeOfType<T> & ViewActionsOfType<T>
+
+export function useEditableFilterNodeStore(startingFilter: EditableFilterNode) {
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const [store, subHandle] = React.useMemo(() => createEditableFilterNodeStore(startingFilter), [])
+	React.useEffect(() => {
+		const subscription = subHandle.subscribe()
+		return () => subscription.unsubscribe()
+	}, [subHandle])
+	React.useEffect(() => {
+		const state = store.getState()
+		if (state.startingFilter !== startingFilter) state.updateRoot(startingFilter)
+	}, [store, startingFilter])
+	return store
+}
+
+function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filterEntityId?: string) {
+	const store = Zus.createStore<FilterEditStore>((set, get, store) => {
+		const validatedFilter = isValidFilterNode(startingFilter) ? startingFilter : null
+
+		return {
+			startingFilter,
+			validatedFilter,
+			tree: upsertFilterNodeTreeInPlace(startingFilter),
+			isValid: !!validatedFilter,
+			getIdForPath(path) {
+				return MapUtils.revLookup(get().tree.paths, path, serializeNodePath)
+			},
+			moveNode(sourcePath, targetPath) {
+				set(state => {
+					const tree = Obj.deepClone(state.tree)
+					moveTreeNodeInPlace(tree, sourcePath, targetPath)
+					return ({ tree })
+				})
+			},
+			updateRoot(filter) {
+				set({ tree: upsertFilterNodeTreeInPlace(filter) })
+			},
+			updateNode(id, update) {
+				set({
+					tree: Im.produce(get().tree, draft => {
+						update(draft.nodes.get(id)!)
+					}),
+				})
+			},
+			deleteNode(id) {
+				set({
+					tree: Im.produce(get().tree, draft => {
+						deleteTreeNode(draft, id)
+					}),
+				})
+			},
+			reset() {
+				this.updateRoot(startingFilter)
+			},
+
+			// these are for errors returned from server-side validation from running queries
+			errors: [],
+			setErrors(errors) {
+				set({ errors })
+			},
+			editedFilterId: filterEntityId,
+			modified: false,
+
+			...NodeMap.initNodeMap(store),
+		} satisfies FilterEditStore
+	})
+	const subHandle: { subscribe: () => { unsubscribe: () => void } } = {
+		subscribe: () => {
+			const unsubscribe = store.subscribe((state, prev) => {
+				if (state.tree === prev.tree) return
+				const filter = treeToFilterNode(state.tree)
+				const validatedFilter = isValidFilterNode(filter) ? filter : null
+				store.setState({
+					validatedFilter,
+					isValid: !!validatedFilter,
+					modified: !Obj.deepEqual(state.startingFilter, filter),
+				})
+			})
+			return { unsubscribe }
+		},
+	}
+	return [store, subHandle] as const
+}
+
+export function useNodePath(id: string | undefined, rootStore: Zus.StoreApi<FilterEditStore>) {
+	return Zus.useStore(rootStore, useShallow((s) => id ? s.tree.paths.get(id) : undefined))
+}
+
+export function useImmediateChildren(id: string, store: Zus.StoreApi<FilterEditStore>) {
+	return Zus.useStore(store, useShallow(s => resolveImmediateChildren(s.tree, id)))
+}
+
+export function useEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditStore>) {
+	const [store, subHandle] = React.useMemo(() => deriveEditStoreView(id, rootStore), [id, rootStore])
+	React.useEffect(() => {
+		const sub = subHandle.subscribe()
+		return () => sub.unsubscribe()
+	}, [subHandle])
+	return Zus.useStore(store)
+}
+
+export function deriveEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditStore>) {
+	const updateNode: UpdateNodeFn = (cb) => rootStore.getState().updateNode(id, (draft) => cb(draft))
+	const deleteNode = () => rootStore.getState().deleteNode(id)
+
+	const viewStore = Zus.createStore<FilterEditStoreView>(() => {
+		const node = rootStore.getState().tree.nodes.get(id)!
+		const actions = getViewActions(node.type, updateNode, deleteNode)
+		return { ...node, ...actions } as FilterEditStoreView
+	})
+
+	const subscription: { subscribe: () => { unsubscribe: () => void } } = {
+		subscribe: () => {
+			const unsubscribe = rootStore.subscribe(
+				(rootState, prevRootState) => {
+					const node = rootState.tree.nodes.get(id)
+					const prevNode = prevRootState.tree.nodes.get(id)
+					if (!node || !prevNode) return
+					if (node == prevNode) return
+					if (node.type !== prevNode.type) {
+						viewStore.setState({
+							...getViewActions(node.type, updateNode, deleteNode),
+						})
+					}
+
+					viewStore.setState({ ...node })
+				},
+			)
+			return { unsubscribe }
+		},
+	}
+	return [viewStore, subscription] as const
+}
+
+type UpdateNodeFn = (cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void) => void
+function getViewActions<T extends NodeType>(
+	type: T,
+	updateNode: UpdateNodeFn,
+	deleteNode: () => void,
+	// createNode: (type: NodeType) => ShallowEditableFilterNode,
+): FilterEditStoreViewActions {
+	const common: FilterEditStoreViewCommonActions = {
+		delete() {
+			deleteNode()
+		},
+		setNegation(neg: boolean) {
+			updateNode(draft => {
+				draft.neg = neg
+			})
+		},
+	}
+	let actions: FilterEditStoreViewActions
+
+	if (isBlockType(type)) {
+		actions = {
+			...common,
+			type,
+			setBlockType(type) {
+				updateNode(draft => {
+					draft.type = type
+				})
+			},
+			addChild(type) {
+				throw new Error('Not implemented')
+			},
+		}
+	}
+
+	if (type === 'comp') {
+		actions = {
+			...common,
+			type,
+			setComp(update) {
+				updateNode(draft => {
+					if (draft.type !== 'comp') return
+					draft.comp = typeof update === 'function' ? update(draft.comp) : update
+				})
+			},
+		}
+	}
+
+	if (type === 'apply-filter') {
+		actions = {
+			...common,
+			type,
+			setFilterId(id) {
+				updateNode(draft => {
+					if (draft.type !== 'apply-filter') return
+					draft.filterId = id
+				})
+			},
+		}
+	}
+
+	if (type === 'allow-matchups') {
+		actions = {
+			...common,
+			type,
+			setMasks(update) {
+				updateNode(draft => {
+					if (draft.type !== 'allow-matchups') return
+					draft.allowMatchups.allMasks = typeof update === 'function' ? update(draft.allowMatchups.allMasks) : update
+				})
+			},
+			setMode(update) {
+				updateNode(draft => {
+					if (draft.type !== 'allow-matchups') return
+					draft.allowMatchups.mode = typeof update === 'function' ? update(draft.allowMatchups.mode ?? 'either') : update
+				})
+			},
+		}
+	}
+
+	return actions!
+}
+
+export function areFilterNodesLocallyEqual(a: EditableFilterNode, b: EditableFilterNode): boolean {
+	if (isEditableBlockNode(a) && isEditableBlockNode(b)) {
+		return a.children.length === b.children.length
+	}
+	if (a.type === 'comp' && b.type === 'comp') return a.comp === b.comp
+	if (a.type === 'apply-filter' && b.type === 'apply-filter') return a.filterId === b.filterId
+	if (a.type === 'allow-matchups' && b.type === 'allow-matchups') {
+		return a.allowMatchups.allMasks === b.allowMatchups.allMasks && a.allowMatchups.mode === b.allowMatchups.mode
+	}
+	return false
 }

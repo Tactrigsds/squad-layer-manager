@@ -11,14 +11,12 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
-import * as ReactRx from '@react-rxjs/core'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
@@ -27,6 +25,8 @@ import React from 'react'
 import Markdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
+import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import FullPageSpinner from './full-page-spinner'
@@ -99,27 +99,10 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const navigate = useNavigate()
 
-	const [editedFilter, _setEditedFilter] = useState<F.EditableFilterNode>(props.entity.filter)
-	const [validFilter, setValidFilter] = useState<F.FilterNode | null>(props.entity.filter)
-	const setEditedFilter: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = React.useCallback((update) => {
-		_setEditedFilter((filter) => {
-			const newFilter = typeof update === 'function' ? update(filter) : update
-			if (!newFilter) return props.entity.filter
-			if (newFilter && F.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
-				setValidFilter(null)
-			} else if (newFilter && F.isValidFilterNode(newFilter)) {
-				setValidFilter(newFilter)
-			} else {
-				setValidFilter(null)
-			}
-			setPageIndex(0)
-			return newFilter
-		})
-	}, [props.entity.filter])
+	const nodeStore = F.useEditableFilterNodeStore(props.entity.filter)
 
 	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
-	const validationErrorStore = F.useNodeValidationErrorStore()
 
 	const [editingDetails, setEditingDetails] = useState(false)
 	const form = Form.useForm({
@@ -130,7 +113,11 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
 
-			const res = await updateFilterMutation.mutateAsync([props.entity.id, { ...value, description, filter: validFilter ?? undefined }])
+			const res = await updateFilterMutation.mutateAsync([props.entity.id, {
+				...value,
+				description,
+				filter: nodeStore.getState().validatedFilter ?? undefined,
+			}])
 			switch (res.code) {
 				case 'err:permission-denied':
 					RbacClient.handlePermissionDenied(res)
@@ -220,6 +207,11 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		return 'none'
 	})()
 
+	const [validFilter, modifiedFilter] = Zus.useStore(
+		nodeStore,
+		useShallow((state) => [state.validatedFilter, state.modified]),
+	)
+
 	const queryContext: LQY.LayerQueryBaseInput | undefined = React.useMemo(() =>
 		validFilter
 			? ({
@@ -227,26 +219,35 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 			})
 			: undefined, [validFilter])
 
-	const saveBtn = (
+	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
 			{([canSubmit, isDirty]) => {
-				const filterModified = !Obj.deepEqual(props.entity.filter, editedFilter)
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || !validFilter || (!filterModified && !isDirty) || loggedInUserRole == 'none'}
+						disabled={!canSubmit || !validFilter || (!modifiedFilter && !isDirty) || loggedInUserRole == 'none'}
 					>
 						Save
 					</Button>
 				)
 			}}
 		</form.Subscribe>
-	)
-	const deleteBtn = (
+	), [form, validFilter, modifiedFilter, loggedInUserRole])
+
+	const deleteBtn = React.useMemo(() => (
 		<DeleteFilterDialog onDelete={onDelete}>
 			<Button variant="destructive">Delete</Button>
 		</DeleteFilterDialog>
-	)
+	), [onDelete])
+
+	const filterCard = React.useMemo(() => (
+		<FilterCard
+			store={nodeStore}
+		>
+			{saveBtn}
+			{deleteBtn}
+		</FilterCard>
+	), [nodeStore, deleteBtn, saveBtn])
 
 	return (
 		<div className="container mx-auto pt-2">
@@ -361,21 +362,9 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 						</div>
 					)}
 			</div>
-			<FilterValidationErrorDisplay store={validationErrorStore} />
+			<FilterValidationErrorDisplay store={nodeStore} />
 			<div className="mt-2 flex space-x-2">
-				<FilterCard
-					node={editedFilter}
-					setNode={setEditedFilter}
-					filterId={props.entity?.id}
-					resetFilter={() => {
-						setEditedFilter(props.entity.filter)
-					}}
-					children={
-						<>
-							{saveBtn} {deleteBtn}
-						</>
-					}
-				/>
+				{filterCard}
 			</div>
 			<LayerTable
 				selected={selectedLayers}
@@ -383,7 +372,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				baseInput={queryContext}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
-				errorStore={validationErrorStore}
+				errorStore={nodeStore}
 			/>
 		</div>
 	)
