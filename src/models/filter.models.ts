@@ -1,10 +1,15 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
-import { useRefConstructor } from '@/lib/react'
+
+import { useDeepEqualsMemo, useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import * as DND from '@/models/dndkit.models'
+import * as EFB from '@/models/editable-filter-builders.ts'
 import type { SQL } from 'drizzle-orm'
-
+import * as Im from 'immer'
+import * as React from 'react'
+import * as Rx from 'rxjs'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 import * as LC from './layer-columns'
@@ -79,12 +84,7 @@ export type FilterNode =
 
 export type EditableFilterNode =
 	| {
-		type: 'and'
-		neg: boolean
-		children: EditableFilterNode[]
-	}
-	| {
-		type: 'or'
+		type: BlockType
 		neg: boolean
 		children: EditableFilterNode[]
 	}
@@ -110,6 +110,9 @@ export type BlockTypeEditableFilterNode = Extract<
 >
 
 export const BLOCK_TYPES = ['and', 'or'] as const
+export const VALUE_TYPES = ['comp', 'apply-filter', 'allow-matchups'] as const
+export type NodeType = FilterNode['type']
+
 export function isBlockType(type: string): type is BlockType {
 	return BLOCK_TYPES.includes(type as BlockType)
 }
@@ -318,7 +321,9 @@ export function isEditableBlockNode(
 ): node is EditableBlockNode {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
+
 export type BlockType = (typeof BLOCK_TYPES)[number]
+export type ValueType = (typeof VALUE_TYPES)[number]
 
 export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
 	(column: string, cfg = LC.BASE_COLUMN_CONFIG) => {
@@ -331,7 +336,6 @@ export const getComparisonTypesForColumn = LC.coalesceLookupErrors(
 		}
 	},
 )
-
 export const EditableComparisonSchema = z.object({
 	column: z.string().optional(),
 	code: z
@@ -350,6 +354,12 @@ export const EditableComparisonSchema = z.object({
 })
 export type EditableComparison = z.infer<typeof EditableComparisonSchema>
 export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
+export type EditableValueNode = Extract<EditableFilterNode, { type: 'value' }>
+export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
+
+export function isEditableValueNode(node: EditableFilterNode): node is EditableValueNode {
+	return VALUE_TYPES.includes(node.type as ValueType)
+}
 
 export function editableComparisonHasValue(comp: EditableComparison) {
 	return (
@@ -450,20 +460,17 @@ export type NodeValidationErrorStore = {
 	setErrors: (errors: NodeValidationError[]) => void
 }
 
-export function useNodeValidationErrorStore() {
-	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<NodeValidationErrorStore>((set) => ({
-			errors: [],
-			setErrors: (errors) => {
-				console.log('node errors:', JSON.stringify(errors))
-				return set({ errors })
-			},
-		}))
-	})
-	return storeRef.current
+export type NodePath = number[]
+
+type SerializedNodePath = string
+
+export function serializeNodePath(path: NodePath) {
+	return path.join('.') as SerializedNodePath
 }
 
-export type NodePath = number[]
+export function deserializeNodePath(path: SerializedNodePath) {
+	return path.split('.').map(Number)
+}
 
 export function buildNodePath(parent: NodePath, childIndex: number) {
 	return parent.concat(childIndex)
@@ -482,13 +489,18 @@ export function dragItemCursorToTargetPath(dropItem: DND.DragItemCursor) {
 			return cursorPath
 	}
 }
-
-function derefPath(root: EditableFilterNode, path: NodePath) {
+export function tryDerefPath(root: EditableFilterNode, path: NodePath) {
 	let node = root
 	for (const index of path) {
-		if (!isEditableBlockNode(node)) throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
+		if (!isEditableBlockNode(node)) return null
 		node = node.children[index]
 	}
+	return node
+}
+
+function derefPath(root: EditableFilterNode, path: NodePath) {
+	const node = tryDerefPath(root, path)
+	if (!node) throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
 	return node
 }
 
@@ -528,4 +540,269 @@ export function moveNode(root: EditableFilterNode, sourcePath: NodePath, targetP
 	sourceParent.children.splice(placeholderIndex, 1)
 
 	return root
+}
+
+export type FilterEditStore = {
+	filter: EditableFilterNode
+	validatedFilter: FilterNode | null
+	editedFilterId?: string
+	isValid: boolean
+	startingFilter: EditableFilterNode
+	moveNode(sourcePath: NodePath, targetPath: NodePath): void
+	update(filter: EditableFilterNode): void
+	reset(): void
+	modified: boolean
+} & NodeValidationErrorStore
+
+type FilterEditStoreViewCommonActions = {
+	delete(): void
+	setNegation(negative: boolean): void
+}
+
+type ViewActionsOfType<T extends NodeType> = Extract<FilterEditStoreViewActions, { type: T }>
+type FilterEditStoreViewActions =
+	& FilterEditStoreViewCommonActions
+	& (
+		| {
+			type: BlockType
+			setBlockType: (type: BlockType) => void
+			addChild: (type: NodeType) => void
+		}
+		| {
+			type: 'comp'
+			setComp: React.Dispatch<React.SetStateAction<EditableComparison>>
+		}
+		| {
+			type: 'apply-filter'
+			setFilterId: (filterId: FilterEntityId) => void
+		}
+		| {
+			type: 'allow-matchups'
+			setMasks: React.Dispatch<React.SetStateAction<FactionMask[][]>>
+			setMode: React.Dispatch<React.SetStateAction<FactionMaskMode>>
+		}
+	)
+
+type FilterEditStoreView<T extends NodeType = NodeType> = EditableFilterNodeOfType<T> & ViewActionsOfType<T>
+
+export function useEditableFilterNodeStore(startingFilter: EditableFilterNode) {
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const [store, subHandle] = React.useMemo(() => createEditableFilterNodeStore(startingFilter), [])
+	React.useEffect(() => {
+		const subscription = subHandle.subscribe()
+		return () => subscription.unsubscribe()
+	}, [subHandle])
+	React.useEffect(() => {
+		const state = store.getState()
+		if (state.filter !== startingFilter) state.update(startingFilter)
+	}, [store, startingFilter])
+	return store
+}
+
+function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filterId?: string) {
+	const store = Zus.createStore<FilterEditStore>((set, get) => {
+		const validatedFilter = isValidFilterNode(startingFilter) ? startingFilter : null
+		return {
+			startingFilter,
+			filter: startingFilter,
+			validatedFilter,
+			isValid: !!validatedFilter,
+			moveNode(sourcePath, targetPath) {
+				set({ filter: moveNode(get().filter, sourcePath, targetPath) })
+			},
+			update(filter: EditableFilterNode) {
+				set({ filter })
+			},
+			errors: [],
+			setErrors(errors) {
+				set({ errors })
+			},
+			reset() {
+				set({ filter: get().startingFilter })
+			},
+
+			editedFilterId: filterId,
+			modified: false,
+		} satisfies FilterEditStore
+	})
+	const subHandle: { subscribe: () => { unsubscribe: () => void } } = {
+		subscribe: () => {
+			const unsubscribe = store.subscribe((state, prev) => {
+				if (state.filter === prev.filter) return
+				const validatedFilter = isValidFilterNode(state.filter) ? state.filter : null
+				store.setState({
+					validatedFilter,
+					isValid: !!validatedFilter,
+				})
+				store.setState({
+					modified: !Obj.deepEqual(state.startingFilter, state.filter),
+				})
+			})
+			return { unsubscribe }
+		},
+	}
+	return [store, subHandle] as const
+}
+
+export function useEditStoreView(path: NodePath, rootStore: Zus.StoreApi<FilterEditStore>) {
+	path = useDeepEqualsMemo(() => path, [path])
+	const [store, subHandle] = React.useMemo(() => deriveEditStoreView(path, rootStore), [path, rootStore])
+	React.useEffect(() => {
+		const sub = subHandle.subscribe()
+		return () => sub.unsubscribe()
+	}, [subHandle])
+	return store
+}
+
+export function deriveEditStoreView(path: NodePath, rootStore: Zus.StoreApi<FilterEditStore>) {
+	function updateRootNode(
+		path: NodePath,
+		cb: (draft: Im.Draft<EditableFilterNode>) => void,
+	) {
+		rootStore.setState(state => ({
+			filter: Im.produce(state.filter, draft => {
+				const node = derefPath(draft, path)
+				cb(node)
+			}),
+		}))
+	}
+
+	const updateNode: UpdateNodeFn = (cb) => updateRootNode(path, (draft) => cb(draft, -1))
+	const updateParentNode: UpdateNodeFn = (cb) =>
+		updateRootNode(path.slice(0, path.length - 1), (draft) => {
+			cb(draft, path[path.length - 1])
+		})
+	const startingNode = derefPath(rootStore.getState().filter, path)
+
+	const viewStore = Zus.createStore<FilterEditStoreView>(() => {
+		const actions = getViewActions(startingNode.type, updateNode, updateParentNode)
+		return { ...startingNode, ...actions } as FilterEditStoreView
+	})
+
+	let currentNode = startingNode
+	const subscription: { subscribe: () => { unsubscribe: () => void } } = {
+		subscribe: () => {
+			const unsubscribe = rootStore.subscribe(
+				(rootState) => {
+					const state = tryDerefPath(rootState.filter, path)
+					if (!state) return
+
+					const reset = () => viewStore.setState(() => ({ ...getViewActions(state.type, updateNode, updateParentNode), ...state }))
+					// store will have to be recreated in these cases
+					if (isEditableBlockNode(startingNode) && !isEditableBlockNode(state)) {
+						reset()
+						return
+					}
+					if (!isEditableBlockNode(startingNode) && startingNode.type !== state.type) {
+						reset()
+						return
+					}
+					if (!areFilterNodesLocallyEqual(currentNode, state)) {
+						viewStore.setState(state)
+					}
+					currentNode = state
+				},
+			)
+			return { unsubscribe }
+		},
+	}
+	return [viewStore, subscription] as const
+}
+
+type UpdateNodeFn = (cb: (draft: EditableFilterNode, index: number) => void) => void
+function getViewActions<T extends NodeType>(
+	type: T,
+	updateNode: UpdateNodeFn,
+	updateParentNode: UpdateNodeFn,
+): FilterEditStoreViewActions {
+	const common: FilterEditStoreViewCommonActions = {
+		delete() {
+			updateParentNode((draft, index) => {
+				if (!isEditableBlockNode(draft)) return
+				draft.children.splice(index, 1)
+			})
+		},
+		setNegation(neg: boolean) {
+			updateNode(draft => {
+				draft.neg = neg
+			})
+		},
+	}
+
+	if (isBlockType(type)) {
+		return {
+			...common,
+			type,
+			setBlockType(type) {
+				updateNode(draft => {
+					draft.type = type
+				})
+			},
+			addChild(type) {
+				updateNode(draft => {
+					if (!isEditableBlockNode(draft)) return
+					draft.children.unshift(EFB.nodeOfType(type))
+				})
+			},
+		}
+	}
+
+	if (type === 'comp') {
+		return {
+			...common,
+			type,
+			setComp(update) {
+				updateNode(draft => {
+					if (draft.type !== 'comp') return
+					draft.comp = typeof update === 'function' ? update(draft.comp) : update
+				})
+			},
+		}
+	}
+
+	if (type === 'apply-filter') {
+		return {
+			...common,
+			type,
+			setFilterId(id) {
+				updateNode(draft => {
+					if (draft.type !== 'apply-filter') return
+					draft.filterId = id
+				})
+			},
+		}
+	}
+
+	if (type === 'allow-matchups') {
+		return {
+			...common,
+			type,
+			setMasks(update) {
+				updateNode(draft => {
+					if (draft.type !== 'allow-matchups') return
+					draft.allowMatchups.allMasks = typeof update === 'function' ? update(draft.allowMatchups.allMasks) : update
+				})
+			},
+			setMode(update) {
+				updateNode(draft => {
+					if (draft.type !== 'allow-matchups') return
+					draft.allowMatchups.mode = typeof update === 'function' ? update(draft.allowMatchups.mode ?? 'either') : update
+				})
+			},
+		}
+	}
+
+	assertNever(type)
+}
+
+export function areFilterNodesLocallyEqual(a: EditableFilterNode, b: EditableFilterNode): boolean {
+	if (isEditableBlockNode(a) && isEditableBlockNode(b)) {
+		return a.children.length === b.children.length
+	}
+	if (a.type === 'comp' && b.type === 'comp') return a.comp === b.comp
+	if (a.type === 'apply-filter' && b.type === 'apply-filter') return a.filterId === b.filterId
+	if (a.type === 'allow-matchups' && b.type === 'allow-matchups') {
+		return a.allowMatchups.allMasks === b.allowMatchups.allMasks && a.allowMatchups.mode === b.allowMatchups.mode
+	}
+	return false
 }

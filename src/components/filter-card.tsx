@@ -8,7 +8,6 @@ import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/r
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as DND from '@/models/dndkit.models.ts'
-import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -24,6 +23,7 @@ import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react
 import React from 'react'
 import { Link } from 'react-router-dom'
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
@@ -47,11 +47,7 @@ const depthColors = [
 ] satisfies { border: string; background: string }[]
 
 export type FilterCardProps = {
-	node: F.EditableFilterNode
-	// weird way of passing this down but I guess good for perf?
-	setNode: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>>
-	resetFilter?: () => void
-	filterId?: string
+	store: Zus.StoreApi<F.FilterEditStore>
 }
 
 const triggerClass =
@@ -59,8 +55,7 @@ const triggerClass =
 export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
-	const validFilterNode = React.useMemo(() => F.isValidFilterNode(props.node), [props.node])
-	const setNode = props.setNode
+	const store = props.store
 
 	DndKit.useDragEnd(React.useCallback(event => {
 		if (!event.over) return
@@ -76,18 +71,17 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 			console.warn('Cannot move node to its own child')
 			return
 		}
-
-		setNode(v => F.moveNode(v!, sourcePath, targetPath))
-	}, [setNode]))
+		store.getState().moveNode(sourcePath, targetPath)
+	}, [store]))
 
 	return (
 		<div defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
-					<FilterNodeDisplay path={[]} {...props} />
+					<FilterNodeDisplay path={[]} store={props.store} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<FilterTextEditor ref={editorRef} node={props.node} setNode={(node) => props.setNode(() => node as F.EditableFilterNode)} />
+					<FilterTextEditor ref={editorRef} store={store} />
 				</div>
 			</div>
 			{/* -------- toolbar -------- */}
@@ -111,18 +105,16 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					</Tooltip>
 
 					{/* -------- reset filter -------- */}
-					{props.resetFilter && (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button onClick={() => props.resetFilter?.()} variant="ghost" size="icon">
-									<Undo2 color="hsl(var(--muted-foreground))" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Reset Filter</p>
-							</TooltipContent>
-						</Tooltip>
-					)}
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button onClick={() => props.store.getState().reset()} variant="ghost" size="icon">
+								<Undo2 color="hsl(var(--muted-foreground))" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Reset Filter</p>
+						</TooltipContent>
+					</Tooltip>
 				</div>
 				<div className="flex items-center space-x-1 justify-end">
 					{props.children}
@@ -130,7 +122,6 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
 						type="button"
-						disabled={!validFilterNode && F.isEditableBlockNode(props.node) && props.node.children.length > 0}
 						data-state={activeTab === 'text' && 'active'}
 						onClick={() => {
 							setActiveTab('text')
@@ -167,36 +158,25 @@ function NegationToggle({ pressed, onPressedChange }: { pressed: boolean; onPres
 	)
 }
 
-export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
-	const { node, setNode } = props
+export function FilterNodeDisplay(props: FilterCardProps & { path: F.NodePath }) {
+	const [editedFilterId] = Zus.useStore(props.store, useShallow(s => [s.editedFilterId]))
 	const depth = props.path.length
+	const node = Zus.useStore(F.useEditStoreView(props.path, props.store))
 
 	const negationToggle = (
 		<NegationToggle
 			pressed={node.neg}
-			onPressedChange={(neg) =>
-				setNode(
-					Im.produce((draft) => {
-						if (draft) {
-							draft.neg = neg
-						}
-					}),
-				)}
+			onPressedChange={(neg) => node.setNegation(neg)}
 		/>
 	)
 
-	const deleteNode = React.useCallback(() => {
-		setNode(undefined)
-	}, [setNode])
-
-	const opCluster = React.useMemo(() =>
-		depth > 0 && (
-			<>
-				<Button size="icon" variant="ghost" onClick={() => deleteNode()}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
-			</>
-		), [deleteNode, depth])
+	const opCluster = depth > 0 && (
+		<>
+			<Button size="icon" variant="ghost" onClick={() => node.delete()}>
+				<Minus color="hsl(var(--destructive))" />
+			</Button>
+		</>
+	)
 
 	const NodeWrapper = ({ children, className }: { children: React.ReactNode; className?: string }) => {
 		const dragItem: DND.DragItem = { type: 'filter-node', path: props.path }
@@ -230,21 +210,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 	}
 
 	if (node.type === 'and' || node.type === 'or') {
-		const childrenLen = node.children.length
 		const children = node.children?.map((child, i) => {
-			const setChild: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = (update) => {
-				setNode(
-					Im.produce((draft) => {
-						if (!draft || (draft.type !== 'and' && draft.type !== 'or') || draft.children.length !== childrenLen) {
-							return
-						}
-						const newValue = typeof update === 'function' ? update(draft.children[i]) : update
-						if (newValue) draft.children[i] = newValue
-						else draft.children.splice(i, 1)
-					}),
-				)
-			}
-
 			const childPath = [...props.path, i]
 			return (
 				<>
@@ -254,10 +220,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 					/>
 					<FilterNodeDisplay
 						path={childPath}
+						store={props.store}
 						key={i}
-						node={child}
-						setNode={setChild}
-						filterId={props.filterId}
 					/>
 					{i === node.children.length - 1 && (
 						<ChildNodeSeparator
@@ -268,32 +232,9 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 				</>
 			)
 		})
-		const addNewChild = (type: F.EditableFilterNode['type']) => {
-			setNode(
-				Im.produce((draft) => {
-					if (!draft || !F.isEditableBlockNode(draft)) {
-						return
-					}
-					if (type === 'comp') draft.children.push(EFB.comp())
-					if (type === 'apply-filter') draft.children.push(EFB.applyFilter())
-					if (type === 'allow-matchups') draft.children.push(EFB.allowMatchups())
-					if (F.isBlockType(type)) {
-						draft.children.push(EFB.createBlock(type)())
-					}
-				}),
-			)
-		}
-		function changeBlockNodeType(type: F.BlockType) {
-			setNode(
-				Im.produce((draft) => {
-					if (!draft || !F.isEditableBlockNode(draft)) return
-					draft.type = type
-				}),
-			)
-		}
 
 		return (
-			<NodeWrapper className="relative flex flex-col space-y-2">
+			<NodeWrapper className="relative flex flex-col">
 				<div className="flex items-center space-x-1">
 					{negationToggle}
 					<ComboBox
@@ -301,7 +242,7 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 						title={'Block Type'}
 						value={node.type}
 						options={['and', 'or']}
-						onSelect={(v) => changeBlockNodeType(v as F.BlockType)}
+						onSelect={(v) => node.setBlockType(v as F.BlockType)}
 					/>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -310,12 +251,12 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent>
-							<DropdownMenuItem onClick={() => addNewChild('comp')}>comparison</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => addNewChild('apply-filter')}>apply existing filter</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => addNewChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => node.addChild('comp')}>comparison</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => node.addChild('apply-filter')}>apply existing filter</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => node.addChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
 							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => addNewChild('and')}>and block</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => addNewChild('or')}>or block</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => node.addChild('and')}>and block</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => node.addChild('or')}>or block</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 					{opCluster}
@@ -328,20 +269,10 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 	}
 
 	if (node.type === 'comp') {
-		const setComp: React.Dispatch<React.SetStateAction<F.EditableComparison>> = (update) => {
-			setNode(
-				Im.produce((draft) => {
-					if (!draft) return
-					if (draft.type !== 'comp') return
-					draft.comp = typeof update === 'function' ? update(draft.comp) : update
-				}),
-			)
-		}
-
 		return (
 			<NodeWrapper className="flex items-center space-x-1">
 				{negationToggle}
-				<Comparison comp={node.comp!} setComp={setComp} restrictValueSize={false} />
+				<Comparison comp={node.comp!} setComp={node.setComp} restrictValueSize={false} />
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -352,13 +283,8 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 				{negationToggle}
 				<ApplyFilter
 					filterId={node.filterId}
-					editedFilterId={props.filterId}
-					setFilterId={(filterId) => {
-						return setNode((n) => {
-							if (!n) return
-							return { ...n, filterId }
-						})
-					}}
+					editedFilterId={editedFilterId}
+					setFilterId={node.setFilterId}
 				/>
 				<Link
 					to={AR.link('/filters/:id', node.filterId ?? '')}
@@ -373,40 +299,14 @@ export function FilterNodeDisplay(props: FilterCardProps & { path: number[] }) {
 	}
 
 	if (node.type === 'allow-matchups') {
-		const setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>> = (update) => {
-			if (typeof update === 'function') {
-				setNode((n) => {
-					if (!n || n.type !== 'allow-matchups') return
-					return { ...n, allowMatchups: { ...n.allowMatchups, allMasks: update(n.allowMatchups.allMasks) } }
-				})
-			} else {
-				setNode((n) => {
-					if (!n || n.type !== 'allow-matchups') return
-					return { ...n, allowMatchups: { ...n.allowMatchups, allMasks: update } }
-				})
-			}
-		}
-		const setMode: React.Dispatch<React.SetStateAction<'split' | 'both' | 'either'>> = (update) => {
-			if (typeof update === 'function') {
-				setNode((n) => {
-					if (!n || n.type !== 'allow-matchups') return
-					return { ...n, allowMatchups: { ...n.allowMatchups, mode: update(n.allowMatchups.mode ?? 'either') } }
-				})
-			} else {
-				setNode((n) => {
-					if (!n || n.type !== 'allow-matchups') return
-					return { ...n, allowMatchups: { ...n.allowMatchups, mode: update } }
-				})
-			}
-		}
 		return (
-			<NodeWrapper className="flex items-center space-x-1">
+			<NodeWrapper className="flex items-center">
 				{negationToggle}
 				<FactionsAllowMatchupsConfig
 					masks={node.allowMatchups.allMasks}
 					mode={node.allowMatchups.mode}
-					setMasks={setMasks}
-					setMode={setMode}
+					setMasks={node.setMasks}
+					setMode={node.setMode}
 				/>
 				{opCluster}
 			</NodeWrapper>
@@ -426,10 +326,10 @@ function ChildNodeSeparator(props: {
 	const isValid = activeItem ? (activeItem.type === 'filter-node' && !F.isChildPath(activeItem.path, props.path)) : null
 	const depth = props.path.length
 
-	// WARNING:  without this useEffect the component breaks. something fucky must be happening with dndkit or some memoization issue
+	// WARNING: without this useEffect the component breaks. something fucky must be happening with dndkit or some memoization issue
 	React.useEffect(() => {
 		if (dropProps.isDropTarget) {
-			console.debug('Drop target', dropProps.isDropTarget, 'path', props.path)
+			// console.debug('Drop target', dropProps.isDropTarget, 'path', props.path)
 		}
 	}, [dropProps.isDropTarget, props.path])
 
@@ -438,7 +338,7 @@ function ChildNodeSeparator(props: {
 			ref={dropProps.ref}
 			className={cn(
 				Obj.deref('background', depthColors)[depth % depthColors.length],
-				'w-full min-w-0 h-1 m-0 data-[is-over=false]:invisible',
+				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
 			)}
 			data-is-over={!!isValid && dropProps.isDropTarget}
 		/>

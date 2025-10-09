@@ -14,6 +14,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import LayerTable from './layer-table'
@@ -27,26 +28,7 @@ export default function FilterNew() {
 	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()
-
-	const [editedFilter, _setEditedFilter] = useState<F.EditableFilterNode>(DEFAULT_FILTER)
-	const [validFilter, setValidFilter] = useState<F.FilterNode | null>(null)
-	const setEditedFilter: React.Dispatch<React.SetStateAction<F.EditableFilterNode | undefined>> = (update) => {
-		_setEditedFilter((filter) => {
-			const newFilter = typeof update === 'function' ? update(filter) : update
-			if (!newFilter) return DEFAULT_FILTER
-			if (newFilter && F.isEditableBlockNode(newFilter) && newFilter.children.length === 0) {
-				setValidFilter(null)
-			} else if (newFilter && F.isValidFilterNode(newFilter)) {
-				setValidFilter(newFilter)
-			} else {
-				setValidFilter(null)
-			}
-			setPageIndex(0)
-			return newFilter
-		})
-	}
-	const validationErrorStore = F.useNodeValidationErrorStore()
-
+	const nodeStore = F.useEditableFilterNodeStore(DEFAULT_FILTER)
 	const form = Form.useForm({
 		defaultValues: {
 			id: '',
@@ -55,9 +37,9 @@ export default function FilterNew() {
 		},
 		onSubmit: async ({ value }) => {
 			const description = value.description?.trim() || null
-			const validFilter = F.isValidFilterNode(editedFilter) ? editedFilter : null
+			const state = nodeStore.getState()
 
-			if (!validFilter) {
+			if (!state.validatedFilter) {
 				toast({ title: 'Invalid filter', description: 'Please check filter configuration' })
 				return
 			}
@@ -65,7 +47,7 @@ export default function FilterNew() {
 			const res = await createFilterMutation.mutateAsync({
 				...value,
 				description,
-				filter: validFilter,
+				filter: state.validatedFilter,
 			})
 
 			switch (res.code) {
@@ -84,15 +66,26 @@ export default function FilterNew() {
 	const [pageIndex, setPageIndex] = useState(0)
 
 	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
-	const submitBtn = (
+	const [isValidFilter, validatedFilter] = Zus.useStore(nodeStore, useShallow(s => [s.isValid, s.validatedFilter]))
+
+	const submitBtn = React.useMemo(() => (
 		<form.Subscribe>
 			{(f) => (
-				<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !validFilter}>
+				<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter}>
 					Create
 				</Button>
 			)}
 		</form.Subscribe>
-	)
+	), [form, isValidFilter])
+
+	const filterCard = React.useMemo(() => (
+		<FilterCard
+			store={nodeStore}
+		>
+			{submitBtn}
+		</FilterCard>
+	), [nodeStore, submitBtn])
+
 	return (
 		<div className="container mx-auto py-10">
 			<div className="flex w-full space-x-2">
@@ -175,24 +168,16 @@ export default function FilterNew() {
 					)}
 				</form.Field>
 			</div>
-			<FilterValidationErrorDisplay store={validationErrorStore} />
-			<FilterCard
-				node={editedFilter}
-				setNode={setEditedFilter}
-				resetFilter={() => {
-					setEditedFilter(DEFAULT_FILTER)
-				}}
-			>
-				{submitBtn}
-			</FilterCard>
+			<FilterValidationErrorDisplay store={nodeStore} />
+			{filterCard}
 
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
-				errorStore={validationErrorStore}
+				errorStore={nodeStore}
 				baseInput={{
-					constraints: validFilter
-						? [{ type: 'filter-anon', filter: validFilter, applyAs: 'where-condition', id: 'filter-new' }]
+					constraints: validatedFilter
+						? [{ type: 'filter-anon', filter: validatedFilter, applyAs: 'where-condition', id: 'filter-new' }]
 						: undefined,
 				}}
 				pageIndex={pageIndex}
