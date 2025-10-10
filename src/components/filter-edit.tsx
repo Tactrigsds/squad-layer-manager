@@ -3,7 +3,6 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -146,7 +145,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
 	const loggedInUser = UsersClient.useLoggedInUser()
 
-	async function onDelete() {
+	const onDelete = React.useCallback(async () => {
 		if (!props.entity) {
 			return
 		}
@@ -179,7 +178,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				title: `Failed to delete filter "${props.entity.name} : ${blurb}"`,
 			})
 		}
-	}
+	}, [deleteFilterMutation, navigate, props.entity, toast])
 
 	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
 		if (!loggedInUser) return 'none'
@@ -218,6 +217,14 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				constraints: [LQY.getEditedFilterConstraint(validFilter)],
 			})
 			: undefined, [validFilter])
+
+	React.useEffect(() => {
+		console.log({
+			validFilter: validFilter,
+			modifiedFilter: modifiedFilter,
+			loggedInUserRole: loggedInUserRole,
+		})
+	}, [validFilter, modifiedFilter, loggedInUserRole])
 
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>

@@ -1,5 +1,4 @@
 // TODO rats nest from manic debugging, need to straighten out naming conventions & break out some modules
-
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
@@ -7,6 +6,7 @@ import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
+import * as EFB from '@/models/editable-filter-builders'
 import { type SQL } from 'drizzle-orm'
 import * as Im from 'immer'
 import * as React from 'react'
@@ -771,7 +771,8 @@ export type FilterEditStore =
 		updateRoot(filter: EditableFilterNode): void
 		updateNode(id: string, cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void): void
 		deleteNode(id: string): void
-		reset(): void
+		addChild(parentId: string, type: NodeType): void
+		reset(filter?: EditableFilterNode): void
 		modified: boolean
 	}
 	& NodeValidationErrorStore
@@ -817,7 +818,7 @@ export function useEditableFilterNodeStore(startingFilter: EditableFilterNode) {
 	}, [subHandle])
 	React.useEffect(() => {
 		const state = store.getState()
-		if (state.startingFilter !== startingFilter) state.updateRoot(startingFilter)
+		if (state.startingFilter !== startingFilter) state.reset(startingFilter)
 	}, [store, startingFilter])
 	return store
 }
@@ -858,8 +859,30 @@ function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filte
 					}),
 				})
 			},
-			reset() {
-				this.updateRoot(startingFilter)
+			addChild(parentId, type) {
+				set({
+					tree: Im.produce(get().tree, draft => {
+						const node: ShallowEditableFilterNode = toShallowNode(EFB.nodeOfType(type))
+						const id = createId(4)
+						const parentPath = draft.paths.get(parentId)!
+						let last: number = -1
+						for (const path of draft.paths.values()) {
+							if (!Sparse.isChildPath(parentPath, path)) continue
+							last = Math.max(last, path[parentPath.length])
+						}
+
+						const newPath = [...parentPath, last + 1]
+						draft.paths.set(id, newPath)
+						draft.nodes.set(id, node)
+					}),
+				})
+			},
+			reset(filter?: EditableFilterNode) {
+				filter ??= this.startingFilter
+				set({
+					startingFilter: filter,
+					tree: upsertFilterNodeTreeInPlace(filter),
+				})
 			},
 
 			// these are for errors returned from server-side validation from running queries
@@ -876,14 +899,23 @@ function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filte
 	const subHandle: { subscribe: () => { unsubscribe: () => void } } = {
 		subscribe: () => {
 			const unsubscribe = store.subscribe((state, prev) => {
-				if (state.tree === prev.tree) return
-				const filter = treeToFilterNode(state.tree)
-				const validatedFilter = isValidFilterNode(filter) ? filter : null
-				store.setState({
-					validatedFilter,
-					isValid: !!validatedFilter,
-					modified: !Obj.deepEqual(state.startingFilter, filter),
-				})
+				if (state.tree !== prev.tree) {
+					const filter = treeToFilterNode(state.tree)
+					const validatedFilter = isValidFilterNode(filter) ? filter : null
+					store.setState({
+						validatedFilter,
+						isValid: !!validatedFilter,
+						modified: !Obj.deepEqual(state.startingFilter, filter),
+					})
+				}
+
+				if (state.startingFilter !== prev.startingFilter) {
+					console.log('resetting tree')
+					store.setState({
+						modified: !Obj.deepEqual(state.startingFilter, prev.startingFilter),
+						tree: upsertFilterNodeTreeInPlace(state.startingFilter, []),
+					})
+				}
 			})
 			return { unsubscribe }
 		},
@@ -911,10 +943,13 @@ export function useEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditS
 export function deriveEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditStore>) {
 	const updateNode: UpdateNodeFn = (cb) => rootStore.getState().updateNode(id, (draft) => cb(draft))
 	const deleteNode = () => rootStore.getState().deleteNode(id)
+	const addChild = (type: NodeType) => {
+		rootStore.getState().addChild(id, type)
+	}
 
 	const viewStore = Zus.createStore<FilterEditStoreView>(() => {
 		const node = rootStore.getState().tree.nodes.get(id)!
-		const actions = getViewActions(node.type, updateNode, deleteNode)
+		const actions = getViewActions(node.type, updateNode, deleteNode, addChild)
 		return { ...node, ...actions } as FilterEditStoreView
 	})
 
@@ -928,7 +963,7 @@ export function deriveEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEd
 					if (node == prevNode) return
 					if (node.type !== prevNode.type) {
 						viewStore.setState({
-							...getViewActions(node.type, updateNode, deleteNode),
+							...getViewActions(node.type, updateNode, deleteNode, addChild),
 						})
 					}
 
@@ -946,7 +981,7 @@ function getViewActions<T extends NodeType>(
 	type: T,
 	updateNode: UpdateNodeFn,
 	deleteNode: () => void,
-	// createNode: (type: NodeType) => ShallowEditableFilterNode,
+	addChild: (type: NodeType) => void,
 ): FilterEditStoreViewActions {
 	const common: FilterEditStoreViewCommonActions = {
 		delete() {
@@ -969,9 +1004,7 @@ function getViewActions<T extends NodeType>(
 					draft.type = type
 				})
 			},
-			addChild(type) {
-				throw new Error('Not implemented')
-			},
+			addChild,
 		}
 	}
 
