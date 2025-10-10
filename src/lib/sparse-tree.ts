@@ -25,7 +25,7 @@ export function moveNode(root: SparseNode, sourcePath: NodePath, targetPath: Nod
 	targetParent.children ??= []
 
 	const child = sourceParent.children[sourcePath[sourcePath.length - 1]]
-	// use a placeholder so that indexes aren't shifed when inserting at the target
+	// use a placeholder so that indexes aren't shifted when inserting at the target
 	sourceParent.children.splice(sourcePath[sourcePath.length - 1], 1, movePlaceholder as any)
 	targetParent.children.splice(targetPath[targetPath.length - 1], 0, child)
 
@@ -69,4 +69,20 @@ export function* walkNodes(tree: SparseNode, path: NodePath = []): IterableItera
 			yield* walkNodes(child, [...path, index])
 		}
 	}
+}
+
+type SerializedNodePath = string
+
+export function serializeNodePath(path: Sparse.NodePath) {
+	return path.join('.') as SerializedNodePath
+}
+
+export function deserializeNodePath(path: SerializedNodePath) {
+	return path.split('.').map(Number)
+}
+
+export function getCommonAncestorPath(a: NodePath, b: NodePath): NodePath {
+	let i = 0
+	while (i < a.length && i < b.length && a[i] === b[i]) i++
+	return a.slice(0, i)
 }

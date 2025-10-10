@@ -466,23 +466,11 @@ export type NodeValidationErrorStore = {
 	setErrors: (errors: NodeValidationError[]) => void
 }
 
-export type NodePath = number[]
-
-type SerializedNodePath = string
-
-export function serializeNodePath(path: NodePath) {
-	return path.join('.') as SerializedNodePath
-}
-
-export function deserializeNodePath(path: SerializedNodePath) {
-	return path.split('.').map(Number)
-}
-
-export function buildNodePath(parent: NodePath, childIndex: number) {
+export function buildNodePath(parent: Sparse.NodePath, childIndex: number) {
 	return parent.concat(childIndex)
 }
 
-export function tryDerefPath(root: EditableFilterNode, path: NodePath) {
+export function tryDerefPath(root: EditableFilterNode, path: Sparse.NodePath) {
 	let node = root
 	for (const index of path) {
 		if (!isEditableBlockNode(node)) return null
@@ -491,7 +479,7 @@ export function tryDerefPath(root: EditableFilterNode, path: NodePath) {
 	return node
 }
 
-function derefPath(root: EditableFilterNode, path: NodePath) {
+function derefPath(root: EditableFilterNode, path: Sparse.NodePath) {
 	const node = tryDerefPath(root, path)
 	if (!node) {
 		console.log('Invalid path', path, 'for node', JSON.stringify(root))
@@ -500,13 +488,10 @@ function derefPath(root: EditableFilterNode, path: NodePath) {
 	return node
 }
 
-export function getCommonAncestorPath(a: NodePath, b: NodePath): NodePath {
-	let i = 0
-	while (i < a.length && i < b.length && a[i] === b[i]) i++
-	return a.slice(0, i)
-}
-
-export function* walkNodes(filter: EditableFilterNode, path: NodePath = []): IterableIterator<[EditableFilterNode, NodePath]> {
+export function* walkNodes(
+	filter: EditableFilterNode,
+	path: Sparse.NodePath = [],
+): IterableIterator<[EditableFilterNode, Sparse.NodePath]> {
 	yield [filter, path]
 	if (isEditableBlockNode(filter)) {
 		for (const [child, index] of filter.children.map((child, index) => [child, index] as const)) {
@@ -517,10 +502,10 @@ export function* walkNodes(filter: EditableFilterNode, path: NodePath = []): Ite
 
 export type FilterNodeTree = {
 	nodes: Map<string, ShallowEditableFilterNode>
-	paths: Map<string, NodePath>
+	paths: Map<string, Sparse.NodePath>
 }
 
-export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: NodePath) {
+export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: Sparse.NodePath) {
 	for (const [id, path] of tree.paths.entries()) {
 		if (path.length === targetPath.length + 1 && Sparse.isChildPath(targetPath, path)) {
 			yield id
@@ -528,7 +513,7 @@ export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: NodePath)
 	}
 }
 
-export function nextChildIndex(tree: FilterNodeTree, parentPath: NodePath) {
+export function nextChildIndex(tree: FilterNodeTree, parentPath: Sparse.NodePath) {
 	let last = -1
 	for (const id of iterChildIdsForPath(tree, parentPath)) {
 		const path = tree.paths.get(id)
@@ -547,7 +532,7 @@ function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
 }
 function upsertTreeInPlaceFromSparse(
 	sparseTree: SparseTree,
-	basePath: NodePath = [],
+	basePath: Sparse.NodePath = [],
 	tree?: Partial<FilterNodeTree>,
 ) {
 	basePath ??= []
@@ -579,7 +564,7 @@ function upsertTreeInPlaceFromSparse(
 
 function upsertFilterNodeTreeInPlace(
 	filter: EditableFilterNode,
-	baseFilterPath?: NodePath,
+	baseFilterPath?: Sparse.NodePath,
 	tree?: FilterNodeTree,
 ): FilterNodeTree {
 	baseFilterPath ??= []
@@ -626,7 +611,7 @@ function resolveImmediateChildren(tree: FilterNodeTree, id: string): string[] {
 
 	return children
 }
-function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: NodePath = []): Sparse.SparseNode {
+function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: Sparse.NodePath = []): Sparse.SparseNode {
 	let root!: Sparse.SparseNode
 
 	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
@@ -646,7 +631,7 @@ function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: Node
 	return root
 }
 
-export function treeToFilterNode(tree: FilterNodeTree, subtree: NodePath = []): EditableFilterNode {
+export function treeToFilterNode(tree: FilterNodeTree, subtree: Sparse.NodePath = []): EditableFilterNode {
 	let root!: EditableFilterNode
 
 	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
@@ -666,7 +651,7 @@ export function treeToFilterNode(tree: FilterNodeTree, subtree: NodePath = []): 
 }
 
 // outputs entries sorted in primarily order of depth, and secondarily in order of index
-export function toBreadthFirstTreePathEntries(paths: Map<string, NodePath>): [string, NodePath][] {
+export function toBreadthFirstTreePathEntries(paths: Map<string, Sparse.NodePath>): [string, Sparse.NodePath][] {
 	const pathsArr = Array.from(paths.entries())
 	pathsArr.sort(([_idA, pathA], [_idB, pathB]) => {
 		if (pathA.length !== pathB.length) {
@@ -683,13 +668,17 @@ export function toBreadthFirstTreePathEntries(paths: Map<string, NodePath>): [st
 }
 type SparseTree = { id: string; children?: SparseTree[] }
 
-export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: NodePath, targetPath: NodePath) {
+export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
 	if (Sparse.isChildPath(sourcePath, targetPath)) {
 		return
 	}
-	let sparseTree = treeToSparseTree(tree)
-	sparseTree = Sparse.moveNode(sparseTree, sourcePath, targetPath)
-	upsertTreeInPlaceFromSparse(sparseTree, undefined, tree)
+	const commonAncestor = Sparse.getCommonAncestorPath(sourcePath, targetPath)
+	if (Obj.deepEqual(sourcePath, commonAncestor) || Obj.deepEqual(targetPath, commonAncestor)) {
+		commonAncestor.pop()
+	}
+	let sparseTree = treeToSparseTree(tree, commonAncestor)
+	sparseTree = Sparse.moveNode(sparseTree, sourcePath.slice(commonAncestor.length), targetPath.slice(commonAncestor.length))
+	upsertTreeInPlaceFromSparse(sparseTree, commonAncestor, tree)
 }
 
 export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
@@ -709,12 +698,12 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 export type FilterEditStore =
 	& {
 		tree: FilterNodeTree
-		getIdForPath: (path: NodePath) => string | undefined
+		getIdForPath: (path: Sparse.NodePath) => string | undefined
 		validatedFilter: FilterNode | null
 		editedFilterId?: string
 		isValid: boolean
 		startingFilter: EditableFilterNode
-		moveNode(sourcePath: NodePath, targetPath: NodePath): void
+		moveNode(sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath): void
 		updateRoot(filter: EditableFilterNode): void
 		updateNode(id: string, cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void): void
 		deleteNode(id: string): void
@@ -780,7 +769,7 @@ function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filte
 			tree: upsertFilterNodeTreeInPlace(startingFilter),
 			isValid: !!validatedFilter,
 			getIdForPath(path) {
-				return MapUtils.revLookup(get().tree.paths, path, serializeNodePath)
+				return MapUtils.revLookup(get().tree.paths, path, Sparse.serializeNodePath)
 			},
 			moveNode(sourcePath, targetPath) {
 				set(state => {
