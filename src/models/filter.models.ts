@@ -528,6 +528,16 @@ export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: NodePath)
 	}
 }
 
+export function nextChildIndex(tree: FilterNodeTree, parentPath: NodePath) {
+	let last = -1
+	for (const id of iterChildIdsForPath(tree, parentPath)) {
+		const path = tree.paths.get(id)
+		if (!path) continue
+		last = Math.max(last, path[path.length - 1])
+	}
+	return last + 1
+}
+
 function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
 	if (isEditableBlockNode(node)) {
 		const { children: _c, _id, ...shallowNode } = node as any
@@ -620,20 +630,17 @@ function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: Node
 	let root!: Sparse.SparseNode
 
 	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
-		console.log(id, path)
 		if (!Sparse.isOwnedPath(subtreePath, path)) continue
-		console.log('Valid path', path, 'for node', JSON.stringify(root))
-		const node: Sparse.SparseNode = { id }
+		const sparseNode: Sparse.SparseNode = { id }
 
 		if (!root) {
-			root = node
+			root = sparseNode
 			continue
 		}
 
 		const parent = Sparse.derefPath(root, path.slice(subtreePath.length, -1))!
 		parent.children ??= []
-		parent.children[path[path.length - 1]] = node
-		console.log('new root', JSON.stringify(root))
+		parent.children[path[path.length - 1]] = sparseNode
 	}
 
 	return root
@@ -677,72 +684,12 @@ export function toBreadthFirstTreePathEntries(paths: Map<string, NodePath>): [st
 type SparseTree = { id: string; children?: SparseTree[] }
 
 export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: NodePath, targetPath: NodePath) {
-	if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+	if (Sparse.isChildPath(sourcePath, targetPath)) {
 		return
 	}
-	const commonAncestor = getCommonAncestorPath(sourcePath, targetPath)
-	console.log('commonAncestor', commonAncestor)
-	let sparseTree = treeToSparseTree(tree, commonAncestor)
-	console.log('filter', sparseTree)
-	sparseTree = Sparse.moveNode(sparseTree, sourcePath.slice(commonAncestor.length), targetPath.slice(commonAncestor.length))
-	console.log('after', sparseTree)
-	upsertTreeInPlaceFromSparse(sparseTree, commonAncestor, tree)
-}
-
-export function old_moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: NodePath, targetPath: NodePath): void {
-	if (Sparse.isOwnedPath(sourcePath, targetPath)) {
-		return
-	}
-
-	const sourceParentPath = sourcePath.slice(0, -1)
-	const targetParentPath = targetPath.slice(0, -1)
-
-	const sourceLevel = sourcePath.length - 1
-	const targetLevel = targetPath.length - 1
-	const updatedPaths = new Map<string, NodePath>()
-	const sameParents = Obj.deepEqual(sourceParentPath, targetParentPath)
-	console.log({ sourcePath, targetPath })
-	console.log({ tree })
-	for (const [id, _path] of tree.paths.entries()) {
-		const path = [..._path]
-		const isSource = Sparse.isOwnedPath(sourcePath, path)
-		if (isSource) {
-			const childSegment = path.slice(sourcePath.length)
-			const newPath = [...targetPath, ...childSegment]
-			updatedPaths.set(id, newPath)
-			console.log('move ', id)
-		} else {
-			let modified = false
-			if (sameParents) {
-				if (!Sparse.isChildPath(sourceParentPath, path)) continue
-				if (path[sourceLevel] > sourcePath[sourceLevel] && path[sourceLevel] <= targetPath[sourceLevel]) {
-					path[sourceLevel]--
-					console.log('decr(same)', id)
-					modified = true
-				}
-				if (path[sourceLevel] < sourcePath[sourceLevel] && path[sourceLevel] >= targetPath[sourceLevel]) {
-					path[sourceLevel]++
-					console.log('incr(same)', id)
-					modified = true
-				}
-			} else {
-				if (Sparse.isChildPath(sourceParentPath, path) && path[sourceLevel] > sourcePath[sourceLevel]) {
-					path[sourceLevel] -= 1
-					modified = true
-					console.log('decr(diff)', id)
-				}
-
-				if (Sparse.isChildPath(targetParentPath, path) && path[targetLevel] >= targetPath[targetLevel]) {
-					path[targetLevel] += 1
-					modified = true
-					console.log('incr(diff)', id)
-				}
-			}
-			if (modified) updatedPaths.set(id, path)
-		}
-	}
-	console.log({ updatedPaths })
-	MapUtils.apply(tree.paths, updatedPaths)
+	let sparseTree = treeToSparseTree(tree)
+	sparseTree = Sparse.moveNode(sparseTree, sourcePath, targetPath)
+	upsertTreeInPlaceFromSparse(sparseTree, undefined, tree)
 }
 
 export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {

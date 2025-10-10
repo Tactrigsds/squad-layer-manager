@@ -22,9 +22,7 @@ export function moveNode(root: SparseNode, sourcePath: NodePath, targetPath: Nod
 		throw new Error('Invalid source parent')
 	}
 	const targetParent = derefPath(root, targetPath.slice(0, -1))
-	if (!targetParent.children) {
-		throw new Error('Invalid target parent')
-	}
+	targetParent.children ??= []
 
 	const child = sourceParent.children[sourcePath[sourcePath.length - 1]]
 	// use a placeholder so that indexes aren't shifed when inserting at the target

@@ -6,6 +6,7 @@ import { initMutationState } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object.ts'
 import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
+import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as DND from '@/models/dndkit.models.ts'
@@ -70,9 +71,23 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		if (!slot) return
 		const slotPath = state.tree.paths.get(slot.dragItem.id.toString())!
 		console.log({ slotPath })
-		const targetPath = slot.position === 'after'
-			? [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
-			: slotPath
+
+		let targetPath: Sparse.NodePath
+
+		switch (slot.position) {
+			case 'after':
+				targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
+				break
+			case 'before':
+				targetPath = slotPath
+				break
+			case 'on': {
+				targetPath = [...slotPath, F.nextChildIndex(state.tree, slotPath)]
+				break
+			}
+			default:
+				assertNever(slot.position)
+		}
 
 		if (Sparse.isOwnedPath(sourcePath, targetPath)) {
 			console.warn('Cannot move node to its own child')
@@ -200,7 +215,7 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	return (
 		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId}>
 			<BlockNodeControlPanel nodeId={props.nodeId} rootStore={props.store} />
-			{immediateChildren.map((id, index) => {
+			{immediateChildren.map((id) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
 				return (
 					<React.Fragment key={id}>
@@ -209,15 +224,13 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 							store={props.store}
 						/>
 						<StoredParentNode nodeId={id} store={props.store} />
-						{index === immediateChildren.length - 1 && (
-							<ChildNodeSeparator
-								item={{ type: 'relative-to-drag-item', slots: [{ position: 'after', dragItem }] }}
-								store={props.store}
-							/>
-						)}
 					</React.Fragment>
 				)
 			})}
+			<ChildNodeSeparator
+				item={{ type: 'relative-to-drag-item', slots: [{ position: 'on', dragItem: { id: props.nodeId, type: 'filter-node' } }] }}
+				store={props.store}
+			/>
 		</NodeWrapper>
 	)
 }
@@ -266,9 +279,17 @@ function ChildNodeSeparator(props: {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
 	const activePath = F.useNodePath(activeItem?.id?.toString(), props.store) ?? null
-	const itemPath = F.useNodePath(props.item.slots[0].dragItem.id?.toString(), props.store) ?? null
-	const isValid = (activePath && itemPath) ? (activeItem!.type === 'filter-node' && !Sparse.isOwnedPath(activePath, itemPath)) : null
-	const depth = itemPath?.length ?? 0
+	const slot = props.item.slots[0]
+	const itemPath = F.useNodePath(slot.dragItem.id?.toString(), props.store) ?? null
+	let isValid = true
+	if (activePath && itemPath) {
+		if (activeItem!.type !== 'filter-node') isValid = false
+		else if (slot.position !== 'on' && Sparse.isOwnedPath(activePath, itemPath)) isValid = false
+	}
+	let depth = itemPath?.length ?? 0
+	if (props.item.slots[0].position === 'on') {
+		depth++
+	}
 
 	// WARNING: without this useEffect the component breaks. something fucky must be happening with dndkit or some memoization issue
 	React.useEffect(() => {
@@ -282,7 +303,7 @@ function ChildNodeSeparator(props: {
 				Obj.deref('background', depthColors)[depth % depthColors.length],
 				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
 			)}
-			data-is-over={dropProps.isDropTarget}
+			data-is-over={dropProps.isDropTarget && isValid}
 		/>
 	)
 }
