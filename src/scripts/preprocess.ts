@@ -574,9 +574,7 @@ async function calculateScoreRanges(ctx: CS.LayerDb) {
 		}
 
 		const pairedField = range.field.replace(/_(1|2)$/, '')
-		if (!paired[pairedField]) paired[pairedField] = { min: Infinity, max: -Infinity, field: pairedField }
-		paired[pairedField].min = Math.min(range.min, paired[pairedField].min)
-		paired[pairedField].max = Math.max(range.max, paired[pairedField].max)
+		paired[pairedField] = { min: -3, max: 3, field: pairedField }
 	}
 
 	const finalScoreRanges = { regular, paired: Object.values(paired) }
