@@ -482,7 +482,6 @@ export function tryDerefPath(root: EditableFilterNode, path: Sparse.NodePath) {
 function derefPath(root: EditableFilterNode, path: Sparse.NodePath) {
 	const node = tryDerefPath(root, path)
 	if (!node) {
-		console.log('Invalid path', path, 'for node', JSON.stringify(root))
 		throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
 	}
 	return node
@@ -846,7 +845,6 @@ function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filte
 				}
 
 				if (state.startingFilter !== prev.startingFilter) {
-					console.log('resetting tree')
 					store.setState({
 						modified: !Obj.deepEqual(state.startingFilter, prev.startingFilter),
 						tree: upsertFilterNodeTreeInPlace(state.startingFilter, []),

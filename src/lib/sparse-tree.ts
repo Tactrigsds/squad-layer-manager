@@ -47,7 +47,6 @@ export function isOwnedPath(targetPath: NodePath, toCheckPath: NodePath) {
 export function derefPath(root: SparseNode, path: NodePath) {
 	const node = tryDerefPath(root, path)
 	if (!node) {
-		console.log('Invalid path', path, 'for node', JSON.stringify(root))
 		throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
 	}
 	return node
