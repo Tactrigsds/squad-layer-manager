@@ -72,7 +72,7 @@ export function* walkNodes(tree: SparseNode, path: NodePath = []): IterableItera
 
 type SerializedNodePath = string
 
-export function serializeNodePath(path: Sparse.NodePath) {
+export function serializeNodePath(path: NodePath) {
 	return path.join('.') as SerializedNodePath
 }
 

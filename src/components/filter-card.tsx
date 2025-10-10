@@ -309,7 +309,7 @@ function ChildNodeSeparator(props: {
 }
 
 const NodeWrapper = (
-	{ children, className, path, nodeId }: { children: React.ReactNode; className?: string; path: F.NodePath; nodeId: string },
+	{ children, className, path, nodeId }: { children: React.ReactNode; className?: string; path: Sparse.NodePath; nodeId: string },
 ) => {
 	const dragItem: DND.DragItem = { type: 'filter-node', id: nodeId }
 	const depth = path.length
