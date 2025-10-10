@@ -366,7 +366,7 @@ function ScoreGrid(
 					<span>Team 2 ({layerDetails?.layer.Faction_2}){team2RoleText}</span>
 				</div>
 			)}
-			{scoreTypes.map(scoreType => {
+			{scoreTypes.filter(score => score !== 'Balance_Differential').map(scoreType => {
 				const scoreRange = [...scoreRanges.paired, ...scoreRanges.regular].find(range => range.field === scoreType)
 				return (
 					<ScoreRow

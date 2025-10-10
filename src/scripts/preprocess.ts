@@ -68,8 +68,6 @@ async function main() {
 		await extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
 
-		await calculateScoreRanges(ctx)
-
 		ctx.layerDb().run('PRAGMA wal_checkpoint')
 		ctx.layerDb().run('PRAGMA optimize')
 		ctx.layerDb().run('VACUUM')
@@ -557,29 +555,6 @@ function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
 			reject(error)
 		})
 	})
-}
-
-async function calculateScoreRanges(ctx: CS.LayerDb) {
-	const scoreRanges = await getScoreRanges({ ctx })
-	const paired: Record<string, {
-		min: number
-		max: number
-		field: string
-	}> = {}
-	const regular: { min: number; max: number; field: string }[] = []
-	for (const range of scoreRanges) {
-		if (!range.field.match(/_(1|2)$/)) {
-			if (!range.field.endsWith('_Diff')) regular.push(range)
-			continue
-		}
-
-		const pairedField = range.field.replace(/_(1|2)$/, '')
-		if (pairedField === 'ZERO_Score') paired[pairedField] = { min: 0, max: 100, field: pairedField }
-		else paired[pairedField] = { min: -3, max: 3, field: pairedField }
-	}
-
-	const finalScoreRanges = { regular, paired: Object.values(paired) }
-	await fsPromise.writeFile(path.join(Paths.ASSETS, 'score-ranges.json'), JSON.stringify(finalScoreRanges, null, 2))
 }
 
 await main()
