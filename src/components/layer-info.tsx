@@ -420,11 +420,11 @@ function ScoreRow({
 		<div className="space-y-1">
 			<div className="flex justify-between items-center">
 				<span className="text-xs text-muted-foreground">
-					{team1Score?.toFixed(1)}
+					{team1Score?.toFixed(2)}
 				</span>
 				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
 				<span className="text-xs text-muted-foreground">
-					{team2Score?.toFixed(1)}
+					{team2Score?.toFixed(2)}
 				</span>
 			</div>
 			<div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
