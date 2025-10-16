@@ -337,7 +337,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 	test('processes queue with layer items', async () => {
 		if (sampleLayerIds.length === 0) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -372,7 +372,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 	test('detects do-not-repeat violations', async () => {
 		if (sampleLayerIds.length < 2) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -414,7 +414,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 	test('handles vote items in queue', async () => {
 		if (sampleLayerIds.length < 2) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'vote1',
 				source: { type: 'unknown' },
@@ -894,7 +894,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 	test('works with getLayerStatusesForLayerQueue', async () => {
 		if (sampleLayerIds.length < 2) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -963,7 +963,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 	test('works with getLayerItemStatuses and do-not-repeat rules', async () => {
 		if (sampleLayerIds.length < 3) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -1016,7 +1016,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 	test('works with getLayerItemStatuses and different within values', async () => {
 		if (sampleLayerIds.length < 4) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -1066,7 +1066,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 	test('works with getLayerItemStatuses and vote items with do-not-repeat', async () => {
 		if (sampleLayerIds.length < 3) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
@@ -1112,7 +1112,7 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 	test('works with Faction do-not-repeat in getLayerStatusesForLayerQueue', async () => {
 		if (sampleLayerIds.length < 2) return
 
-		const queue: LL.LayerList = [
+		const queue: LL.List = [
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],

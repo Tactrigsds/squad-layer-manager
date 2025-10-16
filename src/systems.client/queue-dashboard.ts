@@ -55,8 +55,8 @@ export type LLState = {
 export type LLStore = LLState & LLActions
 
 export type LLActions = {
-	move: (movedItemId: LL.LayerListItemId, targetCursor: LL.LLItemRelativeCursor, modifiedBy: bigint) => void
-	add: (items: LL.NewLayerListItem[], index?: LL.LLItemIndex | LL.LLItemRelativeCursor) => void
+	move: (movedItemId: LL.ItemId, targetCursor: LL.ItemRelativeCursor, modifiedBy: bigint) => void
+	add: (items: LL.NewLayerListItem[], index?: LL.ItemIndex | LL.ItemRelativeCursor) => void
 	setItem: (id: string, update: React.SetStateAction<LL.LayerListItem>) => void
 	remove: (id: string) => void
 	clear: () => void
@@ -406,7 +406,7 @@ export const createLLItemStore = (
 		},
 		swapFactions: () => {
 			const item = get().item
-			const source: LL.LayerSource | undefined = UsersClient.loggedInUserId
+			const source: LL.Source | undefined = UsersClient.loggedInUserId
 				? { type: 'manual', userId: UsersClient.loggedInUserId }
 				: undefined
 			set({
@@ -422,7 +422,7 @@ export const createLLItemStore = (
 	}
 }
 
-export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.LayerListItemId) {
+export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.ItemId) {
 	const [store, subHandle] = React.useMemo(() => deriveLLItemStore(llStore, itemId), [llStore, itemId])
 	React.useEffect(() => {
 		const sub = subHandle.subscribe()
@@ -445,7 +445,7 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			remove: () => llStore.getState().remove(itemId),
 			swapFactions: () => {
 				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				const source: LL.LayerSource | undefined = UsersClient.loggedInUserId
+				const source: LL.Source | undefined = UsersClient.loggedInUserId
 					? { type: 'manual', userId: UsersClient.loggedInUserId }
 					: undefined
 				llStore.getState().setItem(itemId, LL.swapFactions(item, source))

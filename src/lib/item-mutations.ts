@@ -5,6 +5,8 @@ export type ItemMutations = {
 	edited: Set<string>
 }
 
+export type MutType = keyof ItemMutations
+
 export type ItemMutationState = { [key in keyof ItemMutations]: boolean }
 export type WithMutationId = { id: string }
 

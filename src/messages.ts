@@ -100,7 +100,7 @@ export const WARNS = {
 		},
 		votePending: `Vote is pending`,
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (layerQueue: LL.LayerList, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
+		showNext: (layerQueue: LL.List, parts: USR.UserPart, opts?: { repeat?: number }) => (ctx: C.Player) => {
 			const item = layerQueue[0]
 			let setByDisplay: string
 			switch (item?.source.type) {
@@ -155,7 +155,7 @@ export const WARNS = {
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
-		requestFeedback: (index: LL.LLItemIndex, username: string, item: LL.LayerListItem) => ({
+		requestFeedback: (index: LL.ItemIndex, username: string, item: LL.LayerListItem) => ({
 			msg: [
 				`${username} has requested feedback for`,
 				LL.displayLayerListItem(item, index),

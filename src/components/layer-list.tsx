@@ -230,8 +230,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			<Icons.GripVertical />
 		</Button>
 	)
-	const beforeItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
-	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
+	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
+	const afterItemLinks: LL.ItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
 
 	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
 
@@ -358,8 +358,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		itemStore: itemStore,
 	} satisfies Partial<ItemDropdownProps>
 
-	const beforeItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
-	const afterItemLinks: LL.LLItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
+	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
+	const afterItemLinks: LL.ItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
 	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = React.useState(false)
 
@@ -903,7 +903,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 function QueueItemSeparator(props: {
 	// null means we're before the first item in the list
-	links: LL.LLItemRelativeCursor[]
+	links: LL.ItemRelativeCursor[]
 	isAfterLast?: boolean
 	disabled?: boolean
 }) {

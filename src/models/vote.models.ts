@@ -207,7 +207,7 @@ export function getDefaultChoice(state: { choices: string[] }) {
 
 export function canInitiateVote(
 	itemId: string,
-	queue: LL.LayerList,
+	queue: LL.List,
 	voterType: VoterType,
 	voteState?: Pick<VoteState | EndingVoteState, 'code'>,
 	isEditing?: boolean,

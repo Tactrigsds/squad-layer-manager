@@ -4,7 +4,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
 import * as PartsSys from '@/systems.client/parts.ts'
 
-export default function LayerSourceDisplay(props: { source: LL.LayerSource }) {
+export default function LayerSourceDisplay(props: { source: LL.Source }) {
 	switch (props.source.type) {
 		case 'gameserver':
 			return <Badge variant="outline">Game Server</Badge>

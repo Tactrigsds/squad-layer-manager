@@ -1,5 +1,4 @@
 import * as Schema from '$root/drizzle/schema.ts'
-
 import { acquireReentrant, distinctDeepEquals, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -414,8 +413,8 @@ async function processLayerStatusChange(
 //
 async function syncVoteStateWithQueueStateInPlace(
 	_ctx: CS.Log & C.Locks & C.SquadServer & C.Vote & C.MatchHistory,
-	oldQueue: LL.LayerList,
-	newQueue: LL.LayerList,
+	oldQueue: LL.List,
+	newQueue: LL.List,
 ) {
 	if (Obj.deepEqual(oldQueue, newQueue)) return
 	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
@@ -1266,7 +1265,7 @@ export async function requestFeedback(
 	layerQueueNumber: string | undefined,
 ) {
 	const serverState = await getServerState(ctx)
-	let index: LL.LLItemIndex | undefined
+	let index: LL.ItemIndex | undefined
 	if (serverState.layerQueue.length === 0) return { code: 'err:empty' as const }
 	if (layerQueueNumber === undefined) index = LL.iterLayerList(serverState.layerQueue).next().value
 	else index = LL.resolveLayerQueueItemIndexForNumber(serverState.layerQueue, layerQueueNumber) ?? undefined

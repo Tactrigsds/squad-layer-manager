@@ -9,6 +9,7 @@ import * as USR from '@/models/users.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueSys from '@/server/systems/layer-queue.ts'
 import * as MatchHistorySys from '@/server/systems/match-history.ts'
+import * as SharedLayerListSys from '@/server/systems/shared-layer-list.server.ts'
 import * as SquadRconSys from '@/server/systems/squad-rcon.ts'
 import * as SquadServerSys from '@/server/systems/squad-server.ts'
 import * as Otel from '@opentelemetry/api'
@@ -275,7 +276,11 @@ export type SquadServer = Rcon & {
 	server: SquadServerSys.SquadServer
 } & ServerId
 
-export type ServerSlice = Rcon & SquadServer & UserPresence & Vote & LayerQueue & MatchHistory & { serverSliceSub: Rx.Subscription }
+export type SharedLayerList = SharedLayerListSys.SharedLayerListContext
+
+export type ServerSlice = Rcon & SquadServer & UserPresence & Vote & LayerQueue & MatchHistory & SharedLayerListSys & {
+	serverSliceSub: Rx.Subscription
+}
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

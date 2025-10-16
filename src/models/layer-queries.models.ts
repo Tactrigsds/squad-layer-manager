@@ -322,7 +322,7 @@ export function fromLayerItemId(id: LayerItemId): LayerItem {
 	throw new Error(`Invalid LayerItemId: ${id}`)
 }
 
-export function resolveLayerItemsState(layerList: LL.LayerList, history: MH.MatchDetails[]): LayerItemsState {
+export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDetails[]): LayerItemsState {
 	const layerItems: OrderedLayerItems = []
 	const firstLayerItemParity = history[0]?.ordinal ?? 0
 	for (const entry of history) {

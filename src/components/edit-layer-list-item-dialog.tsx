@@ -94,7 +94,7 @@ function EditLayerListItemDialog(props: InnerEditLayerListItemDialogProps) {
 	function submit() {
 		if (!canSubmit) return
 		props.onOpenChange(false)
-		const source: LL.LayerSource = { type: 'manual', userId: loggedInUser!.discordId }
+		const source: LL.Source = { type: 'manual', userId: loggedInUser!.discordId }
 		props.itemStore.getState().setItem({ ...editedItemStore.getState().item, source })
 	}
 	const layerItemsState = QD.useLayerItemsState()

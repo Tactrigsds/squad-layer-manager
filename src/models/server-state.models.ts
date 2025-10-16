@@ -33,21 +33,23 @@ export const ServerConnectionSchema = z.object({
 })
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
+export const QueueSettingsSchema = z.object({
+	mainPool: PoolConfigurationSchema.default({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
+	// extends the main pool during automated generation
+	applyMainPoolToGenerationPool: z.boolean().default(true),
+	generationPool: PoolConfigurationSchema.default({ filters: [], repeatRules: [] }),
+	preferredLength: z.number().default(12),
+	generatedItemType: z.enum(['layer', 'vote']).default('layer'),
+	preferredNumVoteChoices: z.number().default(3),
+})
+export type QueueSettings = z.infer<typeof QueueSettingsSchema>
+
 export const ServerSettingsSchema = z
 	.object({
 		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
 		// should *always* be omitted on the frontend
 		connections: ServerConnectionSchema.optional(),
-		queue: z
-			.object({
-				mainPool: PoolConfigurationSchema.default({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
-				// extends the main pool during automated generation
-				applyMainPoolToGenerationPool: z.boolean().default(true),
-				generationPool: PoolConfigurationSchema.default({ filters: [], repeatRules: [] }),
-				preferredLength: z.number().default(12),
-				generatedItemType: z.enum(['layer', 'vote']).default('layer'),
-				preferredNumVoteChoices: z.number().default(3),
-			})
+		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.default({}).transform((obj) => Obj.deepClone(obj)),
 	})
@@ -106,7 +108,7 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 
 export const UserModifiableServerStateSchema = z.object({
 	layerQueueSeqId: z.number().int(),
-	layerQueue: LL.LayerListSchema,
+	layerQueue: LL.ListSchema,
 	settings: ServerSettingsSchema,
 })
 

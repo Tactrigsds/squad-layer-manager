@@ -8,7 +8,7 @@ import * as L from './layer'
 export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 
 type MatchDetailsCommon = {
-	layerSource: LL.LayerSource
+	layerSource: LL.Source
 	ordinal: number
 	// parsed layerId may be from NewMatchHistory.rawLayerCommandText if the layerId is not known
 	layerId: L.LayerId
@@ -123,7 +123,7 @@ export type MatchHistoryPart = {
  * Converts a match history entry to current match details and validates the data
  */
 export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory): MatchDetails {
-	let layerSource: LL.LayerSource
+	let layerSource: LL.Source
 
 	switch (entry.setByType) {
 		case 'gameserver':

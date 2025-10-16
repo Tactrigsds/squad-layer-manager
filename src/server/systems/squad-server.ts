@@ -95,7 +95,7 @@ export async function setup() {
 						id: serverConfig.id,
 						settings,
 						displayName: serverConfig.displayName,
-						layerQueue: LL.LayerListSchema.parse([]),
+						layerQueue: LL.ListSchema.parse([]),
 					}))
 				}
 

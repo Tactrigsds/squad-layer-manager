@@ -57,7 +57,7 @@ export default function SelectLayersDialog(props: {
 		if (!canSubmit) return
 		setSubmitted(true)
 		try {
-			const source: LL.LayerSource = { type: 'manual', userId: user!.discordId }
+			const source: LL.Source = { type: 'manual', userId: user!.discordId }
 			if (selectMode === 'layers' || selectedLayers.length === 1) {
 				const items = selectedLayers.map(
 					(layerId) =>
