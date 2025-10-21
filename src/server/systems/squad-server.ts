@@ -94,6 +94,7 @@ export async function setup() {
 					ctx.log.info(`Server ${serverConfig.id} not found, creating new`)
 				} else if (serverParsedRes && !serverParsedRes.success) {
 					ctx.log.warn(`Server ${serverConfig.id} is invalid, recreating`)
+					ctx.log.warn(`errors: %o`, serverParsedRes.error)
 				}
 				serverState = serverParsedRes?.success ? serverParsedRes.data : undefined
 				if (!serverState) {
