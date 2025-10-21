@@ -1,5 +1,6 @@
 FROM node:lts AS base
-LABEL org.opencontainers.image.description="Squad Layer Manager. See https://github.com/Tactrigsds/squad-layer-manager"
+LABEL org.opencontainers.image.description="A squad server admin tool focused on managing upcoming layers"
+LABEL org.opencontainers.image.source="https://github.com/tactrigsds/squad-layer-manager"
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
