@@ -100,6 +100,7 @@ export async function setup() {
 				}
 
 				const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
+				ctx.log.warn('serverRaw %o', serverRaw)
 				const serverParsedRes = serverRaw
 					? SS.ServerStateSchema.safeParse(unsuperjsonify(Schema.servers, serverRaw))
 					: undefined
