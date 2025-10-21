@@ -57,5 +57,5 @@ export const getAvatarUrl = (user: User) => {
 }
 
 export const getUserInitials = (user: User) => {
-	return user.displayName.slice(0, 2).toUpperCase()
+	return user.username?.slice(0, 2).toUpperCase()
 }

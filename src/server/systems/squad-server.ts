@@ -131,9 +131,9 @@ export async function setup() {
 						toUpdate.settings = { ...serverState.settings, connections: serverConfig.connections }
 					}
 					if (!Obj.isEmpty(toUpdate)) {
-						await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, toUpdate)).where(
-							E.eq(Schema.servers.id, serverConfig.id),
-						)
+						// await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, toUpdate)).where(
+						// 	E.eq(Schema.servers.id, serverConfig.id),
+						// )
 						serverState = { ...serverState, ...toUpdate }
 					}
 				}
