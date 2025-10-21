@@ -7,6 +7,7 @@ import * as LL from '@/models/layer-list.models'
 import * as USR from '@/models/users.models'
 import * as PartsSys from '@/systems.client/parts.ts'
 import * as UsersClient from '@/systems.client/users.client'
+import * as Icons from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 
 export default function LayerSourceDisplay(props: { source: LL.Source }) {
@@ -19,35 +20,54 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 	const username = user?.displayName ?? 'Unknown'
 	const avatarUrl = user ? USR.getAvatarUrl(user) : undefined
 
-	const renderAvatar = (displayName: string, initials: string, backgroundColor?: string, avatarSrc?: string) => (
-		<Tooltip delayDuration={0}>
-			<TooltipTrigger>
+	const renderAvatar = (
+		displayName: string,
+		initials: string,
+		backgroundColor?: string,
+		avatar?: string | React.ReactNode,
+		showSetBy = false,
+	) => {
+		let inner: React.ReactNode
+		if (!avatar || typeof avatar === 'string') {
+			inner = (
 				<Avatar
 					style={{ backgroundColor: backgroundColor ?? undefined }}
 					className="h-6 w-6"
 				>
-					{avatarSrc && <AvatarImage src={avatarSrc} />}
+					{avatar && <AvatarImage src={avatar} />}
 					<AvatarFallback className="text-xs">
 						{initials}
 					</AvatarFallback>
 				</Avatar>
-			</TooltipTrigger>
-			<TooltipContent>
-				{displayName}
-			</TooltipContent>
-		</Tooltip>
-	)
+			)
+		} else {
+			inner = avatar
+		}
+
+		return (
+			<Tooltip delayDuration={0}>
+				<TooltipTrigger>
+					{inner}
+				</TooltipTrigger>
+				<TooltipContent>
+					{showSetBy ? 'Set By ' : ''}
+					{displayName}
+					{isMe ? ' (You)' : ''}
+				</TooltipContent>
+			</Tooltip>
+		)
+	}
 
 	switch (props.source.type) {
 		case 'gameserver':
-			return renderAvatar('Game Server', 'GS', '#6366f1')
+			return renderAvatar('Game Server', 'GS', '#6366f1', <Icons.Server />)
 		case 'unknown':
-			return renderAvatar('Unknown', '?', '#64748b')
+			return renderAvatar('Unknown', '?', '#64748b', <Icons.MessageCircleQuestion />)
 		case 'generated':
-			return renderAvatar('Generated', 'G', '#059669')
+			return renderAvatar('Generated', 'G', '#059669', <Icons.Dices />)
 		case 'manual': {
 			if (!user) return null
-			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, USR.getAvatarUrl(user))
+			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, USR.getAvatarUrl(user), true)
 		}
 		default:
 			assertNever(props.source)
