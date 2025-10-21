@@ -151,7 +151,7 @@ function hasSpecialUnicodeChars(str: string): boolean {
 }
 
 function selectBestDisplayName(options: (string | null | undefined)[]): string {
-	const validOptions = options.filter((opt): opt is string => Boolean(opt))
+	const validOptions = options.filter((opt): opt is string => Boolean(opt?.trim()))
 	return validOptions[0]
 
 	// First, try to find an option without special unicode characters

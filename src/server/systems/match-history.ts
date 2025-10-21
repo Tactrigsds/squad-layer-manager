@@ -21,6 +21,7 @@ import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { CONFIG } from '../config'
 import { procedure, router } from '../trpc.server'
+import * as UsersClient from './users'
 
 export const MAX_RECENT_MATCHES = 100
 const tracer = Otel.trace.getTracer('match-history')
@@ -87,7 +88,7 @@ export const loadState = C.spanOp(
 				Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
 			}
 			if (row.users) {
-				const user = row.users
+				const user = await UsersClient.buildUser(ctx, row.users)
 				Arr.upsertOn(state.parts.users, user, 'discordId')
 			}
 		}
