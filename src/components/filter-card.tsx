@@ -61,16 +61,13 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const store = props.store
 
 	DndKit.useDragEnd(React.useCallback(event => {
-		console.log(event)
 		if (!event.over) return
 		if (event.active.type !== 'filter-node') return
 		const state = store.getState()
 		const sourcePath = state.tree.paths.get(event.active.id)!
 		const slot = event.over.slots.find(s => s.dragItem.type === 'filter-node')
-		console.log({ slot })
 		if (!slot) return
 		const slotPath = state.tree.paths.get(slot.dragItem.id.toString())!
-		console.log({ slotPath })
 
 		let targetPath: Sparse.NodePath
 

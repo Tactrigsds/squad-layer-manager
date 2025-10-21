@@ -218,14 +218,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 			})
 			: undefined, [validFilter])
 
-	React.useEffect(() => {
-		console.log({
-			validFilter: validFilter,
-			modifiedFilter: modifiedFilter,
-			loggedInUserRole: loggedInUserRole,
-		})
-	}, [validFilter, modifiedFilter, loggedInUserRole])
-
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
 			{([canSubmit, isDirty]) => {

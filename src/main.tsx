@@ -1,5 +1,7 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
+import * as FeatureFlags from '@/systems.client/feature-flags.ts'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as VotesClient from '@/systems.client/votes.client.ts'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
@@ -102,6 +104,7 @@ UsersClient.setup()
 SharedLayerListClient.setup()
 QueueDashboard.setup()
 VotesClient.setup()
+ServerSettingsClient.setup()
 
 const route = AR.resolveRoute(window.location.pathname)
 if (route && route?.id !== '/layers/:id') {
@@ -156,3 +159,16 @@ createRoot(document.getElementById('root')!).render(
 		</Providers>
 	</React.StrictMode>,
 )
+
+const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')
+
+if (loadConsoleOnStartup) {
+	import('@/systems.client/console.client.ts')
+} else {
+	const unsub = FeatureFlags.Store.subscribe((state) => {
+		if (state.flags.loadConsole) {
+			import('@/systems.client/console.client.ts')
+			unsub()
+		}
+	})
+}

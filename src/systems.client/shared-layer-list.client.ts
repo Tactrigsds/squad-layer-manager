@@ -62,7 +62,7 @@ export type Store = {
 	userPresence: Map<bigint, SLL.ClientPresence>
 }
 
-const [useUpdate, update$] = ReactRx.bind<SLL.Update>(
+const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 	TrpcHelpers.fromTrpcSub(undefined, trpc.sharedLayerList.watchUpdates.subscribe),
 )
 
@@ -100,7 +100,6 @@ function createStore() {
 			isModified: false,
 
 			async handleServerUpdate(update) {
-				console.log('handling server update', update)
 				switch (update.code) {
 					case 'init':
 						this.pushPresenceAction(PresenceActions.editSessionChanged)
@@ -144,7 +143,7 @@ function createStore() {
 					case 'update-presence': {
 						set(state =>
 							Im.produce(state, draft => {
-								SLL.updateClientPresence(update.wsClientId, update.userId, draft.presence, update.changes)
+								SLL.updateClientPresence(update.wsClientId, UsersClient.loggedInUserId!, draft.presence, update.changes)
 							})
 						)
 						break
@@ -199,10 +198,11 @@ function createStore() {
 			},
 
 			async dispatch(newOp) {
-				const baseProps = { opId: createId(6), userId: UsersClient.loggedInUserId! }
+				const userId = (await UsersClient.fetchLoggedInUser()).discordId
+				const baseProps = { opId: createId(6), userId }
 
 				let op: SLL.Operation
-				const source: LL.Source = { type: 'manual', userId: UsersClient.loggedInUserId! }
+				const source: LL.Source = { type: 'manual', userId }
 				switch (newOp.op) {
 					case 'add': {
 						const items = newOp.items.map(item => LL.createLayerListItem(item, source))
@@ -243,22 +243,23 @@ function createStore() {
 			async pushPresenceAction(action) {
 				const config = await ConfigClient.fetchConfig()
 				const state = get()
-				const hasEdits = SLL.checkUserHasEdits(state.session, UsersClient.loggedInUserId!)
+				const userId = (await UsersClient.fetchLoggedInUser()).discordId
+				const hasEdits = SLL.checkUserHasEdits(state.session, userId!)
 				const update = action({ hasEdits, prev: state.presence.get(config.wsClientId) })
 				await this.handleClientPresenceUpdate(update)
 			},
 
 			async handleClientPresenceUpdate(update) {
-				console.log('handleClientPresenceUpdate', update)
 				update = Obj.trimUndefined(update)
 				const config = await ConfigClient.fetchConfig()
+				const userId = (await UsersClient.fetchLoggedInUser()).discordId
 				let presenceUpdated = false
 				delete (update as any).userId
 				set(state =>
 					Im.produce(state, draft => {
 						presenceUpdated = SLL.updateClientPresence(
 							config.wsClientId,
-							UsersClient.loggedInUserId!,
+							userId,
 							draft.presence,
 							update,
 						)
@@ -267,7 +268,6 @@ function createStore() {
 				if (presenceUpdated) {
 					const res = await processUpdate({
 						code: 'update-presence',
-						userId: UsersClient.loggedInUserId!,
 						wsClientId: config.wsClientId,
 						changes: update,
 					})
@@ -288,7 +288,7 @@ function createStore() {
 				set({ saving: true })
 				try {
 					const commitResponse = Rx.firstValueFrom(
-						update$.pipe(Rx.filter(update => update.code === 'commit-completed' || update.code === 'commit-rejected')),
+						serverUpdate$.pipe(Rx.filter(update => update.code === 'commit-completed' || update.code === 'commit-rejected')),
 					)
 					await processUpdate({
 						code: 'commit',
@@ -325,15 +325,10 @@ function createStore() {
 				store.setState({ userPresence: SLL.resolveUserPresence(state.presence) })
 			}
 		}))
-		subs.push(store.subscribe(async (state, prev) => {
-			if (state.presence === prev.presence) return
-			const config = await ConfigClient.fetchConfig()
-			const clientPresence = state.presence.get(config.wsClientId)
-			const prevClientPresence = prev.presence.get(config.wsClientId)
-			if (!Obj.deepEqual(clientPresence, prevClientPresence)) {
-				console.log('client presence changed', clientPresence)
-			}
-		}))
+
+		serverUpdate$.subscribe(update => {
+			Store.getState().handleServerUpdate(update)
+		})
 	})
 
 	return [store, subHandle] as const
@@ -381,9 +376,6 @@ export function useClientPresence() {
 
 export async function setup() {
 	storeSubHandle.subscribe()
-	update$.subscribe(update => {
-		Store.getState().handleServerUpdate(update)
-	})
 
 	const onQueuePage$ = AppRoutesClient.route$
 		.pipe(Rx.map(route => route?.id === '/servers/:id'))

@@ -149,35 +149,29 @@ export const ServerStateSchema = z.object({
 export type ServerState = z.infer<typeof ServerStateSchema>
 
 export const SettingsPathSchema = z.array(z.union([z.string(), z.number()]))
+	.refine(path => {
+		// does not check the last key because it could be undefined
+		return checkPublicSettingsPath(path)
+	}, { message: 'Path must resolve to a valid setting' })
+
 export type SettingsPath = (string | number)[]
 
 export const SettingMutationSchema = z.object({
 	path: SettingsPathSchema,
 	value: z.any(),
 })
-	.refine(mut => !!derefSettingsSchema(mut.path), { message: 'Path must resolve to a valid setting' })
-	.refine(mut => {
-		const schema = derefSettingsSchema(mut.path)
-		if (!schema) return false
-		return schema.safeParse(mut.value).success
-	}, { message: `Invalid value for setting` })
+
 export type SettingMutation = z.infer<typeof SettingMutationSchema>
 
-export function idk() {
-}
-
-export function derefSettingsSchema(path: SettingsPath): z.ZodAny | null {
-	let current: any = ServerSettingsSchema
-	for (const key of path) {
-		if (typeof key === 'number') {
-			if (!('element' in current)) return null
-			current = current.element as z.ZodAny
-		} else {
-			current = (current as any).shape[key]
-			if (!current) return null
-		}
+export function checkPublicSettingsPath(path: SettingsPath) {
+	const defaultSettings = PublicServerSettingsSchema.parse({})
+	let current = defaultSettings as any
+	// we can't validate the last key because it could be undefined
+	for (const key of path.slice(0, -1)) {
+		current = (current as any)[key]
+		if (!current) return false
 	}
-	return current as unknown as z.ZodAny
+	return true
 }
 
 export function derefSettingsValue<T extends PublicServerSettings>(settings: T, path: SettingsPath) {
@@ -189,21 +183,28 @@ export function derefSettingsValue<T extends PublicServerSettings>(settings: T, 
 	return current as unknown
 }
 
-function setPathValue<T extends PublicServerSettings>(settings: T, path: SettingsPath, value: any) {
+export function applySettingMutation<T extends PublicServerSettings>(settings: T, path: SettingsPath, value: any): void
+export function applySettingMutation<T extends PublicServerSettings>(settings: T, mutation: SettingMutation): void
+export function applySettingMutation<T extends PublicServerSettings>(
+	settings: T,
+	pathOrMutation: SettingsPath | SettingMutation,
+	value?: any,
+) {
+	const path = Array.isArray(pathOrMutation) ? pathOrMutation : pathOrMutation.path
+	const resolvedValue = Array.isArray(pathOrMutation) ? value : pathOrMutation.value
+
 	let current = settings as any
 	for (let i = 0; i < path.length - 1; i++) {
 		const key = path[i]
 		if (!current[key]) current[key] = {}
 		current = current[key]
 	}
-	current[path[path.length - 1]] = value
+	current[path[path.length - 1]] = resolvedValue
 }
-
 export function applySettingMutations<T extends PublicServerSettings>(settings: T, mutations: SettingMutation[]) {
 	for (const mutation of mutations) {
-		setPathValue(settings, mutation.path, mutation.value)
+		applySettingMutation(settings, mutation.path, mutation.value)
 	}
-	return settings
 }
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {

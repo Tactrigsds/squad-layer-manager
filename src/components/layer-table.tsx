@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
-import { useDebounced } from '@/hooks/use-debounce'
+import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
@@ -753,24 +753,18 @@ function SetRawLayerDialog(props: {
 	ref?: React.ForwardedRef<SetRawDialogHandle>
 }) {
 	const inputRef = React.useRef<HTMLInputElement>(null)
-	const [validLayer, setValidLayer] = React.useState<L.UnvalidatedLayer | null>(null)
 	const [validLayerDebounced, setValidLayerDebounced] = React.useState<L.UnvalidatedLayer | null>(null)
+	const [validLayer, setValidLayer] = useDebouncedState<L.UnvalidatedLayer | null>(null, { onChange: setValidLayerDebounced, delay: 400 })
 	const [multiSetLayerDialogOpen, setMultiSetLayerDialogOpen] = React.useState<boolean>(false)
 	const [layerFound, setLayerFound] = React.useState<boolean>(false)
-	const validLayerDebouncer = useDebounced({
-		defaultValue: () => null as null | L.UnvalidatedLayer,
-		onChange: (v) => setValidLayerDebounced(v),
-		delay: 400,
-	})
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
 	const setInputText = React.useCallback((value: string) => {
 		value = value.trim()
 		const layerRes = L.parseRawLayerText(value)
-		validLayerDebouncer.setValue(layerRes)
 		setValidLayer(layerRes)
-	}, [validLayerDebouncer])
+	}, [setValidLayer])
 
 	React.useImperativeHandle(props.ref, () => ({
 		get isFocused() {

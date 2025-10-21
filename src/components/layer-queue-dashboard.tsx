@@ -1,18 +1,20 @@
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge.tsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { useDebounced, useDebouncedState } from '@/hooks/use-debounce.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
-import { hasMutations } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
+import { validateIfDev } from '@/lib/zod.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
@@ -28,8 +30,6 @@ import * as ServerSettingsClient from '@/systems.client/server-settings.client.t
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { trpc } from '@/trpc.client.ts'
-import { useMutation } from '@tanstack/react-query'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -305,9 +305,9 @@ function PoolConfigurationPopover(
 		_setOpen(open)
 	}
 
-	const [applyMainPool, settingsChanged] = Zus.useStore(
+	const [applyMainPool, settingsChanged, saving] = Zus.useStore(
 		ServerSettingsClient.Store,
-		useShallow(s => [s.saved.queue.applyMainPoolToGenerationPool, s.modified]),
+		useShallow(s => [s.edited.queue.applyMainPoolToGenerationPool, s.modified, s.saving]),
 	)
 	const applymainPoolSwitchId = React.useId()
 
@@ -355,13 +355,15 @@ function PoolConfigurationPopover(
 					poolId="generationPool"
 				/>
 				<Button
-					disabled={!settingsChanged}
-					onClick={() => {
-						saveRules()
+					disabled={!settingsChanged || saving}
+					onClick={async () => {
+						await ServerSettingsClient.Store.getState().save()
 						_setOpen(false)
 					}}
 				>
+					<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
 					Save Changes
+					<Spinner className="invisible" />
 				</Button>
 			</PopoverContent>
 		</Popover>
@@ -449,151 +451,207 @@ function PoolFiltersConfigurationPanel({
 	)
 }
 
+function RepeatRuleRow(props: {
+	index: number
+	poolId: 'mainPool' | 'generationPool'
+}) {
+	const { index, poolId } = props
+
+	const paths = React.useMemo(() => {
+		const rules = validateIfDev(SS.SettingsPathSchema, ['queue', poolId, 'repeatRules'])
+		const rule = validateIfDev(SS.SettingsPathSchema, [...rules, index])
+		return {
+			rules,
+			rule,
+			label: validateIfDev(SS.SettingsPathSchema, [...rule, 'label']),
+			field: validateIfDev(SS.SettingsPathSchema, [...rule, 'field']),
+			within: validateIfDev(SS.SettingsPathSchema, [...rule, 'within']),
+			targetValues: validateIfDev(SS.SettingsPathSchema, [...rule, 'targetValues']),
+		}
+	}, [poolId, index])
+
+	const selectRule = React.useCallback(
+		(s: ServerSettingsClient.EditSettingsStore) => {
+			return (SS.derefSettingsValue(s.edited, paths.rules) as LQY.RepeatRule[])[index]
+		},
+		[paths.rules, index],
+	)
+
+	const user = useLoggedInUser()
+	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const rule = Zus.useStore(ServerSettingsClient.Store, selectRule)
+
+	const writeLabel = React.useCallback((label: string) => {
+		const state = ServerSettingsClient.Store.getState()
+		state.set({ path: paths.label, value: label })
+	}, [paths.label])
+
+	const setLabel = useDebounced({
+		defaultValue: () => rule.label ?? rule.field,
+		onChange: writeLabel,
+		delay: 250,
+		immediate: false,
+	})
+
+	const setField = (field: LQY.RepeatRuleField) => {
+		const state = ServerSettingsClient.Store.getState()
+		state.set({ path: paths.field, value: field })
+		state.set({ path: paths.label, value: field })
+	}
+
+	const writeWithin = React.useCallback((within: number) => {
+		const state = ServerSettingsClient.Store.getState()
+		state.set({ path: paths.within, value: within })
+	}, [paths.within])
+
+	const setWithin = useDebounced({
+		defaultValue: () => rule.within ?? 1,
+		onChange: writeWithin,
+		delay: 250,
+		immediate: false,
+	})
+
+	const setTargetValues = (update: React.SetStateAction<string[]>) => {
+		const state = ServerSettingsClient.Store.getState()
+		const originalValues = SS.derefSettingsValue(state.edited, paths.targetValues) as string[] | undefined
+		const targetValues = typeof update === 'function' ? update(originalValues ?? []) : update
+		state.set({ path: paths.targetValues, value: targetValues.length === 0 ? undefined : targetValues })
+	}
+
+	const deleteRule = () => {
+		const state = ServerSettingsClient.Store.getState()
+		const rules = SS.derefSettingsValue(state.edited, paths.rules) as LQY.RepeatRule[]
+		const updated = Im.produce(rules, (draft) => {
+			draft.splice(index, 1)
+		})
+		state.set({ path: paths.rules, value: updated })
+	}
+
+	let targetValueOptions: string[]
+	switch (rule.field) {
+		case 'Map':
+			targetValueOptions = L.StaticLayerComponents.maps
+			break
+		case 'Layer':
+			targetValueOptions = L.StaticLayerComponents.layers
+			break
+		case 'Size':
+			targetValueOptions = L.StaticLayerComponents.size
+			break
+		case 'Gamemode':
+			targetValueOptions = L.StaticLayerComponents.gamemodes
+			break
+		case 'Faction':
+			targetValueOptions = L.StaticLayerComponents.factions
+			break
+		case 'Alliance':
+			targetValueOptions = L.StaticLayerComponents.alliances
+			break
+		default:
+			assertNever(rule.field)
+	}
+
+	return (
+		<div
+			key={index + '_' + rule.field}
+			className="flex space-x-1 items-center"
+		>
+			<Input
+				placeholder="Label"
+				defaultValue={rule.label ?? rule.field}
+				containerClassName="grow-0"
+				disabled={!canWriteSettings}
+				onChange={(e) => {
+					setLabel(e.target.value)
+				}}
+			/>
+			<ComboBox
+				title={'Rule'}
+				options={LQY.RepeatRuleFieldSchema.options}
+				value={rule.field}
+				allowEmpty={false}
+				onSelect={(value) => {
+					if (!value) return
+					setField(value as LQY.RepeatRuleField)
+				}}
+				disabled={!canWriteSettings}
+			/>
+			<Input
+				type="number"
+				defaultValue={rule.within}
+				containerClassName="w-[250px]"
+				disabled={!canWriteSettings}
+				onChange={(e) => {
+					setWithin(Math.floor(Number(e.target.value)))
+				}}
+			/>
+			<ComboBoxMulti
+				className="flex-grow"
+				title="Target"
+				selectOnClose={true}
+				options={targetValueOptions}
+				disabled={!canWriteSettings}
+				values={rule.targetValues ?? []}
+				onSelect={(updated) => {
+					setTargetValues(updated)
+				}}
+			/>
+			<Button
+				size="icon"
+				variant="ghost"
+				onClick={deleteRule}
+				disabled={!canWriteSettings}
+			>
+				<Icons.Minus />
+			</Button>
+		</div>
+	)
+}
+
 function PoolRepeatRulesConfigurationPanel(props: {
 	className?: string
 	poolId: 'mainPool' | 'generationPool'
 }) {
-	const rulesPath = React.useMemo(() => ['queue', props.poolId, 'repeatRules'], [props.poolId])
-	const selectRules = React.useCallback(
-		(s: ServerSettingsClient.EditSettingsStore) => SS.derefSettingsValue(s.edited, rulesPath) as LQY.RepeatRule[],
+	const rulesPath = React.useMemo(() => SS.SettingsPathSchema.parse(['queue', props.poolId, 'repeatRules']), [props.poolId])
+	const selectRulesLength = React.useCallback(
+		(s: ServerSettingsClient.EditSettingsStore) => (SS.derefSettingsValue(s.edited, rulesPath) as LQY.RepeatRule[]).length,
 		[rulesPath],
 	)
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
-	const rules = Zus.useStore(ServerSettingsClient.Store, selectRules)
+	const rulesLength = Zus.useStore(ServerSettingsClient.Store, selectRulesLength)
 
-	const setRules = React.useCallback((update: React.SetStateAction<LQY.RepeatRule[]>) => {
+	const addRule = React.useCallback(() => {
 		const state = ServerSettingsClient.Store.getState()
-		const updated = typeof update === 'function' ? update(selectRules(state)) : update
+		const rules = SS.derefSettingsValue(state.edited, rulesPath) as LQY.RepeatRule[]
+		const updated = Im.produce(rules, (draft) => {
+			draft.push({
+				field: 'Map',
+				within: 0,
+				label: 'Map',
+			})
+		})
 		state.set({ path: rulesPath, value: updated })
-	}, [rulesPath, selectRules])
+	}, [rulesPath])
 
 	return (
 		<div className={cn('flex flex-col space-y-1 p-1 rounded', props.className)}>
 			<div>
 				<h4 className={Typography.H4}>Repeat Rules</h4>
 			</div>
-			{rules.map((rule, index) => {
-				let targetValueOptions: string[]
-				switch (rule.field) {
-					case 'Map':
-						targetValueOptions = L.StaticLayerComponents.maps
-						break
-					case 'Layer':
-						targetValueOptions = L.StaticLayerComponents.layers
-						break
-					case 'Size':
-						targetValueOptions = L.StaticLayerComponents.size
-						break
-					case 'Gamemode':
-						targetValueOptions = L.StaticLayerComponents.gamemodes
-						break
-					case 'Faction':
-						targetValueOptions = L.StaticLayerComponents.factions
-						break
-					case 'Alliance':
-						targetValueOptions = L.StaticLayerComponents.alliances
-						break
-					default:
-						assertNever(rule.field)
-				}
-				return (
-					<div
-						key={index + '_' + rule.field}
-						className="flex space-x-1 items-center"
-					>
-						<Input
-							placeholder="Label"
-							defaultValue={rule.label ?? rule.field}
-							containerClassName="grow-0"
-							disabled={!canWriteSettings}
-							onChange={(e) => {
-								setRules(
-									Im.produce((draft) => {
-										draft[index].label = e.target.value
-									}),
-								)
-							}}
-						/>
-						<ComboBox
-							title={'Rule'}
-							options={LQY.RepeatRuleFieldSchema.options}
-							value={rule.field}
-							allowEmpty={false}
-							onSelect={(value) => {
-								if (!value) return
-								setRules(
-									Im.produce((draft) => {
-										draft[index].field = value as LQY.RepeatRuleField
-										draft[index].label = value
-										delete draft[index].targetValues
-									}),
-								)
-							}}
-							disabled={!canWriteSettings}
-						/>
-						<Input
-							type="number"
-							defaultValue={rule.within}
-							containerClassName="w-[250px]"
-							disabled={!canWriteSettings}
-							onChange={(e) => {
-								setRules(
-									Im.produce((draft) => {
-										draft[index].within = Math.floor(Number(e.target.value))
-									}),
-								)
-							}}
-						/>
-						<ComboBoxMulti
-							className="flex-grow"
-							title="Target"
-							options={targetValueOptions}
-							disabled={!canWriteSettings}
-							values={rule.targetValues ?? []}
-							onSelect={(updated) => {
-								setRules(
-									Im.produce((draft) => {
-										draft[index].targetValues = typeof updated === 'function'
-											? updated(draft[index].targetValues ?? [])
-											: updated
-									}),
-								)
-							}}
-						/>
-						<Button
-							size="icon"
-							variant="ghost"
-							onClick={() => {
-								setRules(
-									Im.produce((draft) => {
-										draft.splice(index, 1)
-									}),
-								)
-							}}
-							disabled={!canWriteSettings}
-						>
-							<Icons.Minus />
-						</Button>
-					</div>
-				)
-			})}
+			{Array.from({ length: rulesLength }, (_, index) => (
+				<RepeatRuleRow
+					key={index}
+					index={index}
+					poolId={props.poolId}
+				/>
+			))}
 			<Button
 				size="icon"
 				variant="ghost"
 				disabled={!canWriteSettings}
-				onClick={() => {
-					setRules(
-						Im.produce((draft) => {
-							draft.push({
-								field: 'Map',
-								within: 0,
-								label: 'Map',
-							})
-						}),
-					)
-				}}
+				onClick={addRule}
 			>
 				<Icons.Plus />
 			</Button>

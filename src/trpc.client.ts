@@ -18,6 +18,7 @@ const wsUrl = `${wsHostname}${AR.route('/trpc')}`
 const [_trpcConnected$, setTrpcConnected] = createSignal<boolean>()
 export const [useTrpcConnected, trpcConnected$] = ReactRx.bind(_trpcConnected$, false)
 trpcConnected$.subscribe()
+let previousConnections = false
 let attempt = 0
 const wsClient = createWSClient({
 	keepAlive: {
@@ -58,7 +59,8 @@ const wsClient = createWSClient({
 	onOpen: async () => {
 		setTrpcConnected(true)
 		console.log('WebSocket connection opened')
-		ConfigClient.invalidateConfig()
+		if (previousConnections) ConfigClient.invalidateConfig()
+		previousConnections = true
 		const config = await ConfigClient.fetchConfig()
 		attempt = 0
 

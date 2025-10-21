@@ -1,13 +1,15 @@
 import * as Obj from '@/lib/object'
 import * as TrpcHelpers from '@/lib/trpc-helpers'
+import { validateIfDev } from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
+import * as RbacClient from '@/systems.client/rbac.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
+import * as Im from 'immer'
 import * as Zus from 'zustand'
-import { storeSubHandle } from './shared-layer-list.client'
 
-const [_useSettings, serverSettings$] = ReactRx.bind(TrpcHelpers.fromTrpcSub(undefined, trpc.serverSettings.watchSettings.subscribe))
+const [_useServerSettings, serverSettings$] = ReactRx.bind(TrpcHelpers.fromTrpcSub(undefined, trpc.serverSettings.watchSettings.subscribe))
 
 export type EditSettingsStore = {
 	ops: SS.SettingMutation[]
@@ -23,21 +25,7 @@ export type EditSettingsStore = {
 export const [Store, subHandle] = createStore()
 
 function createStore() {
-	let subHandle!: ZusUtils.SubHandle
 	const store = Zus.createStore<EditSettingsStore>((set, get, store) => {
-		subHandle = ZusUtils.createSubHandle((subs) => {
-			subs.push(serverSettings$.subscribe((settings) => {
-				const updated = Obj.structuralMerge(get().saved, settings)
-				set({ saved: updated, edited: updated, modified: !Obj.deepEqual(settings, updated) })
-			}))
-
-			subs.push(store.subscribe(state => {
-				const modified = !Obj.deepEqual(state.edited, state.saved)
-				if (modified !== state.modified) {
-					set({ modified })
-				}
-			}))
-		})
 		const defaultSettings = SS.PublicServerSettingsSchema.parse({})
 		return {
 			ops: [],
@@ -48,31 +36,50 @@ function createStore() {
 			edited: defaultSettings,
 
 			set(mut) {
-				const state = get()
-				if (!state.saved) return
-				const edited = Obj.deepClone(state.edited ?? state.saved)
-				SS.applySettingMutations(edited, [mut])
-				set({ ops: [...state.ops, mut], edited })
+				validateIfDev(SS.SettingMutationSchema, mut)
+				set(state =>
+					Im.produce(state, draft => {
+						SS.applySettingMutation(draft.edited, mut)
+						draft.ops.push(mut)
+					})
+				)
 			},
 
 			async save() {
 				try {
 					set({ saving: true })
-					await trpc.serverSettings.updateSettings.mutate(get().ops)
+					const res = await trpc.serverSettings.updateSettings.mutate(get().ops)
+					if (res?.code === 'err:permission-denied') {
+						RbacClient.handlePermissionDenied(res)
+					}
 				} finally {
 					set({ saving: false })
 				}
 			},
 
 			async reset() {
-				set(state => ({ edited: state.saved }))
+				set(state => ({ edited: state.saved, ops: [] }))
 			},
 		}
+	})
+
+	const subHandle = ZusUtils.createSubHandle((subs) => {
+		subs.push(serverSettings$.subscribe((settings) => {
+			const updated = Obj.structuralMerge(store.getState().saved, settings)
+			store.setState({ saved: updated, edited: updated, ops: [] })
+		}))
+
+		subs.push(store.subscribe(state => {
+			const modified = !Obj.deepEqual(state.edited, state.saved)
+			if (modified !== state.modified) {
+				store.setState({ modified })
+			}
+		}))
 	})
 
 	return [store, subHandle] as const
 }
 
-export function settings() {
-	storeSubHandle.subscribe()
+export function setup() {
+	subHandle.subscribe()
 }

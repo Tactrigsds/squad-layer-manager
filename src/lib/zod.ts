@@ -58,3 +58,10 @@ export const NormedUrl = z.string().url().transform((url) => url.replace(/\/$/, 
 export const BasicStrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
 })
+
+// browser only
+export function validateIfDev<T extends z.ZodTypeAny>(schema: T, value: any) {
+	const res = schema.safeParse(value)
+	if (!res.success) console.error(res.error)
+	return value as z.infer<T>
+}

@@ -7,6 +7,7 @@ const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
 	trpcLogs: false,
 	displayWsClientId: false,
+	loadConsole: false,
 }
 
 interface FeatureFlagsState {
@@ -14,7 +15,7 @@ interface FeatureFlagsState {
 	setFeatureFlag: (flag: keyof typeof FEATURE_FLAGS, value: boolean) => void
 }
 
-const featureFlagsStore = Zus.create<FeatureFlagsState>()(
+export const Store = Zus.create<FeatureFlagsState>()(
 	persist(
 		(set) => ({
 			flags: FEATURE_FLAGS,
@@ -34,16 +35,16 @@ const featureFlagsStore = Zus.create<FeatureFlagsState>()(
 )
 
 export function get(key: keyof typeof FEATURE_FLAGS) {
-	return featureFlagsStore.getState().flags[key]
+	return Store.getState().flags[key]
 }
 
 // @ts-expect-error expose to console
 window.featureFlags = {
 	list() {
-		return featureFlagsStore.getState().flags
+		return Store.getState().flags
 	},
 	set(flag: string, value: boolean) {
-		const store = featureFlagsStore.getState()
+		const store = Store.getState()
 		if (isNullOrUndef(FEATURE_FLAGS[flag as keyof typeof FEATURE_FLAGS])) {
 			return `Feature flag ${flag} does not exist`
 		}
@@ -53,7 +54,7 @@ window.featureFlags = {
 }
 
 export function useFeatureFlags() {
-	return featureFlagsStore((state) => state.flags)
+	return Store((state) => state.flags)
 }
 
-export { featureFlagsStore }
+export { Store as featureFlagsStore }

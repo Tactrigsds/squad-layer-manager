@@ -148,11 +148,17 @@ export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
 
 	// for changing pool configuration
 	z.object({ code: z.literal('changing-settings') }),
+	z.object({ code: z.literal('viewing-settings') }),
 ])
 
-export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'adding-item'])
+export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'moving-item'])
 export type ItemOwnedActivityCode = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 export type ClientPresenceActivity = z.infer<typeof UserPresenceActivitySchema>
+
+export type ItemOwnedActivity = Extract<ClientPresenceActivity, { code: ItemOwnedActivityCode }>
+export function isItemOwnedActivity(activity: ClientPresenceActivity): activity is ItemOwnedActivity {
+	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.code)
+}
 
 export function opToActivity(op: Operation): ClientPresenceActivity | undefined {
 	switch (op.op) {
@@ -358,7 +364,6 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('update-presence'),
 		wsClientId: z.string(),
-		userId: z.bigint(),
 		changes: ClientPresenceSchema.partial().nullable(),
 		fromServer: z.boolean().optional(),
 	}),
@@ -429,11 +434,6 @@ export function resolveUserPresence(state: PresenceState) {
 
 export type ItemLocks = Map<LL.ItemId, string>
 export type LockMutation = [LL.ItemId, string]
-
-export type ItemOwnedActivity = Exclude<ClientPresenceActivity, { code: 'adding-item' | 'changing-settings' }>
-export function isItemOwnedActivity(activity: ClientPresenceActivity): activity is ItemOwnedActivity {
-	return activity.code !== 'adding-item' && activity.code !== 'changing-settings' && activity.code !==
-}
 
 export function itemsToLockForActivity(list: LL.List, activity: ClientPresenceActivity): LL.ItemId[] {
 	if (!isItemOwnedActivity(activity)) return []
@@ -511,7 +511,7 @@ export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['c
 			return 'Adding an item'
 		case 'moving-item':
 			return `Moving ${name}`
-			case 'viewing-settings':
+		case 'viewing-settings':
 			return 'Viewing Settings'
 		case 'changing-settings':
 			return 'Changing Settings'
@@ -530,6 +530,10 @@ export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceAct
 			return `${displayName} is adding`
 		case 'moving-item':
 			return `${displayName} is moving`
+		case 'changing-settings':
+			return `${displayName} is changing settings`
+		case 'viewing-settings':
+			return `${displayName} is viewing settings`
 		default:
 			assertNever(activityCode)
 	}

@@ -1,5 +1,4 @@
 import * as Obj from '@/lib/object'
-
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
 import { StateObservable } from '@rx-state/core'
@@ -82,8 +81,7 @@ export function createSubHandle(subscribeInner: (onUnsubscribeArr: InnerSub[]) =
 		subCount: 0,
 		subscribe() {
 			this.subCount++
-			if (this.innerSubs) return
-			this.innerSubs = []
+			this.innerSubs ??= []
 			subscribeInner(this.innerSubs)
 		},
 		unsubscribe() {

@@ -1,4 +1,4 @@
-import { acquireReentrant, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
@@ -95,11 +95,6 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 			}),
 		).subscribe(),
 	)
-
-	ctx.serverSliceSub.add(ctx.sharedList.update$.subscribe(update => {
-		const ctx = getBaseCtx()
-		ctx.log.info('--- DISPATCHED UPDATE %o ---', { update })
-	}))
 }
 
 export const router = TrpcServer.router({
@@ -231,7 +226,6 @@ function handlePresenceUpdate(
 	ctx: C.SharedLayerList & CS.Log & C.User & C.WSSession & C.Locks,
 	update: Extract<SLL.ClientUpdate, { code: 'update-presence' }>,
 ) {
-	ctx.log.info('RECEIVED UPDATE %o', update)
 	if (update.wsClientId !== ctx.wsClientId) {
 		ctx.log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
 		return
@@ -239,7 +233,7 @@ function handlePresenceUpdate(
 	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.currentActivity
 	const lockMutations: Map<LL.ItemId, string | null> = new Map()
 	if (
-		update.changes === null || update.changes.currentActivity === null
+		prevActivity && (update.changes === null || update.changes.currentActivity === null)
 	) {
 		const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
 		for (const itemId of itemIds) {
@@ -312,7 +306,6 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & 
 	void sendUpdate(ctx, {
 		code: 'update-presence',
 		wsClientId: ctx.wsClientId,
-		userId: ctx.user.discordId,
 		changes: action(actionInput),
 		fromServer: true,
 	})

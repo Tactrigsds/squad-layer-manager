@@ -184,8 +184,6 @@ export function selectBaseQueryConstraints(
 }
 
 export const LQStore = SLLClient.Store
-// @ts-expect-error expose for debugging
-window.LQStore = LQStore
 
 export function useToggleSquadServerUpdates() {
 	const saveChangesMutation = useMutation({

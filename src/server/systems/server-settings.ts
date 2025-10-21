@@ -45,11 +45,17 @@ export const router = TrpcServer.router({
 			.pipe(
 				Rx.switchMap(async function*(ctx) {
 					const state = await LayerQueue.getServerState(ctx)
-					let settings = SS.getPublicSettings(state.settings)
+					const settings = SS.getPublicSettings(state.settings)
 					yield settings
-					for await (const [update] of toAsyncGenerator(ctx.layerQueue.update$)) {
-						if (Obj.deepEqual(settings, update.state.settings)) continue
-						yield settings = SS.getPublicSettings(update.state.settings)
+
+					const settingsDelta$ = ctx.layerQueue.update$.pipe(
+						Rx.map(([update]) => SS.getPublicSettings(update.state.settings)),
+						Rx.startWith(settings),
+						Rx.pairwise(),
+					)
+					for await (const [prevSettings, settings] of toAsyncGenerator(settingsDelta$)) {
+						if (Obj.deepEqual(settings, prevSettings)) continue
+						yield settings
 					}
 				}),
 				withAbortSignal(signal!),
@@ -70,6 +76,11 @@ export const router = TrpcServer.router({
 		await DB.runTransaction(ctx, async (ctx) => {
 			const state = await LayerQueue.getServerState(ctx)
 			SS.applySettingMutations(state.settings, input)
+			const res = SS.ServerSettingsSchema.safeParse(state.settings)
+			if (!res.success) {
+				throw new TRPCError({ code: 'BAD_REQUEST', message: 'err:invalid-settings', cause: res.error })
+			}
+
 			await LayerQueue.updateServerState(ctx, { settings: state.settings }, {
 				type: 'manual',
 				user: { discordId: ctx.user.discordId },
