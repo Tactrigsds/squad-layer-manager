@@ -34,7 +34,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 					style={{ backgroundColor: backgroundColor ?? undefined }}
 					className="h-6 w-6"
 				>
-					{avatar && <AvatarImage src={avatar} />}
+					{typeof avatar === 'string' && <AvatarImage src={avatar} />}
 					<AvatarFallback className="text-xs">
 						{initials}
 					</AvatarFallback>
