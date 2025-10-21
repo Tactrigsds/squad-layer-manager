@@ -87,14 +87,16 @@ export async function setup() {
 			let serverState: SS.ServerState | undefined
 			await DB.runTransaction(ctx, async () => {
 				{
-					const [settingsRow] = await ctx.db().select({ settings: Schema.servers.settings }).from(Schema.servers).where(
-						E.eq(Schema.servers.id, serverConfig.id),
-					).for('update')
-					if (settingsRow) {
-						const settings = unsuperjsonify(Schema.servers, settingsRow).settings
-						settings.connections = serverConfig.connections
-						await ctx.db().update(Schema.servers).set({ settings }).where(E.eq(Schema.servers.id, serverConfig.id))
-					}
+					// const [settingsRow] = await ctx.db().select({ settings: Schema.servers.settings }).from(Schema.servers).where(
+					// 	E.eq(Schema.servers.id, serverConfig.id),
+					// ).for('update')
+					// if (settingsRow) {
+					// 	const settings = unsuperjsonify(Schema.servers, settingsRow).settings
+					// 	settings.connections = serverConfig.connections
+					// 	await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
+					// 		E.eq(Schema.servers.id, serverConfig.id),
+					// 	)
+					// }
 				}
 
 				const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
