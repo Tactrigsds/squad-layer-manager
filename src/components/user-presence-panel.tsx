@@ -1,8 +1,7 @@
-import * as AR from '@/app-routes'
 import { cn } from '@/lib/utils'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as DateFns from 'date-fns'
@@ -65,39 +64,22 @@ export default function UserPresencePanel() {
 			if (aPresence.editing && !bPresence.editing) return -1
 			if (!aPresence.editing && bPresence.editing) return 1
 
-			return a.user.username.localeCompare(b.user.username)
+			return a.user.displayName.localeCompare(b.user.displayName)
 		})
 	}, [userPresence, userMap])
 
-	const getAvatarUrl = (user: USR.User) => {
-		return AR.link('/avatars/:discordId/:avatarId', user.discordId.toString(), user.avatar ?? 'default')
-	}
-
 	const getUserInitials = (user: USR.User) => {
-		return user.username.slice(0, 2).toUpperCase()
+		return user.displayName.slice(0, 2).toUpperCase()
 	}
 
 	const [_, setHoveredUser] = SLLClient.useHoveredActivityUser()
 
 	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center p-8 text-muted-foreground">
-				<div className="text-center">
-					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current mx-auto mb-2"></div>
-					<div className="text-sm">Loading user presence...</div>
-				</div>
-			</div>
-		)
+		return <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current mx-auto mb-2"></div>
 	}
 
 	if (sortedUserPresence.length === 0) {
-		return (
-			<div className="flex items-center justify-center p-8 text-muted-foreground">
-				<div className="text-center">
-					<div className="text-sm">No users online</div>
-				</div>
-			</div>
-		)
+		return <div className="text-muted-foreground self-center">No users online</div>
 	}
 
 	return (
@@ -130,13 +112,14 @@ export default function UserPresencePanel() {
 									>
 										<div className="flex items-center justify-center w-6 h-6 flex-shrink-0">
 											<Avatar
+												style={{ backgroundColor: user.displayHexColor ?? undefined }}
 												className={cn(
 													'h-6 w-6 transition-all duration-200',
 													isAway && 'grayscale opacity-50',
 													isEditing && 'ring-2 ring-blue-500 ring-offset-0',
 												)}
 											>
-												<AvatarImage src={getAvatarUrl(user)} />
+												<AvatarImage src={USR.getAvatarUrl(user)} />
 												<AvatarFallback className="text-xs">
 													{getUserInitials(user)}
 												</AvatarFallback>
@@ -151,7 +134,7 @@ export default function UserPresencePanel() {
 								</TooltipTrigger>
 								<TooltipContent>
 									<div className="text-center">
-										<div className="font-medium">{user.username} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+										<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
 										{isAway && presence.lastSeen && (
 											<div className="text-xs mt-1">
 												Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}

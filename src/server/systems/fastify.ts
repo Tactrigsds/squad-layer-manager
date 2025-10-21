@@ -30,6 +30,7 @@ import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
 import { WebSocket } from 'ws'
+import * as Users from './users'
 
 const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -146,12 +147,11 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 				await ctx.db().insert(Schema.users).values({
 					discordId: discordUser.id,
 					username: discordUser.username,
-					avatar: discordUser.avatar,
 				})
 			} else {
 				await ctx.db()
 					.update(Schema.users)
-					.set({ username: discordUser.username, avatar: discordUser.avatar })
+					.set({ username: discordUser.username })
 					.where(eq(Schema.users.discordId, discordUser.id))
 			}
 			// Use the transaction-aware write-through cache for session creation
@@ -159,12 +159,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 				id: sessionId,
 				userId: discordUser.id,
 				expiresAt,
-				user: {
+				user: await Users.buildUser(ctx, {
 					discordId: discordUser.id,
 					username: discordUser.username,
-					avatar: discordUser.avatar,
 					steam64Id: user?.steam64Id || null,
-				},
+					nickname: null,
+				}),
 			})
 		})
 		const requestCtx = buildRequestContext(ctx, req, reply)
@@ -213,7 +213,10 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 		// Determine the Discord URL to fetch
 		let discordAvatarUrl: string
-		if (params.avatarId === 'default') {
+		// dumb but whatever
+		if (params.avatarId.length < 5) {
+			discordAvatarUrl = `https://cdn.discordapp.com/embed/avatars/${params.avatarId}.png`
+		} else if (params.avatarId === 'default') {
 			discordAvatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`
 		} else {
 			discordAvatarUrl = `https://cdn.discordapp.com/avatars/${params.discordId}/${params.avatarId}.png`

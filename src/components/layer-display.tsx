@@ -47,8 +47,6 @@ export default function LayerDisplay(
 	const localViolationDescriptors = hoveredConstraintItemId === layerItemId && allViolationDescriptors?.get(layerItemId)
 		|| undefined
 
-	if (props.badges) badges.push(...props.badges)
-
 	const blockingConstraintIds = layerStatusesRes.data?.blocked.get(layerItemId)
 
 	if (blockingConstraintIds) {
@@ -61,6 +59,8 @@ export default function LayerDisplay(
 			/>,
 		)
 	}
+
+	if (props.badges) badges.push(...props.badges)
 
 	const layer = L.toLayer(props.item.layerId)
 	if (layerStatusesRes.data) {

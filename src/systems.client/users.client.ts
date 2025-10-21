@@ -15,19 +15,19 @@ import * as Zus from 'zustand'
 
 export let loggedInUserId: bigint | undefined
 
-export function useUser(id?: bigint) {
+export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 	return useQuery({
-		queryKey: ['getUser', superjson.serialize(id)],
+		queryKey: ['users', 'getUser', superjson.serialize(id)],
 		queryFn: async () => {
 			return trpc.users.getUser.query(id!)
 		},
-		enabled: !!id,
+		enabled: !!id && opts?.enabled !== false,
 	})
 }
 
 export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
 	return useQuery({
-		queryKey: ['getUsers', superjson.serialize(userIds)],
+		queryKey: ['users', 'getUsers', superjson.serialize(userIds)],
 		enabled: opts?.enabled,
 		queryFn: async () => trpc.users.getUsers.query(userIds),
 	})
@@ -40,7 +40,7 @@ async function _fetchLoggedInUser() {
 	return user
 }
 const loggedInUserBaseQuery = {
-	queryKey: ['getLoggedInUser'],
+	queryKey: ['users', 'getLoggedInUser'],
 	queryFn: _fetchLoggedInUser,
 }
 
@@ -81,7 +81,17 @@ export function invalidateLoggedInUser() {
 	reactQueryClient.invalidateQueries(loggedInUserBaseQuery)
 }
 
+export function invalidateUsers() {
+	reactQueryClient.invalidateQueries({ queryKey: ['users'] })
+	PartSys.PartsStore.setState({ users: [] })
+}
+
+const [_, userInvalidation$] = ReactRx.bind(fromTrpcSub(undefined, trpc.users.watchUserInvalidation.subscribe))
+
 export function setup() {
+	userInvalidation$.subscribe(() => {
+		invalidateUsers()
+	})
 	void reactQueryClient.prefetchQuery(loggedInUserBaseQuery)
 	FilterEntityClient.filterMutation$.subscribe(async s => {
 		const loggedInUser = await fetchLoggedInUser()

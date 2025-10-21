@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes.ts'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
+import * as USR from '@/models/users.models.ts'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
@@ -10,10 +11,10 @@ import { useLoggedInUser } from '@/systems.client/users.client'
 import { useTrpcConnected } from '@/trpc.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import * as Zus from 'zustand'
 import CommandsHelpDialog from './commands-help-dialog'
-import LinkSteamAccountDialog from './link-steam-account-dialog'
+import NicknameDialog from './nickname-dialog'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -26,9 +27,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
 
-	const avatarUrl = user && AR.link('/avatars/:discordId/:avatarId', user.discordId.toString(), user.avatar ?? 'default')
+	const avatarUrl = user && USR.getAvatarUrl(user)
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -39,8 +40,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onCommandsHelpOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'commands' : null)
 	}
-	const onSteamLinkOpenChange = (newState: boolean) => {
-		setDropdownState(newState ? 'steam-link' : null)
+
+	const onNicknameOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'nickname' : null)
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
@@ -115,13 +117,16 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					{user && (
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
-								<Avatar className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
+								<Avatar
+									style={{ backgroundColor: user.displayHexColor ?? undefined }}
+									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
+								>
 									<AvatarImage src={avatarUrl} />
-									<AvatarFallback className="text-xs sm:text-sm">{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+									<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end">
-								<DropdownMenuLabel className="truncate max-w-[200px]">{user.username}</DropdownMenuLabel>
+								<DropdownMenuLabel className="truncate max-w-[200px]">{user.displayName}</DropdownMenuLabel>
 								{simulateRoles && (
 									<DropdownMenuItem onClick={() => setSimulateRoles(false)} className="sm:hidden text-sm">
 										<Icons.X className="mr-2 h-4 w-4" />
@@ -156,14 +161,12 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									</DropdownMenuSubContent>
 								</DropdownMenuSub>
 								<DropdownMenuSeparator />
-								<form action={AR.route('/logout')} method="POST">
-									<DropdownMenuItem asChild>
-										<button className="w-full text-sm" type="submit">
-											<Icons.LogOut className="mr-2 h-4 w-4" />
-											Log Out
-										</button>
+								<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
+									<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
+										<Icons.User className="mr-2 h-4 w-4" />
+										Set Nickname
 									</DropdownMenuItem>
-								</form>
+								</NicknameDialog>
 								<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
 									<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
 										<Icons.Shield className="mr-2 h-4 w-4" />
@@ -176,6 +179,15 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										Commands
 									</DropdownMenuItem>
 								</CommandsHelpDialog>
+								<DropdownMenuSeparator />
+								<form action={AR.route('/logout')} method="POST">
+									<DropdownMenuItem asChild>
+										<button className="w-full text-sm" type="submit">
+											<Icons.LogOut className="mr-2 h-4 w-4" />
+											Log Out
+										</button>
+									</DropdownMenuItem>
+								</form>
 								{
 									/*<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
 									<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">

@@ -113,7 +113,7 @@ export const users = mysqlTable('users', {
 	steam64Id: bigint('steam64Id', { mode: 'bigint', unsigned: true }),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: varchar('username', { length: 32 }).notNull(),
-	avatar: varchar('avatar', { length: 255 }),
+	nickname: varchar('nickname', { length: 64 }),
 })
 
 export type User = typeof users.$inferSelect

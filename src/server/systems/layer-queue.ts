@@ -36,6 +36,7 @@ import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
+import * as Users from './users'
 
 export type VoteContext = {
 	voteEndTask: Rx.Subscription | null
@@ -849,7 +850,8 @@ async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStat
 		discordIds = new Set([...discordIds, ...getVoteStateDiscordIds(update.state)])
 	}
 	const discordIdsArray = Array.from(discordIds)
-	const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
+	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
+	const users = await Promise.all(dbUsers.map(user => Users.buildUser(ctx, user)))
 	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
 }
@@ -975,65 +977,13 @@ export async function warnShowNext(
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
-		parts.users.push(user)
+		parts.users.push(await Users.buildUser(ctx, user))
 	}
 	if (playerId === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	} else {
 		await SquadRcon.warn(ctx, playerId, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	}
-}
-
-async function includeLQServerUpdateParts(
-	ctx: C.Db & CS.Log & C.MatchHistory,
-	_serverStateUpdate: SS.LQStateUpdate,
-): Promise<SS.LQStateUpdate & Partial<Parts<USR.UserPart & LQY.LayerItemStatusesPart>>> {
-	const userPartPromise = includeUserPartForLQServerUpdate(ctx, _serverStateUpdate)
-	const layerItemStatusesPromise = includeLayerItemStatusesForLQServerUpdate(ctx, _serverStateUpdate)
-	return {
-		..._serverStateUpdate,
-		parts: {
-			...(await userPartPromise),
-			...(await layerItemStatusesPromise),
-		},
-	}
-}
-
-async function includeUserPartForLQServerUpdate(ctx: C.Db & CS.Log, update: SS.LQStateUpdate) {
-	const part: USR.UserPart = { users: [] as USR.User[] }
-	const state = update.state
-	const userIds: bigint[] = []
-	if (update.source.type === 'manual' && update.source.user.discordId) {
-		userIds.push(BigInt(update.source.user.discordId))
-	}
-	for (const item of state.layerQueue) {
-		if (item.source.type === 'manual') userIds.push(BigInt(item.source.userId))
-	}
-
-	let users: Schema.User[] = []
-	if (userIds.length > 0) {
-		users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, userIds))
-	}
-	for (const user of users) {
-		part.users.push(user)
-	}
-	return part
-}
-
-async function includeLayerItemStatusesForLQServerUpdate(
-	ctx: CS.Log & C.MatchHistory,
-	update: SS.LQStateUpdate,
-): Promise<LQY.LayerItemStatusesPart> {
-	const queryCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, update.state)
-	const constraints = SS.getPoolConstraints(update.state.settings.queue.mainPool)
-	const statusRes = await LayerQueries.getLayerItemStatuses({ ctx: queryCtx, input: { constraints } })
-	if (statusRes.code !== 'ok') {
-		ctx.log.error(`Failed to get layer item statuses: ${JSON.stringify(statusRes)}`)
-		return {
-			layerItemStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
-		}
-	}
-	return { layerItemStatuses: statusRes.statuses }
 }
 
 /**
@@ -1117,7 +1067,7 @@ export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer &
 
 export async function requestFeedback(
 	ctx: CS.Log & C.Db & C.SquadServer & C.LayerQueue,
-	username: string,
+	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
 	const serverState = await getServerState(ctx)
@@ -1127,7 +1077,7 @@ export async function requestFeedback(
 	else index = LL.resolveLayerQueueItemIndexForNumber(serverState.layerQueue, layerQueueNumber) ?? undefined
 	if (!index) return { code: 'err:not-found' as const }
 	const item = LL.resolveItemForIndex(serverState.layerQueue, index)!
-	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, username, item))
+	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, playerName, item))
 	return { code: 'ok' as const }
 }
 
@@ -1144,7 +1094,10 @@ export const layerQueueRouter = router({
 				const voteState = ctx.vote.state
 				if (voteState) {
 					const ids = getVoteStateDiscordIds(voteState)
-					const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
+					const users = await Users.buildUsers(
+						ctx,
+						await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
+					)
 					initialState = { ...voteState, parts: { users } }
 				}
 				yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts

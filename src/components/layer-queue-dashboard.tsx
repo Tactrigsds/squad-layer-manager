@@ -162,7 +162,7 @@ function QueueControlPanel() {
 	function setAppendLayersPopoverOpen(v: boolean) {
 		_setAppendLayersPopoverOpen(v)
 	}
-	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.session.list.length]))
+	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
 
 	type AddLayersPosition = 'next' | 'after'
 	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
@@ -178,13 +178,15 @@ function QueueControlPanel() {
 		state.dispatch({ op: 'clear', itemIds })
 	}
 
-	function add(items: LL.NewLayerListItem[]) {
-		const state = QD.LQStore.getState()
-		const index: LL.ItemIndex = addLayersPosition === 'next'
-			? { innerIndex: null, outerIndex: 0 }
-			: { innerIndex: 0, outerIndex: state.layerList.length }
-		state.dispatch({ op: 'add', items, index })
-	}
+	const addItems = React.useMemo(() => {
+		return (items: LL.NewLayerListItem[]) => {
+			const state = QD.LQStore.getState()
+			const index: LL.ItemIndex = addLayersPosition === 'next'
+				? { innerIndex: null, outerIndex: 0 }
+				: { innerIndex: null, outerIndex: queueLength }
+			state.dispatch({ op: 'add', items, index })
+		}
+	}, [addLayersPosition, queueLength])
 
 	const addLayersTabslist = (
 		<TabsList
@@ -198,10 +200,10 @@ function QueueControlPanel() {
 	)
 
 	const queryInputs = {
-		next: {},
-		after: {
-			cursor: LQY.getQueryCursorForQueueIndex(queueLength),
+		next: {
+			cursor: LQY.getQueryCursorForQueueIndex(0),
 		},
+		after: {},
 	} satisfies Record<AddLayersPosition, LQY.LayerQueryBaseInput>
 
 	return (
@@ -217,10 +219,10 @@ function QueueControlPanel() {
 							<TooltipTrigger asChild>
 								<Button
 									onClick={saveLqState}
-									size="icon"
 									disabled={saving}
 								>
 									<Icons.Save />
+									<span>Save</span>
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -230,7 +232,7 @@ function QueueControlPanel() {
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
-									<Icons.Trash />
+									<Icons.Undo />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -248,7 +250,7 @@ function QueueControlPanel() {
 						size="icon"
 						onClick={() => clear()}
 					>
-						<Icons.ListX />
+						<Icons.Trash />
 					</Button>
 				</TooltipTrigger>
 				<TooltipContent>
@@ -258,10 +260,7 @@ function QueueControlPanel() {
 			<SelectLayersDialog
 				title="Add Layers"
 				headerAdditions={addLayersTabslist}
-				selectQueueItems={(items) => {
-					const state = QD.LQStore.getState()
-					state.dispatch({ op: 'add', items, index: { outerIndex: state.layerList.length, innerIndex: null } })
-				}}
+				selectQueueItems={addItems}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
 				layerQueryBaseInput={queryInputs[addLayersPosition]}

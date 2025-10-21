@@ -70,6 +70,7 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 		SLL.endAllEditing(ctx.sharedList.presence)
 		ctx.sharedList.sessionSeqId++
 		ctx.sharedList.queueSeqId = update.state.layerQueueSeqId
+		ctx.sharedList.itemLocks = new Map()
 		// all clients that receive list-updated will update themselves
 		PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
 		sendUpdate(ctx, {
@@ -176,6 +177,7 @@ export const router = TrpcServer.router({
 						SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
 						ctx.sharedList.queueSeqId = serverState.layerQueueSeqId
 						ctx.sharedList.sessionSeqId++
+						ctx.sharedList.itemLocks = new Map()
 						PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
 						sendUpdate(ctx, {
 							code: 'commit-completed',
@@ -204,6 +206,7 @@ export const router = TrpcServer.router({
 				SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
 				const sessionSeqId = ctx.sharedList.sessionSeqId
 				ctx.sharedList.sessionSeqId++
+				ctx.sharedList.itemLocks = new Map()
 
 				// all clients that receive reset-completed will update themselves
 				PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
@@ -267,7 +270,7 @@ function handlePresenceUpdate(
 		sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
 	}
 	SLL.updateClientPresence(update.wsClientId, ctx.user.discordId, ctx.sharedList.presence, update.changes)
-	sendUpdate(ctx, { ...update, changes: ctx.sharedList.presence.get(ctx.wsClientId)! })
+	sendUpdate(ctx, { ...update, changes: update.changes })
 }
 
 function cleanupActivityLocks(ctx: C.SharedLayerList & C.Locks, wsClientId: string) {

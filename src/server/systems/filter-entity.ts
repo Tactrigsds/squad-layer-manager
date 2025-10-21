@@ -19,6 +19,7 @@ import * as E from 'drizzle-orm/expressions'
 import { Subject } from 'rxjs'
 import { z } from 'zod'
 import { baseLogger } from '../logger'
+import * as Users from './users'
 
 export const filterMutation$ = new Subject<[CS.Log & C.Db, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
@@ -42,7 +43,7 @@ export const filtersRouter = router({
 			.leftJoin(Schema.filterRoleContributors, E.eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
-			users: rows.map((row) => row.user).filter((user) => user !== null),
+			users: await Users.buildUsers(ctx, rows.map((row) => row.user).filter((user) => user !== null)),
 			roles: rows.map((row) => row.role).filter((role) => role !== null),
 		}
 	}),
@@ -126,6 +127,7 @@ export const filtersRouter = router({
 				key: newFilterEntity.id,
 				value: newFilterEntity,
 				username: ctx.user.username,
+				displayName: ctx.user.displayName,
 			}])
 		}
 		return {
@@ -163,6 +165,7 @@ export const filtersRouter = router({
 					key: id,
 					value: res.filter,
 					username: ctx.user.username,
+					displayName: ctx.user.displayName,
 				}])
 			}
 			return res
@@ -211,6 +214,7 @@ export const filtersRouter = router({
 			type: 'delete',
 			key: idToDelete,
 			username: ctx.user.username,
+			displayName: ctx.user.displayName,
 			value: res.filter,
 		}])
 		return { code: 'ok' as const }
@@ -227,19 +231,20 @@ export async function* watchFilters(
 ): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
 	const ids = [...new Set(Array.from(state.filters.values()).map(f => f.owner))]
 
-	const users = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
+	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
 
 	yield {
 		code: 'initial-value' as const,
 		entities: Array.from(state.filters.values()),
 		parts: {
-			users: users,
+			users: await Users.buildUsers(ctx, dbUsers),
 		},
 	}
 	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$.pipe(withAbortSignal(signal!)))) {
-		const users = await ctx.db().select().from(Schema.users).where(
+		const dbUsers = await ctx.db().select().from(Schema.users).where(
 			E.or(E.eq(Schema.users.discordId, mutation.value.owner), E.eq(Schema.users.username, mutation.username)),
 		)
+		const users = await Users.buildUsers(ctx, dbUsers)
 
 		yield {
 			code: 'mutation' as const,

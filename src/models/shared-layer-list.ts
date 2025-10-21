@@ -501,16 +501,16 @@ export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['c
 	}
 }
 
-export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceActivity['code'], username: string) => {
+export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceActivity['code'], displayName: string) => {
 	switch (activityCode) {
 		case 'editing-item':
-			return `${username} is editing`
+			return `${displayName} is editing`
 		case 'configuring-vote':
-			return `${username} is configuring vote`
+			return `${displayName} is configuring vote`
 		case 'adding-item':
-			return `${username} is adding`
+			return `${displayName} is adding`
 		case 'moving-item':
-			return `${username} is moving`
+			return `${displayName} is moving`
 		default:
 			assertNever(activityCode)
 	}

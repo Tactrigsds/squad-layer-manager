@@ -391,7 +391,7 @@ export function configureVote(
 	}
 }
 
-export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: LL.Item[]) {
+export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: Item[]) {
 	const itemRes = findItemById(list, itemId)
 	if (!itemRes) return
 	const item = itemRes.item

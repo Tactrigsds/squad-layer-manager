@@ -1,4 +1,5 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as AR from '@/app-routes'
 import { z } from 'zod'
 
 export const GuiUserIdSchema = z.object({
@@ -20,7 +21,13 @@ export const GuiOrChatUserIdSchema = z.object({
 
 export type GuiOrChatUserId = z.infer<typeof GuiOrChatUserIdSchema>
 
-export type User = SchemaModels.User
+export type User = SchemaModels.User & {
+	username: string
+	displayName: string
+	displayHexColor: string | null
+	avatar: string | null
+	nickname: string | null
+}
 export type MiniUser = {
 	username: string
 	discordId: string
@@ -31,6 +38,7 @@ export type UserPart = { users: User[] }
 // represents a user's edit or deletion of an entity
 export type UserEntityMutation<K extends string | number, V> = {
 	username: string
+	displayName: string
 	key: K
 	value: V
 	type: 'add' | 'update' | 'delete'
@@ -40,3 +48,14 @@ export type UserEntityMutation<K extends string | number, V> = {
 export const UserIdSchema = z.bigint().positive()
 
 export type UserId = z.infer<typeof UserIdSchema>
+
+export const getAvatarUrl = (user: User) => {
+	let avatar: string
+	if (user.avatar) avatar = user.avatar
+	else avatar = ((user.discordId >> 22n) % 6n).toString()
+	return AR.link('/avatars/:discordId/:avatarId', user.discordId.toString(), avatar)
+}
+
+export const getUserInitials = (user: User) => {
+	return user.displayName.slice(0, 2).toUpperCase()
+}

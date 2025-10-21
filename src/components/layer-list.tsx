@@ -176,7 +176,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	if (user && itemPresence && itemActivityUser.discordId !== user.discordId) {
 		badges.push(
 			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="secondary">
-				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.username)}...
+				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.displayName)}...
 			</Badge>,
 		)
 	} else {
@@ -208,14 +208,14 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
-		badges.push(
+		badges.unshift(
 			<Badge key="default-choice" variant="secondary">
 				Default
 			</Badge>,
 		)
 	}
 	if (isVoteWinner) {
-		badges.push(
+		badges.unshift(
 			<Badge key="winner" variant="added">
 				Selected
 			</Badge>,

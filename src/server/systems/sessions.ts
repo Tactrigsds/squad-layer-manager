@@ -10,6 +10,7 @@ import * as Rbac from '@/server/systems/rbac.system'
 import * as Otel from '@opentelemetry/api'
 import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
+import * as Users from './users'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
@@ -174,7 +175,7 @@ export const validateAndUpdate = C.spanOp(
 			await updateSessionInCacheAndDb(ctx, sessionId, { expiresAt })
 		}
 
-		return { code: 'ok' as const, sessionId, expiresAt, user: cachedSession.user }
+		return { code: 'ok' as const, sessionId, expiresAt, user: await Users.buildUser(ctx, cachedSession.user) }
 	},
 )
 

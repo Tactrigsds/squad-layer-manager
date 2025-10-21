@@ -23,7 +23,7 @@ function formatInterval(interval: number, terse = true) {
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
 	matchEnded(user: USR.User) {
-		return `${user.username} ended the match via squad-layer-manager`
+		return `${user.displayName} ended the match via squad-layer-manager`
 	},
 	queue: {},
 	vote: {
@@ -117,7 +117,7 @@ export const WARNS = {
 				case 'manual':
 					{
 						const userId = item.source.userId
-						setByDisplay = `Set by ${parts?.users.find(user => user.discordId === userId)?.username ?? 'Unknown'}`
+						setByDisplay = `Set by ${parts?.users.find(user => user.discordId === userId)?.displayName ?? 'Unknown'}`
 					}
 					break
 				default:
@@ -155,9 +155,9 @@ export const WARNS = {
 			msg.push(extraDisplay)
 			return getOptions(msg)
 		},
-		requestFeedback: (index: LL.ItemIndex, username: string, item: LL.Item) => ({
+		requestFeedback: (index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
 			msg: [
-				`${username} has requested feedback for`,
+				`${playerName} has requested feedback for`,
 				LL.displayLayerListItem(item, index),
 			].join('\n'),
 			repeat: 3,

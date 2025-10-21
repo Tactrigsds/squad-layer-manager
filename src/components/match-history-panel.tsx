@@ -184,8 +184,10 @@ function MatchHistoryRow({
 					<TableCell>
 						{rightTeam}
 					</TableCell>
-					<TableCell className="hidden min-[900px]:table-cell">
-						<LayerSourceDisplay source={entry.layerSource} />
+					<TableCell>
+						<span className="w-full flex justify-center">
+							<LayerSourceDisplay source={entry.layerSource} />
+						</span>
 					</TableCell>
 					<TableCell className="text-center">
 						{TriggerIcon && entryTriggerAlerts.length > 0 && (

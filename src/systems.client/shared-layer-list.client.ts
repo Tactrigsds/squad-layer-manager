@@ -110,6 +110,7 @@ function createStore() {
 							outgoingOpsPendingSync: [],
 							presence: MapUtils.union(update.presence, get().presence),
 							sessionSeqId: update.sessionSeqId,
+							itemLocks: new Map(),
 						})
 						break
 					case 'op': {
@@ -164,6 +165,7 @@ function createStore() {
 							Im.produce(state, draft => {
 								draft.sessionSeqId = update.newSessionSeqId
 								draft.session = draft.syncedState = SLL.createNewSession(update.list)
+								draft.itemLocks = new Map()
 								PresenceActions.applyToAll(draft.presence, draft.session, PresenceActions.editSessionChanged)
 							})
 						)

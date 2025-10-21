@@ -42,7 +42,7 @@ export default function FiltersIndex() {
 										<CardDescription>{entity.description}</CardDescription>
 									</CardHeader>
 									<CardFooter>
-										<p className="text-sm">Owner: {user?.username}</p>
+										<p className="text-sm">Owner: {user?.displayName}</p>
 									</CardFooter>
 								</Card>
 							</Link>

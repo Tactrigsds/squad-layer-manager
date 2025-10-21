@@ -56,14 +56,14 @@ export default function FilterWrapper() {
 				case 'update': {
 					if (mutation.username === loggedInUser?.username) return
 					toast({
-						title: `Filter ${mutation.value.name} was updated by ${mutation.username}`,
+						title: `Filter ${mutation.value.name} was updated by ${mutation.displayName}`,
 					})
 					break
 				}
 				case 'delete': {
 					if (mutation.username === loggedInUser?.username) return
 					toast({
-						title: `Filter ${mutation.value.name} was deleted by ${mutation.username}`,
+						title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
 					})
 					navigate(AR.route('/filters'))
 					break
@@ -266,7 +266,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 								<span className="flex items-center space-x-4">
 									<h3 className={Typography.H3}>{props.entity.name}</h3>
 									<Icons.Dot />
-									<small className="font-light">Owner: {props.owner.username}</small>
+									<small className="font-light">Owner: {props.owner.displayName}</small>
 									<Icons.Dot />
 									<Button disabled={loggedInUserRole === 'none'} onClick={() => setEditingDetails(true)} variant="ghost" size="icon">
 										<Icons.Edit />
@@ -460,7 +460,7 @@ function FilterContributors(props: {
 										onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
 										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
-									<Badge>{user.username}</Badge>
+									<Badge>{user.displayName}</Badge>
 								</li>
 							))}
 						</ul>
@@ -539,7 +539,7 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 						{usersRes.data?.code === 'ok'
 							&& usersRes.data.users.map((user) => (
 								<CommandItem key={user.discordId} onSelect={() => onSelect(user)}>
-									{user.username}
+									{user.displayName}
 								</CommandItem>
 							))}
 					</CommandList>
