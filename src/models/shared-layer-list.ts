@@ -145,8 +145,13 @@ export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('configuring-vote'), itemId: LL.ItemIdSchema }),
 	z.object({ code: z.literal('adding-item') }),
 	z.object({ code: z.literal('moving-item'), itemId: LL.ItemIdSchema }),
+
+	// for changing pool configuration
+	z.object({ code: z.literal('changing-settings') }),
 ])
 
+export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'adding-item'])
+export type ItemOwnedActivityCode = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 export type ClientPresenceActivity = z.infer<typeof UserPresenceActivitySchema>
 
 export function opToActivity(op: Operation): ClientPresenceActivity | undefined {
@@ -169,6 +174,7 @@ export function opToActivity(op: Operation): ClientPresenceActivity | undefined 
 	}
 }
 
+// presence may evolve into its own system eventually if we're doing non SLL related stuff with it
 export const ClientPresenceSchema = z.object({
 	userId: USR.UserIdSchema,
 	away: z.boolean(),
@@ -405,8 +411,17 @@ export function resolveUserPresence(state: PresenceState) {
 	const presenceByUser = new Map<bigint, ClientPresence>()
 	for (const presence of state.values()) {
 		const existing = presenceByUser.get(presence.userId)
-		if (!existing || (presence.lastSeen && (!existing.lastSeen || presence.lastSeen > existing.lastSeen))) {
+		if (!existing) {
 			presenceByUser.set(presence.userId, presence)
+			continue
+		}
+		if (presence.lastSeen && !existing.lastSeen) {
+			presenceByUser.set(presence.userId, presence)
+			continue
+		}
+		if (presence.lastSeen && existing.lastSeen && presence.lastSeen > existing.lastSeen) {
+			presenceByUser.set(presence.userId, presence)
+			continue
 		}
 	}
 	return presenceByUser
@@ -415,13 +430,13 @@ export function resolveUserPresence(state: PresenceState) {
 export type ItemLocks = Map<LL.ItemId, string>
 export type LockMutation = [LL.ItemId, string]
 
-export type ItemOwnedActivity = Exclude<ClientPresenceActivity, { code: 'adding-item' }>
+export type ItemOwnedActivity = Exclude<ClientPresenceActivity, { code: 'adding-item' | 'changing-settings' }>
 export function isItemOwnedActivity(activity: ClientPresenceActivity): activity is ItemOwnedActivity {
-	return activity.code !== 'adding-item'
+	return activity.code !== 'adding-item' && activity.code !== 'changing-settings' && activity.code !==
 }
 
 export function itemsToLockForActivity(list: LL.List, activity: ClientPresenceActivity): LL.ItemId[] {
-	if (activity.code === 'adding-item') return []
+	if (!isItemOwnedActivity(activity)) return []
 	const itemId = activity.itemId
 	const item = LL.findItemById(list, itemId)?.item
 	if (!item) return []
@@ -496,6 +511,10 @@ export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['c
 			return 'Adding an item'
 		case 'moving-item':
 			return `Moving ${name}`
+			case 'viewing-settings':
+			return 'Viewing Settings'
+		case 'changing-settings':
+			return 'Changing Settings'
 		default:
 			assertNever(activityCode)
 	}

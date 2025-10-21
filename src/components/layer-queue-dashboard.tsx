@@ -297,14 +297,10 @@ function PoolConfigurationPopover(
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	async function saveRules() {
-		await ServerSettingsClient.Store.getState().save()
-	}
-
-	const [open, _setOpen] = React.useState(false)
+	const [open, _setOpen] = SLLClient.useActivityState({ code: 'changing-settings' })
 	const setOpen = (open: boolean) => {
 		if (!open) {
-			saveRules()
+			ServerSettingsClient.Store.getState().reset()
 		}
 		_setOpen(open)
 	}
