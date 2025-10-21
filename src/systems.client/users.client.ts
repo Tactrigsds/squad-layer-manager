@@ -1,5 +1,6 @@
 import * as Obj from '@/lib/object'
 import { fromTrpcSub } from '@/lib/trpc-helpers'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
@@ -7,7 +8,6 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useQuery } from '@tanstack/react-query'
-
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -25,10 +25,11 @@ export function useUser(id?: bigint) {
 	})
 }
 
-export function useUsers() {
+export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
 	return useQuery({
-		queryKey: ['getUsers'],
-		queryFn: async () => trpc.users.getUsers.query(),
+		queryKey: ['getUsers', superjson.serialize(userIds)],
+		enabled: opts?.enabled,
+		queryFn: async () => trpc.users.getUsers.query(userIds),
 	})
 }
 

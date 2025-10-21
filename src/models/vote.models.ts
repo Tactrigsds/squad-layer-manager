@@ -32,7 +32,6 @@ export function validateChoicesWithDisplayProps(_choices: L.LayerId[], displayPr
 	if (displayProps.includes('factions')) chosenCols.add('Faction_1').add('Faction_2')
 	const choices = _choices.map(c => {
 		const layer = L.toLayer(c)
-		// @ts-expect-error idgaf
 		return Obj.selectProps(layer, Array.from(chosenCols))
 	})
 	const uniqueChoices = new Set(choices.map(c => JSON.stringify(c)))

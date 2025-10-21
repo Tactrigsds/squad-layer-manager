@@ -29,7 +29,6 @@ import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapte
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import * as path from 'node:path'
-import { Readable } from 'stream'
 import { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
@@ -121,12 +120,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		if (!discordUser) {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
-		const ctx = getCtx(req)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(
-			ctx,
-			discordUser.id,
-			RBAC.perm('site:authorized'),
-		)
+		const ctx = { ...getCtx(req), user: { discordId: discordUser.id } }
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('site:authorized'))
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':

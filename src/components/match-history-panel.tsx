@@ -2,9 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import * as DND from '@/models/dndkit.models'
-import * as DndKit from '@/systems.client/dndkit'
-
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import * as Obj from '@/lib/object'
@@ -14,10 +11,11 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models.ts'
+import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as QD from '@/systems.client/queue-dashboard'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
@@ -245,9 +243,9 @@ export default function MatchHistoryPanel() {
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const currentMatch = SquadServerClient.useCurrentMatch()
 	const layerStatusesRes = LayerQueriesClient.useLayerItemStatuses().data
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
+	const constraints = ZusUtils.useStoreDeep(ServerSettingsClient.Store, s => SS.getPoolConstraints(s.saved.queue.mainPool))
 	const violationDescriptors = layerStatusesRes?.violationDescriptors
-	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
+	const hoveredConstraintItemId = Zus.useStore(LayerQueriesClient.Store, s => s.hoveredConstraintItemId)
 
 	// -------- Date-based pagination --------
 	const [currentPage, setCurrentPage] = useState(1)
@@ -381,7 +379,7 @@ export default function MatchHistoryPanel() {
 									layerStatusesRes={layerStatusesRes}
 									constraints={constraints}
 									violationDescriptors={violationDescriptors}
-									hoveredConstraintItemId={hoveredConstraintItemId}
+									hoveredConstraintItemId={hoveredConstraintItemId ?? undefined}
 									globalSettings={globalSettings}
 									historyState={historyState}
 									_currentStreak={currentStreak}

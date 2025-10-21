@@ -1,16 +1,14 @@
+import * as AR from '@/app-routes'
 import { useParams } from 'react-router-dom'
 import { useLocation } from 'react-router-dom'
 import * as Rx from 'rxjs'
-
-import * as AR from '@/app-routes'
-import { Route, routes } from '@/app-routes'
 
 export function useRoute() {
 	const location = useLocation()
 	return AR.resolveRoute(location.pathname)
 }
 
-export function useAppParams<R extends Route<'server'>>(_route: R) {
+export function useAppParams<R extends AR.Route<'server'>>(_route: R) {
 	const params = useParams() as AR.RouteParamObj<R>
 	return params
 }
@@ -48,9 +46,11 @@ const urlChanges$ = new Rx.Observable<string>(observer => {
 	return () => mutationObserver.disconnect()
 })
 
-export const route$ = urlChanges$.pipe(
+export const routeChanges$ = urlChanges$.pipe(
 	Rx.map(path => AR.resolveRoute(path)),
 	// use asyncScheduler so we're never doing something expensive in the MutationObserver microtask
 	Rx.observeOn(Rx.asyncScheduler),
 	Rx.share(),
 )
+
+export const route$ = routeChanges$.pipe(Rx.startWith(AR.resolveRoute(window.location.pathname)))

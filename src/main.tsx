@@ -5,7 +5,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import * as AR from './app-routes.ts'
-import { InnerRouterProviders, Providers } from './components/providers.tsx'
+import { Providers } from './components/providers.tsx'
 import './index.css'
 import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
@@ -13,6 +13,7 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QueueDashboard from '@/systems.client/queue-dashboard'
+import * as SharedLayerListClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeSys from '@/systems.client/theme.ts'
 import * as UsersClient from '@/systems.client/users.client.ts'
@@ -38,13 +39,11 @@ const router = createBrowserRouter([
 	{
 		path: AR.route('/servers/:id'),
 		element: (
-			<InnerRouterProviders>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<LayerQueueDashboard />
-					</AppContainer>
-				</React.Suspense>
-			</InnerRouterProviders>
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<AppContainer>
+					<LayerQueueDashboard />
+				</AppContainer>
+			</React.Suspense>
 		),
 	},
 
@@ -52,37 +51,31 @@ const router = createBrowserRouter([
 	{
 		path: AR.route('/filters'),
 		element: (
-			<InnerRouterProviders>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterIndex />
-					</AppContainer>
-				</React.Suspense>
-			</InnerRouterProviders>
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<AppContainer>
+					<FilterIndex />
+				</AppContainer>
+			</React.Suspense>
 		),
 	},
 	{
 		path: AR.route('/filters/:id'),
 		element: (
-			<InnerRouterProviders>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterEdit />
-					</AppContainer>
-				</React.Suspense>
-			</InnerRouterProviders>
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<AppContainer>
+					<FilterEdit />
+				</AppContainer>
+			</React.Suspense>
 		),
 	},
 	{
 		path: AR.route('/filters/new'),
 		element: (
-			<InnerRouterProviders>
-				<React.Suspense fallback={<FullPageSpinner />}>
-					<AppContainer>
-						<FilterNew />
-					</AppContainer>
-				</React.Suspense>
-			</InnerRouterProviders>
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<AppContainer>
+					<FilterNew />
+				</AppContainer>
+			</React.Suspense>
 		),
 	},
 
@@ -106,6 +99,7 @@ FilterEntityClient.setup()
 MatchHistoryClient.setup()
 SquadServerClient.setup()
 UsersClient.setup()
+SharedLayerListClient.setup()
 QueueDashboard.setup()
 VotesClient.setup()
 

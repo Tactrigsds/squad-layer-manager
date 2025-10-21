@@ -47,10 +47,10 @@ export const filtersRouter = router({
 		}
 	}),
 	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'all',
-			permits: [RBAC.perm('filters:write', { filterId: input.filterId }), RBAC.perm('filters:write-all')],
-		})
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
+			RBAC.perm('filters:write', { filterId: input.filterId }),
+			RBAC.perm('filters:write-all'),
+		])
 		if (denyRes) {
 			return denyRes
 		}
@@ -88,7 +88,7 @@ export const filtersRouter = router({
 		}
 	}),
 	removeFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(input.filterId))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
 		if (denyRes) {
 			return denyRes
 		}
@@ -141,7 +141,7 @@ export const filtersRouter = router({
 				if (!rawFilter) {
 					return { code: 'err:not-found' as const }
 				}
-				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(id))
+				const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(id))
 				if (deniedRes) {
 					return deniedRes
 				}
@@ -168,7 +168,7 @@ export const filtersRouter = router({
 			return res
 		}),
 	deleteFilter: procedure.input(F.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.getWritePermReqForFilterEntity(idToDelete))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes
 		}

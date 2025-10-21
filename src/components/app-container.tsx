@@ -2,6 +2,7 @@ import * as AR from '@/app-routes.ts'
 import { Button, buttonVariants } from '@/components/ui/button'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as FeatureFlags from '@/systems.client/feature-flags'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeClient from '@/systems.client/theme'
@@ -19,6 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
+	const flags = FeatureFlags.useFeatureFlags()
 	const trpcConnected = useTrpcConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const route = AppRoutesClient.useRoute()
@@ -79,6 +81,14 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
 							<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
 						</Alert>
+					)}
+					{flags.displayWsClientId && config && (
+						<span
+							className="text-xs cursor-pointer"
+							onClick={() => navigator.clipboard.writeText(config.wsClientId)}
+						>
+							{config.wsClientId}
+						</span>
 					)}
 					{selectedServer && config && (config.servers.length === 1
 						? <div className="font-medium text-sm">{selectedServer.displayName}</div>

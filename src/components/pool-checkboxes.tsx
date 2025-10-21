@@ -7,9 +7,7 @@ import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
 export default function PoolCheckboxes(
-	props: {
-		store: Zus.StoreApi<QD.ApplyAsStore>
-	},
+	props: { store: Zus.StoreApi<LQY.ApplyAsStore> },
 ) {
 	const [poolApplyAs, setPoolApplyAs] = Zus.useStore(props.store, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
 	const dnrCheckboxId = React.useId()

@@ -1,480 +1,109 @@
-import { globalToast$ } from '@/hooks/use-global-toast'
-import { useToast } from '@/hooks/use-toast'
-import { acquireInBlock, distinctDeepEquals } from '@/lib/async'
-import { ItemMutations, ItemMutationState } from '@/lib/item-mutations'
+import { distinctDeepEquals } from '@/lib/async'
+import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
-import { useRefConstructor } from '@/lib/react'
-import { assertNever } from '@/lib/type-guards'
-import { Getter, Setter } from '@/lib/zustand'
-import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
+import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
-import * as RBAC from '@/rbac.models'
-import * as ConfigClient from '@/systems.client/config.client'
-import { lqServerStateUpdate$ } from '@/systems.client/layer-queue.client'
+import * as SLL from '@/models/shared-layer-list'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as RbacClient from '@/systems.client/rbac.client'
+import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
-import { Mutex } from 'async-mutex'
-import { derive } from 'derive-zustand'
-
-import * as Im from 'immer'
 import React from 'react'
-import * as ReactRouterDOM from 'react-router-dom'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import * as ZusRx from 'zustand-rx'
-import { subscribeWithSelector } from 'zustand/middleware'
-import { fetchConfig } from './config.client'
-import * as FilterEntityClient from './filter-entity.client'
-import { userPresenceState$, userPresenceUpdate$ } from './presence'
-import * as SquadServerClient from './squad-server.client'
 import * as UsersClient from './users.client'
 
-// -------- types --------
-export type MutServerStateWithIds = SS.UserModifiableServerState & {
-	layerQueue: LL.LayerListItem[]
-}
-
-/**
- * Layer List State
- */
-export type LLState = {
-	layerList: LL.LayerListItem[]
-
-	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us. If this property is defined that indicates that we should attempt to backfill
-	nextLayerBackfillId?: string
-	listMutations: ItemMutations
-}
-
-export type LLStore = LLState & LLActions
+export type LLStore = SLLClient.Store
 
 export type LLActions = {
-	move: (movedItemId: LL.ItemId, targetCursor: LL.ItemRelativeCursor, modifiedBy: bigint) => void
-	add: (items: LL.NewLayerListItem[], index?: LL.ItemIndex | LL.ItemRelativeCursor) => void
-	setItem: (id: string, update: React.SetStateAction<LL.LayerListItem>) => void
-	remove: (id: string) => void
-	clear: () => void
+	dispatch: (op: SLL.NewOperation) => void
 }
 
 export type LLItemState = {
-	index: number
-	innerIndex: number | null
-	item: LL.LayerListItem
-	mutationState: ItemMutationState
-	isVoteChoice: boolean
+	index: LL.ItemIndex
+	item: LL.Item
+	mutationState: ItemMut.ItemMutationState
 	isLocallyLast: boolean
-	backfillLayerId?: string
 }
 
 export type LLItemStore = LLItemState & LLItemActions
 
 export type LLItemActions = {
-	setItem: React.Dispatch<React.SetStateAction<LL.LayerListItem>>
+	dispatch: (op: SLL.NewContextItemOperation) => void
 	addVoteItems: (items: LL.NewLayerListItem[]) => void
-	swapFactions: () => void
-	// if not present then removing is disabled
-	remove?: () => void
 }
 
-export type ExtraQueryFiltersActions = {
-	setActive: (filterId: F.FilterEntityId, active: boolean) => void
-	select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
-	add: (newFilterId: F.FilterEntityId, active: boolean) => void
-	remove: (filterId: F.FilterEntityId) => void
+export function getSource(): LL.Source {
+	return { type: 'manual', userId: UsersClient.loggedInUserId! }
 }
 
-export type ExtraQueryFiltersState = {
-	filters: Set<F.FilterEntityId>
-	active: Set<F.FilterEntityId>
-}
-
-export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
-
-export function useExtraFiltersStore(useIndependentActiveState: boolean = false) {
-	const storeRef = useRefConstructor(() => {
-		const activeStore = Zus.createStore(() => ({ active: new Set<F.FilterEntityId>() }))
-		const addActive = (draft: Im.WritableDraft<QDStore>, filterId: F.FilterEntityId) => {
-			if (useIndependentActiveState) {
-				activeStore.setState(state => {
-					const newState = new Set(state.active)
-					newState.add(filterId)
-					return { active: newState }
-				})
-			} else {
-				draft.activeExtraQueryFilters.add(filterId)
-			}
+export function createLLItemStore(initialState: Omit<LLItemState, 'index' | 'isLocallyLast'>) {
+	return Zus.createStore<LLItemStore>((set, get) => {
+		const dispatch: LLItemActions['dispatch'] = (newItemOp) => {
+			const item = Obj.deepClone(get().item)
+			const op: SLL.Operation = { ...newItemOp, itemId: item.itemId, userId: UsersClient.loggedInUserId!, opId: createId(6) }
+			SLL.applyOperation([item], op)
 		}
-		const removeActive = (draft: QDStore, filterId: F.FilterEntityId) => {
-			if (useIndependentActiveState) {
-				activeStore.setState(state => {
-					const newState = new Set(state.active)
-					newState.delete(filterId)
-					return { active: newState }
-				})
-			} else {
-				draft.activeExtraQueryFilters.delete(filterId)
-			}
-		}
+		const actions: LLItemActions = {
+			dispatch,
+			addVoteItems(items) {
+				const item = Obj.deepClone(get().item)
+				if (!LL.isParentVoteItem(item)) return
 
-		const actions: ExtraQueryFiltersActions = {
-			setActive(filterId, active) {
-				QDStore.setState((state) =>
-					Im.produce(state, (draft) => {
-						if (!active) {
-							removeActive(draft, filterId)
-							return
-						}
-						if (!draft.extraQueryFilters.has(filterId)) {
-							draft.extraQueryFilters.add(filterId)
-						}
-						addActive(draft, filterId)
-					})
-				)
-			},
-			select(newFilterId, oldFilterId) {
-				QDStore.setState(state =>
-					Im.produce(state, draft => {
-						removeActive(draft, oldFilterId)
-						addActive(draft, newFilterId)
-						draft.extraQueryFilters.add(newFilterId)
-					})
-				)
-			},
-			add(filterId) {
-				QDStore.setState(state =>
-					Im.produce(state, draft => {
-						draft.extraQueryFilters.add(filterId)
-						addActive(draft, filterId)
-					})
-				)
-			},
-			remove(filterId) {
-				QDStore.setState(state =>
-					Im.produce(state, draft => {
-						draft.extraQueryFilters.delete(filterId)
-						removeActive(draft, filterId)
-					})
-				)
+				// pretending that this is the outer list
+				const op: SLL.NewOperation = {
+					op: 'add',
+					index: { outerIndex: item.choices.length, innerIndex: null },
+					items,
+				}
+				SLL.applyOperation(item.choices, op)
+				set({ item })
 			},
 		}
 
-		return derive<ExtraQueryFiltersStore>(get => ({
-			filters: get(QDStore).extraQueryFilters,
-			active: useIndependentActiveState ? get(activeStore).active : get(QDStore).activeExtraQueryFilters,
-			...actions,
-		}))
-	})
-
-	return storeRef.current
-}
-
-export const useNewPoolApplyAsStore = (defaultState: ApplyAsState): Zus.StoreApi<ApplyAsStore> => {
-	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<ApplyAsStore>((set) => ({
-			poolApplyAs: defaultState,
-			setPoolApplyAs: (type, value) => {
-				set(state => ({
-					...state,
-					poolApplyAs: {
-						...state.poolApplyAs,
-						[type]: value,
-					},
-				}))
-			},
-		}))
-	})
-
-	return storeRef.current
-}
-
-// Queue Dashboard state
-export type QDState = {
-	initialized: boolean
-	editedServerState: MutServerStateWithIds
-
-	// if this layer is set as the next one on the server but is only a partial, then we want to "backfill" the details that the server fills in for us.
-	nextLayerBackfillId?: string
-	queueMutations: ItemMutations
-	serverState: SS.LQServerState | null
-	isEditing: boolean
-	stopEditingInProgress: boolean
-	canEditQueue: boolean
-	canEditSettings: boolean
-	poolApplyAs: ApplyAsState
-	extraQueryFilters: Set<F.FilterEntityId>
-	activeExtraQueryFilters: Set<F.FilterEntityId>
-
-	// M.toQueueLayerKey and stuff to lookup the id
-	hoveredConstraintItemId?: string
-}
-
-type ApplyAsState = {
-	dnr: LQY.LayerQueryConstraint['applyAs']
-	filter: LQY.LayerQueryConstraint['applyAs']
-}
-export type ApplyAsStore = Pick<QDStore, 'poolApplyAs' | 'setPoolApplyAs'>
-
-export type QDStore = QDState & {
-	applyServerUpdate: (update: SS.LQStateUpdate) => void
-	reset: () => Promise<void>
-	setSetting: (updater: (settings: Im.Draft<SS.ServerSettings>) => void) => void
-	setQueue: Setter<LLState>
-	tryStartEditing: () => void
-	tryEndEditing: () => void
-
-	setPoolApplyAs: (type: keyof QDStore['poolApplyAs'], value: LQY.LayerQueryConstraint['applyAs']) => void
-	setHoveredConstraintItemId: React.Dispatch<React.SetStateAction<string | undefined>>
-}
-
-// -------- store initialization --------
-export const createLLActions = (set: Setter<LLState>, get: Getter<LLState>, onMutate?: () => void): LLActions => {
-	const remove = (id: string) => {
-		set((prevState) =>
-			Im.produce(prevState, (draft) => {
-				let itemRes: LL.LayerListIteratorResult | undefined
-				if (!(itemRes = LL.findItemById(prevState.layerList, id))) return
-				LL.splice(draft.layerList, itemRes, 1)
-				ItemMut.tryApplyMutation('removed', id, draft.listMutations)
-				// TODO current implementation of the below doesn't work for this scenario. will need some kind of structural diffing instead
-				LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
-				onMutate?.()
-			})
-		)
-	}
-	return {
-		setItem: (id, update) => {
-			set((state) => {
-				return Im.produce(state, (draft) => {
-					const itemResult = LL.findItemById(state.layerList, id)
-					if (!itemResult) return
-					const originalItem = itemResult.item
-					const updatedItem = typeof update === 'function' ? update(itemResult.item) : update
-					LL.splice(draft.layerList, itemResult, 1, updatedItem)
-					ItemMut.tryApplyMutation('edited', id, draft.listMutations)
-					// here we handle potential edits only
-					if (LL.isParentVoteItem(updatedItem) && LL.isParentVoteItem(originalItem)) {
-						for (let i = 0; i < Math.max(updatedItem.choices.length, originalItem.choices.length); i++) {
-							const choice = updatedItem.choices[i]
-							const originalChoice = originalItem.choices[i]
-							if (choice && originalChoice && choice.itemId === originalChoice.itemId && !Obj.deepEqual(choice, originalChoice)) {
-								ItemMut.tryApplyMutation('edited', choice.itemId, draft.listMutations)
-							}
-							if (choice && !LL.findItemById([originalItem], choice.itemId)) {
-								ItemMut.tryApplyMutation('added', choice.itemId, draft.listMutations)
-							}
-						}
-					}
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
-					onMutate?.()
-				})
-			})
-		},
-		add: (newItems, index) => {
-			set(
-				Im.produce((draft) => {
-					const items = newItems.map(LL.createLayerListItem)
-					index ??= { outerIndex: draft.layerList.length, innerIndex: null }
-					LL.splice(draft.layerList, index, 0, ...items)
-					for (const { item } of LL.iterLayerList(items)) {
-						ItemMut.tryApplyMutation('added', item.itemId, draft.listMutations)
-					}
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
-					onMutate?.()
-				}),
-			)
-		},
-		move(movedItemId, targetCursor, modifiedBy) {
-			set((state) => {
-				console.debug('before', state)
-				return Im.produce(state, (draft) => {
-					if (movedItemId === targetCursor.itemId) return
-					const targetCursorParent = LL.findParentItem(targetCursor.itemId, draft.layerList)
-					if (targetCursorParent?.itemId == movedItemId) return
-
-					const movedItemRes = LL.findItemById(state.layerList, movedItemId)
-					const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
-					if (movedItemRes === undefined) {
-						console.warn('Failed to move item. item not found', movedItemId, targetCursor.itemId)
-						return
-					}
-					if (targetItemRes === undefined) {
-						console.warn('Failed to move item. target item not found', movedItemId, targetCursor.itemId)
-						return
-					}
-
-					{
-						const cursorItemIndex = LL.resolveQualfiedIndexFromCursorForMove(state.layerList, targetCursor)
-						if (cursorItemIndex === undefined) return
-
-						if (cursorItemIndex.innerIndex === movedItemRes.innerIndex && cursorItemIndex.outerIndex === movedItemRes.outerIndex) {
-							// already at target position
-							return
-						}
-					}
-					LL.splice(draft.layerList, movedItemRes, 1)
-					switch (targetCursor.position) {
-						case 'on': {
-							const targetItemRes = LL.findItemById(state.layerList, targetCursor.itemId)
-							if (!targetItemRes) return
-							const mergedItem = LL.mergeItems(targetItemRes.item, movedItemRes.item)
-							if (!mergedItem) throw new Error('Failed to merge items')
-							LL.splice(draft.layerList, targetCursor, 1, mergedItem)
-							ItemMut.tryApplyMutation('edited', mergedItem.itemId, draft.listMutations)
-							break
-						}
-						case 'after':
-						case 'before': {
-							const movedAndModifiedItem: LL.LayerListItem = { ...movedItemRes.item, source: { type: 'manual', userId: modifiedBy } }
-							LL.splice(draft.layerList, targetCursor, 0, movedAndModifiedItem)
-							if (targetCursorParent && LL.isParentVoteItem(targetCursorParent)) {
-								LL.setCorrectChosenLayerIdInPlace(targetCursorParent as LL.ParentVoteItem)
-							}
-							if (targetCursorParent && LL.isVoteChoiceResult(targetItemRes)) {
-								ItemMut.tryApplyMutation('edited', targetCursorParent.itemId, draft.listMutations)
-							}
-							break
-						}
-						default: {
-							assertNever(targetCursor.position)
-						}
-					}
-
-					ItemMut.tryApplyMutation('moved', movedItemRes.item.itemId, draft.listMutations)
-					LL.changeGeneratedLayerAttributionInPlace(draft.layerList, draft.listMutations, UsersClient.loggedInUserId!)
-					onMutate?.()
-				})
-				console.debug('after', state)
-			})
-		},
-		remove,
-		clear: () => {
-			const removed = new Set(get().layerList.map((item) => item.itemId))
-			set({
-				layerList: [],
-				listMutations: { removed, added: new Set(), edited: new Set(), moved: new Set() },
-			})
-			onMutate?.()
-		},
-	}
-}
-
-export const selectLLState = (state: QDState): LLState => ({
-	layerList: state.editedServerState.layerQueue,
-	listMutations: state.queueMutations,
-	nextLayerBackfillId:
-		(state.serverState && LL.getNextLayerId(state.serverState?.layerQueue) === LL.getNextLayerId(state.editedServerState.layerQueue))
-			? state.nextLayerBackfillId
-			: undefined,
-})
-
-export const deriveLLStore = (store: Zus.StoreApi<QDStore>) => {
-	const setLL = store.getState().setQueue
-	const getLL = () => selectLLState(store.getState())
-	const onMutate = () => {
-		store.getState().tryStartEditing()
-	}
-	const actions = createLLActions(setLL, getLL, onMutate)
-
-	return derive<LLStore>((get) => {
 		return {
-			...selectLLState(get(store)),
+			...initialState,
 			...actions,
+			index: { outerIndex: 0, innerIndex: null },
+			isLocallyLast: true,
 		}
 	})
 }
 
-export const createLLItemStore = (
-	set: Setter<LLItemState>,
-	get: Getter<LLItemState>,
-	initialState: LLItemState,
-	removeItem?: () => void,
-): LLItemStore => {
-	return {
-		...initialState,
-		setItem: (update) => {
-			if (typeof update === 'function') {
-				set({ item: update(get().item) })
-			} else {
-				set({ item: update })
-			}
-		},
-		swapFactions: () => {
-			const item = get().item
-			const source: LL.Source | undefined = UsersClient.loggedInUserId
-				? { type: 'manual', userId: UsersClient.loggedInUserId }
-				: undefined
-			set({
-				item: LL.swapFactions(item, source),
-			})
-		},
-		addVoteItems: (choices) => {
-			const newItem = LL.mergeItems(get().item, ...choices.map(LL.createLayerListItem))
-			if (!newItem) return
-			set({ item: newItem })
-		},
-		remove: removeItem,
-	}
-}
+// export function useNewLLItemStore(initialState: LLItemState) {
+// 	initialState = ReactHelpers.useDeepEqualsMemo(() => initialState, [initialState])
+// 	ReactHelpers.useRefConstructor(() => {
+// 	})
+// }
 
-export function useLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.ItemId) {
+export function useDerivedLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.ItemId) {
 	const [store, subHandle] = React.useMemo(() => deriveLLItemStore(llStore, itemId), [llStore, itemId])
-	React.useEffect(() => {
-		const sub = subHandle.subscribe()
-		return () => sub.unsubscribe()
-	}, [subHandle])
+	ZusUtils.useSubHandle(subHandle)
 	return store
 }
 
-export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string) => {
-	let subHandle!: { subscribe: () => Rx.Subscription }
-	const store = Zus.createStore<LLItemStore>((set) => {
-		const actions: LLItemActions = {
-			setItem: (update) => llStore.getState().setItem(itemId, update),
-			addVoteItems: (choices) => {
-				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				const newItem = LL.mergeItems(item, ...choices.map(LL.createLayerListItem))
-				if (!newItem) return
-				llStore.getState().setItem(item.itemId, newItem)
-			},
-			remove: () => llStore.getState().remove(itemId),
-			swapFactions: () => {
-				const { item } = LL.findItemById(llStore.getState().layerList, itemId)!
-				const source: LL.Source | undefined = UsersClient.loggedInUserId
-					? { type: 'manual', userId: UsersClient.loggedInUserId }
-					: undefined
-				llStore.getState().setItem(itemId, LL.swapFactions(item, source))
-			},
-		}
+export function deriveLLItemStore(llStore: Zus.StoreApi<SLLClient.Store>, itemId: string) {
+	let subHandle!: ZusUtils.SubHandle
+	const store = Zus.createStore<LLItemStore>((set, get) => {
 		function deriveState(llState: LLStore): LLItemState | null {
 			const layerList = llState.layerList
 
 			const res = LL.findItemById(layerList, itemId)
 			if (!res) return null
-			const parentItem = LL.findParentItem(itemId, layerList)
-			const { item, outerIndex, innerIndex } = res
-			const isLocallyLast = LL.isLocallyLastItem(itemId, layerList)
-
-			let backfillLayerId: string | undefined
-			if (outerIndex === 0 || innerIndex !== null && parentItem && parentItem?.layerId === item.layerId) {
-				if (llState.nextLayerBackfillId && L.areLayersCompatible(item.layerId, llState.nextLayerBackfillId)) {
-					backfillLayerId = llState.nextLayerBackfillId
-				}
-			}
+			const parentItem = LL.findParentItem(layerList, itemId)
+			const { item, ...index } = res
+			const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
 
 			return {
-				index: outerIndex,
-				innerIndex,
-				isVoteChoice: innerIndex != null,
+				index,
 				item,
-				mutationState: ItemMut.toItemMutationState(llState.listMutations, itemId, parentItem?.layerId),
+				mutationState: ItemMut.toItemMutationState(llState.session.mutations, itemId, parentItem?.layerId),
 				isLocallyLast,
-				backfillLayerId,
 			}
 		}
 
@@ -485,241 +114,39 @@ export const deriveLLItemStore = (llStore: Zus.StoreApi<LLStore>, itemId: string
 			return () => unsub()
 		})
 
-		subHandle = {
-			subscribe: () =>
-				derived$.subscribe((state) => {
+		subHandle = ZusUtils.createSubHandle(
+			(subs) =>
+				subs.push(derived$.subscribe((state) => {
 					if (state) set(state)
-				}),
+				})),
+		)
+
+		const actions: LLItemActions = {
+			dispatch(newItemOp) {
+				const newOp: SLL.NewOperation = { ...newItemOp, itemId }
+				llStore.getState().dispatch(newOp)
+			},
+
+			addVoteItems(choices) {
+				const item = get().item
+				if (!LL.isParentVoteItem(item)) return
+				const index: LL.ItemIndex = { innerIndex: item.choices.length, outerIndex: get().index.outerIndex }
+				llStore.getState().dispatch({ op: 'add', index, items: choices })
+			},
 		}
 
-		return {
-			...actions,
-			...deriveState(llStore.getState())!,
-		}
+		return { ...deriveState(llStore.getState())!, ...actions }
 	})
 	return [store, subHandle] as const
 }
 
-export function getEditableServerState(state: SS.LQServerState): MutServerStateWithIds {
-	return {
-		layerQueue: state.layerQueue,
-		layerQueueSeqId: state.layerQueueSeqId,
-		settings: state.settings,
-	}
-}
-
-export const initialQDState: QDState = {
-	initialized: false,
-	editedServerState: { layerQueue: [], layerQueueSeqId: 0, settings: SS.ServerSettingsSchema.parse({ queue: {} }) },
-	queueMutations: ItemMut.initMutations(),
-	serverState: null,
-	isEditing: false,
-	canEditQueue: false,
-	canEditSettings: false,
-	stopEditingInProgress: false,
-	extraQueryFilters: new Set(),
-	activeExtraQueryFilters: new Set(),
-	poolApplyAs: {
-		dnr: 'field',
-		filter: 'where-condition',
-	},
-	hoveredConstraintItemId: undefined,
-}
-
-export const QDStore = Zus.createStore(subscribeWithSelector<QDStore>((set, get, store) => {
-	const canEdit$ = userPresenceState$.pipe(
-		Rx.mergeMap(async (state) => {
-			const user = await UsersClient.fetchLoggedInUser()
-			const canEdit = !state?.editState || state.editState.wsClientId === user?.wsClientId
-			if (!user) return { canEditQueue: false, canEditSettings: false }
-			return {
-				canEditQueue: canEdit && RBAC.rbacUserHasPerms(user, { check: 'all', permits: [RBAC.perm('queue:write')] }),
-				canEditSettings: canEdit && RBAC.rbacUserHasPerms(user, { check: 'all', permits: [RBAC.perm('settings:write')] }),
-			}
-		}),
-		distinctDeepEquals(),
-	)
-
-	SquadServerClient.layersStatus$.subscribe(status => {
-		set({ nextLayerBackfillId: (status.code === 'ok' && status.data.nextLayer) ? status.data.nextLayer.id : undefined })
-	})
-
-	canEdit$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((canEdit) => {
-		set(canEdit)
-	})
-
-	lqServerStateUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((update) => {
-		if (!update) return
-		get().applyServerUpdate(update)
-	})
-
-	userPresenceUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(async (update) => {
-		const presence = update.state
-		if (!presence?.editState) {
-			if (get().isEditing && update.event === 'edit-kick') {
-				globalToast$.next({ variant: 'edited', title: 'You have been kicked from your editing session' })
-			}
-			get().reset()
-			return
-		}
-		const loggedInUser = await UsersClient.fetchLoggedInUser()
-		if (presence.editState.wsClientId !== loggedInUser?.wsClientId) {
-			if (get().isEditing && update.event === 'edit-kick') {
-				globalToast$.next({ title: 'You have been kicked from your editing session' })
-			}
-			get().reset()
-		}
-	})
-
-	const editChangeMtx = new Mutex()
-	async function tryStartEditing() {
-		using _ = await acquireInBlock(editChangeMtx)
-		if (get().isEditing) return
-		set({ isEditing: true })
-		const res = await trpc.layerQueue.startEditing.mutate()
-		switch (res.code) {
-			case 'err:already-editing': {
-				globalToast$.next({ title: 'Another user is already editing the queue' })
-				set({ isEditing: false })
-				get().reset()
-				return
-			}
-			case 'ok': {
-				break
-			}
-		}
-	}
-
-	async function tryEndEditing() {
-		using _ = await acquireInBlock(editChangeMtx)
-		if (!get().isEditing) return
-		set({ stopEditingInProgress: true })
-		set({ isEditing: false })
-		void trpc.layerQueue.endEditing.mutate()
-		try {
-			const loggedInUser = await UsersClient.fetchLoggedInUser()
-			await Rx.firstValueFrom(
-				userPresenceState$.pipe(
-					Rx.filter((a) => a?.editState === null || a?.editState?.wsClientId !== loggedInUser?.wsClientId),
-					Rx.take(1),
-				),
-			)
-		} finally {
-			set({ stopEditingInProgress: false })
-		}
-	}
-
-	const getInitialStateToReset = (): Partial<QDState> => {
-		return {
-			editedServerState: Obj.deepClone(initialQDState.editedServerState),
-			queueMutations: ItemMut.initMutations(),
-		}
-	}
-
-	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
-	function writeExtraQueryFilters() {
-		localStorage.setItem('extraQueryFilters:v2', Array.from(get().extraQueryFilters).join())
-	}
-	if (extraQueryFilters.size === 0) {
-		;(async () => {
-			const config = await ConfigClient.fetchConfig()
-			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
-			if (!config.layerTable.defaultExtraFilters) return
-
-			set({
-				extraQueryFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
-			})
-			writeExtraQueryFilters()
-		})()
-	}
-	FilterEntityClient.filterEntityChanged$.subscribe(() => {
-		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f))
-		set({ extraQueryFilters: new Set(extraFilters) })
-	})
-
-	store.subscribe((state) => state?.extraQueryFilters, (state) => state && writeExtraQueryFilters())
-
-	let maxQueueSize: number = 10
-	fetchConfig().then(config => {
-		maxQueueSize = config.layerQueue.maxQueueSize ?? 10
-	})
-
-	return {
-		...initialQDState,
-		extraQueryFilters,
-		applyServerUpdate: (update) => {
-			set({ serverState: update.state })
-			get().reset().then(() => {
-				set({ initialized: true })
-			})
-		},
-		reset: async () => {
-			const serverStateUpdate = await lqServerStateUpdate$.getValue()
-			await tryEndEditing()
-			if (!serverStateUpdate) {
-				set({ ...getInitialStateToReset(), canEditQueue: get().canEditQueue, isEditing: get().isEditing })
-				return
-			}
-
-			set({
-				...getInitialStateToReset(),
-				editedServerState: getEditableServerState(serverStateUpdate.state) ?? initialQDState.editedServerState,
-			})
-		},
-		setSetting: (handler) => {
-			set((state) =>
-				Im.produce(state, (draft) => {
-					handler(draft.editedServerState.settings)
-				})
-			)
-			void tryStartEditing()
-		},
-		setPoolApplyAs(key, value) {
-			set(state =>
-				Im.produce(state, draft => {
-					draft.poolApplyAs[key] = value
-				})
-			)
-		},
-		setQueue: (handler) => {
-			const updated = typeof handler === 'function' ? handler(selectLLState(get())) : handler
-			if (updated.layerList && updated.layerList.length > maxQueueSize) {
-				globalToast$.next({ title: `Too many queue items! Queue size limit is ${maxQueueSize}`, variant: 'destructive' })
-				return
-			}
-			set({
-				editedServerState: {
-					...get().editedServerState,
-					layerQueue: updated.layerList!,
-				},
-				queueMutations: updated.listMutations,
-			})
-			void tryStartEditing()
-		},
-		tryStartEditing,
-		tryEndEditing,
-		setHoveredConstraintItemId: (update) => {
-			const previous = get().hoveredConstraintItemId
-			const updated = typeof update === 'function' ? update(get().hoveredConstraintItemId) : update
-			if (updated !== previous) set({ hoveredConstraintItemId: updated })
-		},
-	}
-}))
-
-// @ts-expect-error expose for debugging
-window.QDStore = QDStore
-
 export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
 	Rx.combineLatest([
-		ZusRx.toStream(QDStore),
+		ZusRx.toStream(SLLClient.Store).pipe(Rx.map(s => s.layerList), Rx.distinctUntilChanged()),
 		MatchHistoryClient.recentMatches$,
 	]).pipe(
-		Rx.filter(([qdState]) => {
-			return qdState.initialized
-		}),
-		Rx.map(([qdState, history]) => {
-			const state = LQY.resolveLayerItemsState(qdState.editedServerState.layerQueue, history)
-			return state
+		Rx.map(([layerList, history]) => {
+			return LQY.resolveLayerItemsState(layerList, history)
 		}),
 		distinctDeepEquals(),
 	),
@@ -729,10 +156,10 @@ export function setup() {
 	layerItemsState$.subscribe()
 }
 
-export function getExtraFiltersConstraints(extraFiltersState: ExtraQueryFiltersState) {
+export function getExtraFiltersConstraints(extraFiltersState: LQY.ExtraQueryFiltersState) {
 	const constraints: LQY.LayerQueryConstraint[] = []
 	for (const filterId of extraFiltersState.filters) {
-		if (!extraFiltersState.active.has(filterId)) continue
+		if (!extraFiltersState.activeFilters.has(filterId)) continue
 		constraints.push({
 			type: 'filter-entity',
 			id: 'extra-filter:' + filterId,
@@ -743,9 +170,12 @@ export function getExtraFiltersConstraints(extraFiltersState: ExtraQueryFiltersS
 	return constraints
 }
 
-export function selectBaseQueryConstraints(state: QDState, applyAs: ApplyAsState): LQY.LayerQueryConstraint[] {
+export function selectBaseQueryConstraints(
+	settings: SS.PublicServerSettings,
+	applyAs: LQY.ApplyAsState,
+): LQY.LayerQueryConstraint[] {
 	const queryConstraints = SS.getPoolConstraints(
-		state.editedServerState.settings.queue.mainPool,
+		settings.queue.mainPool,
 		applyAs.dnr,
 		applyAs.filter,
 	)
@@ -753,27 +183,9 @@ export function selectBaseQueryConstraints(state: QDState, applyAs: ApplyAsState
 	return queryConstraints
 }
 
-/**
- * Resets the editing state when navigating to a different page
- */
-export function useResetEditOnNavigate() {
-	const pathname = ReactRouterDOM.useLocation().pathname
-	React.useEffect(() => {
-		QDStore.getState().reset()
-	}, [pathname])
-}
-
-export const LQStore = deriveLLStore(QDStore)
+export const LQStore = SLLClient.Store
 // @ts-expect-error expose for debugging
 window.LQStore = LQStore
-
-export function selectIsEditing(state: QDStore) {
-	return state.isEditing
-}
-
-export function toDraggableItemId(id: string | null) {
-	return JSON.stringify(id)
-}
 
 export function useToggleSquadServerUpdates() {
 	const saveChangesMutation = useMutation({
@@ -788,48 +200,4 @@ export function useToggleSquadServerUpdates() {
 			saveChangesMutation.mutate({ disabled: false })
 		},
 	}
-}
-
-export function useSaveChangesMutation() {
-	const updateQueueMutation = useMutation({ mutationFn: saveLqState })
-	const toaster = useToast()
-	async function saveLqState() {
-		const serverStateMut = QDStore.getState().editedServerState
-		const res = await trpc.layerQueue.updateQueue.mutate(serverStateMut)
-		const reset = QDStore.getState().reset
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				reset()
-				break
-			case 'err:out-of-sync':
-				toaster.toast({
-					title: 'State changed before submission, please try again.',
-					variant: 'destructive',
-				})
-				reset()
-				return
-			case 'err:queue-too-large':
-				toaster.toast({
-					title: 'Queue too large',
-					variant: 'destructive',
-				})
-				break
-			case 'err:not-enough-visible-info':
-			case 'err:too-many-vote-choices':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'ok':
-				toaster.toast({ title: 'Changes applied' })
-				QDStore.getState().reset()
-				break
-			default:
-				assertNever(res)
-		}
-	}
-
-	return updateQueueMutation
 }

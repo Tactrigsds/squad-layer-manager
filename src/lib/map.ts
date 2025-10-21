@@ -42,6 +42,15 @@ export function union<K, T>(...maps: Map<K, T>[]): Map<K, T> {
 	return newMap
 }
 
+export function find<K, T>(map: Map<K, T>, predicate: (key: K, value: T) => boolean): [K, T] | undefined {
+	for (const [key, value] of map.entries()) {
+		if (predicate(key, value)) {
+			return [key, value]
+		}
+	}
+	return undefined
+}
+
 export function apply<K, T>(map: Map<K, T>, ...maps: Map<K, T>[]): Map<K, T> {
 	for (const otherMap of maps) {
 		for (const [key, value] of otherMap.entries()) {
@@ -67,4 +76,21 @@ export function revLookup<K, T>(map: Map<K, T>, value: T, toId: (value: T) => un
 		}
 	}
 	return undefined
+}
+
+export function revLookupAll<K, T>(map: Map<K, T>, value: T, toId: (value: T) => unknown = (value: T) => value): K[] {
+	const matches: K[] = []
+	for (const [key, val] of map.entries()) {
+		if (toId(val) === toId(value)) {
+			matches.push(key)
+		}
+	}
+	return matches
+}
+
+export function bulkDelete<K, T>(map: Map<K, T>, ...keys: K[]): Map<K, T> {
+	for (const key of keys) {
+		map.delete(key)
+	}
+	return map
 }

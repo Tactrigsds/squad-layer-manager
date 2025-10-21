@@ -21,25 +21,25 @@ import { BROADCASTS } from '@/messages.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as SLL from '@/models/shared-layer-list.ts'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
-import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client'
+import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import * as ReactQuery from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
-import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import EditLayerListItemDialog from './edit-layer-list-item-dialog.tsx'
+import EditLayerDialog from './edit-layer-dialog.tsx'
 import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -72,11 +72,17 @@ export function LayerList(
 			const activeId = event.active.id
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
-			props.store.getState().add([{ layerId: entry.layerId, source: { type: 'manual', userId: UsersClient.loggedInUserId! } }], cursor)
+			const index = LL.resolveQualfiedIndexFromCursorForMove(layerList, cursor)!
+			props.store.getState().dispatch({ op: 'add', items: [{ layerId: entry.layerId }], index })
 		}
 
 		if (event.active.type === 'layer-item') {
-			props.store.getState().move(event.active.id, cursor, user.discordId)
+			props.store.getState().dispatch({
+				op: 'move',
+				indexOrCursor: cursor,
+				itemId: event.active.id,
+				newFirstItemId: LL.createLayerListItemId(),
+			})
 		}
 	}, [user, props.store]))
 
@@ -101,7 +107,7 @@ export type QueueItemAction =
 	}
 	| {
 		code: 'edit'
-		item: LL.LayerListItem
+		item: LL.Item
 	}
 	| {
 		code: 'delete'
@@ -109,7 +115,7 @@ export type QueueItemAction =
 	}
 	| {
 		code: 'add-after' | 'add-before'
-		items: LL.LayerListItem[]
+		items: LL.Item[]
 		id?: string
 	}
 
@@ -129,30 +135,33 @@ function LayerListItem(props: LayerListItemProps) {
 }
 
 function SingleLayerListItem(props: LayerListItemProps) {
-	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
+	const itemStore = QD.useDerivedLLItemStore(props.llStore, props.itemId)
 	const parentItem = ZusUtils.useStoreDeep(props.llStore, s => {
-		const parentItem = LL.findParentItem(props.itemId, s.layerList)
+		const parentItem = LL.findParentItem(s.layerList, props.itemId)
 		if (!parentItem || !LL.isParentVoteItem(parentItem)) return undefined
 		return parentItem
 	}, {
 		dependencies: [props.itemId],
 	})
 
-	const [item, isVoteChoice, index, innerIndex, backfillLayerId, isLocallyLast, displayedMutation] = ZusUtils.useStoreDeep(
+	const [item, index, isLocallyLast, displayedMutation] = ZusUtils.useStoreDeep(
 		itemStore,
-		(s) => [s.item, s.isVoteChoice, s.index, s.innerIndex, s.backfillLayerId, s.isLocallyLast, getDisplayedMutation(s.mutationState)],
+		(s) => [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)],
 	)
+	const isVoteChoice = LL.isParentVoteItem(item)
 
-	const [_canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
+	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
+	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
+
+	const [itemPresence, itemActivityUser, activityHovered] = SLLClient.useItemPresence(item.itemId)
 
 	const globalVoteState = VotesClient.useVoteState()
 	const voteState = (globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined)
 		?? parentItem?.endingVoteState
-	const voteInProgress = voteState?.code === 'in-progress'
-	const canEdit = _canEdit && !voteInProgress
 
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem)
+	const user = UsersClient.useLoggedInUser()
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
 	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
@@ -164,11 +173,18 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	const badges: React.ReactNode[] = []
 
-	badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
+	if (user && itemPresence && itemActivityUser.discordId !== user.discordId) {
+		badges.push(
+			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="secondary">
+				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.username)}...
+			</Badge>,
+		)
+	} else {
+		badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
+	}
 
 	const editButtonProps = (className?: string) => ({
 		'data-can-edit': canEdit,
-		'data-is-editing': isEditing,
 		'data-mobile': isMobile,
 		disabled: !canEdit,
 		className: cn('data-[mobile=false]:invisible group-hover/single-item:visible', className),
@@ -191,7 +207,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winner === item.layerId
 	const voteCount = (isVoteChoice && voteState) ? tally?.totals?.get(item.layerId) : undefined
 
-	if (innerIndex === 0 && voteState?.code !== 'ended:winner') {
+	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.push(
 			<Badge key="default-choice" variant="secondary">
 				Default
@@ -207,7 +223,8 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	}
 
 	if (
-		!isEditing && layersStatus?.nextLayer && index === 0 && !isVoteChoice
+		!isModified && layersStatus?.nextLayer && index.outerIndex === 0 && (index.innerIndex === 0 || index.innerIndex === null)
+		&& !isVoteChoice
 		&& !L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
 	) {
 		badges.push(
@@ -237,20 +254,22 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	let addedLayerQueryInput: LQY.LayerQueryBaseInput | undefined
 	if (isVoteChoice) {
-		const cursor = LQY.getQueryCursorForItemIndex(index)
+		const cursor = LQY.getQueryCursorForItemIndex(index.outerIndex)
 		addedLayerQueryInput = {
 			patches: [{ type: 'splice', cursor, deleteCount: 1, insertions: [] }],
 		}
 	}
+
 	return (
 		<>
-			{(isVoteChoice ? innerIndex! : index) === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
+			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<li
 				ref={dragProps.ref}
-				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default"
+				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline"
 				data-mutation={displayedMutation}
 				data-is-dragging={dragProps.isDragging}
 				data-is-voting={voteState?.code === 'in-progress'}
+				data-is-hovered={activityHovered}
 			>
 				{dragProps.isDragging ? <span className="w-[20px] mx-auto">...</span> : (
 					<>
@@ -259,7 +278,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								data-can-edit={canEdit}
 								className=" text-right m-auto font-mono text-s col-start-1 row-start-1 group-hover/single-item:invisible"
 							>
-								{LL.getItemNumber({ outerIndex: index, innerIndex: innerIndex })}
+								{LL.getItemNumber(index)}
 							</span>
 							<GripElt className="col-start-1 row-start-1" />
 						</span>
@@ -271,7 +290,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							<LayerDisplay
 								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
-								backfillLayerId={backfillLayerId}
 								addedLayerQueryInput={addedLayerQueryInput}
 							/>
 							{itemChoiceTallyPercentage !== undefined && (
@@ -302,7 +320,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 }
 
 function VoteLayerListItem(props: LayerListItemProps) {
-	const itemStore = QD.useLLItemStore(props.llStore, props.itemId)
+	const itemStore = QD.useDerivedLLItemStore(props.llStore, props.itemId)
 
 	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStoreDeep(
 		itemStore,
@@ -311,8 +329,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const globalVoteState = VotesClient.useVoteState()
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
-	const [_canEdit, isEditing] = Zus.useStore(QD.QDStore, useShallow((s) => [s.canEditQueue, s.isEditing]))
-	const canEdit = _canEdit && voteState?.code !== 'in-progress'
+	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
+	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
 	const user = UsersClient.useLoggedInUser()
 	const canManageVote = user ? RBAC.rbacUserHasPerms(user, RBAC.perm('vote:manage')) : false
 	const draggableItem = LL.layerItemToDragItem(item)
@@ -341,15 +359,16 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
 		})
 	}
-
-	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep([QD.QDStore, itemStore], ([qdStore, itemStore]) => {
-		const constraints = QD.selectBaseQueryConstraints(qdStore, qdStore.poolApplyAs)
-		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
-		return {
-			constraints,
-			cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
-		}
-	}, { selectorDeps: [] })
+	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep(
+		[itemStore],
+		([itemStore]) => {
+			const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
+			return {
+				cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
+			}
+		},
+		{ selectorDeps: [] },
+	)
 
 	const dropdownProps = {
 		open: dropdownOpen && canEdit,
@@ -360,8 +379,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
-	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = React.useState(false)
-	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = React.useState(false)
+	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = SLLClient.useActivityState({ code: 'editing-item', itemId: item.itemId })
+	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({ code: 'configuring-vote', itemId: item.itemId })
 
 	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
 	async function startVote() {
@@ -423,7 +442,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				store.layerList,
 				voterType,
 				globalVoteState ? { code: globalVoteState.code } : undefined,
-				isEditing,
+				isModified,
 			)
 			const res = {
 				canInitiateVote,
@@ -433,13 +452,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			return res
 		},
 		{
-			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isEditing],
+			dependencies: [item.itemId, voteState, globalVoteState?.code, voterType, serverInfo?.playerCount, isModified],
 		},
 	)
 
 	return (
 		<>
-			{index === 0 && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
+			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} />}
 			<li
 				ref={dragProps.ref}
 				className={cn(
@@ -610,35 +629,29 @@ export function VoteDisplayPropsPopover(
 	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
 		update = { ...update }
 
-		props.llItemStore.getState().setItem(state =>
-			Im.produce(state, draft => {
-				const updated = { ...statuses, ...update }
-				if (update.layer) {
-					updated.map = true
-					updated.gamemode = true
-				} else if (update.layer === false) {
-					updated.map = false
-					updated.gamemode = false
-				} else if (update.gamemode === false || update.map === false) {
-					updated.layer = false
-				}
+		const updated = { ...statuses, ...update }
+		if (update.layer) {
+			updated.map = true
+			updated.gamemode = true
+		} else if (update.layer === false) {
+			updated.map = false
+			updated.gamemode = false
+		} else if (update.gamemode === false || update.map === false) {
+			updated.layer = false
+		}
 
-				if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps))) {
-					delete draft.displayProps
-				} else {
-					draft.displayProps = DH.fromDisplayPropStatuses(updated)
-				}
-			})
-		)
+		const store = props.llItemStore.getState()
+		if (config && Obj.deepEqual(updated, DH.toDisplayPropStatuses(config.vote.voteDisplayProps))) {
+			store.dispatch({ op: 'configure-vote', displayProps: null })
+		} else {
+			store.dispatch({ op: 'configure-vote', displayProps: DH.fromDisplayPropStatuses(updated) })
+		}
 	}
 
 	function resetToDefault() {
 		if (usingDefault) return
-		props.llItemStore.getState().setItem(state =>
-			Im.produce(state, draft => {
-				delete draft.displayProps
-			})
-		)
+		const store = props.llItemStore.getState()
+		store.dispatch({ op: 'configure-vote', displayProps: null })
 	}
 
 	return (
@@ -747,32 +760,47 @@ type ItemDropdownProps = {
 	allowVotes?: boolean
 }
 
+type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote'
+
 function ItemDropdown(props: ItemDropdownProps) {
 	const allowVotes = props.allowVotes ?? true
 
-	type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote' | null
-	const [subDropdownState, _setSubDropdownState] = React.useState(null as SubDropdownState)
+	const item = Zus.useStore(props.itemStore, s => s.item)
 
-	function setSubDropdownState(state: SubDropdownState) {
+	const dropdownMapping: Record<SubDropdownState, SLL.ClientPresenceActivity> = {
+		edit: { code: 'editing-item', itemId: item.itemId },
+		'create-vote': { code: 'editing-item', itemId: item.itemId },
+		'add-after': { code: 'adding-item' },
+		'add-before': { code: 'adding-item' },
+	}
+	const [subDropdownState, _setSubDropdownState] = SLLClient.useActivityKeyState(dropdownMapping)
+	function setSubDropdownState(state: SubDropdownState | null) {
 		if (state === null) props.setOpen(false)
 		_setSubDropdownState(state)
 	}
-	const item = Zus.useStore(props.itemStore, s => s.item)
+	const index = Zus.useStore(props.itemStore, useShallow(s => s.index))
+	const lastLocalIndex = Zus.useStore(
+		props.listStore,
+		useShallow(s => LL.getLastLocalIndexForItem(item.itemId, s.layerList) ?? s.layerList.length),
+	)
 
-	const queryContexts = ZusUtils.useCombinedStoresDeep([QD.QDStore, props.itemStore], ([qdStore, itemStore]) => {
-		const constraints = QD.selectBaseQueryConstraints(qdStore, qdStore.poolApplyAs)
-		const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
-		return {
-			addLayersAfter: {
-				constraints,
-				cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-after') : undefined,
-			},
-			editOrInsert: {
-				constraints,
-				cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'edit') : undefined,
-			},
-		}
-	}, { selectorDeps: [] })
+	const isLocked = SLLClient.useIsItemLocked(item.itemId)
+
+	const queryContexts = ZusUtils.useCombinedStoresDeep(
+		[props.itemStore],
+		([itemStore]) => {
+			const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
+			return {
+				addLayersAfter: {
+					cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-after') : undefined,
+				},
+				editOrInsert: {
+					cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'edit') : undefined,
+				},
+			}
+		},
+		{ selectorDeps: [] },
+	)
 
 	const user = UsersClient.useLoggedInUser()
 	return (
@@ -783,14 +811,16 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isParentVoteItem(item) && <DropdownMenuItem onClick={() => setSubDropdownState('edit')}>Edit</DropdownMenuItem>}
 						<DropdownMenuItem
-							onClick={() => props.itemStore.getState().swapFactions()}
+							disabled={isLocked}
+							onClick={() => props.itemStore.getState().dispatch({ op: 'swap-factions' })}
 						>
 							Swap Factions
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
+							disabled={isLocked}
 							onClick={() => {
-								props.itemStore.getState().remove?.()
+								props.itemStore.getState().dispatch({ op: 'delete' })
 							}}
 							className="bg-destructive text-destructive-foreground focus:bg-red-600"
 						>
@@ -799,7 +829,10 @@ function ItemDropdown(props: ItemDropdownProps) {
 					</DropdownMenuGroup>
 
 					{!LL.isParentVoteItem(item) && (
-						<DropdownMenuItem onClick={() => setSubDropdownState('create-vote')}>
+						<DropdownMenuItem
+							disabled={isLocked}
+							onClick={() => setSubDropdownState('create-vote')}
+						>
 							Create Vote
 						</DropdownMenuItem>
 					)}
@@ -807,29 +840,40 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuSeparator />
 
 					<DropdownMenuGroup>
-						<DropdownMenuItem onClick={() => setSubDropdownState('add-before')}>Add layers before</DropdownMenuItem>
-						<DropdownMenuItem onClick={() => setSubDropdownState('add-after')}>Add layers after</DropdownMenuItem>
+						<DropdownMenuItem disabled={isLocked} onClick={() => setSubDropdownState('add-before')}>Add layers before</DropdownMenuItem>
+						<DropdownMenuItem disabled={isLocked} onClick={() => setSubDropdownState('add-after')}>Add layers after</DropdownMenuItem>
 					</DropdownMenuGroup>
 
 					<DropdownMenuSeparator />
 					<DropdownMenuGroup>
 						<DropdownMenuItem
+							disabled={(index.innerIndex ?? index.outerIndex) === 0 || isLocked}
 							onClick={() => {
 								if (!user) return
-								const item = props.itemStore.getState().item
 								const firstItem = props.listStore.getState().layerList[0]
-								props.listStore.getState().move(item.itemId, { itemId: firstItem.itemId, position: 'before' }, user.discordId)
+								props.itemStore.getState().dispatch({
+									op: 'move',
+									newFirstItemId: LL.createLayerListItemId(),
+									indexOrCursor: { itemId: firstItem.itemId, position: 'before' },
+								})
 							}}
 						>
 							Send to Front
 						</DropdownMenuItem>
 						<DropdownMenuItem
+							disabled={(index.innerIndex ?? index.outerIndex) === lastLocalIndex || isLocked}
 							onClick={() => {
 								if (!user) return
-								const layerList = props.listStore.getState().layerList
-								const item = props.itemStore.getState().item
-								const firstItem = layerList[layerList.length - 1]
-								props.listStore.getState().move(item.itemId, { itemId: firstItem.itemId, position: 'after' }, user.discordId)
+								const itemState = props.itemStore.getState()
+								const state = props.listStore.getState()
+								const layerList = state.layerList
+								const lastLocalIndex = LL.getLastLocalIndexForItem(itemState.item.itemId, layerList)!
+								const targetItemId = LL.resolveItemForIndex(layerList, lastLocalIndex)!.itemId
+								props.itemStore.getState().dispatch({
+									op: 'move',
+									newFirstItemId: LL.createLayerListItemId(),
+									indexOrCursor: { itemId: targetItemId, position: 'after' },
+								})
 							}}
 						>
 							Send to Back
@@ -840,14 +884,20 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 			{/* Dialogs rendered separately */}
 			{!LL.isParentVoteItem(item) && (
-				<EditLayerListItemDialog
+				<EditLayerDialog
 					open={subDropdownState === 'edit'}
 					layerQueryBaseInput={queryContexts.editOrInsert}
 					onOpenChange={(update) => {
 						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
 						return setSubDropdownState(open ? 'edit' : null)
 					}}
-					itemStore={props.itemStore}
+					layerId={item.layerId}
+					onSelectLayer={(layerId) => {
+						props.itemStore.getState().dispatch({
+							op: 'edit-layer',
+							newLayerId: layerId,
+						})
+					}}
 				/>
 			)}
 
@@ -859,12 +909,16 @@ function ItemDropdown(props: ItemDropdownProps) {
 				pinMode="layers"
 				defaultSelected={Array.from(LL.getAllItemLayerIds(item))}
 				selectQueueItems={(newItems) => {
-					const items = newItems.map(choiceItem => LL.createLayerListItem(choiceItem))
-					props.itemStore.getState().setItem({
+					if (index.innerIndex === null) return
+					const layerList = props.listStore.getState().layerList
+					const targetIndex = LL.getLastLocalIndexForItem(item.itemId, layerList)!
+					if (targetIndex?.innerIndex !== null) targetIndex.innerIndex++
+					const source: LL.Source = { type: 'manual', userId: UsersClient.loggedInUserId! }
+					props.listStore.getState().dispatch({
+						op: 'create-vote',
 						itemId: item.itemId,
-						choices: items as LL.LayerListItem[],
-						layerId: items[0].layerId,
-						source: items[0].source!,
+						otherLayers: newItems.map((item) => LL.createLayerListItem(item, source)),
+						newFirstItemId: LL.createLayerListItemId(),
 					})
 				}}
 				layerQueryBaseInput={queryContexts.editOrInsert}
@@ -879,7 +933,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 				selectQueueItems={(items) => {
 					const state = props.listStore.getState()
 					const item = props.itemStore.getState().item
-					state.add(items, { itemId: item.itemId, position: 'before' })
+					const index = LL.getItemIndex(state.layerList, item.itemId)!
+					state.dispatch({ op: 'add', items, index })
 				}}
 				layerQueryBaseInput={queryContexts.editOrInsert}
 			/>
@@ -893,7 +948,10 @@ function ItemDropdown(props: ItemDropdownProps) {
 				selectQueueItems={(items) => {
 					const state = props.listStore.getState()
 					const item = props.itemStore.getState().item
-					state.add(items, { itemId: item.itemId, position: 'after' })
+					const index = LL.getItemIndex(state.layerList, item.itemId)!
+					if (index.innerIndex !== null) index.innerIndex++
+					else index.outerIndex++
+					state.dispatch({ op: 'add', items, index })
 				}}
 				layerQueryBaseInput={queryContexts.addLayersAfter}
 			/>

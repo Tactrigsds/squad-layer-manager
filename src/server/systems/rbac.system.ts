@@ -59,7 +59,8 @@ const tracer = Otel.trace.getTracer('rbac')
 export const getRolesForDiscordUser = C.spanOp(
 	'rbac:get-roles-for-discord-user',
 	{ tracer, attrs: (_, userId) => ({ userId }) },
-	async (baseCtx: CS.Log, userId: bigint) => {
+	async (baseCtx: CS.Log & C.UserId) => {
+		const userId = baseCtx.user.discordId
 		const roles: RBAC.Role[] = []
 		const tasks: Promise<void>[] = []
 		for (const assignment of roleAssignments) {
@@ -94,9 +95,10 @@ export const getRolesForDiscordUser = C.spanOp(
 export const getUserRbacPerms = C.spanOp(
 	'rbac:get-permissions-for-discord-user',
 	{ tracer, attrs: (_, userId) => ({ userId }) },
-	async (baseCtx: CS.Log & C.Db, userId: bigint): Promise<RBAC.TracedPermission[]> => {
+	async (baseCtx: CS.Log & C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
+		const userId = baseCtx.user.discordId
 		const ownedFiltersPromise = getOwnedFilters()
-		const roles = await getRolesForDiscordUser(baseCtx, userId)
+		const roles = await getRolesForDiscordUser(baseCtx)
 		const userFilterContributorsPromise = getUserContributorFilters()
 		const roleFilterContributorsPromise = getRoleContributorFilters()
 
@@ -171,26 +173,22 @@ export const getUserRbacPerms = C.spanOp(
 )
 
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db,
-	userId: bigint,
+	baseCtx: CS.Log & C.Db & C.UserId,
 	perm: RBAC.Permission<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db,
-	userId: bigint,
+	baseCtx: CS.Log & C.Db & C.UserId,
 	perms: RBAC.Permission<T>[],
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db,
-	userId: bigint,
+	baseCtx: CS.Log & C.Db & C.UserId,
 	permissionReq: RBAC.PermissionReq<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	ctx: CS.Log & C.Db,
-	userId: bigint,
+	ctx: CS.Log & C.Db & C.UserId,
 	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
 ) {
-	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx, userId))
+	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))
 
 	const req: RBAC.PermissionReq<T> = 'check' in reqOrPerms
 		? reqOrPerms
@@ -199,6 +197,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
 		}
 
+	const userId = ctx.user.discordId
 	return RBAC.tryDenyPermissionForUser(userId, perms, req)
 }
 

@@ -164,7 +164,8 @@ export const validateAndUpdate = C.spanOp(
 			return { code: 'unauthorized:expired' as const }
 		}
 
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, cachedSession.user.discordId, RBAC.perm('site:authorized'))
+		const discordId = cachedSession.user.discordId
+		const denyRes = await Rbac.tryDenyPermissionsForUser({ ...ctx, user: { discordId } }, RBAC.perm('site:authorized'))
 		if (denyRes) return denyRes
 
 		let expiresAt = cachedSession.expiresAt

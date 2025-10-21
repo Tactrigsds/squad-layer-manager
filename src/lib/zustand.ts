@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
 import { StateObservable } from '@rx-state/core'
@@ -61,3 +62,48 @@ export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, o
 }
 
 type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> }]
+
+export type UnsubscribeFn = () => void
+export type InnerSub = UnsubscribeFn | Rx.Subscription
+
+export type SubHandle = {
+	subCount: number
+	innerSubs?: InnerSub[]
+	subscribe(): void
+	unsubscribe(): void
+}
+
+const isSubscription = (unsub: InnerSub): unsub is Rx.Subscription => {
+	return 'unsubscribe' in unsub
+}
+
+export function createSubHandle(subscribeInner: (onUnsubscribeArr: InnerSub[]) => void): SubHandle {
+	return {
+		subCount: 0,
+		subscribe() {
+			this.subCount++
+			if (this.innerSubs) return
+			this.innerSubs = []
+			subscribeInner(this.innerSubs)
+		},
+		unsubscribe() {
+			this.subCount--
+			if (this.subCount !== 0) return
+			this.innerSubs?.forEach(unsub => {
+				if (isSubscription(unsub)) {
+					unsub.unsubscribe()
+				} else {
+					unsub()
+				}
+			})
+			this.innerSubs = undefined
+		},
+	}
+}
+
+export function useSubHandle(handle: SubHandle) {
+	React.useEffect(() => {
+		handle.subscribe()
+		return () => handle.unsubscribe()
+	}, [handle])
+}

@@ -1,14 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import * as ZusUtils from '@/lib/zustand.ts'
 import * as L from '@/models/layer'
-import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as QD from '@/systems.client/queue-dashboard.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
-import * as Zus from 'zustand'
 import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
@@ -26,11 +23,10 @@ export default function SelectLayersDialog(props: {
 	defaultSelected?: L.LayerId[]
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
+	headerAdditions?: React.ReactNode
 	layerQueryBaseInput: LQY.LayerQueryBaseInput
 }) {
 	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
-
-	const filterMenuStore = LFM.useFilterMenuStore()
 
 	const [selectedLayers, setSelectedLayers] = React.useState<L.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -63,15 +59,13 @@ export default function SelectLayersDialog(props: {
 					(layerId) =>
 						({
 							layerId: layerId,
-							source,
 						}) satisfies LL.NewLayerListItem,
 				)
 				props.selectQueueItems(items)
 			} else if (selectMode === 'vote') {
 				const item: LL.NewLayerListItem = {
 					layerId: selectedLayers[0],
-					choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId, source })),
-					source,
+					choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId }, source)),
 				}
 				props.selectQueueItems([item])
 			}
@@ -88,20 +82,7 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange?.(open)
 	}
 
-	const extraFiltersStore = QD.useExtraFiltersStore()
-	const extraFiltersState = Zus.useStore(extraFiltersStore)
-
-	const filterMenuConstraints = ZusUtils.useStoreDeep(filterMenuStore, state => {
-		return LFM.selectFilterMenuConstraints(state)
-	}, { dependencies: [] })
-	const queryContextWithFilter: LQY.LayerQueryBaseInput = React.useMemo(() => ({
-		...props.layerQueryBaseInput,
-		constraints: [
-			...(props.layerQueryBaseInput.constraints ?? []),
-			...filterMenuConstraints,
-			...QD.getExtraFiltersConstraints(extraFiltersState),
-		],
-	}), [props.layerQueryBaseInput, filterMenuConstraints, extraFiltersState])
+	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.layerQueryBaseInput)
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange}>
@@ -119,7 +100,7 @@ export default function SelectLayersDialog(props: {
 							)}
 					</div>
 					<div className="flex justify-end items-center space-x-2 flex-grow">
-						<ExtraFiltersPanel store={extraFiltersStore} />
+						<ExtraFiltersPanel store={queryCtx.extraFiltersStore} />
 						{!props.pinMode && (
 							<TabsList
 								options={[
@@ -130,18 +111,19 @@ export default function SelectLayersDialog(props: {
 								setActive={setAdditionType}
 							/>
 						)}
+						{props.headerAdditions}
 					</div>
 				</DialogHeader>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu layerQueryBaseInput={props.layerQueryBaseInput} filterMenuStore={filterMenuStore} />
+					<LayerFilterMenu layerQueryBaseInput={queryCtx.queryInput} filterMenuStore={queryCtx.filterMenuStore} />
 					<div className="flex flex-col space-y-2 justify-between h-full">
 						<TableStyleLayerPicker
 							defaultPageSize={16}
-							queryContext={queryContextWithFilter}
+							queryContext={queryCtx.filteredQueryInput}
 							selected={selectedLayers}
 							onSelect={setSelectedLayers}
-							extraPanelItems={<PoolCheckboxes store={QD.QDStore} />}
+							extraPanelItems={<PoolCheckboxes store={queryCtx.applyAsStore} />}
 							className="flex-grow"
 						/>
 

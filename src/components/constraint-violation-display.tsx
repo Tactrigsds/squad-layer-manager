@@ -1,7 +1,7 @@
 import * as AR from '@/app-routes'
 import { assertNever } from '@/lib/type-guards'
 import * as LQY from '@/models/layer-queries.models'
-import * as QD from '@/systems.client/queue-dashboard.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
@@ -18,15 +18,12 @@ export type ConstraintViolationDisplayProps = {
 
 export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProps) {
 	const onMouseOver = () => {
-		QD.QDStore.getState().setHoveredConstraintItemId(props.itemId)
+		LayerQueriesClient.Store.getState().setHoveredConstraintItemId(props.itemId ?? null)
 	}
 	const onMouseOut = () => {
-		QD.QDStore.getState().setHoveredConstraintItemId(original => {
-			if (original === props.itemId) {
-				return undefined
-			}
-			return original
-		})
+		const state = LayerQueriesClient.Store.getState()
+		if (state.hoveredConstraintItemId !== props.itemId) return
+		state.setHoveredConstraintItemId(null)
 	}
 
 	if (props.violated.length == 0) return null
@@ -45,7 +42,7 @@ export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProp
 									<Icons.ShieldQuestion className="text-pink-400" />
 								</TooltipTrigger>
 							)}
-						<TooltipContent align="start" side="right" className="max-w-sm p-3">
+						<TooltipContent side="left" className="max-w-sm p-3">
 							<div className="font-semibold text-base mb-2">Repeated:</div>
 							<ul className="flex flex-col space-y-1">
 								{dnrViolations.map(v => <li key={v.id} className="text-sm">{v.name ?? v.id}</li>)}

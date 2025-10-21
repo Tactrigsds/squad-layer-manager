@@ -2,9 +2,8 @@ import * as AR from '@/app-routes.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers'
-import { initMutationState } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object.ts'
-import { Clearable, eltToFocusable, Focusable, useRefConstructor } from '@/lib/react'
+import { Clearable, eltToFocusable, Focusable } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
@@ -13,6 +12,7 @@ import * as DND from '@/models/dndkit.models.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
@@ -29,7 +29,7 @@ import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
-import EditLayerListItemDialog from './edit-layer-list-item-dialog.tsx'
+import EditLayerDialog from './edit-layer-dialog.tsx'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -818,38 +818,20 @@ export function LayerEqConfig(
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
-	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<QD.LLItemStore>((set, get) =>
-			QD.createLLItemStore(set, get, {
-				mutationState: initMutationState(),
-				index: 0,
-				innerIndex: null,
-				isVoteChoice: false,
-				isLocallyLast: false,
-				item: { itemId: 'item', source: { type: 'unknown' }, layerId: props.value ?? L.DEFAULT_LAYER_ID },
-			})
-		)
-	})
-
-	React.useEffect(() => {
-		const unsub = storeRef.current.subscribe((state) => {
-			props.setValue(state.item.layerId!)
-		})
-		return () => unsub()
-	}, [props, props.setValue, storeRef])
 
 	return (
 		<div className="flex space-x-2 items-center">
-			<EditLayerListItemDialog
+			<EditLayerDialog
 				open={open}
 				onOpenChange={setOpen}
-				itemStore={storeRef.current}
+				layerId={props.value ?? undefined}
+				onSelectLayer={(v) => props.setValue(v)}
 			>
 				<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
 					{props.value !== null && DH.displayLayer(props.value)}
 					<Icons.Edit />
 				</Button>
-			</EditLayerListItemDialog>
+			</EditLayerDialog>
 		</div>
 	)
 }

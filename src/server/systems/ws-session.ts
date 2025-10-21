@@ -4,6 +4,7 @@ import * as SquadServer from '@/server/systems/squad-server'
 import { Subject } from 'rxjs'
 const wsSessions = new Map<string, C.TrpcRequest>()
 export const disconnect$ = new Subject<C.TrpcRequest>()
+export const connect$ = new Subject<C.TrpcRequest>()
 
 export function registerClient(ctx: C.TrpcRequest) {
 	if (wsSessions.has(ctx.wsClientId)) {
@@ -17,6 +18,7 @@ export function registerClient(ctx: C.TrpcRequest) {
 		wsSessions.delete(ctx.wsClientId)
 		SquadServer.state.selectedServers.delete(ctx.wsClientId)
 	})
+	connect$.next(ctx)
 }
 
 export async function forceDisconnect(ctx: CS.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {

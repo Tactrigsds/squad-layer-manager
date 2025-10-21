@@ -2,82 +2,104 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
-import * as SS from '@/models/server-state.models'
 import * as USR from '@/models/users.models'
-import * as V from '@/models/vote.models'
+import { Activity } from 'discord.js'
 import { z } from 'zod'
 import * as L from './layer'
 
-const OperationShared = {
-	opId: z.string(),
-	userId: USR.UserIdSchema,
+function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(base: T) {
+	return [
+		z.object({
+			...base,
+			op: z.literal('move'),
+			indexOrCursor: z.union([LL.LayerListItemIndex, LL.ItemRelativeCursorSchema]),
+			newFirstItemId: LL.ItemIdSchema,
+		}),
+		z.object({
+			...base,
+			op: z.literal('swap-factions'),
+		}),
+		z.object({
+			...base,
+			op: z.literal('edit-layer'),
+			newLayerId: L.LayerIdSchema,
+		}),
+		z.object({
+			...base,
+			// create a vote from an existing item
+			op: z.literal('create-vote'),
+			newFirstItemId: LL.ItemIdSchema,
+			otherLayers: z.array(LL.LayerListItemSchema),
+		}),
+		z.object({
+			...base,
+			op: z.literal('configure-vote'),
+
+			// null means use defaults(remove), undefined means don't modify
+			voteConfig: LL.NewLayerListItemSchema.shape.voteConfig.nullable(),
+			displayProps: LL.NewLayerListItemSchema.shape.displayProps.nullable(),
+		}),
+		z.object({
+			...base,
+			op: z.literal('delete'),
+		}),
+	] as const
 }
 
-export const OperationSchema = z.discriminatedUnion('op', [
-	z.object({
-		...OperationShared,
-		op: z.literal('add'),
-		items: z.array(LL.NewLayerListItemSchema),
-		index: LL.LayerListItemIndex,
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('move'),
-		itemId: LL.ItemIdSchema,
-		indexOrCursor: z.union([LL.LayerListItemIndex, LL.ItemRelativeCursorSchema]),
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('swap-factions'),
-		itemId: LL.ItemIdSchema,
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('edit-layer'),
-		itemId: LL.ItemIdSchema,
-		newLayerId: L.LayerIdSchema,
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('configure-vote'),
-		itemId: LL.ItemIdSchema,
-		// null means use defaults
-		voteConfig: V.AdvancedVoteConfigSchema.partial().nullable(),
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('delete'),
-		itemId: LL.ItemIdSchema,
-	}),
-	z.object({
-		...OperationShared,
-		op: z.literal('clear'),
-	}),
-])
+function buildOperationSchema<T extends { [key: string]: z.ZodTypeAny }, ItemSchema extends z.ZodSchema>(base: T, itemSchema: ItemSchema) {
+	return z.discriminatedUnion('op', [
+		z.object({
+			...base,
+			op: z.literal('add'),
+			items: z.array(itemSchema),
+			index: LL.LayerListItemIndex,
+		}),
+		...buildItemOpSchemaEntries({ ...base, itemId: LL.ItemIdSchema }),
+		z.object({
+			...base,
+			op: z.literal('clear'),
+			itemIds: z.array(LL.ItemIdSchema),
+		}),
+	])
+}
 
+export const OperationSchema = buildOperationSchema({ opId: z.string(), userId: USR.UserIdSchema }, LL.LayerListItemSchema)
 export type Operation = z.infer<typeof OperationSchema>
 export type OpCode = Operation['op']
+
+export const NewOperationSchema = buildOperationSchema({}, LL.NewLayerListItemSchema)
+export type NewOperation = z.infer<typeof NewOperationSchema>
+
+export function isOperation(obj: Operation | NewOperation): obj is Operation {
+	if ('userId' in obj) {
+		return true
+	}
+	return false
+}
+
+export const ItemOperationSchema = z.discriminatedUnion(
+	'op',
+	buildItemOpSchemaEntries({ opId: z.string(), userId: USR.UserIdSchema, itemId: LL.ItemIdSchema }),
+)
+export type ItemOperation = z.infer<typeof ItemOperationSchema>
+export const NewItemOperationSchema = z.discriminatedUnion('op', buildItemOpSchemaEntries({ itemId: LL.ItemIdSchema }))
+export type NewItemOperation = z.infer<typeof NewItemOperationSchema>
+
+export const NewContextItemOperationSchema = z.discriminatedUnion('op', buildItemOpSchemaEntries({}))
+export type NewContextItemOperation = z.infer<typeof NewContextItemOperationSchema>
 
 // operations which are almost always non-associative, so for now we just always assume a conflict. this could be improved
 export const UNSTABLE_OPS = ['delete', 'clear', 'add', 'move'] as const satisfies OpCode[]
 
-export function isUnstableOp(op: Operation): op is Extract<Operation, { op: typeof UNSTABLE_OPS[number] }> {
+export function isUnstableOp(op: Operation): op is ItemOperation {
 	return (UNSTABLE_OPS as string[]).includes(op.op)
 }
 
-export const FOR_ITEM = ['edit-layer', 'configure-vote', 'move', 'delete', 'swap-factions'] as const satisfies OpCode[]
-type OpForItem = Extract<Operation, { op: typeof FOR_ITEM[number] }>
-function isOpForItem(op: Operation): op is OpForItem {
-	return (FOR_ITEM as string[]).includes(op.op)
+export function isOpForItem(op: Operation): op is ItemOperation {
+	return (ItemOperationSchema.options.map(op => op.shape.op.value as string)).includes(op.op)
 }
 
-// operations that are idempotent with respect to the entire list
-export const IDEMPOTENT_OPS = ['clear'] as const satisfies OpCode[]
-function isResetOp(op: Operation): op is Extract<Operation, { op: typeof IDEMPOTENT_OPS[number] }> {
-	return (IDEMPOTENT_OPS as string[]).includes(op.op)
-}
-
-function updatesLayer(op: Operation) {
+export function updatesLayer(op: Operation) {
 	if (!isOpForItem(op)) return false
 	return op.op === 'edit-layer' || op.op === 'swap-factions'
 }
@@ -118,125 +140,378 @@ export function containsConflict(session: EditSession, expectedIndex: number, ne
 	return false
 }
 
-export function getOperationMutationType(op: OpCode): ItemMut.MutType {
-	switch (op) {
+export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
+	z.object({ code: z.literal('editing-item'), itemId: LL.ItemIdSchema }),
+	z.object({ code: z.literal('configuring-vote'), itemId: LL.ItemIdSchema }),
+	z.object({ code: z.literal('adding-item') }),
+	z.object({ code: z.literal('moving-item'), itemId: LL.ItemIdSchema }),
+])
+
+export type ClientPresenceActivity = z.infer<typeof UserPresenceActivitySchema>
+
+export function opToActivity(op: Operation): ClientPresenceActivity | undefined {
+	switch (op.op) {
 		case 'add':
-			return 'added'
+			return { code: 'adding-item' }
 		case 'move':
-			return 'moved'
-		case 'swap-factions':
-		case 'edit-layer':
+			return { code: 'moving-item', itemId: op.itemId }
 		case 'configure-vote':
-			return 'edited'
+			return { code: 'configuring-vote', itemId: op.itemId }
+		case 'edit-layer':
+		case 'create-vote':
+		case 'swap-factions':
+			return { code: 'editing-item', itemId: op.itemId }
 		case 'delete':
 		case 'clear':
-			return 'removed'
+			return undefined
 		default:
 			assertNever(op)
 	}
 }
 
-export const UserPresenceActivity = z.discriminatedUnion('code', [
-	z.object({ code: z.literal('editing-item'), itemIz: LL.ItemIdSchema }),
-	z.object({ code: z.literal('editing-settings') }),
-	z.object({ code: z.literal('adding-item') }),
-	z.object({ code: z.literal('moving-item'), itemId: LL.ItemIdSchema }),
-])
-
-export const UserPresenceSchema = z.object({
+export const ClientPresenceSchema = z.object({
+	userId: USR.UserIdSchema,
 	away: z.boolean(),
 	editing: z.boolean(),
-	lastActive: z.number().int().optional(),
-	currentActivity: UserPresenceActivity.optional(),
-})
-export type UserPresence = z.infer<typeof UserPresenceSchema>
-
-export const PresenceStateSchema = z.object({
-	users: z.map(z.bigint(), UserPresenceSchema),
+	lastSeen: z.number().positive().nullable(),
+	currentActivity: UserPresenceActivitySchema.nullable(),
 })
 
-export const EditSessionSchema = z.object({
-	layerQueueSeqId: z.number(),
-	list: LL.ListSchema,
-	presence: z.map(z.bigint(), UserPresenceSchema),
-	ops: z.array(OperationSchema),
-})
+export type ClientPresence = z.infer<typeof ClientPresenceSchema>
 
-export type EditSession = z.infer<typeof EditSessionSchema>
+export const PresenceStateSchema = z.map(z.string(), ClientPresenceSchema)
+export type PresenceState = z.infer<typeof PresenceStateSchema>
 
-export function applyOperations(s: EditSession, defaultVoteConfig: V.AdvancedVoteConfig, ops: Operation[]) {
-	let startIndex = 0
-	for (let i = ops.length - 1; i > 0; i--) {
-		if (isResetOp(ops[i])) {
-			startIndex = i
+export type EditSession = {
+	list: LL.List
+	ops: Operation[]
+
+	mutations: ItemMut.Mutations
+}
+
+export function applyOperation(list: LL.List, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
+	const source: LL.Source = isOperation(newOp) ? { type: 'manual', userId: newOp.userId } : { type: 'unknown' }
+	switch (newOp.op) {
+		case 'add': {
+			let items: LL.Item[]
+			if (isOperation(newOp)) {
+				items = newOp.items
+			} else {
+				items = newOp.items.map(item => LL.createLayerListItem(item, source))
+			}
+			LL.addItemsDeterministic(list, source, newOp.index, ...items)
+			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
 			break
 		}
-	}
-
-	for (let i = startIndex; i < ops.length; i++) {
-		const newOp = ops[i]
-		const source: LL.Source = { type: 'manual', userId: newOp.userId }
-		switch (newOp.op) {
-			case 'add':
-				LL.addItem(s.list, source, newOp.index, ...newOp.items)
-				break
-			case 'move':
-				LL.moveItem(s.list, source, newOp.itemId, newOp.indexOrCursor)
-				break
-			case 'swap-factions': {
-				const itemRes = LL.findItemById(s.list, newOp.itemId)
-				if (!itemRes) throw new Error('Item not found')
-				const swapped = LL.swapFactions(itemRes.item, source)
-				LL.splice(s.list, itemRes, 1, swapped)
-				break
+		case 'move': {
+			const { merged, modified } = LL.moveItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.indexOrCursor)
+			if (modified) {
+				if (merged) {
+					const item = LL.findItemById(list, merged)!.item as LL.ParentVoteItem
+					ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
+					ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
+					ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
+				} else {
+					ItemMut.tryApplyMutation('moved', [newOp.itemId], mutations)
+				}
 			}
-			case 'edit-layer':
-				LL.editLayer(s.list, source, newOp.itemId, newOp.newLayerId)
-				break
-			case 'configure-vote':
-				LL.configureVote(s.list, source, newOp.itemId, defaultVoteConfig, newOp.voteConfig)
-				break
-			case 'delete':
-				LL.deleteItem(s.list, newOp.itemId)
-				break
-			case 'clear':
-				s.list.length = 0
-				break
-			default:
-				assertNever(newOp)
+			break
 		}
+
+		case 'swap-factions': {
+			const itemRes = LL.findItemById(list, newOp.itemId)
+			if (!itemRes) return
+			const swapped = LL.swapFactions(itemRes.item, source)
+			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			LL.splice(list, itemRes, 1, swapped)
+			break
+		}
+
+		case 'edit-layer': {
+			const beforeEdit = LL.findItemById(list, newOp.itemId)?.item.layerId
+			LL.editLayer(list, source, newOp.itemId, newOp.newLayerId)
+			const afterEdit = LL.findItemById(list, newOp.itemId)?.item.layerId
+			if (beforeEdit && afterEdit && beforeEdit !== afterEdit) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'configure-vote': {
+			LL.configureVote(list, source, newOp.itemId, newOp.voteConfig, newOp.displayProps)
+			const itemRes = LL.findItemById(list, newOp.itemId)
+			if (itemRes) {
+				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+			}
+			break
+		}
+
+		case 'delete': {
+			const itemRes = LL.findItemById(list, newOp.itemId)
+			if (itemRes) {
+				LL.deleteItem(list, newOp.itemId)
+				ItemMut.tryApplyMutation('removed', [newOp.itemId], mutations)
+			}
+
+			break
+		}
+		case 'clear':
+			for (const itemId of newOp.itemIds) {
+				const itemRes = LL.findItemById(list, itemId)
+				if (itemRes) {
+					LL.deleteItem(list, itemId)
+					ItemMut.tryApplyMutation('removed', [itemId], mutations)
+				}
+			}
+			break
+
+		case 'create-vote': {
+			LL.createVoteOutOfItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.otherLayers)
+			const itemRes = LL.findItemById(list, newOp.itemId)
+			if (itemRes && LL.isParentVoteItem(itemRes.item)) {
+				ItemMut.tryApplyMutation('added', itemRes.item.choices.map(choice => choice.itemId), mutations)
+			}
+			break
+		}
+
+		default:
+			assertNever(newOp)
+	}
+}
+
+export function applyOperations(s: EditSession, ops: Operation[]) {
+	for (let i = 0; i < ops.length; i++) {
+		const op = ops[i]
+		applyOperation(s.list, op, s.mutations)
 	}
 	s.ops.push(...ops)
 }
 
 export type Update =
 	| {
-		code: 'rollback'
-		toIndex: number
-		add: Operation[]
+		code: 'init'
+		session: EditSession
+		presence: PresenceState
+		sessionSeqId: SessionSequenceId
 	}
 	| {
-		code: 'init'
-		state: EditSession
+		code: 'commit-completed'
+		list: LL.List
+		committer: USR.User
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+		initiator: string
+	}
+	| {
+		code: 'reset-completed'
+		list: LL.List
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+		// username
+		initiator: string
+	}
+	| {
+		code: 'list-updated'
+		list: LL.List
+		sessionSeqId: SessionSequenceId
+		newSessionSeqId: SessionSequenceId
+	}
+	| { code: 'commit-rejected'; reason: string; msg: string; sessionSeqId: SessionSequenceId; committer: USR.User }
+	| {
+		code: 'locks-modified'
+		mutations: [LL.ItemId, string | null][]
 	}
 	| ClientUpdate
+
+export type Rollback = {
+	// the index of the first replacement
+	toIndex: number
+
+	replacements: Operation[]
+}
+
+// the sequence id of the base queue the session
+const QueueSequenceId = z.number()
+export type SessionSequenceId = z.infer<typeof QueueSequenceId>
 
 export const ClientUpdateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('op'),
+		sessionSeqId: QueueSequenceId,
 		expectedIndex: z.number(),
 		op: OperationSchema,
 	}),
 	z.object({
-		code: z.literal('rollback'),
-		to: z.number(),
-		add: z.array(OperationSchema),
+		code: z.literal('commit'),
+		sessionSeqId: QueueSequenceId,
+	}),
+	z.object({
+		code: z.literal('reset'),
+		sessionSeqId: QueueSequenceId,
 	}),
 	z.object({
 		code: z.literal('update-presence'),
-		userId: USR.UserIdSchema,
-		state: UserPresenceSchema,
+		wsClientId: z.string(),
+		userId: z.bigint(),
+		changes: ClientPresenceSchema.partial().nullable(),
+		fromServer: z.boolean().optional(),
 	}),
 ])
 
 export type ClientUpdate = z.infer<typeof ClientUpdateSchema>
+
+export function getClientPresenceDefaults(userId: bigint): ClientPresence {
+	return {
+		userId,
+		away: false,
+		editing: false,
+		currentActivity: null,
+		lastSeen: null,
+	}
+}
+
+export function updateClientPresence(
+	wsClientId: string,
+	userId: bigint,
+	state: PresenceState,
+	updates: Partial<Omit<ClientPresence, 'userId'>> | null,
+) {
+	if (!updates && state.has(wsClientId)) {
+		state.delete(wsClientId)
+		return true
+	}
+	if (!updates && !state.has(wsClientId)) {
+		return false
+	}
+
+	updates = updates ? Obj.trimUndefined(updates) : null
+	const presence = state.get(wsClientId) ?? {}
+	if (updates != null && Obj.deepEqual(updates, Obj.selectProps(presence as any, Object.keys(updates)))) {
+		return false
+	}
+
+	const updated = {
+		...getClientPresenceDefaults(userId),
+		...presence,
+		...updates,
+		userId,
+	}
+
+	state.set(wsClientId, updated)
+	return true
+}
+
+export function resolveUserPresence(state: PresenceState) {
+	const presenceByUser = new Map<bigint, ClientPresence>()
+	for (const presence of state.values()) {
+		const existing = presenceByUser.get(presence.userId)
+		if (!existing || (presence.lastSeen && (!existing.lastSeen || presence.lastSeen > existing.lastSeen))) {
+			presenceByUser.set(presence.userId, presence)
+		}
+	}
+	return presenceByUser
+}
+
+export type ItemLocks = Map<LL.ItemId, string>
+export type LockMutation = [LL.ItemId, string]
+
+export type ItemOwnedActivity = Exclude<ClientPresenceActivity, { code: 'adding-item' }>
+export function isItemOwnedActivity(activity: ClientPresenceActivity): activity is ItemOwnedActivity {
+	return activity.code !== 'adding-item'
+}
+
+export function itemsToLockForActivity(list: LL.List, activity: ClientPresenceActivity): LL.ItemId[] {
+	if (activity.code === 'adding-item') return []
+	const itemId = activity.itemId
+	const item = LL.findItemById(list, itemId)?.item
+	if (!item) return []
+	const ids: LL.ItemId[] = [itemId]
+	const parentItem = LL.findParentItem(list, itemId)
+	if (parentItem) {
+		ids.push(parentItem.itemId)
+	}
+	if (LL.isParentVoteItem(item)) {
+		ids.push(...item.choices.map(choice => choice.itemId))
+	}
+	return ids
+}
+
+export function tryAcquireAllLocks(locks: ItemLocks, itemIds: LL.ItemId[], wsClientId: string): boolean {
+	for (const itemId of itemIds) {
+		const existingLock = locks.get(itemId)
+		if (existingLock && wsClientId !== existingLock) return false
+	}
+	for (const itemId of itemIds) {
+		locks.set(itemId, wsClientId)
+	}
+	return true
+}
+
+export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClientId: string): boolean {
+	for (const id of ids) {
+		const existingLock = locks.get(id)
+		if (existingLock && existingLock !== wsClientId) return true
+	}
+	return false
+}
+
+export function endAllEditing(state: PresenceState) {
+	for (const [wsClientId, presence] of state.entries()) {
+		if (presence.editing) {
+			updateClientPresence(wsClientId, presence.userId, state, { editing: false, currentActivity: null })
+		}
+	}
+}
+
+export function createNewSession(list?: LL.List): EditSession {
+	return {
+		list: list ?? [],
+		ops: [],
+		mutations: ItemMut.initMutations(),
+	}
+}
+
+export function applyListUpdate(session: EditSession, list: LL.List) {
+	session.list = Obj.deepClone(list)
+	session.ops = []
+	session.mutations = ItemMut.initMutations()
+}
+
+export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
+	for (const { item } of LL.iterLayerList(session.list)) {
+		if (!ItemMut.idMutated(session.mutations, item.itemId)) continue
+		if (item.source.type === 'manual' && item.source.userId === userId) return true
+	}
+	return false
+}
+
+export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['code'], index?: LL.ItemIndex) => {
+	const name = index ? LL.getItemNumber(index) : 'Item'
+	switch (activityCode) {
+		case 'editing-item':
+			return `Editing ${name} `
+		case 'configuring-vote':
+			return ` Configuring vote for ${name}`
+		case 'adding-item':
+			return 'Adding an item'
+		case 'moving-item':
+			return `Moving ${name}`
+		default:
+			assertNever(activityCode)
+	}
+}
+
+export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceActivity['code'], username: string) => {
+	switch (activityCode) {
+		case 'editing-item':
+			return `${username} is editing`
+		case 'configuring-vote':
+			return `${username} is configuring vote`
+		case 'adding-item':
+			return `${username} is adding`
+		case 'moving-item':
+			return `${username} is moving`
+		default:
+			assertNever(activityCode)
+	}
+}

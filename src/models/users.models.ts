@@ -28,18 +28,6 @@ export type MiniUser = {
 
 export type UserPart = { users: User[] }
 
-export type UserPresenceState = {
-	editState?: {
-		userId: bigint
-		wsClientId: string
-		startTime: number
-	}
-}
-export type UserPresenceStateUpdate = {
-	state: UserPresenceState
-	event: 'edit-start' | 'edit-end' | 'edit-kick'
-}
-
 // represents a user's edit or deletion of an entity
 export type UserEntityMutation<K extends string | number, V> = {
 	username: string
@@ -50,3 +38,5 @@ export type UserEntityMutation<K extends string | number, V> = {
 
 // should eventually replace all user id validation with this
 export const UserIdSchema = z.bigint().positive()
+
+export type UserId = z.infer<typeof UserIdSchema>

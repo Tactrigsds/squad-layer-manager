@@ -14,6 +14,9 @@ import { beforeAll, describe, expect, test } from 'vitest'
 let baseCtx!: CS.LayerQuery
 let sampleLayerIds: string[] = []
 
+// Default source for test layer items
+const DEFAULT_SOURCE = { type: 'unknown' } as const
+
 // Helper function to create LayerItem objects from layer IDs
 function createLayerItems(layerIds: string[]): LQY.LayerItem[] {
 	return layerIds.map((layerId, index) => ({
@@ -341,7 +344,7 @@ describe('getLayerStatusesForLayerQueue', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 		const basicPool: SS.PoolConfiguration = {
@@ -376,12 +379,12 @@ describe('getLayerStatusesForLayerQueue', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item2',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 
@@ -417,12 +420,12 @@ describe('getLayerStatusesForLayerQueue', () => {
 		const queue: LL.List = [
 			{
 				itemId: 'vote1',
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 				layerId: sampleLayerIds[0],
 				choices: [
 					sampleLayerIds[0],
 					sampleLayerIds[1],
-				].map(id => LL.createLayerListItem({ layerId: id })),
+				].map(id => LL.createLayerListItem({ layerId: id }, DEFAULT_SOURCE)),
 			},
 		]
 		const basicPool: SS.PoolConfiguration = {
@@ -898,12 +901,12 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item2',
 				layerId: sampleLayerIds[1],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 
@@ -967,17 +970,17 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item2',
 				layerId: sampleLayerIds[1],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item3',
 				layerId: sampleLayerIds[0], // Duplicate to test violations
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 
@@ -1020,22 +1023,22 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item2',
 				layerId: sampleLayerIds[1],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item3',
 				layerId: sampleLayerIds[2],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item4',
 				layerId: sampleLayerIds[0], // Should be allowed with within=2
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 
@@ -1070,17 +1073,17 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'vote1',
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 				layerId: sampleLayerIds[1],
 				choices: [
 					sampleLayerIds[0], // This should be blocked by repeat rule
 					sampleLayerIds[1],
 					sampleLayerIds[2],
-				].map(id => LL.createLayerListItem({ layerId: id })),
+				].map(id => LL.createLayerListItem({ layerId: id }, DEFAULT_SOURCE)),
 			},
 		]
 
@@ -1116,12 +1119,12 @@ describe('Do-not-repeat rules - comprehensive scenarios', () => {
 			{
 				itemId: 'item1',
 				layerId: sampleLayerIds[0],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 			{
 				itemId: 'item2',
 				layerId: sampleLayerIds[1],
-				source: { type: 'unknown' },
+				source: DEFAULT_SOURCE,
 			},
 		]
 

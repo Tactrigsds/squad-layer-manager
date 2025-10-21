@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { useToast } from '@/hooks/use-toast'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { hasMutations } from '@/lib/item-mutations.ts'
@@ -14,7 +13,6 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
@@ -23,14 +21,11 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import * as RBAC from '@/rbac.models'
 import { useConfig } from '@/systems.client/config.client.ts'
-import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import * as LayerQueueClient from '@/systems.client/layer-queue.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
-import * as PartsSys from '@/systems.client/parts.ts'
-import { useUserPresenceState } from '@/systems.client/presence.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-import * as RbacClient from '@/systems.client/rbac.client.ts'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
+import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client.ts'
@@ -39,6 +34,7 @@ import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import BalanceTriggerAlert from './balance-trigger-alert.tsx'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -47,42 +43,43 @@ import FilterEntitySelect from './filter-entity-select.tsx'
 import { LayerList } from './layer-list.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
-import { Timer } from './timer.tsx'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
+import { Separator } from './ui/separator.tsx'
 import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
+import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useServerInfoRes()
 
-	const isEditing = Zus.useStore(QD.QDStore, (s) => s.isEditing)
-	const userPresenceState = useUserPresenceState()
-	const editingUser = userPresenceState?.editState
-		&& PartsSys.findUser(userPresenceState.editState.userId)
+	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = useConfig()?.layerQueue.maxQueueSize
-	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
-	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
-	const inEditTransition = Zus.useStore(QD.QDStore, (s) => s.stopEditingInProgress)
+	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)
 	type Tab = 'history' | 'queue'
 	const [activeTab, setActiveTab] = React.useState<Tab>('queue')
+	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.session.mutations)
 
 	return (
 		<div className="mx-auto grid place-items-center">
 			{/* Mobile/Tablet: Show tabs */}
-			<div className="w-full flex justify-between items-center pb-2 dash-2col:hidden">
-				<TabsList
-					active={activeTab}
-					options={[{ label: 'History', value: 'history' }, { label: 'Queue', value: 'queue' }]}
-					setActive={setActiveTab}
-				/>
-				<NormTeamsSwitch />
+			<div className="w-full flex flex-wrap justify-between items-center pb-2 dash-2col:hidden">
+				<span className="flex items-center">
+					<TabsList
+						active={activeTab}
+						options={[{ label: 'History', value: 'history' }, { label: 'Queue', value: 'queue' }]}
+						setActive={setActiveTab}
+					/>
+					<NormTeamsSwitch />
+				</span>
+				<UserPresencePanel />
 			</div>
 			{/* Desktop: Show only NormTeamsSwitch */}
-			<div className="w-full justify-end pb-2 hidden dash-2col:flex">
+			<div className="w-full justify-between pb-2 hidden dash-2col:flex">
 				<NormTeamsSwitch />
+				<UserPresencePanel />
 			</div>
 			<div className="w-full dash-2col:flex dash-2col:space-x-4">
 				{/* History Panel */}
@@ -94,26 +91,31 @@ export default function LayerQueueDashboard() {
 					{/* ------- top card ------- */}
 					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
 					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
-					{!updatesToSquadServerDisabled && unexpectedNextLayer && <UnexpectedNextLayerAlert />}
 					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
 					<PostGameBalanceTriggerAlert />
-					{!isEditing && editingUser && !inEditTransition && <UserEditingAlert />}
-					{isEditing && !inEditTransition && <EditingCard />}
+					{/*{isModified && <EditingCard />}*/}
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between">
 							<span className="flex items-center space-x-1">
 								<CardTitle>Up Next</CardTitle>
-								<CardDescription
-									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-									className="data-[limitreached=true]:text-destructive"
-								>
-									{queueLength} / {maxQueueSize}
-								</CardDescription>
+								{isModified && (
+									<CardDescription
+										data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+										className=" pl-1 data-[limitreached=true]:text-destructive"
+									>
+										{queueLength} / {maxQueueSize}
+									</CardDescription>
+								)}
 							</span>
 							<QueueControlPanel />
 						</CardHeader>
+						{queueMutations.removed.size > 0 && (
+							<Alert variant="destructive">
+								{queueMutations.removed.size} item{queueMutations.removed.size === 1 ? '' : 's'} removed
+							</Alert>
+						)}
 						<CardContent className="p-0 px-1">
-							<LayerList store={QD.LQStore} />
+							<LayerList store={SLLClient.Store} />
 						</CardContent>
 					</Card>
 				</div>
@@ -156,41 +158,97 @@ function NormTeamsSwitch() {
 }
 
 function QueueControlPanel() {
-	const [playNextPopoverOpen, _setPlayNextPopoverOpen] = React.useState(false)
-	function setPlayNextPopoverOpen(v: boolean) {
-		_setPlayNextPopoverOpen(v)
-	}
-
-	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = React.useState(false)
+	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = SLLClient.useActivityState({ code: 'adding-item' })
 	function setAppendLayersPopoverOpen(v: boolean) {
 		_setAppendLayersPopoverOpen(v)
 	}
-	const canEdit = ZusUtils.useStoreDeep(QD.QDStore, (s) => s.canEditQueue, { dependencies: [] })
+	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.session.list.length]))
 
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, state => QD.selectBaseQueryConstraints(state, state.poolApplyAs), {
-		dependencies: [],
-	})
+	type AddLayersPosition = 'next' | 'after'
+	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
+
+	async function saveLqState() {
+		await SLLClient.Store.getState().save()
+	}
+
+	function clear() {
+		const state = QD.LQStore.getState()
+		// we don't have to include children here
+		const itemIds = state.layerList.map(item => item.itemId)
+		state.dispatch({ op: 'clear', itemIds })
+	}
+
+	function add(items: LL.NewLayerListItem[]) {
+		const state = QD.LQStore.getState()
+		const index: LL.ItemIndex = addLayersPosition === 'next'
+			? { innerIndex: null, outerIndex: 0 }
+			: { innerIndex: 0, outerIndex: state.layerList.length }
+		state.dispatch({ op: 'add', items, index })
+	}
+
+	const addLayersTabslist = (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={addLayersPosition}
+			setActive={setAddLayersPosition}
+		/>
+	)
+
 	const queryInputs = {
-		addtoQueue: { constraints },
-		playNext: {
-			constraints,
-			cursor: LQY.getQueryCursorForQueueIndex(0),
+		next: {},
+		after: {
+			cursor: LQY.getQueryCursorForQueueIndex(queueLength),
 		},
-	} satisfies Record<string, LQY.LayerQueryBaseInput>
+	} satisfies Record<AddLayersPosition, LQY.LayerQueryBaseInput>
 
 	return (
 		<div className="flex items-center space-x-1">
+			{isModified && (
+				<>
+					<div className="space-x-1 flex items-center">
+						<Icons.LoaderCircle
+							className="animate-spin data-[pending=false]:invisible"
+							data-pending={saving}
+						/>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={saveLqState}
+									size="icon"
+									disabled={saving}
+								>
+									<Icons.Save />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Save</p>
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
+									<Icons.Trash />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Reset</p>
+							</TooltipContent>
+						</Tooltip>
+					</div>
+					<Separator orientation="vertical" />
+				</>
+			)}
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
 						variant="outline"
 						size="icon"
-						disabled={!canEdit}
-						onClick={() => {
-							QD.LQStore.getState().clear()
-						}}
+						onClick={() => clear()}
 					>
-						<Icons.Trash />
+						<Icons.ListX />
 					</Button>
 				</TooltipTrigger>
 				<TooltipContent>
@@ -198,35 +256,19 @@ function QueueControlPanel() {
 				</TooltipContent>
 			</Tooltip>
 			<SelectLayersDialog
-				title="Play After"
-				selectQueueItems={(items) => QD.LQStore.getState().add(items)}
+				title="Add Layers"
+				headerAdditions={addLayersTabslist}
+				selectQueueItems={(items) => {
+					const state = QD.LQStore.getState()
+					state.dispatch({ op: 'add', items, index: { outerIndex: state.layerList.length, innerIndex: null } })
+				}}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
-				layerQueryBaseInput={queryInputs.addtoQueue}
+				layerQueryBaseInput={queryInputs[addLayersPosition]}
 			>
-				<Button
-					disabled={!canEdit}
-					className="flex w-min items-center space-x-1"
-					variant="default"
-				>
+				<Button className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />
-					<span>Play After</span>
-				</Button>
-			</SelectLayersDialog>
-			<SelectLayersDialog
-				title="Play Next"
-				selectQueueItems={(items) => QD.LQStore.getState().add(items, { outerIndex: 0, innerIndex: null })}
-				open={playNextPopoverOpen}
-				onOpenChange={setPlayNextPopoverOpen}
-				layerQueryBaseInput={queryInputs.playNext}
-			>
-				<Button
-					disabled={!canEdit}
-					className="flex w-min items-center space-x-1"
-					variant="default"
-				>
-					<Icons.PlusIcon />
-					<span>Play Next</span>
+					<span>Add Layers</span>
 				</Button>
 			</SelectLayersDialog>
 			<PoolConfigurationPopover>
@@ -235,156 +277,6 @@ function QueueControlPanel() {
 				</Button>
 			</PoolConfigurationPopover>
 		</div>
-	)
-}
-
-function EditingCard() {
-	const queueHasMutations = Zus.useStore(QD.LQStore, (s) => hasMutations(s.listMutations))
-	const updateQueueMutation = useMutation({
-		mutationFn: trpc.layerQueue.updateQueue.mutate,
-	})
-	const toaster = useToast()
-
-	async function saveLqState() {
-		const serverStateMut = QD.QDStore.getState().editedServerState
-		const res = await updateQueueMutation.mutateAsync(serverStateMut)
-		const reset = QD.QDStore.getState().reset
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				reset()
-				break
-			case 'err:out-of-sync':
-				toaster.toast({
-					title: 'State changed before submission, please try again.',
-					variant: 'destructive',
-				})
-				reset()
-				return
-			case 'err:queue-too-large':
-				toaster.toast({
-					title: 'Queue too large',
-					variant: 'destructive',
-				})
-				break
-			case 'err:too-many-vote-choices':
-			case 'err:not-enough-visible-info':
-				toaster.toast({
-					title: res.msg,
-					variant: 'destructive',
-				})
-				break
-			case 'ok':
-				toaster.toast({ title: 'Changes applied' })
-				QD.QDStore.getState().reset()
-				break
-			default:
-				assertNever(res)
-		}
-	}
-	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.listMutations)
-	const settingsEdited = Zus.useStore(
-		QD.QDStore,
-		(s) =>
-			s.serverState?.settings
-			&& !Obj.deepEqual(s.serverState.settings, s.editedServerState.settings),
-	)
-
-	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Changes Pending</CardTitle>
-			</CardHeader>
-			<CardContent className="flex justify-between">
-				<div className="space-y-1">
-					{queueHasMutations && (
-						<>
-							<span className="flex space-x-1">
-								{queueMutations.added.size > 0 && (
-									<Badge variant="added">
-										{queueMutations.added.size} layers added
-									</Badge>
-								)}
-								{queueMutations.removed.size > 0 && (
-									<Badge variant="removed">
-										{queueMutations.removed.size} items deleted
-									</Badge>
-								)}
-								{queueMutations.moved.size > 0 && (
-									<Badge variant="moved">
-										{queueMutations.moved.size} items moved
-									</Badge>
-								)}
-								{queueMutations.edited.size > 0 && (
-									<Badge variant="edited">
-										{queueMutations.edited.size} items edited
-									</Badge>
-								)}
-							</span>
-						</>
-					)}
-					{settingsEdited && <Badge variant="edited">settings modified</Badge>}
-				</div>
-				<div className="space-x-1 flex items-center">
-					<Icons.LoaderCircle
-						className="animate-spin data-[pending=false]:invisible"
-						data-pending={updateQueueMutation.isPending}
-					/>
-					<Button
-						onClick={saveLqState}
-						disabled={updateQueueMutation.isPending}
-					>
-						Save Changes
-					</Button>
-					<Button
-						onClick={() => QD.QDStore.getState().reset()}
-						variant="secondary"
-					>
-						Cancel
-					</Button>
-				</div>
-			</CardContent>
-		</Card>
-	)
-}
-
-function UserEditingAlert() {
-	const userPresenceState = useUserPresenceState()
-	const editingUser = userPresenceState?.editState
-		&& PartsSys.findUser(userPresenceState.editState.userId)
-	const loggedInUser = useLoggedInUser()
-	const hasKickPermission = loggedInUser
-		&& RBAC.rbacUserHasPerms(loggedInUser, {
-			check: 'any',
-			permits: [RBAC.perm('queue:write'), RBAC.perm('settings:write')],
-		})
-	const kickEditorMutation = useMutation({
-		mutationFn: () => trpc.layerQueue.kickEditor.mutate(),
-	})
-
-	if (!userPresenceState || !editingUser) return null
-
-	return (
-		<Alert variant="info" className="flex justify-between items-center">
-			<AlertTitle className="flex space-x-2">
-				{editingUser.discordId === loggedInUser?.discordId
-					? 'You are editing on another tab'
-					: editingUser.username + ' is editing'}
-				{userPresenceState.editState?.startTime && (
-					<>
-						<span>:</span>
-						<Timer zeros={true} start={userPresenceState.editState.startTime} />
-					</>
-				)}
-			</AlertTitle>
-			<Button
-				disabled={!hasKickPermission}
-				onClick={() => kickEditorMutation.mutate()}
-				variant="outline"
-			>
-				Kick
-			</Button>
-		</Alert>
 	)
 }
 
@@ -397,15 +289,6 @@ function PoolConfigurationPopover(
 		ref?: React.ForwardedRef<PoolConfigurationPopoverHandle>
 	},
 ) {
-	const filterOptions = []
-	for (const f of FilterEntityClient.useFilterEntities().values()) {
-		filterOptions.push({
-			value: f.id as string | null,
-			label: f.name,
-		})
-	}
-	filterOptions.push({ value: null, label: '<none>' })
-
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
@@ -414,52 +297,9 @@ function PoolConfigurationPopover(
 	}))
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
-	const saveChangesMutation = QD.useSaveChangesMutation()
 
-	const storedSettingsChanged = Zus.useStore(
-		QD.QDStore,
-		(state) =>
-			!Obj.deepEqual(
-				state.serverState?.settings,
-				state.editedServerState.settings,
-			),
-	)
-	const [storedMainPoolDnrRules, storedGenerationPoolDnrRules] = ZusUtils.useStoreDeep(
-		QD.QDStore,
-		(s) => [
-			s.editedServerState.settings.queue.mainPool.repeatRules,
-			s.editedServerState.settings.queue.generationPool.repeatRules,
-		],
-		{ dependencies: [] },
-	)
-	const [mainPoolRules, setMainPoolRules] = React.useState(storedMainPoolDnrRules)
-	const [generationPoolRules, setGenerationPoolRules] = React.useState(
-		[...storedGenerationPoolDnrRules],
-	)
-	React.useEffect(() => {
-		setMainPoolRules(storedMainPoolDnrRules)
-		setGenerationPoolRules(storedGenerationPoolDnrRules)
-	}, [storedMainPoolDnrRules, storedGenerationPoolDnrRules])
-	const settingsChanged = React.useMemo(() => {
-		const mainPoolRulesChanged = !Obj.deepEqual(storedMainPoolDnrRules, mainPoolRules)
-		const generationPoolRulesChanged = !Obj.deepEqual(storedGenerationPoolDnrRules, generationPoolRules)
-		const res = storedSettingsChanged || mainPoolRulesChanged || generationPoolRulesChanged
-		return res
-	}, [
-		storedSettingsChanged,
-		storedMainPoolDnrRules,
-		mainPoolRules,
-		storedGenerationPoolDnrRules,
-		generationPoolRules,
-	])
-
-	function saveRules() {
-		if (!settingsChanged) return
-		QD.QDStore.getState().setSetting((settings) => {
-			settings.queue.mainPool.repeatRules = [...mainPoolRules]
-			settings.queue.generationPool.repeatRules = [...generationPoolRules]
-			return settings
-		})
+	async function saveRules() {
+		await ServerSettingsClient.Store.getState().save()
 	}
 
 	const [open, _setOpen] = React.useState(false)
@@ -470,14 +310,15 @@ function PoolConfigurationPopover(
 		_setOpen(open)
 	}
 
-	const applyMainPool = Zus.useStore(QD.QDStore, s => s.editedServerState.settings.queue.applyMainPoolToGenerationPool)
+	const [applyMainPool, settingsChanged] = Zus.useStore(
+		ServerSettingsClient.Store,
+		useShallow(s => [s.saved.queue.applyMainPoolToGenerationPool, s.modified]),
+	)
 	const applymainPoolSwitchId = React.useId()
 
 	function setApplyMainPool(checked: boolean | 'indeterminate') {
 		if (checked === 'indeterminate') return
-		QD.QDStore.getState().setSetting((settings) => {
-			settings.queue.applyMainPoolToGenerationPool = checked
-		})
+		ServerSettingsClient.Store.getState().set({ path: ['queue', 'applyMainPoolToGenerationPool'], value: checked })
 	}
 
 	return (
@@ -513,20 +354,15 @@ function PoolConfigurationPopover(
 				<PoolRepeatRulesConfigurationPanel
 					className={poolId !== 'mainPool' ? 'hidden' : undefined}
 					poolId="mainPool"
-					rules={mainPoolRules}
-					setRules={setMainPoolRules}
 				/>
 				<PoolRepeatRulesConfigurationPanel
 					className={poolId !== 'generationPool' ? 'hidden' : undefined}
 					poolId="generationPool"
-					rules={generationPoolRules}
-					setRules={setGenerationPoolRules}
 				/>
 				<Button
-					disabled={!settingsChanged || !canWriteSettings}
+					disabled={!settingsChanged}
 					onClick={() => {
 						saveRules()
-						saveChangesMutation.mutate()
 						_setOpen(false)
 					}}
 				>
@@ -542,19 +378,17 @@ function PoolFiltersConfigurationPanel({
 }: {
 	poolId: 'mainPool' | 'generationPool'
 }) {
-	const [filterIds, setSetting] = ZusUtils.useStoreDeep(QD.QDStore, (s) => [
-		s.editedServerState.settings.queue[poolId].filters,
-		s.setSetting,
-	], { dependencies: [poolId] })
+	const filterPath = ['queue', poolId, 'filters']
+	const filterIds = Zus.useStore(ServerSettingsClient.Store, (s) => SS.derefSettingsValue(s.edited, filterPath) as string[])
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
 
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
-		setSetting((s) => {
-			s.queue[poolId].filters.push(filterId)
-		})
+		const state = ServerSettingsClient.Store.getState()
+		const newFilters = [...filterIds, filterId]
+		state.set({ path: filterPath, value: newFilters })
 	}
 
 	return (
@@ -564,18 +398,19 @@ function PoolFiltersConfigurationPanel({
 			</div>
 			<ul>
 				{filterIds.map((filterId, i) => {
+					const path = [...filterPath, i]
 					const onSelect = (newFilterId: string | null) => {
 						if (newFilterId === null) {
 							return
 						}
-						setSetting((s) => {
-							s.queue[poolId].filters[i] = newFilterId
-						})
+						const state = ServerSettingsClient.Store.getState()
+						state.set({ path: path, value: newFilterId })
 					}
 					const deleteFilter = () => {
-						setSetting((s) => {
-							s.queue[poolId].filters.splice(i, 1)
-						})
+						const state = ServerSettingsClient.Store.getState()
+						const filterIds = Obj.deepClone(SS.derefSettingsValue(state.edited, path) as string[])
+						filterIds.splice(i, 1)
+						state.set({ path: path, value: filterIds })
 					}
 					const excluded = filterIds.filter((id) => filterId !== id)
 
@@ -622,18 +457,29 @@ function PoolFiltersConfigurationPanel({
 function PoolRepeatRulesConfigurationPanel(props: {
 	className?: string
 	poolId: 'mainPool' | 'generationPool'
-	rules: LQY.RepeatRule[]
-	setRules: React.Dispatch<React.SetStateAction<LQY.RepeatRule[]>>
 }) {
+	const rulesPath = React.useMemo(() => ['queue', props.poolId, 'repeatRules'], [props.poolId])
+	const selectRules = React.useCallback(
+		(s: ServerSettingsClient.EditSettingsStore) => SS.derefSettingsValue(s.edited, rulesPath) as LQY.RepeatRule[],
+		[rulesPath],
+	)
+
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
+	const rules = Zus.useStore(ServerSettingsClient.Store, selectRules)
+
+	const setRules = React.useCallback((update: React.SetStateAction<LQY.RepeatRule[]>) => {
+		const state = ServerSettingsClient.Store.getState()
+		const updated = typeof update === 'function' ? update(selectRules(state)) : update
+		state.set({ path: rulesPath, value: updated })
+	}, [rulesPath, selectRules])
 
 	return (
 		<div className={cn('flex flex-col space-y-1 p-1 rounded', props.className)}>
 			<div>
 				<h4 className={Typography.H4}>Repeat Rules</h4>
 			</div>
-			{props.rules.map((rule, index) => {
+			{rules.map((rule, index) => {
 				let targetValueOptions: string[]
 				switch (rule.field) {
 					case 'Map':
@@ -668,7 +514,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							containerClassName="grow-0"
 							disabled={!canWriteSettings}
 							onChange={(e) => {
-								props.setRules(
+								setRules(
 									Im.produce((draft) => {
 										draft[index].label = e.target.value
 									}),
@@ -682,7 +528,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							allowEmpty={false}
 							onSelect={(value) => {
 								if (!value) return
-								props.setRules(
+								setRules(
 									Im.produce((draft) => {
 										draft[index].field = value as LQY.RepeatRuleField
 										draft[index].label = value
@@ -698,7 +544,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							containerClassName="w-[250px]"
 							disabled={!canWriteSettings}
 							onChange={(e) => {
-								props.setRules(
+								setRules(
 									Im.produce((draft) => {
 										draft[index].within = Math.floor(Number(e.target.value))
 									}),
@@ -712,7 +558,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							disabled={!canWriteSettings}
 							values={rule.targetValues ?? []}
 							onSelect={(updated) => {
-								props.setRules(
+								setRules(
 									Im.produce((draft) => {
 										draft[index].targetValues = typeof updated === 'function'
 											? updated(draft[index].targetValues ?? [])
@@ -725,7 +571,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 							size="icon"
 							variant="ghost"
 							onClick={() => {
-								props.setRules(
+								setRules(
 									Im.produce((draft) => {
 										draft.splice(index, 1)
 									}),
@@ -743,7 +589,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 				variant="ghost"
 				disabled={!canWriteSettings}
 				onClick={() => {
-					props.setRules(
+					setRules(
 						Im.produce((draft) => {
 							draft.push({
 								field: 'Map',
@@ -757,28 +603,6 @@ function PoolRepeatRulesConfigurationPanel(props: {
 				<Icons.Plus />
 			</Button>
 		</div>
-	)
-}
-
-function UnexpectedNextLayerAlert() {
-	const unexpectedNextLayer = LayerQueueClient.useUnexpectedNextLayer()
-	const expectedNextLayer = Zus.useStore(
-		QD.QDStore,
-		state => state.serverState ? LL.getNextLayerId(state.serverState?.layerQueue) : undefined,
-	)
-
-	if (!unexpectedNextLayer) return null
-
-	const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextLayer)
-	const expectedLayerName = expectedNextLayer ? DH.toFullLayerNameFromId(expectedNextLayer) : 'Unknown'
-
-	return (
-		<Alert variant="destructive">
-			<AlertTitle>Current next layer on the server is out-of-sync with queue.</AlertTitle>
-			<AlertDescription>
-				Got <b>{actualLayerName}</b> but expected <b>{expectedLayerName}</b>
-			</AlertDescription>
-		</Alert>
 	)
 }
 

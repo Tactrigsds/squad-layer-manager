@@ -13,6 +13,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as RbacClient from '@/systems.client/rbac.client.ts'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as Icons from 'lucide-react'
@@ -28,11 +29,13 @@ export default function CurrentLayerCard() {
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
 
-	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
-	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
-	const canDisableFogOfWar = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:turn-fog-off'))
+	const [canEndMatch, hasDisableUpdatesPerm, canDisableFogOfWar] = React.useMemo(() => [
+		!loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')),
+		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates')),
+		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:turn-fog-off')),
+	], [loggedInUser])
 
-	const updatesToSquadServerDisabled = Zus.useStore(QD.QDStore, s => s.serverState?.settings.updatesToSquadServerDisabled)
+	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = QD.useToggleSquadServerUpdates()
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
 	const { toast } = useToast()

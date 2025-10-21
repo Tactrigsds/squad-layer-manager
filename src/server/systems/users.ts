@@ -4,6 +4,7 @@ import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as CMD from '@/models/command.models'
 import * as CS from '@/models/context-shared'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -22,7 +23,7 @@ const steamAccountLinkComplete$ = new Rx.Subject<{ discordId: bigint; steam64Id:
 
 export const usersRouter = router({
 	getLoggedInUser: procedure.query(async ({ ctx }) => {
-		const perms = await getUserRbacPerms(ctx, ctx.user.discordId)
+		const perms = await getUserRbacPerms(ctx)
 		const user: RBAC.UserWithRbac = {
 			...ctx.user,
 			perms,
@@ -34,10 +35,12 @@ export const usersRouter = router({
 		if (!user) return { code: 'err:not-found' as const }
 		return { code: 'ok' as const, user }
 	}),
-	getUsers: procedure.query(async ({ ctx }) => {
-		const users = await ctx.db().select().from(Schema.users)
+
+	getUsers: procedure.input(z.array(USR.UserIdSchema).optional()).query(async ({ ctx, input }) => {
+		const users = await ctx.db().select().from(Schema.users).where(input ? E.inArray(Schema.users.discordId, input) : undefined)
 		return { code: 'ok' as const, users }
 	}),
+
 	beginSteamAccountLink: procedure.mutation(async ({ ctx }) => {
 		const discordId = ctx.user.discordId
 		const code = createId(9)
@@ -50,6 +53,7 @@ export const usersRouter = router({
 		state.pendingSteamAccountLinks.set(code, { discordId, expirySub: sub })
 		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix)[0] }
 	}),
+
 	cancelSteamAccountLinks: procedure.mutation(async ({ ctx }) => {
 		let found = false
 		for (const [code, { discordId, expirySub }] of state.pendingSteamAccountLinks.entries()) {
@@ -62,6 +66,7 @@ export const usersRouter = router({
 		if (found) return { code: 'ok' as const }
 		return { code: 'err:not-found' as const, msg: 'No pending link found for your Discord account.' }
 	}),
+
 	watchSteamAccountLinkCompletion: procedure.subscription(async function*({ ctx, signal }) {
 		const completeForUser$ = steamAccountLinkComplete$.pipe(
 			Rx.filter(user => user.discordId === ctx.user.discordId),
@@ -72,6 +77,7 @@ export const usersRouter = router({
 			yield user
 		}
 	}),
+
 	unlinkSteamAccount: procedure.mutation(async ({ ctx }) => {
 		return await DB.runTransaction(ctx, async (ctx) => {
 			const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, ctx.user.discordId)).for('update')

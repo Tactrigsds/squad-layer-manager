@@ -1,44 +1,127 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
-import * as PartsSys from '@/systems.client/parts'
 import * as QD from '@/systems.client/queue-dashboard'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import { trpc } from '@/trpc.client'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
+import { derive } from 'derive-zustand'
+import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
 type LayerCtxModifiedCounters = { [k in keyof WorkerTypes.DynamicQueryCtx]: number }
 
-type LayerCtxModifiedState = {
+export type Store = {
 	counters: LayerCtxModifiedCounters
 	increment: (ctx: Partial<WorkerTypes.DynamicQueryCtx>) => void
+	extraQueryFilters: LQY.ExtraQueryFiltersState['filters']
+	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['filters']>) => void): void
+	hoveredConstraintItemId: string | null
+	setHoveredConstraintItemId(id: string | null): void
 }
 
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
-const layerCtxVersionStore = Zus.createStore<LayerCtxModifiedState>((set, get) => ({
-	counters: {
-		filters: 0,
-		layerItemsState: 0,
-	},
-	increment(ctx) {
-		for (const key of Obj.objKeys(ctx)) {
-			set({ counters: { ...get().counters, [key]: get().counters[key] + 1 } })
+export const Store = Zus.createStore<Store>((set, get, store) => {
+	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
+	function writeExtraQueryFilters() {
+		localStorage.setItem('extraQueryFilters:v2', Array.from(get().extraQueryFilters).join())
+	}
+	if (extraQueryFilters.size === 0) {
+		;(async () => {
+			const config = await ConfigClient.fetchConfig()
+			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
+			if (!config.layerTable.defaultExtraFilters) return
+
+			set({
+				extraQueryFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
+			})
+			writeExtraQueryFilters()
+		})()
+	}
+	FilterEntityClient.filterEntityChanged$.subscribe(() => {
+		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f))
+		store.setState({ extraQueryFilters: new Set(extraFilters) })
+		writeExtraQueryFilters()
+	})
+
+	return ({
+		counters: {
+			filters: 0,
+			layerItemsState: 0,
+		},
+		hoveredConstraintItemId: null,
+		extraQueryFilters: new Set(),
+		setExtraQueryFilters(cb) {
+			set(state => {
+				const newState = Im.produce(state, draft => {
+					cb(draft.extraQueryFilters)
+				})
+				writeExtraQueryFilters()
+				return newState
+			})
+		},
+		increment(ctx) {
+			for (const key of Obj.objKeys(ctx)) {
+				set({ counters: { ...get().counters, [key]: get().counters[key] + 1 } })
+			}
+		},
+		setHoveredConstraintItemId(id: string | null) {
+			set({ hoveredConstraintItemId: id })
+		},
+	})
+})
+
+export function useFilterMenuLayerQueryContext(baseInput?: LQY.LayerQueryBaseInput, defaultFields?: Partial<L.KnownLayer>) {
+	const extraFiltersStore = useExtraFiltersStore()
+	const applyAsStore = useNewPoolApplyAsStore()
+	const filterMenuStore = LFM.useFilterMenuStore(defaultFields)
+
+	const queryInput = ZusUtils.useCombinedStoresDeep(
+		[applyAsStore, extraFiltersStore, ServerSettingsClient.Store],
+		([applyAsState, extraFiltersState, serverSettingsStore]) => {
+			const settings = serverSettingsStore.saved
+			const baseConstraints = QD.selectBaseQueryConstraints(settings, applyAsState.poolApplyAs)
+			const extraFiltersContraints = QD.getExtraFiltersConstraints(extraFiltersState)
+			return {
+				...(baseInput ?? {}),
+				constraints: [
+					...(baseInput?.constraints ?? []),
+					...baseConstraints,
+					...extraFiltersContraints,
+				],
+			}
+		},
+		{ selectorDeps: [baseInput] },
+	)
+
+	const filteredQueryInput = ZusUtils.useStoreDeep(filterMenuStore, (state): LQY.LayersQueryInput => {
+		const menuConstraints = LFM.selectFilterMenuConstraints(state)
+		return {
+			...queryInput,
+			constraints: [
+				...queryInput.constraints,
+				...menuConstraints,
+			],
 		}
-	},
-}))
+	}, { dependencies: [queryInput] })
+
+	return { extraFiltersStore, applyAsStore, queryInput, filterMenuStore, filteredQueryInput }
+}
 
 export const useFetchingBuffer = Zus.create(() => false)
 
@@ -69,13 +152,13 @@ export function useLayersQuery(
 }
 export async function invalidateLayersQuery(input: LQY.LayersQueryInput) {
 	return reactQueryClient.invalidateQueries({
-		queryKey: ['layers', 'queryLayers', getDepKey(input, layerCtxVersionStore.getState().counters)],
+		queryKey: ['layers', 'queryLayers', getDepKey(input, Store.getState().counters)],
 	})
 }
 
 export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	return reactQueryClient.prefetchQuery({
-		queryKey: ['layers', 'queryLayers', getDepKey({ ...input }, layerCtxVersionStore.getState().counters)],
+		queryKey: ['layers', 'queryLayers', getDepKey({ ...input }, Store.getState().counters)],
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input, 0)
 			if (res?.code === 'err:invalid-node') {
@@ -151,17 +234,22 @@ export function useLayerItemStatuses(
 ) {
 	options ??= {}
 	const input: LQY.LayerItemStatusesInput = {
-		constraints: ZusUtils.useStoreDeep(QD.QDStore, state => QD.selectBaseQueryConstraints(state, state.poolApplyAs), { dependencies: [] }),
+		constraints: ZusUtils.useStoreDeep(
+			ServerSettingsClient.Store,
+			state => QD.selectBaseQueryConstraints(state.saved, { dnr: 'field', filter: 'field' }),
+			{
+				dependencies: [],
+			},
+		),
 		numHistoryEntriesToResolve: 10,
 		...(options.addedInput ?? {}),
 	}
-	const isEditing = QD.QDStore.getState().isEditing
 	return useQuery({
 		...options,
 		queryKey: [
 			'layers',
 			'getLayerStatusesForLayerQueue',
-			useDepKey({ ...input, isEditing }),
+			useDepKey(input),
 		],
 		enabled: options?.enabled,
 		queryFn: async () => {
@@ -201,7 +289,7 @@ export function useLayerExists(
 }
 
 export function useDepKey(input?: unknown) {
-	const ctxCounters = Zus.useStore(layerCtxVersionStore, useShallow(s => s.counters))
+	const ctxCounters = Zus.useStore(Store, useShallow(s => s.counters))
 	return getDepKey(input, ctxCounters)
 }
 
@@ -635,7 +723,7 @@ async function setup() {
 			seqId: nextSeqId++,
 		}
 		workerPool.updateContext(msg)
-		layerCtxVersionStore.getState().increment(ctx)
+		Store.getState().increment(ctx)
 	})
 	await initPromise
 	// Set up window focus handlers after successful initialization
@@ -773,6 +861,96 @@ export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 		staleTime: Infinity,
 	}
 }
+
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
 	return reactQueryClient.getQueryCache().build(reactQueryClient, getLayerInfoQueryOptions(layer)).fetch()
+}
+
+export function useExtraFiltersStore() {
+	const storeRef = useRefConstructor(() => {
+		const activeStore = Zus.createStore(() => ({ active: new Set<F.FilterEntityId>() }))
+
+		const updateQueryStore = (cb: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['filters']>) => void) => {
+			Store.getState().setExtraQueryFilters(cb)
+		}
+
+		const addActive = (filterId: F.FilterEntityId) => {
+			activeStore.setState(state => {
+				const newState = new Set(state.active)
+				newState.add(filterId)
+				return { active: newState }
+			})
+		}
+
+		const removeActive = (filterId: F.FilterEntityId) => {
+			activeStore.setState(state => {
+				const newState = new Set(state.active)
+				newState.delete(filterId)
+				return { active: newState }
+			})
+		}
+
+		const actions: LQY.ExtraQueryFiltersActions = {
+			setActive(filterId, active) {
+				if (!active) {
+					removeActive(filterId)
+					return
+				}
+				addActive(filterId)
+				updateQueryStore(draft => {
+					if (!draft.has(filterId)) {
+						draft.add(filterId)
+					}
+				})
+			},
+			select(newFilterId, oldFilterId) {
+				removeActive(oldFilterId)
+				addActive(newFilterId)
+				updateQueryStore(draft => {
+					draft.add(newFilterId)
+				})
+			},
+			add(filterId) {
+				addActive(filterId)
+				updateQueryStore(draft => {
+					draft.add(filterId)
+				})
+			},
+			remove(filterId) {
+				removeActive(filterId)
+				updateQueryStore(draft => {
+					draft.delete(filterId)
+				})
+			},
+		}
+
+		return derive<LQY.ExtraQueryFiltersStore>(get => ({
+			filters: get(Store).extraQueryFilters,
+			activeFilters: get(activeStore).active,
+			...actions,
+		}))
+	})
+
+	return storeRef.current
+}
+
+export const useNewPoolApplyAsStore = (
+	defaultState: LQY.ApplyAsState = { dnr: 'field', filter: 'where-condition' },
+): Zus.StoreApi<LQY.ApplyAsStore> => {
+	const storeRef = useRefConstructor(() => {
+		return Zus.createStore<LQY.ApplyAsStore>((set) => ({
+			poolApplyAs: defaultState,
+			setPoolApplyAs: (type, value) => {
+				set(state => ({
+					...state,
+					poolApplyAs: {
+						...state.poolApplyAs,
+						[type]: value,
+					},
+				}))
+			},
+		}))
+	})
+
+	return storeRef.current
 }

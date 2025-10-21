@@ -138,8 +138,8 @@ export type ServerEntry = {
 	displayName: string
 }
 
-// we also include public env variables here for expediency
-export function getPublicConfig() {
+// we also include public env variables here and the websocket client id for expediency
+export function getPublicConfig(wsClientId: string) {
 	return {
 		...Obj.selectProps(CONFIG, ['layerQueue', 'vote', 'topBarColor', 'layerTable']),
 		isProduction: ENV.NODE_ENV === 'production',
@@ -153,6 +153,8 @@ export function getPublicConfig() {
 			id: server.id,
 			displayName: server.displayName,
 		})),
+
+		wsClientId,
 	}
 }
 

@@ -1,4 +1,6 @@
 import * as Config from '@/server/config.ts'
+import * as ServerSettings from '@/server/systems/server-settings.ts'
+import * as SharedLayerList from '@/server/systems/shared-layer-list.server.ts'
 import * as FilterEntity from './systems/filter-entity.ts'
 import * as LayerQueries from './systems/layer-queries.server.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
@@ -16,14 +18,17 @@ export function setup() {
 		layerQueue: LayerQueue.layerQueueRouter,
 		squadServer: SquadServer.router,
 		filters: FilterEntity.filtersRouter,
-		config: procedure.query(() => {
-			return Config.getPublicConfig()
+		config: procedure.query(({ ctx }) => {
+			return Config.getPublicConfig(ctx.wsClientId)
 		}),
 		users: Users.usersRouter,
 		rbac: Rbac.rbacRouter,
 		matchHistory: MatchHistory.matchHistoryRouter,
 		layerQueries: LayerQueries.layerQueriesRouter,
+		sharedLayerList: SharedLayerList.router,
+		serverSettings: ServerSettings.router,
 	})
+
 	appRouter = _appRouter
 	return _appRouter
 }

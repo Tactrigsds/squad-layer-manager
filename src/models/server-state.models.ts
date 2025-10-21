@@ -3,7 +3,6 @@ import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
-
 import { z } from 'zod'
 
 const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
@@ -44,15 +43,18 @@ export const QueueSettingsSchema = z.object({
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
-export const ServerSettingsSchema = z
+export const PublicServerSettingsSchema = z
 	.object({
 		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
-		// should *always* be omitted on the frontend
-		connections: ServerConnectionSchema.optional(),
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.default({}).transform((obj) => Obj.deepClone(obj)),
 	})
+export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
+
+export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
+	connections: ServerConnectionSchema,
+})
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
 export type Changed<T> = {
@@ -106,15 +108,8 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 	return result
 }
 
-export const UserModifiableServerStateSchema = z.object({
-	layerQueueSeqId: z.number().int(),
-	layerQueue: LL.ListSchema,
-	settings: ServerSettingsSchema,
-})
-
-export type UserModifiableServerState = z.infer<typeof UserModifiableServerStateSchema>
 export type LQStateUpdate = {
-	state: LQServerState
+	state: ServerState
 	source:
 		| {
 			type: 'system'
@@ -142,12 +137,75 @@ export type LQStateUpdate = {
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>
 
-export const ServerStateSchema = UserModifiableServerStateSchema.extend({
+export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	lastRoll: z.date().nullable(),
+	layerQueueSeqId: z.number().int(),
+	layerQueue: LL.ListSchema,
+	settings: ServerSettingsSchema,
 })
 
-export type LQServerState = z.infer<typeof ServerStateSchema>
+export type ServerState = z.infer<typeof ServerStateSchema>
 
-export const GenericServerStateUpdateSchema = UserModifiableServerStateSchema
+export const SettingsPathSchema = z.array(z.union([z.string(), z.number()]))
+export type SettingsPath = (string | number)[]
+
+export const SettingMutationSchema = z.object({
+	path: SettingsPathSchema,
+	value: z.any(),
+})
+	.refine(mut => !!derefSettingsSchema(mut.path), { message: 'Path must resolve to a valid setting' })
+	.refine(mut => {
+		const schema = derefSettingsSchema(mut.path)
+		if (!schema) return false
+		return schema.safeParse(mut.value).success
+	}, { message: `Invalid value for setting` })
+export type SettingMutation = z.infer<typeof SettingMutationSchema>
+
+export function idk() {
+}
+
+export function derefSettingsSchema(path: SettingsPath): z.ZodAny | null {
+	let current: any = ServerSettingsSchema
+	for (const key of path) {
+		if (typeof key === 'number') {
+			if (!('element' in current)) return null
+			current = current.element as z.ZodAny
+		} else {
+			current = (current as any).shape[key]
+			if (!current) return null
+		}
+	}
+	return current as unknown as z.ZodAny
+}
+
+export function derefSettingsValue<T extends PublicServerSettings>(settings: T, path: SettingsPath) {
+	let current = settings as any
+	for (const key of path) {
+		current = (current as any)[key]
+		if (!current) return null
+	}
+	return current as unknown
+}
+
+function setPathValue<T extends PublicServerSettings>(settings: T, path: SettingsPath, value: any) {
+	let current = settings as any
+	for (let i = 0; i < path.length - 1; i++) {
+		const key = path[i]
+		if (!current[key]) current[key] = {}
+		current = current[key]
+	}
+	current[path[path.length - 1]] = value
+}
+
+export function applySettingMutations<T extends PublicServerSettings>(settings: T, mutations: SettingMutation[]) {
+	for (const mutation of mutations) {
+		setPathValue(settings, mutation.path, mutation.value)
+	}
+	return settings
+}
+
+export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
+	return Obj.exclude(settings, ['connections'])
+}

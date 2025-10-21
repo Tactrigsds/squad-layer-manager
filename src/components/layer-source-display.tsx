@@ -3,8 +3,11 @@ import * as Text from '@/lib/text'
 import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
 import * as PartsSys from '@/systems.client/parts.ts'
+import * as UsersClient from '@/systems.client/users.client'
 
 export default function LayerSourceDisplay(props: { source: LL.Source }) {
+	const loggedInUser = UsersClient.useLoggedInUser()
+	const isMe = props.source.type === 'manual' && props.source.userId === loggedInUser?.discordId
 	switch (props.source.type) {
 		case 'gameserver':
 			return <Badge variant="outline">Game Server</Badge>
@@ -13,7 +16,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 			return <Badge variant="outline">{Text.capitalize(props.source.type)}</Badge>
 			break
 		case 'manual': {
-			return <Badge variant="outline">{PartsSys.findUser(props.source.userId)?.username ?? 'Unknown'}</Badge>
+			return <Badge variant={isMe ? 'default' : 'outline'}>{PartsSys.findUser(props.source.userId)?.username ?? 'Unknown'}</Badge>
 			break
 		}
 		default:

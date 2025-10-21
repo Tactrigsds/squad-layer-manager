@@ -1,4 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as ServerSettings from '@/server/systems/server-settings'
+
 import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -27,6 +29,7 @@ import * as Commands from '@/server/systems/commands'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as SharedLayerList from '@/server/systems/shared-layer-list.server'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as TrpcServer from '@/server/trpc.server'
 import * as Otel from '@opentelemetry/api'
@@ -81,51 +84,61 @@ export async function setup() {
 
 	for (const serverConfig of CONFIG.servers) {
 		ops.push((async () => {
-			let settings: SS.ServerSettings | undefined
+			let serverState: SS.ServerState | undefined
 			await DB.runTransaction(ctx, async () => {
 				const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
-				const server: typeof serverRaw | undefined = serverRaw ? (unsuperjsonify(Schema.servers, serverRaw) as typeof serverRaw) : undefined
-				const settingsParsedRes = server?.settings
-					? SS.ServerSettingsSchema.safeParse(server.settings)
+				const serverParsedRes = serverRaw
+					? SS.ServerStateSchema.safeParse(unsuperjsonify(Schema.servers, serverRaw))
 					: undefined
-				settings = settingsParsedRes?.success ? settingsParsedRes.data : undefined
-				if (!server) {
-					settings = SS.ServerSettingsSchema.parse({ connections: serverConfig.connections })
-					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, {
+				if (!serverRaw) {
+					ctx.log.info(`Server ${serverConfig.id} not found, creating new`)
+				} else if (serverParsedRes && !serverParsedRes.success) {
+					ctx.log.warn(`Server ${serverConfig.id} is invalid, recreating`)
+				}
+				serverState = serverParsedRes?.success ? serverParsedRes.data : undefined
+				if (!serverState) {
+					serverState = SS.ServerStateSchema.parse({
 						id: serverConfig.id,
-						settings,
 						displayName: serverConfig.displayName,
-						layerQueue: LL.ListSchema.parse([]),
-					}))
-				}
+						lastRoll: null,
+						layerQueue: [],
+						settings: { connections: serverConfig.connections },
+					})
 
-				if (server && server.displayName !== serverConfig.displayName) {
-					await ctx.db().update(Schema.servers).set({ displayName: serverConfig.displayName }).where(
-						E.eq(Schema.servers.id, serverConfig.id),
-					)
-				}
+					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, serverState))
+				} else {
+					const toUpdate: Partial<SS.ServerState> = {}
 
-				if (server && !Obj.deepEqual(serverConfig.connections, settings?.connections)) {
-					settings = SS.ServerSettingsSchema.parse({ ...(settings ?? {}), connections: serverConfig.connections })
-					await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
-						E.eq(Schema.servers.id, serverConfig.id),
-					)
+					if (serverState && serverState.displayName !== serverConfig.displayName) {
+						toUpdate.displayName = serverConfig.displayName
+					}
+					if (serverState && !Obj.deepEqual(serverConfig.connections, serverState.settings.connections)) {
+						toUpdate.settings = { ...serverState.settings, connections: serverConfig.connections }
+					}
+					if (!Obj.isEmpty(toUpdate)) {
+						await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, toUpdate)).where(
+							E.eq(Schema.servers.id, serverConfig.id),
+						)
+						serverState = { ...serverState, ...toUpdate }
+					}
 				}
 			})
 
-			if (!settings) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
-			const slice = await instantiateServer(ctx, serverConfig.id, settings)
-			state.slices.set(serverConfig.id, slice)
+			if (!serverState) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
+			await instantiateServer(ctx, serverState)
 		})())
 	}
 
 	await Promise.all(ops)
 }
 
-async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string, settings: SS.ServerSettings): Promise<C.ServerSlice> {
+async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.ServerState) {
 	const layersStatus: SquadServer['layersStatus'] = new AsyncResource('serverStatus', (ctx) => SquadRcon.getLayerStatus(ctx), {
 		defaultTTL: 5000,
 	})
+
+	const serverId = serverState.id
+	const settings = serverState.settings
 
 	const rcon = new Rcon({ serverId: serverId, settings: settings.connections!.rcon })
 	rcon.ensureConnected(ctx)
@@ -180,11 +193,6 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 
 		layerQueue: LayerQueue.initLayerQueueContext(),
 
-		userPresence: {
-			state: {},
-			update$: new Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>(),
-		},
-
 		vote: {
 			autostartVoteSub: null,
 			voteEndTask: null,
@@ -194,7 +202,10 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 			update$: new Rx.Subject<V.VoteStateUpdate>(),
 		},
 		serverSliceSub: sub,
+		sharedList: SharedLayerList.getDefaultState(serverState),
 	}
+
+	state.slices.set(serverId, slice)
 
 	const sync$ = rcon.connected$.pipe(
 		Rx.concatMap(async (connected) => {
@@ -251,9 +262,9 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverId: string,
 	)
 
 	await MatchHistory.loadState({ ...ctx, ...slice })
-	await LayerQueue.initLayerQueue({ ...ctx, ...slice })
-
-	return slice
+	await LayerQueue.init({ ...ctx, ...slice })
+	SharedLayerList.init({ ...ctx, ...slice })
+	ServerSettings.init({ ...ctx, ...slice })
 }
 
 async function handleSquadEvent(ctx: C.Db & C.Locks & C.SquadServer & C.MatchHistory & C.LayerQueue & C.Vote, event: SME.Event) {
@@ -461,10 +472,7 @@ export const router = TrpcServer.router({
 
 	endMatch: TrpcServer.procedure.mutation(async ({ ctx: _ctx }) => {
 		const ctx = resolveWsClientSliceCtx(_ctx)
-		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-			check: 'all',
-			permits: [RBAC.perm('squad-server:end-match')],
-		})
+		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
 		if (deniedRes) return deniedRes
 		SquadRcon.endMatch(ctx)
 		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
@@ -473,7 +481,7 @@ export const router = TrpcServer.router({
 
 	toggleFogOfWar: TrpcServer.procedure.input(z.object({ disabled: z.boolean() })).mutation(async ({ ctx: _ctx, input }) => {
 		const ctx = resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:turn-fog-off'))
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
 		if (denyRes) return denyRes
 		const { value: serverStatusRes } = await ctx.server.layersStatus.get(ctx)
 		if (serverStatusRes.code !== 'ok') return serverStatusRes

@@ -39,9 +39,3 @@ function ProvidersInner(props: { children: ReactNode }) {
 		</>
 	)
 }
-
-// for hooks/providers that need to be used in the context of react router
-export function InnerRouterProviders(props: { children: ReactNode }) {
-	QD.useResetEditOnNavigate()
-	return <>{props.children}</>
-}

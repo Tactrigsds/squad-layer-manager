@@ -5,13 +5,12 @@ import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
-
-import type * as React from 'react'
 import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	void UsersClient.invalidateLoggedInUser()
 	globalToast$.next({
+		variant: 'destructive',
 		title: Messages.WARNS.permissionDenied(res),
 	})
 }

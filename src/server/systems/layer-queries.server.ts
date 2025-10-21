@@ -11,7 +11,7 @@ import * as LayerQueries from '@/systems.shared/layer-queries.shared'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server'
 
-export function resolveLayerQueryCtx<Ctx extends CS.Log & C.MatchHistory>(ctx: Ctx, serverState: SS.LQServerState): Ctx & CS.LayerQuery {
+export function resolveLayerQueryCtx<Ctx extends CS.Log & C.MatchHistory>(ctx: Ctx, serverState: SS.ServerState): Ctx & CS.LayerQuery {
 	return {
 		...ctx,
 		...resolveLayerDbContext(),

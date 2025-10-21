@@ -1,15 +1,15 @@
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import * as Typography from '@/lib/typography.ts'
+import * as LQY from '@/models/layer-queries.models.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
-import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
 import * as Zus from 'zustand'
 import FilterEntitySelect from './filter-entity-select.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
-export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<QD.ExtraQueryFiltersStore> }) {
+export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<LQY.ExtraQueryFiltersStore> }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const state = Zus.useStore(store)
 	const extraFilters = Array.from(state.filters)
@@ -18,7 +18,7 @@ export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<QD.Ex
 		<div className="flex items-center">
 			{Array.from(state.filters).map((filterId) => {
 				const htmlId = 'filter-list:' + filterId
-				const active = state.active.has(filterId)
+				const active = state.activeFilters.has(filterId)
 				return (
 					<div key={filterId} className="flex items-center space-x-0.5 p-2">
 						<Label htmlFor={htmlId}>{filterEntities.get(filterId)?.name}</Label>
@@ -45,7 +45,7 @@ export default function ExtraFiltersPanel({ store }: { store: Zus.StoreApi<QD.Ex
 						<ul>
 							{extraFilters.map(filterId => {
 								const excluded = extraFilters.filter(f => filterId !== f)
-								const active = state.active.has(filterId)
+								const active = state.activeFilters.has(filterId)
 								return (
 									<li className="flex items-center space-x-0.5" key={filterId}>
 										<FilterEntitySelect

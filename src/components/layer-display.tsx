@@ -3,13 +3,14 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import { useLayerItemStatuses } from '@/systems.client/layer-queries.client.ts'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-
+import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -29,8 +30,8 @@ export default function LayerDisplay(
 ) {
 	const layerStatusesRes = useLayerItemStatuses({ addedInput: props.addedLayerQueryInput })
 	const badges: React.ReactNode[] = []
-	const constraints = ZusUtils.useStoreDeep(QD.QDStore, s => SS.getPoolConstraints(s.editedServerState.settings.queue.mainPool))
-	const hoveredConstraintItemId = Zus.useStore(QD.QDStore, s => s.hoveredConstraintItemId)
+	const constraints = ZusUtils.useStoreDeep(ServerSettingsClient.Store, s => SS.getPoolConstraints(s.saved.queue.mainPool))
+	const hoveredConstraintItemId = Zus.useStore(LayerQueriesClient.Store, s => s.hoveredConstraintItemId ?? undefined)
 	const allViolationDescriptors = layerStatusesRes.data?.violationDescriptors
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,

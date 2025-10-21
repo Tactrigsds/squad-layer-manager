@@ -8,12 +8,13 @@ import * as V from '@/models/vote.models'
 import { z } from 'zod'
 import { createId } from '../lib/id'
 import * as L from './layer'
+import { iterLayerItems } from './layer-queries.models'
 
 export const SourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('generated') }),
 	z.object({ type: z.literal('gameserver') }),
 	z.object({ type: z.literal('unknown') }),
-	z.object({ type: z.literal('manual'), userId: z.bigint() }),
+	z.object({ type: z.literal('manual'), userId: USR.UserIdSchema }),
 ])
 
 export type Source = z.infer<typeof SourceSchema>
@@ -39,8 +40,10 @@ export const NewLayerListItemSchema = z.object({
 	// should set after a vote has been resolved
 	endingVoteState: V.EndingVoteStateSchema.optional(),
 
+	// TODO why is this not in voteConfig??
 	displayProps: z.lazy(() => z.array(DH.LAYER_DISPLAY_PROP).optional()),
 })
+
 export type NewLayerListItem = z.infer<typeof NewLayerListItemSchema>
 
 export const LayerListItemSchema = NewLayerListItemSchema.extend({
@@ -78,7 +81,7 @@ export const LayerListItemRelativeCursor = z.object({
 	position: z.enum(['before', 'after', 'on']),
 })
 
-export type ParentVoteItem = LayerListItem & {
+export type ParentVoteItem = Item & {
 	choices: InnerLayerListItem[]
 	voteConfig: V.AdvancedVoteConfig
 	voteDisplayProps?: DH.LayerDisplayProp[]
@@ -97,22 +100,22 @@ export type ItemIndex = {
 }
 
 export type LayerListIteratorResult = ItemIndex & {
-	item: LayerListItem | InnerLayerListItem
+	item: Item | InnerLayerListItem
 }
 
 export const ListSchema = z.array(LayerListItemSchema)
 
 export type List = z.infer<typeof ListSchema>
-export type LayerListItem = z.infer<typeof LayerListItemSchema>
+export type Item = z.infer<typeof LayerListItemSchema>
 
-export function getActiveItemLayerId(item: LayerListItem) {
+export function getActiveItemLayerId(item: Item) {
 	return item.layerId
 }
-export function getDefaultLayerId(item: LayerListItem & { choices: InnerLayerListItem[] }) {
+export function getDefaultLayerId(item: Item & { choices: InnerLayerListItem[] }) {
 	return item.choices[0].layerId
 }
 
-export function layerItemToDragItem(item: Pick<LayerListItem, 'itemId'>): DND.DragItem {
+export function layerItemToDragItem(item: Pick<Item, 'itemId'>): DND.DragItem {
 	return {
 		id: item.itemId,
 		type: 'layer-item',
@@ -169,9 +172,9 @@ export function createLayerListItemId() {
 	return createId(24)
 }
 
-export function createLayerListItem(newItem: NewLayerListItem, source: Source): LayerListItem {
+export function createLayerListItem(newItem: NewLayerListItem, source: Source): Item {
 	return {
-		itemId: createLayerListItemId(),
+		itemId: newItem.itemId ?? createLayerListItemId(),
 		source,
 		...newItem,
 	}
@@ -182,12 +185,12 @@ export function getNextLayerId(layerQueue: List) {
 	return layerQueue[0].layerId
 }
 
-export function isParentVoteItem(item: LayerListItem): item is ParentVoteItem {
+export function isParentVoteItem(item: Item): item is ParentVoteItem {
 	return !!item.choices
 }
 
 export function isChildItem(itemId: ItemId, parentItemId: ItemId, layerList: List): boolean {
-	const parentItem = findParentItem(itemId, layerList)
+	const parentItem = findParentItem(layerList, itemId)
 	if (!parentItem || parentItem.itemId === itemId) return false
 	return true
 }
@@ -198,13 +201,13 @@ export function resolveParentItemIndex(itemId: ItemId, layerQueue: List): number
 	return index
 }
 
-export function findParentItem(layerQueue: List, itemId: ItemId): LayerListItem | undefined {
+export function findParentItem(layerQueue: List, itemId: ItemId): Item | undefined {
 	const index = resolveParentItemIndex(itemId, layerQueue)
 	if (index === undefined) return undefined
 	return layerQueue[index]
 }
 
-export function getAllItemLayerIds(item: LayerListItem, opts?: { excludeVoteChoices?: boolean }) {
+export function getAllItemLayerIds(item: Item, opts?: { excludeVoteChoices?: boolean }) {
 	const ids = new Set<L.LayerId>()
 	if (item.layerId) {
 		ids.add(item.layerId)
@@ -235,10 +238,10 @@ export function findItemById(layerQueue: List, itemId: ItemId): LayerListIterato
 	}
 }
 
-export function getItemIndexes(list: List, itemId: ItemId) {
+export function getItemIndex(list: List, itemId: ItemId): ItemIndex | undefined {
 	for (const { item, outerIndex, innerIndex } of iterLayerList(list)) {
 		if (!innerIndex) continue
-		if (item.itemId === itemId) return [outerIndex, innerIndex]
+		if (item.itemId === itemId) return { outerIndex, innerIndex }
 	}
 	return undefined
 }
@@ -247,10 +250,8 @@ export function isVoteChoiceResult(result: Pick<LayerListIteratorResult, 'innerI
 	return result.innerIndex !== null
 }
 
-/**
- * Resulting itemId and source will be from first item
- */
-export function mergeItems(...items: LayerListItem[]): LayerListItem | undefined {
+/** */
+export function mergeItems(newFirstItemId: ItemId, ...items: Item[]): Item | undefined {
 	if (items.length === 0) return undefined
 	const [first] = items
 
@@ -258,7 +259,7 @@ export function mergeItems(...items: LayerListItem[]): LayerListItem | undefined
 		if (res.item.itemId === first.itemId) {
 			return {
 				...res.item,
-				itemId: createLayerListItemId(),
+				itemId: newFirstItemId,
 			}
 		}
 		return res.item
@@ -280,7 +281,14 @@ export function mergeItems(...items: LayerListItem[]): LayerListItem | undefined
 	}
 }
 
-export function addItem(list: List, source: Source, index: ItemIndex, ...items: NewLayerListItem[]) {
+export function addItemsDeterministic(list: List, source: Source, index: ItemIndex, ...items: Item[]) {
+	for (const item of items) {
+		if (!item.itemId) throw new Error('Item ID is required')
+	}
+	addItems(list, source, index, ...items)
+}
+
+export function addItems(list: List, source: Source, index: ItemIndex, ...items: NewLayerListItem[]) {
 	index = truncateAddIndex(index, list)
 	const createdItems = items.map(item => createLayerListItem(item, source))
 
@@ -292,7 +300,14 @@ export function addItem(list: List, source: Source, index: ItemIndex, ...items: 
 	}
 }
 
-export function moveItem(list: List, source: Source, movedItemId: ItemId, targetCursorOrIndex: ItemRelativeCursor | ItemIndex) {
+export function moveItem(
+	list: List,
+	source: Source,
+	movedItemId: ItemId,
+	// needed in case we're merging and we need a new id for the added first choice
+	newFirstItemId: ItemId,
+	targetCursorOrIndex: ItemRelativeCursor | ItemIndex,
+): { merged: false | ItemId; modified: boolean } {
 	const movedItemRes = findItemById(list, movedItemId)
 	const targetIndex = isItemIndex(targetCursorOrIndex)
 		? targetCursorOrIndex
@@ -300,37 +315,38 @@ export function moveItem(list: List, source: Source, movedItemId: ItemId, target
 
 	if (movedItemRes === undefined) {
 		console.warn('Failed to move item. item not found', movedItemId, movedItemId)
-		return
+		return { merged: false, modified: false }
 	}
 	if (targetIndex === undefined) {
 		console.warn('Failed to move item. target item not found', movedItemId, targetCursorOrIndex)
-		return
+		return { merged: false, modified: false }
 	}
-	if (indexesEqual(targetIndex, movedItemRes)) return
+	if (indexesEqual(targetIndex, movedItemRes)) return { merged: false, modified: false }
 
 	const targetItem = resolveItemForIndex(list, targetIndex)
-	if (!targetItem) return
-
-	const targetItemParent = findParentItem(targetItem?.itemId, list)
+	const targetItemParent = targetItem ? findParentItem(list, targetItem.itemId) : undefined
 
 	splice(list, movedItemRes, 1, { itemId: '__placeholder__', layerId: L.DEFAULT_LAYER_ID, source })
 
+	let merged: false | string
 	// create a vote out of two existing items
-	if (!isItemIndex(targetCursorOrIndex) && targetCursorOrIndex.position === 'on') {
-		const mergedItem = mergeItems(targetItem, movedItemRes.item)
+	if (targetItem && !isItemIndex(targetCursorOrIndex) && targetCursorOrIndex.position === 'on') {
+		const mergedItem = mergeItems(newFirstItemId, targetItem, movedItemRes.item)
 		if (!mergedItem) throw new Error('Failed to merge items')
 		splice(list, targetIndex, 1, mergedItem)
-		return
-	}
-
-	const movedAndModifiedItem: LayerListItem = { ...movedItemRes.item, source }
-	splice(list, targetIndex, 0, movedAndModifiedItem)
-	if (targetItemParent && isParentVoteItem(targetItemParent)) {
-		setCorrectChosenLayerIdInPlace(targetItemParent as ParentVoteItem)
+		merged = mergedItem.itemId
+	} else {
+		const movedAndModifiedItem: Item = { ...movedItemRes.item, source }
+		splice(list, targetIndex, 0, movedAndModifiedItem)
+		if (targetItemParent && isParentVoteItem(targetItemParent)) {
+			setCorrectChosenLayerIdInPlace(targetItemParent as ParentVoteItem)
+		}
+		merged = false
 	}
 	const placeholderRes = findItemById(list, '__placeholder__')!
 	// finally, remove placeholder
 	splice(list, placeholderRes, 1)
+	return { merged, modified: true }
 }
 
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
@@ -355,22 +371,39 @@ export function configureVote(
 	list: List,
 	source: Source,
 	itemId: ItemId,
-	defaultVoteConfig: V.AdvancedVoteConfig,
-	voteConfig: Partial<V.AdvancedVoteConfig> | null,
+	voteConfig?: Partial<V.AdvancedVoteConfig> | null,
+	displayProps?: DH.LayerDisplayProp[] | null,
 ) {
 	const itemRes = findItemById(list, itemId)
 	if (!itemRes) return
 	const item = itemRes.item
 	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
 	if (voteConfig === null) {
-		item.voteConfig = { ...defaultVoteConfig, source }
+		item.voteConfig = { source }
 		return
-	} else {
-		item.voteConfig = { ...defaultVoteConfig, ...(item.voteConfig ?? {}), ...(voteConfig ?? {}), source }
+	} else if (voteConfig) {
+		item.voteConfig = { ...(item.voteConfig ?? {}), ...(voteConfig ?? {}), source }
+	}
+	if (displayProps === null) {
+		delete item.displayProps
+	} else if (displayProps) {
+		item.displayProps = displayProps
 	}
 }
 
-export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex, deleteCount: number, ...items: LayerListItem[]) {
+export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: LL.Item[]) {
+	const itemRes = findItemById(list, itemId)
+	if (!itemRes) return
+	const item = itemRes.item
+	if (isParentVoteItem(item)) return
+	const voteItem = mergeItems(newFirstItemId, item, ...addedChoices)
+	if (!voteItem) return
+	voteItem.source = source
+	splice(list, itemRes, 1, voteItem)
+	return voteItem.itemId
+}
+
+export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex, deleteCount: number, ...items: Item[]) {
 	const index = isItemIndex(indexOrCursor) ? indexOrCursor : resolveQualfiedIndexFromCursorForMove(list, indexOrCursor)
 	if (index === undefined) return
 	if (index.innerIndex !== null) {
@@ -390,7 +423,7 @@ export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex
 		}
 		if (parentItem.choices.length === 1) {
 			// only one choice left, just make this a regular item
-			const regularItem: LayerListItem = {
+			const regularItem: Item = {
 				itemId: parentItem.itemId,
 				layerId: parentItem.layerId,
 				source: parentItem.source,
@@ -403,7 +436,7 @@ export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex
 	}
 }
 
-function isItemIndex(item: ItemRelativeCursor | ItemIndex): item is ItemIndex {
+export function isItemIndex(item: ItemRelativeCursor | ItemIndex): item is ItemIndex {
 	return (item as any).outerIndex !== undefined
 }
 
@@ -414,7 +447,7 @@ export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
 }
 
 // if layers are placed before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
-export function changeGeneratedLayerAttributionInPlace(layerList: List, mutations: ItemMut.ItemMutations, userId: bigint) {
+export function changeGeneratedLayerAttributionInPlace(layerList: List, mutations: ItemMut.Mutations, userId: bigint) {
 	let afterModified = false
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
 	for (const { item } of iterLayerList(layerList)) {
@@ -426,8 +459,8 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	}
 }
 
-export function swapFactions(existingItem: LayerListItem, newSource?: Source) {
-	const updated: LayerListItem = { ...existingItem }
+export function swapFactions(existingItem: Item, newSource?: Source) {
+	const updated: Item = { ...existingItem }
 	const layerId = L.swapFactionsInId(existingItem.layerId)
 	updated.layerId = layerId
 	if (newSource) updated.source = newSource
@@ -437,24 +470,31 @@ export function swapFactions(existingItem: LayerListItem, newSource?: Source) {
 	return updated
 }
 
-export function clearTally(_item: LayerListItem) {
+export function clearTally(_item: Item) {
 	if (!_item.endingVoteState) return _item
 	const item = { ..._item }
 	delete item.endingVoteState
 	return item
 }
 
-export function isLocallyLastItem(itemId: ItemId, list: List) {
+export function isLocallyLastIndex(itemId: ItemId, list: List) {
 	const res = findItemById(list, itemId)
 	if (!res) return false
 	if (res.innerIndex != null) {
-		const parentRes = findParentItem(itemId, list)! as ParentVoteItem
+		const parentRes = findParentItem(list, itemId)! as ParentVoteItem
 		return parentRes.choices.length - 1 === res.innerIndex
 	}
 	return list.length - 1 === res.outerIndex
 }
 
-export function displayLayerListItem(item: LayerListItem, index: ItemIndex) {
+export function isLocallyFirstIndex(index: ItemIndex) {
+	if (index.innerIndex !== null) {
+		return index.innerIndex === 0
+	}
+	return index.outerIndex === 0 && index.innerIndex === null
+}
+
+export function displayLayerListItem(item: Item, index: ItemIndex) {
 	if (isParentVoteItem(item)) {
 		return item.choices.map((choice, innerIndex) =>
 			`${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`
@@ -477,7 +517,7 @@ export function resolveLayerQueueItemIndexForNumber(layerList: List, number: str
 	return { outerIndex, innerIndex }
 }
 
-export function resolveItemForIndex(layerList: List, index: ItemIndex): LayerListItem | undefined {
+export function resolveItemForIndex(layerList: List, index: ItemIndex): Item | undefined {
 	const { outerIndex, innerIndex } = index
 	if (innerIndex === null) return layerList[outerIndex]
 	return layerList[outerIndex]?.choices?.[innerIndex]
@@ -491,4 +531,15 @@ export function resolveLayerQueueItemForNumber(layerList: List, number: string) 
 
 export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 	return a.outerIndex === b.outerIndex && a.innerIndex === b.innerIndex
+}
+
+export function getLastLocalIndexForItem(itemId: ItemId, layerList: List): ItemIndex | undefined {
+	const res = findItemById(layerList, itemId)
+	if (!res) return undefined
+	if (res.innerIndex === null) {
+		const parentItem = layerList[res.outerIndex]
+		if (!isParentVoteItem(parentItem)) return undefined
+		return { outerIndex: res.outerIndex, innerIndex: parentItem.choices.length - 1 }
+	}
+	return { outerIndex: layerList.length - 1, innerIndex: null }
 }

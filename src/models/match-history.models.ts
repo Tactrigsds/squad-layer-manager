@@ -267,7 +267,7 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	return Array.from(active)
 }
 
-export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: string; startTime: Date; lqItem?: LL.LayerListItem }) {
+export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: string; startTime: Date; lqItem?: LL.Item }) {
 	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
 		layerId: opts.layerId,
 		serverId: opts.serverId,

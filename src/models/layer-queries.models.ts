@@ -425,7 +425,7 @@ export function getAllLayerIds(items: OrderedLayerItems) {
 	return ids
 }
 
-export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem | ParentVoteItem {
+export function getLayerItemForLayerListItem(item: LL.Item): LayerItem | ParentVoteItem {
 	if (LL.isParentVoteItem(item)) {
 		return {
 			type: 'parent-vote-item',
@@ -440,7 +440,7 @@ export function getLayerItemForLayerListItem(item: LL.LayerListItem): LayerItem 
 	}
 }
 
-export function getLayerItemForVoteItem(item: LL.LayerListItem, choiceIndex: number): VoteChoiceLayerItem {
+export function getLayerItemForVoteItem(item: LL.Item, choiceIndex: number): VoteChoiceLayerItem {
 	return {
 		type: 'vote-item',
 		itemId: item.itemId,
@@ -545,3 +545,27 @@ export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig)
 	)
 	return res
 }
+
+export type ApplyAsState = {
+	dnr: LayerQueryConstraint['applyAs']
+	filter: LayerQueryConstraint['applyAs']
+}
+
+export type ApplyAsStore = {
+	poolApplyAs: ApplyAsState
+	setPoolApplyAs: (type: keyof ApplyAsState, value: LayerQueryConstraint['applyAs']) => void
+}
+
+export type ExtraQueryFiltersActions = {
+	setActive: (filterId: F.FilterEntityId, active: boolean) => void
+	select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
+	add: (newFilterId: F.FilterEntityId, active: boolean) => void
+	remove: (filterId: F.FilterEntityId) => void
+}
+
+export type ExtraQueryFiltersState = {
+	filters: Set<F.FilterEntityId>
+	activeFilters: Set<F.FilterEntityId>
+}
+
+export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState

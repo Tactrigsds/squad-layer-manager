@@ -211,6 +211,11 @@ export function isRoutedHttpRequestContext<Ctx extends HttpRequest>(req: Ctx): r
 	return 'route' in req
 }
 
+// sparse subset of User
+export type UserId = {
+	user: { discordId: bigint }
+}
+
 export type User = {
 	user: USR.User
 }
@@ -260,10 +265,6 @@ export type LayerQueue = {
 	layerQueue: LayerQueueSys.LayerQueueContext
 } & ServerId
 
-export type UserPresence = {
-	userPresence: LayerQueueSys.UserPresenceContext
-} & ServerId
-
 export type Vote = {
 	vote: LayerQueueSys.VoteContext
 } & ServerId
@@ -276,11 +277,11 @@ export type SquadServer = Rcon & {
 	server: SquadServerSys.SquadServer
 } & ServerId
 
-export type SharedLayerList = SharedLayerListSys.SharedLayerListContext
-
-export type ServerSlice = Rcon & SquadServer & UserPresence & Vote & LayerQueue & MatchHistory & SharedLayerListSys & {
+export type SharedLayerList = SharedLayerListSys.SharedLayerListContext & ServerId
+export type ServerSliceSub = {
 	serverSliceSub: Rx.Subscription
 }
+export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceSub
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

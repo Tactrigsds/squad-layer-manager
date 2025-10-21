@@ -22,13 +22,11 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as FilterEntity from '@/server/systems/filter-entity.ts'
 import * as LayerQueriesServer from '@/server/systems/layer-queries.server.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as SquadServer from '@/server/systems/squad-server.ts'
-import * as WSSessionSys from '@/server/systems/ws-session.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
@@ -38,11 +36,6 @@ import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { procedure, router } from '../trpc.server.ts'
-
-export type UserPresenceContext = {
-	state: USR.UserPresenceState
-	update$: Rx.Subject<USR.UserPresenceStateUpdate & Parts<USR.UserPart>>
-}
 
 export type VoteContext = {
 	voteEndTask: Rx.Subscription | null
@@ -55,18 +48,18 @@ export type VoteContext = {
 export type LayerQueueContext = {
 	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
 
-	update$: Rx.ReplaySubject<[SS.LQStateUpdate, CS.Log & C.Db]>
+	update$: Rx.ReplaySubject<[SS.LQStateUpdate, CS.Log & C.Db & C.ServerId]>
 }
 
 export function initLayerQueueContext(): LayerQueueContext {
 	return {
 		unexpectedNextLayerSet$: new Rx.BehaviorSubject<L.LayerId | null>(null),
-		update$: new Rx.ReplaySubject<[SS.LQStateUpdate, CS.Log & C.Db]>(1),
+		update$: new Rx.ReplaySubject(1),
 	}
 }
 
 const tracer = Otel.trace.getTracer('layer-queue')
-export const initLayerQueue = C.spanOp(
+export const init = C.spanOp(
 	'layer-queue:init',
 	{ tracer, eventLogLevel: 'info' },
 	async (ctx: CS.Log & C.Db & C.ServerSlice & C.Locks) => {
@@ -174,45 +167,6 @@ export const initLayerQueue = C.spanOp(
 				)
 				.subscribe(),
 		)
-
-		// -------- take editing user out of editing slot on disconnect --------
-		ctx.serverSliceSub.add(
-			WSSessionSys.disconnect$.pipe(
-				C.durableSub('layer-queue:handle-user-disconnect', { ctx, tracer }, async (disconnectedCtx) => {
-					const ctx = SquadServer.resolveSliceCtx(disconnectedCtx, serverId)
-					const userPresence = ctx.userPresence
-					if (userPresence.state.editState && userPresence.state.editState.wsClientId === disconnectedCtx.wsClientId) {
-						delete userPresence.state.editState
-						userPresence.update$.next({ event: 'edit-end', state: userPresence.state, parts: { users: [] } })
-					}
-					C.setSpanStatus(Otel.SpanStatusCode.OK)
-				}),
-			).subscribe(),
-		)
-
-		// -------- trim pool filters when filter entities are deleted --------
-		ctx.serverSliceSub.add(
-			FilterEntity.filterMutation$
-				.pipe(
-					Rx.filter(([_, mut]) => mut.type === 'delete'),
-					C.durableSub('layer-queue:handle-filter-delete', { ctx, tracer, taskScheduling: 'parallel' }, async ([_ctx, mutation]) => {
-						const ctx = SquadServer.resolveSliceCtx(_ctx, serverId)
-						const updatedServerState = await DB.runTransaction(ctx, async (_ctx) => {
-							const serverState = await getServerState(ctx)
-							const remainingFilterIds = serverState.settings.queue.mainPool.filters.filter(f => f !== mutation.key)
-							if (remainingFilterIds.length === serverState.settings.queue.mainPool.filters.length) return null
-							serverState.settings.queue.mainPool.filters = remainingFilterIds
-							await ctx.db().update(Schema.servers).set({ settings: serverState.settings }).where(E.eq(Schema.servers.id, serverState.id))
-
-							return serverState
-						})
-
-						if (!updatedServerState) return
-
-						ctx.layerQueue.update$.next([{ state: updatedServerState, source: { type: 'system', event: 'filter-delete' } }, ctx])
-					}),
-				).subscribe(),
-		)
 	},
 )
 
@@ -227,7 +181,7 @@ type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
 function checkForCurrentLayerChangeActions(
 	status: LayerStatus,
 	prevStatus: LayerStatus | null,
-	lqServerState: SS.LQServerState,
+	lqServerState: SS.ServerState,
 	serverInfo: Pick<SM.ServerInfo, 'playerCount'>,
 ) {
 	if (prevStatus != null && !Obj.deepEqual(status.currentLayer, prevStatus.currentLayer)) {
@@ -248,7 +202,7 @@ function checkForCurrentLayerChangeActions(
  */
 function checkForNextLayerStatusActions(
 	status: LayerStatus,
-	serverState: SS.LQServerState,
+	serverState: SS.ServerState,
 	serverRolling: boolean,
 ) {
 	if (serverState.settings.updatesToSquadServerDisabled) return { code: 'sync-disabled:no-action' as const }
@@ -278,7 +232,7 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 		const serverState = await getServerState(ctx)
 		const nextLqItem = serverState.layerQueue[0]
 
-		let currentMatchLqItem: LL.LayerListItem | undefined
+		let currentMatchLqItem: LL.Item | undefined
 		const newServerState = Obj.deepClone(serverState)
 		newServerState.lastRoll = new Date()
 		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, status.currentLayer.id)) {
@@ -296,7 +250,7 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 		)
 		await syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
 		await syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-		await updatelqServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
+		await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
 		return { code: 'ok' as const, newServerState, currentMatchLqItem }
 	})
 
@@ -421,7 +375,7 @@ async function syncVoteStateWithQueueStateInPlace(
 	const serverId = ctx.serverId
 	let newVoteState: V.VoteState | undefined | null
 
-	const oldQueueItem = oldQueue[0] as LL.LayerListItem | undefined
+	const oldQueueItem = oldQueue[0] as LL.Item | undefined
 	const newQueueItem = newQueue[0]
 
 	// check if we need to set 'ready'. we only want to do this if there's been a meaningul state change that means we have to initialize it or restart the autostart time. Also if we already have a .endingVoteState we don't want to overwrite that here
@@ -483,14 +437,12 @@ export const startVote = C.spanOp(
 	'layer-queue:vote:start',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
 	async (
-		_ctx: CS.Log & C.Db & Partial<C.User> & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.UserPresence & C.MatchHistory,
+		_ctx: CS.Log & C.Db & Partial<C.User> & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
-		if (_ctx.user) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(_ctx, _ctx.user.discordId, {
-				check: 'all',
-				permits: [RBAC.perm('vote:manage')],
-			})
+		if (_ctx.user !== undefined) {
+			// @ts-expect-error cringe
+			const denyRes = await Rbac.tryDenyPermissionsForUser(_ctx, RBAC.perm('vote:manage'))
 			if (denyRes) {
 				return denyRes
 			}
@@ -538,12 +490,10 @@ export const startVote = C.spanOp(
 				}
 			}
 
-			clearEditing({ ctx })
-
 			const item = initiateVoteRes.item
 			delete item.endingVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
-			await updatelqServerState(ctx, newServerState, { event: 'vote-start', type: 'system' })
+			await updateServerState(ctx, newServerState, { event: 'vote-start', type: 'system' })
 
 			const updatedVoteState = {
 				code: 'in-progress',
@@ -686,7 +636,7 @@ export const abortVote = C.spanOp(
 			const item = itemRes.item
 			item.endingVoteState = newVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
-			await updatelqServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
+			await updateServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
 
 			return { code: 'ok' as const }
 		})
@@ -848,7 +798,7 @@ const handleVoteTimeout = C.spanOp(
 			ctx.locks.releaseTasks.push(() => ctx.vote.update$.next(update))
 
 			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
-			await updatelqServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
+			await updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
 			return { code: 'ok' as const, endingVoteState, tally }
 		})
 		return res
@@ -920,87 +870,10 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 	return discordIds
 }
 
-// -------- user presence --------
-export async function startEditing({ ctx }: { ctx: C.TrpcRequest & C.SquadServer & C.UserPresence }) {
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('queue:write'))
-	if (denyRes) return denyRes
-	if (ctx.userPresence.state.editState) {
-		return { code: 'err:already-editing' as const, userPresence: ctx.userPresence.state }
-	}
-	const userPresence = Obj.deepClone(ctx.userPresence.state)
-	userPresence.editState = {
-		startTime: Date.now(),
-		userId: ctx.user.discordId,
-		wsClientId: ctx.wsClientId,
-	}
-	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
-		event: 'edit-start',
-		state: userPresence,
-		parts: {
-			users: [ctx.user],
-		},
-	}
-
-	ctx.userPresence.state = userPresence
-	ctx.userPresence.update$.next(update)
-
-	return { code: 'ok' as const }
-}
-
-export function endEditing({ ctx }: { ctx: C.TrpcRequest & C.SquadServer & C.UserPresence }) {
-	if (!ctx.userPresence.state.editState || ctx.wsClientId !== ctx.userPresence.state.editState.wsClientId) {
-		return { code: 'err:not-editing' as const }
-	}
-	const userPresence = Obj.deepClone(ctx.userPresence.state)
-	delete userPresence.editState
-	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
-		event: 'edit-end',
-		state: userPresence,
-		parts: {
-			users: [ctx.user],
-		},
-	}
-	ctx.userPresence.state = userPresence
-	ctx.userPresence.update$.next(update)
-	return { code: 'ok' as const }
-}
-
-function clearEditing({ ctx }: { ctx: C.UserPresence }) {
-	const userPresence = Obj.deepClone(ctx.userPresence.state)
-	delete userPresence.editState
-	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
-		event: 'edit-end',
-		state: userPresence,
-		parts: { users: [] },
-	}
-	ctx.userPresence.state = userPresence
-	ctx.userPresence.update$.next(update)
-}
-
-async function kickEditor({ ctx }: { ctx: C.TrpcRequest & C.UserPresence }) {
-	const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('queue:write'))
-	if (denyRes) return denyRes
-	if (!ctx.userPresence.state.editState) {
-		return { code: 'err:no-editor' as const }
-	}
-	const userPresence = Obj.deepClone(ctx.userPresence.state)
-	delete userPresence.editState
-	const update: USR.UserPresenceStateUpdate & Parts<USR.UserPart> = {
-		event: 'edit-kick',
-		state: userPresence,
-		parts: {
-			users: [],
-		},
-	}
-	ctx.userPresence.state = userPresence
-	ctx.userPresence.update$.next(update)
-	return { code: 'ok' as const }
-}
-
 export async function updateQueue(
 	{ input, ctx }: {
-		input: SS.UserModifiableServerState
-		ctx: C.TrpcRequest & C.SquadServer & C.Vote & C.UserPresence & C.LayerQueue & C.MatchHistory
+		input: { layerQueue: LL.List; layerQueueSeqId: number }
+		ctx: C.TrpcRequest & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
 	},
 ) {
 	input = Obj.deepClone(input)
@@ -1014,22 +887,6 @@ export async function updateQueue(
 			}
 		}
 
-		if (!Obj.deepEqual(serverState.layerQueue, input.layerQueue)) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-				check: 'all',
-				permits: [RBAC.perm('queue:write')],
-			})
-			if (denyRes) return denyRes
-		}
-
-		if (!Obj.deepEqual(serverState.settings, input.settings)) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, {
-				check: 'all',
-				permits: [RBAC.perm('settings:write')],
-			})
-			if (denyRes) return denyRes
-		}
-
 		for (const item of input.layerQueue) {
 			if (LL.isParentVoteItem(item) && item.choices.length > CONFIG.vote.maxNumVoteChoices) {
 				return {
@@ -1040,7 +897,10 @@ export async function updateQueue(
 		}
 
 		if (input.layerQueue.length > CONFIG.layerQueue.maxQueueSize) {
-			return { code: 'err:queue-too-large' as const }
+			return {
+				code: 'err:queue-too-large' as const,
+				msg: ` Queue size exceeds maximum limit (${input.layerQueue.length}/${CONFIG.layerQueue.maxQueueSize})`,
+			}
 		}
 
 		for (const item of input.layerQueue) {
@@ -1061,16 +921,12 @@ export async function updateQueue(
 			}
 		}
 
-		// TODO need to implement queue:force-write via a structural diff on the changed layerIds
-
-		serverState.settings = input.settings
 		serverState.layerQueue = input.layerQueue
 
 		await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 		await syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
 
-		const update = await updatelqServerState(ctx, serverState, { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' })
-		endEditing({ ctx })
+		const update = await updateServerState(ctx, serverState, { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' })
 
 		return { code: 'ok' as const, update }
 	})
@@ -1086,9 +942,9 @@ export async function getServerState(ctx: C.Db & CS.Log & C.LayerQueue) {
 	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
 }
 
-export async function updatelqServerState(
+export async function updateServerState(
 	ctx: C.Db & C.Tx & C.SquadServer & C.LayerQueue,
-	changes: Partial<SS.LQServerState>,
+	changes: Partial<SS.ServerState>,
 	source: SS.LQStateUpdate['source'],
 ) {
 	const serverState = await getServerState(ctx)
@@ -1103,7 +959,7 @@ export async function updatelqServerState(
 	const update: SS.LQStateUpdate = { state: newServerState, source }
 
 	// we can't pass the transaction context to subscribers
-	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next([update, DB.addPooledDb({ log: baseLogger })]))
+	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next([update, { ...getBaseCtx(), serverId: ctx.serverId }]))
 	return newServerState
 }
 
@@ -1185,7 +1041,7 @@ async function includeLayerItemStatusesForLQServerUpdate(
  */
 async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	ctx: CS.Log & C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.LayerQueue & C.MatchHistory,
-	serverState: SS.LQServerState,
+	serverState: SS.ServerState,
 	opts?: { skipDbWrite: NoDbWrite },
 ) {
 	let nextLayerId = LL.getNextLayerId(serverState.layerQueue)
@@ -1206,10 +1062,10 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		const ids = res.layers.map(layer => layer.id)
 		;[nextLayerId] = ids
 		if (!nextLayerId) return false
-		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId, source: { type: 'generated' } })
+		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
-			await updatelqServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {
+			await updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {
 				type: 'system',
 				event: 'next-layer-generated',
 			})
@@ -1240,14 +1096,14 @@ export async function toggleUpdatesToSquadServer(
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, RBAC.perm('squad-server:disable-slm-updates'))
+		const denyRes = await Rbac.tryDenyPermissionsForUser({ ...ctx, user: ctx.user! }, RBAC.perm('squad-server:disable-slm-updates'))
 		if (denyRes) return denyRes
 	}
 
 	await DB.runTransaction(ctx, async ctx => {
 		const serverState = await getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
-		await updatelqServerState(ctx, { settings: serverState.settings }, { type: 'system', event: 'updates-to-squad-server-toggled' })
+		await updateServerState(ctx, { settings: serverState.settings }, { type: 'system', event: 'updates-to-squad-server-toggled' })
 	})
 
 	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.slmUpdatesSet(!input.disabled))
@@ -1275,30 +1131,12 @@ export async function requestFeedback(
 	return { code: 'ok' as const }
 }
 
-export function getBaseCtx() {
+function getBaseCtx() {
 	return C.initLocks(DB.addPooledDb({ log: baseLogger }))
 }
 
 // -------- setup router --------
 export const layerQueueRouter = router({
-	watchLayerQueueState: procedure.subscription(async function*({ ctx, signal }) {
-		const obs = SquadServer.selectedServerCtx$(ctx).pipe(
-			Rx.switchMap(ctx => {
-				return ctx.layerQueue.update$.pipe(
-					Rx.mergeMap(async ([update]) => {
-						const withParts = await includeLQServerUpdateParts(ctx, update)
-						withParts.state = Obj.deepClone(update.state)
-						delete withParts.state.settings.connections
-						return withParts
-					}),
-				)
-			}),
-			withAbortSignal(signal!),
-		)
-
-		yield* toAsyncGenerator(obs)
-	}),
-
 	watchVoteStateUpdates: procedure.subscription(async function*({ ctx, signal }) {
 		const obs = SquadServer.selectedServerCtx$(ctx).pipe(
 			Rx.switchMap(async function*(ctx) {
@@ -1340,56 +1178,16 @@ export const layerQueueRouter = router({
 
 	abortVote: procedure.mutation(async ({ ctx: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
 
 	cancelVoteAutostart: procedure.mutation(async ({ ctx: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, ctx.user.discordId, { check: 'all', permits: [RBAC.perm('vote:manage')] })
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
-	}),
-
-	startEditing: procedure.mutation(async ({ ctx: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		return startEditing({ ctx })
-	}),
-	endEditing: procedure.mutation(async ({ ctx: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		return endEditing({ ctx })
-	}),
-	kickEditor: procedure.mutation(async ({ ctx: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		return kickEditor({ ctx })
-	}),
-
-	watchUserPresence: procedure.subscription(async function*({ ctx, signal }) {
-		const obs = SquadServer.selectedServerCtx$(ctx)
-			.pipe(
-				Rx.switchMap(async function*(ctx) {
-					const users: USR.User[] = []
-					if (ctx.userPresence.state.editState) {
-						const [user] = await ctx.db().select().from(Schema.users).where(
-							E.eq(Schema.users.discordId, ctx.userPresence.state.editState.userId),
-						)
-						users.push(user)
-					}
-					yield { code: 'initial-state' as const, state: ctx.userPresence.state, parts: { users } } satisfies any & Parts<USR.UserPart>
-					for await (const update of toAsyncGenerator(ctx.userPresence.update$)) {
-						yield { code: 'update' as const, update }
-					}
-				}),
-				withAbortSignal(signal!),
-			)
-
-		return yield* toAsyncGenerator(obs)
-	}),
-
-	updateQueue: procedure.input(SS.GenericServerStateUpdateSchema).mutation(async ({ input, ctx: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		return updateQueue({ input, ctx })
 	}),
 
 	toggleUpdatesToSquadServer: procedure.input(z.object({ disabled: z.boolean() })).mutation(async ({ ctx: _ctx, input }) => {

@@ -27,12 +27,12 @@ export function exclude<T extends object, K extends keyof T>(obj: T, keys: K[]):
 	return result
 }
 
-export function selectProps<T extends object, K extends keyof T>(obj: T, selected: [K, ...K[]]) {
+export function selectProps<T extends object, K extends keyof T>(obj: T, selected: K[]) {
 	const result: Partial<T> = {}
 	for (const key of selected) {
 		result[key] = obj[key]
 	}
-	return result as Pick<T, (typeof selected)[number]>
+	return result as Pick<T, K>
 }
 
 export const deepEqual = fastDeepEqual
@@ -176,4 +176,56 @@ export function deepMemo() {
 		stored = obj
 		return stored as T
 	}
+}
+
+/**
+ * Performs a structural merge between two values, maintaining referential equality
+ * when possible. This function recursively compares and merges objects and arrays,
+ * returning the original reference if no changes are detected.
+ *
+ * Key features:
+ * - Preserves original object references when no changes are needed
+ * - Handles both objects and arrays recursively
+ * - Returns updated value directly if types don't match or values are primitives
+ *
+ * @param original - The original value to merge into
+ * @param updated - The updated value to merge from
+ * @returns Either the original reference (if no changes) or a new merged value
+ */
+export function structuralMerge<T>(original: T, updated: T): T {
+	if (original === updated) return original
+	if (!original || !updated) return updated
+	if (typeof original !== 'object' || typeof updated !== 'object') return updated
+	if (Array.isArray(original) !== Array.isArray(updated)) return updated
+
+	if (Array.isArray(original) && Array.isArray(updated)) {
+		if (original.length !== updated.length) return updated
+		const result = [] as any[]
+		let changed = false
+		for (let i = 0; i < updated.length; i++) {
+			const merged = structuralMerge(original[i], updated[i])
+			result[i] = merged
+			if (merged !== original[i]) changed = true
+		}
+		return (changed ? result : original) as T
+	}
+
+	const result = { ...original }
+	let changed = false
+	for (const key in updated) {
+		const originalValue = original[key as keyof T]
+		const updatedValue = updated[key as keyof T]
+		const merged = structuralMerge(originalValue, updatedValue)
+		result[key as keyof T] = merged
+		if (merged !== originalValue) changed = true
+	}
+
+	return changed ? result : original
+}
+
+export function isEmpty(obj: unknown): boolean {
+	if (!obj) return true
+	if (typeof obj !== 'object') return false
+	if (Array.isArray(obj)) return obj.length === 0
+	return Object.keys(obj as object).length === 0
 }
