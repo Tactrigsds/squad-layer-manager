@@ -148,7 +148,6 @@ export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
 
 	// for changing pool configuration
 	z.object({ code: z.literal('changing-settings') }),
-	z.object({ code: z.literal('viewing-settings') }),
 ])
 
 export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'moving-item'])
@@ -511,8 +510,6 @@ export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['c
 			return 'Adding an item'
 		case 'moving-item':
 			return `Moving ${name}`
-		case 'viewing-settings':
-			return 'Viewing Settings'
 		case 'changing-settings':
 			return 'Changing Settings'
 		default:
@@ -532,8 +529,6 @@ export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceAct
 			return `${displayName} is moving`
 		case 'changing-settings':
 			return `${displayName} is changing settings`
-		case 'viewing-settings':
-			return `${displayName} is viewing settings`
 		default:
 			assertNever(activityCode)
 	}

@@ -3,6 +3,7 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
@@ -17,6 +18,7 @@ import * as RBAC from '@/rbac.models'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import * as UsersClient from '@/systems.client/users.client.ts'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -71,7 +73,8 @@ export default function PoolConfigurationPopover(
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent
 				className="w-[800px] flex flex-col space-y-4 p-6"
-				side="right"
+				side="left"
+				align="start"
 			>
 				<div className="flex items-center justify-between border-b pb-3">
 					<h3 className="text-lg font-semibold">Pool Configuration</h3>
@@ -93,6 +96,23 @@ export default function PoolConfigurationPopover(
 							active={poolId}
 							setActive={setPoolId}
 						/>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									size="icon"
+									variant="ghost"
+									disabled={!settingsChanged || saving}
+									onClick={() => {
+										ServerSettingsClient.Store.getState().reset()
+									}}
+								>
+									<Icons.RotateCcw className="h-4 w-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Reset changes</p>
+							</TooltipContent>
+						</Tooltip>
 					</div>
 				</div>
 				<div className="space-y-6">
