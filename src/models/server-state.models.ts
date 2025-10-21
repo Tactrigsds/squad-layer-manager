@@ -141,7 +141,7 @@ export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
 	lastRoll: z.date().nullable(),
-	layerQueueSeqId: z.number().int(),
+	layerQueueSeqId: z.number().int().default(0),
 	layerQueue: LL.ListSchema,
 	settings: ServerSettingsSchema,
 })
