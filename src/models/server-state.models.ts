@@ -167,7 +167,8 @@ export function checkPublicSettingsPath(path: SettingsPath) {
 	const defaultSettings = PublicServerSettingsSchema.parse({})
 	let current = defaultSettings as any
 	// we can't validate the last key because it could be undefined
-	for (const key of path.slice(0, -1)) {
+	for (let key of path.slice(0, -1)) {
+		if (typeof key === 'number') key = 0
 		current = (current as any)[key]
 		if (!current) return false
 	}
