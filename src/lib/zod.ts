@@ -60,8 +60,8 @@ export const BasicStrNoWhitespace = z.string().regex(/^\S+$/, {
 })
 
 // browser only
-export function validateIfDev<T extends z.ZodTypeAny>(schema: T, value: any) {
-	if (import.meta.env.DEV) {
+export function devValidate<T extends z.ZodTypeAny>(schema: T, value: any) {
+	if ((import.meta as any).env?.DEV) {
 		const res = schema.safeParse(value)
 		if (!res.success) console.error(res.error)
 	}

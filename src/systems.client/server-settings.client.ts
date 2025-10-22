@@ -1,6 +1,6 @@
 import * as Obj from '@/lib/object'
 import * as TrpcHelpers from '@/lib/trpc-helpers'
-import { validateIfDev } from '@/lib/zod'
+import { devValidate } from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -36,7 +36,7 @@ function createStore() {
 			edited: defaultSettings,
 
 			set(mut) {
-				validateIfDev(SS.SettingMutationSchema, mut)
+				devValidate(SS.SettingMutationSchema, mut)
 				set(state =>
 					Im.produce(state, draft => {
 						SS.applySettingMutation(draft.edited, mut)

@@ -2,6 +2,7 @@ import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
+import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
 import * as L from './layer'
@@ -365,7 +366,8 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 	z.object({
 		code: z.literal('update-presence'),
 		wsClientId: z.string(),
-		changes: ClientPresenceSchema.partial().nullable(),
+		userId: z.bigint(),
+		changes: ClientPresenceSchema.partial(),
 		fromServer: z.boolean().optional(),
 	}),
 ])
@@ -383,34 +385,20 @@ export function getClientPresenceDefaults(userId: bigint): ClientPresence {
 }
 
 export function updateClientPresence(
-	wsClientId: string,
-	userId: bigint,
-	state: PresenceState,
-	updates: Partial<Omit<ClientPresence, 'userId'>> | null,
+	presence: ClientPresence,
+	updates: PresenceActions.ActionOutput,
 ) {
-	if (!updates && state.has(wsClientId)) {
-		state.delete(wsClientId)
-		return true
-	}
-	if (!updates && !state.has(wsClientId)) {
+	updates = Obj.trimUndefined(updates)
+	if (Object.keys(updates).length === 0) {
 		return false
 	}
-
-	updates = updates ? Obj.trimUndefined(updates) : null
-	const presence = state.get(wsClientId) ?? {}
-	if (updates != null && Obj.deepEqual(updates, Obj.selectProps(presence as any, Object.keys(updates)))) {
-		return false
+	let modified = false
+	for (const [key, value] of Obj.objEntries(updates)) {
+		modified = modified || !Obj.deepEqual(presence[key], value)
+		// @ts-expect-error idgaf
+		presence[key] = value
 	}
-
-	const updated = {
-		...getClientPresenceDefaults(userId),
-		...presence,
-		...updates,
-		userId,
-	}
-
-	state.set(wsClientId, updated)
-	return true
+	return modified
 }
 
 export function resolveUserPresence(state: PresenceState) {
@@ -472,9 +460,9 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 }
 
 export function endAllEditing(state: PresenceState) {
-	for (const [wsClientId, presence] of state.entries()) {
+	for (const presence of state.values()) {
 		if (presence.editing) {
-			updateClientPresence(wsClientId, presence.userId, state, { editing: false, currentActivity: null })
+			updateClientPresence(presence, { editing: false, currentActivity: null })
 		}
 	}
 }

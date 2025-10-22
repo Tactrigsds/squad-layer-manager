@@ -143,12 +143,13 @@ function createStore() {
 					case 'update-presence': {
 						set(state =>
 							Im.produce(state, draft => {
-								const userId = update.changes?.userId ?? draft.presence.get(update.wsClientId)?.userId
-								if (!userId) {
-									console.error('userId is undefined for update ', update)
-									return
+								let currentPresence = draft.presence.get(update.wsClientId)
+								if (!currentPresence) {
+									currentPresence = SLL.getClientPresenceDefaults(update.userId)
+									draft.presence.set(update.wsClientId, currentPresence)
 								}
-								SLL.updateClientPresence(update.wsClientId, userId, draft.presence, update.changes)
+
+								SLL.updateClientPresence(currentPresence, { ...update.changes })
 							})
 						)
 						break
@@ -257,15 +258,18 @@ function createStore() {
 			async handleClientPresenceUpdate(update) {
 				update = Obj.trimUndefined(update)
 				const config = await ConfigClient.fetchConfig()
-				const userId = (await UsersClient.fetchLoggedInUser()).discordId
+				const user = await UsersClient.fetchLoggedInUser()
 				let presenceUpdated = false
-				delete (update as any).userId
 				set(state =>
 					Im.produce(state, draft => {
+						let currentPresence = draft.presence.get(config.wsClientId)
+						if (!currentPresence) {
+							currentPresence = SLL.getClientPresenceDefaults(user.discordId)
+							draft.presence.set(config.wsClientId, currentPresence)
+						}
+
 						presenceUpdated = SLL.updateClientPresence(
-							config.wsClientId,
-							userId,
-							draft.presence,
+							currentPresence,
 							update,
 						)
 					})
@@ -274,6 +278,7 @@ function createStore() {
 					const res = await processUpdate({
 						code: 'update-presence',
 						wsClientId: config.wsClientId,
+						userId: user.discordId,
 						changes: update,
 					})
 					if (res?.code === 'err:locked') {

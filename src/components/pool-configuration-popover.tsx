@@ -9,7 +9,7 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
-import { validateIfDev } from '@/lib/zod.ts'
+import { devValidate } from '@/lib/zod.ts'
 import * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -240,15 +240,15 @@ function RepeatRuleRow(props: {
 	const { index, poolId } = props
 
 	const paths = React.useMemo(() => {
-		const rules = validateIfDev(SS.SettingsPathSchema, ['queue', poolId, 'repeatRules'])
-		const rule = validateIfDev(SS.SettingsPathSchema, [...rules, index])
+		const rules = devValidate(SS.SettingsPathSchema, ['queue', poolId, 'repeatRules'])
+		const rule = devValidate(SS.SettingsPathSchema, [...rules, index])
 		return {
 			rules,
 			rule,
-			label: validateIfDev(SS.SettingsPathSchema, [...rule, 'label']),
-			field: validateIfDev(SS.SettingsPathSchema, [...rule, 'field']),
-			within: validateIfDev(SS.SettingsPathSchema, [...rule, 'within']),
-			targetValues: validateIfDev(SS.SettingsPathSchema, [...rule, 'targetValues']),
+			label: devValidate(SS.SettingsPathSchema, [...rule, 'label']),
+			field: devValidate(SS.SettingsPathSchema, [...rule, 'field']),
+			within: devValidate(SS.SettingsPathSchema, [...rule, 'within']),
+			targetValues: devValidate(SS.SettingsPathSchema, [...rule, 'targetValues']),
 		}
 	}, [poolId, index])
 

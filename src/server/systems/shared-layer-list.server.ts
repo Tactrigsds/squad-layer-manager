@@ -230,6 +230,11 @@ function handlePresenceUpdate(
 		ctx.log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
 		return
 	}
+	if (update.userId !== ctx.user.discordId) {
+		ctx.log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
+		return
+	}
+
 	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.currentActivity
 	const lockMutations: Map<LL.ItemId, string | null> = new Map()
 	if (
@@ -263,7 +268,12 @@ function handlePresenceUpdate(
 		}
 		sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
 	}
-	SLL.updateClientPresence(update.wsClientId, ctx.user.discordId, ctx.sharedList.presence, update.changes)
+	let clientPresence = ctx.sharedList.presence.get(update.wsClientId)
+	if (!clientPresence) {
+		clientPresence = SLL.getClientPresenceDefaults(update.userId)
+		ctx.sharedList.presence.set(update.wsClientId, clientPresence)
+	}
+	SLL.updateClientPresence(clientPresence, update.changes)
 	sendUpdate(ctx, { ...update, changes: update.changes })
 }
 
@@ -276,14 +286,9 @@ function cleanupActivityLocks(ctx: C.SharedLayerList & C.Locks, wsClientId: stri
 }
 
 // send a shared layer list update on unlock with fresh references
-export async function sendUpdate(ctx: C.SharedLayerList & C.Locks & C.User, update: SLL.Update) {
-	const update$ = ctx.sharedList.update$
+export async function sendUpdate(ctx: C.SharedLayerList & C.Locks, update: SLL.Update) {
 	update = Obj.deepClone(update)
-	if (update.code === 'update-presence' && update.changes) {
-		update.changes.userId = ctx.user.discordId
-	}
-	// await sleep(100)
-	update$.next(update)
+	ctx.sharedList.update$.next(update)
 }
 
 function getBaseCtx() {
@@ -291,16 +296,21 @@ function getBaseCtx() {
 }
 
 function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & C.Locks, action: PresenceActions.Action) {
-	const currentPresence = ctx.sharedList.presence.get(ctx.wsClientId)
+	let currentPresence = ctx.sharedList.presence.get(ctx.wsClientId)
 	const actionInput: PresenceActions.ActionInput = {
 		hasEdits: SLL.checkUserHasEdits(ctx.sharedList.session, ctx.user.discordId),
 		prev: currentPresence,
 	}
+	if (!currentPresence) {
+		currentPresence = SLL.getClientPresenceDefaults(ctx.user.discordId)
+		ctx.sharedList.presence.set(ctx.wsClientId, currentPresence)
+	}
 	const update = action(actionInput)
-	SLL.updateClientPresence(ctx.wsClientId, ctx.user.discordId, ctx.sharedList.presence, update)
+	SLL.updateClientPresence(currentPresence, update)
 	void sendUpdate(ctx, {
 		code: 'update-presence',
 		wsClientId: ctx.wsClientId,
+		userId: ctx.user.discordId,
 		changes: action(actionInput),
 		fromServer: true,
 	})
