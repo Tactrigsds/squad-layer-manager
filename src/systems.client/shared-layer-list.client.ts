@@ -143,7 +143,12 @@ function createStore() {
 					case 'update-presence': {
 						set(state =>
 							Im.produce(state, draft => {
-								SLL.updateClientPresence(update.wsClientId, UsersClient.loggedInUserId!, draft.presence, update.changes)
+								const userId = update.changes?.userId ?? draft.presence.get(update.wsClientId)?.userId
+								if (!userId) {
+									console.error('userId is undefined for update ', update)
+									return
+								}
+								SLL.updateClientPresence(update.wsClientId, userId, draft.presence, update.changes)
 							})
 						)
 						break

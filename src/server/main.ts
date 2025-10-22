@@ -1,6 +1,7 @@
 import { sleep } from '@/lib/async.ts'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as FilterEntity from '@/server/systems/filter-entity'
+import * as SharedLayerList from '@/server/systems/shared-layer-list.server.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -31,6 +32,7 @@ await C.spanOp('main', { tracer }, async () => {
 	Sessions.setup()
 	TrpcRouter.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+	SharedLayerList.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {
 		void import('./console.ts')

@@ -33,7 +33,7 @@ export default function UserPresencePanel() {
 
 	// Sort users based on presence priority
 	const sortedUserPresence = React.useMemo(() => {
-		const tenMinutesAgo = Date.now() - (10 * 60 * 1000)
+		const oldestLastSeenToDisplay = Date.now() - SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
 		const userPresenceList = Array.from(userPresence.entries()).map(([userId, presence]) => {
 			const user = userMap.get(userId)
 			return user ? { user, presence } : null
@@ -42,7 +42,7 @@ export default function UserPresencePanel() {
 			// Only show users who are not away, or who have been seen in the last 5 minutes
 			if (!item.presence.away) return true
 			if (!item.presence.lastSeen) return false
-			return item.presence.lastSeen > tenMinutesAgo
+			return item.presence.lastSeen > oldestLastSeenToDisplay
 		})
 
 		return userPresenceList.sort((a, b) => {

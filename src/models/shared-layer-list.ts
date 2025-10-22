@@ -3,7 +3,6 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LL from '@/models/layer-list.models'
 import * as USR from '@/models/users.models'
-import { Activity } from 'discord.js'
 import { z } from 'zod'
 import * as L from './layer'
 
@@ -184,7 +183,7 @@ export const ClientPresenceSchema = z.object({
 	userId: USR.UserIdSchema,
 	away: z.boolean(),
 	editing: z.boolean(),
-	lastSeen: z.number().positive().nullable(),
+	lastSeen: z.number().positive(),
 	currentActivity: UserPresenceActivitySchema.nullable(),
 })
 
@@ -199,6 +198,9 @@ export type EditSession = {
 
 	mutations: ItemMut.Mutations
 }
+
+// no presence instances older than this should be displayed
+export const DISPLAYED_AWAY_PRESENCE_WINDOW = 1000 * 60 * 10
 
 export function applyOperation(list: LL.List, newOp: Operation | NewOperation, mutations?: ItemMut.Mutations) {
 	const source: LL.Source = isOperation(newOp) ? { type: 'manual', userId: newOp.userId } : { type: 'unknown' }
@@ -376,7 +378,7 @@ export function getClientPresenceDefaults(userId: bigint): ClientPresence {
 		away: false,
 		editing: false,
 		currentActivity: null,
-		lastSeen: null,
+		lastSeen: Date.now(),
 	}
 }
 

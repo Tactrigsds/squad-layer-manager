@@ -276,19 +276,14 @@ function cleanupActivityLocks(ctx: C.SharedLayerList & C.Locks, wsClientId: stri
 }
 
 // send a shared layer list update on unlock with fresh references
-export async function sendUpdate(ctx: C.SharedLayerList & C.Locks, update: SLL.Update) {
+export async function sendUpdate(ctx: C.SharedLayerList & C.Locks & C.User, update: SLL.Update) {
 	const update$ = ctx.sharedList.update$
 	update = Obj.deepClone(update)
+	if (update.code === 'update-presence' && update.changes) {
+		update.changes.userId = ctx.user.discordId
+	}
 	// await sleep(100)
 	update$.next(update)
-	return
-	if (ctx.locks.locked.size > 0) {
-		ctx.locks.releaseTasks.push(() => {
-			update$.next(update)
-		})
-	} else {
-		update$.next(update)
-	}
 }
 
 function getBaseCtx() {
@@ -309,4 +304,28 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & 
 		changes: action(actionInput),
 		fromServer: true,
 	})
+}
+
+export function setup() {
+	const ctx = getBaseCtx()
+	Rx.interval(SLL.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
+		Rx.map(() => getBaseCtx()),
+		C.durableSub('shared-layer-list:clean-presence', { tracer, ctx }, async (ctx) => {
+			let numCleaned = 0
+			for (const slice of SquadServer.state.slices.values()) {
+				const presenceState = slice.sharedList.presence
+				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
+					// we don't want to remove presence instances that still might have an away indicator
+					const pastDisconnectTimeout = (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
+					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+						presenceState.delete(wsClientId)
+						numCleaned++
+					}
+				}
+			}
+
+			ctx.log.info(`Cleaned ${numCleaned} stale presence sessions`)
+			// no need to send these deletions to the client. would be flabbergasted if a client stayed idle with no other sources of resets for it to matter
+		}),
+	).subscribe()
 }

@@ -2,7 +2,7 @@ import * as CS from '@/models/context-shared'
 import * as C from '@/server/context'
 import * as SquadServer from '@/server/systems/squad-server'
 import { Subject } from 'rxjs'
-const wsSessions = new Map<string, C.TrpcRequest>()
+export const wsSessions = new Map<string, C.TrpcRequest>()
 export const disconnect$ = new Subject<C.TrpcRequest>()
 export const connect$ = new Subject<C.TrpcRequest>()
 
