@@ -234,6 +234,10 @@ function handlePresenceUpdate(
 		ctx.log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
 		return
 	}
+	if (update.changes.lastSeen && update.changes.lastSeen > Date.now()) {
+		ctx.log.warn('Received presence update with invalid lastSeen: %s', update.changes.lastSeen)
+		return
+	}
 
 	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.currentActivity
 	const lockMutations: Map<LL.ItemId, string | null> = new Map()
