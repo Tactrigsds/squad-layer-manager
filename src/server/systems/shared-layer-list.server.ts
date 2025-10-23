@@ -52,7 +52,7 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 	}
 }
 
-export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceSub & C.Locks) {
+export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceSub & C.Mutexes) {
 	const editSession = ctx.sharedList.session
 	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId
@@ -223,7 +223,7 @@ export const router = TrpcServer.router({
 })
 
 function handlePresenceUpdate(
-	ctx: C.SharedLayerList & CS.Log & C.User & C.WSSession & C.Locks,
+	ctx: C.SharedLayerList & CS.Log & C.User & C.WSSession & C.Mutexes,
 	update: Extract<SLL.ClientUpdate, { code: 'update-presence' }>,
 ) {
 	if (update.wsClientId !== ctx.wsClientId) {
@@ -277,11 +277,11 @@ function handlePresenceUpdate(
 		clientPresence = SLL.getClientPresenceDefaults(update.userId)
 		ctx.sharedList.presence.set(update.wsClientId, clientPresence)
 	}
-	SLL.updateClientPresence(clientPresence, update.changes)
-	sendUpdate(ctx, { ...update, changes: update.changes })
+	const modified = SLL.updateClientPresence(clientPresence, update.changes)
+	if (modified) sendUpdate(ctx, { ...update, changes: update.changes })
 }
 
-function cleanupActivityLocks(ctx: C.SharedLayerList & C.Locks, wsClientId: string) {
+function cleanupActivityLocks(ctx: C.SharedLayerList & C.Mutexes, wsClientId: string) {
 	const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, wsClientId)
 	if (itemIds.length > 0) {
 		MapUtils.bulkDelete(ctx.sharedList.itemLocks, ...itemIds)
@@ -290,7 +290,7 @@ function cleanupActivityLocks(ctx: C.SharedLayerList & C.Locks, wsClientId: stri
 }
 
 // send a shared layer list update on unlock with fresh references
-export async function sendUpdate(ctx: C.SharedLayerList & C.Locks, update: SLL.Update) {
+export async function sendUpdate(ctx: C.SharedLayerList & C.Mutexes, update: SLL.Update) {
 	update = Obj.deepClone(update)
 	ctx.sharedList.update$.next(update)
 }
@@ -299,7 +299,7 @@ function getBaseCtx() {
 	return C.initLocks({ log: baseLogger })
 }
 
-function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & C.Locks, action: PresenceActions.Action) {
+function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & C.Mutexes, action: PresenceActions.Action) {
 	let currentPresence = ctx.sharedList.presence.get(ctx.wsClientId)
 	const actionInput: PresenceActions.ActionInput = {
 		hasEdits: SLL.checkUserHasEdits(ctx.sharedList.session, ctx.user.discordId),

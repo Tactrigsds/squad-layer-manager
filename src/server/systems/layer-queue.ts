@@ -1,10 +1,10 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireReentrant, distinctDeepEquals, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { acquireReentrant, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
-import { Parts } from '@/lib/types'
+import { Parts, resToNullable } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -14,6 +14,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
+import * as SME from '@/models/squad-models.events.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
@@ -63,7 +64,7 @@ const tracer = Otel.trace.getTracer('layer-queue')
 export const init = C.spanOp(
 	'layer-queue:init',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.ServerSlice & C.Locks) => {
+	async (ctx: CS.Log & C.Db & C.ServerSlice & C.Mutexes) => {
 		const serverId = ctx.serverId
 		await DB.runTransaction(ctx, async (_ctx) => {
 			using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
@@ -104,7 +105,7 @@ export const init = C.spanOp(
 						const serverState = await getServerState(ctx)
 						const currentMatch = MatchHistory.getCurrentMatch(ctx)
 						const voteState = ctx.vote.state
-						if (SquadServer.state.serverRolling || currentMatch.status === 'post-game') return
+						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (
 							LL.isParentVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
@@ -146,88 +147,53 @@ export const init = C.spanOp(
 				).subscribe(),
 		)
 
-		// -------- Interpret current/next layer updates from the game server for the purposes of syncing it with the queue  --------
-		ctx.serverSliceSub.add(
-			ctx.server.layersStatus
-				.observe(ctx)
-				.pipe(
-					Rx.filter((statusRes) => statusRes.code === 'ok'),
-					Rx.map((statusRes): LayerStatus => ({ currentLayer: statusRes.data.currentLayer, nextLayer: statusRes.data.nextLayer })),
-					distinctDeepEquals(),
-					Rx.scan((withPrev, status): LayerStatusWithPrev => [status, withPrev[0]], [null, null] as LayerStatusWithPrev),
-					C.durableSub('layer-queue:check-layer-status-change', {
-						ctx,
-						tracer,
-						root: true,
-						attrs: ([status, prevStatus]) => ({ status, prevStatus }),
-					}, async ([status, prevStatus]) => {
-						if (!status) return
-						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-						await DB.runTransaction(ctx, (ctx) => processLayerStatusChange(ctx, status, prevStatus))
-					}),
-				)
-				.subscribe(),
-		)
+		// -------- make sure next layer set is synced with queue --------
+		const nextSetLayer$ = ctx.server.layersStatus
+			.observe(ctx)
+			.pipe(
+				Rx.concatMap((statusRes): Rx.Observable<L.UnvalidatedLayer | null> =>
+					statusRes.code === 'ok' ? Rx.of(statusRes.data.nextLayer) : Rx.EMPTY
+				),
+				Rx.distinctUntilChanged((a, b) => a?.id === b?.id),
+			)
+
+		const nextQueuedLayer$ = ctx.layerQueue.update$.pipe(Rx.map(([update]) => LL.getNextLayerId(update.state.layerQueue) ?? null))
+
+		Rx.combineLatest([
+			nextSetLayer$,
+			nextQueuedLayer$,
+		]).pipe(
+			C.durableSub('layer-queue:sync-next-layer-status', { tracer, ctx }, async ([nextSet, nextQueued]) => {
+				if ((nextSet?.id ?? null) === nextQueued) return
+				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+
+				// this case will be dealt with in handleNewGame, so can ignore it here
+				if (ctx.server.serverRolling$.value) return
+
+				await DB.runTransaction(ctx, async (ctx) => {
+					const serverState = await getServerState(ctx)
+					await syncNextLayerInPlace(ctx, serverState)
+				})
+			}),
+		).subscribe()
 	},
 )
 
-// -------- status change logic --------
-type LayerStatus = { currentLayer: L.UnvalidatedLayer; nextLayer: L.UnvalidatedLayer | null }
-type LayerStatusWithPrev = [LayerStatus | null, LayerStatus | null]
-
-/**
- * Determines how to respond to the current layer potentially having been set on the gameserver.
- * noop in most cases but  if we don't have at least one player in the server then we may have to act here instead
- */
-function checkForCurrentLayerChangeActions(
-	status: LayerStatus,
-	prevStatus: LayerStatus | null,
-	lqServerState: SS.ServerState,
-	serverInfo: Pick<SM.ServerInfo, 'playerCount'>,
+export async function handleNewGame(
+	_ctx: C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
+	newLayer: L.UnvalidatedLayer,
+	newGameEvent?: SME.NewGame,
 ) {
-	if (prevStatus != null && !Obj.deepEqual(status.currentLayer, prevStatus.currentLayer)) {
-		if (serverInfo.playerCount > 0) return { code: 'current-layer-changed-with-players:set-server-rolling' as const }
-		const lqNextLayerId = LL.getNextLayerId(lqServerState.layerQueue)
-
-		const code = 'current-layer-changed-with-no-players:handle-new-game' as const
-		if (lqNextLayerId && L.areLayersCompatible(status.currentLayer, lqNextLayerId)) {
-			return { code, nextLayerLqItem: lqServerState.layerQueue[0] }
-		}
-		// if playerCount is zero then we can't rely on NEW_GAME being fired, so we need to push the match history here instead
-		return { code }
+	if (newGameEvent && newGameEvent?.layerClassname !== newLayer.Layer) {
+		_ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
+		newGameEvent = undefined
 	}
-}
 
-/**
- * Determines how to respond to the next layer potentially having been set on the gameserver, bringing it out of sync with the queue
- */
-function checkForNextLayerStatusActions(
-	status: LayerStatus,
-	serverState: SS.ServerState,
-	serverRolling: boolean,
-) {
-	if (serverState.settings.updatesToSquadServerDisabled) return { code: 'sync-disabled:no-action' as const }
+	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx, _ctx.matchHistory.mtx)
 
-	// if server is rolling, then the layer queue will be updated when NEW_GAME is fired
-	if (serverRolling) return { code: 'server-rolling:no-action' as const }
+	const eventTime = newGameEvent?.time ?? new Date()
 
-	if (status.nextLayer === null) return { code: 'null-layer-set:reset' as const }
-
-	const lqNextLayerId = LL.getNextLayerId(serverState.layerQueue)
-	if (!lqNextLayerId) return { code: 'no-next-layer-set:no-action' as const }
-	if (L.areLayersCompatible(status.nextLayer, lqNextLayerId)) return { code: 'correct-layer-set:no-action' as const }
-	return { code: 'unexpected-next-layer:reset' as const, expectedNextLayerId: lqNextLayerId }
-}
-
-export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory, eventTime: Date) {
 	const serverId = ctx.serverId
-	const status = await Rx.firstValueFrom(
-		ctx.server.layersStatus.observe(ctx, { ttl: 0 }).pipe(
-			Rx.concatMap(v => v.code === 'ok' ? Rx.of(v.data) : Rx.EMPTY),
-			Rx.retry(),
-			Rx.takeUntil(Rx.of(1).pipe(Rx.delay(60_000))),
-		),
-	)
 
 	const res = await DB.runTransaction(ctx, async (ctx) => {
 		const serverState = await getServerState(ctx)
@@ -236,14 +202,15 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 		let currentMatchLqItem: LL.Item | undefined
 		const newServerState = Obj.deepClone(serverState)
 		newServerState.lastRoll = new Date()
-		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, status.currentLayer.id)) {
+		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayer.id)) {
 			currentMatchLqItem = newServerState.layerQueue.shift()
 		}
+		const newLayerId = currentMatchLqItem?.layerId ?? newLayer.id
 
 		await MatchHistory.addNewCurrentMatch(
 			ctx,
 			MH.getNewMatchHistoryEntry({
-				layerId: status.currentLayer.id,
+				layerId: newLayerId,
 				serverId: ctx.serverId,
 				startTime: eventTime,
 				lqItem: currentMatchLqItem,
@@ -316,58 +283,10 @@ export async function handleNewGame(ctx: C.Db & C.Locks & C.SquadServer & C.Vote
 	}
 }
 
-async function processLayerStatusChange(
-	_ctx: CS.Log & C.Db & C.Tx & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
-	status: LayerStatus,
-	prevStatus: LayerStatus | null,
-) {
-	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
-	const eventTime = new Date()
-	const serverState = await getServerState(ctx)
-	const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 3_000 })
-	if (serverInfoRes.value.code !== 'ok') return serverInfoRes.value
-	const serverInfo = serverInfoRes.value.data
-	const currentLayerAction = checkForCurrentLayerChangeActions(status, prevStatus, serverState, serverInfo)
-	C.setSpanOpAttrs({ currentLayerAction })
-	if (!currentLayerAction) return
-	switch (currentLayerAction.code) {
-		case 'current-layer-changed-with-players:set-server-rolling': {
-			SquadServer.state.serverRolling = true
-			break
-		}
-		case 'current-layer-changed-with-no-players:handle-new-game': {
-			await handleNewGame(ctx, eventTime)
-			break
-		}
-		default:
-			assertNever(currentLayerAction)
-	}
-
-	const nextLayerAction = checkForNextLayerStatusActions(status, serverState, SquadServer.state.serverRolling)
-	C.setSpanOpAttrs({ nextLayerAction })
-	switch (nextLayerAction.code) {
-		case 'sync-disabled:no-action':
-		case 'server-rolling:no-action':
-		case 'no-next-layer-set:no-action':
-		case 'correct-layer-set:no-action':
-			break
-		case 'null-layer-set:reset':
-		case 'unexpected-next-layer:reset': {
-			const newServerState = Obj.deepClone(serverState)
-			await syncNextLayerInPlace(ctx, newServerState)
-			await syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-			if (status.nextLayer) ctx.layerQueue.unexpectedNextLayerSet$.next(status.nextLayer?.id ?? null)
-			break
-		}
-		default:
-			assertNever(nextLayerAction)
-	}
-}
-
 // -------- voting --------
 //
 async function syncVoteStateWithQueueStateInPlace(
-	_ctx: CS.Log & C.Locks & C.SquadServer & C.Vote & C.MatchHistory,
+	_ctx: CS.Log & C.Mutexes & C.SquadServer & C.Vote & C.MatchHistory,
 	oldQueue: LL.List,
 	newQueue: LL.List,
 ) {
@@ -430,7 +349,7 @@ async function syncVoteStateWithQueueStateInPlace(
 			)
 		}
 		vote.state = newVoteState
-		ctx.locks.releaseTasks.push(() => vote.update$.next(update))
+		ctx.mutexes.releaseTasks.push(() => vote.update$.next(update))
 	}
 }
 
@@ -438,7 +357,7 @@ export const startVote = C.spanOp(
 	'layer-queue:vote:start',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
 	async (
-		_ctx: CS.Log & C.Db & Partial<C.User> & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
+		_ctx: CS.Log & C.Db & Partial<C.User> & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (_ctx.user !== undefined) {
@@ -522,7 +441,7 @@ export const startVote = C.spanOp(
 			ctx.vote.autostartVoteSub = null
 
 			ctx.vote.state = updatedVoteState
-			ctx.locks.releaseTasks.push(() => ctx.vote.update$.next(update))
+			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
 			registerVoteDeadlineAndReminder$(ctx)
 			void broadcastVoteUpdate(
 				ctx,
@@ -601,7 +520,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
-	async (_ctx: CS.Log & C.Db & C.Locks & C.SquadServer & C.Vote & C.LayerQueue, opts: { aborter: USR.GuiOrChatUserId }) => {
+	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue, opts: { aborter: USR.GuiOrChatUserId }) => {
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const voteState = ctx.vote.state
 		return await DB.runTransaction(ctx, async (ctx) => {
@@ -628,7 +547,7 @@ export const abortVote = C.spanOp(
 			}
 			await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.aborted)
 			ctx.vote.state = null
-			ctx.locks.releaseTasks.push(() => ctx.vote.update$.next(update))
+			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
 			ctx.vote.voteEndTask?.unsubscribe()
 			ctx.vote.voteEndTask = null
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
@@ -644,7 +563,7 @@ export const abortVote = C.spanOp(
 	},
 )
 
-export async function cancelVoteAutostart(_ctx: C.Locks & C.Vote, opts: { user: USR.GuiOrChatUserId }) {
+export async function cancelVoteAutostart(_ctx: C.Mutexes & C.Vote, opts: { user: USR.GuiOrChatUserId }) {
 	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 	if (ctx.vote.state?.autostartCancelled) {
 		return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
@@ -658,7 +577,7 @@ export async function cancelVoteAutostart(_ctx: C.Locks & C.Vote, opts: { user: 
 	delete newVoteState.autostartTime
 	ctx.vote.state = newVoteState
 
-	ctx.locks.releaseTasks.push(() => {
+	ctx.mutexes.releaseTasks.push(() => {
 		ctx.vote.update$.next({
 			source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
 			state: ctx.vote.state,
@@ -740,7 +659,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 const handleVoteTimeout = C.spanOp(
 	'layer-queue:vote:handle-timeout',
 	{ tracer, eventLogLevel: 'info' },
-	async (_ctx: CS.Log & C.Db & C.Locks & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory) => {
+	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory) => {
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -796,7 +715,7 @@ const handleVoteTimeout = C.spanOp(
 				state: null,
 				source: { type: 'system', event: 'vote-timeout' },
 			}
-			ctx.locks.releaseTasks.push(() => ctx.vote.update$.next(update))
+			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
 
 			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 			await updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })

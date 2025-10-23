@@ -192,8 +192,8 @@ export type Tx = {
 
 type ReleaseTask = () => void | Promise<void>
 // TODO we may want some way of specifying in function signature what kinds of locks the context might acquire
-export type Locks = {
-	locks: {
+export type Mutexes = {
+	mutexes: {
 		// represents the set of mutexes currently locked by the context
 		locked: Set<Mutex>
 
@@ -201,8 +201,8 @@ export type Locks = {
 		releaseTasks: ReleaseTask[]
 	}
 }
-export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Locks {
-	return { ...(ctx ?? {} as Ctx), locks: { locked: new Set<Mutex>(), releaseTasks: [] } }
+export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
+	return { ...(ctx ?? {} as Ctx), mutexes: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
 export type HttpRequest = { req: FastifyRequest; res: FastifyReply; cookies: AR.Cookies; route?: AR.ResolvedRoute }
@@ -245,7 +245,7 @@ export type TrpcRequest =
 	& { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket }
 	& Db
 	& CS.Log
-	& Locks
+	& Mutexes
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
@@ -311,7 +311,7 @@ export function durableSub<T, O>(
 		retryTaskOnValueError?: boolean
 		numDownstreamFailureBeforeErrorPropagation?: number
 		downstreamRetryTimeoutMs?: number
-		taskScheduling?: 'switch' | 'parallel' | 'sequential'
+		taskScheduling?: 'switch' | 'parallel' | 'sequential' | 'exhaust'
 		root?: boolean
 		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
 	},
@@ -370,6 +370,7 @@ export function durableSub<T, O>(
 				'parallel': Rx.mergeMap(getTask),
 				'sequential': Rx.concatMap(getTask),
 				'switch': Rx.switchMap(getTask),
+				'exhaust': Rx.exhaustMap(getTask),
 			})[taskScheduling],
 			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),

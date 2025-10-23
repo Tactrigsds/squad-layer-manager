@@ -309,13 +309,13 @@ export async function acquireInBlock(mutex: Mutex, opts?: { lock?: boolean }) {
 }
 
 // WARNING: if you use this function you cannot pass the context out of the lifetime of the calling function or weird things might happen
-export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexes: Mutex[]) {
-	const ctx: Ctx = { ..._ctx, locks: { locked: new Set(_ctx.locks.locked), releaseTasks: [] } }
+export async function acquireReentrant<Ctx extends C.Mutexes>(_ctx: Ctx, ...mutexes: Mutex[]) {
+	const ctx: Ctx = { ..._ctx, mutexes: { locked: new Set(_ctx.mutexes.locked), releaseTasks: [] } }
 
-	const mutexesToAcquire = mutexes.filter(mutex => !ctx.locks.locked.has(mutex))
+	const mutexesToAcquire = mutexes.filter(mutex => !ctx.mutexes.locked.has(mutex))
 
 	for (const mutex of mutexesToAcquire) {
-		ctx.locks.locked.add(mutex)
+		ctx.mutexes.locked.add(mutex)
 	}
 
 	// Acquire all locks in parallel
@@ -323,14 +323,14 @@ export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexe
 		mutexesToAcquire.map(mutex => mutex.acquire()),
 	)
 
+	// wait for referenced mutexes to be released and then process releaseTasks. There is no execution ordering guarantee
 	const allReleased = Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
 	allReleased.then(async () => {
-		for (const task of ctx.locks.releaseTasks) {
-			await task()
+		for (const task of ctx.mutexes.releaseTasks) {
+			void task()
 		}
 	})
 
-	// wait for referenced mutexes to be released and then process releaseTask. There is no execution ordering guarantee
 	return {
 		...ctx,
 		[Symbol.dispose]() {
@@ -341,7 +341,12 @@ export async function acquireReentrant<Ctx extends C.Locks>(_ctx: Ctx, ...mutexe
 	}
 }
 
-export function withAbortSignal<T>(signal: AbortSignal) {
-	const abort$: Rx.Observable<any> = signal.aborted ? Rx.of(1) : Rx.fromEvent(signal, 'abort')
-	return (o: Rx.Observable<T>) => o.pipe(Rx.takeUntil(abort$))
+export function withAbortSignal(signal: AbortSignal) {
+	const abort$: Rx.Observable<unknown> = Rx.merge(
+		// emit immediatly if aborted already
+		Rx.of(1).pipe(Rx.filter(() => signal.aborted)),
+		// or wait for abort event
+		Rx.fromEvent(signal, 'abort'),
+	).pipe(Rx.first())
+	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.takeUntil(abort$))
 }

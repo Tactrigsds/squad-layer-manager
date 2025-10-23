@@ -28,6 +28,7 @@ export default function CurrentLayerCard() {
 	const loggedInUser = useLoggedInUser()
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
+	const serverRolling = SquadServerClient.useServerRolling()
 
 	const [canEndMatch, hasDisableUpdatesPerm, canDisableFogOfWar] = React.useMemo(() => [
 		!loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')),
@@ -124,10 +125,16 @@ export default function CurrentLayerCard() {
 								<span>Server empty</span>
 							</Badge>
 						)}
-						{!isEmpty && currentMatch?.status === 'in-progress' && (
+						{!serverRolling && !isEmpty && currentMatch?.status === 'in-progress' && (
 							<Badge variant="secondary" className="flex items-center">
 								<span className="pr-1">In progress:</span>
 								{currentMatch.startTime && <Timer zeros={true} start={currentMatch.startTime.getTime()} className="font-mono" />}
+							</Badge>
+						)}
+						{serverRolling && (
+							<Badge variant="info" className="flex items-center">
+								<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
+								<span>Switching to New Layer...</span>
 							</Badge>
 						)}
 						{postGameElt}

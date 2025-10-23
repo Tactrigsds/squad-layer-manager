@@ -1,18 +1,19 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import Rcon, { DecodedPacket } from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
+import { assertNever } from '@/lib/type-guards'
 import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SME from '@/models/squad-models.events.ts'
@@ -35,8 +36,6 @@ import * as Otel from '@opentelemetry/api'
 import { TRPCError } from '@trpc/server'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
-
-import { assertNever } from '@/lib/type-guards'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { baseLogger } from '../logger'
@@ -49,7 +48,6 @@ type State = {
 	selectedServers: Map<string, string>
 	selectedServerUpdate$: Rx.Subject<{ wsClientId: string; serverId: string }>
 	debug__ticketOutcome?: SME.DebugTicketOutcome
-	serverRolling: boolean
 }
 
 export let state!: State
@@ -61,6 +59,10 @@ export type SquadServer = {
 	adminList: AsyncResource<SM.AdminList, CS.Log & C.Rcon>
 
 	postRollEventsSub: Rx.Subscription | null
+
+	historyConflictsResolved$: Promise<unknown>
+
+	serverRolling$: Rx.BehaviorSubject<boolean>
 } & SquadRcon.SquadRconContext
 
 export type MatchHistoryState = {
@@ -75,7 +77,6 @@ export async function setup() {
 
 	state = {
 		slices: new Map(),
-		serverRolling: false,
 		selectedServers: new Map(),
 		selectedServerUpdate$: new Rx.Subject(),
 	}
@@ -146,7 +147,7 @@ export async function setup() {
 	await Promise.all(ops)
 }
 
-async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.ServerState) {
+async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.ServerState) {
 	const layersStatus: SquadServer['layersStatus'] = new AsyncResource('serverStatus', (ctx) => SquadRcon.getLayerStatus(ctx), {
 		defaultTTL: 5000,
 	})
@@ -155,7 +156,6 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.S
 	const settings = serverState.settings
 
 	const rcon = new Rcon({ serverId: serverId, settings: settings.connections!.rcon })
-	rcon.ensureConnected(ctx)
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
@@ -195,6 +195,28 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.S
 		adminList,
 		logEmitter,
 		postRollEventsSub: null,
+
+		historyConflictsResolved$: Rx.firstValueFrom(rcon.connected$.pipe(
+			Rx.tap({
+				subscribe: () => {
+					ctx.log.info('trying to resolve potential current match conflict, waiting for rcon connection...')
+				},
+			}),
+			Rx.concatMap(async (connected) => {
+				if (!connected) return Rx.EMPTY
+				const ctx = { ...getBaseCtx(), ...slice }
+
+				const { value: statusRes } = await layersStatus.get(ctx)
+				if (statusRes.code === 'err:rcon') return Rx.EMPTY
+				await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
+				ctx.log.info('rcon connection established, current layer synced with match history')
+				return Rx.of(1)
+			}),
+			Rx.concatAll(),
+			Rx.retry(5),
+		)),
+
+		serverRolling$: new Rx.BehaviorSubject<boolean>(false),
 	}
 
 	const slice: C.ServerSlice = {
@@ -219,23 +241,9 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.S
 		sharedList: SharedLayerList.getDefaultState(serverState),
 	}
 
+	rcon.ensureConnected(ctx)
+
 	state.slices.set(serverId, slice)
-
-	const sync$ = rcon.connected$.pipe(
-		Rx.concatMap(async (connected) => {
-			if (!connected) return Rx.EMPTY
-			const ctx = { ...getBaseCtx(), ...slice }
-
-			const { value: statusRes } = await layersStatus.get(ctx)
-			if (statusRes.code === 'err:rcon') return Rx.EMPTY
-			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
-			return Rx.of(1)
-		}),
-		Rx.concatAll(),
-		Rx.share(),
-	)
-
-	sub.add(sync$.subscribe())
 
 	sub.add(
 		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
@@ -279,16 +287,14 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Locks, serverState: SS.S
 	await LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
 	ServerSettings.init({ ...ctx, ...slice })
+	initNewGameHandling({ ...ctx, ...slice })
 }
 
-async function handleSquadEvent(ctx: C.Db & C.Locks & C.SquadServer & C.MatchHistory & C.LayerQueue & C.Vote, event: SME.Event) {
+async function handleSquadEvent(ctx: C.Db & C.Mutexes & C.SquadServer & C.MatchHistory & C.LayerQueue & C.Vote, event: SME.Event) {
 	switch (event.type) {
 		case 'NEW_GAME': {
-			try {
-				return await LayerQueue.handleNewGame(ctx, event.time)
-			} finally {
-				state.serverRolling = false
-			}
+			// we don't do anything in here right now -- that's all handled separately in some more complicated logic
+			break
 		}
 		case 'ROUND_ENDED': {
 			const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
@@ -334,6 +340,117 @@ async function handleSquadEvent(ctx: C.Db & C.Locks & C.SquadServer & C.MatchHis
 		default:
 			assertNever(event)
 	}
+}
+
+// -------- Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
+function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
+	const serverId = ctx.serverId
+	const currentLayerChanged$ = ctx.server.layersStatus.observe(ctx)
+		.pipe(
+			Rx.concatMap(statusRes => statusRes.code === 'ok' ? Rx.of(statusRes.data.currentLayer) : Rx.EMPTY),
+			Rx.pairwise(),
+			Rx.filter(([prevLayer, currentLayer]) => prevLayer.id !== currentLayer.id),
+			Rx.map(([_, currentLayer]) => currentLayer),
+			// make sure the encapsulated state of this observable is stable for the pairing process below
+			Rx.share(),
+		)
+
+	// if we have to handle multiple effects from NEW_GAME we may want to ensure the order in which those effects are processed instead of just reading straight from event$
+	const newGame$ = ctx.server.logEmitter.event$.pipe(
+		Rx.concatMap(([_, event]) => event.type === 'NEW_GAME' ? Rx.of(event) : Rx.EMPTY),
+	)
+	let triggerWait$ = Rx.merge(
+		currentLayerChanged$.pipe(Rx.map((layer) => ['new-layer' as const, layer] as const)),
+		newGame$.pipe(Rx.map((event) => ['new-game' as const, event] as const)),
+	)
+
+	// @ts-expect-error wait for the startup history reconiliation to complete before listening for new games
+	triggerWait$ = Rx.concat(
+		Rx.from(ctx.server.historyConflictsResolved$).pipe(Rx.filter(() => false)),
+		triggerWait$,
+	)
+
+	// pair off detected new layers via RCON with NEW_GAME events from the logs (which we may receive in any order and within a fairly wide window), and handle them in a reasonably durable way
+	ctx.serverSliceSub.add(
+		triggerWait$
+			// exhaustMap means we ignore subsequent emissions until the current one is processed
+			.pipe(Rx.exhaustMap(async ([triggerType, payload]) => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				if (ctx.server.serverRolling$.value) {
+					ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
+					return Rx.EMPTY
+				}
+				try {
+					ctx.server.serverRolling$.next(true)
+
+					let newGameEvent: SME.NewGame | undefined
+					let newLayer: L.UnvalidatedLayer
+
+					ctx.log.info('Handling new game trigger: %s', triggerType)
+
+					// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
+					const timeoutThreshold = 40_000
+
+					const timeout$ = Rx.timer(timeoutThreshold).pipe(
+						Rx.map(() => 'timeout' as const),
+					)
+					// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
+					const doubleEvent$ = triggerWait$.pipe(
+						Rx.concatMap(([e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
+					)
+					if (triggerType === 'new-game') {
+						newGameEvent = payload
+						ctx.log.debug('Received NEW_GAME event, waiting for layer change')
+
+						const out = await Rx.firstValueFrom(Rx.race(
+							currentLayerChanged$,
+							doubleEvent$,
+							timeout$,
+						))
+
+						if (out === 'double-event') {
+							ctx.log.error('Double event detected: %s', triggerType)
+							return
+						} else if (out === 'timeout') {
+							ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
+							const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
+							if (statusRes.code === 'err:rcon') {
+								ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
+								return
+							}
+							ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
+							newLayer = statusRes.data.currentLayer
+						} else {
+							ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
+							newLayer = out
+						}
+					} else {
+						newLayer = payload
+						ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
+						const out = await Rx.firstValueFrom(Rx.race(
+							newGame$,
+							doubleEvent$,
+							timeout$,
+						))
+
+						if (out === 'double-event') {
+							ctx.log.error('Double event detected: %s', triggerType)
+							return
+						} else if (out === 'timeout') {
+							ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
+						} else {
+							ctx.log.debug('Received NEW_GAME event')
+							newGameEvent = out
+						}
+					}
+
+					ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
+					await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
+				} finally {
+					ctx.server.serverRolling$.next(false)
+				}
+			})).subscribe(),
+	)
 }
 
 export function destroyServer(ctx: C.ServerSlice & CS.Log) {
@@ -465,6 +582,17 @@ export const router = TrpcServer.router({
 				Rx.switchMap(ctx => {
 					ctx.log.info('subbing to layers status %s %s', ctx.serverId, ctx.wsClientId)
 					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	watchServerRolling: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
+		const obs = selectedServerCtx$(ctx)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return ctx.server.serverRolling$
 				}),
 				withAbortSignal(signal!),
 			)

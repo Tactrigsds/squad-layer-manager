@@ -52,7 +52,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 	}
 }
 
-export async function getRecentMatchHistory(ctx: C.MatchHistory & C.Locks) {
+export async function getRecentMatchHistory(ctx: C.MatchHistory & C.Mutexes) {
 	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const state = ctx.matchHistory
 	if (state.recentMatches[state.recentMatches.length - 1]?.status === 'in-progress') {
@@ -139,7 +139,7 @@ export const matchHistoryRouter = router({
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Locks, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
+	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
 		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
@@ -149,14 +149,14 @@ export const addNewCurrentMatch = C.spanOp(
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
-		ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
+		ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
 
 		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
 )
 
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
-	ctx: CS.Log & C.Db & C.MatchHistory & C.Locks,
+	ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes,
 	currentLayerId: string,
 	event: SME.RoundEnded,
 ) => {
@@ -223,7 +223,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
+	ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
 	return { ...res }
 })
 
@@ -233,7 +233,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 export const resolvePotentialCurrentLayerConflict = C.spanOp(
 	'match-history:resolve-potential-current-layer-conflict',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer & C.Locks, currentLayerOnServer: L.UnvalidatedLayer) => {
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer & C.Mutexes, currentLayerOnServer: L.UnvalidatedLayer) => {
 		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
@@ -246,7 +246,7 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 				setByType: 'unknown',
 			}))
 			await loadState(ctx, { startAtOrdinal: ordinal })
-			ctx.locks.releaseTasks.push(() => ctx.matchHistory.update$.next())
+			ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
 		})
 	},
 )

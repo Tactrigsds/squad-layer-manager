@@ -10,7 +10,7 @@ import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Users from '@/server/systems/users.ts'
 
-export async function handleCommand(ctx: CS.Log & C.Db & C.Locks & C.ServerSlice, msg: SM.ChatMessage) {
+export async function handleCommand(ctx: CS.Log & C.Db & C.Mutexes & C.ServerSlice, msg: SM.ChatMessage) {
 	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
 		return {
 			code: 'err:invalid-chat-channel' as const,

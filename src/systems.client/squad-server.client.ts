@@ -27,6 +27,10 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 	null,
 )
 
+export const [useServerRolling, serverRolling$] = ReactRx.bind<boolean>(
+	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchServerRolling.subscribe),
+)
+
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | null>(
 	layersStatus$.pipe(
 		Rx.map(res => res.code === 'ok' && res.data.currentMatch ? res.data.currentMatch : null),
@@ -64,6 +68,7 @@ export function useSelectedServerId() {
 export function setup() {
 	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
+	serverRolling$.subscribe()
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
 	const serverId = Cookies.getCookie('default-server-id')!

@@ -124,6 +124,14 @@ export default class Rcon extends EventEmitter {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
+			if (!this.connected) {
+				const reconnected$ = this.connected$.pipe(Rx.filter(connected => connected), Rx.take(1))
+				const res = await Rx.firstValueFrom(Rx.race([
+					reconnected$,
+					Rx.timer(2_000).pipe(Rx.map(() => false)),
+				]))
+				if (res === false) return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+			}
 			if (!this.connected) return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
 			if (!this.client?.writable) {
 				return { code: 'err:rcon' as const, msg: 'Unable to write to node:net socket.' }
