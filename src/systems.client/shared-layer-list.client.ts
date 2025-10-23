@@ -390,17 +390,15 @@ export async function setup() {
 	const onQueuePage$ = AppRoutesClient.route$
 		.pipe(Rx.map(route => route?.id === '/servers/:id'))
 
-	const pageInteration$ = onQueuePage$.pipe(
+	const pageInteraction$ = onQueuePage$.pipe(
 		Rx.switchMap((visiting) => {
 			if (!visiting) return Rx.EMPTY
-			return Browser.interaction$.pipe(Rx.startWith(true))
-		}),
-		Rx.debounceTime(1000),
-	)
-
-	const interactTimeout$ = pageInteration$.pipe(
-		Rx.switchMap(() => {
-			return Rx.of(true).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
+			const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
+			return Browser.interaction$.pipe(
+				Rx.throttleTime(3000),
+				Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
+				Rx.startWith(true),
+			)
 		}),
 	)
 
@@ -416,16 +414,14 @@ export async function setup() {
 		}),
 	)
 
-	pageInteration$
-		.subscribe(() => {
+	pageInteraction$
+		.subscribe((active) => {
 			const storeState = Store.getState()
-			storeState.pushPresenceAction(PresenceActions.pageInteraction)
-		})
-
-	interactTimeout$
-		.subscribe(() => {
-			const storeState = Store.getState()
-			storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+			if (active) {
+				storeState.pushPresenceAction(PresenceActions.pageInteraction)
+			} else {
+				storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+			}
 		})
 
 	onNavigateAway$.subscribe(() => {

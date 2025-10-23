@@ -16,8 +16,8 @@ export const interaction$ = (function createPageActivityObservable(): Rx.Observa
 	)
 
 	return userActions$.pipe(
+		Rx.observeOn(Rx.asyncScheduler),
 		Rx.map((): true => true),
-		// Rx.debounceTime(250),
 		Rx.share(),
 	)
 })()
