@@ -52,7 +52,13 @@ export default function UserPresencePanel() {
 			// If user is away, they go to the bottom regardless of other status
 			if (aPresence.away && !bPresence.away) return 1
 			if (!aPresence.away && bPresence.away) return -1
-			if (aPresence.away && bPresence.away) return 0
+			if (aPresence.away && bPresence.away) {
+				if (aPresence.lastSeen && bPresence.lastSeen) {
+					if (aPresence.lastSeen > bPresence.lastSeen) return -1
+					if (aPresence.lastSeen < bPresence.lastSeen) return 1
+				}
+				return 0
+			}
 
 			// Priority: has activity > editing > present
 			const aHasActivity = aPresence.currentActivity !== null
