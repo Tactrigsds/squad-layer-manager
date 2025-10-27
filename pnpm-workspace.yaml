@@ -1,3 +1,6 @@
+packages:
+  - "."
+
 onlyBuiltDependencies:
   - "@vitejs/plugin-basic-ssl"
   - better-sqlite3
