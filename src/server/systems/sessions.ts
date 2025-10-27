@@ -193,7 +193,7 @@ export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresA
 }
 
 export function clearInvalidSession(ctx: Pick<C.HttpRequest, 'res'>) {
-	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.route('/login'))
+	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.route('/login'), 302)
 }
 
 export const getUser = C.spanOp(

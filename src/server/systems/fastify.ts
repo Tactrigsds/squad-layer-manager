@@ -169,7 +169,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		})
 		const requestCtx = buildRequestContext(ctx, req, reply)
 
-		await Sessions.setSessionCookie(requestCtx, sessionId).redirect(AR.route('/'))
+		await Sessions.setSessionCookie(requestCtx, sessionId).redirect(AR.route('/'), 302)
 	})
 
 	instance.post(AR.route('/logout'), async function(req, res) {
