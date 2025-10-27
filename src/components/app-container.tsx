@@ -4,6 +4,7 @@ import * as USR from '@/models/users.models.ts'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeClient from '@/systems.client/theme'
@@ -44,6 +45,9 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onNicknameOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'nickname' : null)
 	}
+	const onFiltersHover = () => {
+		FilterEntityClient.prefetchQueriesForIndex()
+	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
 	const config = ConfigClient.useConfig()
@@ -64,6 +68,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 					<Link
 						to={AR.link('/filters')}
+						onMouseEnter={onFiltersHover}
 						className={`text-sm sm:text-base font-medium ${route?.id === '/filters' ? 'underline' : ''}`}
 					>
 						Filters

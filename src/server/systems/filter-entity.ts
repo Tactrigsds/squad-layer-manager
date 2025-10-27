@@ -47,6 +47,16 @@ export const filtersRouter = router({
 			roles: rows.map((row) => row.role).filter((role) => role !== null),
 		}
 	}),
+
+	getAllFilterRoleContributors: procedure.query(async ({ input, ctx }) => {
+		const rows = await ctx
+			.db()
+			.select()
+			.from(Schema.filterRoleContributors)
+
+		return rows
+	}),
+
 	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
 			RBAC.perm('filters:write', { filterId: input.filterId }),

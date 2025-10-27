@@ -173,8 +173,8 @@ export type GenLayerQueueItemsOptions = {
 	baseFilterId?: F.FilterEntityId
 }
 
-export function getEditedFilterConstraint(filter: F.FilterNode): LayerQueryConstraint {
-	return { type: 'filter-anon', id: 'edited-filter', filter, applyAs: 'where-condition' }
+export function getEditedFilterInput(filter: F.FilterNode): LayerQueryBaseInput {
+	return { constraints: [{ type: 'filter-anon', id: 'edited-filter', filter, applyAs: 'where-condition' }] }
 }
 
 export type LayerStatuses = {

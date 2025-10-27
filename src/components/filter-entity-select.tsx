@@ -74,16 +74,26 @@ export default function FilterEntitySelect(props: {
 export function FilterEntityLabel(props: { className?: string; filter: F.FilterEntity; includeLink?: boolean }) {
 	return (
 		<span className={cn('flex items-center space-x-1', props.className)}>
-			{props.filter.emoji && <EmojiDisplay showTooltip={false} emoji={props.filter.emoji} size="sm" />}
-			<span>{props.filter.name}</span>
+			<span className="flex items-center space-x-1">
+				{props.filter.emoji && <EmojiDisplay showTooltip={false} emoji={props.filter.emoji} size="sm" />}
+				<span>{props.filter.name}</span>
+			</span>
 			{props.includeLink && <FilterEntityLink filterId={props.filter.id} />}
 		</span>
 	)
 }
 
 export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
+	const onMouseEnter = () => {
+		FilterEntityClient.prefetchQueriesForFilter(props.filterId)
+	}
 	return (
-		<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
+		<a
+			onMouseEnter={onMouseEnter}
+			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+			target="_blank"
+			href={AR.link('/filters/:id', props.filterId)}
+		>
 			<Icons.Edit />
 		</a>
 	)

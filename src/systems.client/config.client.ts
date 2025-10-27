@@ -32,6 +32,14 @@ export function invalidateConfig() {
 	setup()
 }
 
+export async function fetchEffectiveConfig(): Promise<LQY.EffectiveColumnAndTableConfig> {
+	const config = await fetchConfig()
+	return {
+		...LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+		...config.layerTable,
+	}
+}
+
 export function useEffectiveColConfig(): LQY.EffectiveColumnAndTableConfig | undefined {
 	const config = useConfig()
 

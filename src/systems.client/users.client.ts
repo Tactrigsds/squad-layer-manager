@@ -28,7 +28,7 @@ export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: ['users', 'getUsers', superjson.serialize(userIds)],
-		enabled: opts?.enabled !== false && !!userIds,
+		enabled: opts?.enabled,
 		queryFn: async () => trpc.users.getUsers.query(userIds),
 	})
 }

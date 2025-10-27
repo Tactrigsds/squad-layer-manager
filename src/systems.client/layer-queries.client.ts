@@ -50,13 +50,6 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 			})
 		})()
 	}
-	FilterEntityClient.filterEntityChanged$.subscribe(() => {
-		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f)).sort()
-		const currentExtraFilters = Array.from(get().extraQueryFilters).sort()
-		if (!Obj.deepEqual(extraFilters, currentExtraFilters)) {
-			store.setState({ extraQueryFilters: new Set(extraFilters) })
-		}
-	})
 
 	store.subscribe((state, prev) => {
 		if (!Obj.deepEqual(state.extraQueryFilters, prev.extraQueryFilters)) {
@@ -135,44 +128,49 @@ export function useLayersQuery(
 ) {
 	options = options ? { ...options } : {}
 	options.enabled = options.enabled ?? true
+	const counters = Zus.useStore(Store, s => s.counters)
+	const baseQuery = getQueryLayersBase(input, counters)
+	const baseQueryFn = baseQuery.queryFn
+	const queryFn = async () => {
+		const res = await baseQueryFn()
+		if (res?.code === 'err:invalid-node') {
+			options?.errorStore?.setState({ errors: res.errors })
+			throw new Error(res.code + ': ' + JSON.stringify(res.errors))
+		} else {
+			options?.errorStore?.setState({ errors: undefined })
+		}
+		return res
+	}
 	return useQuery({
 		...options,
-		queryKey: ['layers', 'queryLayers', useDepKey(input)],
+		...baseQuery,
+		queryFn,
 		placeholderData: (prev) => prev,
 		enabled: options.enabled,
+	})
+}
+
+export function getQueryLayersBase(input: LQY.LayersQueryInput, counters: LayerCtxModifiedCounters) {
+	return {
+		queryKey: ['layers', 'queryLayers', getDepKey(input, counters)],
 		queryFn: async () => {
 			const res = await sendQuery('queryLayers', input)
 			if (res?.code === 'err:invalid-node') {
 				console.error('queryLayers: Invalid node error:', res.errors)
-				options?.errorStore?.setState({ errors: res.errors })
-				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
-			} else {
-				options?.errorStore?.setState({ errors: undefined })
 			}
 			return res
 		},
 		staleTime: Infinity,
-	})
-}
-export async function invalidateLayersQuery(input: LQY.LayersQueryInput) {
-	return reactQueryClient.invalidateQueries({
-		queryKey: ['layers', 'queryLayers', getDepKey(input, Store.getState().counters)],
-	})
+	}
 }
 
-export async function prefetchLayersQuery(input: LQY.LayersQueryInput) {
-	return reactQueryClient.prefetchQuery({
-		queryKey: ['layers', 'queryLayers', getDepKey({ ...input }, Store.getState().counters)],
-		queryFn: async () => {
-			const res = await sendQuery('queryLayers', input, 0)
-			if (res?.code === 'err:invalid-node') {
-				console.error('queryLayers: Invalid node error:', res.errors)
-				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
-			}
-			return res
-		},
-		staleTime: Infinity,
-	})
+export async function prefetchLayersQuery(baseInput: LQY.LayerQueryBaseInput) {
+	const cfg = await ConfigClient.fetchEffectiveConfig()
+	const input = getLayerQueryInput(baseInput, { cfg })
+	const baseQuery = getQueryLayersBase(input, Store.getState().counters)
+	return await reactQueryClient.prefetchQuery(
+		baseQuery,
+	)
 }
 
 export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts: {
@@ -695,6 +693,14 @@ function _setupWindowFocusHandlers() {
 
 async function setup() {
 	workerPool = new LayerQueryWorkerPool()
+
+	FilterEntityClient.filterEntityChanged$.subscribe(() => {
+		const extraFilters = Array.from(Store.getState().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f)).sort()
+		const currentExtraFilters = Array.from(Store.getState().extraQueryFilters).sort()
+		if (!Obj.deepEqual(extraFilters, currentExtraFilters)) {
+			Store.setState({ extraQueryFilters: new Set(extraFilters) })
+		}
+	})
 
 	const config = await ConfigClient.fetchConfig()
 

@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export default function UserPresencePanel() {
 	const [userPresence, layerList] = Zus.useStore(SLLClient.Store, useShallow(state => [state.userPresence, state.session.list]))
-	const usersRes = UsersClient.useUsers(Array.from(userPresence.keys()))
+	const usersRes = UsersClient.useUsers(Array.from(userPresence.keys()), { enabled: userPresence.size > 0 })
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const users = React.useMemo(() => {
 		return usersRes.data?.code === 'ok' ? usersRes.data.users : []

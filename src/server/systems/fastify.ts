@@ -209,6 +209,11 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// Discord CDN proxy - streams responses without buffering
 	instance.get(AR.route('/discord-cdn/*'), async (req, res) => {
+		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
+		const authRes = await createAuthorizedRequestContext(ctx)
+		if (authRes.code !== 'ok') {
+			return ctx.res.status(401).send({ error: 'Unauthorized' })
+		}
 		try {
 			// Extract the path after /cdn-proxy/
 			const url = req.url.replace(/^\/discord-cdn\//, '')

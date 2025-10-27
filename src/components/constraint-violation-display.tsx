@@ -32,13 +32,12 @@ export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProp
 	}
 
 	if (props.violated.length == 0) return null
-	const dnrViolations = props.violated.filter(v => v.type === 'do-not-repeat')
+	const repeatViolations = props.violated.filter(v => v.type === 'do-not-repeat')
 	const filterViolations = props.violated.filter(v => v.type !== 'do-not-repeat')
-	if (dnrViolations.length === 0 && filterViolations.length === 0) return null
 
-	const filterViolationsIcons: React.ReactNode[] = []
+	const icons: React.ReactNode[] = []
 	// always appears at the start
-	if (dnrViolations.length > 0) filterViolationsIcons.push(<ConstraintViolationIcon />)
+	if (repeatViolations.length > 0) icons.push(<ConstraintViolationIcon key="__repeat-violation__" />)
 	for (const v of filterViolations) {
 		if (v.type === 'filter-anon') {
 			console.warn("we don't support displaying this kind of violation:", v.type)
@@ -46,9 +45,9 @@ export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProp
 		}
 		const filter = filters.get(v.filterEntityId)
 		if (!filter?.emoji) {
-			filterViolationsIcons.push(<Icons.Filter className="bg-orange-500" />)
+			icons.push(<Icons.Filter key={v.id} className="bg-orange-500" />)
 		} else {
-			filterViolationsIcons.push(<EmojiDisplay showTooltip={false} emoji={filter.emoji} size="sm" />)
+			icons.push(<EmojiDisplay key={v.id} showTooltip={false} emoji={filter.emoji} size="sm" />)
 		}
 	}
 
@@ -60,70 +59,68 @@ export function ConstraintViolationDisplay(props: ConstraintViolationDisplayProp
 					onMouseOver={props.itemId ? onMouseOver : undefined}
 					onMouseOut={props.itemId ? onMouseOut : undefined}
 				>
-					{filterViolationsIcons}
+					{icons}
 				</TooltipTrigger>
 				<TooltipContent className="max-w-sm p-3 bg-secondary border-solid" align="start" side="right">
+					{repeatViolations.length > 0 && (
+						<>
+							<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
+							<ul className="flex flex-col space-y-1">
+								{repeatViolations.map(v => (
+									<li key={v.id} className="flex items-center space-x-1">
+										<ConstraintViolationIcon />
+										<span>
+											{v.rule.label ?? v.rule.field} <span className="font-light">(within {v.rule.within})</span>
+										</span>
+									</li>
+								))}
+							</ul>
+						</>
+					)}
 					{filterViolations.length > 0 && (
 						<>
-							<ul className="flex flex-col space-y-2">
-								{dnrViolations.length > 0 && (
-									<>
-										<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
-										<ul className="flex flex-col space-y-1">
-											{dnrViolations.map(v => (
-												<li key={v.id} className="flex items-center space-x-1">
-													<ConstraintViolationIcon />
-													<span>
-														{v.rule.label ?? v.rule.field} <span className="font-light">(within {v.rule.within})</span>
-													</span>
+							<div className={cn(Typo.Label, 'text-foreground')}>Filtered By:</div>
+							<ul className="flex flex-col space-y-1">
+								{filterViolations.map(v => {
+									let id: string
+									let displayName: string
+									switch (v.type) {
+										case 'filter-anon':
+											id = v.id
+											displayName = v.name ?? v.id
+											break
+
+										case 'filter-entity': {
+											const filter = filters.get(v.filterEntityId)
+											if (!filter) return null
+
+											return (
+												<li key={v.id}>
+													<FilterEntityLabel className="justify-between" filter={filter} includeLink={true} />
 												</li>
-											))}
-										</ul>
-									</>
-								)}
-								<div className="flex flex-col space-y-1">
-									<div className={cn(Typo.Label, 'text-foreground')}>Filtered By:</div>
-									{filterViolations.map(v => {
-										let id: string
-										let displayName: string
-										switch (v.type) {
-											case 'filter-anon':
-												id = v.id
-												displayName = v.name ?? v.id
-												break
-
-											case 'filter-entity': {
-												const filter = filters.get(v.filterEntityId)
-												if (!filter) return null
-
-												return (
-													<li key={v.id}>
-														<FilterEntityLabel filter={filter} includeLink={true} />
-													</li>
-												)
-												break
-											}
-
-											default:
-												assertNever(v)
+											)
+											break
 										}
 
-										return (
-											<li key={v.id}>
-												<Link
-													className="underline text-blue-400 hover:text-blue-300 text-sm"
-													target="_blank"
-													to={AR.link('/filters/:id', id)}
-												>
-													{displayName}
-													{props.violationDescriptors?.filter(d => d.constraintId === v.id).map((descriptor, index) => (
-														<div key={index} className="text-secondary-foreground">{`: ${descriptor.field}`}</div>
-													))}
-												</Link>
-											</li>
-										)
-									})}
-								</div>
+										default:
+											assertNever(v)
+									}
+
+									return (
+										<li key={v.id}>
+											<Link
+												className="underline text-blue-400 hover:text-blue-300 text-sm"
+												target="_blank"
+												to={AR.link('/filters/:id', id)}
+											>
+												{displayName}
+												{props.violationDescriptors?.filter(d => d.constraintId === v.id).map((descriptor, index) => (
+													<div key={index} className="text-secondary-foreground">{`: ${descriptor.field}`}</div>
+												))}
+											</Link>
+										</li>
+									)
+								})}
 							</ul>
 						</>
 					)}

@@ -1,24 +1,45 @@
 import * as MapUtils from '@/lib/map'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
+import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import { type FilterEntityChange } from '@/server/systems/filter-entity'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as PartsSys from '@/systems.client/parts'
-import { trpc } from '@/trpc.client'
+import { reactQueryClient, trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
-export function getFilterContributorQueryKey(filterId: string) {
-	return ['getFilterContributors', filterId]
+export const getFilterContributorsBase = (filterId: string) => ({
+	queryKey: ['filter-entities', 'getFilterContributors', filterId],
+	queryFn: async () => {
+		return await trpc.filters.getFilterContributors.query(filterId)
+	},
+})
+
+export const getAllFilterRoleContributorsBase = () => ({
+	queryKey: ['filter-entities', 'getAllFilterRoleContributors'],
+	queryFn: async () => {
+		return await trpc.filters.getAllFilterRoleContributors.query()
+	},
+})
+
+export function invalidateQueriesForFilter(filterId: F.FilterEntityId) {
+	reactQueryClient.invalidateQueries(getFilterContributorsBase(filterId))
+	reactQueryClient.invalidateQueries(getAllFilterRoleContributorsBase())
 }
 
-export function useFilterContributors(filterId: string) {
-	return useQuery({
-		queryKey: getFilterContributorQueryKey(filterId),
-		queryFn: () => trpc.filters.getFilterContributors.query(filterId),
-	})
+export async function prefetchQueriesForFilter(filterId: string) {
+	const entity = filterEntities.get(filterId)
+	if (!entity) return
+	void reactQueryClient.prefetchQuery(getFilterContributorsBase(filterId))
+	void LayerQueriesClient.prefetchLayersQuery(LQY.getEditedFilterInput(entity.filter))
+}
+
+export function prefetchQueriesForIndex() {
+	reactQueryClient.prefetchQuery(getAllFilterRoleContributorsBase())
 }
 
 export const filterEntities = new Map<string, F.FilterEntity>()

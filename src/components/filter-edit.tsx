@@ -12,13 +12,12 @@ import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
-import * as DiscordClient from '@/systems.client/discord.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import * as Form from '@tanstack/react-form'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
@@ -78,7 +77,7 @@ export default function FilterWrapper() {
 		})
 	}, [editParams.id, navigate, toast, loggedInUser?.username])
 	const userRes = UsersClient.useUser(filterEntity?.owner)
-	const filterContributorRes = FilterEntityClient.useFilterContributors(editParams.id)
+	const filterContributorRes = useQuery(FilterEntityClient.getFilterContributorsBase(editParams.id))
 
 	// TODO handle not found
 	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
@@ -218,9 +217,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const queryContext: LQY.LayerQueryBaseInput | undefined = React.useMemo(() =>
 		validFilter
-			? ({
-				constraints: [LQY.getEditedFilterConstraint(validFilter)],
-			})
+			? LQY.getEditedFilterInput(validFilter)
 			: undefined, [validFilter])
 
 	const saveBtn = React.useMemo(() => (
@@ -417,7 +414,6 @@ function FilterContributors(props: {
 	children: React.ReactNode
 }) {
 	const { toast } = useToast()
-	const queryClient = useQueryClient()
 	const addMutation = useMutation({
 		mutationFn: async (input: ToggleFilterContributorInput) => {
 			return trpc.filters.addFilterContributor.mutate(input)
@@ -433,7 +429,7 @@ function FilterContributors(props: {
 				default:
 					assertNever(res)
 			}
-			queryClient.invalidateQueries({ queryKey: FilterEntityClient.getFilterContributorQueryKey(props.filterId) })
+			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 		},
 		onError: (err) => {
 			toast({ title: 'Failed to add contributor', description: err.message })
@@ -454,7 +450,7 @@ function FilterContributors(props: {
 				default:
 					assertNever(res)
 			}
-			queryClient.invalidateQueries({ queryKey: FilterEntityClient.getFilterContributorQueryKey(props.filterId) })
+			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 		},
 	})
 	function addUser(user: USR.User) {
