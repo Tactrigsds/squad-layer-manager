@@ -2,9 +2,9 @@
  * Disposable vibecoded script to produce diffs from zero's scorings
  */
 
+import * as Paths from '$root/paths.ts'
 import * as Arr from '@/lib/array'
 import * as LC from '@/models/layer-columns'
-import * as Paths from '@/server/paths'
 import { parse } from 'csv-parse'
 import { stringify } from 'csv-stringify'
 import fs from 'node:fs'

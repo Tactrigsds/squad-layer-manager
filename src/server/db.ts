@@ -1,6 +1,6 @@
+import * as Paths from '$root/paths'
 import * as CS from '@/models/context-shared'
 import { baseLogger } from '@/server/logger.ts'
-import * as Paths from '@/server/paths.ts'
 import * as Otel from '@opentelemetry/api'
 import { sql } from 'drizzle-orm'
 import { MySqlDialect } from 'drizzle-orm/mysql-core'

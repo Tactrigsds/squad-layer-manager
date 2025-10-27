@@ -1,4 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/type-guards'
@@ -9,7 +10,6 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as Paths from '@/server/paths'
 import * as TrpcRouter from '@/server/router'
 import * as Discord from '@/server/systems/discord.ts'
 import * as LayerDb from '@/server/systems/layer-db.server'
@@ -77,7 +77,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	switch (ENV.NODE_ENV) {
 		case 'production':
 			instance.register(fastifyStatic, {
-				root: path.join(Paths.PROJECT_ROOT, 'dist'),
+				root: Paths.DIST,
 				setHeaders: (header) => {
 					for (const [key, value] of Object.entries(BASE_HEADERS)) {
 						header.setHeader(key, value)

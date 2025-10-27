@@ -1,8 +1,8 @@
 import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
+import * as Paths from '../../paths.ts'
 import { HumanTime, NormedUrl, ParsedIntSchema, StrFlag } from '../lib/zod'
-import * as Paths from './paths'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {

@@ -1,7 +1,7 @@
+import * as Paths from '$root/paths'
 import * as LC from '@/models/layer-columns'
 import { LayerDb } from '@/models/layer-db'
 import * as Env from '@/server/env'
-import * as Paths from '@/server/paths'
 import Database from 'better-sqlite3'
 import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
