@@ -29,7 +29,7 @@ export const ParsedNanFloatSchema = z
 
 const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const Steps = z.enum(['update-layers-table', 'download-csvs'])
+const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
 let ENV!: ReturnType<typeof envBuilder>
@@ -42,9 +42,9 @@ async function main() {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
-	await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
 
-	const ctx = { log: baseLogger, layerDb: () => LayerDb.db, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
+	LayerDb.setupExtraColsConfig()
+	const ctx = { log: baseLogger, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
 
 	L.lockStaticFactionUnitConfigs()
 	L.lockStaticLayerComponents()
@@ -54,17 +54,22 @@ async function main() {
 	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
 	L.setStaticLayerComponents(components)
 
-	await Promise.all([
-		fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2)),
-		fsPromise.writeFile(path.join(Paths.ASSETS, 'factionunit-configs.json'), JSON.stringify(data.units, null, 2)),
-	])
+	if (args.includes('write-components-and-units')) {
+		await Promise.all([
+			fsPromise.writeFile(path.join(Paths.ASSETS, 'layer-components.json'), JSON.stringify(components, null, 2)),
+			fsPromise.writeFile(path.join(Paths.ASSETS, 'factionunit-configs.json'), JSON.stringify(data.units, null, 2)),
+		])
+	}
 
-	// drizzle-kit push doesn't appear to account for views
-	ctx.layerDb().run(sql`drop view if exists ${LC.layersView(ctx)}`)
-	ctx.log.info('executing drizzle-kit push')
-	childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
-
+	const outerCtx = ctx
 	if (args.includes('update-layers-table')) {
+		await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
+		const ctx = { ...outerCtx, layerDb: () => LayerDb.db }
+		// drizzle-kit push doesn't appear to account for views
+		ctx.layerDb().run(sql`drop view if exists ${LC.layersView(ctx)}`)
+		ctx.log.info('executing drizzle-kit push')
+		childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
+
 		await extractLayerScores(ctx, components)
 		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
 
@@ -72,8 +77,8 @@ async function main() {
 		ctx.layerDb().run('PRAGMA optimize')
 		ctx.layerDb().run('VACUUM')
 		ctx.layerDb().$client.close()
+		ctx.log.info('Done! Wrote layers to %s', ENV.LAYERS_DB_PATH)
 	}
-	ctx.log.info('Done! Wrote layers to %s', ENV.LAYERS_DB_PATH)
 }
 
 function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
