@@ -1,4 +1,5 @@
 import * as Config from '@/server/config.ts'
+import * as Discord from '@/server/systems/discord.ts'
 import * as ServerSettings from '@/server/systems/server-settings.ts'
 import * as SharedLayerList from '@/server/systems/shared-layer-list.server.ts'
 import * as FilterEntity from './systems/filter-entity.ts'
@@ -27,6 +28,7 @@ export function setup() {
 		layerQueries: LayerQueries.layerQueriesRouter,
 		sharedLayerList: SharedLayerList.router,
 		serverSettings: ServerSettings.router,
+		discord: Discord.router,
 	})
 
 	appRouter = _appRouter

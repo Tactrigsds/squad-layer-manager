@@ -49,21 +49,6 @@ export const AvailableFactionSchema = z.object({
 })
 export type AvailableFaction = z.infer<typeof AvailableFactionSchema>
 
-function detailedToGenericUnitType(detailed: string) {
-	if (detailed.includes('COMBINED')) return 'CombinedArms'
-	if (detailed.includes('AIR')) return 'AirAssault'
-	if (detailed.includes('ARMORED')) return 'Armored'
-	if (detailed.includes('MECHANIZED')) return 'Mechanized'
-	if (detailed.includes('SUPPORT')) return 'Support'
-	if (detailed.includes('MOTORIZED')) return 'Motorized'
-	if (detailed.includes('LIGHT')) return 'LightInfantry'
-	if (detailed.includes('INFANTRY')) return 'LightInfantry'
-	// I wasn't expecting special forces...
-	if (detailed === 'SPECIAL_FORCES') return 'LightInfantry'
-	if (detailed.includes('AMPHIBIOUS')) return 'AmphibiousAssault'
-	throw new Error(`Unknown detailed type: ${detailed}`)
-}
-
 export const TeamSchema = z.object({
 	defaultFactionUnit: UnitId,
 	index: z.number(),
@@ -73,7 +58,6 @@ export const TeamSchema = z.object({
 	isAttackingTeam: z.boolean(),
 	isDefendingTeam: z.boolean(),
 	allowedAlliances: z.array(z.string()),
-	allowedFactionUnitTypes: z.array(z.string().transform(detailedToGenericUnitType)),
 })
 export type Team = z.infer<typeof TeamSchema>
 
@@ -110,7 +94,6 @@ export const UnitSchema = z.object({
 	factionName: z.string(),
 	factionID: FACTION_ID,
 	shortName: z.string(),
-	type: z.string().transform(detailedToGenericUnitType),
 	displayName: z.string(),
 	description: z.string(),
 	unitBadge: z.string(),
@@ -125,7 +108,7 @@ export const UnitSchema = z.object({
 		key: z.string(),
 		description: z.string(),
 	})),
-})
+}).transform(unit => ({ ...unit, type: parseUnitId(unit.unitObjectName)!.unit }))
 export type Unit = z.infer<typeof UnitSchema>
 
 export const RootSchema = z.object({

@@ -50,10 +50,9 @@ export const UserIdSchema = z.bigint().positive()
 export type UserId = z.infer<typeof UserIdSchema>
 
 export const getAvatarUrl = (user: User) => {
-	let avatar: string
-	if (user.avatar) avatar = user.avatar
-	else avatar = ((user.discordId >> 22n) % 6n).toString()
-	return AR.link('/avatars/:discordId/:avatarId', user.discordId.toString(), avatar)
+	if (user.avatar) return `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
+	const id = ((user.discordId >> 22n) % 6n).toString()
+	return `https://cdn.discordapp.com/embed/avatars/${id}.png`
 }
 
 export const getUserInitials = (user: User) => {

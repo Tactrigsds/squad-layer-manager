@@ -13,7 +13,7 @@ import { LOADING } from './constants.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
-	title: string
+	title?: string
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
@@ -24,6 +24,7 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	ref?: React.ForwardedRef<ComboBoxHandle>
 	restrictValueSize?: boolean
 	selectOnClose?: boolean
+	children?: React.ReactNode
 }
 
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
@@ -106,40 +107,45 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 
 	// Use internal values for display when selectOnClose is true
 	const displayValues = selectOnClose ? internalValues : values
+
 	let valuesDisplay = ''
-	if (displayValues.length > 0) {
-		const displayText = displayValues
-			.map((value) => {
-				const option = options !== LOADING && options.find((opt) => opt.value === value)
-				return option ? (option.label ?? option.value) : value
-			})
-			.join(', ')
+	if (!props.children) {
+		if (displayValues.length > 0) {
+			const displayText = displayValues
+				.map((value) => {
+					const option = options !== LOADING && options.find((opt) => opt.value === value)
+					return option ? (option.label ?? option.value) : value
+				})
+				.join(', ')
 
-		valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
-	} else {
-		valuesDisplay = 'Select...'
+			valuesDisplay = selectionLimit ? `${displayText} (${displayValues.length}/${selectionLimit})` : displayText
+		} else {
+			valuesDisplay = 'Select...'
+		}
+
+		const restrictSize = props.restrictValueSize ? 25 : 100
+		if (valuesDisplay.length > restrictSize) {
+			valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
+		}
 	}
-
 	// we don't fully unbound the size here, just relax the limit
-	const restrictSize = props.restrictValueSize ? 25 : 100
-	if (valuesDisplay.length > restrictSize) {
-		valuesDisplay = valuesDisplay.slice(0, restrictSize) + '...'
-	}
 	return (
 		<Popover open={open} onOpenChange={setOpen} modal={true}>
 			<PopoverTrigger asChild>
-				<Button
-					variant="outline"
-					disabled={disabled}
-					role="combobox"
-					aria-expanded={open}
-					className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
-				>
-					<span className="grow-1 overflow-hidden text-ellipsis">
-						{valuesDisplay}
-					</span>
-					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-				</Button>
+				{props.children ?? (
+					<Button
+						variant="outline"
+						disabled={disabled}
+						role="combobox"
+						aria-expanded={open}
+						className={cn(props.className, restrictValueSize && 'max-w-[400px]', 'justify-between font-mono')}
+					>
+						<span className="grow-1 overflow-hidden text-ellipsis">
+							{valuesDisplay}
+						</span>
+						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+					</Button>
+				)}
 			</PopoverTrigger>
 			<PopoverContent className="min-w-[600px] p-0 overflow-hidden">
 				<div className="flex h-[400px]">
@@ -161,7 +167,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 											<CommandItem
 												key={option.value}
 												value={option.value === null ? NULL.current : option.value}
-												disabled={selectionLimit ? displayValues.length >= selectionLimit && !displayValues.includes(option.value) : false}
+												disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
 												onSelect={() => {
 													onSelect((prevValues) => {
 														if (prevValues.includes(option.value)) {

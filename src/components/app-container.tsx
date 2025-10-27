@@ -121,7 +121,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
 									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
 								>
-									<AvatarImage src={avatarUrl} />
+									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
 									<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>

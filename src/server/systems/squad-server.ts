@@ -580,7 +580,6 @@ export const router = TrpcServer.router({
 		const obs = selectedServerCtx$(ctx)
 			.pipe(
 				Rx.switchMap(ctx => {
-					ctx.log.info('subbing to layers status %s %s', ctx.serverId, ctx.wsClientId)
 					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
 				}),
 				withAbortSignal(signal!),

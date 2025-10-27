@@ -9,6 +9,7 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import EmojiDisplay from './emoji-display.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 
 export default function FilterEntitySelect(props: {
@@ -29,7 +30,12 @@ export default function FilterEntitySelect(props: {
 		if (!props.excludedFilterIds || !props.excludedFilterIds.includes(f.id)) {
 			filterOptions.push({
 				value: f.id,
-				label: f.name,
+				label: (
+					<span className="flex items-center space-x-1">
+						{f.emoji && <EmojiDisplay emoji={f.emoji} size="sm" />}
+						<span>{f.name}</span>
+					</span>
+				),
 			})
 		}
 	}
@@ -60,11 +66,25 @@ export default function FilterEntitySelect(props: {
 			>
 				{props.children}
 			</ComboBox>
-			{props.filterId && (
-				<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
-					<Icons.Edit />
-				</a>
-			)}
+			{props.filterId && <FilterEntityLink filterId={props.filterId} />}
 		</div>
+	)
+}
+
+export function FilterEntityLabel(props: { className?: string; filter: F.FilterEntity; includeLink?: boolean }) {
+	return (
+		<span className={cn('flex items-center space-x-1', props.className)}>
+			{props.filter.emoji && <EmojiDisplay showTooltip={false} emoji={props.filter.emoji} size="sm" />}
+			<span>{props.filter.name}</span>
+			{props.includeLink && <FilterEntityLink filterId={props.filter.id} />}
+		</span>
+	)
+}
+
+export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
+	return (
+		<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} target="_blank" href={AR.link('/filters/:id', props.filterId)}>
+			<Icons.Edit />
+		</a>
 	)
 }

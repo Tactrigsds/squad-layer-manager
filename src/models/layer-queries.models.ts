@@ -558,8 +558,7 @@ export type ApplyAsStore = {
 
 export type ExtraQueryFiltersActions = {
 	setActive: (filterId: F.FilterEntityId, active: boolean) => void
-	select: (newFilterId: F.FilterEntityId, oldFilterId: F.FilterEntityId) => void
-	add: (newFilterId: F.FilterEntityId, active: boolean) => void
+	select: (filters: F.FilterEntityId[]) => void
 	remove: (filterId: F.FilterEntityId) => void
 }
 

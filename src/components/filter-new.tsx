@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import LayerTable from './layer-table'
@@ -34,6 +35,7 @@ export default function FilterNew() {
 			id: '',
 			name: '',
 			description: '',
+			emoji: null as string | null,
 		},
 		onSubmit: async ({ value }) => {
 			const description = value.description?.trim() || null
@@ -47,6 +49,7 @@ export default function FilterNew() {
 			const res = await createFilterMutation.mutateAsync({
 				...value,
 				description,
+				emoji: value.emoji ?? null,
 				filter: state.validatedFilter,
 			})
 
@@ -141,6 +144,25 @@ export default function FilterNew() {
 								</div>
 							)
 						}}
+					</form.Field>
+
+					<form.Field name="emoji">
+						{(field) => (
+							<div className="flex flex-col space-y-2 max-w-[300px]">
+								<Label htmlFor={field.name}>Emoji</Label>
+								<EmojiPickerPopover
+									value={field.state.value ?? undefined}
+									onSelect={(emoji) => field.handleChange(emoji ?? null)}
+									disabled={false}
+								/>
+								{field.state.meta.errors.length > 0 && (
+									<Alert variant="destructive">
+										<AlertTitle>Errors for {field.name}</AlertTitle>
+										<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+									</Alert>
+								)}
+							</div>
+						)}
 					</form.Field>
 				</div>
 

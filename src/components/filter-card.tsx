@@ -234,8 +234,9 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 
 function BlockNodeControlPanel(props: NodeProps) {
 	const node = F.useEditStoreView(props.nodeId, props.rootStore) as F.FilterEditStoreView<F.BlockType>
-	if (!F.isBlockType(node.type)) return null
-
+	const nodePath = F.useNodePath(props.nodeId, props.rootStore)
+	if (!F.isBlockType(node.type) || !nodePath) return null
+	const isRootNode = nodePath.length === 0
 	return (
 		<div className="flex items-center space-x-1">
 			<NegationToggle view={node} />
@@ -261,9 +262,12 @@ function BlockNodeControlPanel(props: NodeProps) {
 					<DropdownMenuItem onClick={() => node.addChild('or')}>or block</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
-			<Button size="icon" variant="ghost" onClick={() => node.delete()}>
-				<Minus color="hsl(var(--destructive))" />
-			</Button>
+			{!isRootNode
+				&& (
+					<Button size="icon" variant="ghost" onClick={() => node.delete()}>
+						<Minus color="hsl(var(--destructive))" />
+					</Button>
+				)}
 		</div>
 	)
 }

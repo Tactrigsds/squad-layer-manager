@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
@@ -907,16 +908,20 @@ export function useExtraFiltersStore() {
 					}
 				})
 			},
-			select(newFilterId, oldFilterId) {
-				removeActive(oldFilterId)
-				addActive(newFilterId)
+			select(filters) {
+				const { added, removed } = Arr.delta(Array.from(Store.getState().extraQueryFilters), filters)
+				for (const value of removed) {
+					removeActive(value)
+				}
 				updateQueryStore(draft => {
-					draft.add(newFilterId)
-				})
-			},
-			add(filterId) {
-				updateQueryStore(draft => {
-					draft.add(filterId)
+					for (const value of added) {
+						if (!draft.has(value)) {
+							draft.add(value)
+						}
+					}
+					for (const value of removed) {
+						draft.delete(value)
+					}
 				})
 			},
 			remove(filterId) {

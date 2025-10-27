@@ -1282,6 +1282,7 @@ describe('InvalidFilterNodeResults handling', () => {
 					owner: 1n,
 					name: 'Recursive Filter',
 					description: 'A filter that references itself',
+					emoji: null,
 				}],
 			]),
 		}

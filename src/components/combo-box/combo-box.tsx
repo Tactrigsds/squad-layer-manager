@@ -27,7 +27,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 
 export interface ComboBoxOption<T> {
 	value: T
-	label?: string
+	label?: React.ReactNode
 }
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
@@ -61,7 +61,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	}
 
 	const selectedOption = (options === LOADING ? [] : options).find((o) => o.value === props.value)
-	let selectedOptionDisplay: string
+	let selectedOptionDisplay: React.ReactNode
 	if (selectedOption?.value === null) {
 		selectedOptionDisplay = DH.MISSING_DISPLAY
 	} else if (selectedOption) {

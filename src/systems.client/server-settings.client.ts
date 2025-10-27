@@ -1,6 +1,6 @@
 import * as Obj from '@/lib/object'
 import * as TrpcHelpers from '@/lib/trpc-helpers'
-import { devValidate } from '@/lib/zod'
+import { devValidate } from '@/lib/zod.dev'
 import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as RbacClient from '@/systems.client/rbac.client'

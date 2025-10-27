@@ -9,7 +9,7 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
-import { devValidate } from '@/lib/zod.ts'
+import { devValidate } from '@/lib/zod.dev.ts'
 import * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -26,6 +26,7 @@ import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
+import { ConstraintViolationIcon } from './constraint-violation-display.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
@@ -156,8 +157,8 @@ function PoolFiltersConfigurationPanel({
 }: {
 	poolId: 'mainPool' | 'generationPool'
 }) {
-	const filterPath = ['queue', poolId, 'filters']
-	const filterIds = Zus.useStore(ServerSettingsClient.Store, (s) => SS.derefSettingsValue(s.edited, filterPath) as string[])
+	const filtersPath = ['queue', poolId, 'filters']
+	const filterIds = Zus.useStore(ServerSettingsClient.Store, (s) => SS.derefSettingsValue(s.edited, filtersPath) as string[])
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -166,13 +167,16 @@ function PoolFiltersConfigurationPanel({
 		if (filterId === null) return
 		const state = ServerSettingsClient.Store.getState()
 		const newFilters = [...filterIds, filterId]
-		state.set({ path: filterPath, value: newFilters })
+		state.set({ path: filtersPath, value: newFilters })
 	}
 
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters</h4>
+				<span className="flex items-center gap-2">
+					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters:</h4>
+					<Icons.Filter />
+				</span>
 				<FilterEntitySelect
 					title="New Pool Filter"
 					filterId={null}
@@ -189,7 +193,7 @@ function PoolFiltersConfigurationPanel({
 			</div>
 			<div className="space-y-2">
 				{filterIds.map((filterId, i) => {
-					const path = [...filterPath, i]
+					const path = [...filtersPath, i]
 					const onSelect = (newFilterId: string | null) => {
 						if (newFilterId === null) {
 							return
@@ -199,14 +203,14 @@ function PoolFiltersConfigurationPanel({
 					}
 					const deleteFilter = () => {
 						const state = ServerSettingsClient.Store.getState()
-						const filterIds = Obj.deepClone(SS.derefSettingsValue(state.edited, path) as string[])
+						const filterIds = Obj.deepClone(SS.derefSettingsValue(state.edited, filtersPath) as string[])
 						filterIds.splice(i, 1)
-						state.set({ path: path, value: filterIds })
+						state.set({ path: filtersPath, value: filterIds })
 					}
 					const excluded = filterIds.filter((id) => filterId !== id)
 
 					return (
-						<div className="flex items-center space-x-2 p-2 rounded-md border bg-card" key={filterId}>
+						<div className="flex items-center space-x-2 bg-card" key={filterId}>
 							<FilterEntitySelect
 								enabled={canWriteSettings ?? false}
 								className="flex-grow"
@@ -428,7 +432,12 @@ function PoolRepeatRulesConfigurationPanel(props: {
 	return (
 		<div className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
-				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Repeat Rules</h4>
+				<span className="flex items-center gap-2">
+					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>
+						Repeat Rules
+					</h4>
+					<ConstraintViolationIcon />
+				</span>
 				<Button
 					size="sm"
 					variant="outline"

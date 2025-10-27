@@ -207,45 +207,57 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		return res.status(200).send({ status: 'ok' })
 	})
 
-	// Discord avatar proxy endpoint to escape CORS
-	instance.get(AR.route('/avatars/:discordId/:avatarId'), async (req, res) => {
-		const params = req.params as { discordId: string; avatarId: string }
-
-		// Determine the Discord URL to fetch
-		let discordAvatarUrl: string
-		// dumb but whatever
-		if (params.avatarId.length < 5) {
-			discordAvatarUrl = `https://cdn.discordapp.com/embed/avatars/${params.avatarId}.png`
-		} else if (params.avatarId === 'default') {
-			discordAvatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`
-		} else {
-			discordAvatarUrl = `https://cdn.discordapp.com/avatars/${params.discordId}/${params.avatarId}.png`
-		}
-
+	// Discord CDN proxy - streams responses without buffering
+	instance.get(AR.route('/discord-cdn/*'), async (req, res) => {
 		try {
-			const response = await fetch(discordAvatarUrl)
+			// Extract the path after /cdn-proxy/
+			const url = req.url.replace(/^\/discord-cdn\//, '')
+			const cdnUrl = `https://cdn.discordapp.com/${url}`
 
-			// Copy relevant headers from Discord's response
-			const contentType = response.headers.get('content-type')
-			const contentLength = response.headers.get('content-length')
-			const cacheControl = response.headers.get('cache-control')
-			const etag = response.headers.get('etag')
+			req.log.debug('Proxying request to Discord CDN: %s', cdnUrl)
 
-			if (contentType) res.header('content-type', contentType)
-			if (response.ok) {
-				if (contentLength) res.header('content-length', contentLength)
-				if (cacheControl) res.header('cache-control', cacheControl)
-				if (etag) res.header('etag', etag)
+			// Fetch from Discord CDN
+			const cdnResponse = await fetch(cdnUrl)
+
+			if (!cdnResponse.ok) {
+				req.log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
+				return res.status(cdnResponse.status).send({ error: 'CDN request failed' })
 			}
 
-			res = res.status(response.status)
-			if (response.body) {
-				res = res.send(new Uint8Array(await response.arrayBuffer()))
+			// Forward relevant headers from Discord CDN response
+			const headersToForward = [
+				'content-type',
+				'content-length',
+				'cache-control',
+				'etag',
+				'last-modified',
+				'expires',
+				'content-disposition',
+				'content-encoding',
+			]
+
+			for (const header of headersToForward) {
+				const value = cdnResponse.headers.get(header)
+				if (value) {
+					res.header(header, value)
+				}
 			}
-			return res
-		} catch (error) {
-			req.log.error(error, 'Failed to proxy Discord avatar')
-			return res.status(500).send({ error: 'Failed to fetch avatar' })
+
+			// Add CORS headers
+			res.header('Access-Control-Allow-Origin', '*')
+			res.header('Access-Control-Allow-Methods', 'GET')
+
+			// Stream the response using Node.js stream from Web Stream
+			if (cdnResponse.body) {
+				const { Readable } = await import('node:stream')
+				const nodeStream = Readable.fromWeb(cdnResponse.body as any)
+				return res.send(nodeStream)
+			}
+
+			return res.send('')
+		} catch (err) {
+			req.log.error('Error proxying to Discord CDN: %s', err)
+			return res.status(500).send({ error: 'Failed to proxy request' })
 		}
 	})
 

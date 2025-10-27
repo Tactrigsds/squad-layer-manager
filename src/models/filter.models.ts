@@ -386,8 +386,8 @@ export const FilterEntityIdSchema = z
 	})
 	.min(3)
 	.max(64)
-	.refine((id) => id !== '_id', {
-		message: 'outlaw a particular magic string',
+	.refine((id) => id !== '_id' && id !== 'new', {
+		message: 'Disallow particular magic strings',
 	})
 
 export const FilterEntityDescriptionSchema = z.string().trim().min(3).max(2048)
@@ -399,6 +399,7 @@ export const BaseFilterEntitySchema = z.object({
 	description: FilterEntityDescriptionSchema.nullable(),
 	filter: FilterNodeSchema,
 	owner: z.bigint(),
+	emoji: z.string().nullable(),
 })
 
 export type ComparisonCode = (typeof COMPARISON_TYPES)[number]['code']

@@ -172,15 +172,16 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const isMobile = useIsMobile()
 
 	const badges: React.ReactNode[] = []
+	let sourceDisplay: React.ReactNode | undefined
 
 	if (user && itemPresence && itemActivityUser.discordId !== user.discordId) {
-		badges.push(
+		sourceDisplay = (
 			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="secondary">
 				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.displayName)}...
-			</Badge>,
+			</Badge>
 		)
 	} else {
-		badges.push(<LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />)
+		sourceDisplay = <LayerSourceDisplay key={`source ${item.source.type}`} source={item.source} />
 	}
 
 	const editButtonProps = (className?: string) => ({
@@ -285,7 +286,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 						<span
 							ref={dropOnAttrs.ref}
 							data-over={canEdit && dropOnAttrs.isDropTarget}
-							className="data-[over=true]:bg-secondary rounded flex space-x-1 w-full flex-col"
+							className="data-[over=true]:bg-secondary rounded flex space-y-1 w-full flex-col"
 						>
 							<LayerDisplay
 								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
@@ -302,6 +303,12 @@ function SingleLayerListItem(props: LayerListItemProps) {
 								</span>
 							)}
 						</span>
+						{sourceDisplay && (
+							<>
+								<Separator orientation="vertical" />
+								{sourceDisplay}
+							</>
+						)}
 						<ItemDropdown {...dropdownProps}>
 							<Button
 								{...editButtonProps()}

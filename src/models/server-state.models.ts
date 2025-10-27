@@ -3,6 +3,7 @@ import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import { z } from 'zod'
 
 const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
@@ -10,6 +11,11 @@ const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
 	{ field: 'Layer', within: 7 },
 	{ field: 'Faction', within: 3 },
 ]
+
+export const PoolFilterConfigSchema = z.object({
+	invert: z.boolean().default(false),
+	filterId: F.FilterEntityIdSchema,
+})
 
 export const PoolConfigurationSchema = z.object({
 	filters: z.array(F.FilterEntityIdSchema),

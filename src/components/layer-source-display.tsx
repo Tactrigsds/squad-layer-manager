@@ -18,7 +18,6 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 	const userRes = UsersClient.useUser(userId, { enabled: !!userId && !userPartial && !isMe })
 	const user: USR.User | undefined = (userRes.data?.code === 'ok' ? userRes.data.user : undefined) ?? userPartial ?? loggedInUser
 	const username = user?.displayName ?? 'Unknown'
-	const avatarUrl = user ? USR.getAvatarUrl(user) : undefined
 
 	const renderAvatar = (
 		displayName: string,
@@ -34,7 +33,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 					style={{ backgroundColor: backgroundColor ?? undefined }}
 					className="h-6 w-6"
 				>
-					{typeof avatar === 'string' && <AvatarImage src={avatar} />}
+					{typeof avatar === 'string' && <AvatarImage src={avatar} crossOrigin="anonymous" />}
 					<AvatarFallback className="text-xs">
 						{initials}
 					</AvatarFallback>
@@ -49,7 +48,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 				<TooltipTrigger>
 					{inner}
 				</TooltipTrigger>
-				<TooltipContent>
+				<TooltipContent className="bg-secondary text-secondary-foreground">
 					{showSetBy ? 'Set By ' : ''}
 					{displayName}
 					{isMe ? ' (You)' : ''}

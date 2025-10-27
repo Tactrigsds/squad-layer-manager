@@ -55,3 +55,9 @@ export function coalesceArr<T>(input: T | T[]): T[] {
 export function last<T>(arr: T[]): T | undefined {
 	return arr[arr.length - 1]
 }
+
+export function delta<T>(before: T[], after: T[]): { added: T[]; removed: T[] } {
+	const added = after.filter(item => !before.includes(item))
+	const removed = before.filter(item => !after.includes(item))
+	return { added, removed }
+}

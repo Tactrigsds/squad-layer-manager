@@ -62,6 +62,8 @@ export const filters = mysqlTable('filters', {
 		() => users.discordId,
 		{ onDelete: 'set null' },
 	),
+	// either a unicode emoji or a custom emoji (prefix discord_)
+	emoji: varchar('emoji', { length: 64 }).unique(),
 })
 
 export const filterUserContributors = mysqlTable(

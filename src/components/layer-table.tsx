@@ -207,11 +207,13 @@ function buildColDefs(
 				if (!violationDescriptors || !values) return null
 				const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
 				return (
-					<ConstraintViolationDisplay
-						padEmpty={true}
-						violated={namedConstraints}
-						violationDescriptors={violationDescriptors}
-					/>
+					<div className="w-[100px]">
+						<ConstraintViolationDisplay
+							padEmpty={true}
+							violated={namedConstraints}
+							violationDescriptors={violationDescriptors}
+						/>
+					</div>
 				)
 			},
 		})
@@ -697,7 +699,7 @@ export default function LayerTable(props: {
 											}}
 										>
 											{row.getVisibleCells().map((cell) => (
-												<TableCell className="pl-4" key={cell.id}>
+												<TableCell className={cell.column.id !== 'constraints' ? 'pl-4' : undefined} key={cell.id}>
 													{flexRender(cell.column.columnDef.cell, cell.getContext())}
 												</TableCell>
 											))}

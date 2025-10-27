@@ -12,12 +12,13 @@ import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
+import * as DiscordClient from '@/systems.client/discord.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import { trpc } from '@/trpc.client'
 import * as Form from '@tanstack/react-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
@@ -26,6 +27,8 @@ import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import EmojiDisplay from './emoji-display'
+import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import FullPageSpinner from './full-page-spinner'
@@ -108,6 +111,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		defaultValues: {
 			name: props.entity.name,
 			description: props.entity.description,
+			emoji: props.entity.emoji,
 		},
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
@@ -115,6 +119,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 			const res = await updateFilterMutation.mutateAsync([props.entity.id, {
 				...value,
 				description,
+				emoji: value.emoji ?? null,
 				filter: nodeStore.getState().validatedFilter ?? undefined,
 			}])
 			switch (res.code) {
@@ -256,6 +261,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 						<div className="flex w-full flex-col space-y-2">
 							<div className="flex items-center justify-between">
 								<span className="flex items-center space-x-4">
+									{props.entity.emoji && (
+										<>
+											<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" showTooltip={false} />
+											<Icons.Dot />
+										</>
+									)}
 									<h3 className={Typography.H3}>{props.entity.name}</h3>
 									<Icons.Dot />
 									<small className="font-light">Owner: {props.owner.displayName}</small>
@@ -321,7 +332,30 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 										)
 									}}
 								</form.Field>
-								<form.Field name="description" validators={{ onChange: z.union([F.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
+								<form.Field name="emoji">
+									{(field) => (
+										<div className="flex flex-col space-y-2 max-w-[300px]">
+											<Label htmlFor={field.name}>Emoji</Label>
+											<EmojiPickerPopover
+												value={field.state.value ?? undefined}
+												onSelect={(id) => {
+													field.handleChange(id ?? null)
+												}}
+												disabled={false}
+											/>
+											{field.state.meta.errors.length > 0 && (
+												<Alert variant="destructive">
+													<AlertTitle>Emoji:</AlertTitle>
+													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+												</Alert>
+											)}
+										</div>
+									)}
+								</form.Field>
+								<form.Field
+									name="description"
+									validators={{ onChange: F.FilterEntityDescriptionSchema.nullable() }}
+								>
 									{(field) => (
 										<div className="flex flex-grow space-x-2">
 											<div className="flex min-w-[900px] flex-col space-y-1">
@@ -331,7 +365,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 													placeholder="Description"
 													defaultValue={field.state.value ?? ''}
 													onBlur={field.handleBlur}
-													onChange={(e) => field.handleChange(e.target.value)}
+													onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
 													rows={15}
 												/>
 											</div>

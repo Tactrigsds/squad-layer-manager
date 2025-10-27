@@ -125,7 +125,7 @@ export default function UserPresencePanel() {
 													isEditing && 'ring-2 ring-blue-500 ring-offset-0',
 												)}
 											>
-												<AvatarImage src={USR.getAvatarUrl(user)} />
+												<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
 												<AvatarFallback className="text-xs">
 													{getUserInitials(user)}
 												</AvatarFallback>
@@ -138,6 +138,7 @@ export default function UserPresencePanel() {
 										)}
 									</div>
 								</TooltipTrigger>
+								{/*<TooltipContent className="bg-secondary text-secondary-foreground">*/}
 								<TooltipContent>
 									<div className="text-center">
 										<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>

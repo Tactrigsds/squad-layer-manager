@@ -9,7 +9,7 @@ import * as PartsSys from '@/systems.client/parts.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
-
+import EmojiDisplay from './emoji-display'
 import { buttonVariants } from './ui/button'
 
 export default function FiltersIndex() {
@@ -38,8 +38,11 @@ export default function FiltersIndex() {
 							<Link onMouseEnter={onHover} to={AR.link('/filters/:id', entity.id)} className="block h-full">
 								<Card className="h-full transition-shadow hover:shadow-md hover:bg-accent hover:text-accent-foreground overflow-hidden">
 									<CardHeader>
-										<CardTitle>{entity.name}</CardTitle>
-										<CardDescription>{entity.description}</CardDescription>
+										<div className="flex items-center space-x-1">
+											{entity.emoji && <EmojiDisplay emoji={entity.emoji} />}
+											<CardTitle>{entity.name}</CardTitle>
+										</div>
+										<CardDescription className="line-clamp-2">{entity.description?.split('\n')[0]}</CardDescription>
 									</CardHeader>
 									<CardFooter>
 										<p className="text-sm">Owner: {user?.displayName}</p>

@@ -1,7 +1,8 @@
+import { resToOptional } from '@/lib/types'
 import * as CS from '@/models/context-shared'
+import { toNormalizedEmoji } from '@/models/discord.models'
 import { CONFIG } from '@/server/config'
-import * as C from '@/server/context'
-import * as Otel from '@opentelemetry/api'
+import * as TrpcServer from '@/server/trpc.server'
 import * as D from 'discord.js'
 import { z } from 'zod'
 import * as Env from '../env'
@@ -112,15 +113,17 @@ export async function fetchGuildRoles(baseCtx: CS.Log) {
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
 }
 
-// export async function getDiscordUserRoles(_ctx: CS.Log, discordId: bigint) {
-//   await using ctx = C.pushOperation(_ctx, 'discord:get-user-roles')
-//   const roles = new Set<string>()
-//   for (const authorized of CONFIG.authorizedDiscordRoles) {
-//     const res = await fetchMember(ctx, BigInt(authorized.serverId), discordId)
-//     if (res.code !== 'ok') return res
-//     for (const role of res.member.roles.cache.values()) {
-//       roles.add(role.id)
-//     }
-//   }
-//   return { code: 'ok' as const, roles: Array.from(roles) }
-// }
+export const router = TrpcServer.router({
+	getGuildEmojis: TrpcServer.procedure.input(z.object({}).optional()).query(
+		async ({ ctx }) => {
+			const guildRes = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+			const guild = resToOptional(guildRes)!.guild
+			let emojis = await guild.emojis.fetch()
+
+			if (ENV.NODE_ENV === 'development') {
+				emojis = client.emojis.cache
+			}
+			return emojis.map(emoji => toNormalizedEmoji(emoji))
+		},
+	),
+})
