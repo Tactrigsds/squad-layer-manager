@@ -718,7 +718,7 @@ async function setup() {
 	const initPromise = workerPool.initialize(dbBuffer, ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
 	const contextUpdate$ = new Rx.Subject<Partial<WorkerTypes.DynamicQueryCtx>>()
-	FilterEntityClient.initializedFilterEntities$().subscribe(filters => {
+	FilterEntityClient.filterEntities$.subscribe(filters => {
 		contextUpdate$.next({ filters })
 	})
 
