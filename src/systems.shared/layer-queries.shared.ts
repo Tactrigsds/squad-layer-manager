@@ -225,6 +225,14 @@ export function getFilterNodeSQLConditions(
 				condition = E.eq(column, 1)!
 				break
 			}
+			case 'isnull': {
+				condition = E.isNull(column)!
+				break
+			}
+			case 'notnull': {
+				condition = E.isNotNull(column)!
+				break
+			}
 			default:
 				assertNever(comp)
 		}

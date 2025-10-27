@@ -640,6 +640,8 @@
                   "lt",
                   "gt",
                   "inrange",
+                  "isnull",
+                  "notnull",
                   "in",
                   "notin",
                   "eq",

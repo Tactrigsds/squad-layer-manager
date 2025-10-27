@@ -26,6 +26,8 @@ export const COMPARISON_TYPES = [
 	{ coltype: 'float', code: 'lt', displayName: '<' },
 	{ coltype: 'float', code: 'gt', displayName: '>' },
 	{ coltype: 'float', code: 'inrange', displayName: '[..]' },
+	{ coltype: 'float', code: 'isnull', displayName: 'is null' },
+	{ coltype: 'float', code: 'notnull', displayName: 'is not null' },
 	{ coltype: 'string', code: 'in', displayName: 'in' },
 	{ coltype: 'string', code: 'notin', displayName: 'not in' },
 	{ coltype: 'string', code: 'eq', displayName: '=' },
@@ -163,10 +165,31 @@ export const InRangeComparisonSchema = z
 
 export type InRangeComparison = z.infer<typeof InRangeComparisonSchema>
 
+export const IsNullComparisonSchema = z
+	.object({
+		code: z.literal('isnull'),
+		column: z.string(),
+	})
+	.describe('Is Null')
+
+export type IsNullComparison = z.infer<typeof IsNullComparisonSchema>
+
+export const IsNotNullComparisonSchema = z
+	.object({
+		code: z.literal('notnull'),
+		column: z.string(),
+	})
+	.describe('Is Not Null')
+
+export type IsNotNullComparison = z.infer<typeof IsNotNullComparisonSchema>
+
 export type NumericComparison =
 	| LessThanComparison
 	| GreaterThanComparison
 	| InRangeComparison
+	| IsNullComparison
+	| IsNotNullComparison
+
 // --------  numeric end --------
 
 // --------  string --------
@@ -238,6 +261,8 @@ export const ComparisonSchema = z
 		LessThanComparison,
 		GreaterThanComparison,
 		InRangeComparisonSchema,
+		IsNullComparisonSchema,
+		IsNotNullComparisonSchema,
 		InComparison,
 		NotInComparison,
 		EqualComparison,

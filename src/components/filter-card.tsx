@@ -650,6 +650,16 @@ export function Comparison(props: {
 			break
 		}
 
+		case 'isnull': {
+			valueBox = <span />
+			break
+		}
+
+		case 'notnull': {
+			valueBox = <span />
+			break
+		}
+
 		default:
 			comp.code satisfies undefined
 			valueBox = <span />
