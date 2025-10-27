@@ -26,17 +26,16 @@ export function createDiscordEmojiId(id: string): string {
 }
 
 export function getEmojiIdType(id: string): 'discord' | 'unicode' | undefined {
-	if (id.startsWith('_discord')) return 'discord'
+	if (id.startsWith('discord_')) return 'discord'
 	return 'unicode'
 }
 
 export function idToEmoji(id: string, discordEmojis: DiscordEmoji[] | undefined): Emoji | undefined {
-	if (id.startsWith('discord_')) {
+	if (getEmojiIdType(id) === 'discord') {
 		if (!discordEmojis) return
-		const discordId = parseDiscordEmojiId(id)
 		return {
 			id,
-			name: discordEmojis.find(emoji => emoji.id === discordId)?.name || null,
+			name: discordEmojis.find(emoji => emoji.id === id)?.name || null,
 			type: 'discord',
 		}
 	}

@@ -13,6 +13,7 @@ import * as USR from '@/models/users.models'
 import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import { trpc } from '@/trpc.client'
@@ -21,6 +22,7 @@ import * as Im from 'immer'
 import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
+import { toStream } from 'zustand-rx'
 import { useShallow } from 'zustand/react/shallow'
 
 export type Store = {
@@ -335,10 +337,6 @@ function createStore() {
 				store.setState({ userPresence: SLL.resolveUserPresence(state.presence) })
 			}
 		}))
-
-		serverUpdate$.subscribe(update => {
-			Store.getState().handleServerUpdate(update)
-		})
 	})
 
 	return [store, subHandle] as const
@@ -386,6 +384,25 @@ export function useClientPresence() {
 
 export async function setup() {
 	storeSubHandle.subscribe()
+
+	serverUpdate$.subscribe(update => {
+		Store.getState().handleServerUpdate(update)
+	})
+
+	const settingsModified$ = toStream(ServerSettingsClient.Store).pipe(Rx.map(s => s.modified), Rx.distinctUntilChanged())
+
+	const wsClientId$ = ConfigClient.fetchConfig().then(config => config.wsClientId)
+	settingsModified$.pipe(
+		Rx.withLatestFrom(wsClientId$),
+	).subscribe(([modified, wsClientId]) => {
+		const currentActivity = Store.getState().presence.get(wsClientId)?.currentActivity
+		if (!modified && currentActivity?.code === 'changing-settings') {
+			Store.getState().pushPresenceAction(PresenceActions.endActivity({ code: 'changing-settings' }))
+		}
+		if (modified && !currentActivity || currentActivity?.code !== 'changing-settings') {
+			Store.getState().pushPresenceAction(PresenceActions.startActivity({ code: 'changing-settings' }))
+		}
+	})
 
 	const onQueuePage$ = AppRoutesClient.route$
 		.pipe(Rx.map(route => route?.id === '/servers/:id'))
@@ -450,24 +467,38 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 }
 
 // allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
-export function useActivityState(activity: SLL.ClientPresenceActivity, defaultState = false) {
+export function useActivityState(
+	activity: SLL.ClientPresenceActivity,
+	opts?: {
+		defaultState?: boolean
+		// Normally if we see a change of activities we reset the state. passthroughActivities are excempted from this.
+		passthroughActivities?: SLL.ClientPresenceActivity[]
+	},
+) {
+	const defaultState = opts?.defaultState ?? false
 	const activityRef = React.useRef(activity)
 	const config = ConfigClient.useConfig()
 	const [active, _setActive] = React.useState(defaultState)
 	const activeRef = React.useRef(active)
+	const passthroughActivitiesRef = React.useRef(opts?.passthroughActivities)
 
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
 		const newActive = typeof update === 'function' ? update(active) : update
-		const action = newActive ? PresenceActions.startActivity(activityRef.current) : PresenceActions.endActivity
+		const action = newActive ? PresenceActions.startActivity(activityRef.current) : PresenceActions.endActivity(activityRef.current)
 		Store.getState().pushPresenceAction(action)
 		_setActive(newActive)
 		activeRef.current = newActive
 	}, [_setActive, active])
 
 	React.useEffect(() => {
+		passthroughActivitiesRef.current = opts?.passthroughActivities
+	}, [opts?.passthroughActivities])
+
+	React.useEffect(() => {
 		if (!config) return
 		const unsub = Store.subscribe((state) => {
 			const currentActivity = state.presence.get(config.wsClientId)?.currentActivity
+			if (passthroughActivitiesRef.current?.find(a => Obj.deepEqual(a, currentActivity))) return
 			if (activeRef.current && (!currentActivity || !Obj.deepEqual(currentActivity, activityRef.current))) _setActive(false)
 		})
 		return () => unsub()
@@ -485,7 +516,7 @@ export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.Cli
 	const setActive: React.Dispatch<React.SetStateAction<K | null>> = React.useCallback((update) => {
 		const newActive = typeof update === 'function' ? update(active) : update
 		const mapping = mappingRef.current
-		const action = newActive ? PresenceActions.startActivity(mapping[newActive]) : PresenceActions.endActivity
+		const action = newActive ? PresenceActions.startActivity(mapping[newActive]) : PresenceActions.endActivity(mapping[active])
 		Store.getState().pushPresenceAction(action)
 		_setActive(newActive)
 		activeRef.current = newActive
@@ -507,4 +538,11 @@ export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.Cli
 export function useHoveredActivityUser() {
 	const [hovered, setHovered] = Zus.useStore(Store, useShallow((state) => [state.hoveredActivityUserId, state.setHoveredActivityUserId]))
 	return [hovered, setHovered] as const
+}
+
+export async function resolveClientPresence() {
+	const config = await ConfigClient.fetchConfig()
+
+	const state = Store.getState()
+	return state.presence.get(config.wsClientId)
 }

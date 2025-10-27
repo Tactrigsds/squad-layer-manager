@@ -30,7 +30,7 @@ export default function EmojiDisplay(props: { emoji: string | EMO.Emoji; showToo
 		assertNever(emoji)
 	}
 
-	if (props.showTooltip == false) {
+	if (props.showTooltip !== true) {
 		return inner
 	}
 

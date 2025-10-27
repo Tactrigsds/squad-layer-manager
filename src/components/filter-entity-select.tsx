@@ -75,7 +75,7 @@ export function FilterEntityLabel(props: { className?: string; filter: F.FilterE
 	return (
 		<span className={cn('flex items-center space-x-1', props.className)}>
 			<span className="flex items-center space-x-1">
-				{props.filter.emoji && <EmojiDisplay showTooltip={false} emoji={props.filter.emoji} size="sm" />}
+				{props.filter.emoji && <EmojiDisplay emoji={props.filter.emoji} size="sm" />}
 				<span>{props.filter.name}</span>
 			</span>
 			{props.includeLink && <FilterEntityLink filterId={props.filter.id} />}

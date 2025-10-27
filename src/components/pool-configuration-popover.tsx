@@ -50,7 +50,7 @@ export default function PoolConfigurationPopover(
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	const [open, _setOpen] = SLLClient.useActivityState({ code: 'changing-settings' })
+	const [open, _setOpen] = React.useState(false)
 	const setOpen = (open: boolean) => {
 		if (!open) {
 			ServerSettingsClient.Store.getState().reset()

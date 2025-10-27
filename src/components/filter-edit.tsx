@@ -260,7 +260,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 								<span className="flex items-center space-x-4">
 									{props.entity.emoji && (
 										<>
-											<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" showTooltip={false} />
+											<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" />
 											<Icons.Dot />
 										</>
 									)}

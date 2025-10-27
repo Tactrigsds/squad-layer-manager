@@ -25,7 +25,7 @@ export type EditSettingsStore = {
 export const [Store, subHandle] = createStore()
 
 function createStore() {
-	const store = Zus.createStore<EditSettingsStore>((set, get, store) => {
+	const store = Zus.createStore<EditSettingsStore>((set, get) => {
 		const defaultSettings = SS.PublicServerSettingsSchema.parse({})
 		return {
 			ops: [],

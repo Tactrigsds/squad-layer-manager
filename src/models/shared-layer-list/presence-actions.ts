@@ -1,3 +1,4 @@
+import * as Obj from '@/lib/object'
 import * as SLL from '@/models/shared-layer-list'
 
 export type ActionInput = { hasEdits: boolean; prev?: SLL.ClientPresence }
@@ -53,11 +54,15 @@ export const startActivity = (activity: SLL.ClientPresenceActivity): Action => {
 	})
 }
 
-export const endActivity: Action = (input) => {
+export const endActivity = (activity?: SLL.ClientPresenceActivity): Action => (input) => {
+	let newActivity: SLL.ClientPresenceActivity | null = null
+	if (activity) {
+		newActivity = Obj.deepEqual(activity, input.prev?.currentActivity) ? null : input.prev!.currentActivity
+	}
 	return {
 		away: false,
-		editing: input.hasEdits,
-		currentActivity: null,
+		editing: input.hasEdits || !!newActivity,
+		currentActivity: newActivity,
 		lastSeen: Date.now(),
 	}
 }
