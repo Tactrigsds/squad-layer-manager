@@ -149,14 +149,8 @@ jobs:
           COMMIT_TAG="${{ needs.build.outputs.image-tag }}"
           LATEST_TAG="ghcr.io/$OWNER/squad-layer-manager:latest"
 
-          # Pull the commit-tagged image
-          docker pull $COMMIT_TAG
-
-          # Tag it as latest
-          docker tag $COMMIT_TAG $LATEST_TAG
-
-          # Push the latest tag
-          docker push $LATEST_TAG
+          # Tag the commit-tagged image as latest without pulling/pushing
+          docker buildx imagetools create --tag $LATEST_TAG $COMMIT_TAG
 
   deploy:
     runs-on: ubuntu-latest
