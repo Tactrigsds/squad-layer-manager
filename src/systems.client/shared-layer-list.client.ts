@@ -103,7 +103,7 @@ function createStore() {
 
 			async handleServerUpdate(update) {
 				switch (update.code) {
-					case 'init':
+					case 'init': {
 						this.pushPresenceAction(PresenceActions.editSessionChanged)
 						set({
 							session: update.session,
@@ -114,6 +114,7 @@ function createStore() {
 							itemLocks: new Map(),
 						})
 						break
+					}
 					case 'op': {
 						const state = get()
 						const nextPendingOpId = state.outgoingOpsPendingSync[0]
@@ -238,8 +239,6 @@ function createStore() {
 					})
 				)
 
-				void this.pushPresenceAction(PresenceActions.madeEditAction)
-
 				await processUpdate({
 					code: 'op',
 					op,
@@ -262,6 +261,7 @@ function createStore() {
 				const config = await ConfigClient.fetchConfig()
 				const user = await UsersClient.fetchLoggedInUser()
 				let presenceUpdated = false
+				const beforeUpdates = get().presence.get(config.wsClientId)
 				set(state =>
 					Im.produce(state, draft => {
 						let currentPresence = draft.presence.get(config.wsClientId)
@@ -283,14 +283,8 @@ function createStore() {
 						userId: user.discordId,
 						changes: update,
 					})
-					if (res?.code === 'err:locked') {
-						set(state =>
-							Im.produce(state, draft => {
-								const presence = draft.presence.get(config.wsClientId)
-								if (!presence) return
-								presence.currentActivity = null
-							})
-						)
+					if (res?.code === 'err:locked' && beforeUpdates) {
+						this.pushPresenceAction(PresenceActions.failedToAcquireLocks(beforeUpdates))
 					}
 				}
 			},
@@ -347,6 +341,7 @@ async function processUpdate(update: SLL.ClientUpdate) {
 
 	if (res && res.code === 'err:permission-denied') {
 		RbacClient.handlePermissionDenied(res)
+		return
 	} else if (res) {
 		globalToast$.next({ variant: 'destructive', title: res.msg })
 	}
@@ -399,13 +394,15 @@ export async function setup() {
 		if (!modified && currentActivity?.code === 'changing-settings') {
 			Store.getState().pushPresenceAction(PresenceActions.endActivity({ code: 'changing-settings' }))
 		}
-		if (modified && !currentActivity || currentActivity?.code !== 'changing-settings') {
+		if (modified && (!currentActivity || currentActivity?.code !== 'changing-settings')) {
 			Store.getState().pushPresenceAction(PresenceActions.startActivity({ code: 'changing-settings' }))
 		}
 	})
 
 	const onQueuePage$ = AppRoutesClient.route$
 		.pipe(Rx.map(route => route?.id === '/servers/:id'))
+
+	const pageLoaded$ = onQueuePage$.pipe(Rx.filter((visiting) => visiting))
 
 	const pageInteraction$ = onQueuePage$.pipe(
 		Rx.switchMap((visiting) => {
@@ -424,12 +421,16 @@ export async function setup() {
 		Rx.startWith(false),
 		Rx.pairwise(),
 		Rx.switchMap(([visitingPrev, visiting]) => {
-			if (!visitingPrev) return Rx.EMPTY
 			if (!visiting) return Rx.of(true)
 			// handle non-spa navigation while we're on a queue page
 			return Rx.fromEvent(window, 'beforeunload')
 		}),
 	)
+
+	pageLoaded$.subscribe(() => {
+		const storeState = Store.getState()
+		storeState.pushPresenceAction(PresenceActions.pageLoaded)
+	})
 
 	pageInteraction$
 		.subscribe((active) => {

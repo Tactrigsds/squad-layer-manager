@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import type { PublicConfig } from '@/server/config'
 import type { AppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
@@ -20,6 +21,7 @@ export const [useTrpcConnected, trpcConnected$] = ReactRx.bind(_trpcConnected$, 
 trpcConnected$.subscribe()
 let previousConnections = false
 let attempt = 0
+let previousConfig: PublicConfig | undefined
 const wsClient = createWSClient({
 	keepAlive: {
 		enabled: false,
@@ -64,14 +66,11 @@ const wsClient = createWSClient({
 		const config = await ConfigClient.fetchConfig()
 		attempt = 0
 
-		const buildGitBranch = import.meta.env.PUBLIC_GIT_BRANCH ?? 'unknown'
-		const buildGitSha = import.meta.env.PUBLIC_GIT_SHA ?? 'unknown'
 		// -------- version skew protection --------
-		//  This only works as long as index.html is resolved directly from fastify and not cached.
-		if (config.PUBLIC_GIT_SHA !== buildGitSha) {
+		if (previousConfig && previousConfig.PUBLIC_GIT_SHA !== config.PUBLIC_GIT_SHA) {
 			await sleep(1000)
 			globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
-			const buildFormatted = formatVersion(buildGitBranch, buildGitSha)
+			const buildFormatted = formatVersion(previousConfig.PUBLIC_GIT_BRANCH, previousConfig.PUBLIC_GIT_SHA)
 			const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
 			console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
 			window.location.reload()
