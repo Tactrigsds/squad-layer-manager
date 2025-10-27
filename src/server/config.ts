@@ -12,9 +12,9 @@ import * as Cli from '@/server/systems/cli.ts'
 import * as LayerDb from '@/server/systems/layer-db.server.ts'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
+import { parse as parseJsonc } from 'jsonc-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import stripJsonComments from 'strip-json-comments'
 import { z } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
 import * as Env from './env.ts'
@@ -118,7 +118,8 @@ export async function ensureSetup() {
 	}
 
 	const raw = await fs.readFile(Cli.options.config, 'utf-8')
-	const rawObj = JSON.parse(stripJsonComments(raw))
+
+	const rawObj = parseJsonc(raw)
 	CONFIG = ConfigSchema.parse(rawObj)
 
 	// -------- no duplicate command strings --------
