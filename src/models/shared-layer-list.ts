@@ -154,7 +154,6 @@ export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vot
 export type ItemOwnedActivityCode = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 export type ClientPresenceActivity = z.infer<typeof UserPresenceActivitySchema>
 
-
 export function isEditingStateActivity(
 	activity: ClientPresenceActivity,
 ): activity is Extract<ClientPresenceActivity, { code: 'editing-item' }> {
