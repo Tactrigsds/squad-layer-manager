@@ -1,4 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import { z } from 'zod'
 export type Filter = typeof Schema.filters.$inferSelect
 export type NewFilter = typeof Schema.filters.$inferInsert
 export type Server = typeof Schema.servers.$inferInsert
@@ -16,4 +17,4 @@ export type NewMatchHistory = typeof Schema.matchHistory.$inferInsert
 export type BalanceTriggerEvent = typeof Schema.balanceTriggerEvents.$inferSelect
 export type NewBalanceTriggerEvent = typeof Schema.balanceTriggerEvents.$inferInsert
 
-export const TRIGGER_LEVEL = Schema.TRIGGER_LEVEL
+export const TRIGGER_LEVEL = z.enum(Schema.TRIGGER_LEVEL)

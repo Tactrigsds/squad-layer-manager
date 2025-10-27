@@ -1,6 +1,5 @@
 import { bigint, boolean, float, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
-import { z } from 'zod'
 
 export const matchHistory = mysqlTable(
 	'matchHistory',
@@ -38,7 +37,7 @@ export const matchHistory = mysqlTable(
 	}),
 )
 
-export const TRIGGER_LEVEL = z.enum(['info', 'warn', 'violation'])
+export const TRIGGER_LEVEL = ['info', 'warn', 'violation'] as const
 export const balanceTriggerEvents = mysqlTable(
 	'balanceTriggerEvents',
 	{
@@ -48,7 +47,7 @@ export const balanceTriggerEvents = mysqlTable(
 		matchTriggeredId: int('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		// the generic form of the message
 		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
-		level: mysqlEnum(TRIGGER_LEVEL.options).notNull(),
+		level: mysqlEnum(TRIGGER_LEVEL).notNull(),
 		evaluationResult: json('evaluationResult').notNull(),
 	},
 )

@@ -1,10 +1,47 @@
+# Dependencies
 /node_modules
+
+# Git
 /.git
-/dist
-/data
-/.env
-/.zed
-/config.json
-logs
 /.github
+
+# Build artifacts (will be created in builder stage)
+/dist
+/dist-server
+
+# Development files
+/.zed
+/.idea
+/.ropeproject
+/.million
+/certs
+/data
+
+# Environment and config (will be provided at runtime)
+/.env
+/.env.*
+/config.json
+/slm-config.json
+
+# Logs
+/logs
+*.log
+
+# Test files
+*.test.ts
+*.test.js
+/vitest.config.*
+
+# Documentation
 /README.md
+/docs
+/todo.md
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.DS_Store
+
+# TypeScript build info
+*.tsbuildinfo

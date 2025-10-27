@@ -26,7 +26,7 @@ await C.spanOp('main', { tracer }, async () => {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
-	baseLogger.info('-------- Starting SLM version % --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
+	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	Rbac.setup()
 	Sessions.setup()

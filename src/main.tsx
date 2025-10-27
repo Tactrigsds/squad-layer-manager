@@ -27,11 +27,9 @@ import FilterIndex from './components/filter-index.tsx'
 import FilterNew from './components/filter-new.tsx'
 import FullPageSpinner from './components/full-page-spinner.tsx'
 import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
-import { formatVersion as formatAppVersion } from './lib/versioning.ts'
 
 // Enable Map and Set support in Immer
 enableMapSet()
-console.log(`%cSLM version ${formatAppVersion(import.meta.env.PUBLIC_GIT_BRANCH, import.meta.env.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 
 const router = createBrowserRouter([
 	{
