@@ -8,7 +8,7 @@ export async function ensureCliParsed() {
 	const program = new Command()
 	program
 		.option('--env-file <path>', 'Path to the environment file (optional)')
-		.option('--config <path>', 'Path to the configuration file', 'slm-config.json')
+		.option('--config <path>', 'Path to the configuration file', 'slm-config.jsonc')
 		.helpOption('--help', 'Display help information')
 		.parse(process.argv)
 

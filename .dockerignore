@@ -21,7 +21,7 @@
 /.env
 /.env.*
 /config.json
-/slm-config.json
+/slm-config.json*
 
 # Logs
 /logs

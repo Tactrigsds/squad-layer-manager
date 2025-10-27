@@ -83,60 +83,42 @@ export async function setup() {
 	const ops: Promise<void>[] = []
 
 	for (const serverConfig of CONFIG.servers) {
-		ops.push((async () => {
-			let serverState: SS.ServerState | undefined
-			await DB.runTransaction(ctx, async () => {
-				{
-					// const [settingsRow] = await ctx.db().select({ settings: Schema.servers.settings }).from(Schema.servers).where(
-					// 	E.eq(Schema.servers.id, serverConfig.id),
-					// ).for('update')
-					// if (settingsRow) {
-					// 	const settings = unsuperjsonify(Schema.servers, settingsRow).settings
-					// 	settings.connections = serverConfig.connections
-					// 	await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, { settings })).where(
-					// 		E.eq(Schema.servers.id, serverConfig.id),
-					// 	)
-					// }
-				}
-
-				const [serverRaw] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
-				ctx.log.warn('serverRaw %o', serverRaw)
-				const serverParsedRes = serverRaw
-					? SS.ServerStateSchema.safeParse(unsuperjsonify(Schema.servers, serverRaw))
-					: undefined
-				if (!serverRaw) {
+		ops.push((async function initServer() {
+			const serverState = await DB.runTransaction(ctx, async () => {
+				let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
+				server = unsuperjsonify(Schema.servers, server) as typeof server
+				if (!server) {
 					ctx.log.info(`Server ${serverConfig.id} not found, creating new`)
-				} else if (serverParsedRes && !serverParsedRes.success) {
-					ctx.log.warn(`Server ${serverConfig.id} is invalid, recreating`)
-					ctx.log.warn(`errors: %o`, serverParsedRes.error)
-				}
-				serverState = serverParsedRes?.success ? serverParsedRes.data : undefined
-				if (!serverState) {
-					serverState = SS.ServerStateSchema.parse({
+					server = {
 						id: serverConfig.id,
 						displayName: serverConfig.displayName,
-						lastRoll: null,
+						settings: SS.ServerSettingsSchema.parse({ connections: serverConfig.connections }),
 						layerQueue: [],
-						settings: { connections: serverConfig.connections },
-					})
-
-					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, serverState))
+						layerQueueSeqId: 0,
+						lastRoll: null,
+					}
+					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, server))
 				} else {
-					const toUpdate: Partial<SS.ServerState> = {}
+					ctx.log.info(`Server ${serverConfig.id} found, ensuring settings are up-to-date`)
 
-					if (serverState && serverState.displayName !== serverConfig.displayName) {
-						toUpdate.displayName = serverConfig.displayName
+					let update = false
+					if (server.displayName !== serverConfig.displayName) {
+						update = true
+						server.displayName = serverConfig.displayName
 					}
-					if (serverState && !Obj.deepEqual(serverConfig.connections, serverState.settings.connections)) {
-						toUpdate.settings = { ...serverState.settings, connections: serverConfig.connections }
-					}
-					if (!Obj.isEmpty(toUpdate)) {
-						// await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, toUpdate)).where(
-						// 	E.eq(Schema.servers.id, serverConfig.id),
-						// )
-						serverState = { ...serverState, ...toUpdate }
+					const oldSettings = server.settings
+					server.settings = SS.ServerSettingsSchema.parse({ ...(oldSettings as object), connections: serverConfig.connections })
+
+					if (!Obj.deepEqual(server.settings, oldSettings)) update = true
+					if (update) {
+						ctx.log.info(`Server ${serverConfig.id} settings updated`)
+						await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, server)).where(E.eq(Schema.servers.id, serverConfig.id))
+					} else {
+						ctx.log.info(`Server ${serverConfig.id} settings are up-to-date`)
 					}
 				}
+
+				return server as SS.ServerState
 			})
 
 			if (!serverState) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
@@ -248,11 +230,9 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 	sub.add(
 		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
 			const ctx = { ...getBaseCtx(), ...slice }
-			ctx.log.info(
-				'active match id: %s, status: %s',
-				MatchHistory.getCurrentMatch(ctx)?.historyEntryId,
-				MatchHistory.getCurrentMatch(ctx)?.status,
-			)
+			const currentMatch = MatchHistory.getCurrentMatch(ctx)
+			if (!currentMatch) return
+			ctx.log.info('active match id: %s, status: %s', currentMatch.historyEntryId, currentMatch.status)
 		}),
 	)
 
@@ -373,83 +353,89 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 	// pair off detected new layers via RCON with NEW_GAME events from the logs (which we may receive in any order and within a fairly wide window), and handle them in a reasonably durable way
 	ctx.serverSliceSub.add(
 		triggerWait$
-			// exhaustMap means we ignore subsequent emissions until the current one is processed
-			.pipe(Rx.exhaustMap(async ([triggerType, payload]) => {
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				if (ctx.server.serverRolling$.value) {
-					ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
-					return Rx.EMPTY
-				}
-				try {
-					ctx.server.serverRolling$.next(true)
-
-					let newGameEvent: SME.NewGame | undefined
-					let newLayer: L.UnvalidatedLayer
-
-					ctx.log.info('Handling new game trigger: %s', triggerType)
-
-					// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
-					const timeoutThreshold = 40_000
-
-					const timeout$ = Rx.timer(timeoutThreshold).pipe(
-						Rx.map(() => 'timeout' as const),
-					)
-					// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
-					const doubleEvent$ = triggerWait$.pipe(
-						Rx.concatMap(([e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
-					)
-					if (triggerType === 'new-game') {
-						newGameEvent = payload
-						ctx.log.debug('Received NEW_GAME event, waiting for layer change')
-
-						const out = await Rx.firstValueFrom(Rx.race(
-							currentLayerChanged$,
-							doubleEvent$,
-							timeout$,
-						))
-
-						if (out === 'double-event') {
-							ctx.log.error('Double event detected: %s', triggerType)
-							return
-						} else if (out === 'timeout') {
-							ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
-							const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
-							if (statusRes.code === 'err:rcon') {
-								ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
-								return
-							}
-							ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
-							newLayer = statusRes.data.currentLayer
-						} else {
-							ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
-							newLayer = out
-						}
-					} else {
-						newLayer = payload
-						ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
-						const out = await Rx.firstValueFrom(Rx.race(
-							newGame$,
-							doubleEvent$,
-							timeout$,
-						))
-
-						if (out === 'double-event') {
-							ctx.log.error('Double event detected: %s', triggerType)
-							return
-						} else if (out === 'timeout') {
-							ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
-						} else {
-							ctx.log.debug('Received NEW_GAME event')
-							newGameEvent = out
-						}
+			.pipe(
+				Rx.map(args => [resolveSliceCtx(getBaseCtx(), serverId), ...args] as const),
+				C.durableSub('squad-server:handle-new-layer', {
+					// exhaustMap means we ignore subsequent emissions until the current one is processed
+					taskScheduling: 'exhaust',
+					ctx,
+					tracer,
+				}, async ([ctx, triggerType, payload]) => {
+					if (ctx.server.serverRolling$.value) {
+						ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
+						return Rx.EMPTY
 					}
+					try {
+						ctx.server.serverRolling$.next(true)
 
-					ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
-					await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
-				} finally {
-					ctx.server.serverRolling$.next(false)
-				}
-			})).subscribe(),
+						let newGameEvent: SME.NewGame | undefined
+						let newLayer: L.UnvalidatedLayer
+
+						ctx.log.info('Handling new game trigger: %s', triggerType)
+
+						// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
+						const timeoutThreshold = 40_000
+
+						const timeout$ = Rx.timer(timeoutThreshold).pipe(
+							Rx.map(() => 'timeout' as const),
+						)
+						// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
+						const doubleEvent$ = triggerWait$.pipe(
+							Rx.concatMap(([e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
+						)
+						if (triggerType === 'new-game') {
+							newGameEvent = payload
+							ctx.log.debug('Received NEW_GAME event, waiting for layer change')
+
+							const out = await Rx.firstValueFrom(Rx.race(
+								currentLayerChanged$,
+								doubleEvent$,
+								timeout$,
+							))
+
+							if (out === 'double-event') {
+								ctx.log.error('Double event detected: %s', triggerType)
+								return
+							} else if (out === 'timeout') {
+								ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
+								const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
+								if (statusRes.code === 'err:rcon') {
+									ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
+									return
+								}
+								ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
+								newLayer = statusRes.data.currentLayer
+							} else {
+								ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
+								newLayer = out
+							}
+						} else {
+							newLayer = payload
+							ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
+							const out = await Rx.firstValueFrom(Rx.race(
+								newGame$,
+								doubleEvent$,
+								timeout$,
+							))
+
+							if (out === 'double-event') {
+								ctx.log.error('Double event detected: %s', triggerType)
+								return
+							} else if (out === 'timeout') {
+								ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
+							} else {
+								ctx.log.debug('Received NEW_GAME event')
+								newGameEvent = out
+							}
+						}
+
+						ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
+						await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
+					} finally {
+						ctx.server.serverRolling$.next(false)
+					}
+				}),
+			).subscribe(),
 	)
 }
 

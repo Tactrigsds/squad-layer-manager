@@ -28,7 +28,7 @@ dist-ssr
 *.tsbuildinfo
 .env*
 
-slm-config.json
+slm-config.json*
 extra-columns.json
 google-credentials.json
 
