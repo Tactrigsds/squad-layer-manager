@@ -84,12 +84,8 @@ export function FilterEntityLabel(props: { className?: string; filter: F.FilterE
 }
 
 export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
-	const onMouseEnter = () => {
-		FilterEntityClient.prefetchQueriesForFilter(props.filterId)
-	}
 	return (
 		<a
-			onMouseEnter={onMouseEnter}
 			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
 			target="_blank"
 			href={AR.link('/filters/:id', props.filterId)}
