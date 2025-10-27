@@ -38,9 +38,6 @@ export type Store = {
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
 export const Store = Zus.createStore<Store>((set, get, store) => {
 	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
-	function writeExtraQueryFilters() {
-		localStorage.setItem('extraQueryFilters:v2', Array.from(get().extraQueryFilters).join())
-	}
 	if (extraQueryFilters.size === 0) {
 		;(async () => {
 			const config = await ConfigClient.fetchConfig()
@@ -50,13 +47,20 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 			set({
 				extraQueryFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
 			})
-			writeExtraQueryFilters()
 		})()
 	}
 	FilterEntityClient.filterEntityChanged$.subscribe(() => {
-		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f))
-		store.setState({ extraQueryFilters: new Set(extraFilters) })
-		writeExtraQueryFilters()
+		const extraFilters = Array.from(get().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f)).sort()
+		const currentExtraFilters = Array.from(get().extraQueryFilters).sort()
+		if (!Obj.deepEqual(extraFilters, currentExtraFilters)) {
+			store.setState({ extraQueryFilters: new Set(extraFilters) })
+		}
+	})
+
+	store.subscribe((state, prev) => {
+		if (!Obj.deepEqual(state.extraQueryFilters, prev.extraQueryFilters)) {
+			localStorage.setItem('extraQueryFilters:v2', Array.from(state.extraQueryFilters).join())
+		}
 	})
 
 	return ({
@@ -65,13 +69,12 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 			layerItemsState: 0,
 		},
 		hoveredConstraintItemId: null,
-		extraQueryFilters: new Set(),
+		extraQueryFilters,
 		setExtraQueryFilters(cb) {
 			set(state => {
 				const newState = Im.produce(state, draft => {
 					cb(draft.extraQueryFilters)
 				})
-				writeExtraQueryFilters()
 				return newState
 			})
 		},
@@ -726,6 +729,7 @@ async function setup() {
 		Store.getState().increment(ctx)
 	})
 	await initPromise
+	console.log('Layers loaded')
 	// Set up window focus handlers after successful initialization
 	// const focusHandlers = setupWindowFocusHandlers()
 }
@@ -911,7 +915,6 @@ export function useExtraFiltersStore() {
 				})
 			},
 			add(filterId) {
-				addActive(filterId)
 				updateQueryStore(draft => {
 					draft.add(filterId)
 				})
