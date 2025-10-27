@@ -57,13 +57,14 @@ COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
 # Set runtime environment
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+
 ARG GIT_SHA="unknown"
 ARG GIT_BRANCH="unknown"
 ENV PUBLIC_GIT_SHA=${GIT_SHA}
 ENV PUBLIC_GIT_BRANCH=${GIT_BRANCH}
-ENV NODE_ENV=production
-ENV HOST=0.0.0.0
-ENV PORT=3000
 
 # Run the server using the compiled output
 CMD ["pnpm", "run", "server:prod"]
