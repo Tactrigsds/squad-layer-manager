@@ -35,6 +35,9 @@ importers:
       mysql2:
         specifier: ^3.14.1
         version: 3.14.1
+      seedrandom:
+        specifier: ^3.0.5
+        version: 3.0.5
       ssh2:
         specifier: ^1.16.0
         version: 1.16.0
@@ -300,6 +303,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.0
         version: 19.1.6(@types/react@19.1.0)
+      '@types/seedrandom':
+        specifier: ^3.0.8
+        version: 3.0.8
       '@types/sql.js':
         specifier: ^1.4.9
         version: 1.4.9
@@ -3336,6 +3342,9 @@ packages:
   '@types/react@19.1.0':
     resolution: {integrity: sha512-UaicktuQI+9UKyA4njtDOGBD/67t8YEBt2xdfqu8+gP9hqPUPsiXlNPcpS2gVdjmis5GKPG3fCxbQLVgxsQZ8w==}
 
+  '@types/seedrandom@3.0.8':
+    resolution: {integrity: sha512-TY1eezMU2zH2ozQoAFAQFOPpvP15g+ZgSfTZt31AUUH/Rxtnz3H+A/Sv1Snw2/amp//omibc+AEkTaA8KUeOLQ==}
+
   '@types/shimmer@1.2.0':
     resolution: {integrity: sha512-UE7oxhQLLd9gub6JKIAhDq06T0F6FnztwMNRvYgjeQSBeMc1ZG/tA47EwfduvkuQS8apbkM/lpLpWsaCeYsXVg==}
 
@@ -5556,6 +5565,9 @@ packages:
 
   secure-json-parse@4.0.0:
     resolution: {integrity: sha512-dxtLJO6sc35jWidmLxo7ij+Eg48PM/kleBsxpC8QJE0qJICe+KawkDQmvCMZUr9u7WKVHgMW6vy3fQ7zMiFZMA==}
+
+  seedrandom@3.0.5:
+    resolution: {integrity: sha512-8OwmbklUNzwezjGInmZ+2clQmExQPvomqjL7LFqOYqtmuxRgQYqOD3mHaU+MvZn5FLUeVxVfQjwLZW/n/JFuqg==}
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -9141,6 +9153,8 @@ snapshots:
     dependencies:
       csstype: 3.1.3
 
+  '@types/seedrandom@3.0.8': {}
+
   '@types/shimmer@1.2.0': {}
 
   '@types/sql.js@1.4.9':
@@ -11732,6 +11746,8 @@ snapshots:
   secure-json-parse@2.7.0: {}
 
   secure-json-parse@4.0.0: {}
+
+  seedrandom@3.0.5: {}
 
   semver@6.3.1: {}
 

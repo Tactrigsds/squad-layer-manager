@@ -1,3 +1,4 @@
+// this file no longer has a decent organizing principle, we should be annexing it over time
 import { distinctDeepEquals } from '@/lib/async'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'

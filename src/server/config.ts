@@ -100,7 +100,7 @@ export const ConfigSchema = z.object({
 			{ name: 'Unit_2' },
 			{ name: 'Alliance_2', visible: false },
 		],
-		defaultSortBy: { type: 'random' },
+		defaultSortBy: { type: 'random', seed: LQY.getSeed() },
 	}),
 })
 

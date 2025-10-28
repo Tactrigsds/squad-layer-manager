@@ -925,7 +925,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 
 		const res = await LayerQueries.queryLayers({
 			ctx: layerCtx,
-			input: { constraints, pageSize: 1, sort: { type: 'random', seed: Math.random() } },
+			input: { constraints, pageSize: 1, sort: { type: 'random', seed: LQY.getSeed() } },
 		})
 		if (res.code !== 'ok') throw new Error(`Failed to query layers: ${JSON.stringify(res)}`)
 		const ids = res.layers.map(layer => layer.id)

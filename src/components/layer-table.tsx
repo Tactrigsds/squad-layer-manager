@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import { Focusable } from '@/lib/react'
@@ -273,10 +274,11 @@ export default function LayerTable(props: {
 	}
 
 	let defaultSortingState: SortingState = []
-	if (props.defaultSort && props.defaultSort.type === 'column') {
+	const defaultSort = props.defaultSort ?? cfg?.defaultSortBy
+	if (defaultSort && defaultSort.type === 'column') {
 		defaultSortingState = [{
-			id: props.defaultSort.sortBy,
-			desc: props.defaultSort.sortDirection === 'DESC',
+			id: defaultSort.sortBy,
+			desc: defaultSort.sortDirection === 'DESC',
 		}]
 	}
 
@@ -290,7 +292,7 @@ export default function LayerTable(props: {
 		setRandomize(false)
 		props.setPageIndex(0)
 	}
-	const [_randomize, setRandomize] = useState<boolean>(props.defaultSort?.type === 'random')
+	const [_randomize, setRandomize] = useState<boolean>(defaultSort?.type === 'random')
 	const randomize = !showSelectedLayers && _randomize
 
 	function toggleRandomize() {
@@ -374,9 +376,9 @@ export default function LayerTable(props: {
 		props.setPageIndex(newState.pageIndex)
 		setPageSize(newState.pageSize)
 	}
-	const [seed, setSeed] = useState(Math.random() * Number.MAX_SAFE_INTEGER)
+	const [seed, setSeed] = useState(defaultSort?.type === 'random' ? defaultSort.seed : LQY.getSeed())
 	function refreshSeed() {
-		setSeed(Math.random() * Number.MAX_SAFE_INTEGER)
+		setSeed(LQY.getSeed())
 	}
 
 	let sort: LQY.LayersQueryInput['sort'] = LQY.DEFAULT_SORT
@@ -613,10 +615,22 @@ export default function LayerTable(props: {
 					>
 						<Dices />
 					</Button>
-					<div className="flex items-center space-x-1">
-						<Switch disabled={showSelectedLayers} checked={randomize} onCheckedChange={() => toggleRandomize()} id={toggleRandomizeId} />
-						<Label htmlFor={toggleRandomizeId}>Randomize</Label>
-					</div>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<div className="flex items-center space-x-1">
+								<Switch
+									disabled={showSelectedLayers}
+									checked={randomize}
+									onCheckedChange={() => toggleRandomize()}
+									id={toggleRandomizeId}
+								/>
+								<Label htmlFor={toggleRandomizeId}>Randomize</Label>
+							</div>
+						</TooltipTrigger>
+						<TooltipContent>
+							Randomize layer selection (weighted to preferable layers)
+						</TooltipContent>
+					</Tooltip>
 					<Separator orientation="vertical" />
 
 					{/*--------- rows per page ---------*/}

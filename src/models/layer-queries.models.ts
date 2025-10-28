@@ -100,7 +100,7 @@ export const LayersQuerySortSchema = z
 		}),
 		z.object({
 			type: z.literal('random'),
-			seed: z.number().int().positive().optional(),
+			seed: z.string().default(getSeed()),
 		}),
 	])
 	.describe('if not provided, no sorting will be done')
@@ -568,3 +568,7 @@ export type ExtraQueryFiltersState = {
 }
 
 export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
+
+export function getSeed() {
+	return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString()
+}

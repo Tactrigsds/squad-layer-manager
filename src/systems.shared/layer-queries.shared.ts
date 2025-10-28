@@ -1,8 +1,6 @@
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
-import { useRefConstructor } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand.ts'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -12,6 +10,7 @@ import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
+import seedrandom from 'seedrandom'
 
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
@@ -39,6 +38,7 @@ export async function queryLayers(args: {
 			input.pageSize,
 			input,
 			true,
+			input.sort.seed,
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}
@@ -691,6 +691,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	numLayers: number,
 	input: LQY.LayerQueryBaseInput,
 	returnLayers: ReturnLayers,
+	seed: string,
 ): Promise<GenLayerOutput<ReturnLayers>> {
 	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
 
@@ -700,13 +701,16 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		// @ts-expect-error idgaf
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
-	let baseLayersQuery = ctx.layerDb()
+
+	const rng = seedrandom(seed.toString())
+
+	const baseLayersQuery = ctx.layerDb()
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
-		.from(LC.layersView(ctx)).where(p_condition).orderBy(sql`RANDOM()`)
-	if (totalCount > 5000) {
-		// @ts-expect-error close enough
-		baseLayersQuery = baseLayersQuery.orderBy(sql`RANDOM()`).limit(Math.min(numLayers * 500, 5000))
-	}
+		.from(LC.layersView(ctx))
+		.where(p_condition)
+		.orderBy(sql`((id * 2654435761) + ${rng.int32()}) & 0x7FFFFFFF`)
+		.limit(Math.min(numLayers * 500, 5000))
+
 	const baseLayers = await baseLayersQuery
 	const indexedBaseLayers = baseLayers.map((layer, index): Record<string, number | null> & { index: number } => ({ ...layer, index }))
 	const selectedIndexes: number[] = []
@@ -715,7 +719,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		const filtered = new Set<number>(selectedIndexes)
 		function pickLayerIndex() {
 			if (filtered.size === indexedBaseLayers.length) return
-			for (const layer of shuffled(indexedBaseLayers)) {
+			for (const layer of shuffled(indexedBaseLayers, rng)) {
 				if (!filtered.has(layer.index)) {
 					return layer.index
 				}
@@ -744,7 +748,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 			if (valuesMap.size === 0) break
 			const values = Array.from(valuesMap.keys())
 			const weights = values.map(value => weightsMap.get(value)!)
-			const selected = weightedRandomSelection(values, weights)
+			const selected = weightedRandomSelection(values, weights, rng)
 			for (const [value, indexes] of valuesMap.entries()) {
 				if (value === selected) continue
 				for (const index of indexes) {

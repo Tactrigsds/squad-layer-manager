@@ -22,6 +22,7 @@ export default function TableStyleLayerPicker(props: {
 				defaultPageSize={props.defaultPageSize}
 				baseInput={props.queryContext}
 				pageIndex={pageIndex}
+				defaultSort={{ type: 'random', seed: LQY.getSeed() }}
 				editingSingleValue={props.editingSingleValue}
 				setPageIndex={setPageIndex}
 				selected={props.selected}

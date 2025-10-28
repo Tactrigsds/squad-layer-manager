@@ -9,6 +9,7 @@ import * as Env from '@/server/env'
 import * as Log from '@/server/logger'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared'
+import seedrandom from 'seedrandom'
 import { beforeAll, describe, expect, test } from 'vitest'
 
 let baseCtx!: CS.LayerQuery
@@ -24,6 +25,12 @@ function createLayerItems(layerIds: string[]): LQY.LayerItem[] {
 		layerId,
 		itemId: `test-item-${index}`,
 	}))
+}
+
+// Helper function to generate seeds for repeated tests
+function generateSeeds(baseSeed: string, count: number): string[] {
+	const rng = seedrandom(baseSeed)
+	return Array.from({ length: count }, () => Math.floor(rng() * Number.MAX_SAFE_INTEGER).toString())
 }
 
 beforeAll(async () => {
@@ -181,13 +188,13 @@ describe('queryLayers', () => {
 		}
 	})
 
-	test('handles random sorting', async () => {
+	test.each(generateSeeds('handles-random-sorting-test', 3))('handles random sorting (seed: %s)', async (seed) => {
 		const res = await LayerQueries.queryLayers({
 			input: {
 				pageSize: 5,
 				sort: {
 					type: 'random',
-					seed: 456,
+					seed,
 				},
 			},
 			ctx: baseCtx,
@@ -455,146 +462,161 @@ describe('getLayerStatusesForLayerQueue', () => {
 })
 
 describe('getRandomGeneratedLayers (via queryLayers)', () => {
-	test('generates random layers without constraints through queryLayers', async () => {
-		const res = await LayerQueries.queryLayers({
-			ctx: baseCtx,
-			input: {
-				pageSize: 10,
-				sort: { type: 'random', seed: 12345 },
-			},
-		})
+	test.each(generateSeeds('generates-random-layers-no-constraints', 3))(
+		'generates random layers without constraints through queryLayers (seed: %s)',
+		async (seed) => {
+			const res = await LayerQueries.queryLayers({
+				ctx: baseCtx,
+				input: {
+					pageSize: 10,
+					sort: { type: 'random', seed },
+				},
+			})
 
-		expect(res.code).toBe('ok')
-		if (res.code === 'ok') {
-			expect(res.layers.length).toBeLessThanOrEqual(10)
-			expect(res.totalCount).toBeGreaterThan(0)
-			expect(res.pageCount).toBe(1)
-			if (res.layers.length > 0) {
-				expect(res.layers[0]).toHaveProperty('id')
-				expect(res.layers[0]).toHaveProperty('Map')
+			expect(res.code).toBe('ok')
+			if (res.code === 'ok') {
+				expect(res.layers.length).toBeLessThanOrEqual(10)
+				expect(res.totalCount).toBeGreaterThan(0)
+				expect(res.pageCount).toBe(1)
+				if (res.layers.length > 0) {
+					expect(res.layers[0]).toHaveProperty('id')
+					expect(res.layers[0]).toHaveProperty('Map')
+				}
 			}
-		}
-	})
+		},
+	)
 
-	test('respects constraints when generating through queryLayers', async () => {
-		const filter = FB.comp(FB.eq('Gamemode', 'TC'))
+	test.each(generateSeeds('respects-constraints-generating', 3))(
+		'respects constraints when generating through queryLayers (seed: %s)',
+		async (seed) => {
+			const filter = FB.comp(FB.eq('Gamemode', 'TC'))
 
-		const res = await LayerQueries.queryLayers({
-			ctx: baseCtx,
-			input: {
-				pageSize: 10,
-				sort: { type: 'random', seed: 12345 },
-				constraints: [{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-filter' }],
-			},
-		})
+			const res = await LayerQueries.queryLayers({
+				ctx: baseCtx,
+				input: {
+					pageSize: 10,
+					sort: { type: 'random', seed },
+					constraints: [{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-filter' }],
+				},
+			})
 
-		expect(res.code).toBe('ok')
-		if (res.code === 'ok') {
-			// All generated layers should be TC if they exist
-			for (const layer of res.layers) {
-				expect(layer.Gamemode).toBe('TC')
+			expect(res.code).toBe('ok')
+			if (res.code === 'ok') {
+				// All generated layers should be TC if they exist
+				for (const layer of res.layers) {
+					expect(layer.Gamemode).toBe('TC')
+				}
 			}
-		}
-	})
+		},
+	)
 
-	test('successfully returns layers through queryLayers interface', async () => {
-		const res = await LayerQueries.queryLayers({
-			ctx: baseCtx,
-			input: {
-				pageSize: 10,
-				sort: { type: 'random', seed: 12345 },
-			},
-		})
+	test.each(generateSeeds('returns-layers-querylayers-interface', 3))(
+		'successfully returns layers through queryLayers interface (seed: %s)',
+		async (seed) => {
+			const res = await LayerQueries.queryLayers({
+				ctx: baseCtx,
+				input: {
+					pageSize: 10,
+					sort: { type: 'random', seed },
+				},
+			})
 
-		expect(res.code).toBe('ok')
-		if (res.code === 'ok') {
-			expect('layers' in res).toBe(true)
-			expect(Array.isArray(res.layers)).toBe(true)
-			expect(res.layers.length).toBeLessThanOrEqual(10)
-		}
-	})
-
-	test('respects multiple constraints together through queryLayers', async () => {
-		const filter = FB.and([
-			FB.comp(FB.eq('Gamemode', 'TC')),
-			// FB.comp(FB.inValues('Map', ['Narva', 'Skorpo', 'Chora'])),
-			FB.comp(FB.eq('Faction_1', 'USMC')),
-		])
-		const constraints: LQY.LayerQueryConstraint[] = [
-			{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-only' },
-			{
-				type: 'do-not-repeat',
-				rule: { field: 'Map', within: 3 },
-				id: 'no-repeat-map',
-				applyAs: 'where-condition',
-			},
-		]
-
-		const ctxWithLayerItems = {
-			...baseCtx,
-			layerItemsState: {
-				layerItems: createLayerItems(sampleLayerIds.slice(0, 1)),
-				firstLayerItemParity: 0,
-			},
-		}
-
-		const res = await LayerQueries.queryLayers({
-			ctx: ctxWithLayerItems,
-			input: {
-				pageSize: 5,
-				constraints,
-				sort: { type: 'random', seed: 12345 },
-			},
-		})
-
-		expect(res.code).toBe('ok')
-		if (res.code === 'ok') {
-			expect(res.layers.length).toBe(5)
-
-			// All generated layers should be TC if they exist
-			for (const layer of res.layers) {
-				expect(layer.Gamemode).toBe('TC')
+			expect(res.code).toBe('ok')
+			if (res.code === 'ok') {
+				expect('layers' in res).toBe(true)
+				expect(Array.isArray(res.layers)).toBe(true)
+				expect(res.layers.length).toBeLessThanOrEqual(10)
 			}
-		}
-	})
+		},
+	)
 
-	test('considers previous layer IDs for do-not-repeat through queryLayers', async () => {
-		if (sampleLayerIds.length === 0) return
+	test.each(generateSeeds('respects-multiple-constraints-together', 5))(
+		'respects multiple constraints together through queryLayers (seed: %s)',
+		async (seed) => {
+			const filter = FB.and([
+				FB.comp(FB.eq('Gamemode', 'TC')),
+				// FB.comp(FB.inValues('Map', ['Narva', 'Skorpo', 'Chora'])),
+				FB.comp(FB.eq('Faction_1', 'USMC')),
+			])
+			const constraints: LQY.LayerQueryConstraint[] = [
+				{ type: 'filter-anon', filter, applyAs: 'where-condition', id: 'tc-only' },
+				{
+					type: 'do-not-repeat',
+					rule: { field: 'Map', within: 3 },
+					id: 'no-repeat-map',
+					applyAs: 'where-condition',
+				},
+			]
 
-		const constraints: LQY.LayerQueryConstraint[] = [
-			{
-				type: 'do-not-repeat',
-				rule: { field: 'Layer', within: 2 },
-				id: 'no-repeat-layer',
-				applyAs: 'where-condition',
-			},
-		]
-
-		const ctxWithLayerItems = {
-			...baseCtx,
-			layerItemsState: {
-				layerItems: createLayerItems([sampleLayerIds[0]]),
-				firstLayerItemParity: 0,
-			},
-		}
-
-		const res = await LayerQueries.queryLayers({
-			ctx: ctxWithLayerItems,
-			input: {
-				pageSize: 5,
-				constraints,
-				sort: { type: 'random', seed: 12345 },
-			},
-		})
-
-		expect(res.code).toBe('ok')
-		if (res.code === 'ok') {
-			// Should not include the previous layer
-			for (const layer of res.layers) {
-				expect(layer.id).not.toBe(sampleLayerIds[0])
+			const ctxWithLayerItems = {
+				...baseCtx,
+				layerItemsState: {
+					layerItems: createLayerItems(sampleLayerIds.slice(0, 1)),
+					firstLayerItemParity: 0,
+				},
 			}
-		}
-	})
+
+			const res = await LayerQueries.queryLayers({
+				ctx: ctxWithLayerItems,
+				input: {
+					pageSize: 5,
+					constraints,
+					sort: { type: 'random', seed },
+				},
+			})
+
+			expect(res.code).toBe('ok')
+			if (res.code === 'ok') {
+				expect(res.layers.length).toBe(5)
+
+				// All generated layers should be TC if they exist
+				for (const layer of res.layers) {
+					expect(layer.Gamemode).toBe('TC')
+				}
+			}
+		},
+	)
+
+	test.each(generateSeeds('considers-previous-layer-ids-do-not-repeat', 5))(
+		'considers previous layer IDs for do-not-repeat through queryLayers (seed: %s)',
+		async (seed) => {
+			if (sampleLayerIds.length === 0) return
+
+			const constraints: LQY.LayerQueryConstraint[] = [
+				{
+					type: 'do-not-repeat',
+					rule: { field: 'Layer', within: 2 },
+					id: 'no-repeat-layer',
+					applyAs: 'where-condition',
+				},
+			]
+
+			const ctxWithLayerItems = {
+				...baseCtx,
+				layerItemsState: {
+					layerItems: createLayerItems([sampleLayerIds[0]]),
+					firstLayerItemParity: 0,
+				},
+			}
+
+			const res = await LayerQueries.queryLayers({
+				ctx: ctxWithLayerItems,
+				input: {
+					pageSize: 5,
+					constraints,
+					sort: { type: 'random', seed },
+				},
+			})
+
+			expect(res.code).toBe('ok')
+			if (res.code === 'ok') {
+				// Should not include the previous layer
+				for (const layer of res.layers) {
+					expect(layer.id).not.toBe(sampleLayerIds[0])
+				}
+			}
+		},
+	)
 })
 
 describe('Edge cases and error handling', () => {
@@ -1467,12 +1489,12 @@ describe('InvalidFilterNodeResults handling', () => {
 })
 
 // Integration test that was already working
-test('generate random layers', async () => {
+test.each(generateSeeds('generate-random-layers-test', 3))('generate random layers (seed: %s)', async (seed) => {
 	const result = await LayerQueries.queryLayers({
 		ctx: baseCtx,
 		input: {
 			pageSize: 5,
-			sort: { type: 'random', seed: 12345 },
+			sort: { type: 'random', seed },
 		},
 	})
 	expect(result.code).toBe('ok')

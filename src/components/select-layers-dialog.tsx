@@ -85,7 +85,7 @@ export default function SelectLayersDialog(props: {
 	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.layerQueryBaseInput)
 
 	return (
-		<Dialog open={props.open} onOpenChange={onOpenChange}>
+		<Dialog open={props.open} onOpenChange={onOpenChange} modal={true}>
 			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
 			<DialogContent className="w-auto max-w-full overflow-x-auto min-w-0 pb-2">
 				<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
