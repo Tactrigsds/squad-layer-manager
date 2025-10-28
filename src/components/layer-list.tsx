@@ -160,7 +160,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		?? parentItem?.endingVoteState
 
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem)
+	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'move' })
 	const user = UsersClient.useLoggedInUser()
 
 	const [dropdownOpen, _setDropdownOpen] = React.useState(false)

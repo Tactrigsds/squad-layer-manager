@@ -8,7 +8,7 @@ export function useRoute() {
 	return AR.resolveRoute(location.pathname)
 }
 
-export function useAppParams<R extends AR.Route<'server'>>(_route: R) {
+export function useAppParams<R extends AR.KnownRouteId>(_route: R) {
 	const params = useParams() as AR.RouteParamObj<R>
 	return params
 }

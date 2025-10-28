@@ -1,19 +1,23 @@
+// NOTE: we can't import anything here that would require a path alias, even recursively because it's used in vite.config.ts
+
 import Cookie from 'cookie'
 import { z } from 'zod'
+import * as Arr from './lib/array'
+import { MapTuple } from './lib/types'
 
 type GenericRouteDefinition = {
-	server: string
-	client?: string
+	id: string
 	handle: 'page' | 'custom'
 	websocket: boolean
-	params: string[] | never[]
+	params: ParamsBase
 	link: ((...args: string[]) => string) | ((...args: never[]) => string)
 	regex: RegExp
 }
 
-export type RouteDefinition<Params extends string[], Handle extends 'page' | 'custom'> = {
-	server: string
-	client?: string
+type ParamsBase = [string, ...string[]] | never[]
+
+export type RouteDefinition<Params extends ParamsBase, Handle extends 'page' | 'custom'> = {
+	id: string
 	handle: Handle
 	websocket: boolean
 	params: Params
@@ -21,16 +25,17 @@ export type RouteDefinition<Params extends string[], Handle extends 'page' | 'cu
 	regex: RegExp
 }
 
-type GetLink<Params extends string[]> = (...args: Params) => string
+type GetLink<Params extends ParamsBase> = (...args: Params) => string
 
 export const routes = {
 	...defRoute('/', [], 'page'),
-	...defRoute('/servers/:id', ['id'], 'page'),
+	...defRoute('/servers/:id', ['id'] as const, 'page'),
 
 	...defRoute('/filters', [], 'page'),
 	...defRoute('/filters/new', [], 'page'),
-	...defRoute('/filters/:id', ['id'], 'page'),
-	...defRoute('/layers/:id', ['id'], 'page'),
+	...defRoute('/filters/:id', ['id'] as const, 'page'),
+	...defRoute('/layers/:id', ['id'] as const, 'page'),
+	...defRoute('/layers/:id/scores', ['id'] as const, 'page'),
 
 	...defRoute('/login', [], 'custom'),
 	...defRoute('/login/callback', [], 'custom'),
@@ -38,23 +43,27 @@ export const routes = {
 	...defRoute('/layers.sqlite3', [], 'custom'),
 	...defRoute('/check-auth', [], 'custom'),
 
-	...defRoute('/discord-cdn/*', ['*'], 'custom'),
+	...defRoute('/discord-cdn/*', ['*'] as const, 'custom'),
 
 	...defRoute('/trpc', [], 'custom', { websocket: true }),
 } as const satisfies Record<string, GenericRouteDefinition>
-export type Platform = 'client' | 'server'
-export type Route<P extends Platform> = (typeof routes)[number][P]
 
-export type RouteParamObj<R extends Route<'server'>> = (typeof routes)[number]['params'] extends never[] ? never
-	: Record<(typeof routes)[R]['params'][number], string>
+export type KnownRoutes = typeof routes
+export type KnownRoute = KnownRoutes[number]
+export type KnownRouteId = KnownRoute['id']
+export type PageRoutes = Extract<KnownRoute, { handle: 'page' }>
+export type RouteDefForId<R extends KnownRouteId> = Extract<KnownRoutes[number], { id: R }>
 
-export type ResolvedRoute<R extends Route<'server'> = Route<'server'>> = {
+export type RouteParamObj<R extends KnownRouteId> = RouteDefForId<R>['params'] extends never[] ? never
+	: { [k in RouteDefForId<R>['params'][number]]: string }
+
+export type ResolvedRoute<R extends KnownRouteId = KnownRouteId> = {
 	id: R
-	def: (typeof routes)[number]
+	def: RouteDefForId<R>
 	params: RouteParamObj<R>
 }
 
-function defRoute<T extends string, Params extends string[] | never[], Handle extends 'page' | 'custom'>(
+function defRoute<T extends string, Params extends ParamsBase, Handle extends 'page' | 'custom'>(
 	str: T,
 	params: Params,
 	handle: Handle,
@@ -79,9 +88,8 @@ function defRoute<T extends string, Params extends string[] | never[], Handle ex
 
 	return {
 		[str]: {
-			server: str,
-			client: str,
-			params,
+			id: str,
+			params: params as Params,
 
 			link: getLink,
 
@@ -89,33 +97,42 @@ function defRoute<T extends string, Params extends string[] | never[], Handle ex
 			websocket: options?.websocket ?? false,
 			regex: getRouteRegex(str),
 		} satisfies RouteDefinition<Params, Handle>,
-	}
+	} as const
 }
 
-export function route<P extends Platform>(path: Route<P>) {
+export function route<R extends KnownRouteId>(path: R) {
 	if (!routes[path]) {
 		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
 	return path
 }
 
-export function link<R extends Route<'server'>>(path: R, ...args: (typeof routes)[R]['params']) {
+export function link<R extends KnownRouteId>(path: R, ...args: MapTuple<KnownRoutes[R]['params'], string>) {
 	const linkFn = routes[path].link
 	// @ts-expect-error idgaf
 	return linkFn(...args)
 }
 
-export function isRouteType<T extends 'page' | 'custom'>(
+export function checkResolvedRouteOfType<R extends KnownRouteId>(
+	resolvedRoute: ResolvedRoute<KnownRouteId> | undefined | null,
+	...targets: R[]
+): ResolvedRoute<R> | undefined {
+	if (!resolvedRoute) return
+	if (!Arr.includes(targets, resolvedRoute.def.id)) return
+	return resolvedRoute as unknown as ResolvedRoute<R>
+}
+
+export function isRouteOfHandleType<T extends 'page' | 'custom'>(
 	route: GenericRouteDefinition,
 	handle: T,
 ): route is Extract<GenericRouteDefinition, { handle: T }> {
 	return route.handle === handle
 }
 
-export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' | 'custom' }): ResolvedRoute<Route<'server'>> | null {
-	for (const routePath in routes) {
-		const regex = getRouteRegex(routePath as Route<'server'>)
-		const match = regex.exec(path)
+export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' | 'custom' }): ResolvedRoute | null {
+	for (const routeDef of Object.values(routes)) {
+		// if (path.includes('scores') && routeDef.id === '/layers/:id/scores') debugger
+		const match = routeDef.regex.exec(path)
 		if (!match) continue
 
 		const params: Record<string, string> = {}
@@ -127,12 +144,11 @@ export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' 
 			}
 		}
 
-		const route = routes[routePath as Route<'server'>]
-		if (opts?.expectedHandleType && route.handle !== opts.expectedHandleType) return null
+		if (opts?.expectedHandleType && routeDef.handle !== opts.expectedHandleType) return null
 		return {
-			id: routePath as Route<'server'>,
-			def: route,
-			params: params as RouteParamObj<Route<'server'>>,
+			id: routeDef.id,
+			def: routeDef,
+			params: params as RouteParamObj<KnownRouteId>,
 		}
 	}
 

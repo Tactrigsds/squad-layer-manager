@@ -335,7 +335,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	for (const route of Object.values(AR.routes)) {
 		if (route.handle !== 'page') continue
-		instance.get(route.server, getHtmlResponse)
+		instance.get(route.id, getHtmlResponse)
 	}
 
 	// --------  start server  --------

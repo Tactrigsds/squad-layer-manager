@@ -206,7 +206,7 @@ export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
 }
 
 export type HttpRequest = { req: FastifyRequest; res: FastifyReply; cookies: AR.Cookies; route?: AR.ResolvedRoute }
-export type RoutedHttpRequest = HttpRequest & { route: AR.Route<'server'> }
+export type RoutedHttpRequest = HttpRequest & { route: AR.KnownRouteId }
 export function isRoutedHttpRequestContext<Ctx extends HttpRequest>(req: Ctx): req is Ctx & RoutedHttpRequest {
 	return 'route' in req
 }

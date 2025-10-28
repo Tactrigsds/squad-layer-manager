@@ -1,7 +1,10 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import * as AR from '@/app-routes.ts'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
+import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers.ts'
+import * as Obj from '@/lib/object.ts'
+import { assertNever } from '@/lib/type-guards.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import * as SLL from '@/models/squad-layer-list.models'
@@ -11,9 +14,14 @@ import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React, { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
+import FullPageSpinner from './full-page-spinner.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
+import { Dialog, DialogContent, DialogTrigger } from './ui/dialog.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
+import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
@@ -26,40 +34,66 @@ type LayerInfoProps = {
 type LayerInfoContentProps = {
 	// expected to be known layer id
 	layerId: L.LayerId
+	tab: 'details' | 'scores'
+	setTab: (tab: 'details' | 'scores') => void
 	hidePopoutButton?: boolean
 	close?: () => void
 }
 
+type Tab = 'details' | 'scores'
+
+const TAB_TO_ROUTE = {
+	details: AR.route('/layers/:id'),
+	scores: AR.route('/layers/:id/scores'),
+}
+
 export default function LayerInfoDialog(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
-	const [open, setOpen] = React.useState(false)
+	type State = false | Tab
+	const [state, setState] = React.useState<State>(false)
 	if (!isKnownLayer) return null
 
 	return (
-		<Popover modal={true} open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
+		<Dialog open={!!state} onOpenChange={open => setState(open ? 'details' : false)}>
+			<DialogTrigger asChild>
 				{props.children}
-			</PopoverTrigger>
-			<PopoverContent align="center" className="w-max">
-				<LayerInfo layerId={props.layerId} close={() => setOpen(false)} />
-			</PopoverContent>
-		</Popover>
+			</DialogTrigger>
+			<DialogContent className="w-auto max-w-full overflow-x-auto overflow-y-auto max-h-screen min-w-0 pb-2">
+				<LayerInfo layerId={props.layerId} tab={state || 'details'} setTab={setState} close={() => setState(false)} />
+			</DialogContent>
+		</Dialog>
 	)
 }
 
 export function LayerInfoPage() {
-	const params = AppRoutesClient.useAppParams('/layers/:id')
-	const isKnownLayer = L.isKnownLayer(params.id)
+	const route = AR.checkResolvedRouteOfType(AppRoutesClient.useRoute(), '/layers/:id', '/layers/:id/scores')
+	React.useEffect(() => {
+		console.log('inforoute', route)
+	}, [route])
+	const navigate = useNavigate()
+	if (!route) {
+		return <Navigate to={AR.route('/')} />
+	}
+
+	const id = route.params.id
+	const tab = Obj.revLookup(TAB_TO_ROUTE, route.id)
+	console.log({ id, tab, route: route.id })
+	const setTab = (tab: Tab) => {
+		const path = AR.link(TAB_TO_ROUTE[tab], id)
+		navigate(path)
+	}
+	const isKnownLayer = L.isKnownLayer(route.params.id)
 	if (!isKnownLayer) return null
 	return (
-		<div className="p-4">
-			<LayerInfo hidePopoutButton={true} layerId={params.id} />
+		<div className="w-[100vw] h-[100vh] p-4">
+			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton={true} layerId={route.params.id} />
 		</div>
 	)
 }
 
 function LayerInfo(props: LayerInfoContentProps) {
-	const [activeTab, setActiveTab] = useState<'details' | 'scores'>('details')
+	const activeTab = props.tab
+	const setActiveTab = props.setTab
 	const contentRef = useRef<HTMLDivElement>(null)
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
@@ -97,13 +131,27 @@ function LayerInfo(props: LayerInfoContentProps) {
 			height = Math.max(Math.min(rect.height + 80, window.screen.height * 0.8), 300)
 		}
 
-		window.open(AR.link('/layers/:id', props.layerId), '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
+		const path = AR.link(TAB_TO_ROUTE[activeTab], props.layerId)
+
+		console.log({ path })
+		window.open(path, '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
 		props.close?.()
 	}
 
 	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
+	if (layerRes.isLoading) {
+		return (
+			<div className="w-full h-full grid place-items-center">
+				<Spinner className="w-16 h-16" />
+			</div>
+		)
+	}
 	return (
-		<div ref={contentRef} className="space-y-3">
+		<div
+			ref={contentRef}
+			className="space-y-3 data-[tab=scores]:max-w-[800px] data-[tab=details]:max-w-[800px] mx-auto"
+			data-tab={activeTab}
+		>
 			<div className="flex justify-between items-center space-x-2">
 				<div className="flex items-center gap-3">
 					<MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />

@@ -5,13 +5,14 @@ import * as ServerSettingsClient from '@/systems.client/server-settings.client.t
 import * as VotesClient from '@/systems.client/votes.client.ts'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouteObject, RouterProvider } from 'react-router-dom'
 import * as AR from './app-routes.ts'
 import { Providers } from './components/providers.tsx'
 import './index.css'
 import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
+
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QueueDashboard from '@/systems.client/queue-dashboard'
@@ -31,7 +32,7 @@ import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
 // Enable Map and Set support in Immer
 enableMapSet()
 
-const router = createBrowserRouter([
+const routes = [
 	{
 		path: AR.route('/'),
 		element: <Navigate to={AR.link('/servers/:id', AppRoutesClient.getCookie('default-server-id')!)} />,
@@ -88,7 +89,23 @@ const router = createBrowserRouter([
 			</React.Suspense>
 		),
 	},
-])
+	{
+		path: AR.route('/layers/:id/scores'),
+		element: (
+			<React.Suspense fallback={<FullPageSpinner />}>
+				<LayerInfoPage />
+			</React.Suspense>
+		),
+	},
+] as const
+
+{
+	type HandledPaths = (typeof routes)[number]['path']
+	// this satisfies will fail if we're missing a route
+	const _ = [] as AR.PageRoutes['id'][] satisfies HandledPaths[]
+}
+
+const router = createBrowserRouter([...routes])
 
 console.log('running system initialization')
 

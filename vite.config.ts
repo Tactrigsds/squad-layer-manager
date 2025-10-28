@@ -45,7 +45,7 @@ function buildDevServerConfig(): UserConfig['server'] {
 			const protocol = r.websocket ? 'ws://' : 'http://'
 			const target = `${protocol}${ENV.HOST}:${ENV.PORT}`
 			return [
-				AR.getRouteRegex(r.server).source,
+				AR.getRouteRegex(r.id).source,
 				{
 					target,
 					changeOrigin: true,
