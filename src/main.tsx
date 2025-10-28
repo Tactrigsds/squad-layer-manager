@@ -28,6 +28,7 @@ import FilterIndex from './components/filter-index.tsx'
 import FilterNew from './components/filter-new.tsx'
 import FullPageSpinner from './components/full-page-spinner.tsx'
 import LayerQueueDashboard from './components/layer-queue-dashboard.tsx'
+import { assertNever } from './lib/type-guards.ts'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -128,9 +129,13 @@ if (route && route?.id !== '/layers/:id') {
 
 AppRoutesClient.route$
 	.pipe(Rx.startWith(AR.resolveRoute(window.location.pathname)))
-	.subscribe(async (route) => {
+	.subscribe(async (_route) => {
 		let title = 'Squad Layer Manager'
 		console.log('route:', route?.id)
+		if (!route || !AR.isRouteOfHandleType(route?.def, 'page')) {
+			document.title = title
+			return
+		}
 		switch (route?.id) {
 			case undefined:
 				break
@@ -157,9 +162,9 @@ AppRoutesClient.route$
 				title = `SLM - ${server.displayName}`
 				break
 			}
+			case '/layers/:id/scores':
 			case '/layers/:id': {
-				const title = `SLM - ${DH.displayLayer(route.params.id)}`
-				document.title = title
+				title = `SLM - ${DH.displayLayer(route.params.id)}`
 				break
 			}
 		}

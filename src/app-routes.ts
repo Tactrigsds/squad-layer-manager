@@ -113,7 +113,7 @@ export function link<R extends KnownRouteId>(path: R, ...args: MapTuple<KnownRou
 	return linkFn(...args)
 }
 
-export function checkResolvedRouteOfType<R extends KnownRouteId>(
+export function checkResolvedRouteInIds<R extends KnownRouteId>(
 	resolvedRoute: ResolvedRoute<KnownRouteId> | undefined | null,
 	...targets: R[]
 ): ResolvedRoute<R> | undefined {

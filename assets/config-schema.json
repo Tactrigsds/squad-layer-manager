@@ -620,7 +620,7 @@
               "type": "object",
               "properties": {
                 "type": {"type": "string", "const": "random"},
-                "seed": {"type": "string", "default": "8109790021438055"}
+                "seed": {"type": "string", "default": "8418660246403615"}
               },
               "required": ["type"],
               "additionalProperties": false
@@ -725,7 +725,7 @@
           {"name": "Unit_2"},
           {"name": "Alliance_2", "visible": false}
         ],
-        "defaultSortBy": {"type": "random", "seed": "8364300838717185"}
+        "defaultSortBy": {"type": "random", "seed": "5090514309588945"}
       }
     },
     "$schema": {"type": "string"}

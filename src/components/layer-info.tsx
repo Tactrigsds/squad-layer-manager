@@ -67,7 +67,7 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 }
 
 export function LayerInfoPage() {
-	const route = AR.checkResolvedRouteOfType(AppRoutesClient.useRoute(), '/layers/:id', '/layers/:id/scores')
+	const route = AR.checkResolvedRouteInIds(AppRoutesClient.useRoute(), '/layers/:id', '/layers/:id/scores')
 	React.useEffect(() => {
 		console.log('inforoute', route)
 	}, [route])
