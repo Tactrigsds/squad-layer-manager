@@ -52,8 +52,10 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 	}
 
 	store.subscribe((state, prev) => {
-		if (!Obj.deepEqual(state.extraQueryFilters, prev.extraQueryFilters)) {
-			localStorage.setItem('extraQueryFilters:v2', Array.from(state.extraQueryFilters).join())
+		const extraFilters = Array.from(state.extraQueryFilters)
+		const prevExtraFilters = Array.from(prev.extraQueryFilters)
+		if (!Obj.deepEqual(extraFilters, prevExtraFilters)) {
+			localStorage.setItem('extraQueryFilters:v2', extraFilters.join(','))
 		}
 	})
 
