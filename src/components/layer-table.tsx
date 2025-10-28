@@ -12,6 +12,7 @@ import { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
+import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -22,7 +23,7 @@ import * as GlobalSettings from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortingState, useReactTable, VisibilityState } from '@tanstack/react-table'
+import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortDirection, useReactTable, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
@@ -48,6 +49,9 @@ type ConstraintRowDetails = {
 type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails }
 const columnHelper = createColumnHelper<RowData>()
 
+// Extended sorting state that includes absolute value flag
+type ExtendedSortingState = Array<{ id: string; desc: boolean; abs?: boolean }>
+
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
@@ -58,11 +62,45 @@ function buildColumn(
 	colDef: LC.ColumnDef,
 	teamParity: number,
 	displayLayersNormalized: boolean,
+	isNumeric: boolean,
+	sortingState: ExtendedSortingState,
+	setSorting: React.Dispatch<React.SetStateAction<ExtendedSortingState>>,
 ) {
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
-		header: ({ column }) => {
-			const sort = column.getIsSorted()
+		enableSorting: false, // Disable default sorting, we'll handle it manually
+		header: () => {
+			const currentSort = sortingState.find(s => s.id === colDef.name)
+			const isAbs = currentSort?.abs ?? false
+			const sort: SortDirection | false = currentSort ? (currentSort.desc ? 'desc' : 'asc') : false
+
+			const handleClick = () => {
+				setSorting((old) => {
+					const existing = old.find(s => s.id === colDef.name)
+
+					if (!existing) {
+						// No sort -> ASC
+						return [{ id: colDef.name, desc: false, abs: false }]
+					} else if (!existing.desc && !existing.abs) {
+						// ASC -> DESC
+						return [{ id: colDef.name, desc: true, abs: false }]
+					} else if (existing.desc && !existing.abs) {
+						// DESC -> ASC:ABS (for numeric) or back to no sort (for non-numeric)
+						if (isNumeric) {
+							return [{ id: colDef.name, desc: false, abs: true }]
+						} else {
+							return []
+						}
+					} else if (!existing.desc && existing.abs) {
+						// ASC:ABS -> DESC:ABS
+						return [{ id: colDef.name, desc: true, abs: true }]
+					} else {
+						// DESC:ABS -> no sort
+						return []
+					}
+				})
+			}
+
 			return (
 				<Button
 					className="data-[sort=true]:text-accent-foreground w-full justify-between"
@@ -70,12 +108,24 @@ function buildColumn(
 					data-sort={!!sort}
 					variant="ghost"
 					title={colDef.displayName}
-					onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+					onClick={handleClick}
 				>
 					{colDef.shortName ?? colDef.displayName}
 					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
-					{sort === 'asc' && <ArrowUp className="ml-2 h-4 w-4" />}
-					{sort === 'desc' && <ArrowDown className="ml-2 h-4 w-4" />}
+					{sort === 'asc' && !isAbs && <ArrowUp className="ml-2 h-4 w-4" />}
+					{sort === 'desc' && !isAbs && <ArrowDown className="ml-2 h-4 w-4" />}
+					{sort === 'asc' && isAbs && (
+						<span className="ml-2 flex items-center">
+							<ArrowUp className="h-4 w-4" />
+							<span className="text-xs">|x|</span>
+						</span>
+					)}
+					{sort === 'desc' && isAbs && (
+						<span className="ml-2 flex items-center">
+							<ArrowDown className="h-4 w-4" />
+							<span className="text-xs">|x|</span>
+						</span>
+					)}
 				</Button>
 			)
 		},
@@ -159,6 +209,8 @@ function buildColDefs(
 	teamParity: number,
 	displayLayersNormalized: boolean,
 	constraints?: LQY.LayerQueryConstraint[],
+	sortingState?: ExtendedSortingState,
+	setSorting?: React.Dispatch<React.SetStateAction<ExtendedSortingState>>,
 ) {
 	const tableColDefs: ColumnDef<RowData>[] = [
 		{
@@ -187,15 +239,21 @@ function buildColDefs(
 			return aIndex - bIndex
 		})
 
+		const ctx: CS.EffectiveColumnConfig = { effectiveColsConfig: cfg }
+
 		// add sorted first
 		for (const col of sortedColKeys) {
-			tableColDefs.push(buildColumn(LC.getColumnDef(col.name, cfg)!, teamParity, displayLayersNormalized))
+			const colDef = LC.getColumnDef(col.name, cfg)!
+			const isNumeric = LC.isNumericColumn(col.name, ctx)
+			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sortingState ?? [], setSorting ?? (() => {})))
 		}
 
 		// then add the rest
 		for (const key of Object.keys(cfg.defs)) {
 			if (sortedColKeys.some(c => c.name === key)) continue
-			tableColDefs.push(buildColumn(LC.getColumnDef(key, cfg)!, teamParity, displayLayersNormalized))
+			const colDef = LC.getColumnDef(key, cfg)!
+			const isNumeric = LC.isNumericColumn(key, ctx)
+			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sortingState ?? [], setSorting ?? (() => {})))
 		}
 	}
 
@@ -273,17 +331,20 @@ export default function LayerTable(props: {
 		}
 	}
 
-	let defaultSortingState: SortingState = []
+	let defaultSortingState: ExtendedSortingState = []
 	const defaultSort = props.defaultSort ?? cfg?.defaultSortBy
 	if (defaultSort && defaultSort.type === 'column') {
+		const isAbs = defaultSort.sortDirection === 'ASC:ABS' || defaultSort.sortDirection === 'DESC:ABS'
+		const isDesc = defaultSort.sortDirection === 'DESC' || defaultSort.sortDirection === 'DESC:ABS'
 		defaultSortingState = [{
 			id: defaultSort.sortBy,
-			desc: defaultSort.sortDirection === 'DESC',
+			desc: isDesc,
+			abs: isAbs,
 		}]
 	}
 
-	const [sortingState, _setSortingState] = useState<SortingState>(defaultSortingState)
-	const setSorting: React.Dispatch<React.SetStateAction<SortingState>> = (sortingUpdate) => {
+	const [sortingState, _setSortingState] = useState<ExtendedSortingState>(defaultSortingState)
+	const setSorting = React.useCallback<React.Dispatch<React.SetStateAction<ExtendedSortingState>>>((sortingUpdate) => {
 		_setSortingState((sortingState) => {
 			if (typeof sortingUpdate === 'function') {
 				return sortingUpdate(sortingState)
@@ -291,7 +352,7 @@ export default function LayerTable(props: {
 		})
 		setRandomize(false)
 		props.setPageIndex(0)
-	}
+	}, [props])
 	const [_randomize, setRandomize] = useState<boolean>(defaultSort?.type === 'random')
 	const randomize = !showSelectedLayers && _randomize
 
@@ -385,11 +446,21 @@ export default function LayerTable(props: {
 	if (randomize) {
 		sort = { type: 'random', seed }
 	} else if (sortingState.length > 0) {
-		const { id, desc } = sortingState[0]
+		const { id, desc, abs } = sortingState[0]
+		let sortDirection: 'ASC' | 'DESC' | 'ASC:ABS' | 'DESC:ABS' = 'ASC'
+		if (abs && desc) {
+			sortDirection = 'DESC:ABS'
+		} else if (abs && !desc) {
+			sortDirection = 'ASC:ABS'
+		} else if (!abs && desc) {
+			sortDirection = 'DESC'
+		} else {
+			sortDirection = 'ASC'
+		}
 		sort = {
 			type: 'column',
 			sortBy: id,
-			sortDirection: desc ? 'DESC' : 'ASC',
+			sortDirection,
 		}
 	}
 
@@ -475,17 +546,19 @@ export default function LayerTable(props: {
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(
-			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints) : [],
+			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints, sortingState, setSorting) : [],
 			[
 				cfg,
 				teamParity,
 				displayTeamsNormalized,
 				props.baseInput?.constraints,
+				sortingState,
+				setSorting,
 			],
 		),
 		pageCount: page?.pageCount ?? -1,
 		state: {
-			sorting: sortingState,
+			sorting: sortingState.map(s => ({ id: s.id, desc: s.desc })),
 			columnVisibility,
 			rowSelection,
 			pagination: {
@@ -494,7 +567,6 @@ export default function LayerTable(props: {
 			},
 		},
 		getRowId: (row) => row.id,
-		onSortingChange: setSorting,
 		onColumnVisibilityChange: setColumnVisibility as React.Dispatch<React.SetStateAction<VisibilityState>>,
 		onRowSelectionChange: onSetRowSelection,
 		onPaginationChange,

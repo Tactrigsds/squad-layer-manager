@@ -96,7 +96,7 @@ export const LayersQuerySortSchema = z
 		z.object({
 			type: z.literal('column'),
 			sortBy: z.string(),
-			sortDirection: z.enum(['ASC', 'DESC']).optional().default('ASC'),
+			sortDirection: z.enum(['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS']).optional().default('ASC'),
 		}),
 		z.object({
 			type: z.literal('random'),

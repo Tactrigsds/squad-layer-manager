@@ -184,6 +184,12 @@ export function isEnumeratedColumn(column: string, ctx: CS.EffectiveColumnConfig
 	return !!def.enumMapping
 }
 
+export function isNumericColumn(column: string, ctx: CS.EffectiveColumnConfig) {
+	const def = getColumnDef(column, ctx.effectiveColsConfig)
+	if (!def) return false
+	return def.type === 'float' || def.type === 'integer'
+}
+
 export function isEnumeratedValue(column: string, value: string, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
 	const def = getColumnDef(column, ctx.effectiveColsConfig)
 	if (!def) return false

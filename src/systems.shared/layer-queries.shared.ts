@@ -58,16 +58,18 @@ export async function queryLayers(args: {
 	query = includeWhere(query)
 
 	if (input.sort) {
-		switch (input.sort.type) {
-			case 'column':
-				query = query.orderBy(
-					input.sort.sortDirection === 'ASC'
-						? E.asc(LC.viewCol(input.sort.sortBy, ctx))
-						: E.desc(LC.viewCol(input.sort.sortBy, ctx)),
-				)
-				break
-			default:
-				assertNever(input.sort)
+		const isNumericSortCol = LC.isNumericColumn(input.sort.sortBy, ctx)
+		const direction = input.sort.sortDirection
+		if (direction === 'ASC' || direction === 'ASC:ABS' && !isNumericSortCol) {
+			query = query.orderBy(E.asc(LC.viewCol(input.sort.sortBy, ctx)))
+		} else if (direction === 'DESC' || direction === 'DESC:ABS' && !isNumericSortCol) {
+			query = query.orderBy(E.desc(LC.viewCol(input.sort.sortBy, ctx)))
+		} else if (direction === 'ASC:ABS') {
+			query = query.orderBy(E.asc(sql`abs(${LC.viewCol(input.sort.sortBy, ctx)})`))
+		} else if (direction === 'DESC:ABS') {
+			query = query.orderBy(E.desc(sql`abs(${LC.viewCol(input.sort.sortBy, ctx)})`))
+		} else {
+			assertNever(direction)
 		}
 	}
 	query = query.offset(input.pageIndex! * input.pageSize!).limit(input.pageSize)

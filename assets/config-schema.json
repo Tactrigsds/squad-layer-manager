@@ -609,7 +609,7 @@
                 "sortBy": {"type": "string"},
                 "sortDirection": {
                   "type": "string",
-                  "enum": ["ASC", "DESC"],
+                  "enum": ["ASC", "DESC", "ASC:ABS", "DESC:ABS"],
                   "default": "ASC"
                 }
               },
@@ -620,7 +620,7 @@
               "type": "object",
               "properties": {
                 "type": {"type": "string", "const": "random"},
-                "seed": {"type": "string", "default": "4372463915476717"}
+                "seed": {"type": "string", "default": "8109790021438055"}
               },
               "required": ["type"],
               "additionalProperties": false
@@ -725,7 +725,7 @@
           {"name": "Unit_2"},
           {"name": "Alliance_2", "visible": false}
         ],
-        "defaultSortBy": {"type": "random", "seed": "7968568832159643"}
+        "defaultSortBy": {"type": "random", "seed": "8364300838717185"}
       }
     },
     "$schema": {"type": "string"}
