@@ -176,7 +176,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	if (user && itemPresence && itemActivityUser.discordId !== user.discordId) {
 		sourceDisplay = (
-			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="secondary">
+			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="info" className="text-nowrap">
 				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.displayName)}...
 			</Badge>
 		)
@@ -774,7 +774,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const item = Zus.useStore(props.itemStore, s => s.item)
 
-	const dropdownMapping: Record<SubDropdownState, SLL.ClientPresenceActivity> = {
+	const dropdownMapping: Record<SubDropdownState, SLL.Activity> = {
 		edit: { code: 'editing-item', itemId: item.itemId },
 		'create-vote': { code: 'editing-item', itemId: item.itemId },
 		'add-after': { code: 'adding-item' },

@@ -1,5 +1,6 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
+import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -469,11 +470,11 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 
 // allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
 export function useActivityState(
-	activity: SLL.ClientPresenceActivity,
+	activity: SLL.Activity,
 	opts?: {
 		defaultState?: boolean
 		// Normally if we see a change of activities we reset the state. passthroughActivities are excempted from this.
-		passthroughActivities?: SLL.ClientPresenceActivity[]
+		passthroughActivities?: SLL.Activity[]
 	},
 ) {
 	const defaultState = opts?.defaultState ?? false
@@ -508,7 +509,7 @@ export function useActivityState(
 }
 
 // allows familiar useState binding to multiple presence activities. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
-export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.ClientPresenceActivity>, defaultState: K | null = null) {
+export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.Activity>, defaultState: K | null = null) {
 	const mappingRef = React.useRef(mapping)
 	const config = ConfigClient.useConfig()
 	const [active, _setActive] = React.useState<K | null>(defaultState)
@@ -546,4 +547,13 @@ export async function resolveClientPresence() {
 
 	const state = Store.getState()
 	return state.presence.get(config.wsClientId)
+}
+
+export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: Store) => {
+	for (const [activity, wsClientId] of SLL.iterActivities(state.presence)) {
+		if (Obj.deepEqual(activity, targetActivity)) {
+			return true
+		}
+	}
+	return false
 }

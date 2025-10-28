@@ -11,3 +11,10 @@ export function* filter<T>(iterable: Iterable<T>, predicate: (item: T) => boolea
 		}
 	}
 }
+
+export function hasValues(iterable: Iterable<unknown>): boolean {
+	for (const _ of iterable) {
+		return true
+	}
+	return false
+}

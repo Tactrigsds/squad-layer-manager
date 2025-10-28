@@ -72,7 +72,7 @@ export const disconnectedTimeout: Action = withEditing(() => {
 	}
 })
 
-export const startActivity = (activity: SLL.ClientPresenceActivity): Action => {
+export const startActivity = (activity: SLL.Activity): Action => {
 	return withEditing(() => ({
 		away: false,
 		currentActivity: activity,
@@ -80,9 +80,9 @@ export const startActivity = (activity: SLL.ClientPresenceActivity): Action => {
 	}))
 }
 
-export const endActivity = (activity?: SLL.ClientPresenceActivity): Action =>
+export const endActivity = (activity?: SLL.Activity): Action =>
 	withEditing((input) => {
-		let newActivity: SLL.ClientPresenceActivity | null = null
+		let newActivity: SLL.Activity | null = null
 		if (activity) {
 			newActivity = Obj.deepEqual(activity, input.prev?.currentActivity) ? null : input.prev!.currentActivity
 		}

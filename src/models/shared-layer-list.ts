@@ -152,20 +152,20 @@ export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
 
 export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'moving-item'])
 export type ItemOwnedActivityCode = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
-export type ClientPresenceActivity = z.infer<typeof UserPresenceActivitySchema>
+export type Activity = z.infer<typeof UserPresenceActivitySchema>
 
 export function isEditingStateActivity(
-	activity: ClientPresenceActivity,
-): activity is Extract<ClientPresenceActivity, { code: 'editing-item' }> {
+	activity: Activity,
+): activity is Extract<Activity, { code: 'editing-item' }> {
 	return isItemOwnedActivity(activity) || activity.code === 'adding-item'
 }
 
-export type ItemOwnedActivity = Extract<ClientPresenceActivity, { code: ItemOwnedActivityCode }>
-export function isItemOwnedActivity(activity: ClientPresenceActivity): activity is ItemOwnedActivity {
+export type ItemOwnedActivity = Extract<Activity, { code: ItemOwnedActivityCode }>
+export function isItemOwnedActivity(activity: Activity): activity is ItemOwnedActivity {
 	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.code)
 }
 
-export function opToActivity(op: Operation): ClientPresenceActivity | undefined {
+export function opToActivity(op: Operation): Activity | undefined {
 	switch (op.op) {
 		case 'add':
 			return { code: 'adding-item' }
@@ -430,7 +430,7 @@ export function resolveUserPresence(state: PresenceState) {
 export type ItemLocks = Map<LL.ItemId, string>
 export type LockMutation = [LL.ItemId, string]
 
-export function itemsToLockForActivity(list: LL.List, activity: ClientPresenceActivity): LL.ItemId[] {
+export function itemsToLockForActivity(list: LL.List, activity: Activity): LL.ItemId[] {
 	if (!isItemOwnedActivity(activity)) return []
 	const itemId = activity.itemId
 	const item = LL.findItemById(list, itemId)?.item
@@ -495,7 +495,7 @@ export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
 	return false
 }
 
-export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['code'], index?: LL.ItemIndex) => {
+export const getHumanReadableActivity = (activityCode: Activity['code'], index?: LL.ItemIndex) => {
 	const name = index ? LL.getItemNumber(index) : 'Item'
 	switch (activityCode) {
 		case 'editing-item':
@@ -513,7 +513,7 @@ export const getHumanReadableActivity = (activityCode: ClientPresenceActivity['c
 	}
 }
 
-export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceActivity['code'], displayName: string) => {
+export const getHumanReadableActivityWithUser = (activityCode: Activity['code'], displayName: string) => {
 	switch (activityCode) {
 		case 'editing-item':
 			return `${displayName} is editing`
@@ -527,5 +527,12 @@ export const getHumanReadableActivityWithUser = (activityCode: ClientPresenceAct
 			return `${displayName} is changing settings`
 		default:
 			assertNever(activityCode)
+	}
+}
+
+export function* iterActivities(state: PresenceState) {
+	for (const [wsClientId, presence] of state.entries()) {
+		if (!presence.currentActivity) continue
+		yield [presence.currentActivity, wsClientId] as const
 	}
 }
