@@ -1,14 +1,16 @@
 import emojiNameMap from 'emoji-name-map'
 
 export type Emoji =
-	| { type: 'discord'; id: string; name: string | null }
-	| { type: 'unicode'; id: string; name: string | null }
+	| { type: 'discord'; id: EmojiId; name: string | null }
+	| { type: 'unicode'; id: EmojiId; name: string | null }
+
+export type EmojiId = string
 
 export function displayName(emoji: Emoji) {
 	return emoji.name ?? emoji.id
 }
 
-export function toUnicodeEmoji(char: string | Emoji): Emoji {
+export function toUnicodeEmoji(char: EmojiId | Emoji): Emoji {
 	if (typeof char !== 'string') return char
 	return {
 		id: char,
@@ -17,20 +19,20 @@ export function toUnicodeEmoji(char: string | Emoji): Emoji {
 	}
 }
 
-export function parseDiscordEmojiId(id: string): string {
+export function parseDiscordEmojiId(id: EmojiId): string {
 	return id.replace(/^discord_/, '')
 }
 
-export function createDiscordEmojiId(id: string): string {
+export function createDiscordEmojiId(id: string): EmojiId {
 	return `discord_${id}`
 }
 
-export function getEmojiIdType(id: string): 'discord' | 'unicode' | undefined {
+export function getEmojiIdType(id: EmojiId): 'discord' | 'unicode' | undefined {
 	if (id.startsWith('discord_')) return 'discord'
 	return 'unicode'
 }
 
-export function idToEmoji(id: string, discordEmojis: DiscordEmoji[] | undefined): Emoji | undefined {
+export function idToEmoji(id: EmojiId, discordEmojis: DiscordEmoji[] | undefined): Emoji | undefined {
 	if (getEmojiIdType(id) === 'discord') {
 		if (!discordEmojis) return
 		return {
