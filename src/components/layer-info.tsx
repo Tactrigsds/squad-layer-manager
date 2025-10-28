@@ -595,8 +595,11 @@ function DiffScoreRow({
 				/>
 				<div className="absolute top-0 left-1/2 w-0.5 h-full bg-foreground/20 transform -translate-x-0.5" />
 			</div>
-			<div className="text-xs text-center text-muted-foreground">
-				Diff: {diff.toFixed(2)}
+			<div className="text-xs text-center">
+				<span className="text-muted-foreground">Diff:</span>
+				<span className={`${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+					{Math.abs(diff).toFixed(2)}
+				</span>
 			</div>
 		</div>
 	)
