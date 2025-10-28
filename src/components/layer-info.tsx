@@ -416,8 +416,12 @@ function ScoreGrid(
 		<div className="grid gap-2">
 			{zScoreTypes.length > 0 && (
 				<div className="flex justify-between items-center mb-2 text-xs">
-					<span className="text-blue-500 font-medium">Team 1 ({layerDetails?.layer.Faction_1}){team1RoleText}</span>
-					<span className="text-red-500 font-medium">Team 2 ({layerDetails?.layer.Faction_2}){team2RoleText}</span>
+					<div className="text-blue-500 font-medium">
+						<strong>Team 1{team1RoleText}</strong> - {layerDetails?.layer.Faction_1} {layerDetails?.layer.Unit_1}
+					</div>
+					<div className="text-red-500 font-medium">
+						<strong>Team 2{team2RoleText}</strong> - {layerDetails?.layer.Faction_2} {layerDetails?.layer.Unit_2}
+					</div>
 				</div>
 			)}
 			{zScoreTypes.map((scoreType, index) => {
