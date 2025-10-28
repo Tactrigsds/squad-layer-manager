@@ -10,6 +10,7 @@ import * as LC from '@/models/layer-columns.ts'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as LayerInfoDialogClient from '@/systems.client/layer-info-dialog'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
@@ -31,35 +32,35 @@ type LayerInfoProps = {
 	children: React.ReactNode
 }
 
+type Tab = LayerInfoDialogClient.Tab
+
 type LayerInfoContentProps = {
 	// expected to be known layer id
 	layerId: L.LayerId
-	tab: 'details' | 'scores'
-	setTab: (tab: 'details' | 'scores') => void
+	tab: Tab
+	setTab: (tab: Tab) => void
 	hidePopoutButton?: boolean
 	close?: () => void
 }
 
-type Tab = 'details' | 'scores'
-
 const TAB_TO_ROUTE = {
 	details: AR.route('/layers/:id'),
 	scores: AR.route('/layers/:id/scores'),
-}
+} satisfies { [k in Tab]: AR.KnownRouteId }
 
 export default function LayerInfoDialog(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
-	type State = false | Tab
-	const [state, setState] = React.useState<State>(false)
+	const [tab, setTab] = LayerInfoDialogClient.useActiveTab()
+	const [open, setOpen] = React.useState(false)
 	if (!isKnownLayer) return null
 
 	return (
-		<Dialog open={!!state} onOpenChange={open => setState(open ? 'details' : false)}>
+		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger asChild>
 				{props.children}
 			</DialogTrigger>
 			<DialogContent className="w-auto max-w-full overflow-x-auto overflow-y-auto max-h-screen min-w-0 pb-2">
-				<LayerInfo layerId={props.layerId} tab={state || 'details'} setTab={setState} close={() => setState(false)} />
+				<LayerInfo layerId={props.layerId} tab={tab || 'details'} setTab={setTab} close={() => setOpen(false)} />
 			</DialogContent>
 		</Dialog>
 	)
@@ -146,6 +147,11 @@ function LayerInfo(props: LayerInfoContentProps) {
 			</div>
 		)
 	}
+
+	if (!hasScores && activeTab === 'scores') {
+		setActiveTab('details')
+	}
+
 	return (
 		<div
 			ref={contentRef}
@@ -189,8 +195,8 @@ function LayerInfo(props: LayerInfoContentProps) {
 			</div>
 			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
 			{activeTab === 'details' && !layerDetails && <div>No details available</div>}
-			{activeTab === 'scores' && scores && layerDetails && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
-			{activeTab === 'scores' && !scores && <div>No scores available</div>}
+			{activeTab === 'scores' && hasScores && scores && layerDetails && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
+			{activeTab === 'scores' && !hasScores && <div>No scores available</div>}
 		</div>
 	)
 }
