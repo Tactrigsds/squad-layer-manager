@@ -38,7 +38,7 @@ export async function queryLayers(args: {
 			input.pageSize,
 			input,
 			true,
-			input.sort.seed,
+			input.sort.seed ?? LQY.getSeed(),
 		)
 		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
 	}

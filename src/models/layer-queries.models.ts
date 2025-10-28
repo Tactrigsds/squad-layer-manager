@@ -100,7 +100,7 @@ export const LayersQuerySortSchema = z
 		}),
 		z.object({
 			type: z.literal('random'),
-			seed: z.string().default(getSeed()),
+			seed: z.string().optional(),
 		}),
 	])
 	.describe('if not provided, no sorting will be done')
