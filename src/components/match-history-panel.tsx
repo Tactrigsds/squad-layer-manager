@@ -286,19 +286,7 @@ export default function MatchHistoryPanel() {
 		const alerts: React.ReactNode[] = ([...events]
 			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
 			.map(
-				(event, index) => {
-					let className: string | undefined
-					if (index > 0 && index < events.length - 1) {
-						className = 'rounded-none'
-					}
-					if (index === events.length - 1) {
-						className = 'rounded-tl-none rounded-tr-none'
-					}
-					if (index === 0) {
-						className = 'rounded-bl-none rounded-br-none'
-					}
-					return <BalanceTriggerAlert className={className} event={event} referenceMatch={entry} />
-				},
+				(event) => <BalanceTriggerAlert className="rounded-none" event={event} referenceMatch={entry} />,
 			)
 
 		return alerts
