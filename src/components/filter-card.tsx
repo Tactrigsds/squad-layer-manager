@@ -30,6 +30,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import EditLayerDialog from './edit-layer-dialog.tsx'
+import { FilterEntityLabel } from './filter-entity-select.tsx'
 import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -687,7 +688,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	for (const filter of filters.values()) {
 		if (props.editedFilterId && filter.id === props.editedFilterId) continue
 
-		options.push({ label: filter.name, value: filter.id })
+		options.push({ label: <FilterEntityLabel filter={filter} />, value: filter.id })
 	}
 	const boxRef = React.useRef<ComboBoxHandle>(null)
 	React.useEffect(() => {
