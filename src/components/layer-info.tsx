@@ -344,12 +344,12 @@ function ScoreGrid(
 		layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 	},
 ) {
-	// crudly put balance differential at the bottom
-	const scoreTypes = Object.keys(scores.diffs).sort((a, b) => {
-		if (a === 'Balance_Differential') return 1
-		if (b === 'Balance_Differential') return -1
-		return a.localeCompare(b)
-	})
+	// List of scores that are NOT z-scores
+	const nonZScores = ['ZERO_Score', 'Balance_Differential']
+
+	// Separate z-scores from non-z-scores in diffs
+	const zScoreTypes = Object.keys(scores.diffs).filter(score => !nonZScores.includes(score)).sort()
+	const diffNonZScores = Object.keys(scores.diffs).filter(score => nonZScores.includes(score) && score !== 'Balance_Differential')
 	const otherScores = Object.keys(scores.other)
 
 	// Get team roles for headers
@@ -360,27 +360,40 @@ function ScoreGrid(
 
 	return (
 		<div className="grid gap-2">
-			{scoreTypes.length > 0 && (
-				<div className="flex justify-between items-center mb-2 text-xs text-muted-foreground">
-					<span>Team 1 ({layerDetails?.layer.Faction_1}){team1RoleText}</span>
-					<span>Team 2 ({layerDetails?.layer.Faction_2}){team2RoleText}</span>
+			{zScoreTypes.length > 0 && (
+				<div className="flex justify-between items-center mb-2 text-xs">
+					<span className="text-blue-500 font-medium">Team 1 ({layerDetails?.layer.Faction_1}){team1RoleText}</span>
+					<span className="text-red-500 font-medium">Team 2 ({layerDetails?.layer.Faction_2}){team2RoleText}</span>
 				</div>
 			)}
-			{scoreTypes.filter(score => score !== 'Balance_Differential').map(scoreType => {
-				const scoreRange = [...scoreRanges.paired, ...scoreRanges.regular].find(range => range.field === scoreType)
+			{zScoreTypes.map((scoreType, index) => {
 				return (
-					<ScoreRow
-						key={scoreType}
-						scoreType={scoreType}
-						team1Score={scores.team1[scoreType]}
-						team2Score={scores.team2[scoreType]}
-						diff={scores.diffs[scoreType]}
-						scoreRange={scoreRange!}
-					/>
+					<div key={scoreType}>
+						{index > 0 && <div className="border-t border-muted/30 my-2" />}
+						<ZScoreRow
+							scoreType={scoreType}
+							team1Score={scores.team1[scoreType]}
+							team2Score={scores.team2[scoreType]}
+							diff={scores.diffs[scoreType]}
+						/>
+					</div>
 				)
 			})}
-			{otherScores.length > 0 && (
-				<div className="mt-3 pt-3 border-t border-muted">
+			{(diffNonZScores.length > 0 || otherScores.length > 0) && (
+				<div className="mt-3 pt-3 border-t border-muted space-y-2">
+					{diffNonZScores.map(scoreType => {
+						const scoreRange = [...scoreRanges.paired, ...scoreRanges.regular].find(range => range.field === scoreType)
+						return (
+							<DiffScoreRow
+								key={scoreType}
+								scoreType={scoreType}
+								team1Score={scores.team1[scoreType]}
+								team2Score={scores.team2[scoreType]}
+								diff={scores.diffs[scoreType] || 0}
+								scoreRange={scoreRange}
+							/>
+						)
+					})}
 					{otherScores.map(scoreType => {
 						const scoreRange = scoreRanges.regular.find(range => range.field === scoreType)
 						return (
@@ -398,7 +411,145 @@ function ScoreGrid(
 	)
 }
 
-function ScoreRow({
+function ZScoreRow({
+	scoreType,
+	team1Score,
+	team2Score,
+	diff,
+}: {
+	scoreType: string
+	team1Score?: number
+	team2Score?: number
+	diff: number
+}) {
+	// Z-scores typically range from -3 to 3 (covering 99.7% of data)
+	const Z_MIN = -3
+	const Z_MAX = 3
+	const Z_RANGE = Z_MAX - Z_MIN
+
+	// Convert z-score to percentage position on the scale (0-100%)
+	const getPosition = (score: number | undefined): number => {
+		if (score === undefined) return 50
+		// Clamp to visible range
+		const clampedScore = Math.max(Z_MIN, Math.min(Z_MAX, score))
+		return ((clampedScore - Z_MIN) / Z_RANGE) * 100
+	}
+
+	const team1Position = getPosition(team1Score)
+	const team2Position = getPosition(team2Score)
+
+	// Standard deviation markers
+	const stdMarkers = [-3, -2, -1, 0, 1, 2, 3]
+
+	return (
+		<div className="space-y-2">
+			<div className="flex justify-between items-center">
+				<span className="text-xs text-muted-foreground">
+					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
+				</span>
+				<span className="text-sm font-medium">
+					{scoreType.replace(/_/g, ' ')}{' '}
+					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+						({Math.abs(diff).toFixed(2)})
+					</span>
+				</span>
+				<span className="text-xs text-muted-foreground">
+					{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}
+				</span>
+			</div>
+
+			{/* SVG visualization */}
+			<svg width="100%" height="48" className="overflow-visible">
+				{/* Main axis line */}
+				<line
+					x1="0"
+					y1="24"
+					x2="100%"
+					y2="24"
+					stroke="currentColor"
+					strokeWidth="2"
+					className="text-muted"
+				/>
+
+				{/* Standard deviation markers */}
+				{stdMarkers.map(marker => {
+					const position = ((marker - Z_MIN) / Z_RANGE) * 100
+					const isZero = marker === 0
+					return (
+						<g key={marker}>
+							<line
+								x1={`${position}%`}
+								y1={isZero ? '16' : '20'}
+								x2={`${position}%`}
+								y2={isZero ? '32' : '28'}
+								stroke="currentColor"
+								strokeWidth={isZero ? '2' : '1'}
+								className={isZero ? 'text-foreground/40' : 'text-muted-foreground/30'}
+							/>
+							<text
+								x={`${position}%`}
+								y="42"
+								textAnchor="middle"
+								fontSize="10"
+								className="fill-muted-foreground/50"
+							>
+								{marker}
+							</text>
+						</g>
+					)
+				})}
+
+				{/* Team 1 score marker (blue) */}
+				{team1Score !== undefined && (
+					<g>
+						<line
+							x1={`${team1Position}%`}
+							y1="8"
+							x2={`${team1Position}%`}
+							y2="24"
+							stroke="currentColor"
+							strokeWidth="3"
+							className="text-blue-500"
+							strokeLinecap="round"
+						/>
+						<circle
+							cx={`${team1Position}%`}
+							cy="8"
+							r="4"
+							fill="currentColor"
+							className="text-blue-500"
+						/>
+					</g>
+				)}
+
+				{/* Team 2 score marker (red) */}
+				{team2Score !== undefined && (
+					<g>
+						<line
+							x1={`${team2Position}%`}
+							y1="24"
+							x2={`${team2Position}%`}
+							y2="40"
+							stroke="currentColor"
+							strokeWidth="3"
+							className="text-red-500"
+							strokeLinecap="round"
+						/>
+						<circle
+							cx={`${team2Position}%`}
+							cy="40"
+							r="4"
+							fill="currentColor"
+							className="text-red-500"
+						/>
+					</g>
+				)}
+			</svg>
+		</div>
+	)
+}
+
+function DiffScoreRow({
 	scoreType,
 	team1Score,
 	team2Score,
@@ -409,22 +560,28 @@ function ScoreRow({
 	team1Score?: number
 	team2Score?: number
 	diff: number
-	scoreRange: { min: number; max: number; field: string }
+	scoreRange?: { min: number; max: number; field: string }
 }) {
-	// Use score range for better normalization
-	const range = scoreRange.max - scoreRange.min
-	const normalizedDiff = range > 0 ? (diff / range) : 0
-	const balancePercentage = 50 + (normalizedDiff * 50)
+	// Calculate percentage based on actual score range
+	let balancePercentage = 50
+	if (scoreRange) {
+		const range = scoreRange.max - scoreRange.min
+		const normalizedDiff = range > 0 ? (diff / range) : 0
+		balancePercentage = 50 + (normalizedDiff * 50)
+	} else {
+		// Fallback if no score range available
+		balancePercentage = 50 + (diff * 10)
+	}
 
 	return (
 		<div className="space-y-1">
 			<div className="flex justify-between items-center">
 				<span className="text-xs text-muted-foreground">
-					{team1Score?.toFixed(2)}
+					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
 				</span>
 				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
 				<span className="text-xs text-muted-foreground">
-					{team2Score?.toFixed(2)}
+					{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}
 				</span>
 			</div>
 			<div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
