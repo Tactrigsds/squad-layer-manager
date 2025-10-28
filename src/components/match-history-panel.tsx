@@ -201,10 +201,11 @@ function MatchHistoryRow({
 										<TriggerIcon className="h-4 w-4" />
 									</Button>
 								</TooltipTrigger>
-								<TooltipContent side="right" className="w-auto p-2 max-h-80 overflow-y-auto bg-background text-foreground">
-									<div className="flex flex-col space-y-2">
-										{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
-									</div>
+								<TooltipContent
+									side="right"
+									className="w-auto p-0 overflow-y-auto bg-transparent border-none text-foreground flex flex-col gap-0"
+								>
+									{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
 								</TooltipContent>
 							</Tooltip>
 						)}
@@ -285,7 +286,19 @@ export default function MatchHistoryPanel() {
 		const alerts: React.ReactNode[] = ([...events]
 			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
 			.map(
-				event => <BalanceTriggerAlert event={event} referenceMatch={entry} />,
+				(event, index) => {
+					let className: string | undefined
+					if (index > 0 && index < events.length - 1) {
+						className = 'rounded-none'
+					}
+					if (index === events.length - 1) {
+						className = 'rounded-tl-none rounded-tr-none'
+					}
+					if (index === 0) {
+						className = 'rounded-bl-none rounded-br-none'
+					}
+					return <BalanceTriggerAlert className={className} event={event} referenceMatch={entry} />
+				},
 			)
 
 		return alerts
