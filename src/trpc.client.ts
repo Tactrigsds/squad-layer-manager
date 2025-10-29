@@ -48,41 +48,46 @@ const wsClient = createWSClient({
 			}
 		}
 	},
-	onClose: async (error) => {
+	onClose: (error) => {
 		console.error('WebSocket connection closed: ', JSON.stringify(error))
-		setTrpcConnected(false)
-		if (attempt > 5) {
-			const res = await fetch(AR.link('/check-auth'))
-			if (!res.ok) {
-				window.location.reload()
+		;(async () => {
+			setTrpcConnected(false)
+			if (attempt > 5) {
+				const res = await fetch(AR.link('/check-auth'))
+				if (!res.ok) {
+					window.location.reload()
+				}
 			}
-		}
+		})()
 	},
-	onOpen: async () => {
+	onOpen: () => {
 		setTrpcConnected(true)
 		console.log('WebSocket connection opened')
-		if (previousConnections) ConfigClient.invalidateConfig()
-		previousConnections = true
-		const config = await ConfigClient.fetchConfig()
-		attempt = 0
-
-		// -------- version skew protection --------
-		if (previousConfig && previousConfig.PUBLIC_GIT_SHA !== config.PUBLIC_GIT_SHA) {
-			globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
+		;(async () => {
 			await sleep(500)
-			const buildFormatted = formatVersion(previousConfig.PUBLIC_GIT_BRANCH, previousConfig.PUBLIC_GIT_SHA)
-			const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
-			console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
-			window.location.reload()
-		} else if (!previousConfig) {
-			console.log(
-				`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
-				'color: limegreen',
-			)
-			previousConfig = config
-		} else {
-			reactQueryClient.invalidateQueries()
-		}
+			if (previousConnections) ConfigClient.invalidateConfig()
+			previousConnections = true
+			const config = await ConfigClient.fetchConfig()
+			attempt = 0
+
+			// -------- version skew protection --------
+			if (previousConfig && previousConfig.PUBLIC_GIT_SHA !== config.PUBLIC_GIT_SHA) {
+				globalToast$.next({ variant: 'info', title: 'SLM is being upgraded, window will refresh shortly...' })
+				await sleep(500)
+				const buildFormatted = formatVersion(previousConfig.PUBLIC_GIT_BRANCH, previousConfig.PUBLIC_GIT_SHA)
+				const configFormatted = formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)
+				console.warn(`Version skew detected (${buildFormatted} -> ${configFormatted}), reloading window`)
+				window.location.reload()
+			} else if (!previousConfig) {
+				console.log(
+					`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
+					'color: limegreen',
+				)
+				previousConfig = config
+			} else {
+				reactQueryClient.invalidateQueries()
+			}
+		})()
 	},
 })
 
