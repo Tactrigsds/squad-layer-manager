@@ -1,3 +1,4 @@
+import React from 'react'
 import * as Rx from 'rxjs'
 
 export function isBrowser(): boolean {
@@ -21,3 +22,52 @@ export const interaction$ = (function createPageActivityObservable(): Rx.Observa
 		Rx.share(),
 	)
 })()
+
+export function useNavigateAlert(interrupt: boolean): void {
+	React.useEffect(() => {
+		if (!interrupt) return
+
+		const handleBeforeUnload = (event: BeforeUnloadEvent): boolean => {
+			const shouldContinue = window.confirm('Are you sure you want to leave this page?')
+			if (!shouldContinue) {
+				event.preventDefault()
+				return false
+			}
+			return true
+		}
+
+		const handleNavigate = (event: PopStateEvent): void => {
+			const shouldContinue = window.confirm('Are you sure you want to leave this page?')
+			if (!shouldContinue) {
+				event.preventDefault()
+				window.history.pushState(null, '', window.location.href)
+			}
+		}
+
+		const originalPushState = window.history.pushState
+		const originalReplaceState = window.history.replaceState
+
+		window.history.pushState = function(...args: Parameters<typeof originalPushState>): void {
+			const shouldContinue = window.confirm('Are you sure you want to leave this page?')
+			if (shouldContinue) {
+				originalPushState.apply(window.history, args)
+			}
+		}
+
+		window.history.replaceState = function(...args: Parameters<typeof originalReplaceState>): void {
+			const shouldContinue = window.confirm('Are you sure you want to leave this page?')
+			if (shouldContinue) {
+				originalReplaceState.apply(window.history, args)
+			}
+		}
+
+		window.addEventListener('beforeunload', handleBeforeUnload)
+		window.addEventListener('popstate', handleNavigate)
+		return () => {
+			window.removeEventListener('beforeunload', handleBeforeUnload)
+			window.removeEventListener('popstate', handleNavigate)
+			window.history.pushState = originalPushState
+			window.history.replaceState = originalReplaceState
+		}
+	}, [interrupt])
+}

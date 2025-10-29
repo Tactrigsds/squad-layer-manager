@@ -253,14 +253,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
 
-	let addedLayerQueryInput: LQY.LayerQueryBaseInput | undefined
-	if (isVoteChoice) {
-		const cursor = LQY.getQueryCursorForItemIndex(index.outerIndex)
-		addedLayerQueryInput = {
-			patches: [{ type: 'splice', cursor, deleteCount: 1, insertions: [] }],
-		}
-	}
-
 	return (
 		<>
 			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
@@ -291,7 +283,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							<LayerDisplay
 								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
-								addedLayerQueryInput={addedLayerQueryInput}
 							/>
 							{itemChoiceTallyPercentage !== undefined && (
 								<span className="flex space-x-1 items-center">
@@ -366,15 +357,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
 		})
 	}
-	const addVoteChoiceInput = ZusUtils.useCombinedStoresDeep(
+	const addVoteChoiceCursor = ZusUtils.useCombinedStoresDeep(
 		[itemStore],
 		([itemStore]) => {
 			const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
-			return {
-				cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined,
-			}
+			return itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined
 		},
-		{ selectorDeps: [] },
+		{ dependencies: [] },
 	)
 
 	const dropdownProps = {
@@ -564,7 +553,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									title="Add Vote Choices"
 									pinMode="layers"
 									selectQueueItems={(items) => itemStore.getState().addVoteItems(items)}
-									layerQueryBaseInput={addVoteChoiceInput}
+									cursor={addVoteChoiceCursor}
 									open={addVoteChoicesOpen}
 									onOpenChange={setAddVoteChoicesOpen}
 								>
@@ -793,20 +782,16 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const isLocked = SLLClient.useIsItemLocked(item.itemId)
 
-	const queryContexts = ZusUtils.useCombinedStoresDeep(
+	const cursors = ZusUtils.useCombinedStoresDeep(
 		[props.itemStore],
 		([itemStore]) => {
 			const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
 			return {
-				addLayersAfter: {
-					cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-after') : undefined,
-				},
-				editOrInsert: {
-					cursor: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'edit') : undefined,
-				},
+				addLayersAfter: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-after') : undefined,
+				editOrInsert: itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'edit') : undefined,
 			}
 		},
-		{ selectorDeps: [] },
+		{ dependencies: [] },
 	)
 
 	const user = UsersClient.useLoggedInUser()
@@ -893,7 +878,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 			{!LL.isParentVoteItem(item) && (
 				<EditLayerDialog
 					open={subDropdownState === 'edit'}
-					layerQueryBaseInput={queryContexts.editOrInsert}
+					cursor={cursors.editOrInsert}
 					onOpenChange={(update) => {
 						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
 						return setSubDropdownState(open ? 'edit' : null)
@@ -928,7 +913,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						newFirstItemId: LL.createLayerListItemId(),
 					})
 				}}
-				layerQueryBaseInput={queryContexts.editOrInsert}
+				cursor={cursors.editOrInsert}
 			/>
 
 			<SelectLayersDialog
@@ -943,7 +928,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					const index = LL.getItemIndex(state.layerList, item.itemId)!
 					state.dispatch({ op: 'add', items, index })
 				}}
-				layerQueryBaseInput={queryContexts.editOrInsert}
+				cursor={cursors.editOrInsert}
 			/>
 
 			<SelectLayersDialog
@@ -960,7 +945,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					else index.outerIndex++
 					state.dispatch({ op: 'add', items, index })
 				}}
-				layerQueryBaseInput={queryContexts.addLayersAfter}
+				cursor={cursors.addLayersAfter}
 			/>
 		</>
 	)

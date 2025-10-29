@@ -3,8 +3,10 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce.ts'
+import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
@@ -15,6 +17,7 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import * as RBAC from '@/rbac.models'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
@@ -26,19 +29,22 @@ import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
-import { ConstraintViolationIcon } from './constraint-violation-display.tsx'
+import { ConstraintViolationIcon } from './constraint-display.tsx'
+import EmojiDisplay from './emoji-display.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
+import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
+import { TriState, TriStateCheckbox, TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
 
-export type PoolConfigurationPopoverHandle = {
+export type ServerSettingsPopoverHandle = {
 	reset(settings: SS.ServerSettings): void
 }
 
-export default function PoolConfigurationPopover(
+export default function ServerSettingsPopover(
 	props: {
 		children: React.ReactNode
-		ref?: React.ForwardedRef<PoolConfigurationPopoverHandle>
+		ref?: React.ForwardedRef<ServerSettingsPopoverHandle>
 	},
 ) {
 	const user = useLoggedInUser()
@@ -58,9 +64,9 @@ export default function PoolConfigurationPopover(
 		_setOpen(open)
 	}
 
-	const [applyMainPool, settingsChanged, saving] = Zus.useStore(
+	const [applyMainPool, settingsChanged, saving, validationErrors] = Zus.useStore(
 		ServerSettingsClient.Store,
-		useShallow(s => [s.edited.queue.applyMainPoolToGenerationPool, s.modified, s.saving]),
+		useShallow(s => [s.edited.queue.applyMainPoolToGenerationPool, s.modified, s.saving, s.validationErrors]),
 	)
 	const applymainPoolSwitchId = React.useId()
 
@@ -128,6 +134,13 @@ export default function PoolConfigurationPopover(
 					/>
 				</div>
 				<div className="flex justify-end gap-2 pt-4 border-t">
+					<div className="flex flex-col gap-2">
+						{validationErrors && validationErrors.map((error, index) => (
+							<Alert key={error + index} variant="destructive">
+								<AlertDescription>{error}</AlertDescription>
+							</Alert>
+						))}
+					</div>
 					<Button
 						variant="outline"
 						onClick={() => setOpen(false)}
@@ -135,10 +148,10 @@ export default function PoolConfigurationPopover(
 						Close
 					</Button>
 					<Button
-						disabled={!settingsChanged || saving}
+						disabled={!settingsChanged || saving || !!validationErrors}
 						onClick={async () => {
-							await ServerSettingsClient.Store.getState().save()
-							_setOpen(false)
+							const saved = await ServerSettingsClient.Store.getState().save()
+							if (saved) _setOpen(false)
 						}}
 						className="min-w-[120px]"
 					>
@@ -158,7 +171,11 @@ function PoolFiltersConfigurationPanel({
 	poolId: 'mainPool' | 'generationPool'
 }) {
 	const filtersPath = ['queue', poolId, 'filters']
-	const filterIds = Zus.useStore(ServerSettingsClient.Store, (s) => SS.derefSettingsValue(s.edited, filtersPath) as string[])
+	const filterConfigs = Zus.useStore(
+		ServerSettingsClient.Store,
+		(s) => SS.derefSettingsValue(s.edited, filtersPath) as SS.PoolFilterConfig[],
+	)
+	const filterEntities = FilterEntityClient.useFilterEntities()
 
 	const user = useLoggedInUser()
 	const canWriteSettings = user && RBAC.rbacUserHasPerms(user, RBAC.perm('settings:write'))
@@ -166,7 +183,7 @@ function PoolFiltersConfigurationPanel({
 	const add = (filterId: F.FilterEntityId | null) => {
 		if (filterId === null) return
 		const state = ServerSettingsClient.Store.getState()
-		const newFilters = [...filterIds, filterId]
+		const newFilters: SS.PoolFilterConfig[] = [...filterConfigs, { filterId, applyAs: SS.DEFAULT_POOL_FILTER_APPLY_AS }]
 		state.set({ path: filtersPath, value: newFilters })
 	}
 
@@ -175,13 +192,12 @@ function PoolFiltersConfigurationPanel({
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
 					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Filters:</h4>
-					<Icons.Filter />
 				</span>
 				<FilterEntitySelect
 					title="New Pool Filter"
 					filterId={null}
 					onSelect={add}
-					excludedFilterIds={filterIds}
+					excludedFilterIds={Arr.deref('filterId', filterConfigs)}
 					allowEmpty={false}
 					enabled={canWriteSettings ?? false}
 				>
@@ -192,22 +208,40 @@ function PoolFiltersConfigurationPanel({
 				</FilterEntitySelect>
 			</div>
 			<div className="space-y-2">
-				{filterIds.map((filterId, i) => {
-					const path = [...filtersPath, i]
+				{filterConfigs.map((filterConfig, i) => {
+					const filterId = filterConfig.filterId
+					const filterPath = [...filtersPath, i]
+					const filter = filterEntities.get(filterId)
+					if (!filter) return
 					const onSelect = (newFilterId: string | null) => {
-						if (newFilterId === null) {
+						if (newFilterId === null || newFilterId === filterId) {
 							return
 						}
 						const state = ServerSettingsClient.Store.getState()
-						state.set({ path: path, value: newFilterId })
+						const newValue: SS.PoolFilterConfig = { filterId: newFilterId, applyAs: SS.DEFAULT_POOL_FILTER_APPLY_AS }
+						state.set({ path: filterPath, value: newValue })
 					}
 					const deleteFilter = () => {
 						const state = ServerSettingsClient.Store.getState()
-						const filterIds = Obj.deepClone(SS.derefSettingsValue(state.edited, filtersPath) as string[])
-						filterIds.splice(i, 1)
-						state.set({ path: filtersPath, value: filterIds })
+						const filterConfigs = SS.derefSettingsValue(state.edited, filtersPath) as SS.PoolFilterConfig[]
+						state.set({ path: filtersPath, value: filterConfigs.filter((c) => c.filterId !== filterConfig.filterId) })
 					}
-					const excluded = filterIds.filter((id) => filterId !== id)
+
+					const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
+
+					const descriptions: { [k in SS.PoolFilterApplyAs]: string } = {
+						regular: 'When selecting layers, filter is applied by default',
+						inverted: 'When selecting layers, filter is applied and inverted by default',
+						disabled: 'When selecting layers, filter is disabled by default',
+					}
+
+					const checked = filterConfig.applyAs
+					const handleApplyAsChanged = () => {
+						const options = SS.POOL_FILTER_APPLY_AS.options
+						const nextState = options[(options.indexOf(checked) + 1) % options.length]
+						const state = ServerSettingsClient.Store.getState()
+						state.set({ path: [...filterPath, 'applyAs'], value: nextState })
+					}
 
 					return (
 						<div className="flex items-center space-x-2 bg-card" key={filterId}>
@@ -219,8 +253,18 @@ function PoolFiltersConfigurationPanel({
 								onSelect={onSelect}
 								allowToggle={false}
 								allowEmpty={false}
-								excludedFilterIds={excluded}
+								excludedFilterIds={excludedFilterIds}
 							/>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button onClick={handleApplyAsChanged} variant="ghost" size="icon">
+										<TriStateCheckboxDisplay checked={checked} />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>{descriptions[checked]}</p>
+								</TooltipContent>
+							</Tooltip>
 							<Button
 								disabled={!canWriteSettings}
 								size="icon"
@@ -445,7 +489,7 @@ function PoolRepeatRulesConfigurationPanel(props: {
 					onClick={addRule}
 				>
 					<Icons.Plus className="h-4 w-4 mr-2" />
-					Add Rule
+					Add Repeat Rule
 				</Button>
 			</div>
 			<div className="border rounded-md p-3">

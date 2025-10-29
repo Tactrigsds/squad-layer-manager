@@ -1,3 +1,5 @@
+import * as ZusUtils from '@/lib/zustand'
+import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
@@ -12,6 +14,7 @@ export type FilterMenuStore = {
 	filter?: F.FilterNode
 	menuItems: Record<keyof L.KnownLayer | string, F.EditableComparison>
 	siblingFilters: { [k in keyof L.KnownLayer | string]: F.FilterNode | undefined }
+	baseQueryInput?: LQY.BaseQueryInput
 	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof L.KnownLayer | string, F.EditableComparison>>>
 	swapTeams: () => void
 	setComparison: (field: keyof L.KnownLayer | string, update: React.SetStateAction<F.EditableComparison>) => void
@@ -19,17 +22,21 @@ export type FilterMenuStore = {
 	resetAllFilters: () => void
 }
 
-export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
+export function useFilterMenuStore(
+	queryInputStore: Zus.StoreApi<{ queryInput: LQY.BaseQueryInput }>,
+	defaultFields: Partial<L.KnownLayer> = {},
+) {
 	const colConfig = ConfigClient.useEffectiveColConfig()
-	const store = React.useMemo(() => (
-		Zus.createStore<FilterMenuStore>((set, get) => {
+	const defaultFieldsRef = React.useRef(defaultFields)
+	const [store, subHandle] = React.useMemo(() => {
+		const store = Zus.createStore<FilterMenuStore>((set, get) => {
 			if (!colConfig) {
 				throw new Error(
 					"colConfig is undefined when creating filter menu store. this shouldn't be possible. if it is we need to be smarter about how we use this store to avoid stale references",
 				)
 			}
 			const emptyItems = getDefaultFilterMenuItemState({}, colConfig)
-			const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
+			const defaultItems = getDefaultFilterMenuItemState(defaultFieldsRef.current, colConfig)
 			const filter = getFilterFromComparisons(defaultItems)
 			const siblingFilters = getSiblingFiltersForMenuItems(defaultItems)
 
@@ -37,6 +44,8 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 				menuItems: defaultItems,
 				filter,
 				siblingFilters: siblingFilters,
+				baseQueryInput: queryInputStore.getState().queryInput,
+
 				setMenuItems: (update) => {
 					let updated: Record<keyof L.KnownLayer | string, F.EditableComparison>
 					const state = get()
@@ -133,13 +142,52 @@ export function useFilterMenuStore(defaultFields: Partial<L.KnownLayer> = {}) {
 				},
 			}
 		})
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	), [])
+
+		const subHandle = ZusUtils.createSubHandle((subs) => {
+			subs.push(queryInputStore.subscribe(state => {
+				store.setState({
+					baseQueryInput: state.queryInput,
+				})
+			}))
+		})
+
+		return [store, subHandle] as const
+	}, [colConfig, queryInputStore])
+
+	ZusUtils.useSubHandle(subHandle)
+
 	return store
 }
 
-export function selectFilterMenuConstraints(state: FilterMenuStore) {
-	return state.filter ? [LQY.filterToNamedConstrant(state.filter, 'filter-menu', 'Filter Menu')] : []
+export function selectFilterMenuQueryInput(state: FilterMenuStore): LQY.BaseQueryInput {
+	let constraints = state.baseQueryInput?.constraints ?? []
+	if (state.filter) {
+		constraints = [...constraints, CB.filterAnon('filter-menu', state.filter)]
+	}
+	return {
+		...state.baseQueryInput,
+		constraints,
+	}
+}
+
+export function selectSwapFactionsDisabled(state: FilterMenuStore) {
+	const swapFactionsDisabled = !(
+		['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(key =>
+			state.menuItems[key as keyof L.KnownLayer].value !== undefined
+		)
+	)
+	return swapFactionsDisabled
+}
+
+export function selectFilterMenuItemConstraints(state: FilterMenuStore, field: string): LQY.BaseQueryInput {
+	let constraints = state.baseQueryInput?.constraints ?? []
+	if (state.siblingFilters[field]) {
+		constraints = [
+			...constraints,
+			CB.filterAnon('sibling-' + field, state.siblingFilters[field]!),
+		]
+	}
+	return { ...state.baseQueryInput, constraints }
 }
 
 export function getDefaultFilterMenuItemState(

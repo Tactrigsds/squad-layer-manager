@@ -6,7 +6,7 @@ import LayerTable from './layer-table.tsx'
 
 export default function TableStyleLayerPicker(props: {
 	// make sure this reference is stable
-	queryContext: LQY.LayerQueryBaseInput
+	queryInput: LQY.BaseQueryInput
 	selected: L.LayerId[]
 	onSelect: React.Dispatch<React.SetStateAction<L.LayerId[]>>
 	editingSingleValue?: boolean
@@ -20,7 +20,7 @@ export default function TableStyleLayerPicker(props: {
 		<div className={cn('flex h-full', props.className)}>
 			<LayerTable
 				defaultPageSize={props.defaultPageSize}
-				baseInput={props.queryContext}
+				baseInput={props.queryInput}
 				pageIndex={pageIndex}
 				defaultSort={{ type: 'random', seed: LQY.getSeed() }}
 				editingSingleValue={props.editingSingleValue}

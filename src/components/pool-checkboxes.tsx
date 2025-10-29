@@ -7,11 +7,10 @@ import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
 export default function PoolCheckboxes(
-	props: { store: Zus.StoreApi<LQY.ApplyAsStore> },
+	props: { store: Zus.StoreApi<LQY.PoolCheckboxesStore> },
 ) {
-	const [poolApplyAs, setPoolApplyAs] = Zus.useStore(props.store, useShallow(s => [s.poolApplyAs, s.setPoolApplyAs]))
+	const [state, setState] = Zus.useStore(props.store, useShallow(s => [s.state, s.setState]))
 	const dnrCheckboxId = React.useId()
-	const filterCheckboxId = React.useId()
 
 	return (
 		<>
@@ -21,20 +20,9 @@ export default function PoolCheckboxes(
 					id={dnrCheckboxId}
 					onCheckedChange={v => {
 						if (v === 'indeterminate') return
-						setPoolApplyAs('dnr', v ? 'where-condition' : 'field')
+						setState('dnr', v)
 					}}
-					checked={poolApplyAs.dnr === 'where-condition'}
-				/>
-			</div>
-			<div className="flex items-center flex-nowrap space-x-0.5 whitespace-nowrap">
-				<Label htmlFor={filterCheckboxId}>Hide Out-Of-Pool</Label>
-				<Checkbox
-					id={filterCheckboxId}
-					onCheckedChange={v => {
-						if (v === 'indeterminate') return
-						setPoolApplyAs('filter', v ? 'where-condition' : 'field')
-					}}
-					checked={poolApplyAs.filter === 'where-condition'}
+					checked={state.dnr}
 				/>
 			</div>
 		</>

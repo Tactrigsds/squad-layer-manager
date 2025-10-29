@@ -32,7 +32,7 @@ export function useStoreDeep<S, O>(store: StoreApi<S>, selector: (s: S) => O, op
 export function useCombinedStoresDeep<States extends unknown[], Selector extends (states: States) => any>(
 	stores: StoresTuple<States>,
 	selector: Selector,
-	opts: { selectorDeps: unknown[] },
+	opts: { dependencies: unknown[] },
 ) {
 	const [values, setValues] = React.useState(() => stores.map(s => s.getState()) as States)
 
@@ -50,7 +50,7 @@ export function useCombinedStoresDeep<States extends unknown[], Selector extends
 	return React.useMemo(() => {
 		return selector(values)
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...opts.selectorDeps, values]) as ReturnType<Selector>
+	}, [...opts.dependencies, values]) as ReturnType<Selector>
 }
 
 export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, opts: { sub: Rx.Subscription }) {
@@ -69,6 +69,7 @@ export type SubHandle = {
 	subCount: number
 	innerSubs?: InnerSub[]
 	subscribe(): void
+	add(sub: InnerSub): void
 	unsubscribe(): void
 }
 
@@ -76,13 +77,16 @@ const isSubscription = (unsub: InnerSub): unsub is Rx.Subscription => {
 	return 'unsubscribe' in unsub
 }
 
-export function createSubHandle(subscribeInner: (onUnsubscribeArr: InnerSub[]) => void): SubHandle {
+export function createSubHandle(subscribeInner?: (onUnsubscribeArr: InnerSub[]) => void): SubHandle {
 	return {
 		subCount: 0,
 		subscribe() {
 			this.subCount++
 			this.innerSubs ??= []
-			subscribeInner(this.innerSubs)
+			subscribeInner?.(this.innerSubs)
+		},
+		add(sub) {
+			this.innerSubs?.push(sub)
 		},
 		unsubscribe() {
 			this.subCount--

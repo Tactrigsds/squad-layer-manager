@@ -131,7 +131,6 @@ export function isRouteOfHandleType<T extends 'page' | 'custom'>(
 
 export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' | 'custom' }): ResolvedRoute | null {
 	for (const routeDef of Object.values(routes)) {
-		// if (path.includes('scores') && routeDef.id === '/layers/:id/scores') debugger
 		const match = routeDef.regex.exec(path)
 		if (!match) continue
 

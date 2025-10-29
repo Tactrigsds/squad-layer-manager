@@ -1,6 +1,11 @@
-export function* map<T, U>(iterable: Iterable<T>, mapper: (item: T) => U): Generator<U> {
+export function* map<T, U>(iterable: Iterable<T>, mapper: (item: T) => U | Generator<U>): Generator<U> {
 	for (const item of iterable) {
-		yield mapper(item)
+		const result = mapper(item)
+		if (result instanceof Object && Symbol.iterator in result) {
+			yield* result as Generator<U>
+		} else {
+			yield result as U
+		}
 	}
 }
 

@@ -21,7 +21,11 @@ export async function queryLayers(args: {
 	input: LQY.LayersQueryInput
 	ctx: CS.LayerQuery
 }) {
-	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const ctx: CS.LayerQuery = {
+		...args.ctx,
+		layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input),
+		log: args.ctx.log.child({ query: 'query-layers' }),
+	}
 	const input = { ...args.input }
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
@@ -354,7 +358,7 @@ export function getFilterNodeSQLConditions(
 
 function buildConstraintSqlCondition(
 	ctx: CS.Log & CS.Filters & CS.LayerDb & CS.LayerItemsState,
-	input: LQY.LayerQueryBaseInput,
+	input: LQY.BaseQueryInput,
 ) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
@@ -372,7 +376,7 @@ function buildConstraintSqlCondition(
 			case 'filter-entity':
 				res = getFilterNodeSQLConditions(
 					ctx,
-					FB.applyFilter(constraint.filterEntityId),
+					FB.applyFilter(constraint.filterId),
 					[i.toString()],
 					[],
 				)
@@ -387,15 +391,14 @@ function buildConstraintSqlCondition(
 			// TODO: pass error back instead
 			return res
 		}
-		switch (constraint.applyAs) {
-			case 'field':
-				selectProperties[`constraint_${i}`] = res.condition
-				break
-			case 'where-condition':
-				conditions.push(res.condition)
-				break
-			default:
-				assertNever(constraint.applyAs)
+
+		if (constraint.filterResults) {
+			const condition = constraint.invert ? E.not(res.condition) : res.condition
+			conditions.push(condition)
+		}
+
+		if (constraint.indicateMatches) {
+			selectProperties[`constraint_${i}`] = res.condition
 		}
 	}
 	return { code: 'ok' as const, conditions, selectProperties }
@@ -410,10 +413,10 @@ export async function getLayerItemStatuses(args: {
 	const constraints = input.constraints ?? []
 	const violationDescriptorsState = new Map<
 		string,
-		LQY.ViolationDescriptor[]
+		LQY.MatchDescriptor[]
 	>()
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
-	const blockedState: OneToMany.OneToManyMap<string, string> = new Map()
+	const matchedState: OneToMany.OneToManyMap<string, string> = new Map()
 	const layerItems = ctx.layerItemsState.layerItems ?? []
 	let lookbackLeft = input.numHistoryEntriesToResolve ?? 15
 	let maxLookbackIndex = 0
@@ -429,11 +432,11 @@ export async function getLayerItemStatuses(args: {
 	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
-			const violationDescriptors: LQY.ViolationDescriptor[] = []
+			const matchDescriptors: LQY.MatchDescriptor[] = []
 			const itemId = LQY.toLayerItemId(item)
 			for (const constraint of constraints) {
 				if (constraint.type === 'do-not-repeat') {
-					const descriptors = getisBlockedByRepeatRuleDirect(
+					const descriptors = getisMatchedByRepeatRuleDirect(
 						ctx,
 						i,
 						constraint.id,
@@ -441,8 +444,8 @@ export async function getLayerItemStatuses(args: {
 						item.layerId,
 					)
 					if (descriptors) {
-						OneToMany.set(blockedState, itemId, constraint.id)
-						violationDescriptors.push(...descriptors)
+						OneToMany.set(matchedState, itemId, constraint.id)
+						matchDescriptors.push(...descriptors)
 					}
 					continue
 				}
@@ -453,7 +456,7 @@ export async function getLayerItemStatuses(args: {
 					continue
 				}
 				if (constraint.type === 'filter-entity') {
-					const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterEntityId), [constraint.id], [])
+					const res = getFilterNodeSQLConditions(ctx, FB.applyFilter(constraint.filterId), [constraint.id], [])
 					if (res.code !== 'ok') return res
 					filterConditionResults.set(constraint.id, res.condition)
 					selectExpr[constraint.id] = res.condition
@@ -461,7 +464,7 @@ export async function getLayerItemStatuses(args: {
 				}
 				assertNever(constraint)
 			}
-			violationDescriptorsState.set(LQY.toLayerItemId(item), violationDescriptors)
+			violationDescriptorsState.set(LQY.toLayerItemId(item), matchDescriptors)
 		}
 	}
 
@@ -477,19 +480,19 @@ export async function getLayerItemStatuses(args: {
 		present.add(layerId)
 		for (const item of LQY.iterLayerItems(layerItems.slice(maxLookbackIndex))) {
 			if (item.layerId !== layerId) continue
-			for (const [constraintId, isConstraintBlocked] of Object.entries(row)) {
+			for (const [constraintId, isMatched] of Object.entries(row)) {
 				if (constraintId === '_id') continue
-				if (Number(isConstraintBlocked) === 0) {
-					OneToMany.set(blockedState, LQY.toLayerItemId(item), constraintId)
+				if (Number(isMatched) === 1) {
+					OneToMany.set(matchedState, LQY.toLayerItemId(item), constraintId)
 				}
 			}
 		}
 	}
 
 	const statuses: LQY.LayerItemStatuses = {
-		blocked: blockedState,
+		matching: matchedState,
 		present,
-		violationDescriptors: violationDescriptorsState,
+		matchDescriptors: violationDescriptorsState,
 	}
 	const res = {
 		code: 'ok' as const,
@@ -498,7 +501,7 @@ export async function getLayerItemStatuses(args: {
 	return res
 }
 
-function getisBlockedByRepeatRuleDirect(
+function getisMatchedByRepeatRuleDirect(
 	ctx: CS.Log & CS.LayerItemsState,
 	cursorIndex: number,
 	constraintId: string,
@@ -509,13 +512,13 @@ function getisBlockedByRepeatRuleDirect(
 	const previousLayers = ctx.layerItemsState.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, cursorIndex)
 
-	const descriptors: LQY.ViolationDescriptor[] = []
+	const descriptors: LQY.MatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
 			const layer = L.toLayer(layerItem.layerId)
-			const getViolationDescriptor = (field: LQY.ViolationDescriptor['field']): LQY.ViolationDescriptor => ({
+			const getViolationDescriptor = (field: LQY.MatchDescriptor['field']): LQY.MatchDescriptor => ({
 				constraintId,
 				type: 'repeat-rule',
 				field: field,
@@ -653,24 +656,24 @@ function getRepeatSQLConditions(
 			if (values.size === 0) {
 				return { code: 'ok' as const, condition: sql`1=1` }
 			}
-			resultSql = E.notInArray(LC.viewCol(rule.field, ctx), Array.from(values))
+			resultSql = E.inArray(LC.viewCol(rule.field, ctx), Array.from(values))
 			break
 		}
 		case 'Faction': {
 			const teamACol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'A')
 			const teamBCol = MH.getTeamNormalizedFactionProp(targetLayerTeamParity, 'B')
-			resultSql = E.and(
-				E.notInArray(LC.viewCol(teamACol, ctx), Array.from(valuesA)),
-				E.notInArray(LC.viewCol(teamBCol, ctx), Array.from(valuesB)),
+			resultSql = E.or(
+				E.inArray(LC.viewCol(teamACol, ctx), Array.from(valuesA)),
+				E.inArray(LC.viewCol(teamBCol, ctx), Array.from(valuesB)),
 			)!
 			break
 		}
 		case 'Alliance': {
 			const allianceACol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'A')
 			const allianceBCol = MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, 'B')
-			resultSql = E.and(
-				E.notInArray(LC.viewCol(allianceACol, ctx), Array.from(valuesA)),
-				E.notInArray(LC.viewCol(allianceBCol, ctx), Array.from(valuesB)),
+			resultSql = E.or(
+				E.inArray(LC.viewCol(allianceACol, ctx), Array.from(valuesA)),
+				E.inArray(LC.viewCol(allianceBCol, ctx), Array.from(valuesB)),
 			)!
 			break
 		}
@@ -691,7 +694,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	p_condition: SQL<unknown> | undefined,
 	selectProperties: any,
 	numLayers: number,
-	input: LQY.LayerQueryBaseInput,
+	input: LQY.BaseQueryInput,
 	returnLayers: ReturnLayers,
 	seed: string,
 ): Promise<GenLayerOutput<ReturnLayers>> {
@@ -792,14 +795,14 @@ export type PostProcessedLayer = Awaited<
 function postProcessLayers(
 	ctx: CS.Log & CS.EffectiveColumnConfig & CS.LayerItemsState,
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
-	baseInput: LQY.LayerQueryBaseInput,
+	baseInput: LQY.BaseQueryInput,
 ) {
 	const cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, baseInput)
 	const constraints = baseInput.constraints ?? []
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
-		const constraintResults: boolean[] = new Array(constraints.length).fill(true)
-		const violationDescriptors: LQY.ViolationDescriptor[] = []
+		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
+		const violationDescriptors: LQY.MatchDescriptor[] = []
 		const strId = LC.unpackId(layer.id)
 		const layersConverted: Record<string, string | number | boolean> = {}
 		for (const key of Object.keys(layer)) {
@@ -807,23 +810,28 @@ function postProcessLayers(
 				layersConverted[key] = LC.fromDbValue(key, layer[key], ctx)!
 				continue
 			}
-			const groups = key.match(/^constraint_(\d+)$/)
-			if (!groups) continue
-			const idx = Number(groups[1])
-			constraintResults[idx] = Number(layer[key as keyof L.KnownLayer]) === 1
-			const constraint = constraints[idx]
-			if (constraint.type === 'do-not-repeat') {
-				// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
-				const descriptors = getisBlockedByRepeatRuleDirect(
-					ctx,
-					cursorIndex,
-					constraint.id,
-					constraint.rule,
-					strId,
-				)
-				if (descriptors) constraintResults[idx] = false
-				if (descriptors && descriptors.length > 0) {
-					violationDescriptors.push(...descriptors)
+			const constraintResultMatch = key.match(/^constraint_(\d+)$/)
+			if (!constraintResultMatch) continue
+			const constraintIdx = Number(constraintResultMatch[1])
+			const constraint = constraints[constraintIdx]
+			switch (constraint.type) {
+				case 'do-not-repeat': {
+					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
+					const descriptors = getisMatchedByRepeatRuleDirect(
+						ctx,
+						cursorIndex,
+						constraint.id,
+						constraint.rule,
+						strId,
+					)
+					if (descriptors) constraintResults[constraintIdx] = true
+					if (descriptors && descriptors.length > 0) {
+						violationDescriptors.push(...descriptors)
+					}
+					break
+				}
+				case 'filter-entity': {
+					constraintResults[constraintIdx] = Number(layer[key as keyof L.KnownLayer]) === 1
 				}
 			}
 		}
@@ -916,6 +924,6 @@ async function getRangeForExtraCol({ input, ctx }: { input: { colDef: LC.Combine
 		.from(LC.layersView(ctx))
 		.where(E.isNotNull(LC.viewCol(input.colDef.name, ctx)))
 
-	const [{ min, max }] = await result
+	const [{ min, max }] = result
 	return { min, max }
 }

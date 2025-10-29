@@ -45,9 +45,6 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 	const onNicknameOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'nickname' : null)
 	}
-	const onFiltersHover = () => {
-		FilterEntityClient.prefetchQueriesForIndex()
-	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
 	const config = ConfigClient.useConfig()
@@ -68,7 +65,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					</Link>
 					<Link
 						to={AR.link('/filters')}
-						onMouseEnter={onFiltersHover}
+						{...FilterEntityClient.filterIndexPrefetch()}
 						className={`text-sm sm:text-base font-medium ${route?.id === '/filters' ? 'underline' : ''}`}
 					>
 						Filters

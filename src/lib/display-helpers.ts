@@ -229,7 +229,7 @@ export function getColumnExtraStyles(
 	column: keyof L.KnownLayer,
 	teamParity: number | undefined,
 	_displayLayersNormalized: boolean,
-	descriptors?: LQY.ViolationDescriptor[],
+	descriptors?: LQY.MatchDescriptor[],
 ) {
 	if (!descriptors) return
 	const properties = LQY.resolveViolatedLayerProperties(descriptors, teamParity ?? 0)
@@ -242,7 +242,7 @@ export function getAllExtraStyles(
 	_layer: L.UnvalidatedLayer | L.LayerId,
 	teamParity: number | undefined,
 	displayLayersNormalized: boolean,
-	descriptors?: LQY.ViolationDescriptor[],
+	descriptors?: LQY.MatchDescriptor[],
 ) {
 	const layer = L.toLayer(_layer)
 	const extraStyles: Record<string, string | undefined> = {}

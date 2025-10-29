@@ -14,7 +14,7 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 		return {
 			users: [],
 			layerInPoolState: new Map(),
-			layerItemStatuses: { blocked: new Map(), present: new Set(), violationDescriptors: new Map() },
+			layerItemStatuses: { matching: new Map(), present: new Set(), matchDescriptors: new Map() },
 			matchHistory: new Map(),
 			upsert(key, entity) {
 				set((draft) => {

@@ -1,1 +1,0 @@
-ALTER TABLE `filters` ADD CONSTRAINT `filters_emoji_unique` UNIQUE(`emoji`);

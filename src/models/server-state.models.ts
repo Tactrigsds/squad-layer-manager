@@ -1,26 +1,38 @@
 import * as Obj from '@/lib/object'
+import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import { z } from 'zod'
 
 const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
-	{ field: 'Map', within: 4 },
-	{ field: 'Layer', within: 7 },
-	{ field: 'Faction', within: 3 },
+	{ label: 'Map', field: 'Map', within: 4 },
+	{ label: 'Layer', field: 'Layer', within: 7 },
+	{ label: 'Faction', field: 'Faction', within: 3 },
 ]
 
+export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
+export type PoolFilterApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
+export const DEFAULT_POOL_FILTER_APPLY_AS = 'regular'
+
 export const PoolFilterConfigSchema = z.object({
-	invert: z.boolean().default(false),
 	filterId: F.FilterEntityIdSchema,
+	applyAs: POOL_FILTER_APPLY_AS,
 })
+export type PoolFilterConfig = z.infer<typeof PoolFilterConfigSchema>
 
 export const PoolConfigurationSchema = z.object({
-	filters: z.array(F.FilterEntityIdSchema),
-	repeatRules: z.array(LQY.RepeatRuleSchema),
+	filters: z.array(
+		// migrate
+		z.preprocess(obj => typeof obj === 'string' ? ({ filterId: obj, applyAs: DEFAULT_POOL_FILTER_APPLY_AS }) : obj, PoolFilterConfigSchema),
+	),
+	repeatRules: z.array(LQY.RepeatRuleSchema).refine(
+		(rules) => new Set(rules.map(r => r.label)).size === rules.length,
+		{ message: 'Repeat rule labels must be unique' },
+	),
 })
+
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
 export const ServerConnectionSchema = z.object({
 	rcon: z.object({
@@ -58,6 +70,9 @@ export const PublicServerSettingsSchema = z
 	})
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
+const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
+EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ applyAs: DEFAULT_POOL_FILTER_APPLY_AS, filterId: 'test-filter' })
+
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
 })
@@ -70,30 +85,31 @@ export type Changed<T> = {
 export type SettingsChanged = Changed<ServerSettings>
 
 // note the QueryConstraint is not perfectly suited to this kind of use-case as we have to arbitrarily specify apply-as
-export function getPoolConstraints(
-	poolConfig: PoolConfiguration,
-	applyAsDnr: LQY.LayerQueryConstraint['applyAs'] = 'field',
-	applyAsFilterEntiry: LQY.LayerQueryConstraint['applyAs'] = 'field',
+export function getSettingsConstraints(
+	settings: PublicServerSettings,
+	opts?: { generatingLayers?: boolean },
 ) {
-	const constraints: LQY.LayerQueryConstraint[] = []
-
-	for (const rule of poolConfig.repeatRules) {
-		constraints.push({
-			type: 'do-not-repeat',
-			rule,
-			id: 'layer-pool:' + rule.field,
-			name: rule.field,
-			applyAs: applyAsDnr,
-		})
+	const constraints: LQY.Constraint[] = []
+	const poolConfigs: Record<string, PoolConfiguration> = { main: settings.queue.mainPool, generation: settings.queue.generationPool }
+	if (!opts?.generatingLayers) {
+		delete poolConfigs.generation
+	} else if (settings.queue.applyMainPoolToGenerationPool) {
+		delete poolConfigs.generation
 	}
 
-	for (const filterId of poolConfig.filters) {
-		constraints.push({
-			type: 'filter-entity',
-			id: 'pool:' + filterId,
-			filterEntityId: filterId,
-			applyAs: applyAsFilterEntiry,
-		})
+	for (const [poolName, poolConfig] of Object.entries(poolConfigs)) {
+		for (let j = 0; j < poolConfig.repeatRules.length; j++) {
+			const rule = poolConfig.repeatRules[j]
+			// label/field might not be unique so we're doing this instead. cringe
+			constraints.push(CB.repeatRule(`layer-pool:${rule.label}`, rule, { filterResults: true }))
+		}
+
+		for (const { filterId, applyAs } of poolConfig.filters) {
+			if (applyAs === 'disabled') continue
+			constraints.push(
+				CB.filterEntity(`layer-pool:${poolName}:${filterId}`, filterId, { filterResults: true, invert: applyAs === 'inverted' }),
+			)
+		}
 	}
 	return constraints
 }
@@ -157,7 +173,9 @@ export type ServerState = z.infer<typeof ServerStateSchema>
 export const SettingsPathSchema = z.array(z.union([z.string(), z.number()]))
 	.refine(path => {
 		// does not check the last key because it could be undefined
-		return checkPublicSettingsPath(path)
+		const valid = checkPublicSettingsPath(path)
+		if (!valid) console.warn("settings path doesn't resolve", path)
+		return valid
 	}, { message: 'Path must resolve to a valid setting' })
 
 export type SettingsPath = (string | number)[]
@@ -170,7 +188,7 @@ export const SettingMutationSchema = z.object({
 export type SettingMutation = z.infer<typeof SettingMutationSchema>
 
 export function checkPublicSettingsPath(path: SettingsPath) {
-	const defaultSettings = PublicServerSettingsSchema.parse({})
+	const defaultSettings = EXAMPLE_PUBLIC_SETTINGS
 	let current = defaultSettings as any
 	// we can't validate the last key because it could be undefined
 	for (let key of path.slice(0, -1)) {

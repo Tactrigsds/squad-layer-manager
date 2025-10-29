@@ -20,7 +20,7 @@ import { Navigate, useParams } from 'react-router-dom'
 import FullPageSpinner from './full-page-spinner.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
-import { Dialog, DialogClose, DialogContent, DialogTrigger } from './ui/dialog.tsx'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './ui/dialog.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
@@ -60,6 +60,8 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 				{props.children}
 			</DialogTrigger>
 			<DialogContent className="w-auto max-w-full overflow-x-auto overflow-y-auto max-h-screen min-w-0 p-8">
+				<DialogTitle className="hidden">Layer Info</DialogTitle>
+				<DialogDescription className="hidden">Layer Info for {DH.displayLayer(props.layerId)}</DialogDescription>
 				<LayerInfo layerId={props.layerId} tab={tab || 'details'} setTab={setTab} close={() => setOpen(false)} />
 			</DialogContent>
 		</Dialog>

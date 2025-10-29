@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes.ts'
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
+import EmojiDisplay from '@/components/emoji-display.tsx'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as F from '@/models/filter.models'
@@ -9,7 +10,7 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import EmojiDisplay from './emoji-display.tsx'
+import { Link } from 'react-router-dom'
 import { Checkbox } from './ui/checkbox.tsx'
 
 export default function FilterEntitySelect(props: {
@@ -85,12 +86,12 @@ export function FilterEntityLabel(props: { className?: string; filter: F.FilterE
 
 export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
 	return (
-		<a
+		<Link
 			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-			target="_blank"
-			href={AR.link('/filters/:id', props.filterId)}
+			{...FilterEntityClient.filterEditPrefetch(props.filterId)}
+			to={AR.link('/filters/:id', props.filterId)}
 		>
 			<Icons.Edit />
-		</a>
+		</Link>
 	)
 }

@@ -193,10 +193,10 @@ export const filtersRouter = router({
 			// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies
 			// 2. disallow any dependent filters from those applied in the filter pool from being deleted
 			// 3. include a filter entity status notification(novel concept at time of writing) on the filter-edit screen that indicates that this filter is part of the currently active layer pool setup
-			for (const filterId of serverState.settings.queue.mainPool.filters) {
+			for (const { filterId } of serverState.settings.queue.mainPool.filters) {
 				if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
 			}
-			for (const filterId of serverState.settings.queue.generationPool.filters) {
+			for (const { filterId } of serverState.settings.queue.generationPool.filters) {
 				if (filterId === idToDelete) return { code: 'err:cannot-delete-pool-filter' as const }
 			}
 		}

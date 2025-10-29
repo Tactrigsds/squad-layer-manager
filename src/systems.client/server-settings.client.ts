@@ -1,3 +1,4 @@
+import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as TrpcHelpers from '@/lib/trpc-helpers'
 import { devValidate } from '@/lib/zod.dev'
@@ -18,8 +19,10 @@ export type EditSettingsStore = {
 	edited: SS.PublicServerSettings
 	set(mut: SS.SettingMutation): void
 	saving: boolean
-	save(): Promise<void>
+	save(): Promise<boolean>
 	reset(): Promise<void>
+
+	validationErrors: null | string[]
 }
 
 export const [Store, subHandle] = createStore()
@@ -34,6 +37,7 @@ function createStore() {
 
 			saved: defaultSettings,
 			edited: defaultSettings,
+			validationErrors: null,
 
 			set(mut) {
 				devValidate(SS.SettingMutationSchema, mut)
@@ -51,7 +55,16 @@ function createStore() {
 					const res = await trpc.serverSettings.updateSettings.mutate(get().ops)
 					if (res?.code === 'err:permission-denied') {
 						RbacClient.handlePermissionDenied(res)
+						return false
+					} else if (res?.code === 'err:invalid-settings') {
+						globalToast$.next({
+							variant: 'destructive',
+							title: 'Error while saving settings:',
+							description: res.message,
+						})
+						return false
 					}
+					return true
 				} finally {
 					set({ saving: false })
 				}
@@ -69,10 +82,18 @@ function createStore() {
 			store.setState({ saved: updated, edited: updated, ops: [] })
 		}))
 
-		subs.push(store.subscribe(state => {
+		subs.push(store.subscribe((state, prevState) => {
 			const modified = !Obj.deepEqual(state.edited, state.saved)
 			if (modified !== state.modified) {
 				store.setState({ modified })
+			}
+			if (state.edited !== prevState.edited) {
+				const parseRes = SS.PublicServerSettingsSchema.safeParse(state.edited)
+				if (!parseRes.success) {
+					store.setState({ validationErrors: parseRes.error.errors.map(err => err.message) })
+				} else {
+					store.setState({ validationErrors: null })
+				}
 			}
 		}))
 	})

@@ -29,14 +29,14 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	if (!cfg) return null
 	const user = PartsSys.findUser(entity.owner)!
 	const onHover = () => {
-		FilterEntityClient.prefetchQueriesForFilter(entity.id)
+		FilterEntityClient.filterEditPrefetch(entity.id)
 	}
 	const roles = rolesRes.data?.filter(role => role.filterId === entity.id)
 
 	return (
 		<li key={entity.id}>
 			<Item variant="outline" className="h-full transition-none hover:shadow-md hover:border-primary/50" asChild>
-				<Link onMouseEnter={onHover} to={AR.link('/filters/:id', entity.id)}>
+				<Link {...FilterEntityClient.filterEditPrefetch(entity.id)} to={AR.link('/filters/:id', entity.id)}>
 					{entity.emoji && (
 						<ItemMedia>
 							<EmojiDisplay emoji={entity.emoji} />

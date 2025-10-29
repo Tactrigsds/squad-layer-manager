@@ -3,6 +3,7 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
+import { useNavigateAlert } from '@/lib/browser'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -110,6 +111,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		defaultValues: {
 			name: props.entity.name,
 			description: props.entity.description,
+			alertMessage: props.entity.alertMessage,
 			emoji: props.entity.emoji,
 		},
 		onSubmit: async ({ value, formApi }) => {
@@ -144,7 +146,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 	})
 
 	const [pageIndex, setPageIndex] = useState(0)
-	// const canSave = (editedFilterModified || (isDirty && isValid)) && !!validFilter && !updateFilterMutation.isPending
 
 	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
 	const loggedInUser = UsersClient.useLoggedInUser()
@@ -215,10 +216,13 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		useShallow((state) => [state.validatedFilter, state.modified]),
 	)
 
-	const queryContext: LQY.LayerQueryBaseInput | undefined = React.useMemo(() =>
+	const queryContext: LQY.BaseQueryInput | undefined = React.useMemo(() =>
 		validFilter
-			? LQY.getEditedFilterInput(validFilter)
+			? LQY.getEditFilterPageInput(validFilter)
 			: undefined, [validFilter])
+
+	const isDirty = Form.useStore(form.store, s => s.isDirty)
+	useNavigateAlert(modifiedFilter || isDirty)
 
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
@@ -309,19 +313,20 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 							<div className="flex flex-col space-y-2">
 								<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
 									{(field) => {
+										const label = 'Name'
 										return (
 											<div className="flex flex-col space-y-2">
-												<Label htmlFor={field.name}>Name</Label>
+												<Label htmlFor={field.name}>{label}</Label>
 												<Input
 													id={field.name}
-													placeholder="Filter name"
+													placeholder={label}
 													defaultValue={field.state.value}
 													onBlur={field.handleBlur}
 													onChange={(e) => field.handleChange(e.target.value)}
 												/>
 												{field.state.meta.errors.length > 0 && (
 													<Alert variant="destructive">
-														<AlertTitle>Name:</AlertTitle>
+														<AlertTitle>{label}:</AlertTitle>
 														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 													</Alert>
 												)}
@@ -330,52 +335,85 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 									}}
 								</form.Field>
 								<form.Field name="emoji">
-									{(field) => (
-										<div className="flex flex-col space-y-2 max-w-[300px]">
-											<Label htmlFor={field.name}>Emoji</Label>
-											<EmojiPickerPopover
-												value={field.state.value ?? undefined}
-												onSelect={(id) => {
-													field.handleChange(id ?? null)
-												}}
-												disabled={false}
-											/>
-											{field.state.meta.errors.length > 0 && (
-												<Alert variant="destructive">
-													<AlertTitle>Emoji:</AlertTitle>
-													<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-												</Alert>
-											)}
-										</div>
-									)}
+									{(field) => {
+										const label = 'Emoji'
+										return (
+											<div className="flex flex-col space-y-2 max-w-[300px]">
+												<Label htmlFor={field.name}>{label}</Label>
+												<EmojiPickerPopover
+													value={field.state.value ?? undefined}
+													onSelect={(id) => {
+														field.handleChange(id ?? null)
+													}}
+													disabled={false}
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertTitle>{label}:</AlertTitle>
+														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)
+									}}
+								</form.Field>
+								<form.Field
+									name="alertMessage"
+									validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+								>
+									{(field) => {
+										const label = 'Alert Message'
+										return (
+											<div className="flex flex-col space-y-2 max-w-[300px]">
+												<Label htmlFor={field.name}>{label}</Label>
+												<Textarea
+													id={field.name}
+													placeholder={label}
+													defaultValue={field.state.value ?? ''}
+													onBlur={field.handleBlur}
+													onChange={(e) => field.setValue(e.target.value)}
+													rows={5}
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertTitle>{label}:</AlertTitle>
+														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)
+									}}
 								</form.Field>
 								<form.Field
 									name="description"
-									validators={{ onChange: F.FilterEntityDescriptionSchema.nullable() }}
+									validators={{ onChange: F.DescriptionSchema.nullable() }}
 								>
-									{(field) => (
-										<div className="flex flex-grow space-x-2">
-											<div className="flex min-w-[900px] flex-col space-y-1">
-												<Label htmlFor={field.name}>Description</Label>
-												<Textarea
-													id={field.name}
-													placeholder="Description"
-													defaultValue={field.state.value ?? ''}
-													onBlur={field.handleBlur}
-													onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
-													rows={15}
-												/>
+									{(field) => {
+										const label = 'Description'
+										return (
+											<div className="flex flex-grow space-x-2">
+												<div className="flex min-w-[900px] flex-col space-y-1">
+													<Label htmlFor={field.name}>{label}</Label>
+													<Textarea
+														id={field.name}
+														placeholder={label}
+														defaultValue={field.state.value ?? ''}
+														onBlur={field.handleBlur}
+														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
+														rows={15}
+													/>
+												</div>
+												{field.state.meta.errors.length > 0 && (
+													<span>
+														<Alert variant="destructive">
+															<AlertTitle>{label}:</AlertTitle>
+															<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+														</Alert>
+													</span>
+												)}
 											</div>
-											{field.state.meta.errors.length > 0 && (
-												<span>
-													<Alert variant="destructive">
-														<AlertTitle>Description:</AlertTitle>
-														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-													</Alert>
-												</span>
-											)}
-										</div>
-									)}
+										)
+									}}
 								</form.Field>
 							</div>
 							<Button

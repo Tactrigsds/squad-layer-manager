@@ -1,9 +1,9 @@
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
+import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
 import { VisibilityState } from '@tanstack/react-table'
-
 import * as Im from 'immer'
 import { z } from 'zod'
 import * as F from './filter.models'
@@ -16,7 +16,7 @@ export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Factio
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
 	field: RepeatRuleFieldSchema,
-	label: z.string().min(1).max(100).optional().describe('A label for the rule'),
+	label: z.string().min(1).max(100).describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 })
@@ -26,70 +26,35 @@ export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): b
 	return !rule.targetValues.includes(value as string)
 }
 
-export type LayerQueryConstraint =
+export type Constraint =
 	| {
 		type: 'filter-anon'
 		filter: F.FilterNode
-		applyAs: 'field' | 'where-condition'
-		name?: string
+		filterResults: true
+		indicateMatches: false
+		invert: false
 		id: string
 	}
 	| {
 		type: 'filter-entity'
-		filterEntityId: F.FilterEntityId
-		applyAs: 'field' | 'where-condition'
-		name?: string
+		filterId: F.FilterEntityId
+		indicateMatches: boolean
+		// only applies to filtering results
+		invert: boolean
+		filterResults: boolean
 		id: string
 	}
 	| {
 		type: 'do-not-repeat'
 		rule: RepeatRule
-		applyAs: 'field' | 'where-condition'
-		name?: string
+		indicateMatches: true
+		// always inverted when filtering results
+		invert: true
+		filterResults: boolean
 		id: string
 	}
-export type NamedQueryConstraint = LayerQueryConstraint & { name: string }
 
-export function filterToNamedConstrant(
-	filter: F.FilterNode,
-	id: string,
-	name: string,
-	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
-): NamedQueryConstraint {
-	return {
-		type: 'filter-anon',
-		filter,
-		applyAs,
-		name,
-		id,
-	}
-}
-
-export function filterToConstraint(
-	filter: F.FilterNode,
-	id: string,
-	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
-): LayerQueryConstraint {
-	return {
-		type: 'filter-anon',
-		filter,
-		applyAs,
-		id,
-	}
-}
-
-export function filterEntityToConstraint(
-	filterEntity: F.FilterEntity,
-	id: string,
-	applyAs: LayerQueryConstraint['applyAs'] = 'where-condition',
-): LayerQueryConstraint {
-	return {
-		type: 'filter-entity',
-		filterEntityId: filterEntity.id,
-		id,
-		applyAs,
-	}
-}
+export type ViewableConstraint = Exclude<Constraint, { indicateMatches: false }>
 
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
@@ -118,23 +83,23 @@ export type LayersQueryInput = {
 	pageIndex?: number
 	pageSize?: number
 	sort?: LayersQuerySort
-} & LayerQueryBaseInput
+} & BaseQueryInput
 
-export type LayerComponentInput = LayerQueryBaseInput & { column: LC.GroupByColumn }
+export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }
 
 export type LayerExistsInput = L.LayerId[]
 
 export type SearchIdsInput = {
 	queryString: string
-	constraints?: LayerQueryConstraint[]
+	constraints?: Constraint[]
 }
 
-export type LayerItemStatusesInput = LayerQueryBaseInput & { numHistoryEntriesToResolve?: number }
+export type LayerItemStatusesInput = BaseQueryInput & { numHistoryEntriesToResolve?: number }
 
 export type LayerItemStatuses = {
-	blocked: OneToMany.OneToManyMap<string, string>
+	matching: OneToMany.OneToManyMap<string, string>
 	present: Set<string>
-	violationDescriptors: Map<string, ViolationDescriptor[]>
+	matchDescriptors: Map<string, MatchDescriptor[]>
 }
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
@@ -146,10 +111,18 @@ type LayerItemPatch = {
 	insertions?: LayerItem[]
 }
 
-export type LayerQueryBaseInput = {
-	constraints?: LayerQueryConstraint[]
+export type BaseQueryInput = {
+	constraints?: Constraint[]
 	cursor?: LayerQueryCursor
 	patches?: LayerItemPatch[]
+}
+
+export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQueryInput {
+	return {
+		constraints: [...(a.constraints || []), ...(b.constraints || [])],
+		cursor: b.cursor || a.cursor,
+		patches: [...(a.patches || []), ...(b.patches || [])],
+	}
 }
 
 type LayerVoteItemCursorAction = 'add-after' | 'edit' | 'add-vote-choice'
@@ -173,18 +146,18 @@ export type GenLayerQueueItemsOptions = {
 	baseFilterId?: F.FilterEntityId
 }
 
-export function getEditedFilterInput(filter: F.FilterNode): LayerQueryBaseInput {
-	return { constraints: [{ type: 'filter-anon', id: 'edited-filter', filter, applyAs: 'where-condition' }] }
+export function getEditFilterPageInput(filter: F.FilterNode): BaseQueryInput {
+	return { constraints: [CB.filterAnon('edited-filter', filter)] }
 }
 
 export type LayerStatuses = {
 	// keys are (itemId:(choiceLayerId)?)
 	blocked: OneToMany.OneToManyMap<string, string>
 	present: Set<L.LayerId>
-	violationDescriptors: Map<string, ViolationDescriptor[]>
+	violationDescriptors: Map<string, MatchDescriptor[]>
 }
 
-export type ViolationDescriptor = {
+export type MatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
 	field:
@@ -199,8 +172,8 @@ export type ViolationDescriptor = {
 	reasonItem?: LayerItem
 }
 
-export function resolveViolatedLayerProperties(descriptors: ViolationDescriptor[], teamParity: number) {
-	const violatedFields: OneToMany.OneToManyMap<string, ViolationDescriptor> = new Map()
+export function resolveViolatedLayerProperties(descriptors: MatchDescriptor[], teamParity: number) {
+	const violatedFields: OneToMany.OneToManyMap<string, MatchDescriptor> = new Map()
 	for (const descriptor of descriptors) {
 		// Map ViolationDescriptor fields to KnownLayer fields
 		switch (descriptor.field) {
@@ -344,7 +317,7 @@ export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDeta
 	return { layerItems, firstLayerItemParity }
 }
 
-export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<LayerQueryBaseInput, 'patches'>) {
+export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<BaseQueryInput, 'patches'>) {
 	if (!input.patches || input.patches.length === 0) return baseState
 	return Im.produce(baseState, (draft) => {
 		for (const patch of input.patches!) {
@@ -362,7 +335,7 @@ export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<La
 
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
-	input: Pick<LayerQueryBaseInput, 'cursor'>,
+	input: Pick<BaseQueryInput, 'cursor'>,
 ) {
 	const orderedItems = orderedItemsState.layerItems
 	const cursor = input.cursor
@@ -406,7 +379,7 @@ export function resolveCursorIndex(
 	assertNever(cursor)
 }
 
-export function resolveTeamParityForCursor(state: LayerItemsState, input: LayerQueryBaseInput) {
+export function resolveTeamParityForCursor(state: LayerItemsState, input: BaseQueryInput) {
 	const index = resolveCursorIndex(state, input)
 	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index)
 }
@@ -484,9 +457,9 @@ export function getQueryCursorForLayerItem(
 
 export function getBaseQueryInputForAddingVoteChoice(
 	layerItemsState: LayerItemsState,
-	constraints: LayerQueryConstraint[],
+	constraints: Constraint[],
 	parentItemId: string,
-): LayerQueryBaseInput {
+): BaseQueryInput {
 	const parentItem = layerItemsState.layerItems.find(item => item.type === 'parent-vote-item' && item.parentItemId === parentItemId)
 	const cursor: LayerQueryCursor = {
 		type: 'id',
@@ -499,7 +472,7 @@ export function getBaseQueryInputForAddingVoteChoice(
 		layerIds.push(currentItem.layerId)
 	}
 	const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
-	constraints.push(filterToConstraint(filter, 'vote-choice-sibling-exclusion:' + parentItemId))
+	constraints.push(CB.filterAnon('vote-choice-sibling-exclusion:' + parentItemId, filter))
 
 	return {
 		constraints,
@@ -546,25 +519,31 @@ export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig)
 	return res
 }
 
-export type ApplyAsState = {
-	dnr: LayerQueryConstraint['applyAs']
-	filter: LayerQueryConstraint['applyAs']
+// this is very sparse at the moment, maybe we'll add more of these on-off flags later
+export type PoolCheckboxesState = {
+	dnr: boolean
 }
 
-export type ApplyAsStore = {
-	poolApplyAs: ApplyAsState
-	setPoolApplyAs: (type: keyof ApplyAsState, value: LayerQueryConstraint['applyAs']) => void
+export type PoolCheckboxesStore = {
+	state: PoolCheckboxesState
+	setState: (type: keyof PoolCheckboxesState, value: boolean) => void
 }
 
 export type ExtraQueryFiltersActions = {
-	setActive: (filterId: F.FilterEntityId, active: boolean) => void
+	setFilterState: (filterId: F.FilterEntityId, active: 'regular' | 'inverted' | 'disabled') => void
 	select: (filters: F.FilterEntityId[]) => void
 	remove: (filterId: F.FilterEntityId) => void
 }
 
+export type ApplyAs = 'regular' | 'inverted'
+export type FilterApplication = { filterId: F.FilterEntityId; applyAs: ApplyAs }
+
 export type ExtraQueryFiltersState = {
 	filters: Set<F.FilterEntityId>
-	activeFilters: Set<F.FilterEntityId>
+	activated: { filterId: F.FilterEntityId; state: ApplyAs }[]
+
+	// readOnly just indicates that the filter cannot be removed or modified. can still be activated/deactivated
+	readOnlyFilters: Set<F.FilterEntityId>
 }
 
 export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState

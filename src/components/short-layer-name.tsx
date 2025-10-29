@@ -14,11 +14,11 @@ import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
 
 export default function ShortLayerName(
-	{ layerId, teamParity, backfillLayerId, violationDescriptors, allowShowInfo }: {
+	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo }: {
 		layerId: L.LayerId
 		teamParity?: number
 		backfillLayerId?: L.LayerId
-		violationDescriptors?: LQY.ViolationDescriptor[]
+		matchDescriptors?: LQY.MatchDescriptor[]
 		allowShowInfo?: boolean
 	},
 ) {
@@ -34,9 +34,9 @@ export default function ShortLayerName(
 	}
 
 	// Create violation field mapping
-	let violatedFields: OneToManyMap<string, LQY.ViolationDescriptor> = new Map()
-	if (violationDescriptors && !isNullOrUndef(teamParity)) {
-		violatedFields = LQY.resolveViolatedLayerProperties(violationDescriptors, teamParity)
+	let violatedFields: OneToManyMap<string, LQY.MatchDescriptor> = new Map()
+	if (matchDescriptors && !isNullOrUndef(teamParity)) {
+		violatedFields = LQY.resolveViolatedLayerProperties(matchDescriptors, teamParity)
 	}
 
 	const combineStyles = (field: keyof typeof partialLayer) => {

@@ -8,7 +8,6 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LFM from '@/models/layer-filter-menu.models'
 import * as LQY from '@/models/layer-queries.models'
-import * as ConfigClient from '@/systems.client/config.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -16,7 +15,7 @@ import * as Zus from 'zustand'
 import { Comparison, ComparisonHandle } from './filter-card'
 
 export default function LayerFilterMenu(
-	props: { filterMenuStore: Zus.StoreApi<LFM.FilterMenuStore>; layerQueryBaseInput: LQY.LayerQueryBaseInput },
+	props: { filterMenuStore: Zus.StoreApi<LFM.FilterMenuStore> },
 ) {
 	const storeState = ZusUtils.useStoreDeep(
 		props.filterMenuStore,
@@ -34,7 +33,6 @@ export default function LayerFilterMenu(
 						field={field}
 						comp={comparison}
 						store={props.filterMenuStore}
-						queryBaseInput={props.layerQueryBaseInput}
 						clearAll$={clearAll$Ref.current}
 					/>
 				))}
@@ -59,34 +57,16 @@ function LayerFilterMenuItem(
 		field: string
 		comp: F.EditableComparison
 		store: Zus.StoreApi<LFM.FilterMenuStore>
-		queryBaseInput: LQY.LayerQueryBaseInput
 		clearAll$: Rx.Subject<void>
 	},
 ) {
 	const ref = React.useRef<ComparisonHandle>(null)
-	const { swapFactionsDisabled, queryBaseInput } = ZusUtils.useStoreDeep(
+	const [swapFactionsDisabled, queryBaseInput] = ZusUtils.useStoreDeep(
 		props.store,
-		state => {
-			const swapFactionsDisabled = !(
-				['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(key =>
-					state.menuItems[key as keyof L.KnownLayer].value !== undefined
-				)
-			)
-
-			let constraints = props.queryBaseInput?.constraints ?? []
-			if (state.siblingFilters[props.field]) {
-				constraints = [
-					...constraints,
-					LQY.filterToConstraint(state.siblingFilters[props.field]!, 'sibling-' + props.field),
-				]
-			}
-			return {
-				queryBaseInput: { ...props.queryBaseInput, constraints },
-				swapFactionsDisabled,
-			}
-		},
-		{ dependencies: [props.queryBaseInput] },
+		state => [LFM.selectSwapFactionsDisabled(state), LFM.selectFilterMenuItemConstraints(state, props.field)] as const,
+		{ dependencies: [props.field] },
 	)
+
 	React.useEffect(() => {
 		const sub = props.clearAll$.subscribe(() => {
 			ref.current?.clear(true)

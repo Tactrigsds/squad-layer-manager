@@ -17,28 +17,6 @@ import { z } from 'zod'
 
 const tracer = Otel.trace.getTracer('server-settings')
 
-export function init(ctx: C.ServerId & C.ServerSliceSub & CS.Log) {
-	const serverId = ctx.serverId
-
-	// -------- trim pool filters when filter entities are deleted --------
-	ctx.serverSliceSub.add(
-		FilterEntity.filterMutation$
-			.pipe(
-				Rx.filter(([_, mut]) => mut.type === 'delete'),
-				C.durableSub('server-settings:handle-filter-delete', { ctx, tracer }, async ([_ctx, mutation]) => {
-					const ctx = SquadServer.resolveSliceCtx(_ctx, serverId)
-					await DB.runTransaction(ctx, async (ctx) => {
-						const serverState = await LayerQueue.getServerState(ctx)
-						const remainingFilterIds = serverState.settings.queue.mainPool.filters.filter(f => f !== mutation.key)
-						if (remainingFilterIds.length === serverState.settings.queue.mainPool.filters.length) return null
-						serverState.settings.queue.mainPool.filters = remainingFilterIds
-						await LayerQueue.updateServerState(ctx, { settings: serverState.settings }, { type: 'system', event: 'filter-delete' })
-					})
-				}),
-			).subscribe(),
-	)
-}
-
 export const router = TrpcServer.router({
 	watchSettings: TrpcServer.procedure.subscription(async function*({ ctx: _ctx, signal }) {
 		const obs = SquadServer.selectedServerCtx$(_ctx)
@@ -73,12 +51,12 @@ export const router = TrpcServer.router({
 				throw new TRPCError({ code: 'FORBIDDEN', message: 'err:trying-to-edit-connection-settings' })
 			}
 		}
-		await DB.runTransaction(ctx, async (ctx) => {
+		return await DB.runTransaction(ctx, async (ctx) => {
 			const state = await LayerQueue.getServerState(ctx)
 			SS.applySettingMutations(state.settings, input)
 			const res = SS.ServerSettingsSchema.safeParse(state.settings)
 			if (!res.success) {
-				throw new TRPCError({ code: 'BAD_REQUEST', message: 'err:invalid-settings', cause: res.error })
+				return { code: 'err:invalid-settings' as const, message: res.error.message }
 			}
 
 			await LayerQueue.updateServerState(ctx, { settings: state.settings }, {

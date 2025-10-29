@@ -4,7 +4,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
-import { Parts, resToNullable } from '@/lib/types'
+import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -71,11 +71,6 @@ export const init = C.spanOp(
 			const s = ctx.layerQueue
 
 			const initialServerState = await SquadServer.getFullServerState(ctx)
-			// -------- prune main pool filters when filter entities are deleted  --------
-			let mainPoolFilterIds = initialServerState.settings.queue.mainPool.filters
-			const filters = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, mainPoolFilterIds)).for('update')
-			mainPoolFilterIds = mainPoolFilterIds.filter(id => filters.some(filter => filter.id === id))
-			initialServerState.settings.queue.mainPool.filters = mainPoolFilterIds
 
 			// -------- initialize vote state --------
 			await syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
@@ -916,11 +911,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	let nextLayerId = LL.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextLayerId) {
-		const constraints: LQY.LayerQueryConstraint[] = []
-		if (serverState.settings.queue.applyMainPoolToGenerationPool) {
-			constraints.push(...SS.getPoolConstraints(serverState.settings.queue.mainPool, 'where-condition', 'where-condition'))
-		}
-		constraints.push(...SS.getPoolConstraints(serverState.settings.queue.generationPool, 'where-condition', 'where-condition'))
+		const constraints = SS.getSettingsConstraints(serverState.settings)
 		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 
 		const res = await LayerQueries.queryLayers({

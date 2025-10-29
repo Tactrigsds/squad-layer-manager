@@ -415,13 +415,15 @@ export const FilterEntityIdSchema = z
 		message: 'Disallow particular magic strings',
 	})
 
-export const FilterEntityDescriptionSchema = z.string().trim().min(3).max(2048)
+export const DescriptionSchema = z.string().trim().min(3).max(2048)
+export const AlertMessageSchema = z.string().trim().min(3).max(280)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
 
 export const BaseFilterEntitySchema = z.object({
 	id: FilterEntityIdSchema,
 	name: z.string().trim().min(3).max(128),
-	description: FilterEntityDescriptionSchema.nullable(),
+	description: DescriptionSchema.nullable(),
+	alertMessage: AlertMessageSchema.nullable(),
 	filter: FilterNodeSchema,
 	owner: z.bigint(),
 	emoji: z.string().nullable(),
@@ -708,16 +710,10 @@ export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourceP
 
 export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	const targetPath = tree.paths.get(targetId)!
-
-	for (const [id, path] of tree.paths.entries()) {
-		if (Sparse.isChildPath(targetPath, path)) {
-			tree.paths.delete(id)
-			tree.nodes.delete(id)
-		}
-	}
-
-	tree.paths.delete(targetId)
-	tree.nodes.delete(targetId)
+	const parentPath = targetPath.slice(0, -1)
+	let sparseTree = treeToSparseTree(tree, parentPath)
+	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
+	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
 }
 
 export type FilterEditStore =

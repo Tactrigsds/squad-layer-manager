@@ -31,7 +31,7 @@ import { useRef, useState } from 'react'
 import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
-import { ConstraintViolationDisplay } from './constraint-violation-display'
+import { ConstraintDisplay } from './constraint-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Checkbox } from './ui/checkbox'
@@ -44,7 +44,7 @@ export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
 
 type ConstraintRowDetails = {
 	values: boolean[]
-	violationDescriptors: LQY.ViolationDescriptor[]
+	violationDescriptors: LQY.MatchDescriptor[]
 }
 type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails }
 const columnHelper = createColumnHelper<RowData>()
@@ -191,7 +191,7 @@ function buildColumn(
 	})
 }
 
-function Cell({ row, constraints }: { row: Row<RowData>; constraints: LQY.LayerQueryConstraint[] }) {
+function Cell({ row, constraints }: { row: Row<RowData>; constraints: LQY.Constraint[] }) {
 	const loggedInUser = useLoggedInUser()
 	const canForceWrite = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('queue:force-write'))
 
@@ -208,7 +208,7 @@ function buildColDefs(
 	cfg: LQY.EffectiveColumnAndTableConfig,
 	teamParity: number,
 	displayLayersNormalized: boolean,
-	constraints?: LQY.LayerQueryConstraint[],
+	constraints?: LQY.Constraint[],
 	sortingState?: ExtendedSortingState,
 	setSorting?: React.Dispatch<React.SetStateAction<ExtendedSortingState>>,
 ) {
@@ -262,15 +262,15 @@ function buildColDefs(
 			header: '',
 			enableHiding: false,
 			cell: info => {
-				const { values, violationDescriptors } = info.getValue()
-				if (!violationDescriptors || !values) return null
-				const namedConstraints = constraints.filter((c, i) => c.applyAs === 'field' && !values[i]) as LQY.NamedQueryConstraint[]
+				const { values, violationDescriptors: matchDescriptors } = info.getValue()
+				if (!matchDescriptors || !values || !constraints) return null
+				const matchingConstraints = constraints!.filter((c, i) => values[i])
 				return (
 					<div className="w-[100px]">
-						<ConstraintViolationDisplay
+						<ConstraintDisplay
+							side="right"
 							padEmpty={true}
-							violated={namedConstraints}
-							violationDescriptors={violationDescriptors}
+							matchingConstraints={matchingConstraints}
 						/>
 					</div>
 				)
@@ -284,7 +284,7 @@ function buildColDefs(
 
 export default function LayerTable(props: {
 	// make sure this reference is stable
-	baseInput?: LQY.LayerQueryBaseInput
+	baseInput?: LQY.BaseQueryInput
 
 	selected: L.LayerId[]
 	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>
@@ -312,15 +312,6 @@ export default function LayerTable(props: {
 	const canToggleColumns = props.canToggleColumns ?? true
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const pageIndex = props.pageIndex
-
-	// {
-	// 	const constraintsRef = React.useRef(props.baseInput?.constraints)
-	// 	if (!deepEqual(constraintsRef.current, props.baseInput?.constraints)) {
-	// 		props.setPageIndex(0)
-	// 		pageIndex = 0
-	// 	}
-	// 	constraintsRef.current = props.baseInput?.constraints
-	// }
 
 	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
 	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
@@ -464,13 +455,14 @@ export default function LayerTable(props: {
 		}
 	}
 
-	const queryInput = LayerQueriesClient.getLayerQueryInput(props.baseInput ?? {}, {
-		cfg,
-		pageIndex,
-		selectedLayers: showSelectedLayers ? props.selected : undefined,
-		pageSize,
-		sort,
-	})
+	const queryInput = React.useMemo(() =>
+		LayerQueriesClient.getQueryLayersInput(props.baseInput ?? {}, {
+			cfg,
+			pageIndex,
+			selectedLayers: showSelectedLayers ? props.selected : undefined,
+			pageSize,
+			sort,
+		}), [props.baseInput, cfg, pageIndex, showSelectedLayers, props.selected, pageSize, sort])
 
 	const layersRes = LayerQueriesClient.useLayersQuery(queryInput, { errorStore: props.errorStore })
 
@@ -546,12 +538,12 @@ export default function LayerTable(props: {
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(
-			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, props.baseInput?.constraints, sortingState, setSorting) : [],
+			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, queryInput.constraints, sortingState, setSorting) : [],
 			[
 				cfg,
 				teamParity,
 				displayTeamsNormalized,
-				props.baseInput?.constraints,
+				queryInput.constraints,
 				sortingState,
 				setSorting,
 			],
@@ -985,10 +977,10 @@ function MultiLayerSetDialog({
 		</Dialog>
 	)
 }
-function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.LayerQueryConstraint[]) {
+function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
 }
 
-function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean, constraints: LQY.LayerQueryConstraint[]) {
+function getIsRowDisabled(row: Row<RowData>, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	return !row.getIsSelected() && getIsLayerDisabled(row.original, canForceSelect, constraints)
 }

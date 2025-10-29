@@ -10,15 +10,12 @@ import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as DND from '@/models/dndkit.models.ts'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
-import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
@@ -382,7 +379,7 @@ export function LeafFilterNode(props: NodeProps) {
 				/>
 				<Link
 					to={AR.link('/filters/:id', node.filterId ?? '')}
-					target="_blank"
+					{...FilterEntityClient.filterEditPrefetch(node.filterId)}
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
 					<ExternalLink color="hsl(var(--primary))" />
@@ -416,7 +413,7 @@ export function Comparison(props: {
 	allowedColumns?: string[]
 	allowedComparisonCodes?: F.ComparisonCode[]
 	restrictValueSize?: boolean
-	baseQueryInput?: LQY.LayerQueryBaseInput
+	baseQueryInput?: LQY.BaseQueryInput
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
@@ -586,7 +583,6 @@ export function Comparison(props: {
 							}
 							return setComp((c) => ({ ...c, values: update }))
 						}}
-						baseQueryInput={props.baseQueryInput}
 						className={componentStyles}
 					/>
 				)
@@ -718,7 +714,7 @@ function StringEqConfig<T extends string | null>(
 		value: T | undefined
 		column: LC.GroupByColumn
 		setValue: (value: T | undefined) => void
-		baseQueryInput?: LQY.LayerQueryBaseInput
+		baseQueryInput?: LQY.BaseQueryInput
 		className?: string
 		lockOnSingleOption?: boolean
 		ref?: React.ForwardedRef<ComboBoxHandle>
@@ -746,7 +742,7 @@ function StringInConfig(
 		values: (string | null)[]
 		column: LC.GroupByColumn
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		baseQueryInput?: LQY.LayerQueryBaseInput
+		baseQueryInput?: LQY.BaseQueryInput
 		className?: string
 		ref?: React.ForwardedRef<ComboBoxHandle>
 		restrictValueSize?: boolean
@@ -771,7 +767,6 @@ function LayersInConfig(
 	props: {
 		values: (string | null)[]
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		baseQueryInput?: LQY.LayerQueryBaseInput
 		className?: string
 	},
 ) {
@@ -810,7 +805,6 @@ function LayersInConfig(
 					title="Select Layers"
 					pinMode="layers"
 					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
-					layerQueryBaseInput={props.baseQueryInput ?? {}}
 				>
 					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
 						<Icons.Edit className="h-4 w-4 mr-2" />
@@ -826,7 +820,7 @@ export function LayerEqConfig(
 	props: {
 		value: string | null
 		setValue: React.Dispatch<React.SetStateAction<string | null>>
-		baseQueryInput?: LQY.LayerQueryBaseInput
+		baseQueryInput?: LQY.BaseQueryInput
 	},
 ) {
 	const [open, setOpen] = React.useState(false)
@@ -922,7 +916,7 @@ function FactionsAllowMatchupsConfig(props: {
 	setMasks: React.Dispatch<React.SetStateAction<F.FactionMask[][]>>
 	mode?: 'split' | 'both' | 'either'
 	setMode?: (mode: 'split' | 'both' | 'either') => void
-	baseQueryInput?: LQY.LayerQueryBaseInput
+	baseQueryInput?: LQY.BaseQueryInput
 	className?: string
 	ref?: React.ForwardedRef<Focusable & Clearable>
 }) {
@@ -1201,7 +1195,7 @@ function FactionsAllowMatchupsConfig(props: {
 function FactionMaskConfig(props: {
 	value: F.FactionMask | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask | undefined>>
-	queryContext?: LQY.LayerQueryBaseInput
+	queryContext?: LQY.BaseQueryInput
 	className?: string
 	ref?: React.ForwardedRef<Focusable>
 }) {
@@ -1295,7 +1289,7 @@ function FactionMaskConfig(props: {
 function FactionMaskListConfig(props: {
 	value: F.FactionMask[] | undefined
 	setValue: React.Dispatch<React.SetStateAction<F.FactionMask[] | undefined>>
-	queryContext?: LQY.LayerQueryBaseInput
+	queryContext?: LQY.BaseQueryInput
 	className?: string
 	onSwitchMaskTeam?: (mask: F.FactionMask, index: number) => void
 	showTeamSwitch?: boolean

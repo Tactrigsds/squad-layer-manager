@@ -266,7 +266,6 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 	await MatchHistory.loadState({ ...ctx, ...slice })
 	await LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
-	ServerSettings.init({ ...ctx, ...slice })
 	initNewGameHandling({ ...ctx, ...slice })
 }
 

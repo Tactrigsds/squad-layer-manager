@@ -2,8 +2,10 @@ import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
+import { useDeepEqualsMemo } from '@/lib/react'
 import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
+import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -21,6 +23,7 @@ import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
 import * as Im from 'immer'
+import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
@@ -85,41 +88,56 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 	})
 })
 
-export function useFilterMenuLayerQueryContext(baseInput?: LQY.LayerQueryBaseInput, defaultFields?: Partial<L.KnownLayer>) {
+// context for a generic query, with a cursor from the current layer list
+export function useFilterMenuLayerQueryContext(cursor?: LQY.LayerQueryCursor, defaultFields?: Partial<L.KnownLayer>) {
+	cursor = useDeepEqualsMemo(() => cursor, [cursor])
 	const extraFiltersStore = useExtraFiltersStore()
-	const applyAsStore = useNewPoolApplyAsStore()
-	const filterMenuStore = LFM.useFilterMenuStore(defaultFields)
-
-	const queryInput = ZusUtils.useCombinedStoresDeep(
-		[applyAsStore, extraFiltersStore, ServerSettingsClient.Store],
-		([applyAsState, extraFiltersState, serverSettingsStore]) => {
-			const settings = serverSettingsStore.saved
-			const baseConstraints = QD.selectBaseQueryConstraints(settings, applyAsState.poolApplyAs)
+	const poolCheckboxesStore = useNewPoolCheckboxesStore()
+	const active = ZusUtils.useStoreDeep(extraFiltersStore, state => state.activated)
+	React.useEffect(() => {
+		console.log('active changed', active)
+	}, [active])
+	const [queryInputStore, subHandle] = React.useMemo(() => {
+		const deriveState = (): { queryInput: LQY.BaseQueryInput } => {
+			const extraFiltersState = extraFiltersStore.getState()
+			const poolCheckboxesState = poolCheckboxesStore.getState()
+			const settingsState = ServerSettingsClient.Store.getState()
 			const extraFiltersContraints = QD.getExtraFiltersConstraints(extraFiltersState)
-			return {
-				...(baseInput ?? {}),
-				constraints: [
-					...(baseInput?.constraints ?? []),
-					...baseConstraints,
-					...extraFiltersContraints,
-				],
+
+			// probably need to update this hook if this breaks
+			const checkboxesState = poolCheckboxesState.state as { dnr: boolean } satisfies LQY.PoolCheckboxesState
+
+			const dnrConstraints = QD.getToggledRepeatRuleConstraints(settingsState.saved, checkboxesState.dnr)
+			const queryInput = {
+				cursor,
+				constraints: [...extraFiltersContraints, ...dnrConstraints],
 			}
+			return { queryInput }
+		}
+
+		const store = Zus.createStore<{ queryInput: LQY.BaseQueryInput }>(() => deriveState())
+		const update = () => store.setState(deriveState())
+
+		const subHandle = ZusUtils.createSubHandle((subs) => {
+			subs.push(extraFiltersStore.subscribe(update))
+			subs.push(poolCheckboxesStore.subscribe(update))
+			subs.push(ServerSettingsClient.Store.subscribe(update))
+		})
+		return [store, subHandle] as const
+	}, [cursor, extraFiltersStore, poolCheckboxesStore])
+	ZusUtils.useSubHandle(subHandle)
+
+	const filterMenuStore = LFM.useFilterMenuStore(queryInputStore, defaultFields)
+
+	const filteredQueryInput = ZusUtils.useCombinedStoresDeep(
+		[filterMenuStore],
+		([filterMenuState]) => {
+			return LFM.selectFilterMenuQueryInput(filterMenuState)
 		},
-		{ selectorDeps: [baseInput] },
+		{ dependencies: [cursor] },
 	)
 
-	const filteredQueryInput = ZusUtils.useStoreDeep(filterMenuStore, (state): LQY.LayersQueryInput => {
-		const menuConstraints = LFM.selectFilterMenuConstraints(state)
-		return {
-			...queryInput,
-			constraints: [
-				...queryInput.constraints,
-				...menuConstraints,
-			],
-		}
-	}, { dependencies: [queryInput] })
-
-	return { extraFiltersStore, applyAsStore, queryInput, filterMenuStore, filteredQueryInput }
+	return { extraFiltersStore, filterResultsStore: poolCheckboxesStore, queryInput: filteredQueryInput, filterMenuStore }
 }
 
 export const useFetchingBuffer = Zus.create(() => false)
@@ -166,16 +184,16 @@ export function getQueryLayersBase(input: LQY.LayersQueryInput, counters: LayerC
 	}
 }
 
-export async function prefetchLayersQuery(baseInput: LQY.LayerQueryBaseInput) {
+export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput) {
 	const cfg = await ConfigClient.fetchEffectiveConfig()
-	const input = getLayerQueryInput(baseInput, { cfg })
+	const input = getQueryLayersInput(baseInput, { cfg })
 	const baseQuery = getQueryLayersBase(input, Store.getState().counters)
 	return await reactQueryClient.prefetchQuery(
 		baseQuery,
 	)
 }
 
-export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts: {
+export function getQueryLayersInput(queryContext: LQY.BaseQueryInput, opts: {
 	cfg?: LC.EffectiveColumnConfig
 	selectedLayers?: L.LayerId[]
 	sort?: LQY.LayersQueryInput['sort']
@@ -194,8 +212,8 @@ export function getLayerQueryInput(queryContext: LQY.LayerQueryBaseInput, opts: 
 		queryContext = {
 			...queryContext,
 			constraints: [
-				...(queryContext.constraints?.filter(c => c.applyAs === 'field') ?? []),
-				{ type: 'filter-anon', id: 'show-selected', filter, applyAs: 'where-condition' },
+				...(queryContext.constraints?.filter(c => !c.filterResults) ?? []),
+				CB.filterAnon('show-selected', filter),
 			],
 		}
 	}
@@ -233,21 +251,53 @@ export function useLayerComponents(
 	})
 }
 
+export function useLayerItemStatusConstraints() {
+	return ZusUtils.useStoreDeep(
+		ServerSettingsClient.Store,
+		state => QD.selectQueueStatusConstraints(state.saved),
+		{
+			dependencies: [],
+		},
+	)
+}
+
+export function useLayerItemStatusDataForItem(
+	layerItem: LQY.LayerItem | LQY.LayerItemId,
+	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+) {
+	const layerItemId = typeof layerItem === 'string' ? layerItem : LQY.toLayerItemId(layerItem)
+	layerItem = typeof layerItem === 'string' ? LQY.fromLayerItemId(layerItem) : layerItem
+	const constraints = useLayerItemStatusConstraints()
+	const queryRes = useLayerItemStatuses(constraints, options)
+	const hoveredConstraintItemId = Zus.useStore(Store, s => s.hoveredConstraintItemId ?? undefined)
+
+	const allViolationDescriptors = queryRes.data?.matchDescriptors
+
+	const hoveredMatchDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== layerItemId
+		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.reasonItem && Obj.deepEqual(vd.reasonItem, layerItem)))
+		|| undefined
+
+	const localMatchDescriptors = hoveredConstraintItemId === layerItemId && allViolationDescriptors?.get(layerItemId)
+		|| undefined
+
+	const matchingConstraintIds = Array.from(queryRes.data?.matching.get(layerItemId) ?? [])
+	const matchingConstraints = constraints.filter(c => matchingConstraintIds.includes(c.id))
+
+	return {
+		present: queryRes.data?.present,
+		matchingConstraints: matchingConstraints.length > 0 ? matchingConstraints : undefined,
+
+		// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item
+		highlightedMatchDescriptors: localMatchDescriptors ?? hoveredMatchDescriptors,
+	}
+}
+
 export function useLayerItemStatuses(
-	options?: { enabled?: boolean; addedInput?: LQY.LayerQueryBaseInput; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+	constraints: LQY.Constraint[],
+	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
 	options ??= {}
-	const input: LQY.LayerItemStatusesInput = {
-		constraints: ZusUtils.useStoreDeep(
-			ServerSettingsClient.Store,
-			state => QD.selectBaseQueryConstraints(state.saved, { dnr: 'field', filter: 'field' }),
-			{
-				dependencies: [],
-			},
-		),
-		numHistoryEntriesToResolve: 10,
-		...(options.addedInput ?? {}),
-	}
+	const input: LQY.LayerItemStatusesInput = { constraints, numHistoryEntriesToResolve: 10 }
 	return useQuery({
 		...options,
 		queryKey: [
@@ -881,45 +931,53 @@ export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
 
 export function useExtraFiltersStore() {
 	const storeRef = useRefConstructor(() => {
-		const activeStore = Zus.createStore(() => ({ active: new Set<F.FilterEntityId>() }))
+		const activeStore = Zus.createStore<Pick<LQY.ExtraQueryFiltersState, 'activated'>>(() => ({ activated: [] }))
+		const subHandle = ZusUtils.createSubHandle()
+		const updateFilterPoolSettings = () => ServerSettingsClient.Store.getState().saved.queue.mainPool.filters // setup initial conditions
+		;(function updateFromSettings() {
+			const poolSettings = updateFilterPoolSettings()
+			const poolActivatedState: Pick<LQY.ExtraQueryFiltersState, 'activated'>['activated'] = []
+			for (const { filterId, applyAs } of poolSettings) {
+				if (applyAs === 'disabled') continue
+				poolActivatedState.push({ filterId, state: applyAs })
+			}
+			activeStore.setState({ activated: poolActivatedState })
+		})()
+		subHandle.add(ServerSettingsClient.Store.subscribe(() => (updateFilterPoolSettings())))
 
 		const updateQueryStore = (cb: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['filters']>) => void) => {
 			Store.getState().setExtraQueryFilters(cb)
 		}
 
-		const addActive = (filterId: F.FilterEntityId) => {
-			activeStore.setState(state => {
-				const newState = new Set(state.active)
-				newState.add(filterId)
-				return { active: newState }
-			})
+		const setActiveState = (filterId: F.FilterEntityId, newState: 'regular' | 'inverted' | 'disabled') => {
+			activeStore.setState(
+				state =>
+					Im.produce(state, draft => {
+						const activated = draft.activated
+						const elt = activated.find(elt => elt.filterId === filterId)
+						if (newState === 'disabled' && !elt) return
+						else if (newState === 'disabled' && elt) activated.splice(activated.indexOf(elt), 1)
+						else if (newState !== 'disabled' && elt) activated.splice(activated.indexOf(elt), 1, { filterId, state: newState })
+						else if (newState !== 'disabled' && !elt) activated.push({ filterId, state: newState })
+					}),
+			)
 		}
 
-		const removeActive = (filterId: F.FilterEntityId) => {
-			activeStore.setState(state => {
-				const newState = new Set(state.active)
-				newState.delete(filterId)
-				return { active: newState }
-			})
+		const disable = (filterId: F.FilterEntityId) => {
+			activeStore.setState(state => ({ activated: state.activated.filter(elt => elt.filterId !== filterId) }))
 		}
 
 		const actions: LQY.ExtraQueryFiltersActions = {
-			setActive(filterId, active) {
-				if (!active) {
-					removeActive(filterId)
-					return
-				}
-				addActive(filterId)
-				updateQueryStore(draft => {
-					if (!draft.has(filterId)) {
-						draft.add(filterId)
-					}
-				})
+			setFilterState(filterId, state) {
+				setActiveState(filterId, state)
 			},
 			select(filters) {
 				const { added, removed } = Arr.delta(Array.from(Store.getState().extraQueryFilters), filters)
 				for (const value of removed) {
-					removeActive(value)
+					disable(value)
+				}
+				for (const value of added) {
+					setActiveState(value, 'disabled')
 				}
 				updateQueryStore(draft => {
 					for (const value of added) {
@@ -933,34 +991,59 @@ export function useExtraFiltersStore() {
 				})
 			},
 			remove(filterId) {
-				removeActive(filterId)
+				const poolSettings = updateFilterPoolSettings()
+				if (poolSettings.some(({ filterId: id }) => id === filterId)) return
+				disable(filterId)
 				updateQueryStore(draft => {
 					draft.delete(filterId)
 				})
 			},
 		}
 
-		return derive<LQY.ExtraQueryFiltersStore>(get => ({
-			filters: get(Store).extraQueryFilters,
-			activeFilters: get(activeStore).active,
-			...actions,
-		}))
+		let prevFilters: Set<string> = new Set()
+		let prevReadOnlyFilters: Set<string> = new Set()
+		const store = derive<LQY.ExtraQueryFiltersStore>(get => {
+			const settingsStore = get(ServerSettingsClient.Store)
+			const layerQueriesStore = get(Store)
+			const activeState = get(activeStore)
+
+			let readOnly = new Set(settingsStore.saved.queue.mainPool.filters.map(f => f.filterId))
+			let filters = new Set([...layerQueriesStore.extraQueryFilters, ...readOnly])
+
+			// -------- maintain referential equality --------
+			if (Obj.deepEqual(Array.from(filters), Array.from(prevFilters))) filters = prevFilters
+			else prevFilters = filters
+
+			if (Obj.deepEqual(Array.from(readOnly), Array.from(prevReadOnlyFilters))) readOnly = prevReadOnlyFilters
+			else prevReadOnlyFilters = readOnly
+
+			return {
+				...actions,
+
+				filters,
+				readOnlyFilters: readOnly,
+				activated: activeState.activated,
+			}
+		})
+		return [store, subHandle] as const
 	})
 
-	return storeRef.current
+	const [store, subHandle] = storeRef.current
+	ZusUtils.useSubHandle(subHandle)
+	return store
 }
 
-export const useNewPoolApplyAsStore = (
-	defaultState: LQY.ApplyAsState = { dnr: 'field', filter: 'where-condition' },
-): Zus.StoreApi<LQY.ApplyAsStore> => {
+export const useNewPoolCheckboxesStore = (
+	defaultState: LQY.PoolCheckboxesState = { dnr: false },
+): Zus.StoreApi<LQY.PoolCheckboxesStore> => {
 	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<LQY.ApplyAsStore>((set) => ({
-			poolApplyAs: defaultState,
-			setPoolApplyAs: (type, value) => {
+		return Zus.createStore<LQY.PoolCheckboxesStore>((set) => ({
+			state: defaultState,
+			setState: (type, value) => {
 				set(state => ({
 					...state,
-					poolApplyAs: {
-						...state.poolApplyAs,
+					state: {
+						...state.state,
 						[type]: value,
 					},
 				}))

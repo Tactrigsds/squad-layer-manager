@@ -12,7 +12,6 @@ import './index.css'
 import { LayerInfoPage } from '@/components/layer-info'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QueueDashboard from '@/systems.client/queue-dashboard'

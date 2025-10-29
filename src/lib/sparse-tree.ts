@@ -35,6 +35,19 @@ export function moveNode(root: SparseNode, sourcePath: NodePath, targetPath: Nod
 	return root
 }
 
+export function deleteNode(root: SparseNode, path: NodePath) {
+	root = Obj.deepClone(root)
+
+	const parent = derefPath(root, path.slice(0, -1))
+	if (!parent.children) {
+		throw new Error('Invalid parent')
+	}
+
+	parent.children.splice(path[path.length - 1], 1)
+
+	return root
+}
+
 export function isChildPath(parentPath: NodePath, childPath: NodePath) {
 	if (childPath.length <= parentPath.length) return false
 	return parentPath.every((val, index) => val === childPath[index])

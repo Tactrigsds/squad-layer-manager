@@ -4,18 +4,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
-import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import * as SS from '@/models/server-state.models.ts'
 import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
@@ -23,7 +19,7 @@ import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
-import { ConstraintViolationDisplay } from './constraint-violation-display'
+import { ConstraintDisplay } from './constraint-display'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
@@ -33,62 +29,56 @@ import { Button } from './ui/button'
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
 	index: number
-	currentMatch: MH.MatchDetails | null
-	layerStatusesRes: LQY.LayerItemStatuses | undefined
-	constraints: LQY.LayerQueryConstraint[]
-	violationDescriptors: Map<string, LQY.ViolationDescriptor[]> | undefined
-	hoveredConstraintItemId: string | undefined
-	globalSettings: GlobalSettingsStore
-	historyState: MH.PublicMatchHistoryState
-	_currentStreak: BAL.CurrentStreak | null
-	createTriggerAlertsForEntry: (events: BAL.BalanceTriggerEvent[], entry: MH.MatchDetails) => React.ReactNode[]
+	balanceTriggerEvents: BAL.BalanceTriggerEvent[]
 }
 
 function MatchHistoryRow({
 	entry,
 	index,
-	currentMatch,
-	layerStatusesRes,
-	constraints,
-	violationDescriptors,
-	hoveredConstraintItemId,
-	globalSettings,
-	historyState,
-	_currentStreak,
-	createTriggerAlertsForEntry,
+	balanceTriggerEvents,
 }: MatchHistoryRowProps) {
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const currentMatch = SquadServerClient.useCurrentMatch()
+
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
+	const layerItemId = LQY.toLayerItemId({ type: 'match-history-entry', historyEntryId: entry.historyEntryId, layerId: entry.layerId })
+	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(layerItemId)
+
+	// Get trigger info for this entry
+	const triggerLevel = BAL.getHighestPriorityTriggerEvent(balanceTriggerEvents)?.level
+
+	// Create trigger alerts for this entry
+	const entryTriggerAlerts = React.useMemo(() => {
+		if (balanceTriggerEvents.length === 0) return []
+
+		const alerts: React.ReactNode[] = ([...balanceTriggerEvents]
+			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
+			.map(
+				(event) => <BalanceTriggerAlert className="rounded-none" event={event} referenceMatch={entry} />,
+			)
+
+		return alerts
+	}, [balanceTriggerEvents, entry])
+
 	if (entry.historyEntryId === currentMatch?.historyEntryId) {
 		return null
 	}
 
-	const layerItem: LQY.LayerItem = {
-		type: 'match-history-entry',
-		historyEntryId: entry.historyEntryId,
-		layerId: entry.layerId,
-	}
-	const layerItemId = LQY.toLayerItemId(layerItem)
-	const localBlockedConstraints = layerStatusesRes?.blocked.get(layerItemId)
-	const localDescriptors = violationDescriptors?.get(layerItemId)
-	const isHovered = hoveredConstraintItemId === layerItemId
-	const violationDisplayElt = localBlockedConstraints && (
-		<ConstraintViolationDisplay
-			violated={Array.from(localBlockedConstraints).map(id => constraints.find(c => c.id === id)).filter(c => c !== undefined)}
-			violationDescriptors={localDescriptors}
-			itemId={layerItemId}
+	const violationDisplayElt = statusData.matchingConstraints && (
+		<ConstraintDisplay
+			matchingConstraints={statusData.matchingConstraints}
+			layerItemId={layerItemId}
 		/>
 	)
-	const relevantDesciptorsForHovered = (hoveredConstraintItemId
-		&& violationDescriptors?.get(hoveredConstraintItemId)?.filter(d => Obj.deepEqual(layerItem, d.reasonItem))) || undefined
 
 	const extraLayerStyles = DH.getAllExtraStyles(
 		entry.layerId,
 		entry.ordinal,
 		globalSettings.displayTeamsNormalized,
-		(isHovered ? localDescriptors : undefined) ?? relevantDesciptorsForHovered,
+		statusData.highlightedMatchDescriptors,
 	)
 	const layer = L.toLayer(entry.layerId)
 	let outcomeDisp: React.ReactNode
@@ -127,11 +117,6 @@ function MatchHistoryRow({
 		globalSettings.displayTeamsNormalized,
 		extraLayerStyles,
 	)
-
-	const events = historyState.recentBalanceTriggerEvents.filter(event => event.matchTriggeredId === entry.historyEntryId)
-	// Get trigger info for this entry
-	const triggerLevel = BAL.getHighestPriorityTriggerEvent(events)?.level
-	const entryTriggerAlerts = createTriggerAlertsForEntry(events, entry)
 
 	// Determine trigger icon
 	let TriggerIcon = null
@@ -223,6 +208,7 @@ function MatchHistoryRow({
 export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
+	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
 		const allEntries = [...(history ?? [])].reverse()
 		const matchesByDate = new Map<string, typeof allEntries>()
@@ -243,12 +229,6 @@ export default function MatchHistoryPanel() {
 		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
 		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
 	}, [history])
-	const historyState = MatchHistoryClient.useMatchHistoryState()
-	const currentMatch = SquadServerClient.useCurrentMatch()
-	const layerStatusesRes = LayerQueriesClient.useLayerItemStatuses().data
-	const constraints = ZusUtils.useStoreDeep(ServerSettingsClient.Store, s => SS.getPoolConstraints(s.saved.queue.mainPool))
-	const violationDescriptors = layerStatusesRes?.violationDescriptors
-	const hoveredConstraintItemId = Zus.useStore(LayerQueriesClient.Store, s => s.hoveredConstraintItemId)
 
 	// -------- Date-based pagination --------
 	const [currentPage, setCurrentPage] = useState(1)
@@ -274,22 +254,6 @@ export default function MatchHistoryPanel() {
 		const date = new Date(dateStr + 'T00:00:00')
 
 		return date.toLocaleDateString() + (dateFns.isSameDay(date, today) ? ' (Today)' : '')
-	}
-
-	// Helper function to create trigger alerts for a specific entry
-	const createTriggerAlertsForEntry = (
-		events: BAL.BalanceTriggerEvent[],
-		entry: MH.MatchDetails,
-	): React.ReactNode[] => {
-		if (events.length === 0) return []
-
-		const alerts: React.ReactNode[] = ([...events]
-			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
-			.map(
-				(event) => <BalanceTriggerAlert className="rounded-none" event={event} referenceMatch={entry} />,
-			)
-
-		return alerts
 	}
 
 	return (
@@ -373,22 +337,19 @@ export default function MatchHistoryPanel() {
 									</TableCell>
 								</TableRow>
 							)
-							: currentEntries.map((entry, index) => (
-								<MatchHistoryRow
-									key={entry.historyEntryId}
-									entry={entry}
-									index={index}
-									currentMatch={currentMatch}
-									layerStatusesRes={layerStatusesRes}
-									constraints={constraints}
-									violationDescriptors={violationDescriptors}
-									hoveredConstraintItemId={hoveredConstraintItemId ?? undefined}
-									globalSettings={globalSettings}
-									historyState={historyState}
-									_currentStreak={currentStreak}
-									createTriggerAlertsForEntry={createTriggerAlertsForEntry}
-								/>
-							))}
+							: currentEntries.map((entry, index) => {
+								const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
+									event => event.matchTriggeredId === entry.historyEntryId,
+								)
+								return (
+									<MatchHistoryRow
+										key={entry.historyEntryId}
+										entry={entry}
+										index={index}
+										balanceTriggerEvents={balanceTriggerEvents}
+									/>
+								)
+							})}
 					</TableBody>
 				</Table>
 			</CardContent>

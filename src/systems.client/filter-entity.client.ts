@@ -9,7 +9,7 @@ import * as PartsSys from '@/systems.client/parts'
 import { reactQueryClient, trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
 export const getFilterContributorsBase = (filterId: string) => ({
@@ -31,15 +31,24 @@ export function invalidateQueriesForFilter(filterId: F.FilterEntityId) {
 	reactQueryClient.invalidateQueries(getAllFilterRoleContributorsBase())
 }
 
-export async function prefetchQueriesForFilter(filterId: string) {
-	const entity = filterEntities.get(filterId)
-	if (!entity) return
-	void reactQueryClient.prefetchQuery(getFilterContributorsBase(filterId))
-	void LayerQueriesClient.prefetchLayersQuery(LQY.getEditedFilterInput(entity.filter))
+export async function filterEditPrefetch(filterId?: string) {
+	if (!filterId) return {}
+	return {
+		onMouseEnter() {
+			const entity = filterEntities.get(filterId)
+			if (!entity) return
+			void reactQueryClient.prefetchQuery(getFilterContributorsBase(filterId))
+			void LayerQueriesClient.prefetchLayersQuery(LQY.getEditFilterPageInput(entity.filter))
+		},
+	}
 }
 
-export function prefetchQueriesForIndex() {
-	reactQueryClient.prefetchQuery(getAllFilterRoleContributorsBase())
+export function filterIndexPrefetch() {
+	return {
+		onMouseEnter() {
+			void reactQueryClient.prefetchQuery(getAllFilterRoleContributorsBase())
+		},
+	}
 }
 
 export const filterEntities = new Map<string, F.FilterEntity>()

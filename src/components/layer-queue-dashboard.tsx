@@ -25,9 +25,9 @@ import { useShallow } from 'zustand/react/shallow'
 import BalanceTriggerAlert from './balance-trigger-alert.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
 import { LayerList } from './layer-list.tsx'
-import PoolConfigurationPopover from './pool-configuration-popover.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
+import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
 import { Separator } from './ui/separator.tsx'
 import { Switch } from './ui/switch.tsx'
@@ -183,12 +183,10 @@ function QueueControlPanel() {
 		/>
 	)
 
-	const queryInputs = {
-		next: {
-			cursor: LQY.getQueryCursorForQueueIndex(0),
-		},
-		after: {},
-	} satisfies Record<AddLayersPosition, LQY.LayerQueryBaseInput>
+	const queryCursors = {
+		next: LQY.getQueryCursorForQueueIndex(0),
+		after: undefined,
+	} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -243,11 +241,11 @@ function QueueControlPanel() {
 			</Tooltip>
 			<SelectLayersDialog
 				title="Add Layers"
-				headerAdditions={addLayersTabslist}
+				footerAdditions={addLayersTabslist}
 				selectQueueItems={addItems}
 				open={appendLayersPopoverOpen}
 				onOpenChange={setAppendLayersPopoverOpen}
-				layerQueryBaseInput={queryInputs[addLayersPosition]}
+				cursor={queryCursors[addLayersPosition]}
 			>
 				<Button className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />

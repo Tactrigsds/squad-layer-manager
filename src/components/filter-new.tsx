@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
+import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -35,6 +36,7 @@ export default function FilterNew() {
 			id: '',
 			name: '',
 			description: '',
+			alertMessage: '',
 			emoji: null as string | null,
 		},
 		onSubmit: async ({ value }) => {
@@ -50,6 +52,7 @@ export default function FilterNew() {
 				...value,
 				description,
 				emoji: value.emoji ?? null,
+				alertMessage: value.alertMessage?.trim() || null,
 				filter: state.validatedFilter,
 			})
 
@@ -95,6 +98,7 @@ export default function FilterNew() {
 				<div className="flex flex-col space-y-4">
 					<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
 						{(field) => {
+							const label = 'Name'
 							function handleNameChange(name: string) {
 								field.handleChange(name)
 								if (!!form.getFieldValue('id').trim() && form.getFieldMeta('id')!.isDirty) return
@@ -104,17 +108,17 @@ export default function FilterNew() {
 
 							return (
 								<div className="flex flex-col space-y-2 max-w-[300px]">
-									<Label htmlFor={field.name}>Name</Label>
+									<Label htmlFor={field.name}>{label}</Label>
 									<Input
 										id={field.name}
-										placeholder="Filter name"
+										placeholder={label}
 										defaultValue={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(e) => handleNameChange(e.target.value)}
 									/>
 									{field.state.meta.errors.length > 0 && (
 										<Alert variant="destructive">
-											<AlertTitle>Errors for {field.name}</AlertTitle>
+											<AlertTitle>{label}:</AlertTitle>
 											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 										</Alert>
 									)}
@@ -125,19 +129,20 @@ export default function FilterNew() {
 
 					<form.Field name="id" validators={{ onChange: F.NewFilterEntitySchema.shape.id }}>
 						{(field) => {
+							const label = 'ID'
 							return (
 								<div className="flex flex-col space-y-2 max-w-[300px]">
-									<Label htmlFor={field.name}>ID</Label>
+									<Label htmlFor={field.name}>{label}</Label>
 									<Input
 										id={field.name}
-										placeholder="Filter ID"
+										placeholder={label}
 										defaultValue={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(e) => field.handleChange(e.target.value.trim() ?? null)}
 									/>
 									{field.state.meta.errors.length > 0 && (
 										<Alert variant="destructive">
-											<AlertTitle>Errors for {field.name}</AlertTitle>
+											<AlertTitle>{label}:</AlertTitle>
 											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 										</Alert>
 									)}
@@ -147,61 +152,93 @@ export default function FilterNew() {
 					</form.Field>
 
 					<form.Field name="emoji">
-						{(field) => (
-							<div className="flex flex-col space-y-2 max-w-[300px]">
-								<Label htmlFor={field.name}>Emoji</Label>
-								<EmojiPickerPopover
-									value={field.state.value ?? undefined}
-									onSelect={(emoji) => field.handleChange(emoji ?? null)}
-									disabled={false}
-								/>
-								{field.state.meta.errors.length > 0 && (
-									<Alert variant="destructive">
-										<AlertTitle>Errors for {field.name}</AlertTitle>
-										<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-									</Alert>
-								)}
-							</div>
-						)}
+						{(field) => {
+							const label = 'Emoji'
+							return (
+								<div className="flex flex-col space-y-2 max-w-[300px]">
+									<Label htmlFor={field.name}>{label}</Label>
+									<EmojiPickerPopover
+										value={field.state.value ?? undefined}
+										onSelect={(emoji) => field.handleChange(emoji ?? null)}
+										disabled={false}
+									/>
+									{field.state.meta.errors.length > 0 && (
+										<Alert variant="destructive">
+											<AlertTitle>{label}:</AlertTitle>
+											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+										</Alert>
+									)}
+								</div>
+							)
+						}}
+					</form.Field>
+					<form.Field
+						name="alertMessage"
+						validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+					>
+						{(field) => {
+							const label = 'Alert Message'
+							return (
+								<div className="flex flex-col space-y-2 max-w-[300px]">
+									<Label htmlFor={field.name}>{label}</Label>
+									<Textarea
+										id={field.name}
+										placeholder={label}
+										defaultValue={field.state.value ?? ''}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.setValue(e.target.value)}
+										rows={5}
+									/>
+									{field.state.meta.errors.length > 0 && (
+										<Alert variant="destructive">
+											<AlertTitle>{label}:</AlertTitle>
+											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+										</Alert>
+									)}
+								</div>
+							)
+						}}
 					</form.Field>
 				</div>
-
-				<form.Field name="description" validators={{ onChange: z.union([F.FilterEntityDescriptionSchema, z.string().length(0)]) }}>
-					{(field) => (
-						<div className="flex space-x-2">
-							<div className="flex flex-col space-y-2  min-w-[800px]">
-								<Label htmlFor={field.name}>Description</Label>
-								<Textarea
-									id={field.name}
-									placeholder="Description"
-									defaultValue={field.state.value ?? ''}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.setValue(e.target.value)}
-									rows={15}
-								/>
+				<form.Field
+					name="description"
+					validators={{ onChange: F.DescriptionSchema }}
+				>
+					{(field) => {
+						const label = 'Description'
+						return (
+							<div className="flex flex-grow space-x-2">
+								<div className="flex min-w-[900px] flex-col space-y-1">
+									<Label htmlFor={field.name}>{label}</Label>
+									<Textarea
+										id={field.name}
+										placeholder={label}
+										defaultValue={field.state.value ?? ''}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
+										rows={15}
+									/>
+								</div>
+								{field.state.meta.errors.length > 0 && (
+									<span>
+										<Alert variant="destructive">
+											<AlertTitle>{label}:</AlertTitle>
+											<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+										</Alert>
+									</span>
+								)}
 							</div>
-							{field.state.meta.errors.length > 0 && (
-								<Alert variant="destructive">
-									<AlertTitle>Errors for {field.name}</AlertTitle>
-									<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-								</Alert>
-							)}
-						</div>
-					)}
+						)
+					}}
 				</form.Field>
 			</div>
 			<FilterValidationErrorDisplay store={nodeStore} />
 			{filterCard}
-
 			<LayerTable
 				selected={selectedLayers}
 				setSelected={setSelectedLayers}
 				errorStore={nodeStore}
-				baseInput={{
-					constraints: validatedFilter
-						? [{ type: 'filter-anon', filter: validatedFilter, applyAs: 'where-condition', id: 'filter-new' }]
-						: undefined,
-				}}
+				baseInput={{ constraints: validatedFilter ? [CB.filterAnon('filter-new', validatedFilter)] : undefined }}
 				pageIndex={pageIndex}
 				setPageIndex={setPageIndex}
 			/>

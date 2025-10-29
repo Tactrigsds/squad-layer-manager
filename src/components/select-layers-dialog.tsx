@@ -24,7 +24,8 @@ export default function SelectLayersDialog(props: {
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	headerAdditions?: React.ReactNode
-	layerQueryBaseInput: LQY.LayerQueryBaseInput
+	footerAdditions?: React.ReactNode
+	cursor?: LQY.LayerQueryCursor
 }) {
 	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 
@@ -82,7 +83,7 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange?.(open)
 	}
 
-	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.layerQueryBaseInput)
+	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.cursor)
 
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange} modal={true}>
@@ -116,18 +117,19 @@ export default function SelectLayersDialog(props: {
 				</DialogHeader>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu layerQueryBaseInput={queryCtx.queryInput} filterMenuStore={queryCtx.filterMenuStore} />
+					<LayerFilterMenu filterMenuStore={queryCtx.filterMenuStore} />
 					<div className="flex flex-col space-y-2 justify-between h-full">
 						<TableStyleLayerPicker
 							defaultPageSize={16}
-							queryContext={queryCtx.filteredQueryInput}
 							selected={selectedLayers}
 							onSelect={setSelectedLayers}
-							extraPanelItems={<PoolCheckboxes store={queryCtx.applyAsStore} />}
+							queryInput={queryCtx.queryInput}
+							extraPanelItems={<PoolCheckboxes store={queryCtx.filterResultsStore} />}
 							className="flex-grow"
 						/>
 
 						<div className="grow self-end">
+							{props.footerAdditions}
 							<Button disabled={!canSubmit} onClick={submit}>
 								Submit
 							</Button>

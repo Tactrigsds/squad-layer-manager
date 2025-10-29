@@ -10,7 +10,6 @@ import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import React from 'react'
 import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
-import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 
 export type EditLayerDialogProps = {
@@ -24,7 +23,7 @@ type InnerEditLayerDialogProps = {
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
-	layerQueryBaseInput?: LQY.LayerQueryBaseInput
+	cursor?: LQY.LayerQueryCursor
 }
 
 export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
@@ -66,7 +65,7 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 		}
 		return defaults
 	}, [props.layerId, colConfig])
-	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.layerQueryBaseInput, filterMenuItemDefaults)
+	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.cursor, filterMenuItemDefaults)
 
 	const canSubmit = !!editedLayerId && props.layerId !== editedLayerId
 
@@ -89,11 +88,11 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 
 			{
 				<div className="flex items-start space-x-2 min-h-0">
-					<LayerFilterMenu layerQueryBaseInput={queryCtx.queryInput} filterMenuStore={queryCtx.filterMenuStore} />
+					<LayerFilterMenu filterMenuStore={queryCtx.filterMenuStore} />
 					<div className="flex flex-col h-full justify-between">
 						<TableStyleLayerPicker
 							defaultPageSize={16}
-							queryContext={queryCtx.filteredQueryInput}
+							queryInput={queryCtx.queryInput}
 							editingSingleValue={true}
 							selected={editedLayerId ? [editedLayerId] : []}
 							onSelect={(update) => {
@@ -101,7 +100,6 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 								if (!id) return
 								setEditedLayerId(id)
 							}}
-							extraPanelItems={<PoolCheckboxes store={queryCtx.applyAsStore} />}
 						/>
 						<div className="flex justify-end">
 							<Button disabled={!canSubmit} onClick={submit}>

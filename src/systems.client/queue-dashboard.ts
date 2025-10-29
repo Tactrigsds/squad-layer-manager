@@ -4,6 +4,7 @@ import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
+import * as CB from '@/models/constraint-builders'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -158,29 +159,23 @@ export function setup() {
 }
 
 export function getExtraFiltersConstraints(extraFiltersState: LQY.ExtraQueryFiltersState) {
-	const constraints: LQY.LayerQueryConstraint[] = []
+	const constraints: LQY.Constraint[] = []
 	for (const filterId of extraFiltersState.filters) {
-		if (!extraFiltersState.activeFilters.has(filterId)) continue
-		constraints.push({
-			type: 'filter-entity',
-			id: 'extra-filter:' + filterId,
-			filterEntityId: filterId,
-			applyAs: 'where-condition',
-		})
+		const state = extraFiltersState.activated.find(elt => elt.filterId === filterId)
+		if (!state) continue
+		constraints.push(CB.filterEntity('selected-filter', filterId, {
+			invert: state?.state === 'inverted',
+			filterResults: !!state,
+			indicateMatches: true,
+		}))
 	}
 	return constraints
 }
 
-export function selectBaseQueryConstraints(
+export function selectQueueStatusConstraints(
 	settings: SS.PublicServerSettings,
-	applyAs: LQY.ApplyAsState,
-): LQY.LayerQueryConstraint[] {
-	const queryConstraints = SS.getPoolConstraints(
-		settings.queue.mainPool,
-		applyAs.dnr,
-		applyAs.filter,
-	)
-
+): LQY.Constraint[] {
+	const queryConstraints = SS.getSettingsConstraints(settings)
 	return queryConstraints
 }
 
@@ -199,4 +194,14 @@ export function useToggleSquadServerUpdates() {
 			saveChangesMutation.mutate({ disabled: false })
 		},
 	}
+}
+
+export function getToggledRepeatRuleConstraints(settings: SS.PublicServerSettings, filterResults: boolean) {
+	const dnrConstraints: LQY.Constraint[] = []
+	const repeatRules = settings.queue.mainPool.repeatRules
+	for (let i = 0; i < repeatRules.length; i++) {
+		const rule = repeatRules[i]
+		dnrConstraints.push(CB.repeatRule(`pool-checkboxes:dnr:${i}`, rule, { filterResults }))
+	}
+	return dnrConstraints
 }
