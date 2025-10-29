@@ -135,7 +135,7 @@ export async function setup() {
 export const validateAndUpdate = C.spanOp(
 	'sessions:validate-and-update',
 	{ tracer },
-	async (ctx: CS.Log & C.Db & Pick<C.HttpRequest, 'req' | 'cookies'>, allowRefresh = false) => {
+	async (ctx: CS.Log & C.Db & C.FastifyRequest, allowRefresh = false) => {
 		const cookie = ctx.req.headers.cookie
 		if (!cookie) {
 			return {
@@ -179,10 +179,10 @@ export const validateAndUpdate = C.spanOp(
 	},
 )
 
-export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: { sessionId: string } & Pick<C.HttpRequest, 'res'> & C.Db) => {
+export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
-	return clearInvalidSession(ctx)
+	await clearInvalidSession(ctx)
 })
 
 export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
@@ -192,8 +192,8 @@ export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresA
 	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
 }
 
-export function clearInvalidSession(ctx: Pick<C.HttpRequest, 'res'>) {
-	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 }).redirect(AR.route('/login'), 302)
+export function clearInvalidSession(ctx: C.FastifyReply) {
+	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 })
 }
 
 export const getUser = C.spanOp(

@@ -8,6 +8,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
 import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
+import orpcBase from '@/server/orpc-base.ts'
 import * as Cli from '@/server/systems/cli.ts'
 import * as LayerDb from '@/server/systems/layer-db.server.ts'
 import * as fsPromise from 'fs/promises'
@@ -165,6 +166,12 @@ async function generateConfigJsonSchema() {
 	const schema = zodToJsonSchema(ConfigSchema.extend({ ['$schema']: z.string() }))
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
 	console.log('Wrote generated config schema to %s', schemaPath)
+}
+
+export const router = {
+	getPublicConfig: orpcBase.handler(({ context: ctx }) => {
+		return getPublicConfig(ctx.wsClientId)
+	}),
 }
 
 export type Config = z.infer<typeof ConfigSchema>

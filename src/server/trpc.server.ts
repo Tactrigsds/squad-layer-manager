@@ -1,11 +1,23 @@
 import { initTRPC } from '@trpc/server'
 import superjson from 'superjson'
+import * as C from './context.ts'
 import {} from '@/lib/object.ts'
 import * as Otel from '@opentelemetry/api'
+import { onError } from '@orpc/server'
+import { RPCHandler } from '@orpc/server/ws'
+import { appRouter, orpcAppRouter } from './router.ts'
+import * as SquadServer from './systems/squad-server.ts'
 
-import * as C from './context.ts'
+export const orpcHandler = new RPCHandler(orpcHandler, {
+	interceptors: [
+		onError((error, opts) => {
+			const ctx = opts.context
+			ctx.log.error(error)
+		}),
+	],
+})
 
-const t = initTRPC.context<C.TrpcRequest>().create({
+const t = initTRPC.context<C.Socket>().create({
 	transformer: superjson,
 })
 

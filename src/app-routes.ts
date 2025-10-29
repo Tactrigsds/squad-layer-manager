@@ -10,6 +10,7 @@ type GenericRouteDefinition = {
 	handle: 'page' | 'custom'
 	websocket: boolean
 	params: ParamsBase
+	authed: boolean
 	link: ((...args: string[]) => string) | ((...args: never[]) => string)
 	regex: RegExp
 }
@@ -21,6 +22,7 @@ export type RouteDefinition<Params extends ParamsBase, Handle extends 'page' | '
 	handle: Handle
 	websocket: boolean
 	params: Params
+	authed: boolean
 	link: GetLink<Params>
 	regex: RegExp
 }
@@ -37,8 +39,8 @@ export const routes = {
 	...defRoute('/layers/:id', ['id'] as const, 'page'),
 	...defRoute('/layers/:id/scores', ['id'] as const, 'page'),
 
-	...defRoute('/login', [], 'custom'),
-	...defRoute('/login/callback', [], 'custom'),
+	...defRoute('/login', [], 'custom', { authed: false }),
+	...defRoute('/login/callback', [], 'custom', { authed: false }),
 	...defRoute('/logout', [], 'custom'),
 	...defRoute('/layers.sqlite3', [], 'custom'),
 	...defRoute('/check-auth', [], 'custom'),
@@ -67,7 +69,7 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 	str: T,
 	params: Params,
 	handle: Handle,
-	options?: { websocket?: boolean; link?: GetLink<Params> },
+	options?: { websocket?: boolean; link?: GetLink<Params>; authed?: boolean },
 ) {
 	const getLink: GetLink<Params> = options?.link ?? ((...params) => {
 		if (params.length === 0) return str
@@ -90,6 +92,7 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 		[str]: {
 			id: str,
 			params: params as Params,
+			authed: options?.authed ?? true,
 
 			link: getLink,
 

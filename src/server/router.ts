@@ -14,6 +14,12 @@ import { procedure, router } from './trpc.server.ts'
 export let appRouter: ReturnType<typeof setup>
 export type AppRouter = typeof appRouter
 
+export type OrpcAppRouter = typeof orpcAppRouter
+export const orpcAppRouter = {
+	squadServer: SquadServer.orpcRouter,
+	config: Config.router,
+}
+
 export function setup() {
 	const _appRouter = router({
 		layerQueue: LayerQueue.layerQueueRouter,

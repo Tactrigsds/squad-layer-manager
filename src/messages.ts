@@ -205,6 +205,7 @@ export const WARNS = {
 export const GENERAL = {
 	auth: {
 		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
+		unAuthenticated: `Not able to authenticate user`,
 	},
 	balanceTrigger: {
 		showEvent(event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, qualifyAsCurrent: boolean) {

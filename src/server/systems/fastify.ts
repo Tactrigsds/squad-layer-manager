@@ -10,25 +10,22 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger } from '@/server/logger.ts'
-import * as TrpcRouter from '@/server/router'
 import * as Discord from '@/server/systems/discord.ts'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
+import * as ORPCServer from '@/server/trpc.server'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
-import ws from '@fastify/websocket'
+import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
-import { TRPCError } from '@trpc/server'
-import { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
-import { fastifyTRPCPlugin, FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import * as path from 'node:path'
+import { Readable } from 'node:stream'
 import { WebSocket } from 'ws'
 import * as Users from './users'
 
@@ -58,20 +55,9 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
-		baseLogger.debug('incoming request %s %s', request.method, request.url)
-		if (route?.id === '/trpc') return
-
-		const ctx = DB.addPooledDb({ log: instance.log as CS.Logger })
-
-		request.log = ctx.log
-
-		// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
-		request.ctx = ctx
+		baseLogger.debug(`incoming request %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
+		monkeyPatchContextAndLogs(request)
 	})
-
-	function getCtx(req: FastifyRequest) {
-		return (req as any).ctx as CS.Log & C.Db
-	}
 
 	// --------  static file serving --------
 	switch (ENV.NODE_ENV) {
@@ -121,7 +107,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		if (!discordUser) {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
-		const ctx = { ...getCtx(req), user: { discordId: discordUser.id } }
+		const ctx = { ...getPatchedCtx(req), user: { discordId: discordUser.id } }
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('site:authorized'))
 		if (denyRes) {
 			switch (denyRes.code) {
@@ -167,19 +153,14 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 				}),
 			})
 		})
-		const requestCtx = buildRequestContext(ctx, req, reply)
+		const requestCtx = buildHttpRequestContext(req, reply)
 
 		await Sessions.setSessionCookie(requestCtx, sessionId).redirect(AR.route('/'), 302)
 	})
 
 	instance.post(AR.route('/logout'), async function(req, res) {
-		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
-		const authRes = await createAuthorizedRequestContext(ctx)
-		if (authRes.code !== 'ok') {
-			return Sessions.clearInvalidSession(ctx)
-		}
-
-		return await Sessions.logout({ ...authRes.ctx, res })
+		const ctx = getAuthedCtx(req)
+		await Sessions.logout({ ...ctx, res })
 	})
 
 	instance.get(AR.route('/layers.sqlite3'), async (req, res) => {
@@ -199,8 +180,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	instance.get(AR.route('/check-auth'), async (req, res) => {
-		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
-		const authRes = await createAuthorizedRequestContext(ctx)
+		const ctx = buildHttpRequestContext(req, res)
+		const authRes = await authorizeRequest(ctx)
 		if (authRes.code !== 'ok') {
 			return ctx.res.status(401).send({ error: 'Unauthorized' })
 		}
@@ -209,23 +190,19 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// Discord CDN proxy - streams responses without buffering
 	instance.get(AR.route('/discord-cdn/*'), async (req, res) => {
-		const ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
-		const authRes = await createAuthorizedRequestContext(ctx)
-		if (authRes.code !== 'ok') {
-			return ctx.res.status(401).send({ error: 'Unauthorized' })
-		}
+		const ctx = getAuthedCtx(req)
 		try {
 			// Extract the path after /cdn-proxy/
 			const url = req.url.replace(/^\/discord-cdn\//, '')
 			const cdnUrl = `https://cdn.discordapp.com/${url}`
 
-			req.log.debug('Proxying request to Discord CDN: %s', cdnUrl)
+			ctx.log.debug('Proxying request to Discord CDN: %s', cdnUrl)
 
 			// Fetch from Discord CDN
 			const cdnResponse = await fetch(cdnUrl)
 
 			if (!cdnResponse.ok) {
-				req.log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
+				ctx.log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
 				return res.status(cdnResponse.status).send({ error: 'CDN request failed' })
 			}
 
@@ -254,41 +231,31 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 			// Stream the response using Node.js stream from Web Stream
 			if (cdnResponse.body) {
-				const { Readable } = await import('node:stream')
 				const nodeStream = Readable.fromWeb(cdnResponse.body as any)
 				return res.send(nodeStream)
 			}
 
 			return res.send('')
 		} catch (err) {
-			req.log.error('Error proxying to Discord CDN: %s', err)
+			ctx.log.error('Error proxying to Discord CDN: %s', err)
 			return res.status(500).send({ error: 'Failed to proxy request' })
 		}
 	})
 
-	instance.register(ws)
-
-	instance.register(fastifyTRPCPlugin, {
-		prefix: AR.route('/trpc'),
-		useWSS: true,
-		keepAlive: {
-			enabled: false,
-			pingMs: 5000,
-			pongWaitMs: 5000,
-		},
-		trpcOptions: {
-			router: TrpcRouter.appRouter,
-			createContext: createTrpcRequestContext,
-		} satisfies FastifyTRPCPluginOptions<TrpcRouter.AppRouter>['trpcOptions'],
-	})
-
-	// -------- webpage serving --------
-	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		for (const [key, value] of Object.entries(BASE_HEADERS)) {
-			res.header(key, value)
+	const authedCtxCreatedAt = new Map<FastifyRequest['id'], number>()
+	const authedCtxMap = new Map<FastifyRequest['id'], C.FastifyRequestFull & C.AuthedUser>()
+	function getAuthedCtx(req: FastifyRequest) {
+		const ctx = authedCtxMap.get(req.id)
+		if (!ctx) {
+			throw new Error('No authed context found')
 		}
-		let ctx = buildRequestContext({ ...getCtx(req), span: Otel.trace.getActiveSpan() }, req, res)
-		const authRes = await createAuthorizedRequestContext(ctx)
+		return ctx
+	}
+
+	instance.addHook('preValidation', async (req, reply) => {
+		const baseCtx = buildFastifyRequestContext(req)
+		if (!baseCtx.route?.def.authed) return
+		const authRes = await authorizeRequest(baseCtx)
 		switch (authRes.code) {
 			case 'ok':
 				break
@@ -296,15 +263,45 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'unauthorized:no-session':
 			case 'unauthorized:expired':
 			case 'unauthorized:not-found':
-				return await Sessions.clearInvalidSession(ctx)
+				reply = Sessions.clearInvalidSession({ res: reply })
+				if (baseCtx.route?.def.handle === 'page') {
+					await reply.redirect(AR.route('/login'), 302)
+				} else {
+					await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
+				}
+				break
 			case 'err:permission-denied':
-				return ctx.res.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+				await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+				break
 			default:
 				assertNever(authRes)
 		}
+	})
 
-		ctx = SquadServer.manageDefaultServerIdForRequest(ctx)
+	instance.addHook('onResponse', async (req) => {
+		authedCtxMap.delete(req.id)
+		authedCtxCreatedAt.delete(req.id)
+		for (const [reqId, createdAt] of Object.entries(authedCtxCreatedAt)) {
+			if (Date.now() - createdAt > 10_000) {
+				authedCtxMap.delete(reqId)
+				authedCtxCreatedAt.delete(reqId)
+			}
+		}
+	})
 
+	instance.register(fastifyWebsocket)
+	instance.get(AR.route('/trpc'), { websocket: true }, async (websocket, req) => {
+		const ctx = createTrpcRequestContext(getAuthedCtx(req), websocket)
+		ORPCServer.orpcHandler.upgrade(websocket, { context: ctx })
+	})
+
+	// -------- webpage serving --------
+	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
+		const ctx = { ...getAuthedCtx(req), res }
+		for (const [key, value] of Object.entries(BASE_HEADERS)) {
+			res.header(key, value)
+		}
+		SquadServer.manageDefaultServerIdForRequest(ctx)
 		switch (ENV.NODE_ENV) {
 			case 'development': {
 				// --------  dev server proxy setup --------
@@ -315,7 +312,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 					return err
 				})
 				const body = await htmlRes.text()
-				return ctx.res
+				return res
 					.type('text/html')
 					.header('Access-Control-Allow-Origin', '*')
 					.header('Access-Control-Allow-Methods', '*')
@@ -323,7 +320,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 					.send(body)
 			}
 			case 'production': {
-				return ctx.res.sendFile('index.html')
+				return res.sendFile('index.html')
 			}
 			case 'test': {
 				throw new Error('Not implemented')
@@ -350,8 +347,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	return { serverClosed }
 })
 
-export async function createAuthorizedRequestContext<
-	T extends CS.Log & C.Db & Partial<C.SpanContext> & Pick<C.HttpRequest, 'req' | 'cookies'>,
+export async function authorizeRequest<
+	T extends C.FastifyRequestFull,
 >(ctx: T) {
 	const validSessionRes = await Sessions.validateAndUpdate(ctx)
 	if (validSessionRes.code !== 'ok') {
@@ -381,64 +378,51 @@ export async function createAuthorizedRequestContext<
 }
 
 // with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
-export async function createTrpcRequestContext(
-	options: CreateFastifyContextOptions,
-): Promise<C.TrpcRequest> {
-	const cookies = options.req.headers.cookie!
-	if (!cookies) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'unauthorized:no-cookie' })
-	const result = await createAuthorizedRequestContext(
-		DB.addPooledDb({
-			log: baseLogger,
-			req: options.req,
-			cookies: AR.parseCookies(cookies),
-		}),
-	)
-	if (result.code !== 'ok') {
-		switch (result.code) {
-			case 'unauthorized:no-cookie':
-			case 'unauthorized:no-session':
-			case 'unauthorized:expired':
-			case 'unauthorized:not-found':
-				throw new TRPCError({ code: 'UNAUTHORIZED', message: result.code })
-			case 'err:permission-denied':
-				throw new TRPCError({
-					code: 'UNAUTHORIZED',
-					message: Messages.GENERAL.auth.noApplicationAccess,
-				})
-			default:
-				assertNever(result)
-		}
-	}
+export function createTrpcRequestContext(
+	ctx: C.FastifyRequestFull & C.AuthedUser,
+	websocket: WebSocket,
+): C.Socket {
 	const wsClientId = createId(32)
 
-	if (options.req.headers.cookie) {
-		// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
-		const defaultServerId = AR.parseCookies(options.req.headers.cookie)['default-server-id']!
-		SquadServer.state.selectedServers.set(wsClientId, defaultServerId)
-	}
-	const ctx: C.TrpcRequest = C.initLocks({
+	// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
+	const defaultServerId = ctx.cookies['default-server-id']!
+	SquadServer.state.selectedServers.set(wsClientId, defaultServerId)
+	const wsCtx: C.Socket = C.initLocks({
 		wsClientId,
-		user: result.ctx.user,
-		sessionId: result.ctx.sessionId,
-		expiresAt: result.ctx.expiresAt,
-		req: options.req,
-		ws: options.res as unknown as WebSocket,
-		log: result.ctx.log.child({ wsClientId }),
-		db: result.ctx.db,
+		...ctx,
+		ws: websocket,
+		log: ctx.log.child({ wsClientId }),
 	})
-	WsSessionSys.registerClient(ctx)
+	WsSessionSys.registerClient(wsCtx)
+	return wsCtx
+}
+
+function buildHttpRequestContext(
+	req: FastifyRequest,
+	res: FastifyReply,
+): C.HttpRequestFull {
+	const ctx = buildFastifyRequestContext(req)
+	return { ...ctx, res: res }
+}
+
+function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
+	const patchedCtx = getPatchedCtx(req)
+	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : {} as AR.Cookies
+	const ctx: C.FastifyRequestFull = { ...patchedCtx, req, cookies }
 	return ctx
 }
 
-// only works for known resolved paths
-function buildRequestContext<Ctx extends object>(ctx: Ctx, req: FastifyRequest, res: FastifyReply): C.HttpRequest & Ctx {
-	const route = AR.resolveRoute(req.url) ?? undefined
-	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : {} as AR.Cookies
-	return {
-		...ctx,
-		req,
-		res,
-		route,
-		cookies,
-	}
+function monkeyPatchContextAndLogs(request: FastifyRequest) {
+	const route = AR.resolveRoute(request.url) ?? undefined
+	const span = Otel.trace.getActiveSpan()
+	const ctx: C.AttachedFastify = DB.addPooledDb({ log: instance.log as CS.Logger, route, span })
+	request.log = ctx.log
+	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
+	request.ctx = ctx
+}
+
+function getPatchedCtx(req: FastifyRequest): C.AttachedFastify {
+	const ctx = (req as any).ctx as C.AttachedFastify
+	const span = Otel.trace.getActiveSpan() ?? ctx.span
+	return { ...ctx, span }
 }

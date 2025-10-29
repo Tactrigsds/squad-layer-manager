@@ -24,6 +24,7 @@ import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import orpcBase from '@/server/orpc-base'
 import * as Commands from '@/server/systems/commands'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
@@ -503,7 +504,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	const defaultServerId = ctx.cookies['default-server-id']
 
 	let serverId: string | undefined
-	if (C.isRoutedHttpRequestContext(ctx) && ctx.route === AR.route('/servers/:id')) {
+	if (ctx.route?.id === AR.route('/servers/:id')) {
 		serverId = ctx.route.params.id
 	} else if (defaultServerId) {
 		serverId = defaultServerId
@@ -519,7 +520,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	}
 }
 
-export function resolveWsClientSliceCtx(ctx: C.TrpcRequest) {
+export function resolveWsClientSliceCtx(ctx: C.Socket) {
 	let serverId = state.selectedServers.get(ctx.wsClientId)
 	serverId ??= CONFIG.servers[0].id
 	if (!serverId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No server selected' })
@@ -550,6 +551,19 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
 		Rx.startWith(state.selectedServers.get(ctx.wsClientId)!),
 		Rx.map(serverId => resolveSliceCtx(ctx, serverId)),
 	)
+}
+
+const setSelectedServer = orpcBase.input(z.string()).handler(async ({ input: serverId, context }) => {
+	const ctx = context
+	const slice = state.slices.get(serverId)
+	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server not found' })
+	state.selectedServers.set(ctx.wsClientId, serverId)
+	state.selectedServerUpdate$.next({ wsClientId: ctx.wsClientId, serverId })
+	return { code: 'ok' as const }
+})
+
+export const orpcRouter = {
+	setSelectedServer,
 }
 
 export const router = TrpcServer.router({

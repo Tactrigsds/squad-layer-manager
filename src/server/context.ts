@@ -14,7 +14,7 @@ import * as SquadRconSys from '@/server/systems/squad-rcon.ts'
 import * as SquadServerSys from '@/server/systems/squad-server.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-import { FastifyReply, FastifyRequest } from 'fastify'
+import type * as Fastify from 'fastify'
 import Pino from 'pino'
 import * as Rx from 'rxjs'
 import * as ws from 'ws'
@@ -25,8 +25,8 @@ export type OtelCtx = {
 	otelCtx: Otel.Context
 }
 
-export type SpanContext = {
-	span: Otel.Span
+export type OtelSpan = {
+	span?: Otel.Span
 }
 
 export function includeLogProperties<T extends CS.Log>(ctx: T, fields: Record<string, any>): T {
@@ -205,8 +205,17 @@ export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
 	return { ...(ctx ?? {} as Ctx), mutexes: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
-export type HttpRequest = { req: FastifyRequest; res: FastifyReply; cookies: AR.Cookies; route?: AR.ResolvedRoute }
-export type RoutedHttpRequest = HttpRequest & { route: AR.KnownRouteId }
+export type ResolvedRoute = { route: AR.ResolvedRoute }
+
+// could also be ws upgrade
+export type FastifyRequest = { req: Fastify.FastifyRequest; cookies: AR.Cookies } & Partial<ResolvedRoute>
+export type FastifyRequestFull = FastifyRequest & AttachedFastify
+
+export type FastifyReply = { res: Fastify.FastifyReply }
+export type HttpRequest = FastifyRequest & FastifyReply
+export type HttpRequestFull = HttpRequest & AttachedFastify
+
+export type RoutedHttpRequest = HttpRequest
 export function isRoutedHttpRequestContext<Ctx extends HttpRequest>(req: Ctx): req is Ctx & RoutedHttpRequest {
 	return 'route' in req
 }
@@ -239,10 +248,11 @@ export type WSSession = {
 
 export type AuthedUser = User & AuthSession
 
-export type TrpcRequest =
+export type AttachedFastify = CS.Log & Db & OtelSpan & Partial<ResolvedRoute>
+export type Socket =
 	& User
 	& AuthSession
-	& { wsClientId: string; req: FastifyRequest; ws: ws.WebSocket }
+	& { wsClientId: string; req: fastify.FastifyRequest; ws: ws.WebSocket }
 	& Db
 	& CS.Log
 	& Mutexes
