@@ -7,7 +7,6 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
 import { createORPCClient, onError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
-import { ContractRouterClient } from '@orpc/contract'
 import { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import * as ReactRx from '@react-rxjs/core'
@@ -98,13 +97,4 @@ export const links = [
 ]
 
 export const reactQueryClient = new QueryClient()
-export const reactQueryOrpcClient = createTanstackQueryUtils(orpc)
-
-export const trpc = createTRPCClient<AppRouter>({ links })
-
-// @ts-expect-error binding to window for debugging
-window.trpc = trpc
-
-export function hashQueryKey(queryKey: any): string {
-	return superjson.stringify(queryKey)
-}
+export const orpcReact = createTanstackQueryUtils(orpc)

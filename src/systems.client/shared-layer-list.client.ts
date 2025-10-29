@@ -1,10 +1,10 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { fromOrpcSubscription } from '@/lib/async'
 import * as Browser from '@/lib/browser'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
-import * as TrpcHelpers from '@/lib/trpc-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
@@ -17,7 +17,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
 import React from 'react'
@@ -66,7 +66,7 @@ export type Store = {
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
-	TrpcHelpers.fromTrpcSub(undefined, trpc.sharedLayerList.watchUpdates.subscribe),
+	fromOrpcSubscription(() => orpc.sharedLayerList.watchUpdates()),
 )
 
 export const [Store, storeSubHandle] = createStore()
@@ -338,7 +338,7 @@ function createStore() {
 }
 
 async function processUpdate(update: SLL.ClientUpdate) {
-	const res = await trpc.sharedLayerList.processUpdate.mutate(update)
+	const res = await orpc.sharedLayerList.processUpdate(update)
 
 	if (res && res.code === 'err:permission-denied') {
 		RbacClient.handlePermissionDenied(res)

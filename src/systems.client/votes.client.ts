@@ -1,29 +1,23 @@
-import { distinctDeepEquals } from '@/lib/async'
+import { fromOrpcSubscription } from '@/lib/async'
 import * as V from '@/models/vote.models'
 import * as PartSys from '@/systems.client/parts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import { bind } from '@react-rxjs/core'
 import * as Rx from 'rxjs'
-import { map, Observable, share } from 'rxjs'
+import { map, share } from 'rxjs'
 
-const voteStateCold$ = new Observable<V.VoteStateUpdateOrInitial>((s) => {
-	const sub = trpc.layerQueue.watchVoteStateUpdates.subscribe(undefined, {
-		onData: (update) => {
-			if (update.code === 'initial-state' && update.state) {
-				PartSys.stripParts(update.state)
-			} else if (update.code === 'update') {
-				PartSys.stripParts(update.update)
-			}
-			return s.next(update)
-		},
-		onComplete: () => s.complete(),
-		onError: (e) => s.error(e),
-	})
-	return () => sub.unsubscribe()
-}).pipe(share())
+const voteStateCold$ = fromOrpcSubscription(() => orpc.layerQueue.watchVoteStateUpdates()).pipe(
+	Rx.tap((update) => {
+		if (update.code === 'initial-state' && update.state) {
+			PartSys.stripParts(update.state)
+		} else if (update.code === 'update') {
+			PartSys.stripParts(update.update)
+		}
+	}),
+	share(),
+)
 
-export const [useVoteStateUpdate, voteStateUpdate$] = bind(voteStateCold$ as Observable<V.VoteStateUpdateOrInitialWithParts | null>, null)
+export const [useVoteStateUpdate, voteStateUpdate$] = bind(voteStateCold$, null)
 export const [useVoteState, voteState$] = bind(
 	voteStateUpdate$.pipe(
 		map((stateOrUpdate): null | V.VoteState => {
@@ -40,13 +34,13 @@ export function setup() {
 }
 
 export const startVoteOpts = {
-	mutationFn: trpc.layerQueue.startVote.mutate,
+	mutationFn: orpc.layerQueue.startVote,
 }
 
 export const abortVoteOpts = {
-	mutationFn: trpc.layerQueue.abortVote.mutate,
+	mutationFn: orpc.layerQueue.abortVote,
 }
 
 export const cancelVoteAutostartOpts = {
-	mutationFn: trpc.layerQueue.cancelVoteAutostart.mutate,
+	mutationFn: orpc.layerQueue.cancelVoteAutostart,
 }

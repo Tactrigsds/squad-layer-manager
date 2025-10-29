@@ -1,18 +1,13 @@
 import * as AR from '@/app-routes'
 import * as EMO from '@/models/emoji.models'
-import { trpc } from '@/trpc.client'
+import { orpcReact } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import React from 'react'
 
-function fetchEmojis() {
-	return trpc.discord.getGuildEmojis.query()
-}
-
 export const getEmojisBaseQuery = (opts?: { enabled?: boolean }) => {
-	return ({
+	return orpcReact.discord.getGuildEmojis.queryOptions({
+		input: {},
 		...opts,
-		queryKey: ['discord', 'getGuildEmojis'],
-		queryFn: fetchEmojis,
 	})
 }
 

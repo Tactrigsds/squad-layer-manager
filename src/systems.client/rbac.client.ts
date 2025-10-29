@@ -3,7 +3,7 @@ import * as Obj from '@/lib/object'
 import * as Messages from '@/messages'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems.client/users.client'
-import { trpc } from '@/trpc.client'
+import { orpcReact } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Zus from 'zustand'
 
@@ -17,12 +17,7 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 
 export const GET_ROLES_QUERY_KEY = ['getRoles']
 export function useRoles() {
-	return useQuery({
-		queryKey: GET_ROLES_QUERY_KEY,
-		queryFn: async () => {
-			return trpc.rbac.getRoles.query()
-		},
-	})
+	return useQuery(orpcReact.rbac.getRoles.queryOptions())
 }
 
 export type RbacStore = {

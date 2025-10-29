@@ -32,9 +32,8 @@ import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as ServerSettings from '@/server/systems/server-settings'
 import * as SharedLayerList from '@/server/systems/shared-layer-list.server'
 import * as SquadRcon from '@/server/systems/squad-rcon'
-import * as TrpcServer from '@/server/trpc.server'
 import * as Otel from '@opentelemetry/api'
-import { TRPCError } from '@trpc/server'
+import * as Orpc from '@orpc/server'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
@@ -523,9 +522,9 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 export function resolveWsClientSliceCtx(ctx: C.Socket) {
 	let serverId = state.selectedServers.get(ctx.wsClientId)
 	serverId ??= CONFIG.servers[0].id
-	if (!serverId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No server selected' })
+	if (!serverId) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'No server selected' })
 	const slice = state.slices.get(serverId)
-	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server slice not found' })
+	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found' })
 	return {
 		...ctx,
 		...slice,
@@ -534,7 +533,7 @@ export function resolveWsClientSliceCtx(ctx: C.Socket) {
 
 export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 	const slice = state.slices.get(serverId)
-	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server slice not found' })
+	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found' })
 	return {
 		...ctx,
 		...slice,
@@ -553,30 +552,19 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
 	)
 }
 
-const setSelectedServer = orpcBase.input(z.string()).handler(async ({ input: serverId, context }) => {
-	const ctx = context
-	const slice = state.slices.get(serverId)
-	if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server not found' })
-	state.selectedServers.set(ctx.wsClientId, serverId)
-	state.selectedServerUpdate$.next({ wsClientId: ctx.wsClientId, serverId })
-	return { code: 'ok' as const }
-})
-
 export const orpcRouter = {
-	setSelectedServer,
-}
+	setSelectedServer: orpcBase
+		.input(z.string())
+		.handler(async ({ context, input: serverId }) => {
+			const slice = state.slices.get(serverId)
+			if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server not found' })
+			state.selectedServers.set(context.wsClientId, serverId)
+			state.selectedServerUpdate$.next({ wsClientId: context.wsClientId, serverId })
+			return { code: 'ok' as const }
+		}),
 
-export const router = TrpcServer.router({
-	setSelectedServer: TrpcServer.procedure.input(z.string()).mutation(async ({ ctx, input: serverId }) => {
-		const slice = state.slices.get(serverId)
-		if (!slice) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Server not found' })
-		state.selectedServers.set(ctx.wsClientId, serverId)
-		state.selectedServerUpdate$.next({ wsClientId: ctx.wsClientId, serverId })
-		return { code: 'ok' as const }
-	}),
-
-	watchLayersStatus: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
-		const obs = selectedServerCtx$(ctx)
+	watchLayersStatus: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
 			.pipe(
 				Rx.switchMap(ctx => {
 					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
@@ -586,8 +574,8 @@ export const router = TrpcServer.router({
 		yield* toAsyncGenerator(obs)
 	}),
 
-	watchServerRolling: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
-		const obs = selectedServerCtx$(ctx)
+	watchServerRolling: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
 			.pipe(
 				Rx.switchMap(ctx => {
 					return ctx.server.serverRolling$
@@ -597,8 +585,8 @@ export const router = TrpcServer.router({
 		yield* toAsyncGenerator(obs)
 	}),
 
-	watchServerInfo: TrpcServer.procedure.subscription(async function*({ ctx, signal }) {
-		const obs = selectedServerCtx$(ctx)
+	watchServerInfo: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
 			.pipe(
 				Rx.switchMap(ctx => {
 					return ctx.server.serverInfo.observe(ctx).pipe(
@@ -610,7 +598,7 @@ export const router = TrpcServer.router({
 		yield* toAsyncGenerator(obs)
 	}),
 
-	endMatch: TrpcServer.procedure.mutation(async ({ ctx: _ctx }) => {
+	endMatch: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = resolveWsClientSliceCtx(_ctx)
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
 		if (deniedRes) return deniedRes
@@ -619,16 +607,18 @@ export const router = TrpcServer.router({
 		return { code: 'ok' as const }
 	}),
 
-	toggleFogOfWar: TrpcServer.procedure.input(z.object({ disabled: z.boolean() })).mutation(async ({ ctx: _ctx, input }) => {
-		const ctx = resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
-		if (denyRes) return denyRes
-		const { value: serverStatusRes } = await ctx.server.layersStatus.get(ctx)
-		if (serverStatusRes.code !== 'ok') return serverStatusRes
-		await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
-		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
-		}
-		return { code: 'ok' as const }
-	}),
-})
+	toggleFogOfWar: orpcBase
+		.input(z.object({ disabled: z.boolean() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
+			if (denyRes) return denyRes
+			const { value: serverStatusRes } = await ctx.server.layersStatus.get(ctx)
+			if (serverStatusRes.code !== 'ok') return serverStatusRes
+			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+			if (input.disabled) {
+				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+			}
+			return { code: 'ok' as const }
+		}),
+}

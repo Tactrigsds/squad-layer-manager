@@ -9,11 +9,11 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/server/systems/layer-queue'
 import * as Rbac from '@/server/systems/rbac.system'
 import * as SquadServer from '@/server/systems/squad-server'
-import { procedure, router } from '@/server/trpc.server.ts'
-import { TRPCError } from '@trpc/server'
+import * as Orpc from '@orpc/server'
 import { aliasedTable } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import { Subject } from 'rxjs'
@@ -27,8 +27,8 @@ const ToggleFilterContributorInputSchema = z
 	.refine((input) => input.userId || input.role, { message: 'Either userId or role must be provided' })
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
-export const filtersRouter = router({
-	getFilterContributors: procedure.input(F.FilterEntityIdSchema).query(async ({ input, ctx }) => {
+export const filtersRouter = {
+	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
 		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
 		const rows = await ctx
 			.db()
@@ -48,7 +48,7 @@ export const filtersRouter = router({
 		}
 	}),
 
-	getAllFilterRoleContributors: procedure.query(async ({ input, ctx }) => {
+	getAllFilterRoleContributors: orpcBase.handler(async ({ context: ctx }) => {
 		const rows = await ctx
 			.db()
 			.select()
@@ -57,7 +57,7 @@ export const filtersRouter = router({
 		return rows
 	}),
 
-	addFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
+	addFilterContributor: orpcBase.input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, [
 			RBAC.perm('filters:write', { filterId: input.filterId }),
 			RBAC.perm('filters:write-all'),
@@ -98,7 +98,7 @@ export const filtersRouter = router({
 			}
 		}
 	}),
-	removeFilterContributor: procedure.input(ToggleFilterContributorInputSchema).mutation(async ({ input, ctx }) => {
+	removeFilterContributor: orpcBase.input(ToggleFilterContributorInputSchema).handler(async ({ input, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
 		if (denyRes) {
 			return denyRes
@@ -125,7 +125,7 @@ export const filtersRouter = router({
 
 		return { code: 'ok' as const }
 	}),
-	createFilter: procedure.input(F.NewFilterEntitySchema).mutation(async ({ input, ctx }) => {
+	createFilter: orpcBase.input(F.NewFilterEntitySchema).handler(async ({ input, context: ctx }) => {
 		const newFilterEntity: F.FilterEntity = {
 			...input,
 			owner: ctx.user.discordId,
@@ -144,9 +144,9 @@ export const filtersRouter = router({
 			code: 'ok' as const,
 		}
 	}),
-	updateFilter: procedure
+	updateFilter: orpcBase
 		.input(z.tuple([F.FilterEntityIdSchema, F.UpdateFilterEntitySchema.partial()]))
-		.mutation(async ({ input, ctx }) => {
+		.handler(async ({ input, context: ctx }) => {
 			const [id, update] = input
 			const res = await ctx.db().transaction(async (tx) => {
 				const [rawFilter] = await tx.select().from(Schema.filters).where(E.eq(Schema.filters.id, id)).for('update')
@@ -160,8 +160,7 @@ export const filtersRouter = router({
 				const [updateResult] = await tx.update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
 
 				if (updateResult.affectedRows === 0) {
-					throw new TRPCError({
-						code: 'INTERNAL_SERVER_ERROR',
+					throw new Orpc.ORPCError('INTERNAL_SERVER_ERROR', {
 						message: 'Unable to update filter',
 					})
 				}
@@ -180,7 +179,7 @@ export const filtersRouter = router({
 			}
 			return res
 		}),
-	deleteFilter: procedure.input(F.FilterEntityIdSchema).mutation(async ({ input: idToDelete, ctx }) => {
+	deleteFilter: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input: idToDelete, context: ctx }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(idToDelete))
 		if (denyRes) {
 			return denyRes
@@ -229,8 +228,10 @@ export const filtersRouter = router({
 		}])
 		return { code: 'ok' as const }
 	}),
-	watchFilters: procedure.subscription(watchFilters),
-})
+	watchFilters: orpcBase.handler(async function*({ context, signal }) {
+		yield* watchFilters({ ctx: context, signal })
+	}),
+}
 
 export let state!: {
 	filters: Map<string, F.FilterEntity>

@@ -1,16 +1,16 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { fromOrpcSubscription } from '@/lib/async'
 import * as Obj from '@/lib/object'
-import * as TrpcHelpers from '@/lib/trpc-helpers'
 import { devValidate } from '@/lib/zod.dev'
 import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as RbacClient from '@/systems.client/rbac.client'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
 import * as Zus from 'zustand'
 
-const [_useServerSettings, serverSettings$] = ReactRx.bind(TrpcHelpers.fromTrpcSub(undefined, trpc.serverSettings.watchSettings.subscribe))
+const [_useServerSettings, serverSettings$] = ReactRx.bind(fromOrpcSubscription(() => orpc.serverSettings.watchSettings()))
 
 export type EditSettingsStore = {
 	ops: SS.SettingMutation[]
@@ -52,7 +52,7 @@ function createStore() {
 			async save() {
 				try {
 					set({ saving: true })
-					const res = await trpc.serverSettings.updateSettings.mutate(get().ops)
+					const res = await orpc.serverSettings.updateSettings(get().ops)
 					if (res?.code === 'err:permission-denied') {
 						RbacClient.handlePermissionDenied(res)
 						return false

@@ -1,13 +1,12 @@
 import * as AR from '@/app-routes'
-import { distinctDeepEquals } from '@/lib/async'
-import * as TrpcHelpers from '@/lib/trpc-helpers'
+import { distinctDeepEquals, fromOrpcSubscription } from '@/lib/async'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { ServerEntry } from '@/server/config'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as Cookies from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
@@ -15,10 +14,10 @@ import * as Zus from 'zustand'
 
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
 export const [useLayersStatus, layersStatus$] = ReactRx.bind<SM.LayersStatusResExt>(
-	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchLayersStatus.subscribe),
+	fromOrpcSubscription(() => orpc.squadServer.watchLayersStatus()),
 )
 export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind<SM.ServerInfoRes>(
-	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchServerInfo.subscribe),
+	fromOrpcSubscription(() => orpc.squadServer.watchServerInfo()),
 )
 export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 	serverInfoRes$.pipe(
@@ -28,7 +27,7 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 )
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind<boolean>(
-	TrpcHelpers.fromTrpcSub(undefined, trpc.squadServer.watchServerRolling.subscribe),
+	fromOrpcSubscription(() => orpc.squadServer.watchServerRolling()),
 )
 
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | null>(
@@ -42,7 +41,7 @@ export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | n
 export function useEndMatch() {
 	return useMutation({
 		mutationFn: async () => {
-			return trpc.squadServer.endMatch.mutate()
+			return orpc.squadServer.endMatch()
 		},
 	})
 }
@@ -50,7 +49,7 @@ export function useEndMatch() {
 export function useDisableFogOfWarMutation() {
 	return useMutation({
 		mutationFn: async () => {
-			return trpc.squadServer.toggleFogOfWar.mutate({ disabled: true })
+			return orpc.squadServer.toggleFogOfWar({ disabled: true })
 		},
 	})
 }
@@ -91,7 +90,7 @@ export function setup() {
 		if (!route || route.id !== '/servers/:id' || route.params.id === state.selectedServerId) return
 
 		Cookies.setCookie('default-server-id', route.params.id)
-		void trpc.squadServer.setSelectedServer.mutate(route.params.id)
+		void orpc.squadServer.setSelectedServer(route.params.id)
 		state.setSelectedServer(route.params.id)
 	})
 

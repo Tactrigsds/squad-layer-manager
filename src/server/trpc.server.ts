@@ -1,4 +1,3 @@
-import { initTRPC } from '@trpc/server'
 import superjson from 'superjson'
 import * as C from './context.ts'
 import {} from '@/lib/object.ts'
@@ -17,11 +16,6 @@ export const orpcHandler = new RPCHandler(orpcHandler, {
 	],
 })
 
-const t = initTRPC.context<C.Socket>().create({
-	transformer: superjson,
-})
-
-const tracer = Otel.trace.getTracer('trpc-server')
 const loggerMiddleware = t.middleware(async (opts) => {
 	const ctx = opts.ctx
 	return await C.spanOp(`trpc:${opts.type}:${opts.path}`, {

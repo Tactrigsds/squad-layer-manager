@@ -4,9 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { cn } from '@/lib/utils'
 import * as UsersClient from '@/systems.client/users.client'
-import { trpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -30,8 +28,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 
 	const loggedInUser = UsersClient.useLoggedInUser()
 
-	const beginLinkMutation = useMutation({
-		mutationFn: () => trpc.users.beginSteamAccountLink.mutate(),
+	const beginLinkMutation = UsersClient.useBeginSteamAccountLink({
 		onSuccess: (result) => {
 			if (result.code === 'ok') {
 				setCommand(result.command)
@@ -44,8 +41,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		},
 	})
 
-	const cancelLinkMutation = useMutation({
-		mutationFn: () => trpc.users.cancelSteamAccountLinks.mutate(),
+	const cancelLinkMutation = UsersClient.useCancelSteamAccountLinks({
 		onSuccess: (result) => {
 			setCommand(null)
 			setCopyStatus('idle')
@@ -62,8 +58,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		},
 	})
 
-	const unlinkMutation = useMutation({
-		mutationFn: () => trpc.users.unlinkSteamAccount.mutate(),
+	const unlinkMutation = UsersClient.useUnlinkSteamAccount({
 		onSuccess: (result) => {
 			UsersClient.invalidateLoggedInUser()
 			if (result.code === 'ok') {

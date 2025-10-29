@@ -1,22 +1,14 @@
+import { fromOrpcSubscription } from '@/lib/async'
 import * as L from '@/models/layer'
 import * as SS from '@/models/server-state.models'
 import * as PartSys from '@/systems.client/parts'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
-import { Observable } from 'rxjs'
+import * as Rx from 'rxjs'
 
-const unexpectedNextLayerCold$ = new Observable<L.LayerId | null>((s) => {
-	const sub = trpc.layerQueue.watchUnexpectedNextLayer.subscribe(undefined, {
-		onData: (update) => {
-			return s.next(update)
-		},
-		onComplete: () => s.complete(),
-		onError: (e) => s.error(e),
-	})
-	return () => sub.unsubscribe()
-})
+const unexpectedNextLayerCold$ = fromOrpcSubscription(() => orpc.layerQueue.watchUnexpectedNextLayer())
 
 export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bind<L.LayerId | null>(
-	unexpectedNextLayerCold$ as Observable<L.LayerId | null>,
+	unexpectedNextLayerCold$,
 	null,
 )

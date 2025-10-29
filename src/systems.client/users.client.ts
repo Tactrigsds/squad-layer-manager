@@ -1,13 +1,13 @@
+import { fromOrpcSubscription } from '@/lib/async'
 import * as Obj from '@/lib/object'
-import { fromTrpcSub } from '@/lib/trpc-helpers'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
 import * as RbacClient from '@/systems.client/rbac.client'
-import { reactQueryClient, trpc } from '@/trpc.client'
+import { orpc, orpcReact, reactQueryClient } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -19,7 +19,7 @@ export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: ['users', 'getUser', superjson.serialize(id)],
 		queryFn: async () => {
-			return trpc.users.getUser.query(id!)
+			return orpc.users.getUser(id!)
 		},
 		enabled: !!id && opts?.enabled !== false,
 	})
@@ -29,12 +29,12 @@ export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: ['users', 'getUsers', superjson.serialize(userIds)],
 		enabled: opts?.enabled,
-		queryFn: async () => trpc.users.getUsers.query(userIds),
+		queryFn: async () => orpc.users.getUsers(userIds),
 	})
 }
 
 async function _fetchLoggedInUser() {
-	const user = await trpc.users.getLoggedInUser.query()
+	const user = await orpc.users.getLoggedInUser()
 	PartSys.upsertParts({ users: [user] })
 	loggedInUserId = user.discordId
 	return user
@@ -60,8 +60,8 @@ export function useLoggedInUser() {
 		if (!loggedInUser) return undefined
 
 		if (!simulateRoles) return loggedInUser
-		const simulatedPerms = loggedInUser.perms.filter(p =>
-			p.allowedByRoles.some(r => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
+		const simulatedPerms = loggedInUser.perms.filter((p: RBAC.TracedPermission) =>
+			p.allowedByRoles.some((r: RBAC.CompositeRole) => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
 		)
 
 		return {
@@ -86,7 +86,7 @@ export function invalidateUsers() {
 	PartSys.PartsStore.setState({ users: [] })
 }
 
-const [_, userInvalidation$] = ReactRx.bind(fromTrpcSub(undefined, trpc.users.watchUserInvalidation.subscribe))
+const [_, userInvalidation$] = ReactRx.bind(fromOrpcSubscription(() => orpc.users.watchUserInvalidation()))
 
 export function setup() {
 	userInvalidation$.subscribe(() => {
@@ -102,9 +102,25 @@ export function setup() {
 }
 
 export const [useSteamAccountLinkCompleted, steamAccountLinkCompleted$] = ReactRx.bind<{ discordId: bigint }>(
-	fromTrpcSub(undefined, trpc.users.watchSteamAccountLinkCompletion.subscribe).pipe(Rx.tap({
+	fromOrpcSubscription(() => orpc.users.watchSteamAccountLinkCompletion()).pipe(Rx.tap<{ discordId: bigint }>({
 		next: () => {
 			return invalidateLoggedInUser()
 		},
 	})),
 )
+
+export function useBeginSteamAccountLink() {
+	return useMutation(orpcReact.users.beginSteamAccountLink.mutationOptions())
+}
+
+export function useCancelSteamAccountLinks() {
+	return useMutation(orpcReact.users.cancelSteamAccountLinks.mutationOptions())
+}
+
+export function useUnlinkSteamAccount() {
+	return useMutation(orpcReact.users.unlinkSteamAccount.mutationOptions())
+}
+
+export function useUpdateNickname() {
+	return useMutation(orpcReact.users.updateNickname.mutationOptions())
+}

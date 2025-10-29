@@ -23,6 +23,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
+import orpcBase from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/server/systems/layer-queries.server.ts'
 import * as MatchHistory from '@/server/systems/match-history.ts'
 import * as Rbac from '@/server/systems/rbac.system.ts'
@@ -30,13 +31,13 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
+
 import { Mutex } from 'async-mutex'
 import * as dateFns from 'date-fns'
 import { _AddUndefinedToPossiblyUndefinedPropertiesOfInterface } from 'discord.js'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
-import { procedure, router } from '../trpc.server.ts'
 import * as Users from './users'
 
 export type VoteContext = {
@@ -996,9 +997,9 @@ function getBaseCtx() {
 }
 
 // -------- setup router --------
-export const layerQueueRouter = router({
-	watchVoteStateUpdates: procedure.subscription(async function*({ ctx, signal }) {
-		const obs = SquadServer.selectedServerCtx$(ctx).pipe(
+export const orpcRouter = {
+	watchVoteStateUpdates: orpcBase.handler(async function*({ context, signal }) {
+		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(async function*(ctx) {
 				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
 				const voteState = ctx.vote.state
@@ -1022,8 +1023,8 @@ export const layerQueueRouter = router({
 		yield* toAsyncGenerator(obs)
 	}),
 
-	watchUnexpectedNextLayer: procedure.subscription(async function*({ ctx, signal }) {
-		const obs = SquadServer.selectedServerCtx$(ctx).pipe(
+	watchUnexpectedNextLayer: orpcBase.handler(async function*({ context, signal }) {
+		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
 				return ctx.layerQueue.unexpectedNextLayerSet$
 			}),
@@ -1032,29 +1033,31 @@ export const layerQueueRouter = router({
 		yield* toAsyncGenerator(obs)
 	}),
 
-	startVote: procedure
+	startVote: orpcBase
 		.input(V.StartVoteInputSchema)
-		.mutation(async ({ input, ctx: _ctx }) => {
+		.handler(async ({ input, context: _ctx }) => {
 			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
-	abortVote: procedure.mutation(async ({ ctx: _ctx }) => {
+	abortVote: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 	}),
 
-	cancelVoteAutostart: procedure.mutation(async ({ ctx: _ctx }) => {
+	cancelVoteAutostart: orpcBase.handler(async ({ context: _ctx }) => {
 		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 		if (denyRes) return denyRes
 		return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 	}),
 
-	toggleUpdatesToSquadServer: procedure.input(z.object({ disabled: z.boolean() })).mutation(async ({ ctx: _ctx, input }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		return await toggleUpdatesToSquadServer({ ctx, input })
-	}),
-})
+	toggleUpdatesToSquadServer: orpcBase
+		.input(z.object({ disabled: z.boolean() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+			return await toggleUpdatesToSquadServer({ ctx, input })
+		}),
+}

@@ -20,7 +20,7 @@ import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { CONFIG } from '../config'
-import { procedure, router } from '../trpc.server'
+import orpcBase from '../orpc-base'
 import * as UsersClient from './users'
 
 export const MAX_RECENT_MATCHES = 100
@@ -117,8 +117,8 @@ export const loadCurrentMatch = C.spanOp(
 	},
 )
 
-export const matchHistoryRouter = router({
-	watchMatchHistoryState: procedure.subscription(async function*({ signal, ctx: _ctx }) {
+export const matchHistoryRouter = {
+	watchMatchHistoryState: orpcBase.handler(async function*({ signal, context: _ctx }) {
 		const server$ = SquadServer.selectedServerCtx$(_ctx).pipe(withAbortSignal(signal!))
 		const state$ = server$.pipe(
 			Rx.switchMap(async function*(ctx) {
@@ -134,7 +134,7 @@ export const matchHistoryRouter = router({
 
 		yield* toAsyncGenerator(state$)
 	}),
-})
+}
 
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',

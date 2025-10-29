@@ -8,8 +8,7 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import { procedure, router } from '@/server/trpc.server.ts'
-import * as D from 'discord.js'
+import orpcBase from '@/server/orpc-base'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -24,30 +23,34 @@ const state = {
 const steamAccountLinkComplete$ = new Rx.Subject<{ discordId: bigint; steam64Id: bigint }>()
 const invalidateUsers$ = new Rx.Subject<void>()
 
-export const usersRouter = router({
-	getLoggedInUser: procedure.query(async ({ ctx }) => {
-		const perms = await getUserRbacPerms(ctx)
+export const orpcRouter = {
+	getLoggedInUser: orpcBase.handler(async ({ context }) => {
+		const perms = await getUserRbacPerms(context)
 		const user: RBAC.UserWithRbac = {
-			...ctx.user,
+			...context.user,
 			perms,
 		}
-		return { ...user, wsClientId: ctx.wsClientId }
+		return { ...user, wsClientId: context.wsClientId }
 	}),
-	getUser: procedure.input(z.bigint()).query(async ({ ctx, input }) => {
-		const [dbUser] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, input))
-		const user = await buildUser(ctx, dbUser)
-		if (!user) return { code: 'err:not-found' as const }
-		return { code: 'ok' as const, user }
-	}),
+	getUser: orpcBase
+		.input(z.bigint())
+		.handler(async ({ context, input }) => {
+			const [dbUser] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, input))
+			const user = await buildUser(context, dbUser)
+			if (!user) return { code: 'err:not-found' as const }
+			return { code: 'ok' as const, user }
+		}),
 
-	getUsers: procedure.input(z.array(USR.UserIdSchema).optional()).query(async ({ ctx, input }) => {
-		const dbUsers = await ctx.db().select().from(Schema.users).where(input ? E.inArray(Schema.users.discordId, input) : undefined)
-		const users = await Promise.all(dbUsers.map((dbUser) => buildUser(ctx, dbUser)))
-		return { code: 'ok' as const, users }
-	}),
+	getUsers: orpcBase
+		.input(z.array(USR.UserIdSchema).optional())
+		.handler(async ({ context, input }) => {
+			const dbUsers = await context.db().select().from(Schema.users).where(input ? E.inArray(Schema.users.discordId, input) : undefined)
+			const users = await Promise.all(dbUsers.map((dbUser) => buildUser(context, dbUser)))
+			return { code: 'ok' as const, users }
+		}),
 
-	beginSteamAccountLink: procedure.mutation(async ({ ctx }) => {
-		const discordId = ctx.user.discordId
+	beginSteamAccountLink: orpcBase.handler(async ({ context }) => {
+		const discordId = context.user.discordId
 		const code = createId(9)
 		const sub = scheduleCodeExpiry(code)
 		const pending = [...MapUtils.filter(state.pendingSteamAccountLinks, (key, value) => value.discordId === value.discordId).keys()]
@@ -59,10 +62,10 @@ export const usersRouter = router({
 		return { code: 'ok' as const, command: CMD.buildCommand('linkSteamAccount', { code }, CONFIG.commands, CONFIG.commandPrefix)[0] }
 	}),
 
-	cancelSteamAccountLinks: procedure.mutation(async ({ ctx }) => {
+	cancelSteamAccountLinks: orpcBase.handler(async ({ context }) => {
 		let found = false
 		for (const [code, { discordId, expirySub }] of state.pendingSteamAccountLinks.entries()) {
-			if (discordId === ctx.user.discordId) {
+			if (discordId === context.user.discordId) {
 				state.pendingSteamAccountLinks.delete(code)
 				expirySub.unsubscribe()
 				found = true
@@ -72,48 +75,54 @@ export const usersRouter = router({
 		return { code: 'err:not-found' as const, msg: 'No pending link found for your Discord account.' }
 	}),
 
-	watchSteamAccountLinkCompletion: procedure.subscription(async function*({ ctx, signal }) {
+	watchSteamAccountLinkCompletion: orpcBase.handler(async function*({ context, signal }) {
 		const completeForUser$ = steamAccountLinkComplete$.pipe(
-			Rx.filter(user => user.discordId === ctx.user.discordId),
+			Rx.filter(user => user.discordId === context.user.discordId),
 			withAbortSignal(signal!),
 		)
 		for await (const user of toAsyncGenerator(completeForUser$)) {
-			ctx.user.steam64Id = user.steam64Id
+			context.user.steam64Id = user.steam64Id
 			yield user
 		}
 	}),
 
-	unlinkSteamAccount: procedure.mutation(async ({ ctx }) => {
-		return await DB.runTransaction(ctx, async (ctx) => {
-			const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, ctx.user.discordId)).for('update')
+	unlinkSteamAccount: orpcBase.handler(async ({ context }) => {
+		return await DB.runTransaction(context, async (context) => {
+			const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId)).for(
+				'update',
+			)
 			if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
 			if (!user.steam64Id) return { code: 'err:not-linked' as const, msg: 'No Steam account is currently linked.' }
 
-			await ctx.db().update(Schema.users).set({ steam64Id: null }).where(E.eq(Schema.users.discordId, ctx.user.discordId))
-			ctx.user.steam64Id = null
+			await context.db().update(Schema.users).set({ steam64Id: null }).where(E.eq(Schema.users.discordId, context.user.discordId))
+			context.user.steam64Id = null
 			return { code: 'ok' as const, msg: 'Steam account unlinked successfully.' }
 		})
 	}),
 
-	updateNickname: procedure.input(z.string().max(64).optional()).mutation(async ({ ctx, input }) => {
-		return await DB.runTransaction(ctx, async (ctx) => {
-			const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, ctx.user.discordId)).for('update')
-			if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
+	updateNickname: orpcBase
+		.input(z.string().max(64).optional())
+		.handler(async ({ context, input }) => {
+			return await DB.runTransaction(context, async (context) => {
+				const [user] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, context.user.discordId)).for(
+					'update',
+				)
+				if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
 
-			const nickname = input?.trim() || null
-			ctx.user.nickname = nickname
-			if (nickname) ctx.user.displayName = nickname
-			invalidateUsers$.next()
-			await ctx.db().update(Schema.users).set({ nickname }).where(E.eq(Schema.users.discordId, ctx.user.discordId))
+				const nickname = input?.trim() || null
+				context.user.nickname = nickname
+				if (nickname) context.user.displayName = nickname
+				invalidateUsers$.next()
+				await context.db().update(Schema.users).set({ nickname }).where(E.eq(Schema.users.discordId, context.user.discordId))
 
-			return { code: 'ok' as const, msg: 'Nickname updated successfully.' }
-		})
-	}),
+				return { code: 'ok' as const, msg: 'Nickname updated successfully.' }
+			})
+		}),
 
-	watchUserInvalidation: procedure.subscription(async function*({ signal }) {
+	watchUserInvalidation: orpcBase.handler(async function*({ signal }) {
 		yield* toAsyncGenerator(invalidateUsers$.pipe(withAbortSignal(signal!)))
 	}),
-})
+}
 
 export async function completeSteamAccountLink(ctx: CS.Log & C.Db, code: string, steam64Id: bigint) {
 	return await DB.runTransaction(ctx, async (ctx) => {

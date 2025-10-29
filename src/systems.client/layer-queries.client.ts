@@ -18,7 +18,7 @@ import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
-import { orpc, reactQueryOrpcClient } from '@/trpc.client'
+import { orpc, orpcReact } from '@/trpc.client'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
@@ -914,7 +914,7 @@ async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 	const input = { layerId: typeof layer === 'string' ? layer : layer.id }
-	return reactQueryOrpcClient.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
+	return orpcReact.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
 }
 
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {

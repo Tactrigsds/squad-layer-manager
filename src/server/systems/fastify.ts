@@ -290,6 +290,13 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	instance.register(fastifyWebsocket)
+	instance.addContentTypeParser('*', (request, payload, done) => {
+		if (!request.url.startsWith('/trpc')) return
+
+		// Fully utilize oRPC feature by allowing any content type
+		// And let oRPC parse the body manually by passing `undefined`
+		done(null, undefined)
+	})
 	instance.get(AR.route('/trpc'), { websocket: true }, async (websocket, req) => {
 		const ctx = createTrpcRequestContext(getAuthedCtx(req), websocket)
 		ORPCServer.orpcHandler.upgrade(websocket, { context: ctx })

@@ -16,7 +16,7 @@ import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
-import { trpc } from '@/trpc.client'
+import { orpc } from '@/trpc.client'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
@@ -454,7 +454,7 @@ function FilterContributors(props: {
 	const { toast } = useToast()
 	const addMutation = useMutation({
 		mutationFn: async (input: ToggleFilterContributorInput) => {
-			return trpc.filters.addFilterContributor.mutate(input)
+			return orpc.filters.addFilterContributor(input)
 		},
 		onSuccess: (res) => {
 			switch (res.code) {
@@ -475,7 +475,7 @@ function FilterContributors(props: {
 	})
 	const removeMutation = useMutation({
 		mutationFn: async (input: ToggleFilterContributorInput) => {
-			return trpc.filters.removeFilterContributor.mutate(input)
+			return orpc.filters.removeFilterContributor(input)
 		},
 		onSuccess: (res) => {
 			switch (res.code) {

@@ -76,6 +76,29 @@ export function toCold<T>(task: () => Rx.ObservableInput<T>) {
 	})
 }
 
+/**
+ * Converts an oRPC async generator promise to a cold observable.
+ * oRPC subscriptions return a Promise<AsyncGenerator<T>>, so we need to await the promise
+ * and then iterate the generator.
+ */
+export function fromOrpcSubscription<T>(task: () => Promise<AsyncGenerator<T>>) {
+	return new Rx.Observable<T>((subscriber) => {
+		const promise = task()
+		promise.then(async (generator) => {
+			try {
+				for await (const value of generator) {
+					subscriber.next(value)
+				}
+				subscriber.complete()
+			} catch (error) {
+				subscriber.error(error)
+			}
+		}).catch((error) => {
+			subscriber.error(error)
+		})
+	})
+}
+
 export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }

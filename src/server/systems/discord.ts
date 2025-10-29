@@ -2,7 +2,7 @@ import { resToOptional } from '@/lib/types'
 import * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
 import { CONFIG } from '@/server/config'
-import * as TrpcServer from '@/server/trpc.server'
+import orpcBase from '@/server/orpc-base'
 import * as D from 'discord.js'
 import { z } from 'zod'
 import * as Env from '../env'
@@ -113,10 +113,11 @@ export async function fetchGuildRoles(baseCtx: CS.Log) {
 	return { code: 'ok' as const, roles: Object.keys(rolesMap) }
 }
 
-export const router = TrpcServer.router({
-	getGuildEmojis: TrpcServer.procedure.input(z.object({}).optional()).query(
-		async ({ ctx }) => {
-			const guildRes = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+export const orpcRouter = {
+	getGuildEmojis: orpcBase
+		.input(z.object({}).optional())
+		.handler(async ({ context }) => {
+			const guildRes = await fetchGuild(context, CONFIG.homeDiscordGuildId)
 			const guild = resToOptional(guildRes)!.guild
 			let emojis = await guild.emojis.fetch()
 
@@ -124,6 +125,5 @@ export const router = TrpcServer.router({
 				emojis = client.emojis.cache
 			}
 			return emojis.map(emoji => toNormalizedEmoji(emoji))
-		},
-	),
-})
+		}),
+}

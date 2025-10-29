@@ -3,8 +3,8 @@ import { objKeys } from '@/lib/object'
 import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
+import orpcBase from '@/server/orpc-base'
 import * as Discord from '@/server/systems/discord'
-import { procedure, router } from '@/server/trpc.server'
 import * as Otel from '@opentelemetry/api'
 import * as E from 'drizzle-orm/expressions'
 import { CONFIG } from '../config'
@@ -201,8 +201,8 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	return RBAC.tryDenyPermissionForUser(userId, perms, req)
 }
 
-export const rbacRouter = router({
-	getRoles: procedure.query(() => {
+export const orpcRouter = {
+	getRoles: orpcBase.handler(() => {
 		return roles
 	}),
-})
+}
