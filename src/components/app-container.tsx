@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes.ts'
 import { Button } from '@/components/ui/button'
 import * as USR from '@/models/users.models.ts'
+import * as RPC from '@/orpc.client'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
@@ -9,7 +10,6 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeClient from '@/systems.client/theme'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { useTrpcConnected } from '@/trpc.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
@@ -23,7 +23,7 @@ import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const flags = FeatureFlags.useFeatureFlags()
-	const trpcConnected = useTrpcConnected()
+	const trpcConnected = RPC.useConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()

@@ -3,8 +3,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
+import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems.client/users.client'
-import { invalidateLoggedInUser, useLoggedInUser, useUpdateNickname } from '@/systems.client/users.client'
+import { invalidateLoggedInUser, useLoggedInUser } from '@/systems.client/users.client'
+import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -14,7 +16,7 @@ export default function NicknameDialog(
 	const user = useLoggedInUser()
 	const [nickname, setNickname] = React.useState('')
 	const { toast } = useToast()
-	const updateNicknameMutation = useUpdateNickname({
+	const updateNicknameMutation = useMutation(RPC.orpc.users.updateNickname.mutationOptions({
 		onSuccess: (result) => {
 			if (result.code === 'ok') {
 				UsersClient.invalidateLoggedInUser()
@@ -39,7 +41,7 @@ export default function NicknameDialog(
 			})
 			console.error('Error updating nickname:', error)
 		},
-	})
+	}))
 
 	// Update local state when user data changes or dialog opens
 	React.useEffect(() => {

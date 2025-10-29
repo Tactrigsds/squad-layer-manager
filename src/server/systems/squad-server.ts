@@ -519,7 +519,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	}
 }
 
-export function resolveWsClientSliceCtx(ctx: C.Socket) {
+export function resolveWsClientSliceCtx(ctx: C.OrpcBase) {
 	let serverId = state.selectedServers.get(ctx.wsClientId)
 	serverId ??= CONFIG.servers[0].id
 	if (!serverId) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'No server selected' })

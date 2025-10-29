@@ -1,12 +1,12 @@
-import { fromOrpcSubscription } from '@/lib/async'
+import { coldOrpcSubscription } from '@/lib/async'
 import * as V from '@/models/vote.models'
+import * as RPC from '@/orpc.client'
 import * as PartSys from '@/systems.client/parts'
-import { orpc } from '@/trpc.client'
 import { bind } from '@react-rxjs/core'
 import * as Rx from 'rxjs'
 import { map, share } from 'rxjs'
 
-const voteStateCold$ = fromOrpcSubscription(() => orpc.layerQueue.watchVoteStateUpdates()).pipe(
+const voteStateCold$ = coldOrpcSubscription(() => RPC.orpc.layerQueue.watchVoteStateUpdates.call()).pipe(
 	Rx.tap((update) => {
 		if (update.code === 'initial-state' && update.state) {
 			PartSys.stripParts(update.state)
@@ -31,16 +31,4 @@ export const [useVoteState, voteState$] = bind(
 export function setup() {
 	voteStateUpdate$.subscribe()
 	voteState$.subscribe()
-}
-
-export const startVoteOpts = {
-	mutationFn: orpc.layerQueue.startVote,
-}
-
-export const abortVoteOpts = {
-	mutationFn: orpc.layerQueue.abortVote,
-}
-
-export const cancelVoteAutostartOpts = {
-	mutationFn: orpc.layerQueue.cancelVoteAutostart,
 }

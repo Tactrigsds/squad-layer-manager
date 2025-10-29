@@ -1,7 +1,7 @@
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as RPC from '@/orpc.client'
 import type { PublicConfig } from '@/server/config'
-import { orpc } from '@/trpc.client'
 import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -22,7 +22,7 @@ export async function fetchConfig() {
 
 export function setup() {
 	;(async () => {
-		const config = await orpc.config.getPublicConfig()
+		const config = await RPC.orpc.config.getPublicConfig.call()
 		Store.setState(config)
 	})()
 }

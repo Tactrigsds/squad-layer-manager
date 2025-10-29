@@ -3,8 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { cn } from '@/lib/utils'
+import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as ReactRx from '@react-rxjs/core'
+import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -22,13 +24,12 @@ export default function LinkSteamAccountDialogWrapper(props: LinkSteamAccountDia
 }
 
 function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccountDialogProps) {
-	const queryClient = useQueryClient()
 	const [command, setCommand] = React.useState<string | null>(null)
 	const [copyStatus, setCopyStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle')
 
 	const loggedInUser = UsersClient.useLoggedInUser()
 
-	const beginLinkMutation = UsersClient.useBeginSteamAccountLink({
+	const beginLinkMutation = useMutation(RPC.orpc.users.beginSteamAccountLink.mutationOptions({
 		onSuccess: (result) => {
 			if (result.code === 'ok') {
 				setCommand(result.command)
@@ -39,9 +40,9 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		onError: (error) => {
 			console.error('Failed to begin steam account link:', error)
 		},
-	})
+	}))
 
-	const cancelLinkMutation = UsersClient.useCancelSteamAccountLinks({
+	const cancelLinkMutation = useMutation(RPC.orpc.users.cancelSteamAccountLinks.mutationOptions({
 		onSuccess: (result) => {
 			setCommand(null)
 			setCopyStatus('idle')
@@ -56,9 +57,9 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		onError: (error) => {
 			console.error('Failed to cancel steam account links:', error)
 		},
-	})
+	}))
 
-	const unlinkMutation = UsersClient.useUnlinkSteamAccount({
+	const unlinkMutation = useMutation(RPC.orpc.users.unlinkSteamAccount.mutationOptions({
 		onSuccess: (result) => {
 			UsersClient.invalidateLoggedInUser()
 			if (result.code === 'ok') {
@@ -80,7 +81,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 				variant: 'destructive',
 			})
 		},
-	})
+	}))
 
 	const copyToClipboard = async (text: string) => {
 		try {
@@ -97,11 +98,11 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 
 	const handleBeginLink = () => {
 		setCopyStatus('idle')
-		beginLinkMutation.mutate()
+		beginLinkMutation.mutate(undefined)
 	}
 
 	const handleUnlink = () => {
-		unlinkMutation.mutate()
+		unlinkMutation.mutate(undefined)
 	}
 
 	const handleManualCopy = () => {
@@ -114,7 +115,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 		if (!newState) {
 			// Reset state and cancel any pending link when closing dialog
 			if (command) {
-				cancelLinkMutation.mutate()
+				cancelLinkMutation.mutate(undefined)
 			}
 			setCommand(null)
 			setCopyStatus('idle')

@@ -1,31 +1,31 @@
-import { fromOrpcSubscription } from '@/lib/async'
+import { coldOrpcSubscription } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
+import * as RPC from '@/orpc.client'
 import { type FilterEntityChange } from '@/server/systems/filter-entity'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as PartsSys from '@/systems.client/parts'
-import { orpc, orpcReact, reactQueryClient } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
 export const getFilterContributorsBase = (filterId: string) =>
-	orpcReact.filters.getFilterContributors.queryOptions({
+	RPC.orpc.filters.getFilterContributors.queryOptions({
 		input: filterId,
 	})
 
 export const getAllFilterRoleContributorsBase = () =>
-	orpcReact.filters.getAllFilterRoleContributors.queryOptions({
+	RPC.orpc.filters.getAllFilterRoleContributors.queryOptions({
 		input: undefined,
 	})
 
 export function invalidateQueriesForFilter(filterId: F.FilterEntityId) {
-	reactQueryClient.invalidateQueries({ queryKey: getFilterContributorsBase(filterId).queryKey })
-	reactQueryClient.invalidateQueries({ queryKey: getAllFilterRoleContributorsBase().queryKey })
+	RPC.queryClient.invalidateQueries({ queryKey: getFilterContributorsBase(filterId).queryKey })
+	RPC.queryClient.invalidateQueries({ queryKey: getAllFilterRoleContributorsBase().queryKey })
 }
 
 export async function filterEditPrefetch(filterId?: string) {
@@ -34,7 +34,7 @@ export async function filterEditPrefetch(filterId?: string) {
 		onMouseEnter() {
 			const entity = filterEntities.get(filterId)
 			if (!entity) return
-			void reactQueryClient.prefetchQuery(getFilterContributorsBase(filterId))
+			void RPC.queryClient.prefetchQuery(getFilterContributorsBase(filterId))
 			void LayerQueriesClient.prefetchLayersQuery(LQY.getEditFilterPageInput(entity.filter))
 		},
 	}
@@ -43,7 +43,7 @@ export async function filterEditPrefetch(filterId?: string) {
 export function filterIndexPrefetch() {
 	return {
 		onMouseEnter() {
-			void reactQueryClient.prefetchQuery(getAllFilterRoleContributorsBase())
+			void RPC.queryClient.prefetchQuery(getAllFilterRoleContributorsBase())
 		},
 	}
 }
@@ -54,7 +54,7 @@ export const filterEntityChanged$ = new Rx.Subject<void>()
 const [initialized$, setInitialized] = createSignal<true>()
 
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
-	const promise = fromOrpcSubscription(() => orpc.filters.watchFilters()).subscribe(
+	const promise = coldOrpcSubscription(() => RPC.orpc.filters.watchFilters.call()).subscribe(
 		(_output) => {
 			const output = PartsSys.stripParts(_output) as FilterEntityChange
 			switch (output.code) {
@@ -108,13 +108,13 @@ export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactR
 )
 
 export function useFilterCreate() {
-	return useMutation(orpcReact.filters.createFilter.mutationOptions())
+	return useMutation(RPC.orpc.filters.createFilter.mutationOptions())
 }
 
 export function useFilterUpdate() {
-	return useMutation(orpcReact.filters.updateFilter.mutationOptions())
+	return useMutation(RPC.orpc.filters.updateFilter.mutationOptions())
 }
 
 export function useFilterDelete() {
-	return useMutation(orpcReact.filters.deleteFilter.mutationOptions())
+	return useMutation(RPC.orpc.filters.deleteFilter.mutationOptions())
 }

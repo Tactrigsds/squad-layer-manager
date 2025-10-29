@@ -1,22 +1,16 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import type { PublicConfig } from '@/server/config'
-import type { AppRouter } from '@/server/router'
 import type { OrpcAppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
-import * as FeatureFlags from '@/systems.client/feature-flags'
-import { createORPCClient, onError } from '@orpc/client'
+import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import * as ReactRx from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
 import { QueryClient } from '@tanstack/react-query'
-import { createTRPCClient, createWSClient, loggerLink, wsLink } from '@trpc/client'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
-import superjson from 'superjson'
-import * as Zus from 'zustand'
 import { sleep } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
@@ -29,11 +23,14 @@ const orpcLink = new RPCLink({
 	clientInterceptors: [],
 })
 
-export const orpc: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
+const _orpcClient: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
 
 const opened$ = Rx.fromEvent(websocket, 'open')
 const closed$ = Rx.fromEvent(websocket, 'close')
 const error$ = Rx.fromEvent(websocket, 'error')
+
+let previousConnections = false
+let previousConfig: PublicConfig | undefined
 
 opened$.pipe(
 	Rx.concatMap(async () => {
@@ -57,7 +54,7 @@ opened$.pipe(
 			)
 			previousConfig = config
 		} else {
-			reactQueryClient.invalidateQueries()
+			queryClient.invalidateQueries()
 		}
 	}),
 	Rx.retry(),
@@ -80,21 +77,8 @@ closed$.pipe(
 	Rx.retry(),
 ).subscribe()
 
-const trpcConnectedCold$ = opened$.pipe(Rx.exhaustMap(() => Rx.concat(Rx.of(true), closed$.pipe(Rx.map(() => false)))))
-export const [useTrpcConnected, trpcConnected$] = ReactRx.bind(trpcConnectedCold$, false)
-trpcConnected$.subscribe()
+const connectedCold$ = opened$.pipe(Rx.exhaustMap(() => Rx.concat(Rx.of(true), closed$.pipe(Rx.map(() => false)))))
+export const [useConnected, connected$] = ReactRx.bind(connectedCold$, false)
 
-let previousConnections = false
-let previousConfig: PublicConfig | undefined
-const wsClient = createWSClient({ url: wsUrl })
-
-export const links = [
-	loggerLink({ enabled: () => !!FeatureFlags.get('trpcLogs') }),
-	wsLink<AppRouter>({
-		client: wsClient,
-		transformer: superjson,
-	}),
-]
-
-export const reactQueryClient = new QueryClient()
-export const orpcReact = createTanstackQueryUtils(orpc)
+export const queryClient = new QueryClient()
+export const orpc = createTanstackQueryUtils(_orpcClient, {})

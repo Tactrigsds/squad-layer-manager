@@ -30,7 +30,6 @@ await C.spanOp('main', { tracer }, async () => {
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	Rbac.setup()
 	Sessions.setup()
-	TrpcRouter.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	SharedLayerList.setup()
 	const { serverClosed } = await Fastify.setup()

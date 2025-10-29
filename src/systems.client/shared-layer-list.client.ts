@@ -1,5 +1,5 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
-import { fromOrpcSubscription } from '@/lib/async'
+import { coldOrpcSubscription } from '@/lib/async'
 import * as Browser from '@/lib/browser'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
@@ -11,13 +11,13 @@ import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
+import * as RPC from '@/orpc.client'
 import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
-import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
 import React from 'react'
@@ -66,7 +66,7 @@ export type Store = {
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
-	fromOrpcSubscription(() => orpc.sharedLayerList.watchUpdates()),
+	coldOrpcSubscription(() => RPC.orpc.sharedLayerList.watchUpdates.call()),
 )
 
 export const [Store, storeSubHandle] = createStore()
@@ -338,7 +338,7 @@ function createStore() {
 }
 
 async function processUpdate(update: SLL.ClientUpdate) {
-	const res = await orpc.sharedLayerList.processUpdate(update)
+	const res = await RPC.orpc.sharedLayerList.processUpdate.call(update)
 
 	if (res && res.code === 'err:permission-denied') {
 		RbacClient.handlePermissionDenied(res)

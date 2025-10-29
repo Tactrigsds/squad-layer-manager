@@ -11,6 +11,7 @@ import * as SquadServer from './systems/squad-server.ts'
 import * as Users from './systems/users.ts'
 
 export type OrpcAppRouter = typeof orpcAppRouter
+
 export const orpcAppRouter = {
 	squadServer: SquadServer.orpcRouter,
 	layerQueue: LayerQueue.orpcRouter,

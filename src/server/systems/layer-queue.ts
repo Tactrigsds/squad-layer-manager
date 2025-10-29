@@ -790,7 +790,7 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 export async function updateQueue(
 	{ input, ctx }: {
 		input: { layerQueue: LL.List; layerQueueSeqId: number }
-		ctx: C.Socket & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
+		ctx: C.OrpcBase & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory
 	},
 ) {
 	input = Obj.deepClone(input)

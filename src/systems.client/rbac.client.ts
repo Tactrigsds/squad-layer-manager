@@ -1,9 +1,9 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
 import * as Messages from '@/messages'
+import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems.client/users.client'
-import { orpcReact } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import * as Zus from 'zustand'
 
@@ -17,7 +17,7 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 
 export const GET_ROLES_QUERY_KEY = ['getRoles']
 export function useRoles() {
-	return useQuery(orpcReact.rbac.getRoles.queryOptions())
+	return useQuery(RPC.orpc.rbac.getRoles.queryOptions())
 }
 
 export type RbacStore = {

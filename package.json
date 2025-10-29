@@ -26,6 +26,7 @@
 		"db:studio": "drizzle-kit studio"
 	},
 	"dependencies": {
+		"@fastify/websocket": "^11.2.0",
 		"@node-rs/argon2": "^1.8.3",
 		"@node-rs/bcrypt": "^1.10.6",
 		"better-sqlite3": "^12.2.0",
@@ -52,7 +53,6 @@
 		"@fastify/otel": "^0.4.0",
 		"@fastify/send": "^4.1.0",
 		"@fastify/static": "^8.2.0",
-		"@fastify/websocket": "^11.1.0",
 		"@opentelemetry/api": "^1.9.0",
 		"@opentelemetry/api-logs": "^0.57.2",
 		"@opentelemetry/auto-instrumentations-node": "^0.56.1",

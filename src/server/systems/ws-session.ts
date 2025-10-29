@@ -2,11 +2,11 @@ import * as CS from '@/models/context-shared'
 import * as C from '@/server/context'
 import * as SquadServer from '@/server/systems/squad-server'
 import { Subject } from 'rxjs'
-export const wsSessions = new Map<string, C.Socket>()
-export const disconnect$ = new Subject<C.Socket>()
-export const connect$ = new Subject<C.Socket>()
+export const wsSessions = new Map<string, C.OrpcBase>()
+export const disconnect$ = new Subject<C.OrpcBase>()
+export const connect$ = new Subject<C.OrpcBase>()
 
-export function registerClient(ctx: C.Socket) {
+export function registerClient(ctx: C.OrpcBase) {
 	if (wsSessions.has(ctx.wsClientId)) {
 		// should be impossible
 		throw new Error(`Client with id ${ctx.wsClientId} already exists`)
@@ -24,7 +24,7 @@ export function registerClient(ctx: C.Socket) {
 export async function forceDisconnect(ctx: CS.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
 	if (Object.keys(ids).length === 0) throw new Error('Must provide at least one id')
 
-	let sessions: C.Socket[] | undefined
+	let sessions: C.OrpcBase[] | undefined
 	if (ids.wsSessionId) {
 		const session = wsSessions.get(ids.wsSessionId)
 		if (session) {

@@ -23,6 +23,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/shared-layer-list.ts'
 import * as V from '@/models/vote.models.ts'
+import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
@@ -33,7 +34,7 @@ import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
-import * as ReactQuery from '@tanstack/react-query'
+import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -378,7 +379,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = SLLClient.useActivityState({ code: 'editing-item', itemId: item.itemId })
 	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({ code: 'configuring-vote', itemId: item.itemId })
 
-	const startVoteMutation = ReactQuery.useMutation(VotesClient.startVoteOpts)
+	const startVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.startVote.mutationOptions())
 	async function startVote() {
 		const res = await startVoteMutation.mutateAsync({ itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
 		switch (res.code) {
@@ -393,9 +394,9 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		}
 	}
 
-	const abortVoteMutation = ReactQuery.useMutation(VotesClient.abortVoteOpts)
+	const abortVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.abortVote.mutationOptions())
 	async function abortVote() {
-		const res = await abortVoteMutation.mutateAsync()
+		const res = await abortVoteMutation.mutateAsync(undefined)
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
@@ -408,9 +409,9 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		}
 	}
 
-	const cancelAutostartMutation = ReactQuery.useMutation(VotesClient.cancelVoteAutostartOpts)
+	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.layerQueue.cancelVoteAutostart.mutationOptions())
 	async function cancelAutostart() {
-		const res = await cancelAutostartMutation.mutateAsync()
+		const res = await cancelAutostartMutation.mutateAsync(undefined)
 		switch (res.code) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)

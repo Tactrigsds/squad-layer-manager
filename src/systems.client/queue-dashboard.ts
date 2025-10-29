@@ -9,9 +9,9 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
+import { orpc } from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
-import { orpc } from '@/trpc.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import React from 'react'
@@ -183,7 +183,7 @@ export const LQStore = SLLClient.Store
 
 export function useToggleSquadServerUpdates() {
 	const saveChangesMutation = useMutation({
-		mutationFn: (input: { disabled: boolean }) => orpc.layerQueue.toggleUpdatesToSquadServer(input),
+		mutationFn: (input: { disabled: boolean }) => orpc.layerQueue.toggleUpdatesToSquadServer.call(input),
 	})
 
 	return {

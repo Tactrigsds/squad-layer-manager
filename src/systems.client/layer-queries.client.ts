@@ -12,14 +12,14 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LQY from '@/models/layer-queries.models'
+import * as RPC from '@/orpc.client'
+import { queryClient } from '@/orpc.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
-import { orpc, orpcReact } from '@/trpc.client'
-import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
 import * as Im from 'immer'
@@ -93,10 +93,6 @@ export function useFilterMenuLayerQueryContext(cursor?: LQY.LayerQueryCursor, de
 	cursor = useDeepEqualsMemo(() => cursor, [cursor])
 	const extraFiltersStore = useExtraFiltersStore()
 	const poolCheckboxesStore = useNewPoolCheckboxesStore()
-	const active = ZusUtils.useStoreDeep(extraFiltersStore, state => state.activated)
-	React.useEffect(() => {
-		console.log('active changed', active)
-	}, [active])
 	const [queryInputStore, subHandle] = React.useMemo(() => {
 		const deriveState = (): { queryInput: LQY.BaseQueryInput } => {
 			const extraFiltersState = extraFiltersStore.getState()
@@ -188,7 +184,7 @@ export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput) {
 	const cfg = await ConfigClient.fetchEffectiveConfig()
 	const input = getQueryLayersInput(baseInput, { cfg })
 	const baseQuery = getQueryLayersBase(input, Store.getState().counters)
-	return await reactQueryClient.prefetchQuery(
+	return await queryClient.prefetchQuery(
 		baseQuery,
 	)
 }
@@ -914,11 +910,11 @@ async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 	const input = { layerId: typeof layer === 'string' ? layer : layer.id }
-	return orpcReact.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
+	return RPC.orpc.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
 }
 
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
-	return reactQueryClient.getQueryCache().build(reactQueryClient, getLayerInfoQueryOptions(layer)).fetch()
+	return queryClient.getQueryCache().build(queryClient, getLayerInfoQueryOptions(layer)).fetch()
 }
 
 export function useExtraFiltersStore() {

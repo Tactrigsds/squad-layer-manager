@@ -249,10 +249,13 @@ export type WSSession = {
 export type AuthedUser = User & AuthSession
 
 export type AttachedFastify = CS.Log & Db & OtelSpan & Partial<ResolvedRoute>
-export type Socket =
+export type Websocket = { ws: ws.WebSocket }
+export type OrpcBase =
 	& User
 	& AuthSession
-	& { wsClientId: string; req: fastify.FastifyRequest; ws: ws.WebSocket }
+	& WSSession
+	& Websocket
+	& FastifyRequest
 	& Db
 	& CS.Log
 	& Mutexes

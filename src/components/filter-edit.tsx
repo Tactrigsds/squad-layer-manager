@@ -11,12 +11,11 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
-import { ToggleFilterContributorInput } from '@/server/systems/filter-entity'
+import * as RPC from '@/orpc.client'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
-import { orpc } from '@/trpc.client'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
@@ -452,10 +451,7 @@ function FilterContributors(props: {
 	children: React.ReactNode
 }) {
 	const { toast } = useToast()
-	const addMutation = useMutation({
-		mutationFn: async (input: ToggleFilterContributorInput) => {
-			return orpc.filters.addFilterContributor(input)
-		},
+	const addMutation = useMutation(RPC.orpc.filters.addFilterContributor.mutationOptions({
 		onSuccess: (res) => {
 			switch (res.code) {
 				case 'err:permission-denied':
@@ -472,11 +468,8 @@ function FilterContributors(props: {
 		onError: (err) => {
 			toast({ title: 'Failed to add contributor', description: err.message })
 		},
-	})
-	const removeMutation = useMutation({
-		mutationFn: async (input: ToggleFilterContributorInput) => {
-			return orpc.filters.removeFilterContributor(input)
-		},
+	}))
+	const removeMutation = useMutation(RPC.orpc.filters.removeFilterContributor.mutationOptions({
 		onSuccess: (res) => {
 			switch (res.code) {
 				case 'err:permission-denied':
@@ -490,7 +483,7 @@ function FilterContributors(props: {
 			}
 			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 		},
-	})
+	}))
 	function addUser(user: USR.User) {
 		addMutation.mutate({ filterId: props.filterId, userId: user.discordId })
 	}

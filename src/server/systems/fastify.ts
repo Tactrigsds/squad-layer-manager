@@ -258,6 +258,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		const authRes = await authorizeRequest(baseCtx)
 		switch (authRes.code) {
 			case 'ok':
+				authedCtxMap.set(req.id, authRes.ctx)
+				authedCtxCreatedAt.set(req.id, Date.now())
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
@@ -289,7 +291,6 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 	})
 
-	instance.register(fastifyWebsocket)
 	instance.addContentTypeParser('*', (request, payload, done) => {
 		if (!request.url.startsWith('/trpc')) return
 
@@ -297,9 +298,14 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		// And let oRPC parse the body manually by passing `undefined`
 		done(null, undefined)
 	})
-	instance.get(AR.route('/trpc'), { websocket: true }, async (websocket, req) => {
-		const ctx = createTrpcRequestContext(getAuthedCtx(req), websocket)
-		ORPCServer.orpcHandler.upgrade(websocket, { context: ctx })
+	instance.register(fastifyWebsocket)
+	instance.register(async function(instance) {
+		instance.get(AR.route('/trpc'), { websocket: true }, async (connection, req) => {
+			console.log('before ctx')
+			const ctx = createOrpcBase(getAuthedCtx(req), connection)
+			console.log('CTX', ctx)
+			ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
+		})
 	})
 
 	// -------- webpage serving --------
@@ -384,17 +390,17 @@ export async function authorizeRequest<
 	}
 }
 
-// with the websocket transport this will run once per connection. right now there's no way to log users out if their session expires while they're logged in :shrug:
-export function createTrpcRequestContext(
+// With the websocket handler this will run once per connection.
+export function createOrpcBase(
 	ctx: C.FastifyRequestFull & C.AuthedUser,
 	websocket: WebSocket,
-): C.Socket {
+): C.OrpcBase {
 	const wsClientId = createId(32)
 
 	// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
 	const defaultServerId = ctx.cookies['default-server-id']!
 	SquadServer.state.selectedServers.set(wsClientId, defaultServerId)
-	const wsCtx: C.Socket = C.initLocks({
+	const wsCtx: C.OrpcBase = C.initLocks({
 		wsClientId,
 		...ctx,
 		ws: websocket,

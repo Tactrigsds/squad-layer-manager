@@ -1,10 +1,10 @@
 import { Toaster } from '@/components/ui/toaster'
 import { useGlobalToast } from '@/hooks/use-global-toast'
+import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import { DragContextProvider } from '@/systems.client/dndkit.provider'
 import * as FeatureFlagClient from '@/systems.client/feature-flags'
 import * as QD from '@/systems.client/queue-dashboard'
-import { reactQueryClient } from '@/trpc.client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { ReactNode } from 'react'
@@ -14,7 +14,7 @@ import { TooltipProvider } from './ui/tooltip'
 
 export function Providers(props: { children: ReactNode }) {
 	return (
-		<QueryClientProvider client={reactQueryClient}>
+		<QueryClientProvider client={RPC.queryClient}>
 			<ProvidersInner>
 				{props.children}
 			</ProvidersInner>
