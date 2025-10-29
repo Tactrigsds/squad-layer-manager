@@ -18,6 +18,7 @@ export type OrpcAppRouter = typeof orpcAppRouter
 export const orpcAppRouter = {
 	squadServer: SquadServer.orpcRouter,
 	config: Config.router,
+	layerQueries: LayerQueries.orpcRouter,
 }
 
 export function setup() {

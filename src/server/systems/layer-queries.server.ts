@@ -4,6 +4,7 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
 import * as C from '@/server/context'
+import orpcBase from '@/server/orpc-base'
 import * as FilterEntity from '@/server/systems/filter-entity'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared'
@@ -28,6 +29,13 @@ function resolveLayerDbContext(): CS.LayerDb {
 		layerDb: () => LayerDb.db,
 		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
 	}
+}
+
+export const orpcRouter = {
+	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
+		const lqContext = { ...ctx, ...resolveLayerDbContext() }
+		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
+	}),
 }
 
 export const layerQueriesRouter = router({

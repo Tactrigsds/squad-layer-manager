@@ -18,7 +18,7 @@ import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
-import { trpc } from '@/trpc.client'
+import { orpc, reactQueryOrpcClient } from '@/trpc.client'
 import { reactQueryClient } from '@/trpc.client'
 import { useQuery } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
@@ -913,16 +913,8 @@ async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
 }
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
-	return {
-		queryKey: ['layers', 'layerInfo', layer],
-		queryFn: async () => {
-			const input = { layerId: typeof layer === 'string' ? layer : layer.id }
-			// if setup$ is defined that means we're loading local layers and can query them instead of going to the server. eventually and if advantageous we can do this for all queries so we don't need the local layer query system
-			if (setup$) return await sendQuery('getLayerInfo', input)
-			return await trpc.layerQueries.getLayerInfo.query(input)
-		},
-		staleTime: Infinity,
-	}
+	const input = { layerId: typeof layer === 'string' ? layer : layer.id }
+	return reactQueryOrpcClient.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
 }
 
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
