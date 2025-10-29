@@ -188,7 +188,7 @@ function MatchHistoryRow({
 								</TooltipTrigger>
 								<TooltipContent
 									side="right"
-									className="w-auto overflow-y-auto bg-muted border-none text-secondary-foreground flex flex-col gap-1"
+									className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
 								>
 									{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
 								</TooltipContent>
