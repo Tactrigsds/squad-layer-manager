@@ -47,7 +47,7 @@ export const routes = {
 
 	...defRoute('/discord-cdn/*', ['*'] as const, 'custom'),
 
-	...defRoute('/trpc', [], 'custom', { websocket: true }),
+	...defRoute('/orpc', [], 'custom', { websocket: true }),
 } as const satisfies Record<string, GenericRouteDefinition>
 
 export type KnownRoutes = typeof routes

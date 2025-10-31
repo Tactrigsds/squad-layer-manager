@@ -1,7 +1,7 @@
 import * as Obj from '@/lib/object'
 import React from 'react'
 
-export type SetStateCallback<T> = (prevState: T) => T
+export type UseStateReturn<T> = [T, React.Dispatch<React.SetStateAction<T>>]
 
 export type GenericForwardedRef<RefType, Props extends object> = <P extends Props>(
 	props: P & { ref?: React.RefObject<RefType> },

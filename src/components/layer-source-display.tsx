@@ -24,7 +24,6 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 		initials: string,
 		backgroundColor?: string,
 		avatar?: string | React.ReactNode,
-		showSetBy = false,
 	) => {
 		let inner: React.ReactNode
 		if (!avatar || typeof avatar === 'string') {
@@ -49,8 +48,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 					{inner}
 				</TooltipTrigger>
 				<TooltipContent className="bg-secondary text-secondary-foreground">
-					{showSetBy ? 'Set By ' : ''}
-					{displayName}
+					Set By {displayName}
 					{isMe ? ' (You)' : ''}
 				</TooltipContent>
 			</Tooltip>
@@ -66,7 +64,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 			return renderAvatar('Generated', 'G', '#059669', <Icons.Dices />)
 		case 'manual': {
 			if (!user) return null
-			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, USR.getAvatarUrl(user), true)
+			return renderAvatar(username, USR.getUserInitials(user), user.displayHexColor ?? undefined, USR.getAvatarUrl(user))
 		}
 		default:
 			assertNever(props.source)

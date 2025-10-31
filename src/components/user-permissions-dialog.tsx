@@ -53,14 +53,20 @@ export default function UserPermissionsDialog(
 		return perm.scope
 	}
 
-	const formatRoleName = (role: RBAC.CompositeRole) => {
-		if (typeof role === 'string') {
-			return role
-		}
+	const formatRoleName = (role: RBAC.Role) => {
+		if (!RBAC.isInferredRoleType(role)) return role.type
+
 		if (role.type === 'filter-role-contributor') {
-			return `filter-role-contributor:${role.roleId}`
+			return `${role.type}: (${role.filterId}, ${role.roleId})`
 		}
-		assertNever(role.type)
+		if (role.type === 'filter-user-contributor') {
+			return `${role.type}: (${role.filterId})`
+		}
+		if (role.type === 'filter-owner') {
+			return `${role.type}: (${role.filterId})`
+		}
+
+		assertNever(role)
 	}
 
 	const getPermissionDescription = (permType: string) => {

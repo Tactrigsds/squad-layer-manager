@@ -297,7 +297,7 @@ describe('getRouteRegex', () => {
 				'/login/callback',
 				'/logout',
 				'/layers.sqlite3',
-				'/trpc',
+				'/orpc',
 			]
 
 			appRoutes.forEach(route => {

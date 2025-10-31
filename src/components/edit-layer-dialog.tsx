@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as FRM from '@/lib/frame.ts'
 import * as Obj from '@/lib/object'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
@@ -7,9 +9,11 @@ import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import React from 'react'
 import ExtraFiltersPanel from './extra-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
+import PoolCheckboxes from './pool-checkboxes.tsx'
 import TableStyleLayerPicker from './table-style-layer-picker.tsx'
 
 export type EditLayerDialogProps = {
@@ -23,16 +27,17 @@ type InnerEditLayerDialogProps = {
 	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
-	cursor?: LQY.LayerQueryCursor
+	frameKey: SelectLayersFrame.Key
 }
 
 export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
+	const setupComplete = FRM.useFrameExists(SelectLayersFrame.frame, props.frameKey)
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
 			<DialogContent className="w-auto max-w-full min-w-0 pb-2 overflow-x-auto">
 				<DragContextProvider>
-					<EditLayerListItemDialog {...props} />
+					{setupComplete && <EditLayerListItemDialog {...props} />}
 				</DragContextProvider>
 			</DialogContent>
 		</Dialog>
@@ -40,34 +45,10 @@ export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
 }
 
 function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
-	const colConfig = ConfigClient.useEffectiveColConfig()
-	const [editedLayerId, setEditedLayerId] = React.useState(props.layerId)
-
-	const filterMenuItemDefaults = React.useMemo(() => {
-		let defaults: Partial<L.KnownLayer> = {}
-		if (props.layerId && colConfig) {
-			const layer = L.toLayer(props.layerId)
-			if (layer.Gamemode === 'Training') {
-				defaults = { Gamemode: 'Training' }
-			} else {
-				defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
-				for (const [key, value] of Obj.objEntries(defaults)) {
-					if (value === undefined) continue
-					const colDef = LC.getColumnDef(key)
-					if (
-						colDef?.type === 'string' && colDef.enumMapping
-						&& !LC.isEnumeratedValue(key, value as string, { effectiveColsConfig: colConfig })
-					) {
-						delete defaults[key]
-					}
-				}
-			}
-		}
-		return defaults
-	}, [props.layerId, colConfig])
-	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.cursor, filterMenuItemDefaults)
-
-	const canSubmit = !!editedLayerId && props.layerId !== editedLayerId
+	const queryInput = SelectLayersFrame.useQueryInput(props.frameKey)
+	const initialLayerId = SelectLayersFrame.useSelectedSelectLayersState(props.frameKey, s => s.initialEditedLayerId)
+	const [editedLayerId, setEditedLayerId] = React.useState(initialLayerId)
+	const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId
 
 	function submit() {
 		if (!canSubmit) return
@@ -82,18 +63,19 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 					<DialogTitle>Edit</DialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2 flex-grow">
-					<ExtraFiltersPanel store={queryCtx.extraFiltersStore} />
+					<ExtraFiltersPanel frameKey={props.frameKey} />
 				</div>
 			</DialogHeader>
 
 			{
 				<div className="flex items-start space-x-2 min-h-0">
-					<LayerFilterMenu filterMenuStore={queryCtx.filterMenuStore} />
+					<LayerFilterMenu frameKey={props.frameKey} />
 					<div className="flex flex-col h-full justify-between">
 						<TableStyleLayerPicker
 							defaultPageSize={16}
-							queryInput={queryCtx.queryInput}
+							queryInput={queryInput}
 							editingSingleValue={true}
+							extraPanelItems={<PoolCheckboxes frameKey={props.frameKey} />}
 							selected={editedLayerId ? [editedLayerId] : []}
 							onSelect={(update) => {
 								const id = (typeof update === 'function' ? update([]) : update)[0]

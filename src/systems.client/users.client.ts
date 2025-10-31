@@ -7,7 +7,7 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -61,7 +61,7 @@ export function useLoggedInUser() {
 
 		if (!simulateRoles) return loggedInUser
 		const simulatedPerms = loggedInUser.perms.filter((p: RBAC.TracedPermission) =>
-			p.allowedByRoles.some((r: RBAC.CompositeRole) => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
+			p.allowedByRoles.some((r) => !disabledRoles.some(toCompare => Obj.deepEqual(r, toCompare)))
 		)
 
 		return {

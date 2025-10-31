@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@fastify/websocket':
-        specifier: ^11.2.0
-        version: 11.2.0(bufferutil@4.0.9)(utf-8-validate@6.0.5)
       '@node-rs/argon2':
         specifier: ^1.8.3
         version: 1.8.3
@@ -84,6 +81,9 @@ importers:
       '@fastify/static':
         specifier: ^8.2.0
         version: 8.2.0
+      '@fastify/websocket':
+        specifier: ^11.2.0
+        version: 11.2.0(bufferutil@4.0.9)(utf-8-validate@6.0.5)
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
@@ -252,6 +252,9 @@ importers:
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.1.0)(react@19.1.0)
+      '@radix-ui/react-visually-hidden':
+        specifier: ^1.2.3
+        version: 1.2.3(@types/react-dom@19.1.6(@types/react@19.1.0))(@types/react@19.1.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@react-rxjs/core':
         specifier: ^0.10.8
         version: 0.10.8(react@19.1.0)(rxjs@7.8.2)
@@ -276,12 +279,6 @@ importers:
       '@tanstack/zod-form-adapter':
         specifier: ^0.33.0
         version: 0.33.0(zod@3.25.67)
-      '@trpc/client':
-        specifier: ^11.7.1
-        version: 11.7.1(@trpc/server@11.7.1(typescript@5.7.2))(typescript@5.7.2)
-      '@trpc/server':
-        specifier: ^11.7.1
-        version: 11.7.1(typescript@5.7.2)
       '@types/ace':
         specifier: ^0.0.52
         version: 0.0.52
@@ -3301,17 +3298,6 @@ packages:
   '@tootallnate/once@1.1.2':
     resolution: {integrity: sha512-RbzJvlNzmRq5c3O09UipeuXno4tA1FE6ikOjxZK0tuxVv3412l64l5t1W5pj4+rJq9vpkm/kwiR07aZXnsKPxw==}
     engines: {node: '>= 6'}
-
-  '@trpc/client@11.7.1':
-    resolution: {integrity: sha512-uOnAjElKI892/U6aQMcBHYs3x7mme3Cvv1F87ytBL56rBvs7+DyK7r43zgaXKf13+GtPEI6ex5xjVUfyDW8XcQ==}
-    peerDependencies:
-      '@trpc/server': 11.7.1
-      typescript: '>=5.7.2'
-
-  '@trpc/server@11.7.1':
-    resolution: {integrity: sha512-N3U8LNLIP4g9C7LJ/sLkjuPHwqlvE3bnspzC4DEFVdvx2+usbn70P80E3wj5cjOTLhmhRiwJCSXhlB+MHfGeCw==}
-    peerDependencies:
-      typescript: '>=5.7.2'
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -9238,15 +9224,6 @@ snapshots:
 
   '@tootallnate/once@1.1.2':
     optional: true
-
-  '@trpc/client@11.7.1(@trpc/server@11.7.1(typescript@5.7.2))(typescript@5.7.2)':
-    dependencies:
-      '@trpc/server': 11.7.1(typescript@5.7.2)
-      typescript: 5.7.2
-
-  '@trpc/server@11.7.1(typescript@5.7.2)':
-    dependencies:
-      typescript: 5.7.2
 
   '@tybys/wasm-util@0.10.1':
     dependencies:

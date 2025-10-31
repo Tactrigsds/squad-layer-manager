@@ -25,11 +25,25 @@ export type EditSettingsStore = {
 	validationErrors: null | string[]
 }
 
-export const [Store, subHandle] = createStore()
+export const Store = createStore()
 
 function createStore() {
-	const store = Zus.createStore<EditSettingsStore>((set, get) => {
+	return Zus.createStore<EditSettingsStore>((set, get, store) => {
 		const defaultSettings = SS.PublicServerSettingsSchema.parse({})
+		store.subscribe((state, prevState) => {
+			const modified = !Obj.deepEqual(state.edited, state.saved)
+			if (modified !== state.modified) {
+				store.setState({ modified })
+			}
+			if (state.edited !== prevState.edited) {
+				const parseRes = SS.PublicServerSettingsSchema.safeParse(state.edited)
+				if (!parseRes.success) {
+					store.setState({ validationErrors: parseRes.error.errors.map(err => err.message) })
+				} else {
+					store.setState({ validationErrors: null })
+				}
+			}
+		})
 		return {
 			ops: [],
 			saving: false,
@@ -75,32 +89,11 @@ function createStore() {
 			},
 		}
 	})
-
-	const subHandle = ZusUtils.createSubHandle((subs) => {
-		subs.push(serverSettings$.subscribe((settings) => {
-			const updated = Obj.structuralMerge(store.getState().saved, settings)
-			store.setState({ saved: updated, edited: updated, ops: [] })
-		}))
-
-		subs.push(store.subscribe((state, prevState) => {
-			const modified = !Obj.deepEqual(state.edited, state.saved)
-			if (modified !== state.modified) {
-				store.setState({ modified })
-			}
-			if (state.edited !== prevState.edited) {
-				const parseRes = SS.PublicServerSettingsSchema.safeParse(state.edited)
-				if (!parseRes.success) {
-					store.setState({ validationErrors: parseRes.error.errors.map(err => err.message) })
-				} else {
-					store.setState({ validationErrors: null })
-				}
-			}
-		}))
-	})
-
-	return [store, subHandle] as const
 }
 
 export function setup() {
-	subHandle.subscribe()
+	serverSettings$.subscribe((settings) => {
+		const updated = Obj.structuralMerge(Store.getState().saved, settings)
+		Store.setState({ saved: updated, edited: updated, ops: [] })
+	})
 }

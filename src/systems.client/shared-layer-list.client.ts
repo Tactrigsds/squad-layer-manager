@@ -1,12 +1,10 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { coldOrpcSubscription } from '@/lib/async'
 import * as Browser from '@/lib/browser'
-import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
@@ -69,12 +67,26 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 	coldOrpcSubscription(() => RPC.orpc.sharedLayerList.watchUpdates.call()),
 )
 
-export const [Store, storeSubHandle] = createStore()
+export const Store = createStore()
 
 function createStore() {
-	const store = Zus.createStore<Store>((set, get) => {
+	const store = Zus.createStore<Store>((set, get, store) => {
 		const session = SLL.createNewSession()
+		store.subscribe((state, prev) => {
+			if (state.session.list !== state.layerList) {
+				set({ layerList: state.session.list })
+			}
 
+			const isModified = state.session.ops.length > 0
+			const prevIsModified = prev.session.ops.length > 0
+			if (isModified !== prevIsModified) {
+				set({ isModified })
+			}
+
+			if (prev.presence !== state.presence) {
+				set({ userPresence: SLL.resolveUserPresence(state.presence) })
+			}
+		})
 		return {
 			session,
 
@@ -316,25 +328,7 @@ function createStore() {
 		}
 	})
 
-	const subHandle = ZusUtils.createSubHandle((subs) => {
-		subs.push(store.subscribe((state, prev) => {
-			if (state.session.list !== state.layerList) {
-				store.setState({ layerList: state.session.list })
-			}
-
-			const isModified = state.session.ops.length > 0
-			const prevIsModified = prev.session.ops.length > 0
-			if (isModified !== prevIsModified) {
-				store.setState({ isModified })
-			}
-
-			if (prev.presence !== state.presence) {
-				store.setState({ userPresence: SLL.resolveUserPresence(state.presence) })
-			}
-		}))
-	})
-
-	return [store, subHandle] as const
+	return store
 }
 
 async function processUpdate(update: SLL.ClientUpdate) {
@@ -379,8 +373,6 @@ export function useClientPresence() {
 }
 
 export async function setup() {
-	storeSubHandle.subscribe()
-
 	serverUpdate$.subscribe(update => {
 		Store.getState().handleServerUpdate(update)
 	})
@@ -472,6 +464,7 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 export function useActivityState(
 	activity: SLL.Activity,
 	opts?: {
+		hookedState?: [boolean, React.Dispatch<React.SetStateAction<boolean>>]
 		defaultState?: boolean
 		// Normally if we see a change of activities we reset the state. passthroughActivities are excempted from this.
 		passthroughActivities?: SLL.Activity[]
@@ -480,7 +473,8 @@ export function useActivityState(
 	const defaultState = opts?.defaultState ?? false
 	const activityRef = React.useRef(activity)
 	const config = ConfigClient.useConfig()
-	const [active, _setActive] = React.useState(defaultState)
+	const [activeFallback, _setActiveFallback] = React.useState(defaultState)
+	const [active, _setActive] = opts?.hookedState ?? [activeFallback, _setActiveFallback] as const
 	const activeRef = React.useRef(active)
 	const passthroughActivitiesRef = React.useRef(opts?.passthroughActivities)
 
@@ -504,7 +498,7 @@ export function useActivityState(
 			if (activeRef.current && (!currentActivity || !Obj.deepEqual(currentActivity, activityRef.current))) _setActive(false)
 		})
 		return () => unsub()
-	}, [config])
+	}, [config, _setActive])
 	return [active, setActive] as const
 }
 
@@ -550,7 +544,7 @@ export async function resolveClientPresence() {
 }
 
 export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: Store) => {
-	for (const [activity, wsClientId] of SLL.iterActivities(state.presence)) {
+	for (const [activity] of SLL.iterActivities(state.presence)) {
 		if (Obj.deepEqual(activity, targetActivity)) {
 			return true
 		}

@@ -9,42 +9,43 @@ import * as Otel from '@opentelemetry/api'
 import * as E from 'drizzle-orm/expressions'
 import { CONFIG } from '../config'
 
-let roles!: RBAC.Role[]
-let globalRolePermissionExpressions!: Record<RBAC.Role, RBAC.GlobalPermissionTypeExpression[]>
+let userDefinedRoles!: RBAC.Role[]
+let userDefinedPermissionExpressions!: Record<string, RBAC.GlobalPermissionTypeExpression[]>
 let roleAssignments!: RBAC.RoleAssignment[]
 export function setup() {
-	globalRolePermissionExpressions = {}
-	roles = []
+	userDefinedPermissionExpressions = {}
+	userDefinedRoles = []
 
-	for (const role of objKeys(CONFIG.globalRolePermissions)) {
-		roles.push(role as RBAC.Role)
-		globalRolePermissionExpressions[role] = CONFIG.globalRolePermissions[role]
+	for (const roleType of objKeys(CONFIG.globalRolePermissions)) {
+		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
+		userDefinedPermissionExpressions[roleType] = CONFIG.globalRolePermissions[roleType]
 	}
 
 	roleAssignments = []
+
 	for (const assignment of CONFIG.roleAssignments?.['discord-role'] ?? []) {
-		for (const role of assignment.roles) {
+		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-role',
-				role,
+				role: RBAC.userDefinedRole(roleType),
 				discordRoleId: assignment.discordRoleId,
 			})
 		}
 	}
 	for (const assignment of CONFIG.roleAssignments?.['discord-user'] ?? []) {
-		for (const role of assignment.roles) {
+		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-user',
-				role,
+				role: RBAC.userDefinedRole(roleType),
 				discordUserId: assignment.userId,
 			})
 		}
 	}
 	for (const assignment of CONFIG.roleAssignments?.['discord-server-member'] ?? []) {
-		for (const role of assignment.roles) {
+		for (const roleType of assignment.roles) {
 			roleAssignments.push({
 				type: 'discord-server-member',
-				role,
+				role: RBAC.userDefinedRole(roleType),
 			})
 		}
 	}
@@ -103,47 +104,51 @@ export const getUserRbacPerms = C.spanOp(
 		const roleFilterContributorsPromise = getRoleContributorFilters()
 
 		const perms: RBAC.TracedPermission[] = []
-		const allNegatedPerms: Set<RBAC.GlobalPermissionType> = new Set()
+		const allNegatingPerms: Set<RBAC.GlobalPermissionType> = new Set()
 		for (const role of roles) {
-			for (const permExpr of globalRolePermissionExpressions[role]) {
+			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
 				const perm = RBAC.parseNegatingPermissionType(permExpr)
 				if (!perm) continue
-				allNegatedPerms.add(perm)
-				perms.push(RBAC.tracedPerm(perm, [role], { negating: true }))
+				allNegatingPerms.add(perm)
+				perms.push(RBAC.tracedPerm(perm, [role], { negated: true, negating: true }))
 			}
 		}
 
-		const isNegated = (perm: RBAC.PermissionType) => allNegatedPerms.has(perm as RBAC.GlobalPermissionType)
+		const isNegated = (perm: RBAC.PermissionType) => allNegatingPerms.has(perm as RBAC.GlobalPermissionType)
 
 		for (const role of roles) {
-			if (globalRolePermissionExpressions[role].includes('*')) {
+			if (userDefinedPermissionExpressions[role.type].includes('*')) {
 				for (const permType of RBAC.GLOBAL_PERMISSION_TYPE.options) {
-					perms.push(RBAC.tracedPerm(permType, [role], { negated: allNegatedPerms.has(permType) }))
+					perms.push(RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }))
 				}
 			}
-			for (const permExpr of globalRolePermissionExpressions[role]) {
+			for (const permExpr of userDefinedPermissionExpressions[role.type]) {
 				if (!RBAC.isGlobalPermissionType(permExpr)) continue
-				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permExpr, [role], { negated: allNegatedPerms.has(permExpr) }))
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }))
 			}
 		}
 
 		for (const filter of (await ownedFiltersPromise)) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('filters:write', ['filter-owner'], { negated: isNegated('filters:write') }, { filterId: filter.id }),
+				RBAC.tracedPerm('filters:write', [{ type: 'filter-owner', filterId: filter.id }], { negated: isNegated('filters:write') }, {
+					filterId: filter.id,
+				}),
 			)
 		}
 		for (const filterId of (await userFilterContributorsPromise)) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('filters:write', [`filter-user-contributor`], { negated: isNegated('filters:write') }, { filterId: filterId }),
+				RBAC.tracedPerm('filters:write', [{ type: `filter-user-contributor`, filterId }], { negated: isNegated('filters:write') }, {
+					filterId: filterId,
+				}),
 			)
 		}
 
 		for (const { filterId, roleId } of (await roleFilterContributorsPromise)) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('filters:write', [{ type: 'filter-role-contributor', roleId }], { negated: isNegated('filters:write') }, {
+				RBAC.tracedPerm('filters:write', [{ type: 'filter-role-contributor', filterId, roleId }], { negated: isNegated('filters:write') }, {
 					filterId: filterId,
 				}),
 			)
@@ -158,7 +163,7 @@ export const getUserRbacPerms = C.spanOp(
 				.db()
 				.select({ filterId: Schema.filterRoleContributors.filterId, roleId: Schema.filterRoleContributors.roleId })
 				.from(Schema.filterRoleContributors)
-				.where(E.inArray(Schema.filterRoleContributors.roleId, roles))
+				.where(E.inArray(Schema.filterRoleContributors.roleId, roles.map(r => r.type)))
 			return rows
 		}
 		async function getUserContributorFilters() {
@@ -202,7 +207,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 }
 
 export const orpcRouter = {
-	getRoles: orpcBase.handler(() => {
-		return roles
+	getUserDefinedRoles: orpcBase.handler(() => {
+		return userDefinedRoles
 	}),
 }

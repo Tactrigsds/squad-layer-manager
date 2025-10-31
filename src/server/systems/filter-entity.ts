@@ -23,8 +23,8 @@ import * as Users from './users'
 
 export const filterMutation$ = new Subject<[CS.Log & C.Db, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
-	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), role: RBAC.RoleSchema.optional() })
-	.refine((input) => input.userId || input.role, { message: 'Either userId or role must be provided' })
+	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
+	.refine((input) => input.userId || input.roleId, { message: 'Either userId or role must be provided' })
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
 export const filtersRouter = {
@@ -85,7 +85,7 @@ export const filtersRouter = {
 			const res = await returnInsertErrors(
 				ctx.db().insert(Schema.filterRoleContributors).values({
 					filterId: input.filterId,
-					roleId: input.role!,
+					roleId: input.roleId!,
 				}),
 			)
 			switch (res.code) {
@@ -115,7 +115,9 @@ export const filtersRouter = {
 			query = ctx
 				.db()
 				.delete(Schema.filterRoleContributors)
-				.where(E.and(E.eq(Schema.filterRoleContributors.filterId, input.filterId), E.eq(Schema.filterRoleContributors.roleId, input.role!)))
+				.where(
+					E.and(E.eq(Schema.filterRoleContributors.filterId, input.filterId), E.eq(Schema.filterRoleContributors.roleId, input.roleId!)),
+				)
 		}
 
 		const [resultSet] = await query

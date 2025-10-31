@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as FRM from '@/lib/frame.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -14,20 +16,34 @@ import TabsList from './ui/tabs-list.tsx'
 
 type SelectMode = 'vote' | 'layers'
 
-export default function SelectLayersDialog(props: {
+type SelectLayersDialogProps = {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	children?: React.ReactNode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	headerAdditions?: React.ReactNode
 	footerAdditions?: React.ReactNode
-	cursor?: LQY.LayerQueryCursor
-}) {
+	children?: React.ReactNode
+	frameKey: SelectLayersFrame.Key
+}
+export default function SelectLayersDialogWrapper(props: SelectLayersDialogProps & { children?: React.ReactNode }) {
+	const frameExists = FRM.useFrameExists(SelectLayersFrame.frame, props.frameKey)
+	return (
+		<Dialog open={props.open} onOpenChange={props.onOpenChange} modal={true}>
+			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
+			<DialogContent>
+				{frameExists && <SelectLayersDialog {...props} />}
+			</DialogContent>
+		</Dialog>
+	)
+}
+
+export function SelectLayersDialog(props: SelectLayersDialogProps) {
 	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
+	const queryInput = SelectLayersFrame.useQueryInput(props.frameKey)
 
 	const [selectedLayers, setSelectedLayers] = React.useState<L.LayerId[]>(defaultSelected)
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
@@ -83,8 +99,6 @@ export default function SelectLayersDialog(props: {
 		props.onOpenChange?.(open)
 	}
 
-	const queryCtx = LayerQueriesClient.useFilterMenuLayerQueryContext(props.cursor)
-
 	return (
 		<Dialog open={props.open} onOpenChange={onOpenChange} modal={true}>
 			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
@@ -101,35 +115,35 @@ export default function SelectLayersDialog(props: {
 							)}
 					</div>
 					<div className="flex justify-end items-center space-x-2 flex-grow">
-						<ExtraFiltersPanel store={queryCtx.extraFiltersStore} />
-						{!props.pinMode && (
-							<TabsList
-								options={[
-									{ label: 'Vote', value: 'vote' },
-									{ label: 'Set Layer', value: 'layers' },
-								]}
-								active={selectMode}
-								setActive={setAdditionType}
-							/>
-						)}
+						<ExtraFiltersPanel frameKey={props.frameKey} />
 						{props.headerAdditions}
 					</div>
 				</DialogHeader>
 
 				<div className="flex min-h-0 items-start space-x-2">
-					<LayerFilterMenu filterMenuStore={queryCtx.filterMenuStore} />
+					<LayerFilterMenu frameKey={props.frameKey} />
 					<div className="flex flex-col space-y-2 justify-between h-full">
 						<TableStyleLayerPicker
 							defaultPageSize={16}
 							selected={selectedLayers}
 							onSelect={setSelectedLayers}
-							queryInput={queryCtx.queryInput}
-							extraPanelItems={<PoolCheckboxes store={queryCtx.filterResultsStore} />}
+							queryInput={queryInput}
+							extraPanelItems={<PoolCheckboxes frameKey={props.frameKey} />}
 							className="flex-grow"
 						/>
 
-						<div className="grow self-end">
+						<div className="grow self-end space-x-2">
 							{props.footerAdditions}
+							{!props.pinMode && (
+								<TabsList
+									options={[
+										{ label: 'Vote', value: 'vote' },
+										{ label: 'Set Layer', value: 'layers' },
+									]}
+									active={selectMode}
+									setActive={setAdditionType}
+								/>
+							)}
 							<Button disabled={!canSubmit} onClick={submit}>
 								Submit
 							</Button>

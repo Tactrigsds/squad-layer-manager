@@ -15,7 +15,7 @@ import { sleep } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
-const wsUrl = `${wsHostname}${AR.route('/trpc')}`
+const wsUrl = `${wsHostname}${AR.route('/orpc')}`
 const websocket = new WebSocket(wsUrl)
 
 const orpcLink = new RPCLink({
@@ -25,12 +25,23 @@ const orpcLink = new RPCLink({
 
 const _orpcClient: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
 
-const opened$ = Rx.fromEvent(websocket, 'open')
-const closed$ = Rx.fromEvent(websocket, 'close')
-const error$ = Rx.fromEvent(websocket, 'error')
+const opened$ = Rx.fromEvent(websocket, 'open').pipe(Rx.retry())
+const closed$ = Rx.fromEvent(websocket, 'close').pipe(Rx.retry())
+const error$ = Rx.fromEvent(websocket, 'error').pipe(Rx.retry())
 
 let previousConnections = false
 let previousConfig: PublicConfig | undefined
+
+// this whole thing is probably just paranoia
+const connectedCold$ = Rx.merge([
+	Rx.of(!!websocket.OPEN),
+	opened$.pipe(Rx.map(() => !!websocket.OPEN)),
+	closed$.pipe(Rx.map(() => !!websocket.OPEN)),
+	error$.pipe(Rx.map(() => !!websocket.OPEN)),
+])
+	.pipe(Rx.distinctUntilChanged(), Rx.switchMap((open) => open ? Rx.of(true) : Rx.of(false).pipe(Rx.delay(1000))))
+
+export const [useConnected, connected$] = ReactRx.bind(connectedCold$, false)
 
 opened$.pipe(
 	Rx.concatMap(async () => {
@@ -77,8 +88,5 @@ closed$.pipe(
 	Rx.retry(),
 ).subscribe()
 
-const connectedCold$ = opened$.pipe(Rx.exhaustMap(() => Rx.concat(Rx.of(true), closed$.pipe(Rx.map(() => false)))))
-export const [useConnected, connected$] = ReactRx.bind(connectedCold$, false)
-
 export const queryClient = new QueryClient()
-export const orpc = createTanstackQueryUtils(_orpcClient, {})
+export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })

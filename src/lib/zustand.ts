@@ -1,3 +1,4 @@
+import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as Obj from '@/lib/object'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as ReactRx from '@react-rxjs/core'
@@ -8,6 +9,7 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { StoreApi, StoreMutatorIdentifier, StoreMutators, useStore } from 'zustand'
 import { toStream } from 'zustand-rx'
+import { useShallow as useShallowImported } from 'zustand/react/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { distinctDeepEquals } from './async'
 import { useDeepEqualsMemo, useStableReferenceDeepEquals } from './react'
@@ -63,49 +65,29 @@ export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, o
 type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi<States[s]> }]
 
 export type UnsubscribeFn = () => void
-export type InnerSub = UnsubscribeFn | Rx.Subscription
+export type SubArg = UnsubscribeFn | Rx.Subscription
 
-export type SubHandle = {
-	subCount: number
-	innerSubs?: InnerSub[]
-	subscribe(): void
-	add(sub: InnerSub): void
-	unsubscribe(): void
-}
-
-const isSubscription = (unsub: InnerSub): unsub is Rx.Subscription => {
+const isSubscription = (unsub: SubArg): unsub is Rx.Subscription => {
 	return 'unsubscribe' in unsub
 }
 
-export function createSubHandle(subscribeInner?: (onUnsubscribeArr: InnerSub[]) => void): SubHandle {
-	return {
-		subCount: 0,
-		subscribe() {
-			this.subCount++
-			this.innerSubs ??= []
-			subscribeInner?.(this.innerSubs)
-		},
-		add(sub) {
-			this.innerSubs?.push(sub)
-		},
-		unsubscribe() {
-			this.subCount--
-			if (this.subCount !== 0) return
-			this.innerSubs?.forEach(unsub => {
-				if (isSubscription(unsub)) {
-					unsub.unsubscribe()
-				} else {
-					unsub()
-				}
-			})
-			this.innerSubs = undefined
-		},
+export function toRxSub(unsub: UnsubscribeFn) {
+	Rx.NEVER.pipe(Rx.tap({ unsubscribe: unsub })).subscribe()
+}
+
+export const useShallow = useShallowImported
+export function useDeep<S, U>(selector: (state: S) => U): (state: S) => U {
+	const prev = React.useRef<U | undefined>(void 0)
+	return (state: S) => {
+		const next = selector(state)
+		return Obj.deepEqual(prev.current, next) ? (prev.current as U) : prev.current = next
 	}
 }
 
-export function useSubHandle(handle: SubHandle) {
-	React.useEffect(() => {
-		handle.subscribe()
-		return () => handle.unsubscribe()
-	}, [handle])
+export function useDeepNoFns<S, U>(selector: (state: S) => U): (state: S) => U {
+	const prev = React.useRef<U | undefined>(void 0)
+	return (state: S) => {
+		const next = selector(state)
+		return Obj.deepEqual(prev.current, next) ? (prev.current as U) : prev.current = next
+	}
 }

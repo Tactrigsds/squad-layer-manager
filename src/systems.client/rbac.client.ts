@@ -16,16 +16,16 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 }
 
 export const GET_ROLES_QUERY_KEY = ['getRoles']
-export function useRoles() {
-	return useQuery(RPC.orpc.rbac.getRoles.queryOptions())
+export function useUserDefinedRoles() {
+	return useQuery(RPC.orpc.rbac.getUserDefinedRoles.queryOptions())
 }
 
 export type RbacStore = {
 	simulateRoles: boolean
 	setSimulateRoles: (simulateRoles: boolean) => void
-	disabledRoles: RBAC.CompositeRole[]
-	disableRole: (role: RBAC.CompositeRole) => void
-	enableRole: (role: RBAC.CompositeRole) => void
+	disabledRoles: RBAC.Role[]
+	disableRole: (role: RBAC.Role) => void
+	enableRole: (role: RBAC.Role) => void
 }
 
 export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
@@ -38,7 +38,7 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	},
 
 	disabledRoles: [],
-	disableRole: (roleToDisable: RBAC.CompositeRole) => {
+	disableRole: (roleToDisable) => {
 		const disabledRoles = get().disabledRoles
 		for (const roleToCompare of disabledRoles) {
 			if (Obj.deepEqual(roleToDisable, roleToCompare)) {
@@ -47,5 +47,5 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 		}
 		set({ disabledRoles: [...disabledRoles, roleToDisable] })
 	},
-	enableRole: (role: RBAC.CompositeRole) => set({ disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, role)) }),
+	enableRole: (role) => set({ disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, role)) }),
 }))

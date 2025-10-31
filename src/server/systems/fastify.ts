@@ -10,13 +10,13 @@ import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger } from '@/server/logger.ts'
+import * as ORPCServer from '@/server/orpc-handler'
 import * as Discord from '@/server/systems/discord.ts'
 import * as LayerDb from '@/server/systems/layer-db.server'
 import * as Rbac from '@/server/systems/rbac.system.ts'
 import * as Sessions from '@/server/systems/sessions.ts'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WsSessionSys from '@/server/systems/ws-session.ts'
-import * as ORPCServer from '@/server/trpc.server'
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
@@ -42,7 +42,9 @@ let instance!: Awaited<ReturnType<typeof getFastifyBase>>
 
 async function getFastifyBase() {
 	return await fastify({
-		maxParamLength: 5000,
+		routerOptions: {
+			maxParamLength: 5000,
+		},
 		logger: false,
 	})
 }
@@ -292,7 +294,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 
 	instance.addContentTypeParser('*', (request, payload, done) => {
-		if (!request.url.startsWith('/trpc')) return
+		if (!request.url.startsWith('/orpc')) return
 
 		// Fully utilize oRPC feature by allowing any content type
 		// And let oRPC parse the body manually by passing `undefined`
@@ -300,10 +302,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	})
 	instance.register(fastifyWebsocket)
 	instance.register(async function(instance) {
-		instance.get(AR.route('/trpc'), { websocket: true }, async (connection, req) => {
-			console.log('before ctx')
+		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
 			const ctx = createOrpcBase(getAuthedCtx(req), connection)
-			console.log('CTX', ctx)
 			ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
 		})
 	})

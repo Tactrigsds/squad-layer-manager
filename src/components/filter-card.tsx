@@ -1,7 +1,9 @@
 import * as AR from '@/app-routes.ts'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers'
+import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object.ts'
 import { Clearable, eltToFocusable, Focusable } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
@@ -770,7 +772,11 @@ function LayersInConfig(
 		className?: string
 	},
 ) {
-	const [open, setOpen] = React.useState(false)
+	const id = React.useId()
+	const frameKey = SelectLayersFrame.createKey(id)
+	const [open, buildActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, frameKey)
+	const colConfig = ConfigClient.useEffectiveColConfig()
+	const { setState: setOpen, prefetch } = colConfig ? buildActions({ colConfig }) : { setState: () => {}, prefetch: () => {} }
 	const filteredValues = props.values?.filter(v => v !== null)
 
 	const removeValue = (layerIdToRemove: string) => {
@@ -805,8 +811,9 @@ function LayersInConfig(
 					title="Select Layers"
 					pinMode="layers"
 					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
+					frameKey={frameKey}
 				>
-					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
+					<Button onMouseEnter={prefetch} size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
 						<Icons.Edit className="h-4 w-4 mr-2" />
 						{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
 					</Button>
@@ -823,7 +830,14 @@ export function LayerEqConfig(
 		baseQueryInput?: LQY.BaseQueryInput
 	},
 ) {
-	const [open, setOpen] = React.useState(false)
+	const id = React.useId()
+	const frameKey = SelectLayersFrame.createKey('layer-eq' + id)
+	const [open, filterFrameActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, frameKey)
+	const colConfig = ConfigClient.useEffectiveColConfig()
+
+	const { setState: setOpen, prefetch } = colConfig
+		? filterFrameActions({ colConfig, initialEditedLayerId: props.value ?? undefined })
+		: { setState: () => {}, prefetch: () => {} }
 
 	return (
 		<div className="flex space-x-2 items-center">
@@ -832,8 +846,9 @@ export function LayerEqConfig(
 				onOpenChange={setOpen}
 				layerId={props.value ?? undefined}
 				onSelectLayer={(v) => props.setValue(v)}
+				frameKey={frameKey}
 			>
-				<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
+				<Button onMouseEnter={prefetch} className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
 					{props.value !== null && DH.displayLayer(props.value)}
 					<Icons.Edit />
 				</Button>

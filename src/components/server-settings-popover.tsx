@@ -3,11 +3,9 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
@@ -19,9 +17,7 @@ import * as SS from '@/models/server-state.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
-import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import * as UsersClient from '@/systems.client/users.client.ts'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -30,12 +26,11 @@ import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-display.tsx'
-import EmojiDisplay from './emoji-display.tsx'
 import FilterEntitySelect from './filter-entity-select.tsx'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import { TriState, TriStateCheckbox, TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
+import { TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
 
 export type ServerSettingsPopoverHandle = {
 	reset(settings: SS.ServerSettings): void
@@ -258,7 +253,7 @@ function PoolFiltersConfigurationPanel({
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<Button onClick={handleApplyAsChanged} variant="ghost" size="icon">
-										<TriStateCheckboxDisplay checked={checked} />
+										<TriStateCheckboxDisplay state={checked} />
 									</Button>
 								</TooltipTrigger>
 								<TooltipContent>
@@ -317,10 +312,8 @@ function RepeatRuleRow(props: {
 	}, [paths.label])
 
 	const setLabel = useDebounced({
-		defaultValue: () => rule.label ?? rule.field,
 		onChange: writeLabel,
 		delay: 250,
-		immediate: false,
 	})
 
 	const setField = (field: LQY.RepeatRuleField) => {
@@ -335,10 +328,8 @@ function RepeatRuleRow(props: {
 	}, [paths.within])
 
 	const setWithin = useDebounced({
-		defaultValue: () => rule.within ?? 1,
 		onChange: writeWithin,
 		delay: 250,
-		immediate: false,
 	})
 
 	const setTargetValues = (update: React.SetStateAction<string[]>) => {

@@ -1,5 +1,6 @@
 // this file no longer has a decent organizing principle, we should be annexing it over time
 import { distinctDeepEquals } from '@/lib/async'
+import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
@@ -10,11 +11,13 @@ import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import { orpc } from '@/orpc.client'
+import * as ConfigClient from '@/systems.client/config.client'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
-import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import * as ZusRx from 'zustand-rx'
@@ -43,103 +46,38 @@ export type LLItemActions = {
 export function getSource(): LL.Source {
 	return { type: 'manual', userId: UsersClient.loggedInUserId! }
 }
+export function getLLItemActions(llStore: LLStore, itemId: string): LLItemActions {
+	const actions: LLItemActions = {
+		dispatch(newItemOp) {
+			const newOp: SLL.NewOperation = { ...newItemOp, itemId }
+			llStore.dispatch(newOp)
+		},
 
-export function createLLItemStore(initialState: Omit<LLItemState, 'index' | 'isLocallyLast'>) {
-	return Zus.createStore<LLItemStore>((set, get) => {
-		const dispatch: LLItemActions['dispatch'] = (newItemOp) => {
-			const item = Obj.deepClone(get().item)
-			const op: SLL.Operation = { ...newItemOp, itemId: item.itemId, userId: UsersClient.loggedInUserId!, opId: createId(6) }
-			SLL.applyOperation([item], op)
-		}
-		const actions: LLItemActions = {
-			dispatch,
-			addVoteItems(items) {
-				const item = Obj.deepClone(get().item)
-				if (!LL.isParentVoteItem(item)) return
-
-				// pretending that this is the outer list
-				const op: SLL.NewOperation = {
-					op: 'add',
-					index: { outerIndex: item.choices.length, innerIndex: null },
-					items,
-				}
-				SLL.applyOperation(item.choices, op)
-				set({ item })
-			},
-		}
-
-		return {
-			...initialState,
-			...actions,
-			index: { outerIndex: 0, innerIndex: null },
-			isLocallyLast: true,
-		}
-	})
+		addVoteItems(choices) {
+			const itemState = selectLLItemState(llStore, itemId)
+			if (!LL.isParentVoteItem(itemState.item)) return
+			const index: LL.ItemIndex = { innerIndex: itemState.item.choices.length, outerIndex: itemState.index.outerIndex }
+			llStore.dispatch({ op: 'add', index, items: choices })
+		},
+	}
+	return actions
 }
 
-// export function useNewLLItemStore(initialState: LLItemState) {
-// 	initialState = ReactHelpers.useDeepEqualsMemo(() => initialState, [initialState])
-// 	ReactHelpers.useRefConstructor(() => {
-// 	})
-// }
+export function selectLLItemState(llStore: LLStore, itemId: string): LLItemState {
+	const layerList = llStore.layerList
 
-export function useDerivedLLItemStore(llStore: Zus.StoreApi<LLStore>, itemId: LL.ItemId) {
-	const [store, subHandle] = React.useMemo(() => deriveLLItemStore(llStore, itemId), [llStore, itemId])
-	ZusUtils.useSubHandle(subHandle)
-	return store
-}
+	const res = LL.findItemById(layerList, itemId)
+	if (!res) throw new Error(`Item not found: ${itemId}`)
+	const parentItem = LL.findParentItem(layerList, itemId)
+	const { item, ...index } = res
+	const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
 
-export function deriveLLItemStore(llStore: Zus.StoreApi<SLLClient.Store>, itemId: string) {
-	let subHandle!: ZusUtils.SubHandle
-	const store = Zus.createStore<LLItemStore>((set, get) => {
-		function deriveState(llState: LLStore): LLItemState | null {
-			const layerList = llState.layerList
-
-			const res = LL.findItemById(layerList, itemId)
-			if (!res) return null
-			const parentItem = LL.findParentItem(layerList, itemId)
-			const { item, ...index } = res
-			const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
-
-			return {
-				index,
-				item,
-				mutationState: ItemMut.toItemMutationState(llState.session.mutations, itemId, parentItem?.layerId),
-				isLocallyLast,
-			}
-		}
-
-		const derived$ = new Rx.Observable<LLItemState | null>((observer) => {
-			const unsub = llStore.subscribe((state) => {
-				observer.next(deriveState(state))
-			})
-			return () => unsub()
-		})
-
-		subHandle = ZusUtils.createSubHandle(
-			(subs) =>
-				subs.push(derived$.subscribe((state) => {
-					if (state) set(state)
-				})),
-		)
-
-		const actions: LLItemActions = {
-			dispatch(newItemOp) {
-				const newOp: SLL.NewOperation = { ...newItemOp, itemId }
-				llStore.getState().dispatch(newOp)
-			},
-
-			addVoteItems(choices) {
-				const item = get().item
-				if (!LL.isParentVoteItem(item)) return
-				const index: LL.ItemIndex = { innerIndex: item.choices.length, outerIndex: get().index.outerIndex }
-				llStore.getState().dispatch({ op: 'add', index, items: choices })
-			},
-		}
-
-		return { ...deriveState(llStore.getState())!, ...actions }
-	})
-	return [store, subHandle] as const
+	return {
+		index,
+		item,
+		mutationState: ItemMut.toItemMutationState(llStore.session.mutations, itemId, parentItem?.layerId),
+		isLocallyLast,
+	}
 }
 
 export const [useLayerItemsState, layerItemsState$] = ReactRx.bind(
@@ -158,19 +96,47 @@ export function setup() {
 	layerItemsState$.subscribe()
 }
 
-export function getExtraFiltersConstraints(extraFiltersState: LQY.ExtraQueryFiltersState) {
-	const constraints: LQY.Constraint[] = []
-	for (const filterId of extraFiltersState.filters) {
-		const state = extraFiltersState.activated.find(elt => elt.filterId === filterId)
-		if (!state) continue
-		constraints.push(CB.filterEntity('selected-filter', filterId, {
-			invert: state?.state === 'inverted',
-			filterResults: !!state,
-			indicateMatches: true,
-		}))
+export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, get, store) => {
+	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
+	if (extraFilters.size === 0) {
+		;(async () => {
+			const config = await ConfigClient.fetchConfig()
+			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
+			if (!config.layerTable.defaultExtraFilters) return
+
+			set({
+				extraFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
+			})
+		})()
 	}
-	return constraints
-}
+
+	store.subscribe((state, prev) => {
+		const extraFilters = Array.from(state.extraFilters)
+		const prevExtraFilters = Array.from(prev.extraFilters)
+		if (!Obj.deepEqual(extraFilters, prevExtraFilters)) {
+			localStorage.setItem('extraQueryFilters:v2', extraFilters.join(','))
+		}
+	})
+
+	return {
+		extraFilters,
+		select(update) {
+			const filterIds = typeof update === 'function' ? update(Array.from(get().extraFilters)) : update
+			const filterConfig = ServerSettingsClient.Store.getState().saved.queue.mainPool.filters
+			if (filterConfig.some(filterConfig => filterIds.includes(filterConfig.filterId))) {
+				throw new Error('Cannot select a filter from the main pool!')
+			}
+			set({
+				extraFilters: new Set(filterIds),
+			})
+		},
+		remove(filterId) {
+			set(state => ({
+				extraFilters: new Set(Gen.filter(state.extraFilters, id => id !== filterId)),
+			}))
+		},
+	}
+})
 
 export function selectQueueStatusConstraints(
 	settings: SS.PublicServerSettings,

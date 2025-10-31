@@ -5,32 +5,59 @@ import * as USR from '@/models/users.models'
 
 import { z } from 'zod'
 
-// roles which are inferred by other state, for example the owner of a filter will get the filter-owner role. when an inferred role is present, it's expected to also have access to a particular permission to know what entity the inferred role is associated with.
-export const InferredRoleSchema = z.union([
-	z.literal('filter-owner'),
-	z.literal('filter-user-contributor'),
-	z.object({ type: z.literal('filter-role-contributor'), roleId: z.string() }),
-])
-export type InferredRole = z.infer<typeof InferredRoleSchema>
+export type GenericRole = {
+	type: string
+}
 
-export const RoleSchema = z
+export function userDefinedRole(type: string): GenericRole {
+	return { type }
+}
+0
+
+// roles which are inferred by other state, for example the owner of a filter will get the filter-owner role. when an inferred role is present, it's expected to also have access to a particular permission to know what entity the inferred role is associated with.
+export const InferredRoleSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('filter-owner'), filterId: F.FilterEntityIdSchema }),
+	z.object({ type: z.literal('filter-user-contributor'), filterId: F.FilterEntityIdSchema }),
+	z.object({
+		type: z.literal('filter-role-contributor'),
+		source: z.literal('inferred'),
+		filterId: F.FilterEntityIdSchema,
+		roleId: z.string(),
+	}),
+])
+
+export type InferredRole = z.infer<typeof InferredRoleSchema>
+{
+	// make sure these are subspecies of GenericRoles
+	const _ = {} as InferredRole satisfies GenericRole
+}
+
+export type Role = InferredRole | GenericRole
+export type RoleArg = InferredRole | string
+
+export function isInferredRoleType<R extends { type: Role['type'] }>(role: R): role is Extract<R, { type: InferredRole['type'] }> {
+	return role.type === 'filter-owner' || role.type === 'filter-user-contributor' || role.type === 'filter-role-contributor'
+}
+
+export const UserDefinedRoleIdSchema = z
 	.string()
 	.regex(/^[a-z0-9-]+$/)
 	.min(3)
 	.max(32)
-	.refine((role) => !InferredRoleSchema.safeParse(role).success, {
+	.refine((roleType) => !isInferredRoleType({ type: roleType }), {
 		message: `Role cannot be the same as one of the inferred roles: ${InferredRoleSchema.options.join(', ')}`,
 	})
 
-export type Role = z.infer<typeof RoleSchema>
-export type CompositeRole = Role | InferredRole
+export type RoleAssignment =
+	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
+	| { type: 'discord-user'; discordUserId: bigint; role: Role }
+	| { type: 'discord-server-member'; role: Role }
 
-export const RoleAssignmentSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('discord-role'), discordRoleId: USR.UserIdSchema, role: RoleSchema }),
-	z.object({ type: z.literal('discord-user'), discordUserId: USR.UserIdSchema, role: RoleSchema }),
-	z.object({ type: z.literal('discord-server-member'), role: RoleSchema }),
-])
-export type RoleAssignment = z.infer<typeof RoleAssignmentSchema>
+export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
+{
+	// typecheck
+	const _ = '' as typeof ROLE_ASSIGNMENT_TYPES[number] satisfies RoleAssignment['type']
+}
 
 export const PERM_SCOPE_ARGS = {
 	global: z.undefined(),
@@ -64,19 +91,20 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
 	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'global' }),
 }
-export type PermissionType = (typeof PERMISSION_DEFINITION)[number]['type']
+export type KnownPermission = (typeof PERMISSION_DEFINITION)[number]
+export type PermissionType = KnownPermission['type']
+
+export type GlobalPermissionType = Extract<KnownPermission, { scope: 'global' }>['type']
+
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
-export const GLOBAL_PERMISSION_TYPE = PERMISSION_TYPE.extract([
-	'site:authorized',
-	'queue:write',
-	'queue:force-write',
-	'settings:write',
-	'vote:manage',
-	'filters:write-all',
-	'squad-server:end-match',
-	'squad-server:disable-slm-updates',
-	'squad-server:turn-fog-off',
-])
+export const GLOBAL_PERMISSION_TYPE = z.enum(
+	Object.values(PERMISSION_DEFINITION).flatMap((def) => def.scope === 'global' ? [def.type] : []) as [
+		GlobalPermissionType,
+		...GlobalPermissionType[],
+	],
+)
+
+export const NEGATED_GLOBAL_PERMISSION_TYPE = GLOBAL_PERMISSION_TYPE.options.map((perm) => `!${perm}` as const)
 
 export function isGlobalPermissionType(expr: GlobalPermissionTypeExpression): expr is GlobalPermissionType {
 	return GLOBAL_PERMISSION_TYPE.safeParse(expr).success
@@ -95,8 +123,11 @@ export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
 export function recalculateNegations(perms: TracedPermission[]) {
 	const recalculated = perms.map(perm => {
 		let negated: boolean
-		if (perm.negating) negated = false
-		else negated = perms.some(p => p.type === perm.type && Obj.deepEqual(p.args, perm.args) && p.negating)
+		if (perm.negating) negated = true
+		else {
+			const negatedVersion = { ...perm, negating: true, negated: true }
+			negated = perms.some((perm) => arePermsEqual(negatedVersion, perm))
+		}
 		return ({ ...perm, negated })
 	})
 	return recalculated
@@ -113,8 +144,8 @@ export const GLOBAL_PERMISSION_TYPE_EXPRESSION = z.union([
 export type GlobalPermissionTypeExpression = z.infer<typeof GLOBAL_PERMISSION_TYPE_EXPRESSION>
 
 export type PermArgs<T extends PermissionType> = z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>
-export type GlobalPermissionType = z.infer<typeof GLOBAL_PERMISSION_TYPE>
 
+export type Permission<T extends PermissionType = PermissionType> = ReturnType<typeof perm<T>>
 export function perm<T extends PermissionType>(type: T, scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>) {
 	return {
 		type,
@@ -122,9 +153,10 @@ export function perm<T extends PermissionType>(type: T, scopeOpts?: z.infer<(typ
 		args: scopeOpts ?? (undefined as PermArgs<T>),
 	}
 }
+
 export function tracedPerm<T extends PermissionType>(
 	type: T,
-	roles: CompositeRole[],
+	roles: Role[],
 	opts?: { negated?: boolean; negating?: boolean },
 	scopeOpts?: z.infer<(typeof PERMISSION_DEFINITION)[T]['scopeArgs']>,
 ) {
@@ -136,10 +168,9 @@ export function tracedPerm<T extends PermissionType>(
 	}
 }
 
-export type Permission<T extends PermissionType = PermissionType> = ReturnType<typeof perm<T>>
 export type PermissionTrace = {
-	allowedByRoles: CompositeRole[]
-	// this perm has been negated by another
+	allowedByRoles: Role[]
+	// this perm has been negated by another perm or by itself.
 	negated: boolean
 
 	// this perm is a negating perm (!<perm>)
@@ -225,14 +256,17 @@ export function tryDenyPermissionForUser<T extends PermissionType>(userId: bigin
 }
 
 export function arePermsEqual(perm1: Permission & Partial<PermissionTrace>, perm2: Permission & Partial<PermissionTrace>) {
-	perm1 = { ...perm1 }
-	perm2 = { ...perm2 }
-	delete perm1.allowedByRoles
-	delete perm2.allowedByRoles
-	if (!perm1.negated === false) delete perm1.negated
-	if (!perm2.negated === false) delete perm2.negated
-	if (!perm1.negating === false) delete perm1.negating
-	if (!perm2.negating === false) delete perm2.negating
+	perm1 = Obj.selectProps(perm1, ['args', 'scope', 'type', 'negated', 'negating'])
+	perm2 = Obj.selectProps(perm2, ['args', 'scope', 'type', 'negated', 'negating'])
+	Obj.trimUndefined(perm1)
+	Obj.trimUndefined(perm2)
+
+	// defaults are false
+	if (!perm1.negated) delete perm1.negated
+	if (!perm2.negated) delete perm2.negated
+	if (!perm1.negating) delete perm1.negating
+	if (!perm2.negating) delete perm2.negating
+
 	return Obj.deepEqual(perm1, perm2)
 }
 
@@ -243,7 +277,7 @@ export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Permission
 	}
 }
 
-export function getPermissionsByRole(permissions: TracedPermission[]): [CompositeRole, TracedPermission[]][] {
+export function getPermissionsByRole(permissions: TracedPermission[]): [Role, TracedPermission[]][] {
 	const rolePermissionsMap = new Map<string, TracedPermission[]>()
 
 	for (const permission of permissions) {
@@ -256,5 +290,5 @@ export function getPermissionsByRole(permissions: TracedPermission[]): [Composit
 		}
 	}
 
-	return Array.from(rolePermissionsMap.entries()).map(([roleKey, perms]) => [JSON.parse(roleKey) as CompositeRole, perms])
+	return Array.from(rolePermissionsMap.entries()).map(([roleKey, perms]) => [JSON.parse(roleKey) as Role, perms])
 }

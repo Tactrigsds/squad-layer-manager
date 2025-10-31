@@ -12,6 +12,7 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -186,17 +187,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const loggedInUserRole: 'owner' | 'contributor' | 'none' | 'write-all' = (() => {
 		if (!loggedInUser) return 'none'
-		for (const perm of loggedInUser.perms) {
-			if (perm.type === 'filters:write' && perm.args!.filterId === props.entity.id && perm.allowedByRoles.includes('filter-owner')) {
-				return 'owner'
-			}
-		}
+		if (props.entity.owner === loggedInUser.discordId) return 'owner'
 
 		for (const perm of loggedInUser.perms) {
 			if (
 				perm.type === 'filters:write' && perm.args!.filterId === props.entity.id
-				&& (perm.allowedByRoles.includes('filter-user-contributor')
-					|| perm.allowedByRoles.some(r => typeof r !== 'string' && r.type === 'filter-role-contributor'))
+				&& perm.allowedByRoles.some(r => RBAC.isInferredRoleType(r) && r.type === 'filter-role-contributor')
 			) {
 				return 'contributor'
 			}
@@ -521,17 +517,17 @@ function FilterContributors(props: {
 					<div id="roles">
 						<div>
 							<Label htmlFor="roles">Roles</Label>
-							<SelectRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, role })}>
+							<SelectUserDefinedRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}>
 								<Button variant="outline" size="icon">
 									<Icons.Plus />
 								</Button>
-							</SelectRolePopover>
+							</SelectUserDefinedRolePopover>
 						</div>
 						<ul>
 							{props.contributors.roles.map((role) => (
 								<li key={role} className="flex items-center space-x-1">
 									<Icons.Minus
-										onClick={() => removeMutation.mutate({ filterId: props.filterId, role })}
+										onClick={() => removeMutation.mutate({ filterId: props.filterId, roleId: role })}
 										className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 									/>
 									<Badge>{role}</Badge>
@@ -602,10 +598,10 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 	)
 }
 
-export function SelectRolePopover(props: { children: React.ReactNode; selectRole: (role: string) => void }) {
-	const rolesRes = RbacClient.useRoles()
+export function SelectUserDefinedRolePopover(props: { children: React.ReactNode; selectRole: (role: RBAC.GenericRole) => void }) {
+	const rolesRes = RbacClient.useUserDefinedRoles()
 	const [isOpen, setIsOpen] = useState(false)
-	function onSelect(role: string) {
+	function onSelect(role: RBAC.Role) {
 		props.selectRole(role)
 		setIsOpen(false)
 	}
@@ -617,8 +613,8 @@ export function SelectRolePopover(props: { children: React.ReactNode; selectRole
 					<CommandInput placeholder="Search for a role..." />
 					<CommandList>
 						{rolesRes.data?.map((role) => (
-							<CommandItem key={role} onSelect={() => onSelect(role)}>
-								{role}
+							<CommandItem key={role.type} onSelect={() => onSelect(role)}>
+								{role.type}
 							</CommandItem>
 						))}
 					</CommandList>

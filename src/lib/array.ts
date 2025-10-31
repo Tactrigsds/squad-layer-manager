@@ -37,6 +37,10 @@ export function includes(arr: unknown[], value: unknown): boolean {
 	return arr.includes(value)
 }
 
+export function includesId<T extends string>(arr: T[], value: string): value is T {
+	return includes(arr, value)
+}
+
 export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void {
 	for (let i = 0; i < arr.length; i++) {
 		if (arr[i][key] === item[key]) {

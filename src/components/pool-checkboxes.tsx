@@ -1,3 +1,4 @@
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import React from 'react'
@@ -6,10 +7,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
-export default function PoolCheckboxes(
-	props: { store: Zus.StoreApi<LQY.PoolCheckboxesStore> },
-) {
-	const [state, setState] = Zus.useStore(props.store, useShallow(s => [s.state, s.setState]))
+export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key }) {
+	const [checkboxes, setCheckbox] = SelectLayersFrame.useSelectedSelectLayersState(
+		props.frameKey,
+		useShallow(s => [s.checkboxesState, s.setCheckbox]),
+	)
 	const dnrCheckboxId = React.useId()
 
 	return (
@@ -20,9 +22,9 @@ export default function PoolCheckboxes(
 					id={dnrCheckboxId}
 					onCheckedChange={v => {
 						if (v === 'indeterminate') return
-						setState('dnr', v)
+						setCheckbox('dnr', v)
 					}}
-					checked={state.dnr}
+					checked={checkboxes.dnr}
 				/>
 			</div>
 		</>

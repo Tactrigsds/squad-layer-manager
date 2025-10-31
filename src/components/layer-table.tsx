@@ -758,7 +758,7 @@ export default function LayerTable(props: {
 					<TableBody>
 						{table.getRowModel().rows.map((row) => {
 							const id = row.original.id
-							const disabled = 'hover:bg-unset bg-gray-800'
+							const disabled = 'hover:bg-unset bg-grey-800'
 							const selectedForCopy = getChosenRows(row)
 
 							return (

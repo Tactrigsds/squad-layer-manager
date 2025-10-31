@@ -5,6 +5,7 @@ import * as React from 'react'
 
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import * as VisuallyHidden from '@radix-ui/react-visually-hidden'
 
 const Command = React.forwardRef<React.ElementRef<typeof CommandPrimitive>, React.ComponentPropsWithoutRef<typeof CommandPrimitive>>(
 	({ className, ...props }, ref) => (

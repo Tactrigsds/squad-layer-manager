@@ -1,4 +1,4 @@
-import fastDeepEqual from 'fast-deep-equal'
+import fastDeepEqual from 'fast-deep-equal/es6'
 import superjson from 'superjson'
 import { isNullOrUndef } from './type-guards'
 
@@ -229,3 +229,9 @@ export function isEmpty(obj: unknown): boolean {
 	if (Array.isArray(obj)) return obj.length === 0
 	return Object.keys(obj as object).length === 0
 }
+
+export type StrictUnion<A extends object, B extends object> = A | B extends object ? (keyof A & keyof B) extends never ? A | B
+	: never
+	: A | B
+
+export type OptionalKeys<T extends object, Keys extends keyof T> = Omit<T, Keys> & Partial<Pick<T, Keys>>

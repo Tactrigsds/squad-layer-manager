@@ -1,39 +1,33 @@
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { selectProps } from '@/lib/object.ts'
+import * as LayerFilterMenuCtx from '@/frame-contexts/layer-filter-menu'
+import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LFM from '@/models/layer-filter-menu.models'
-import * as LQY from '@/models/layer-queries.models'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 import { Comparison, ComparisonHandle } from './filter-card'
 
-export default function LayerFilterMenu(
-	props: { filterMenuStore: Zus.StoreApi<LFM.FilterMenuStore> },
-) {
-	const storeState = ZusUtils.useStoreDeep(
-		props.filterMenuStore,
-		state => selectProps(state, ['menuItems', 'siblingFilters']),
-		{ dependencies: [] },
-	)
+export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
 	const clearAll$Ref = useRefConstructor(() => new Rx.Subject<void>())
+	const fields = SelectLayersFrame.useSelectedSelectLayersState(
+		props.frameKey,
+		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
+	)
+	const state = SelectLayersFrame.useSelectLayersState(props.frameKey)
 
 	return (
 		<div className="flex flex-col space-y-2">
 			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
-				{Object.entries(storeState.menuItems).map(([field, comparison]) => (
+				{fields.map((field) => (
 					<LayerFilterMenuItem
 						key={field}
 						field={field}
-						comp={comparison}
-						store={props.filterMenuStore}
 						clearAll$={clearAll$Ref.current}
+						frameKey={props.frameKey}
 					/>
 				))}
 			</div>
@@ -41,7 +35,7 @@ export default function LayerFilterMenu(
 				<Button
 					variant="secondary"
 					onClick={() => {
-						props.filterMenuStore.getState().resetAllFilters()
+						state.filterMenu.resetAllFilters()
 						clearAll$Ref.current.next()
 					}}
 				>
@@ -55,17 +49,23 @@ export default function LayerFilterMenu(
 function LayerFilterMenuItem(
 	props: {
 		field: string
-		comp: F.EditableComparison
-		store: Zus.StoreApi<LFM.FilterMenuStore>
 		clearAll$: Rx.Subject<void>
+		frameKey: SelectLayersFrame.Key
 	},
 ) {
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, queryBaseInput] = ZusUtils.useStoreDeep(
-		props.store,
-		state => [LFM.selectSwapFactionsDisabled(state), LFM.selectFilterMenuItemConstraints(state, props.field)] as const,
-		{ dependencies: [props.field] },
+	const [swapFactionsDisabled, queryInput, comp] = SelectLayersFrame.useSelectedSelectLayersState(
+		props.frameKey,
+		ZusUtils.useDeep(
+			state =>
+				[
+					LayerFilterMenuCtx.selectSwapFactionsDisabled(state),
+					SelectLayersFrame.selectMenuItemQueryInput(state, props.field),
+					state.filterMenu.menuItems[props.field],
+				] as const,
+		),
 	)
+	const state = SelectLayersFrame.useSelectLayersState(props.frameKey)
 
 	React.useEffect(() => {
 		const sub = props.clearAll$.subscribe(() => {
@@ -83,7 +83,7 @@ function LayerFilterMenuItem(
 						title="Swap Factions"
 						disabled={swapFactionsDisabled}
 						onClick={() => {
-							return props.store.getState().swapTeams()
+							return state.filterMenu.swapTeams()
 						}}
 						size="icon"
 						variant="outline"
@@ -96,16 +96,16 @@ function LayerFilterMenuItem(
 			<Comparison
 				ref={ref}
 				columnEditable={false}
-				highlight={F.editableComparisonHasValue(props.comp)}
-				comp={props.comp}
+				highlight={F.editableComparisonHasValue(comp)}
+				comp={comp}
 				setComp={(update) => {
-					return props.store.getState().setComparison(props.field, update)
+					return state.filterMenu.setComparison(props.field, update)
 				}}
-				baseQueryInput={queryBaseInput}
+				baseQueryInput={queryInput}
 				lockOnSingleOption={true}
 			/>
 			<Button
-				disabled={!F.editableComparisonHasValue(props.comp)}
+				disabled={!F.editableComparisonHasValue(comp)}
 				variant="ghost"
 				size="icon"
 				onClick={() => {
@@ -115,7 +115,7 @@ function LayerFilterMenuItem(
 						return
 					}
 
-					props.store.getState().resetFilter(props.field)
+					state.filterMenu.resetFilter(props.field)
 					ref.current?.clear(true)
 				}}
 			>

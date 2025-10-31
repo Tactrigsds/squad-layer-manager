@@ -2,15 +2,12 @@ import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
-import { useDeepEqualsMemo } from '@/lib/react'
-import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LFM from '@/models/layer-filter-menu.models.ts'
 import * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
 import { queryClient } from '@/orpc.client'
@@ -33,8 +30,8 @@ type LayerCtxModifiedCounters = { [k in keyof WorkerTypes.DynamicQueryCtx]: numb
 export type Store = {
 	counters: LayerCtxModifiedCounters
 	increment: (ctx: Partial<WorkerTypes.DynamicQueryCtx>) => void
-	extraQueryFilters: LQY.ExtraQueryFiltersState['filters']
-	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['filters']>) => void): void
+	extraQueryFilters: LQY.ExtraQueryFiltersState['extraFilters']
+	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['extraFilters']>) => void): void
 	hoveredConstraintItemId: string | null
 	setHoveredConstraintItemId(id: string | null): void
 }
@@ -87,54 +84,6 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 		},
 	})
 })
-
-// context for a generic query, with a cursor from the current layer list
-export function useFilterMenuLayerQueryContext(cursor?: LQY.LayerQueryCursor, defaultFields?: Partial<L.KnownLayer>) {
-	cursor = useDeepEqualsMemo(() => cursor, [cursor])
-	const extraFiltersStore = useExtraFiltersStore()
-	const poolCheckboxesStore = useNewPoolCheckboxesStore()
-	const [queryInputStore, subHandle] = React.useMemo(() => {
-		const deriveState = (): { queryInput: LQY.BaseQueryInput } => {
-			const extraFiltersState = extraFiltersStore.getState()
-			const poolCheckboxesState = poolCheckboxesStore.getState()
-			const settingsState = ServerSettingsClient.Store.getState()
-			const extraFiltersContraints = QD.getExtraFiltersConstraints(extraFiltersState)
-
-			// probably need to update this hook if this breaks
-			const checkboxesState = poolCheckboxesState.state as { dnr: boolean } satisfies LQY.PoolCheckboxesState
-
-			const dnrConstraints = QD.getToggledRepeatRuleConstraints(settingsState.saved, checkboxesState.dnr)
-			const queryInput = {
-				cursor,
-				constraints: [...extraFiltersContraints, ...dnrConstraints],
-			}
-			return { queryInput }
-		}
-
-		const store = Zus.createStore<{ queryInput: LQY.BaseQueryInput }>(() => deriveState())
-		const update = () => store.setState(deriveState())
-
-		const subHandle = ZusUtils.createSubHandle((subs) => {
-			subs.push(extraFiltersStore.subscribe(update))
-			subs.push(poolCheckboxesStore.subscribe(update))
-			subs.push(ServerSettingsClient.Store.subscribe(update))
-		})
-		return [store, subHandle] as const
-	}, [cursor, extraFiltersStore, poolCheckboxesStore])
-	ZusUtils.useSubHandle(subHandle)
-
-	const filterMenuStore = LFM.useFilterMenuStore(queryInputStore, defaultFields)
-
-	const filteredQueryInput = ZusUtils.useCombinedStoresDeep(
-		[filterMenuStore],
-		([filterMenuState]) => {
-			return LFM.selectFilterMenuQueryInput(filterMenuState)
-		},
-		{ dependencies: [cursor] },
-	)
-
-	return { extraFiltersStore, filterResultsStore: poolCheckboxesStore, queryInput: filteredQueryInput, filterMenuStore }
-}
 
 export const useFetchingBuffer = Zus.create(() => false)
 
@@ -915,129 +864,4 @@ export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
 	return queryClient.getQueryCache().build(queryClient, getLayerInfoQueryOptions(layer)).fetch()
-}
-
-export function useExtraFiltersStore() {
-	const storeRef = useRefConstructor(() => {
-		const activeStore = Zus.createStore<Pick<LQY.ExtraQueryFiltersState, 'activated'>>(() => ({ activated: [] }))
-		const subHandle = ZusUtils.createSubHandle()
-		const updateFilterPoolSettings = () => ServerSettingsClient.Store.getState().saved.queue.mainPool.filters // setup initial conditions
-		;(function updateFromSettings() {
-			const poolSettings = updateFilterPoolSettings()
-			const poolActivatedState: Pick<LQY.ExtraQueryFiltersState, 'activated'>['activated'] = []
-			for (const { filterId, applyAs } of poolSettings) {
-				if (applyAs === 'disabled') continue
-				poolActivatedState.push({ filterId, state: applyAs })
-			}
-			activeStore.setState({ activated: poolActivatedState })
-		})()
-		subHandle.add(ServerSettingsClient.Store.subscribe(() => (updateFilterPoolSettings())))
-
-		const updateQueryStore = (cb: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['filters']>) => void) => {
-			Store.getState().setExtraQueryFilters(cb)
-		}
-
-		const setActiveState = (filterId: F.FilterEntityId, newState: 'regular' | 'inverted' | 'disabled') => {
-			activeStore.setState(
-				state =>
-					Im.produce(state, draft => {
-						const activated = draft.activated
-						const elt = activated.find(elt => elt.filterId === filterId)
-						if (newState === 'disabled' && !elt) return
-						else if (newState === 'disabled' && elt) activated.splice(activated.indexOf(elt), 1)
-						else if (newState !== 'disabled' && elt) activated.splice(activated.indexOf(elt), 1, { filterId, state: newState })
-						else if (newState !== 'disabled' && !elt) activated.push({ filterId, state: newState })
-					}),
-			)
-		}
-
-		const disable = (filterId: F.FilterEntityId) => {
-			activeStore.setState(state => ({ activated: state.activated.filter(elt => elt.filterId !== filterId) }))
-		}
-
-		const actions: LQY.ExtraQueryFiltersActions = {
-			setFilterState(filterId, state) {
-				setActiveState(filterId, state)
-			},
-			select(filters) {
-				const { added, removed } = Arr.delta(Array.from(Store.getState().extraQueryFilters), filters)
-				for (const value of removed) {
-					disable(value)
-				}
-				for (const value of added) {
-					setActiveState(value, 'disabled')
-				}
-				updateQueryStore(draft => {
-					for (const value of added) {
-						if (!draft.has(value)) {
-							draft.add(value)
-						}
-					}
-					for (const value of removed) {
-						draft.delete(value)
-					}
-				})
-			},
-			remove(filterId) {
-				const poolSettings = updateFilterPoolSettings()
-				if (poolSettings.some(({ filterId: id }) => id === filterId)) return
-				disable(filterId)
-				updateQueryStore(draft => {
-					draft.delete(filterId)
-				})
-			},
-		}
-
-		let prevFilters: Set<string> = new Set()
-		let prevReadOnlyFilters: Set<string> = new Set()
-		const store = derive<LQY.ExtraQueryFiltersStore>(get => {
-			const settingsStore = get(ServerSettingsClient.Store)
-			const layerQueriesStore = get(Store)
-			const activeState = get(activeStore)
-
-			let readOnly = new Set(settingsStore.saved.queue.mainPool.filters.map(f => f.filterId))
-			let filters = new Set([...layerQueriesStore.extraQueryFilters, ...readOnly])
-
-			// -------- maintain referential equality --------
-			if (Obj.deepEqual(Array.from(filters), Array.from(prevFilters))) filters = prevFilters
-			else prevFilters = filters
-
-			if (Obj.deepEqual(Array.from(readOnly), Array.from(prevReadOnlyFilters))) readOnly = prevReadOnlyFilters
-			else prevReadOnlyFilters = readOnly
-
-			return {
-				...actions,
-
-				filters,
-				readOnlyFilters: readOnly,
-				activated: activeState.activated,
-			}
-		})
-		return [store, subHandle] as const
-	})
-
-	const [store, subHandle] = storeRef.current
-	ZusUtils.useSubHandle(subHandle)
-	return store
-}
-
-export const useNewPoolCheckboxesStore = (
-	defaultState: LQY.PoolCheckboxesState = { dnr: false },
-): Zus.StoreApi<LQY.PoolCheckboxesStore> => {
-	const storeRef = useRefConstructor(() => {
-		return Zus.createStore<LQY.PoolCheckboxesStore>((set) => ({
-			state: defaultState,
-			setState: (type, value) => {
-				set(state => ({
-					...state,
-					state: {
-						...state.state,
-						[type]: value,
-					},
-				}))
-			},
-		}))
-	})
-
-	return storeRef.current
 }

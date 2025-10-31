@@ -5,7 +5,6 @@ import { persist } from 'zustand/middleware'
 
 const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
-	trpcLogs: false,
 	displayWsClientId: false,
 	loadConsole: false,
 }

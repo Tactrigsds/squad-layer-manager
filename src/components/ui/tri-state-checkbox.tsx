@@ -62,11 +62,11 @@ const TriStateCheckbox = React.forwardRef<HTMLButtonElement, TriStateCheckboxPro
 TriStateCheckbox.displayName = 'TriStateCheckbox'
 
 export interface TriStateCheckboxDisplayProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
-	checked?: TriState
+	state?: TriState
 }
 
 const TriStateCheckboxDisplay = React.forwardRef<HTMLDivElement, TriStateCheckboxDisplayProps>(
-	({ className, checked = 'disabled', ...props }, ref) => {
+	({ className, state: checked = 'disabled', ...props }, ref) => {
 		return (
 			<div
 				ref={ref}

@@ -4,13 +4,15 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
+import * as FRM from '@/lib/frame.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
-import { useConfig } from '@/systems.client/config.client.ts'
+import * as ConfigClient from '@/systems.client/config.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -40,7 +42,7 @@ export default function LayerQueueDashboard() {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
-	const maxQueueSize = useConfig()?.layerQueue.maxQueueSize
+	const maxQueueSize = ConfigClient.useConfig()?.layerQueue.maxQueueSize
 	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)
 	type Tab = 'history' | 'queue'
 	const [activeTab, setActiveTab] = React.useState<Tab>('queue')
@@ -141,15 +143,32 @@ function NormTeamsSwitch() {
 	)
 }
 
+const ADD_LAYERS_BUTTON_KEY = SelectLayersFrame.createKey('add-layers-button')
 function QueueControlPanel() {
-	const [appendLayersPopoverOpen, _setAppendLayersPopoverOpen] = SLLClient.useActivityState({ code: 'adding-item' })
-	function setAppendLayersPopoverOpen(v: boolean) {
-		_setAppendLayersPopoverOpen(v)
-	}
-	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
-
 	type AddLayersPosition = 'next' | 'after'
-	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
+	const [addLayersOpen, buildAddLayersOpenActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, ADD_LAYERS_BUTTON_KEY)
+	const [addLayersPosition, _setAddLayersPosition] = React.useState<AddLayersPosition>('next')
+	const colConfig = ConfigClient.useEffectiveColConfig()
+	const queryCursors = {
+		next: LQY.getQueryCursorForQueueIndex(0),
+		after: LQY.getQueryCursorForQueueIndex(SLLClient.Store.getState().layerList.length),
+	} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
+	const selectLayersInput: SelectLayersFrame.Types['input'] = {
+		colConfig: colConfig!,
+		cursor: queryCursors[addLayersPosition],
+	}
+	const addLayersActions = buildAddLayersOpenActions(selectLayersInput)
+
+	function setAddLayersPosition(position: AddLayersPosition) {
+		const queryCursors = {
+			next: LQY.getQueryCursorForQueueIndex(0),
+			after: LQY.getQueryCursorForQueueIndex(SLLClient.Store.getState().layerList.length),
+		} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
+		SelectLayersFrame.getState(ADD_LAYERS_BUTTON_KEY).setCursor(queryCursors[position])
+		_setAddLayersPosition(position)
+	}
+
+	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
 
 	async function saveLqState() {
 		await SLLClient.Store.getState().save()
@@ -182,11 +201,6 @@ function QueueControlPanel() {
 			setActive={setAddLayersPosition}
 		/>
 	)
-
-	const queryCursors = {
-		next: LQY.getQueryCursorForQueueIndex(0),
-		after: undefined,
-	} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -243,11 +257,11 @@ function QueueControlPanel() {
 				title="Add Layers"
 				footerAdditions={addLayersTabslist}
 				selectQueueItems={addItems}
-				open={appendLayersPopoverOpen}
-				onOpenChange={setAppendLayersPopoverOpen}
-				cursor={queryCursors[addLayersPosition]}
+				open={addLayersOpen}
+				onOpenChange={addLayersActions.setState}
+				frameKey={ADD_LAYERS_BUTTON_KEY}
 			>
-				<Button className="flex w-min items-center space-x-0">
+				<Button onMouseEnter={addLayersActions.prefetch} className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />
 					<span>Add Layers</span>
 				</Button>

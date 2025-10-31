@@ -125,12 +125,13 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 	}
 }
 
-type LayerVoteItemCursorAction = 'add-after' | 'edit' | 'add-vote-choice'
+export const LAYER_VOTE_ITEM_CURSOR_ACTION = z.enum(['add-after', 'edit', 'add-vote-choice'])
+export type LayerItemCursorAction = z.infer<typeof LAYER_VOTE_ITEM_CURSOR_ACTION>
 export type LayerQueryCursor = {
 	type: 'id'
 	// could be LayerItemId or itemId for parent layer queue item
 	itemId: LayerItemId | string
-	action: LayerVoteItemCursorAction
+	action: LayerItemCursorAction
 } | {
 	type: 'layer-queue-index'
 	index: number
@@ -445,7 +446,7 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
  */
 export function getQueryCursorForLayerItem(
 	_item: ParentVoteItem | LayerItem | LayerItemId,
-	action: LayerVoteItemCursorAction,
+	action: LayerItemCursorAction,
 ): LayerQueryCursor {
 	const itemId = typeof _item === 'string' ? _item : isParentVoteItem(_item) ? _item.parentItemId : toLayerItemId(_item)
 	return {
@@ -519,19 +520,8 @@ export function getDefaultColVisibilityState(cfg: EffectiveColumnAndTableConfig)
 	return res
 }
 
-// this is very sparse at the moment, maybe we'll add more of these on-off flags later
-export type PoolCheckboxesState = {
-	dnr: boolean
-}
-
-export type PoolCheckboxesStore = {
-	state: PoolCheckboxesState
-	setState: (type: keyof PoolCheckboxesState, value: boolean) => void
-}
-
 export type ExtraQueryFiltersActions = {
-	setFilterState: (filterId: F.FilterEntityId, active: 'regular' | 'inverted' | 'disabled') => void
-	select: (filters: F.FilterEntityId[]) => void
+	select: React.Dispatch<React.SetStateAction<F.FilterEntityId[]>>
 	remove: (filterId: F.FilterEntityId) => void
 }
 
@@ -539,11 +529,7 @@ export type ApplyAs = 'regular' | 'inverted'
 export type FilterApplication = { filterId: F.FilterEntityId; applyAs: ApplyAs }
 
 export type ExtraQueryFiltersState = {
-	filters: Set<F.FilterEntityId>
-	activated: { filterId: F.FilterEntityId; state: ApplyAs }[]
-
-	// readOnly just indicates that the filter cannot be removed or modified. can still be activated/deactivated
-	readOnlyFilters: Set<F.FilterEntityId>
+	extraFilters: Set<F.FilterEntityId>
 }
 
 export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
