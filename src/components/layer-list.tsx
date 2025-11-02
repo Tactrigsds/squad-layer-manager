@@ -43,7 +43,6 @@ import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import LayerDisplay from './layer-display.tsx'
 import LayerSourceDisplay from './layer-source-display.tsx'
@@ -345,20 +344,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const draggableItem = LL.layerItemToDragItem(item)
 	const dragProps = DndKit.useDraggable(draggableItem)
 
-	const addVoteChoiceFrameKey = SelectLayersFrame.createKey(`${props.itemId}:add-vote-choice-button`)
-	const [dropdownOpen, _setDropdownOpen] = React.useState(false)
-	const colConfig = ConfigClient.useEffectiveColConfig()
-	const setDropdownOpen: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		if (!canEdit) _setDropdownOpen(false)
-		const open = typeof update === 'function' ? update(dropdownOpen) : update
-		if (open) {
-			const layerItem = LQY.getLayerItemForLayerListItem(item)
-			const cursor = LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice')
-			FRM.ensureSetup<SelectLayersFrame.Types>(SelectLayersFrame.frame, addVoteChoiceFrameKey, { colConfig: colConfig!, cursor })
-		}
-		_setDropdownOpen(open)
-	}, [canEdit, dropdownOpen, item, addVoteChoiceFrameKey, colConfig])
-
+	const [dropdownOpen, setDropdownOpen] = React.useState(false)
+	const layerItem = LQY.getLayerItemForLayerListItem(item)
 	const isMobile = useIsMobile()
 
 	const editButtonProps = (className?: string) => ({
@@ -376,15 +363,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			className: cn(opts.hideWhenNotHovering ? 'data-[mobile=false]:invisible group-hover/parent-item:visible' : '', opts?.className),
 		})
 	}
-
-	const addVoteChoiceCursor = Zus.useStore(
-		props.llStore,
-		ZusUtils.useDeep((llState) => {
-			const itemStore = QD.selectLLItemState(llState, props.itemId)!
-			const layerItem = LQY.getLayerItemForLayerListItem(itemStore.item)
-			return itemStore.item ? LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice') : undefined
-		}),
-	)
 
 	const dropdownProps = {
 		open: dropdownOpen && canEdit,
@@ -575,7 +553,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									selectQueueItems={(items) => itemActions().addVoteItems(items)}
 									open={addVoteChoicesOpen}
 									onOpenChange={setAddVoteChoicesOpen}
-									frameKey={addVoteChoiceFrameKey}
+									cursor={LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice')}
 								>
 									<Button
 										variant="ghost"
@@ -801,13 +779,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 		}),
 	)
 
-	const [frameKeys, cursors, dropdownMapping] = React.useMemo(() => {
-		const frameKeys = {
-			'add-after': SelectLayersFrame.createKey(`${item.itemId}:add-after`),
-			'create-vote': SelectLayersFrame.createKey(`${item.itemId}:create-vote`),
-			'add-before': SelectLayersFrame.createKey(`${item.itemId}:add-before-or-edit`),
-			'edit': SelectLayersFrame.createKey(`${item.itemId}:add-before-or-edit`),
-		} satisfies { [k in SubDropdownState]: any }
+	const [cursors, dropdownMapping] = React.useMemo(() => {
 		const cursors = {
 			'add-after': LQY.getQueryCursorForLayerItem(item.itemId, 'add-after'),
 			'create-vote': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
@@ -820,28 +792,13 @@ function ItemDropdown(props: ItemDropdownProps) {
 			'add-after': { code: 'adding-item' },
 			'add-before': { code: 'adding-item' },
 		}
-		return [frameKeys, cursors, dropdownMapping] as const
+		return [cursors, dropdownMapping] as const
 	}, [item.itemId])
 
 	const [subDropdownState, _setSubDropdownState] = SLLClient.useActivityKeyState(dropdownMapping)
-	const prevStateRef = React.useRef(subDropdownState)
-	const colConfig = ConfigClient.useEffectiveColConfig()
-	function ensureFrameSetup(state: SubDropdownState) {
-		FRM.ensureSetup<SelectLayersFrame.Types>(SelectLayersFrame.frame, frameKeys[state], {
-			colConfig: colConfig!,
-			initialEditedLayerId: state === 'edit' ? item.layerId : undefined,
-			cursor: cursors[state],
-		})
-	}
 	function setSubDropdownState(state: SubDropdownState | null) {
 		if (state === null) props.setOpen(false)
-
-		if (prevStateRef.current && prevStateRef.current !== state) {
-			FRM.ensureTeardown(SelectLayersFrame.frame, frameKeys[prevStateRef.current])
-		}
-		if (state !== null && prevStateRef.current !== state) ensureFrameSetup(state)
 		_setSubDropdownState(state)
-		prevStateRef.current = state
 	}
 
 	const isLocked = SLLClient.useIsItemLocked(item.itemId)
@@ -856,7 +813,6 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isParentVoteItem(item) && (
 							<DropdownMenuItem
-								onMouseEnter={() => ensureFrameSetup('edit')}
 								onClick={() => setSubDropdownState('edit')}
 							>
 								Edit
@@ -937,7 +893,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 			{/* Dialogs rendered separately */}
 			{!LL.isParentVoteItem(item) && (
 				<EditLayerDialog
-					frameKey={frameKeys['edit']}
+					cursor={cursors.edit}
 					open={subDropdownState === 'edit'}
 					onOpenChange={(update) => {
 						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
@@ -958,7 +914,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				description="Select additional layers vote on"
 				open={subDropdownState === 'create-vote'}
 				onOpenChange={(open) => setSubDropdownState(open ? 'create-vote' : null)}
-				frameKey={frameKeys['create-vote']}
+				cursor={cursors['create-vote']}
 				pinMode="layers"
 				defaultSelected={Array.from(LL.getAllItemLayerIds(item))}
 				selectQueueItems={(newItems) => {
@@ -980,7 +936,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				title="Add layers before"
 				description="Select layers to add before"
 				open={subDropdownState === 'add-before'}
-				frameKey={frameKeys['add-before']}
+				cursor={cursors['add-before']}
 				onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
 				pinMode={!allowVotes ? 'layers' : undefined}
 				selectQueueItems={(items) => {
@@ -994,7 +950,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				title="Add layers after"
 				description="Select layers to add after"
 				open={subDropdownState === 'add-after'}
-				frameKey={frameKeys['add-after']}
+				cursor={cursors['add-after']}
 				onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
 				pinMode={!allowVotes ? 'layers' : undefined}
 				selectQueueItems={(items) => {

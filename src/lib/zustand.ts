@@ -8,7 +8,6 @@ import * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { StoreApi, StoreMutatorIdentifier, StoreMutators, useStore } from 'zustand'
-import { toStream } from 'zustand-rx'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { distinctDeepEquals } from './async'
@@ -72,7 +71,7 @@ const isSubscription = (unsub: SubArg): unsub is Rx.Subscription => {
 }
 
 export function toRxSub(unsub: UnsubscribeFn) {
-	Rx.NEVER.pipe(Rx.tap({ unsubscribe: unsub })).subscribe()
+	return Rx.NEVER.pipe(Rx.tap({ unsubscribe: unsub })).subscribe()
 }
 
 export const useShallow = useShallowImported
@@ -91,3 +90,15 @@ export function useDeepNoFns<S, U>(selector: (state: S) => U): (state: S) => U {
 		return Obj.deepEqual(prev.current, next) ? (prev.current as U) : prev.current = next
 	}
 }
+
+export function toObservable<S>(store: StoreApi<S>): Rx.Observable<[S, S]> {
+	return new Rx.Observable(subscriber => {
+		const unsub = store.subscribe((state, prev) => {
+			subscriber.next([state, prev])
+		})
+
+		return () => unsub()
+	})
+}
+
+export const deriveStores = derive

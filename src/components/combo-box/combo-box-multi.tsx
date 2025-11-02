@@ -1,4 +1,4 @@
-import { Check, CheckCheck, ChevronsUpDown, LoaderCircle, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, ChevronsUpDown, LoaderCircle, Trash2, Undo2, X } from 'lucide-react'
 import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -24,14 +24,16 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	ref?: React.ForwardedRef<ComboBoxHandle>
 	restrictValueSize?: boolean
 	selectOnClose?: boolean
+	reset?: boolean | T[]
 	children?: React.ReactNode
 }
 
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
 	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
-	const { values, selectionLimit, disabled, onSelect: _onSelect, selectOnClose = false } = props
+	const { values, selectionLimit, disabled, onSelect: _onSelect, selectOnClose = false, reset } = props
 	const [open, _setOpen] = useState(false)
 	const [internalValues, setInternalValues] = useState<T[]>(values)
+	const [initialValues, setInitialValues] = useState<T[]>([])
 	const selectOnCloseRef = useRef(selectOnClose)
 
 	// Throw error if selectOnClose flag changes during component lifecycle
@@ -49,14 +51,19 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	}, [values, selectOnClose])
 
 	const setOpen = React.useCallback((value: boolean) => {
-		if (!value) {
+		if (value) {
+			// When opening, store the initial values for potential reset (only if reset is true, not an array)
+			if (reset === true) {
+				setInitialValues(selectOnClose ? internalValues : values)
+			}
+		} else {
 			// When closing, if selectOnClose is true, apply internal state to props
 			if (selectOnClose) {
 				_onSelect(internalValues)
 			}
 		}
 		_setOpen(value)
-	}, [_onSelect, internalValues, selectOnClose])
+	}, [_onSelect, internalValues, selectOnClose, reset, values])
 
 	const restrictValueSize = props.restrictValueSize ?? true
 	useImperativeHandle(props.ref, () => ({
@@ -147,7 +154,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					</Button>
 				)}
 			</PopoverTrigger>
-			<PopoverContent className="min-w-[600px] p-0 overflow-hidden">
+			<PopoverContent align="start" className="min-w-[600px] p-0 overflow-hidden">
 				<div className="flex h-[400px]">
 					{/* Left Column - Available Options */}
 					<div className="flex-1 border-r">
@@ -195,6 +202,31 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								{selectionLimit ? `/${selectionLimit}` : ''})
 							</span>
 							<span className="flex items-center space-x-1">
+								{reset && (() => {
+									// Determine what values to reset to
+									const resetToValues = Array.isArray(reset) ? reset : initialValues
+									// Filter to only include those that still exist in options
+									const availableValues = options !== LOADING ? options.map(opt => opt.value) : []
+									const resetValues = resetToValues.filter(val => availableValues.includes(val))
+									// Check if current state matches reset state
+									const currentSet = new Set(displayValues)
+									const resetSet = new Set(resetValues)
+									const isIdentical = currentSet.size === resetSet.size
+										&& [...currentSet].every(val => resetSet.has(val))
+
+									return (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => onSelect(resetValues)}
+											disabled={isIdentical}
+											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+											title="Reset to Initial"
+										>
+											<Undo2 className="h-4 w-4" />
+										</Button>
+									)
+								})()}
 								{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
 									<Button
 										variant="ghost"

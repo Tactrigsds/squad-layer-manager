@@ -1,3 +1,4 @@
+import { useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -8,7 +9,7 @@ import { Checkbox } from './ui/checkbox.tsx'
 import { Label } from './ui/label.tsx'
 
 export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key }) {
-	const [checkboxes, setCheckbox] = SelectLayersFrame.useSelectedSelectLayersState(
+	const [checkboxes, setCheckbox] = useFrameStore(
 		props.frameKey,
 		useShallow(s => [s.checkboxesState, s.setCheckbox]),
 	)

@@ -1,7 +1,8 @@
 import Ace from 'ace-builds'
-import * as Zus from 'zustand'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { getFrameReaderStore, getFrameState } from '@/frames/frame-manager'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'
 import * as Obj from '@/lib/object'
@@ -17,20 +18,18 @@ export type FilterTextEditorHandle = {
 
 type Editor = Ace.Ace.Editor
 export interface FilterTextEditorProps {
-	store: Zus.StoreApi<F.FilterEditStore>
+	frameKey: EditFrame.Key
 	ref?: React.Ref<FilterTextEditorHandle>
 }
 export function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
-	const store = props.store
 	const ref = props.ref
 	const editorRef = React.useRef<Editor>(null)
-
-	React.useEffect(() => {
-	}, [store])
-
 	const errorViewRef = React.useRef<Editor>(null)
+
+	const getState = () => getFrameState(props.frameKey)
+
 	const onChange = React.useCallback(
 		(value: string) => {
 			let obj: any
@@ -53,14 +52,15 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			}
 
 			errorViewRef.current!.setValue('')
-			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(store.getState().tree))
-			if (valueChanged) store.getState().updateRoot(res.data)
+			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(getState().tree))
+			if (valueChanged) getState().updateRoot(res.data)
 		},
-		[store],
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[props.frameKey],
 	)
 
 	const onChangeDebounced = useDebounced({
-		defaultValue: () => stringifyCompact(F.treeToFilterNode(store.getState().tree)),
+		defaultValue: () => stringifyCompact(F.treeToFilterNode(getState().tree)),
 		onChange: onChange,
 		delay: 100,
 	})
@@ -86,7 +86,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			wrap: true,
 		})
 		const ro = new ResizeObserver(() => {
-			return editor.resize()
+			editor.resize()
 			errorView.resize()
 		})
 		editor.on('change', () => {
@@ -94,10 +94,10 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 		})
 
 		let first = true
-		const unsub = store.subscribe((state, prevState) => {
-			if (!first && state.tree === prevState.tree) return
+		const unsub = getFrameReaderStore(props.frameKey).subscribe((frameState, prevFrameState) => {
+			if (!first && frameState.tree === prevFrameState.tree) return
 			first = false
-			editor.setValue(stringifyCompact(F.treeToFilterNode(state.tree)))
+			editor.setValue(stringifyCompact(F.treeToFilterNode(frameState.tree)))
 		})
 
 		editorRef.current = editor
@@ -108,8 +108,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			ro.disconnect()
 			unsub()
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [])
+	}, [onChangeDebounced, props.frameKey])
 
 	React.useImperativeHandle(ref, () => ({
 		format: () => {

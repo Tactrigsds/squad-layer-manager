@@ -1,4 +1,6 @@
 import * as AR from '@/app-routes.ts'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
@@ -23,8 +25,6 @@ import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import React from 'react'
 import { Link } from 'react-router-dom'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
@@ -50,7 +50,7 @@ const depthColors = [
 ] satisfies { border: string; background: string }[]
 
 export type FilterCardProps = {
-	store: Zus.StoreApi<F.FilterEditStore>
+	frameKey: EditFrame.Key
 }
 
 const triggerClass =
@@ -58,16 +58,15 @@ const triggerClass =
 export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
-	const store = props.store
 
 	DndKit.useDragEnd(React.useCallback(event => {
 		if (!event.over) return
 		if (event.active.type !== 'filter-node') return
-		const state = store.getState()
-		const sourcePath = state.tree.paths.get(event.active.id)!
+		const editor = getFrameState(props.frameKey)
+		const sourcePath = editor.tree.paths.get(event.active.id)!
 		const slot = event.over.slots.find(s => s.dragItem.type === 'filter-node')
 		if (!slot) return
-		const slotPath = state.tree.paths.get(slot.dragItem.id.toString())!
+		const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
 
 		let targetPath: Sparse.NodePath
 
@@ -79,7 +78,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 				targetPath = slotPath
 				break
 			case 'on': {
-				targetPath = [...slotPath, F.nextChildIndex(state.tree, slotPath)]
+				targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
 				break
 			}
 			default:
@@ -90,21 +89,22 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 			console.warn('Cannot move node to its own child')
 			return
 		}
-		state.moveNode(sourcePath, targetPath)
-	}, [store]))
+		editor.moveNode(sourcePath, targetPath)
+	}, [props.frameKey]))
 
-	const rootNodeId = Zus.useStore(props.store, s => s.getIdForPath([]))!
-	const allNodeIds = ZusUtils.useStoreDeep(
-		props.store,
-		s => Array.from(s.tree.nodes.keys()),
+	const [nodeStore, modified] = useFrameStore(props.frameKey, ZusUtils.useShallow((s) => [s.nodeMapStore, s.modified]))
+	const rootNodeId = useFrameStore(props.frameKey, s => EditFrame.selectIdByPath(s, []))!
+	const allNodeIds = useFrameStore(
+		props.frameKey,
+		ZusUtils.useShallow(s => Array.from(s.tree.nodes.keys())),
 	)
 
 	// leaf nodes & block control panels. we render these flatly for vdom perf and use NodePortal to put them in the right place in the DOM
 	// Will have to rework this if we ever want to render multiple portaled elements per node
 	const leafNodes = allNodeIds.map((id) => {
 		return (
-			<NodePortal nodeId={id} store={store} key={id}>
-				<FilterNodeDisplay nodeId={id} store={store} />
+			<NodePortal nodeId={id} store={nodeStore} key={id}>
+				<FilterNodeDisplay nodeId={id} frameKey={props.frameKey} />
 			</NodePortal>
 		)
 	})
@@ -113,10 +113,10 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		<div defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
-					<StoredParentNode nodeId={rootNodeId} store={store} />
+					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<FilterTextEditor ref={editorRef} store={store} />
+					<FilterTextEditor ref={editorRef} frameKey={props.frameKey} />
 				</div>
 			</div>
 			{/* -------- toolbar -------- */}
@@ -142,7 +142,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					{/* -------- reset filter -------- */}
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button onClick={() => props.store.getState().reset()} variant="ghost" size="icon">
+							<Button disabled={!modified} onClick={() => getFrameState(props.frameKey).reset()} variant="ghost" size="icon">
 								<Undo2 color="hsl(var(--muted-foreground))" />
 							</Button>
 						</TooltipTrigger>
@@ -182,12 +182,13 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	return <>{rendered} {leafNodes}</>
 }
 
-function NegationToggle({ view }: { view: F.FilterEditStoreView }) {
+function NegationToggle(props: { frameKey: EditFrame.Key; nodeId: string; node: F.ShallowEditableFilterNode }) {
+	const { setNegation } = EditFrame.getNodeActions(props.frameKey, props.nodeId).common
 	return (
 		<Toggle
 			aria-label="negate"
-			pressed={view.neg}
-			onPressedChange={view.setNegation}
+			pressed={props.node.neg}
+			onPressedChange={setNegation}
 			variant="default"
 			className="h-9 px-2 hover:bg-destructive/90 data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground"
 		>
@@ -197,55 +198,65 @@ function NegationToggle({ view }: { view: F.FilterEditStoreView }) {
 }
 
 function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
-	const [nodeType] = Zus.useStore(props.store, useShallow(s => [s.tree.nodes.get(props.nodeId)?.type]))
-
-	const nodePath = F.useNodePath(props.nodeId, props.store)
-	const immediateChildren = F.useImmediateChildren(props.nodeId, props.store)
+	const [nodeType, nodeMapStore] = useFrameStore(
+		props.frameKey,
+		ZusUtils.useShallow(s => [
+			s.tree.nodes.get(props.nodeId)?.type,
+			s.nodeMapStore,
+		]),
+	)
+	const nodePath = EditFrame.useNodePath(props.frameKey, props.nodeId)
+	const immediateChildren = EditFrame.useImmediateChildren(props.frameKey, props.nodeId)
 	if (!nodePath) return null
 	if (!nodeType) return null
 
 	if (!F.isBlockType(nodeType)) {
 		{/* points to LeafFilterNode */}
-		return <LeafFilterNode nodeId={props.nodeId} rootStore={props.store} />
+		return <LeafFilterNode nodeId={props.nodeId} frameKey={props.frameKey} />
 	}
 
 	return (
 		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId}>
-			<BlockNodeControlPanel nodeId={props.nodeId} rootStore={props.store} />
+			<BlockNodeControlPanel nodeId={props.nodeId} frameKey={props.frameKey} />
 			{immediateChildren.map((id) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
 				return (
 					<React.Fragment key={id}>
 						<ChildNodeSeparator
 							item={{ type: 'relative-to-drag-item', slots: [{ position: 'before', dragItem }] }}
-							store={props.store}
+							frameKey={props.frameKey}
 						/>
-						<StoredParentNode nodeId={id} store={props.store} />
+						<StoredParentNode store={nodeMapStore} nodeId={id} />
 					</React.Fragment>
 				)
 			})}
 			<ChildNodeSeparator
 				item={{ type: 'relative-to-drag-item', slots: [{ position: 'on', dragItem: { id: props.nodeId, type: 'filter-node' } }] }}
-				store={props.store}
+				frameKey={props.frameKey}
 			/>
 		</NodeWrapper>
 	)
 }
 
 function BlockNodeControlPanel(props: NodeProps) {
-	const node = F.useEditStoreView(props.nodeId, props.rootStore) as F.FilterEditStoreView<F.BlockType>
-	const nodePath = F.useNodePath(props.nodeId, props.rootStore)
+	const node = useFrameStore(props.frameKey, s => EditFrame.selectNode(s, props.nodeId)) as F.ShallowEditableFilterNodeOfType<
+		F.BlockType
+	>
+	const nodePath = EditFrame.useNodePath(props.frameKey, props.nodeId)
 	if (!F.isBlockType(node.type) || !nodePath) return null
 	const isRootNode = nodePath.length === 0
+	const actions = EditFrame.getNodeActions(props.frameKey, props.nodeId)
+	const { delete: deleteNode } = actions.common
+	const { addChild, setBlockType } = actions.block
 	return (
 		<div className="flex items-center space-x-1">
-			<NegationToggle view={node} />
+			<NegationToggle frameKey={props.frameKey} nodeId={props.nodeId} node={node} />
 			<ComboBox
 				className="w-min"
 				title={'Block Type'}
 				value={node.type}
 				options={['and', 'or']}
-				onSelect={(v) => node.setBlockType(v as F.BlockType)}
+				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
@@ -254,17 +265,17 @@ function BlockNodeControlPanel(props: NodeProps) {
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>
-					<DropdownMenuItem onClick={() => node.addChild('comp')}>comparison</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => node.addChild('apply-filter')}>apply existing filter</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => node.addChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => addChild('comp')}>comparison</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => addChild('apply-filter')}>apply existing filter</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => addChild('allow-matchups')}>Allow Matchups</DropdownMenuItem>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => node.addChild('and')}>and block</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => node.addChild('or')}>or block</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => addChild('and')}>and block</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => addChild('or')}>or block</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 			{!isRootNode
 				&& (
-					<Button size="icon" variant="ghost" onClick={() => node.delete()}>
+					<Button size="icon" variant="ghost" onClick={deleteNode}>
 						<Minus color="hsl(var(--destructive))" />
 					</Button>
 				)}
@@ -275,13 +286,13 @@ function BlockNodeControlPanel(props: NodeProps) {
 function ChildNodeSeparator(props: {
 	// null means we're before the first item in the list
 	item: DND.DropItem
-	store: Zus.StoreApi<F.FilterEditStore>
+	frameKey: EditFrame.Key
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
-	const activePath = F.useNodePath(activeItem?.id?.toString(), props.store) ?? null
+	const activePath = EditFrame.useNodePath(props.frameKey, activeItem?.id?.toString()) ?? null
 	const slot = props.item.slots[0]
-	const itemPath = F.useNodePath(slot.dragItem.id?.toString(), props.store) ?? null
+	const itemPath = EditFrame.useNodePath(props.frameKey, slot.dragItem.id?.toString()) ?? null
 	let isValid = true
 	if (activePath && itemPath) {
 		if (activeItem!.type !== 'filter-node') isValid = false
@@ -343,19 +354,26 @@ const NodeWrapper = (
 	)
 }
 
-type NodeProps = { rootStore: Zus.StoreApi<F.FilterEditStore>; nodeId: string }
+type NodeProps = { nodeId: string; frameKey: EditFrame.Key }
 export function LeafFilterNode(props: NodeProps) {
-	const editedFilterId = Zus.useStore(props.rootStore, state => state.editedFilterId)
-	const node = F.useEditStoreView(props.nodeId, props.rootStore)
-	const nodePath = F.useNodePath(props.nodeId, props.rootStore)!
+	const editedFilterId = useFrameStore(props.frameKey, state => state.editedFilterId)
+	const node = useFrameStore(props.frameKey, state => EditFrame.selectNode(state, props.nodeId))
+	const nodePath = EditFrame.useNodePath(props.frameKey, props.nodeId)!
 	if (F.isBlockType(node.type)) return null
 	const depth = nodePath.length
+	const actions = EditFrame.getNodeActions(props.frameKey, props.nodeId)
 
-	const negationToggle = <NegationToggle view={node} />
+	const negationToggle = <NegationToggle frameKey={props.frameKey} nodeId={props.nodeId} node={node} />
 
 	const opCluster = depth > 0 && (
 		<>
-			<Button size="icon" variant="ghost" onClick={() => node.delete()}>
+			<Button
+				size="icon"
+				variant="ghost"
+				onClick={() => {
+					actions.common.delete()
+				}}
+			>
 				<Minus color="hsl(var(--destructive))" />
 			</Button>
 		</>
@@ -365,7 +383,11 @@ export function LeafFilterNode(props: NodeProps) {
 		return (
 			<NodeWrapper path={nodePath} className="flex items-center space-x-1" nodeId={props.nodeId}>
 				{negationToggle}
-				<Comparison comp={node.comp!} setComp={node.setComp} restrictValueSize={false} />
+				<Comparison
+					comp={node.comp!}
+					setComp={update => actions.comp.setComp(update)}
+					restrictValueSize={false}
+				/>
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -377,11 +399,10 @@ export function LeafFilterNode(props: NodeProps) {
 				<ApplyFilter
 					filterId={node.filterId}
 					editedFilterId={editedFilterId}
-					setFilterId={node.setFilterId}
+					setFilterId={id => actions.applyFilter.setFilterId(id)}
 				/>
 				<Link
 					to={AR.link('/filters/:id', node.filterId ?? '')}
-					{...FilterEntityClient.filterEditPrefetch(node.filterId)}
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
 					<ExternalLink color="hsl(var(--primary))" />
@@ -398,8 +419,8 @@ export function LeafFilterNode(props: NodeProps) {
 				<FactionsAllowMatchupsConfig
 					masks={node.allowMatchups.allMasks}
 					mode={node.allowMatchups.mode}
-					setMasks={node.setMasks}
-					setMode={node.setMode}
+					setMasks={actions.allowMatchups.setMasks}
+					setMode={actions.allowMatchups.setMode}
 				/>
 				{opCluster}
 			</NodeWrapper>
@@ -561,6 +582,7 @@ export function Comparison(props: {
 					<StringEqConfig
 						ref={valueBoxRef}
 						lockOnSingleOption={lockOnSingleOption}
+						className={componentStyles}
 						column={comp.column as LC.GroupByColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
@@ -772,11 +794,7 @@ function LayersInConfig(
 		className?: string
 	},
 ) {
-	const id = React.useId()
-	const frameKey = SelectLayersFrame.createKey(id)
-	const [open, buildActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, frameKey)
-	const colConfig = ConfigClient.useEffectiveColConfig()
-	const { setState: setOpen, prefetch } = colConfig ? buildActions({ colConfig }) : { setState: () => {}, prefetch: () => {} }
+	const [open, setOpen] = React.useState(false)
 	const filteredValues = props.values?.filter(v => v !== null)
 
 	const removeValue = (layerIdToRemove: string) => {
@@ -810,10 +828,10 @@ function LayersInConfig(
 					onOpenChange={setOpen}
 					title="Select Layers"
 					pinMode="layers"
+					defaultSelected={filteredValues}
 					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
-					frameKey={frameKey}
 				>
-					<Button onMouseEnter={prefetch} size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
+					<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
 						<Icons.Edit className="h-4 w-4 mr-2" />
 						{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
 					</Button>
@@ -830,14 +848,7 @@ export function LayerEqConfig(
 		baseQueryInput?: LQY.BaseQueryInput
 	},
 ) {
-	const id = React.useId()
-	const frameKey = SelectLayersFrame.createKey('layer-eq' + id)
-	const [open, filterFrameActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, frameKey)
-	const colConfig = ConfigClient.useEffectiveColConfig()
-
-	const { setState: setOpen, prefetch } = colConfig
-		? filterFrameActions({ colConfig, initialEditedLayerId: props.value ?? undefined })
-		: { setState: () => {}, prefetch: () => {} }
+	const [open, setOpen] = React.useState(false)
 
 	return (
 		<div className="flex space-x-2 items-center">
@@ -846,9 +857,8 @@ export function LayerEqConfig(
 				onOpenChange={setOpen}
 				layerId={props.value ?? undefined}
 				onSelectLayer={(v) => props.setValue(v)}
-				frameKey={frameKey}
 			>
-				<Button onMouseEnter={prefetch} className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
+				<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
 					{props.value !== null && DH.displayLayer(props.value)}
 					<Icons.Edit />
 				</Button>

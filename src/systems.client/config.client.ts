@@ -9,6 +9,18 @@ import { toStream } from 'zustand-rx'
 
 const Store = Zus.createStore<PublicConfig | undefined>(() => undefined)
 
+// just hope the config exists already (probably will)
+export function getConfig() {
+	return Store.getState()!
+}
+export function getColConfig() {
+	const config = Store.getState()!
+	return {
+		...LC.getEffectiveColumnConfig(config.extraColumnsConfig),
+		...config.layerTable,
+	}
+}
+
 export function useConfig() {
 	return Zus.useStore(Store)
 }
@@ -32,7 +44,7 @@ export function invalidateConfig() {
 	setup()
 }
 
-export async function fetchEffectiveConfig(): Promise<LQY.EffectiveColumnAndTableConfig> {
+export async function fetchEffectiveColConfig(): Promise<LQY.EffectiveColumnAndTableConfig> {
 	const config = await fetchConfig()
 	return {
 		...LC.getEffectiveColumnConfig(config.extraColumnsConfig),

@@ -108,7 +108,7 @@ export default function ServerSettingsPopover(
 										ServerSettingsClient.Store.getState().reset()
 									}}
 								>
-									<Icons.RotateCcw className="h-4 w-4" />
+									<Icons.Trash className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>

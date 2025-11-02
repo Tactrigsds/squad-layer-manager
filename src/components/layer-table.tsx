@@ -1,17 +1,21 @@
+import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { Button } from '@/components/ui/button'
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuShortcut, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
+import * as FRM from '@/lib/frame'
 import { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
+import * as ZusUtils from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -34,8 +38,10 @@ import * as Zus from 'zustand'
 import { ConstraintDisplay } from './constraint-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
+import { TablePagination } from './table-pagination'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
+import { Kbd } from './ui/kbd'
 import { Label } from './ui/label'
 import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
@@ -49,9 +55,6 @@ type ConstraintRowDetails = {
 type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails }
 const columnHelper = createColumnHelper<RowData>()
 
-// Extended sorting state that includes absolute value flag
-type ExtendedSortingState = Array<{ id: string; desc: boolean; abs?: boolean }>
-
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
@@ -63,47 +66,45 @@ function buildColumn(
 	teamParity: number,
 	displayLayersNormalized: boolean,
 	isNumeric: boolean,
-	sortingState: ExtendedSortingState,
-	setSorting: React.Dispatch<React.SetStateAction<ExtendedSortingState>>,
+	sortingState: LayerTablePrt.LayerTable['sort'],
+	setSorting: LayerTablePrt.LayerTable['setSort'],
 ) {
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
+		size: colDef.name === 'Layer' ? 300 : isNumeric ? 50 : undefined,
+		minSize: colDef.name === 'Layer' ? 200 : undefined,
 		header: () => {
-			const currentSort = sortingState.find(s => s.id === colDef.name)
-			const isAbs = currentSort?.abs ?? false
-			const sort: SortDirection | false = currentSort ? (currentSort.desc ? 'desc' : 'asc') : false
+			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
 
 			const handleClick = () => {
 				setSorting((old) => {
-					const existing = old.find(s => s.id === colDef.name)
+					const existing = old
 
-					if (!existing) {
-						// No sort -> ASC
-						return [{ id: colDef.name, desc: false, abs: false }]
-					} else if (!existing.desc && !existing.abs) {
-						// ASC -> DESC
-						return [{ id: colDef.name, desc: true, abs: false }]
-					} else if (existing.desc && !existing.abs) {
-						// DESC -> ASC:ABS (for numeric) or back to no sort (for non-numeric)
-						if (isNumeric) {
-							return [{ id: colDef.name, desc: false, abs: true }]
-						} else {
-							return []
-						}
-					} else if (!existing.desc && existing.abs) {
-						// ASC:ABS -> DESC:ABS
-						return [{ id: colDef.name, desc: true, abs: true }]
+					// Only numeric columns can be sorted by absolute value
+					const order = isNumeric
+						? (['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS'] as const)
+						: (['ASC', 'DESC'] as const)
+					let direction: LQY.LayersQuerySortDirection
+					if (!existing || existing.type !== 'column' || existing.sortBy !== colDef.name) {
+						direction = 'ASC'
 					} else {
-						// DESC:ABS -> no sort
-						return []
+						const currentIndex = order.indexOf(existing.direction as any)
+						const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % order.length
+						direction = order[nextIndex]
+					}
+
+					return {
+						type: 'column',
+						sortBy: colDef.name,
+						direction: direction,
 					}
 				})
 			}
 
 			return (
 				<Button
-					className="data-[sort=true]:text-accent-foreground w-full justify-between"
+					className="data-[sort=true]:text-accent-foreground w-full justify-between pl-4"
 					size="sm"
 					data-sort={!!sort}
 					variant="ghost"
@@ -112,15 +113,15 @@ function buildColumn(
 				>
 					{colDef.shortName ?? colDef.displayName}
 					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
-					{sort === 'asc' && !isAbs && <ArrowUp className="ml-2 h-4 w-4" />}
-					{sort === 'desc' && !isAbs && <ArrowDown className="ml-2 h-4 w-4" />}
-					{sort === 'asc' && isAbs && (
+					{sort?.direction === 'ASC' && <ArrowUp className="ml-2 h-4 w-4" />}
+					{sort?.direction === 'DESC' && <ArrowDown className="ml-2 h-4 w-4" />}
+					{sort?.direction === 'ASC:ABS' && (
 						<span className="ml-2 flex items-center">
 							<ArrowUp className="h-4 w-4" />
 							<span className="text-xs">|x|</span>
 						</span>
 					)}
-					{sort === 'desc' && isAbs && (
+					{sort?.direction === 'DESC:ABS' && (
 						<span className="ml-2 flex items-center">
 							<ArrowDown className="h-4 w-4" />
 							<span className="text-xs">|x|</span>
@@ -136,14 +137,16 @@ function buildColumn(
 			const violationDescriptors = info.row.original.violationDescriptors
 			if (colDef.name === 'Layer') {
 				return (
-					<MapLayerDisplay
-						layer={L.toLayer(info.row.original.id).Layer}
-						extraLayerStyles={{
-							Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
-							Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
-							Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
-						}}
-					/>
+					<div className="pl-4">
+						<MapLayerDisplay
+							layer={L.toLayer(info.row.original.id).Layer}
+							extraLayerStyles={{
+								Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
+								Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
+								Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
+							}}
+						/>
+					</div>
 				)
 			}
 
@@ -182,7 +185,7 @@ function buildColumn(
 
 			return (
 				<div
-					className={extraStyles}
+					className={`pl-4 ${extraStyles}`}
 				>
 					{text}
 				</div>
@@ -208,9 +211,9 @@ function buildColDefs(
 	cfg: LQY.EffectiveColumnAndTableConfig,
 	teamParity: number,
 	displayLayersNormalized: boolean,
-	constraints?: LQY.Constraint[],
-	sortingState?: ExtendedSortingState,
-	setSorting?: React.Dispatch<React.SetStateAction<ExtendedSortingState>>,
+	constraints: LQY.Constraint[] | undefined,
+	sort: LayerTablePrt.LayerTable['sort'],
+	setSort: LayerTablePrt.LayerTable['setSort'],
 ) {
 	const tableColDefs: ColumnDef<RowData>[] = [
 		{
@@ -245,7 +248,7 @@ function buildColDefs(
 		for (const col of sortedColKeys) {
 			const colDef = LC.getColumnDef(col.name, cfg)!
 			const isNumeric = LC.isNumericColumn(col.name, ctx)
-			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sortingState ?? [], setSorting ?? (() => {})))
+			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sort, setSort))
 		}
 
 		// then add the rest
@@ -253,7 +256,7 @@ function buildColDefs(
 			if (sortedColKeys.some(c => c.name === key)) continue
 			const colDef = LC.getColumnDef(key, cfg)!
 			const isNumeric = LC.isNumericColumn(key, ctx)
-			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sortingState ?? [], setSorting ?? (() => {})))
+			tableColDefs.push(buildColumn(colDef, teamParity, displayLayersNormalized, isNumeric, sort, setSort))
 		}
 	}
 
@@ -266,11 +269,13 @@ function buildColDefs(
 				if (!matchDescriptors || !values || !constraints) return null
 				const matchingConstraints = constraints!.filter((c, i) => values[i])
 				return (
-					<div className="w-[100px]">
+					<div>
 						<ConstraintDisplay
+							className="w-full"
 							side="right"
 							padEmpty={true}
 							matchingConstraints={matchingConstraints}
+							height={32}
 						/>
 					</div>
 				)
@@ -283,83 +288,54 @@ function buildColDefs(
 }
 
 export default function LayerTable(props: {
-	// make sure this reference is stable
-	baseInput?: LQY.BaseQueryInput
+	frameKey: LayerTablePrt.Key
+	extraPanelItems?: React.ReactNode
 
-	selected: L.LayerId[]
-	setSelected: React.Dispatch<React.SetStateAction<L.LayerId[]>>
-	resetSelected?: () => void
 	enableForceSelect?: boolean
-
-	pageIndex: number
-	// make sure this reference is stable
-	setPageIndex: (num: number) => void
-
-	defaultPageSize?: number
-	defaultSort?: LQY.LayersQueryInput['sort']
-	defaultColumns?: string[]
-
-	editingSingleValue?: boolean
-
 	canChangeRowsPerPage?: boolean
 	canToggleColumns?: boolean
-
-	extraPanelItems?: React.ReactNode
-	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>
 }) {
+	const getTableFrame = () => getFrameState(props.frameKey).layerTable
+	const getStore = () => getFrameState(props.frameKey)
+	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) => useFrameStore(props.frameKey, s => selector(s.layerTable))
+
 	const canChangeRowsPerPage = props.canChangeRowsPerPage ?? true
 
 	const canToggleColumns = props.canToggleColumns ?? true
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const pageIndex = props.pageIndex
 
-	const [showSelectedLayers, _setShowSelectedLayers] = useState(false)
-	const setShowSelectedLayers: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
-		_setShowSelectedLayers(value)
-		props.setPageIndex(0)
-		if (sortingState.length > 0) {
-			setSorting([])
+	// Compute default visible columns from config
+	const defaultVisibleColumns = React.useMemo(() => {
+		if (!cfg) return []
+		return cfg.orderedColumns
+			.filter(col => col.visible ?? true)
+			.map(col => col.name)
+	}, [cfg])
+
+	const [showSelectedLayers, setShowSelectedLayers] = useTableFrame(
+		ZusUtils.useShallow(table => [table.showSelectedLayers, table.setShowSelectedLayers]),
+	)
+	const [sort, setSort] = useTableFrame(
+		ZusUtils.useShallow(table => [table.sort, table.setSort]),
+	)
+	const randomized = sort?.type === 'random'
+
+	const tanstackSortingState = useTableFrame(
+		ZusUtils.useDeep(LayerTablePrt.selectTanstackSortingState),
+	)
+
+	function toggleRandomize() {
+		const sort = getTableFrame().sort
+		if (sort?.type === 'random') {
+			setSort(null)
+		} else {
+			getTableFrame().randomize()
 		}
 	}
 
-	let defaultSortingState: ExtendedSortingState = []
-	const defaultSort = props.defaultSort ?? cfg?.defaultSortBy
-	if (defaultSort && defaultSort.type === 'column') {
-		const isAbs = defaultSort.sortDirection === 'ASC:ABS' || defaultSort.sortDirection === 'DESC:ABS'
-		const isDesc = defaultSort.sortDirection === 'DESC' || defaultSort.sortDirection === 'DESC:ABS'
-		defaultSortingState = [{
-			id: defaultSort.sortBy,
-			desc: isDesc,
-			abs: isAbs,
-		}]
-	}
-
-	const [sortingState, _setSortingState] = useState<ExtendedSortingState>(defaultSortingState)
-	const setSorting = React.useCallback<React.Dispatch<React.SetStateAction<ExtendedSortingState>>>((sortingUpdate) => {
-		_setSortingState((sortingState) => {
-			if (typeof sortingUpdate === 'function') {
-				return sortingUpdate(sortingState)
-			} else return sortingState
-		})
-		setRandomize(false)
-		props.setPageIndex(0)
-	}, [props])
-	const [_randomize, setRandomize] = useState<boolean>(defaultSort?.type === 'random')
-	const randomize = !showSelectedLayers && _randomize
-
-	function toggleRandomize() {
-		setRandomize((prev) => {
-			if (!prev) {
-				refreshSeed()
-				_setSortingState([])
-			}
-			return !prev
-		})
-	}
-
-	const defaultVisibility = React.useMemo(() => cfg ? LQY.getDefaultColVisibilityState(cfg) : undefined, [cfg])
-	const [_columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultVisibility!)
-	const columnVisibility = _columnVisibility ?? defaultVisibility
+	const [columnVisibility, onColumnVisibilityChange] = useTableFrame(
+		ZusUtils.useShallow(table => [table.columnVisibility, table.onColumnVisibilityChange]),
+	)
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = useState(false)
 	const rawSetDialogRef = useRef<SetRawDialogHandle>(null)
@@ -370,187 +346,92 @@ export default function LayerTable(props: {
 		rawSetDialogRef.current?.focus()
 	}
 
-	const rowSelection: RowSelectionState = Object.fromEntries(props.selected.map((id) => [id, true]))
-	const now = Date.now()
-	const insertionTimes = useRef<Record<L.LayerId, number | undefined>>(Object.fromEntries(props.selected.map((id) => [id, now])))
-	const onSetRowSelection: OnChangeFn<RowSelectionState> = (updated) => {
-		props.setSelected((selectedIds) => {
-			let newValues: RowSelectionState
-			if (typeof updated === 'function') {
-				newValues = updated(Object.fromEntries(selectedIds.map((key) => [key, true])))
-			} else {
-				newValues = updated
-			}
-
-			// prevent seelction of disabled rows
-			if (!userCanForceSelect) {
-				for (const id of Object.keys(newValues)) {
-					const layer = page?.layers.find(layer => layer.id === id)
-					if (layer && newValues[id] && getIsLayerDisabled(layer, userCanForceSelect, props.baseInput?.constraints ?? [])) {
-						newValues[id] = false
-					}
-				}
-			}
-
-			let updatedSelectedIds = Object.keys(newValues).filter((key) => newValues[key])
-			if (updatedSelectedIds.length === 0) {
-				setShowSelectedLayers(false)
-			}
-			if (props.editingSingleValue && updatedSelectedIds.length > 0) {
-				updatedSelectedIds = updatedSelectedIds.slice(updatedSelectedIds.length - 1)
-				if (updatedSelectedIds.length > 0) rawSetDialogRef.current?.setInput(updatedSelectedIds[0])
-			}
-			const now = Date.now()
-			for (const id of Object.keys(newValues)) {
-				if (!updatedSelectedIds.includes(id)) {
-					delete insertionTimes.current[id]
-				}
-			}
-
-			for (const id of updatedSelectedIds) {
-				if (!(id in insertionTimes.current)) {
-					insertionTimes.current[id] = now
-				}
-			}
-			updatedSelectedIds.sort((a, b) => (insertionTimes.current[a] ?? now) - (insertionTimes.current[b] ?? now))
-			return updatedSelectedIds
-		})
-	}
-
-	const [pageSize, setPageSize] = useState(props.defaultPageSize ?? 10)
-	const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
-		let newState: PaginationState
-		if (typeof updater === 'function') {
-			newState = updater({ pageIndex, pageSize })
-		} else {
-			newState = updater
-		}
-		props.setPageIndex(newState.pageIndex)
-		setPageSize(newState.pageSize)
-	}
-	const [seed, setSeed] = useState(defaultSort?.type === 'random' ? defaultSort.seed : LQY.getSeed())
-	function refreshSeed() {
-		setSeed(LQY.getSeed())
-	}
-
-	let sort: LQY.LayersQueryInput['sort'] = LQY.DEFAULT_SORT
-	if (randomize) {
-		sort = { type: 'random', seed }
-	} else if (sortingState.length > 0) {
-		const { id, desc, abs } = sortingState[0]
-		let sortDirection: 'ASC' | 'DESC' | 'ASC:ABS' | 'DESC:ABS' = 'ASC'
-		if (abs && desc) {
-			sortDirection = 'DESC:ABS'
-		} else if (abs && !desc) {
-			sortDirection = 'ASC:ABS'
-		} else if (!abs && desc) {
-			sortDirection = 'DESC'
-		} else {
-			sortDirection = 'ASC'
-		}
-		sort = {
-			type: 'column',
-			sortBy: id,
-			sortDirection,
-		}
-	}
-
-	const queryInput = React.useMemo(() =>
-		LayerQueriesClient.getQueryLayersInput(props.baseInput ?? {}, {
-			cfg,
-			pageIndex,
-			selectedLayers: showSelectedLayers ? props.selected : undefined,
-			pageSize,
-			sort,
-		}), [props.baseInput, cfg, pageIndex, showSelectedLayers, props.selected, pageSize, sort])
-
-	const layersRes = LayerQueriesClient.useLayersQuery(queryInput, { errorStore: props.errorStore })
+	const maxSelectedLayers = useTableFrame(t => t.maxSelected)
+	const editingSingleValue = useTableFrame(LayerTablePrt.selectEditingSingleValue)
+	const selectedLayerIds = useTableFrame(t => t.selected)
+	const rowSelection: RowSelectionState = useTableFrame(
+		ZusUtils.useDeep(LayerTablePrt.selectTanstackRowSelection),
+	)
+	const onSetRowSelection: OnChangeFn<RowSelectionState> = useTableFrame(t => t.onSetRowSelection)
+	const [pageSize, pageIndex] = useTableFrame(
+		ZusUtils.useShallow(t => [t.pageSize, t.pageIndex]),
+	)
+	const onPaginationChange: OnChangeFn<PaginationState> = useTableFrame(t => t.onPaginationChange)
+	const queryInput = useFrameStore(props.frameKey, ZusUtils.useDeep(LayerTablePrt.selectQueryInput))
+	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
 
 	const page = React.useMemo(() => {
 		let _page = layersRes.data
+		if (layersRes.data && layersRes.data.code !== 'ok') return null
 		if (showSelectedLayers && _page) {
-			_page = { ..._page, layers: [..._page.layers] }
-			const returnedIds = new Set(_page.layers.map(layer => layer.id))
-			for (
-				const selectedId of props.selected.slice(
-					pageIndex * pageSize,
-					// no need to bounds-check slice in js
-					(pageIndex * pageSize) + pageSize,
-				)
-			) {
-				if (returnedIds.has(selectedId)) continue
-				const unvalidated = L.toLayer(selectedId)
-				if (L.isKnownLayer(unvalidated)) {
-					// @ts-expect-error idc
-					_page.layers.push(unvalidated)
-				} else {
-					// @ts-expect-error idc
-					_page.layers.push({ ...(unvalidated.partialLayer ?? {}), id: unvalidated.id })
-				}
-			}
-			;(_page.layers as Record<string, any>[]).sort((a: any, b: any) => {
-				if (sort && sort.type === 'random') {
-					// For random sort just shuffle the entries
-					return Math.random() - 0.5
-				} else if (sort && sort.type === 'column') {
-					const column = sort.sortBy
-					const direction = sort.sortDirection === 'ASC' ? 1 : -1
-
-					if (a[column] === b[column]) return 0
-					if (a[column] === null || a[column] === undefined) return direction
-					if (b[column] === null || b[column] === undefined) return -direction
-
-					return a[column] < b[column] ? -direction : direction
-				}
-				// Default sort by insertion time if no sort specified
-				return (insertionTimes.current[a.id] ?? now) - (insertionTimes.current[b.id] ?? now)
+			const layerIdsForPage = selectedLayerIds.slice(pageIndex * pageSize, (pageIndex * pageSize) + pageSize)
+			const selectedLayers = layerIdsForPage.map((id) => {
+				const layer = _page!.layers.find(l => l.id === id)
+				if (layer) return layer
+				return L.toLayer(id)
 			})
+			if (sort) {
+				;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
+					if (sort.type === 'random') {
+						// For random sort just shuffle the entries
+						return Math.random() - 0.5
+					} else if (sort.type === 'column') {
+						const column = sort.sortBy
+						const direction = sort.direction === 'ASC' ? 1 : -1
+
+						if (a[column] === b[column]) return 0
+						if (a[column] === null || a[column] === undefined) return direction
+						if (b[column] === null || b[column] === undefined) return -direction
+
+						return a[column] < b[column] ? -direction : direction
+					} else {
+						assertNever(sort)
+					}
+				})
+			}
+			_page = { ..._page, layers: [..._page.layers] }
 		}
-		return _page
-			? {
+		if (_page) {
+			return {
 				..._page,
-				layers: _page.layers.map((layer): RowData => ({
+				layers: _page.layers?.map((layer): RowData => ({
 					...layer,
 					constraints: { values: layer.constraints, violationDescriptors: layer.violationDescriptors },
 				})),
 			}
-			: undefined
-	}, [layersRes.data, showSelectedLayers, props.selected, pageIndex, pageSize, sort, now])
-
-	React.useLayoutEffect(() => {
-		if (props.editingSingleValue && page?.layers.length === 1 && page.totalCount === 1) {
-			const layer = page.layers[0]
-			if (!props.selected.includes(layer.id)) {
-				props.setSelected([layer.id])
-			}
+		} else {
+			return undefined
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [page, props.editingSingleValue])
+	}, [layersRes.data, showSelectedLayers, selectedLayerIds, pageIndex, pageSize, sort])
 
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
 		React.useCallback((state) => {
-			return props.baseInput ? LQY.resolveTeamParityForCursor(state, props.baseInput) : undefined
-		}, [props.baseInput]),
+			LQY.resolveTeamParityForCursor(state, queryInput)
+		}, [queryInput]),
 	)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(
-			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, queryInput.constraints, sortingState, setSorting) : [],
+			() => cfg ? buildColDefs(cfg, teamParity ?? 0, displayTeamsNormalized, queryInput.constraints, sort, setSort) : [],
 			[
 				cfg,
 				teamParity,
 				displayTeamsNormalized,
 				queryInput.constraints,
-				sortingState,
-				setSorting,
+				sort,
+				setSort,
 			],
 		),
+		defaultColumn: {
+			size: 150,
+			minSize: 50,
+		},
 		pageCount: page?.pageCount ?? -1,
 		state: {
-			sorting: sortingState.map(s => ({ id: s.id, desc: s.desc })),
+			sorting: tanstackSortingState,
 			columnVisibility,
 			rowSelection,
 			pagination: {
@@ -559,7 +440,7 @@ export default function LayerTable(props: {
 			},
 		},
 		getRowId: (row) => row.id,
-		onColumnVisibilityChange: setColumnVisibility as React.Dispatch<React.SetStateAction<VisibilityState>>,
+		onColumnVisibilityChange: onColumnVisibilityChange,
 		onRowSelectionChange: onSetRowSelection,
 		onPaginationChange,
 		getCoreRowModel: getCoreRowModel(),
@@ -576,9 +457,10 @@ export default function LayerTable(props: {
 	const fetchingBuffer = LayerQueriesClient.useFetchingBuffer()
 
 	function getChosenRows(row: Row<L.KnownLayer>) {
-		if (!props.selected.includes(row.original.id)) {
+		if (!getTableFrame().selected.includes(row.original.id)) {
 			return [row.original.id]
 		} else {
+			const rowSelection = LayerTablePrt.selectTanstackRowSelection(getTableFrame())
 			return table
 				.getRowModel()
 				.rows.filter((r) => rowSelection[r.id])
@@ -588,38 +470,36 @@ export default function LayerTable(props: {
 
 	const toggleRandomizeId = React.useId()
 
+	const canFocusLayers = useFrameStore(props.frameKey, s => !!s.onLayerFocused)
+
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center justify-between">
 				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="outline">
-									Toggle Columns
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="w-56 h-[500px] min-h-0 overflow-y-scroll">
-								{table.getAllLeafColumns().map((column) => {
-									return (
-										<DropdownMenuCheckboxItem
-											key={column.id}
-											className="capitalize"
-											checked={column.getIsVisible()}
-											onCheckedChange={(value) => {
-												column.toggleVisibility(!!value)
-											}}
-											onSelect={(e) => {
-												e.preventDefault()
-											}}
-										>
-											{column.id}
-										</DropdownMenuCheckboxItem>
-									)
-								})}
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<ComboBoxMulti
+							title="Column"
+							values={table.getAllLeafColumns().filter(col => col.getIsVisible()).map(col => col.id)}
+							options={table.getAllLeafColumns().map(col => ({
+								value: col.id,
+								label: col.id,
+							}))}
+							onSelect={(updater) => {
+								const newSelectedIds = typeof updater === 'function'
+									? updater(table.getAllLeafColumns().filter(col => col.getIsVisible()).map(col => col.id))
+									: updater
+								table.getAllLeafColumns().forEach(column => {
+									column.toggleVisibility(newSelectedIds.includes(column.id))
+								})
+							}}
+							restrictValueSize={false}
+							reset={defaultVisibleColumns}
+						>
+							<Button variant="ghost" size="icon" title="Toggle Columns">
+								<Icons.Columns3 />
+							</Button>
+						</ComboBoxMulti>
 					)}
 					<Separator orientation="vertical" className="h-full min-h-0" />
 
@@ -640,41 +520,39 @@ export default function LayerTable(props: {
 					<div className="flex items-center space-x-1">
 						<Switch
 							checked={showSelectedLayers}
-							disabled={props.selected.length === 0}
-							onCheckedChange={() => props.selected.length > 0 && setShowSelectedLayers((show) => !show)}
+							disabled={selectedLayerIds.length === 0}
+							onCheckedChange={() =>
+								setShowSelectedLayers((show: boolean) => {
+									if (getTableFrame().selected.length === 0) return false
+									return !show
+								})}
 							id="toggle-show-selected"
 						/>
 						<Label htmlFor="toggle-show-selected">Show Selected</Label>
 					</div>
-					{props.selected.length > 0 && (
-						<>
-							<Button
-								variant="outline"
-								onClick={() => {
-									if (props.resetSelected) props.resetSelected()
-									else props.setSelected([])
-
-									setShowSelectedLayers(false)
-								}}
-							>
-								Reset
-							</Button>
-							{!props.editingSingleValue && (
-								<p className="whitespace-nowrap">
-									{props.selected.length} layers selected
-								</p>
-							)}
-						</>
-					)}
+					<Button
+						variant="ghost"
+						size="icon"
+						disabled={selectedLayerIds.length === 0}
+						onClick={() => {
+							getTableFrame().resetSelected()
+						}}
+						title="Reset Selected Layers"
+					>
+						<Icons.Trash />
+					</Button>
+					<p className="whitespace-nowrap text-muted-foreground">
+						{selectedLayerIds.length} selected
+					</p>
 				</span>
-				<span className="flex h-10 items-center space-x-2">
+				<span className="flex h-10 items-center space-x-2 ">
 					{props.extraPanelItems}
 					<Button
-						onClick={() => refreshSeed()}
+						onClick={() => getTableFrame().randomize()}
 						disabled={layersRes.isFetching}
 						variant="outline"
 						size="icon"
-						data-enabled={randomize}
+						data-enabled={randomized}
 						className="data-[enabled=true]:visible invisible"
 					>
 						<Dices />
@@ -684,7 +562,7 @@ export default function LayerTable(props: {
 							<div className="flex items-center space-x-1">
 								<Switch
 									disabled={showSelectedLayers}
-									checked={randomize}
+									checked={randomized}
 									onCheckedChange={() => toggleRandomize()}
 									id={toggleRandomizeId}
 								/>
@@ -695,60 +573,35 @@ export default function LayerTable(props: {
 							Randomize layer selection (weighted to preferable layers)
 						</TooltipContent>
 					</Tooltip>
-					<Separator orientation="vertical" />
-
-					{/*--------- rows per page ---------*/}
-					{canChangeRowsPerPage && (
-						<div className="flex items-center space-x-2">
-							<p className="text-sm font-medium">Rows per page</p>
-							<Select
-								value={`${table.getState().pagination.pageSize}`}
-								onValueChange={(value) => {
-									table.setPageSize(Number(value))
-								}}
-							>
-								<SelectTrigger className="h-8 w-[70px]">
-									<SelectValue placeholder={table.getState().pagination.pageSize} />
-								</SelectTrigger>
-								<SelectContent side="top">
-									{[10, 20, 30, 40, 50].map((pageSize) => (
-										<SelectItem key={pageSize} value={`${pageSize}`}>
-											{pageSize}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					)}
 				</span>
 			</div>
 			<div>
 				<SetRawLayerDialog
 					ref={rawSetDialogRef}
-					singleOnly={props.editingSingleValue}
+					maxSelectedLayers={maxSelectedLayers}
+					editingSingleValue={editingSingleValue}
 					open={rawSetDialogOpen}
 					setOpen={setRawSetDialogOpen}
-					defaultValue={props.editingSingleValue && props.selected.length === 1
-						? L.getLayerCommand(props.selected[0], 'set-next')
+					defaultValue={editingSingleValue && selectedLayerIds.length === 1
+						? L.getLayerCommand(selectedLayerIds[0], 'set-next')
 						: undefined}
 					onSubmit={layers => {
-						if (props.editingSingleValue) {
-							props.setSelected(layers.slice(layers.length - 1).map(layer => layer.id))
-						} else {
-							props.setSelected(selected => [...selected, ...layers.map(layer => layer.id)])
-						}
-						setShowSelectedLayers(true)
+						getTableFrame().setSelected(layers.map(l => l.id))
 					}}
 				/>
 			</div>
-			<div className="rounded-md border">
+			<div className="rounded-md border min-w-[1000px]">
 				{/*--------- table ---------*/}
 				<Table>
 					<TableHeader>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<TableRow key={headerGroup.id}>
 								{headerGroup.headers.map((header) => (
-									<TableHead className="px-0" key={header.id}>
+									<TableHead
+										className="px-0"
+										key={header.id}
+										style={{ width: header.getSize() }}
+									>
 										{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 									</TableHead>
 								))}
@@ -766,9 +619,15 @@ export default function LayerTable(props: {
 									<ContextMenuTrigger asChild>
 										<TableRow
 											key={row.id}
-											className={getIsRowDisabled(row, userCanForceSelect, props.baseInput?.constraints ?? []) ? disabled : ''}
-											onClick={() => {
-												if (getIsRowDisabled(row, userCanForceSelect, props.baseInput?.constraints ?? [])) return
+											className={getIsRowDisabled(row, userCanForceSelect, queryInput.constraints ?? []) ? disabled : ''}
+											onClick={(e) => {
+												if (e.ctrlKey && e.button === 0) {
+													getStore().onLayerFocused?.(id)
+													return
+												}
+
+												if (getIsRowDisabled(row, userCanForceSelect, queryInput.constraints ?? [])) return
+
 												onSetRowSelection(
 													Im.produce(rowSelection, (draft) => {
 														draft[id] = !draft[id]
@@ -777,7 +636,11 @@ export default function LayerTable(props: {
 											}}
 										>
 											{row.getVisibleCells().map((cell) => (
-												<TableCell className={cell.column.id !== 'constraints' ? 'pl-4' : undefined} key={cell.id}>
+												<TableCell
+													className={cell.column.id === 'select' ? 'pl-4' : undefined}
+													key={cell.id}
+													style={{ width: cell.column.getSize() }}
+												>
 													{flexRender(cell.column.columnDef.cell, cell.getContext())}
 												</TableCell>
 											))}
@@ -785,37 +648,62 @@ export default function LayerTable(props: {
 									</ContextMenuTrigger>
 									<ContextMenuContent>
 										{<LayerContextMenuItems selectedLayerIds={selectedForCopy} />}
+										{canFocusLayers && (
+											<ContextMenuItem onClick={() => getStore().onLayerFocused?.(row.id)}>
+												<span>Focus Layer</span>
+												<ContextMenuShortcut>
+													Ctrl
+													<span>+</span>
+													Click
+												</ContextMenuShortcut>
+											</ContextMenuItem>
+										)}
 									</ContextMenuContent>
 								</ContextMenu>
 							)
 						})}
+						{/* Placeholder rows to prevent layout shift when table is not full */}
+						{Array.from({ length: Math.max(0, pageSize - table.getRowModel().rows.length) }).map((_, index) => (
+							<TableRow key={`placeholder-${index}`} className="pointer-events-none">
+								{table.getVisibleFlatColumns().map((column) => (
+									<TableCell
+										key={column.id}
+										className={column.id === 'select' ? 'pl-4' : undefined}
+										style={{ width: column.getSize() }}
+									>
+										<div style={{ height: '32px' }} />
+									</TableCell>
+								))}
+							</TableRow>
+						))}
 					</TableBody>
 				</Table>
 			</div>
 			{/*--------- pagination controls ---------*/}
-			<div className="flex items-center justify-between space-x-2 py-2">
-				<div className="flex-1  flex items-center space-x-2">
+			<div className="flex items-center justify-between space-x-4 py-2">
+				<div className="flex items-center space-x-2">
 					<div className="text-sm text-muted-foreground">
-						{page
-							&& (showSelectedLayers
-								? `Showing ${firstRowInPage} to ${lastRowInPage} of ${page?.totalCount} selected rows`
-								: randomize
-								? `Showing ${page?.layers?.length} of ${page?.totalCount} randomized rows`
-								: `Showing ${firstRowInPage} to ${lastRowInPage} of ${page?.totalCount} matching rows`)}
+						{page && true && (
+							<>
+								<span className="font-semibold text-foreground">{page?.totalCount?.toLocaleString()}</span> matched layers
+							</>
+						)}
 					</div>
 					<div data-loading={layersRes.isFetching} className="flex items-center space-x-2 invisible data-[loading=true]:visible ">
 						<LoaderCircle className="h-4 w-4 animate-spin" />
 						{fetchingBuffer && <p className={Typo.Muted}>Downloading layers from server, this may take a few minutes...</p>}
 					</div>
 				</div>
-				<div className={'space-x-2 ' + (randomize ? 'invisible' : '')}>
-					<Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage() || randomize}>
-						Previous
-					</Button>
-					<Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage() || randomize}>
-						Next
-					</Button>
-				</div>
+				{(page?.pageCount ?? 0) > 0 && (
+					<TablePagination
+						pageIndex={pageIndex}
+						pageCount={page?.pageCount ?? 0}
+						onPageChange={(newPageIndex) => {
+							table.setPageIndex(newPageIndex)
+						}}
+						disabled={layersRes.isFetching}
+					/>
+				)}
 			</div>
 		</div>
 	)
@@ -827,7 +715,8 @@ type SetRawDialogHandle = Focusable & {
 function SetRawLayerDialog(props: {
 	open: boolean
 	setOpen: (update: (value: boolean) => boolean) => void
-	singleOnly?: boolean
+	maxSelectedLayers?: number | null
+	editingSingleValue: boolean
 	defaultValue?: string
 	onSubmit: (layer: L.UnvalidatedLayer[]) => void
 	ref?: React.ForwardedRef<SetRawDialogHandle>
@@ -899,7 +788,7 @@ function SetRawLayerDialog(props: {
 							<Button
 								variant="ghost"
 								className="h-6 w-6 data-[singleOnly=true]:invisible"
-								data-singleOnly={props.singleOnly}
+								data-singleOnly={props.maxSelectedLayers === 1}
 								size="icon"
 								onClick={() => {
 									setMultiSetLayerDialogOpen(true)
@@ -916,7 +805,7 @@ function SetRawLayerDialog(props: {
 					size="icon"
 					onClick={() => {
 						props.onSubmit([validLayer!])
-						if (!props.singleOnly) inputRef.current!.value = ''
+						if (!props.editingSingleValue) inputRef.current!.value = ''
 						inputRef.current!.focus()
 					}}
 				>

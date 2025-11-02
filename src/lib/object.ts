@@ -1,5 +1,5 @@
 import fastDeepEqual from 'fast-deep-equal/es6'
-import superjson from 'superjson'
+import { current, isDraft } from 'immer'
 import { isNullOrUndef } from './type-guards'
 
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
@@ -12,7 +12,9 @@ export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
 }
 
 export function deepClone<T>(obj: T) {
-	return superjson.parse(superjson.stringify(obj)) as T
+	// Unwrap Immer draft if necessary before cloning
+	const unwrapped = isDraft(obj) ? current(obj) : obj
+	return structuredClone(unwrapped)
 }
 
 export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry, arr: Entry[]) {
@@ -235,3 +237,20 @@ export type StrictUnion<A extends object, B extends object> = A | B extends obje
 	: A | B
 
 export type OptionalKeys<T extends object, Keys extends keyof T> = Omit<T, Keys> & Partial<Pick<T, Keys>>
+
+export function shallowEquals<T extends object>(a: T, b: T): boolean {
+	if (a === b) return true
+	if (!a || !b) return false
+	if (typeof a !== 'object' || typeof b !== 'object') return false
+
+	const keysA = Object.keys(a)
+	const keysB = Object.keys(b)
+
+	if (keysA.length !== keysB.length) return false
+
+	for (const key of keysA) {
+		if (a[key as keyof T] !== b[key as keyof T]) return false
+	}
+
+	return true
+}

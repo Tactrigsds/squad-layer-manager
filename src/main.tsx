@@ -1,3 +1,4 @@
+import * as FilterEditorFrame from '@/frames/filter-editor.frame.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
 import * as FeatureFlags from '@/systems.client/feature-flags.ts'
@@ -167,8 +168,6 @@ AppRoutesClient.route$
 				break
 			}
 		}
-
-		document.title = title
 	})
 
 createRoot(document.getElementById('root')!).render(

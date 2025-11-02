@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import * as LayerFilterMenuCtx from '@/frame-contexts/layer-filter-menu'
+import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
+import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand.ts'
@@ -13,11 +14,13 @@ import { Comparison, ComparisonHandle } from './filter-card'
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
 	const clearAll$Ref = useRefConstructor(() => new Rx.Subject<void>())
-	const fields = SelectLayersFrame.useSelectedSelectLayersState(
+
+	const getState = () => getFrameState(props.frameKey).filterMenu
+
+	const fields = useFrameStore(
 		props.frameKey,
 		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
-	const state = SelectLayersFrame.useSelectLayersState(props.frameKey)
 
 	return (
 		<div className="flex flex-col space-y-2">
@@ -35,7 +38,7 @@ export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key
 				<Button
 					variant="secondary"
 					onClick={() => {
-						state.filterMenu.resetAllFilters()
+						getState().resetAllFilters()
 						clearAll$Ref.current.next()
 					}}
 				>
@@ -53,19 +56,19 @@ function LayerFilterMenuItem(
 		frameKey: SelectLayersFrame.Key
 	},
 ) {
+	const getState = () => getFrameState(props.frameKey).filterMenu
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, queryInput, comp] = SelectLayersFrame.useSelectedSelectLayersState(
+	const [swapFactionsDisabled, queryInput, comp] = useFrameStore(
 		props.frameKey,
 		ZusUtils.useDeep(
 			state =>
 				[
-					LayerFilterMenuCtx.selectSwapFactionsDisabled(state),
+					LayerFilterMenuPrt.selectSwapFactionsDisabled(state),
 					SelectLayersFrame.selectMenuItemQueryInput(state, props.field),
 					state.filterMenu.menuItems[props.field],
 				] as const,
 		),
 	)
-	const state = SelectLayersFrame.useSelectLayersState(props.frameKey)
 
 	React.useEffect(() => {
 		const sub = props.clearAll$.subscribe(() => {
@@ -83,7 +86,7 @@ function LayerFilterMenuItem(
 						title="Swap Factions"
 						disabled={swapFactionsDisabled}
 						onClick={() => {
-							return state.filterMenu.swapTeams()
+							return getState().swapTeams()
 						}}
 						size="icon"
 						variant="outline"
@@ -99,7 +102,7 @@ function LayerFilterMenuItem(
 				highlight={F.editableComparisonHasValue(comp)}
 				comp={comp}
 				setComp={(update) => {
-					return state.filterMenu.setComparison(props.field, update)
+					return getState().setComparison(props.field, update)
 				}}
 				baseQueryInput={queryInput}
 				lockOnSingleOption={true}
@@ -115,7 +118,7 @@ function LayerFilterMenuItem(
 						return
 					}
 
-					state.filterMenu.resetFilter(props.field)
+					getState().resetFilter(props.field)
 					ref.current?.clear(true)
 				}}
 			>

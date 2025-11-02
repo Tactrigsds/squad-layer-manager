@@ -23,3 +23,12 @@ export function hasValues(iterable: Iterable<unknown>): boolean {
 	}
 	return false
 }
+
+export function find<T>(iterable: Iterable<T>, predicate: (item: T) => boolean): T | undefined {
+	for (const item of iterable) {
+		if (predicate(item)) {
+			return item
+		}
+	}
+	return undefined
+}

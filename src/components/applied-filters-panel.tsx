@@ -1,31 +1,24 @@
-import { Button, buttonVariants } from '@/components/ui/button'
-
-import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
+import { useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce.ts'
-import * as FRM from '@/lib/frame.ts'
 import * as Gen from '@/lib/generator.ts'
-import * as Typography from '@/lib/typography.ts'
-import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models.ts'
-import * as LQY from '@/models/layer-queries.models.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
-import { CheckIcon } from '@radix-ui/react-icons'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
-import FilterEntitySelect, { FilterEntityLabel } from './filter-entity-select.tsx'
+import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import { TriState, TriStateCheckbox, TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
+import { TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
 
-export default function ExtraFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
+export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	const extraFilters = Zus.useStore(QD.ExtraFiltersStore, s => s.extraFilters)
@@ -93,11 +86,11 @@ export default function ExtraFiltersPanel(props: { frameKey: SelectLayersFrame.K
 		}
 	}, [checkScrollability, extraFilters])
 
-	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters)
 	const poolFilterIds: F.FilterEntityId[] = Zus.useStore(
 		ServerSettingsClient.Store,
 		ZusUtils.useShallow(s => s.saved.queue.mainPool.filters.map(c => c.filterId)),
 	)
+	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter(id => !poolFilterIds.includes(id))
 
 	const options = Array.from(Gen.map(filterEntities.values(), function*(filter) {
 		if (poolFilterIds.includes(filter.id)) return
@@ -156,7 +149,7 @@ export default function ExtraFiltersPanel(props: { frameKey: SelectLayersFrame.K
 }
 
 function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: SelectLayersFrame.Key }) {
-	const [appliedState, setAppliedFilterState] = SelectLayersFrame.useSelectedSelectLayersState(
+	const [appliedState, setAppliedFilterState] = useFrameStore(
 		frameKey,
 		useShallow(s => [s.appliedFilters.get(filterId)!, s.setAppliedFilterState]),
 	)

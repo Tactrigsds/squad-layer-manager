@@ -1,234 +1,325 @@
+import * as Gen from '@/lib/generator'
+import * as Obj from '@/lib/object'
+import * as ReactUtils from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
-
-import * as Im from 'immer'
-import React from 'react'
-import * as ReactDom from 'react-dom'
+import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { sleep } from './async'
 
-export type GlobalStore<T extends FrameTypes> = Zus.StoreApi<T['globalState']>
-type InstanceKey = NonNullable<any>
+type FrameId = symbol
+export type RawInstanceKey<Props extends { [key: string]: any } = object> = Readonly<{ frameId: FrameId } & Props>
+
+// const KEYRING = Symbol('KEYRING')
+// export function createKeyring<Keys extends { [key: string]: RawInstanceKey }>(keys: Keys) {
+// 	return { ...keys, [KEYRING]: true } satisfies RawKeyring<Keys>
+// }
+// export type RawKeyring<Keys extends { [key: string]: RawInstanceKey } = { [key: string]: RawInstanceKey }> = Keys & { [KEYRING]: true }
+
+export type KeyCollection<FT extends { [key: string]: FrameTypes } = { [key: string]: FrameTypes }> = {
+	[k in keyof FT]: k extends keyof FT ? InstanceKey<FT[k]>
+		: never
+}
+
+export type InstanceKey<T extends FrameTypes> = RawInstanceKey & Readonly<{ _: T }> // for inference
+
+// export type Keyring<Keys extends KeyCollection> = Keys & { [KEYRING]: true }
 
 export const DELETE_PROP = Symbol('DELETE')
 export type DELETE_PROP = typeof DELETE_PROP
-type TeardownState<State extends object> = { [k in keyof State]: State[k] | DELETE_PROP }
-export type FrameTypes<GlobalState extends NonNullable<object> = NonNullable<object>> = {
+export type FrameTypes = {
 	// data that can be used to retrieve a specific instance of the frame
-	key: InstanceKey
+	key: RawInstanceKey
 
-	// superset of key which can initialize an instance of the frame
 	input: NonNullable<object>
+
+	// WIP
+	deps?: KeyCollection
 
 	// The state once the frame has been initialized
 	state: NonNullable<object>
+}
 
-	// the state that's expected to exist regardless of the state of the frame
-	globalState: GlobalState
+type FramesOfKeys<KC extends KeyCollection> = {
+	[k in keyof KC]: KC[k]['_']['deps'] extends KeyCollection ? FramesOfKeys<KC[k]['_']['deps']> : object
+}
 
-	// the state that's expected to exist before the frame is initialized
-	startingState: GlobalState
+type StateWithDeps<T extends FrameTypes> =
+	& T['state']
+	& (T['deps'] extends KeyCollection ? FramesOfKeys<T['deps']>[keyof T['deps']] : object)
+
+export type SetupArgs<
+	I extends FrameTypes['input'] = FrameTypes['input'],
+	State extends FrameTypes['state'] = FrameTypes['state'],
+	Readable extends FrameTypes['state'] = FrameTypes['state'],
+> = {
+	input: I
+	get: ZusUtils.Getter<Readable>
+	set: ZusUtils.Setter<State>
+	//                      current,  prev
+	update$: Rx.Observable<[Readable, Readable]>
+	sub: Rx.Subscription
 }
 
 export type Frame<
 	T extends FrameTypes,
 > = {
-	store: GlobalStore<T>
-
-	exists(state: T['globalState'], key: T['key']): boolean
-	initialStateExists(state: T['globalState'], key: T['key'] | T['input']): boolean
-	setup(key: T['key'], input: T['input'], store: Zus.StoreApi<T['state']>, startingState: T['startingState']): T['state']
-	teardown(state: T['state'], key: T['key'], setter: ZusUtils.Setter<TeardownState<T['state']>>): void
-	keysEqual(key1: T['key'], key2: T['key']): boolean
-
-	// optionally provide the props that this frame is interested in. might help with performance optimizations
-	relevantProps?: keyof T['state']
+	name: string
+	id: FrameId
+	createKey: (frameId: FrameId, input: T['input']) => T['key']
+	setup(args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>): void
+	beforeTeardown?: (state: StateWithDeps<T>) => void
+	canInitialize?: (input: T['input']) => boolean
+	checkInputChanged: typeof Obj.shallowEquals
+	onInputChanged?: (newInput: T['input'], args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>) => void
 }
 
 type FrameOps<T extends FrameTypes> = {
-	store: GlobalStore<T>
-
-	exists: Frame<T>['exists']
-	initialStateExists?: Frame<T>['initialStateExists']
+	name: string
+	createKey: Frame<T>['createKey']
 	setup: Frame<T>['setup']
-	teardown: Frame<T>['teardown']
-	keysEqual: Frame<T>['keysEqual']
+	beforeTeardown?: Frame<T>['beforeTeardown']
+	canInitialize?: Frame<T>['canInitialize']
+
+	checkInputChanged?: Frame<T>['checkInputChanged']
+	onInputChanged?: Frame<T>['onInputChanged']
 }
 
-// selects some arbitrary state from the frame given that it exists
-export type Selector<T extends FrameTypes, Out> = (state: T['state'], key: T['key']) => Out
+export type PartialType<T extends FrameTypes['state']> = FrameTypes & { state: T }
+export type Partial<T extends FrameTypes['state']> = Frame<PartialType<T>>
 
-export function create<Types extends FrameTypes>(
-	opts: FrameOps<Types>,
-) {
-	const initialStateExists = opts.initialStateExists ?? (() => true)
-	return {
-		...opts,
-		initialStateExists,
-	}
+type FrameInstance = {
+	frameId: FrameId
+	refCount: number
+	writeStore: Zus.StoreApi<FrameTypes['state']>
+	readStore: Zus.StoreApi<StateWithDeps<FrameTypes>>
+	get: ZusUtils.Getter<StateWithDeps<FrameTypes>>
+	set: ZusUtils.Setter<FrameTypes>
+	update$: Rx.Subject<any>
+	sub: Rx.Subscription
+	input: FrameTypes['input']
+	deps?: KeyCollection
+	lastUsed: number
 }
 
-export function existingFrameStore<T extends FrameTypes>(
-	frame: Frame<T>,
-	key: T['key'],
-) {
-	if (!frame.exists(frame.store.getState(), key)) throw new Error(`Frame with key ${JSON.stringify(key)} does not exist`)
-	return frame.store
-}
-export function useFrameState<T extends FrameTypes, Out>(
-	frame: Frame<T>,
-	key: T['key'],
-	selector: Selector<T, Out>,
-) {
-	const store = frame.store
-	Zus.useStore(store, (state) => {
-		if (!frame.exists(state, key)) return null
-		return selector(state, key)
+type DirectInstanceKey = RawInstanceKey
+
+export class FrameManager {
+	// there may be multiple keys for the same instance<. the inner key is always a "direct" unexposted reference
+	private keys = new WeakMap<RawInstanceKey, DirectInstanceKey>()
+	// only  direct instance keys in here
+	frameInstances = new Map<DirectInstanceKey, FrameInstance>()
+
+	private frameMap = new Map<symbol, Frame<any>>()
+	private registry = new FinalizationRegistry<DirectInstanceKey>((directKey) => {
+		this.cleanupReference(directKey)
 	})
-}
 
-export function useFrameExists<T extends FrameTypes>(
-	frame: Frame<T>,
-	key: T['key'],
-) {
-	const store = frame.store
-	return Zus.useStore(store, state => frame.exists(state, key))
-}
-
-export function useExistingFrameState<T extends FrameTypes, Out>(
-	frame: Frame<T>,
-	key: T['key'],
-	selector: Selector<T, Out>,
-) {
-	const store = frame.store
-	const [exists, selected] = Zus.useStore(
-		store,
-		ZusUtils.useShallow(state => {
-			const existing = frame.exists(state, key)
-			return [existing, existing ? selector(state, key) : null]
-		}),
-	)
-	if (!exists) {
-		debugger
-		throw new Error(`Frame with key ${JSON.stringify(key)} does not exist`)
-	}
-	return selected as Out
-}
-
-export function useFrameLifecycle<T extends FrameTypes>(
-	frame: Frame<T>,
-	key: T['key'],
-	opts?: {
-		teardownDelay?: number | false
-	},
-) {
-	const [state, _setState] = React.useState(false)
-	const paramsRef = React.useRef({ frame, key, opts })
-
-	React.useEffect(() => {
-		const {
-			frame,
-			key,
-		} = paramsRef.current
-
-		return () => {
-			ensureTeardown(frame, key)
+	cleanupReference(directKey: DirectInstanceKey) {
+		const instance = this.frameInstances.get(directKey)
+		if (!instance) {
+			return
 		}
-	}, [])
+		if (instance.refCount > 1) {
+			instance.refCount--
+			return
+		}
+		this.frameInstances.delete(directKey)
+		instance?.sub.unsubscribe()
+		instance.update$.complete()
+	}
 
-	const buildActions = (input: T['input']) => {
-		const setState: React.Dispatch<React.SetStateAction<boolean>> = (update) => {
-			let newState!: boolean
-			_setState(prevState => {
-				newState = typeof update === 'function' ? update(prevState) : update
-				return newState
-			})
-			if (newState) {
-				ensureSetup(frame, key, input)
-			} else {
-				if (opts?.teardownDelay !== false) {
-					sleep(opts?.teardownDelay ?? 0).then(() => {
-						ensureTeardown(frame, key)
-					})
+	teardown(key: RawInstanceKey) {
+		this.keys.delete(key)
+		this.registry.unregister(key)
+		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
+		if (!entry) return
+		const [directKey, instance] = entry
+		this.frameInstances.delete(directKey)
+		instance?.sub.unsubscribe()
+		instance.update$.complete()
+	}
+
+	createFrame<Types extends FrameTypes>(
+		opts: FrameOps<Types>,
+	) {
+		const id = Symbol(opts.name)
+		const frame: Frame<Types> = {
+			id,
+			canInitialize: opts.canInitialize ?? (() => true),
+			checkInputChanged: Obj.shallowEquals ?? opts.checkInputChanged,
+			...opts,
+		}
+		this.frameMap.set(id, frame)
+		return frame
+	}
+
+	ensureSetup<T extends FrameTypes>(frameIdOrFrame: FrameId | Frame<T>, input: T['input'], depKeys?: T['deps']): InstanceKey<T> {
+		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
+		const frameId = frame?.id ?? frameIdOrFrame as FrameId
+		if (!frame) throw new Error(`Frame ${frameId.toString()} not found`)
+		let depInstances: { [name: string]: FrameInstance } | undefined
+		if (depKeys) {
+			depInstances = {}
+			for (const [name, key] of Object.entries(depKeys)) {
+				const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
+				if (!entry) {
+					throw new Error(`Dependency ${key} not found`)
 				}
-				return null
+				depInstances[name] = entry[1]
 			}
-			return setup(frame, key, input)
+		}
+		const key = frame.createKey(frameId, input)
+		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
+		let directKey: DirectInstanceKey
+		let instance: FrameInstance
+		if (!entry) {
+			if (!frame.canInitialize?.(input)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${input}`)
+			directKey = frame.createKey(frameId, input)
+			const writeStore = Zus.createStore(() => ({}))
+			instance = {
+				frameId,
+				input,
+				refCount: 0,
+				writeStore: writeStore,
+				readStore: undefined!,
+				sub: new Rx.Subscription(),
+				update$: new Rx.Subject(),
+				deps: depKeys,
+				get: undefined!,
+				set: undefined!,
+				lastUsed: Date.now(),
+			}
+
+			if (depKeys) {
+				instance.readStore = ZusUtils.deriveStores((get) => ({
+					...get(this.frameInstances.get(directKey)!.writeStore),
+					...Obj.map(depKeys, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
+				}))
+			} else {
+				instance.readStore = instance.writeStore
+			}
+
+			// instance.update$ = subject.pipe(Rx.tap({ next: () => instance.lastUsed = Date.now() }))
+			instance.sub.add(ZusUtils.toObservable(instance.readStore).subscribe(instance.update$))
+			instance.get = () => this.frameInstances.get(directKey)!.readStore.getState()
+			instance.set = (update) => this.frameInstances.get(directKey)!.writeStore.setState(update)
+			this.frameInstances.set(directKey, instance)
+
+			frame.setup({
+				get: instance.get as any,
+				set: instance.set,
+				input: instance.input,
+				sub: instance.sub,
+				update$: instance.update$,
+			})
+		} else {
+			;[directKey, instance] = entry
+			instance.lastUsed = Date.now()
+			if (frame.onInputChanged && !frame.checkInputChanged(input, instance.input)) {
+				frame.onInputChanged(input, {
+					input: instance.input,
+					get: instance.get as ZusUtils.Getter<StateWithDeps<T>>,
+					set: instance.set as ZusUtils.Setter<T['input']>,
+					sub: instance.sub,
+					update$: instance.update$,
+				})
+			}
+		}
+		this.keys.set(key, directKey)
+		this.registry.register(key, directKey)
+		instance.refCount++
+
+		return key
+	}
+
+	getInstance<T extends FrameTypes>(key: InstanceKey<T>) {
+		const directKey = this.keys.get(key)
+		if (directKey) {
+			const instance = this.frameInstances.get(directKey)
+			if (instance) instance.lastUsed = Date.now()
+			return instance
+		}
+		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
+		if (!entry) return
+		this.keys.set(key, entry[0])
+		this.registry.register(key, entry[0])
+		entry[1].refCount++
+		entry[1].lastUsed = Date.now()
+		return entry[1]
+	}
+
+	getState<T extends FrameTypes>(key: InstanceKey<T>) {
+		const instance = this.getInstance(key)
+		if (!instance) return
+		return instance.readStore.getState() as StateWithDeps<T>
+	}
+}
+
+export function createFrameHelpers(frameManager: FrameManager) {
+	return {
+		useFrameStore,
+		useFrameLifecycle,
+		getFrameState,
+		getFrameReaderStore,
+	}
+
+	function useFrameStore<T extends FrameTypes, O>(key: InstanceKey<T>, selector: (state: StateWithDeps<T>) => O): O {
+		const instance = frameManager.getInstance(key)!
+		return Zus.useStore(instance.readStore, selector as any)
+	}
+
+	// crudely just ensure the frame exists for the given input. for now just relies on FrameManagers GC behavior to clean up unused frames
+	function useFrameLifecycle<T extends FrameTypes>(
+		frameOrId: Frame<T> | FrameId,
+		input: T['input'],
+		deps?: T['deps'],
+		equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>,
+	) {
+		return ReactUtils.useMemo<InstanceKey<T>>(
+			() => {
+				return frameManager.ensureSetup(frameOrId, input, deps)
+			},
+			[frameOrId, input],
+			equalityFn,
+		)
+	}
+
+	function getFrameState<T extends FrameTypes>(key: InstanceKey<T>) {
+		const instance = frameManager.getInstance(key)!
+		return instance.readStore.getState() as StateWithDeps<T>
+	}
+
+	function getFrameReaderStore<T extends FrameTypes>(key: InstanceKey<T>) {
+		const instance = frameManager.getInstance(key)!
+		return instance.readStore as Zus.StoreApi<StateWithDeps<T>>
+	}
+}
+
+// only allows maxSize keys of a given permutation to exist. keys returned have LRU_ID attached, which is 0..maxSize
+export function newLRUKeyCreator<K extends RawInstanceKey, I extends FrameTypes['input']>(
+	manager: FrameManager,
+	maxSize: number,
+	createKeyInner: (frameId: string, input: I) => K = (frameId) => ({ frameId }) as unknown as K,
+): (frameId: string, input: I) => K & { [LRU_ID]: number } {
+	const LRU_ID = Symbol('LRU')
+	return (frameId, input) => {
+		const newInnerKey = createKeyInner(frameId, input)
+		let lastUsedInstance: FrameInstance | undefined
+		let lastUsedId: number = -1
+		let numAllocated = 0
+		for (const [directKey, instance] of manager.frameInstances.entries()) {
+			const { [LRU_ID]: lruId, ...innerKey } = directKey as K & { [LRU_ID]: number }
+			if (!Obj.deepEqual(newInnerKey, innerKey)) continue
+			if (lruId === undefined) continue
+			numAllocated++
+			if (!lastUsedInstance || instance.lastUsed > lastUsedInstance.lastUsed) {
+				lastUsedInstance = instance
+				lastUsedId = lruId
+			}
 		}
 
-		const prefetch = () => {
-			ensureSetup(frame, key, input)
+		if (numAllocated >= maxSize) {
+			return { ...newInnerKey, [LRU_ID]: lastUsedId }
 		}
-
-		return { setState, prefetch }
+		return { ...newInnerKey, [LRU_ID]: numAllocated }
 	}
-
-	return [state, buildActions] as const
-}
-
-// type MappedFrameInstance<T extends FrameTypes> = [T['key'], Frame<T>]
-// export function useFrameSelect<Mapping extends Record<string, FrameTypes>>(
-// 	store: GlobalStore<Mapping[keyof Mapping]>,
-// 	mapping: { [k in keyof Mapping]: [Mapping[k]['key'], Frame<Mapping[k]>] },
-// ) {
-// 	const [active, _setActive] = React.useState<keyof Mapping | null>(null)
-
-// 	const setActive<K extends (keyof Mapping)|null>(mappingKey: K, input: K extends keyof Mapping ? Mapping[K]['input'] : null) => {
-// 		if (mappingKey === null && active == null) return null
-// 		if (active) {
-// 			const [key, frame] = mapping[active]
-// 			teardown(store, frame, key)
-// 			return null
-// 		}
-// 		if (mappingKey !== null && input !== null) {
-//   		const [key,frame] = mapping[mappingKey]
-//   		return setup(store, frame, key, input)
-// 		}
-// 	}
-
-// 	return [active,setActive] as const
-// }
-
-export function setup<T extends FrameTypes>(frame: Frame<T>, key: T['key'], input: T['input']) {
-	const store = frame.store
-	console.debug('setup', key)
-	const globalState = store.getState()
-	if (!frame.initialStateExists(globalState, input)) {
-		debugger
-		throw new Error(`Starting State for frame with key ${JSON.stringify(key)} does not exist on setup`)
-	}
-	return frame.setup(key, input, store, globalState)
-}
-
-export function ensureSetup<T extends FrameTypes>(frame: Frame<T>, key: T['key'], input: T['input']) {
-	const store = frame.store
-	const globalState = store.getState()
-	if (!frame.initialStateExists(globalState, input)) {
-		debugger
-		throw new Error(`Starting State for frame with key ${JSON.stringify(key)} does not exist on setup`)
-	}
-	if (frame.exists(globalState, key)) {
-		return null
-	}
-	return frame.setup(key, input, store, globalState)
-}
-
-export function teardown<T extends FrameTypes>(frame: Frame<T>, key: T['key']) {
-	console.debug('teardown', key)
-	const store = frame.store
-	const globalState = store.getState()
-	if (!frame.exists(globalState, key)) {
-		debugger
-		throw new Error(`Frame with key ${JSON.stringify(key)} does not exist on teardown`)
-	}
-
-	frame.teardown(globalState, key, (update) => store.setState(update))
-}
-
-export function ensureTeardown<T extends FrameTypes>(frame: Frame<T>, key: T['key']) {
-	const store = frame.store
-	const globalState = store.getState()
-	if (!frame.exists(globalState, key)) {
-		return
-	}
-	frame.teardown(globalState, key, (update) => store.setState(update))
 }

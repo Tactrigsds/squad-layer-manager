@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Arr from '@/lib/array'
+import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
@@ -94,9 +95,12 @@ export function useLayersQuery(
 	options = options ? { ...options } : {}
 	options.enabled = options.enabled ?? true
 	const counters = Zus.useStore(Store, s => s.counters)
-	const baseQuery = getQueryLayersBase(input, counters)
+	const baseQuery = getQueryLayersOptions(input, counters)
 	const baseQueryFn = baseQuery.queryFn
 	const queryFn = async () => {
+		if (input.sort?.type === 'random' && !input.sort.seed) {
+			throw new Error('Random sort requires a random seed when used with react query')
+		}
 		const res = await baseQueryFn()
 		if (res?.code === 'err:invalid-node') {
 			options?.errorStore?.setState({ errors: res.errors })
@@ -115,7 +119,7 @@ export function useLayersQuery(
 	})
 }
 
-export function getQueryLayersBase(input: LQY.LayersQueryInput, counters: LayerCtxModifiedCounters) {
+export function getQueryLayersOptions(input: LQY.LayersQueryInput, counters: LayerCtxModifiedCounters) {
 	return {
 		queryKey: ['layers', 'queryLayers', getDepKey(input, counters)],
 		queryFn: async () => {
@@ -130,9 +134,9 @@ export function getQueryLayersBase(input: LQY.LayersQueryInput, counters: LayerC
 }
 
 export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput) {
-	const cfg = await ConfigClient.fetchEffectiveConfig()
+	const cfg = await ConfigClient.fetchEffectiveColConfig()
 	const input = getQueryLayersInput(baseInput, { cfg })
-	const baseQuery = getQueryLayersBase(input, Store.getState().counters)
+	const baseQuery = getQueryLayersOptions(input, Store.getState().counters)
 	return await queryClient.prefetchQuery(
 		baseQuery,
 	)

@@ -1,3 +1,4 @@
+import * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders'
@@ -24,14 +25,17 @@ export type Store = {
 	filterMenu: FilterMenuStore
 }
 
+type Input = {
+	colConfig: LQY.EffectiveColumnAndTableConfig
+	defaultFields?: Partial<L.KnownLayer>
+}
+type Args = FRM.SetupArgs<Input, Store, Store>
+
 export function initLayerFilterMenuStore(
-	get: ZusUtils.Getter<Store>,
-	set: ZusUtils.Setter<Store>,
-	colConfig: LQY.EffectiveColumnAndTableConfig,
-	defaultFields: Partial<L.KnownLayer> = {},
+	args: Args,
 ) {
-	const emptyItems = getDefaultFilterMenuItemState({}, colConfig)
-	const defaultItems = getDefaultFilterMenuItemState(defaultFields, colConfig)
+	const emptyItems = getDefaultFilterMenuItemState({}, args.input.colConfig)
+	const defaultItems = getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
 	const filter = getFilterFromComparisons(defaultItems)
 	const siblingFilters = getSiblingFiltersForMenuItems(defaultItems)
 
@@ -43,7 +47,7 @@ export function initLayerFilterMenuStore(
 
 		setMenuItems: (update) => {
 			let updated: Record<keyof L.KnownLayer | string, F.EditableComparison>
-			const state = get()
+			const state = args.get()
 			if (typeof update === 'function') {
 				updated = update(state.filterMenu.menuItems)
 			} else {
@@ -53,7 +57,7 @@ export function initLayerFilterMenuStore(
 			const filter = getFilterFromComparisons(updated)
 			const siblingFilters = getSiblingFiltersForMenuItems(updated)
 
-			set(state => ({
+			args.set(state => ({
 				filterMenu: {
 					...state.filterMenu,
 					menuItems: updated,
@@ -140,10 +144,10 @@ export function initLayerFilterMenuStore(
 		},
 	}
 
-	set({ filterMenu: state })
+	args.set({ filterMenu: state })
 }
 
-function getDefaultFilterMenuItemState(
+export function getDefaultFilterMenuItemState(
 	defaultFields: Partial<L.KnownLayer>,
 	config?: LQY.EffectiveColumnAndTableConfig,
 ): Record<keyof L.KnownLayer | string, F.EditableComparison> {

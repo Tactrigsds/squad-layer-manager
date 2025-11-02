@@ -143,30 +143,15 @@ function NormTeamsSwitch() {
 	)
 }
 
-const ADD_LAYERS_BUTTON_KEY = SelectLayersFrame.createKey('add-layers-button')
 function QueueControlPanel() {
 	type AddLayersPosition = 'next' | 'after'
-	const [addLayersOpen, buildAddLayersOpenActions] = FRM.useFrameLifecycle(SelectLayersFrame.frame, ADD_LAYERS_BUTTON_KEY)
-	const [addLayersPosition, _setAddLayersPosition] = React.useState<AddLayersPosition>('next')
-	const colConfig = ConfigClient.useEffectiveColConfig()
+	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
+	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
+	const listLength = Zus.useStore(SLLClient.Store, useShallow(s => s.layerList.length))
 	const queryCursors = {
 		next: LQY.getQueryCursorForQueueIndex(0),
-		after: LQY.getQueryCursorForQueueIndex(SLLClient.Store.getState().layerList.length),
-	} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
-	const selectLayersInput: SelectLayersFrame.Types['input'] = {
-		colConfig: colConfig!,
-		cursor: queryCursors[addLayersPosition],
-	}
-	const addLayersActions = buildAddLayersOpenActions(selectLayersInput)
-
-	function setAddLayersPosition(position: AddLayersPosition) {
-		const queryCursors = {
-			next: LQY.getQueryCursorForQueueIndex(0),
-			after: LQY.getQueryCursorForQueueIndex(SLLClient.Store.getState().layerList.length),
-		} satisfies Record<AddLayersPosition, LQY.LayerQueryCursor | undefined>
-		SelectLayersFrame.getState(ADD_LAYERS_BUTTON_KEY).setCursor(queryCursors[position])
-		_setAddLayersPosition(position)
-	}
+		after: LQY.getQueryCursorForQueueIndex(listLength),
+	} satisfies Record<AddLayersPosition, LQY.Cursor | undefined>
 
 	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
 
@@ -258,10 +243,10 @@ function QueueControlPanel() {
 				footerAdditions={addLayersTabslist}
 				selectQueueItems={addItems}
 				open={addLayersOpen}
-				onOpenChange={addLayersActions.setState}
-				frameKey={ADD_LAYERS_BUTTON_KEY}
+				onOpenChange={setAddLayersOpen}
+				cursor={queryCursors[addLayersPosition]}
 			>
-				<Button onMouseEnter={addLayersActions.prefetch} className="flex w-min items-center space-x-0">
+				<Button className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />
 					<span>Add Layers</span>
 				</Button>

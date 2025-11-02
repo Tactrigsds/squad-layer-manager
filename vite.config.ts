@@ -1,3 +1,4 @@
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,6 +15,9 @@ const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
+		// tanstackRouter({
+		// 	target: 'react',
+		// }),
 		ViteEjsPlugin({
 			REACT_SCAN_ENABLED_OVERRIDE: ENV.REACT_SCAN_ENABLED_OVERRIDE,
 			NODE_ENV: ENV.NODE_ENV,

@@ -88,7 +88,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						</Button>
 					)}
 			</PopoverTrigger>
-			<PopoverContent className="w-[200px] p-0">
+			<PopoverContent align="start" className="w-[200px] p-0">
 				<Command shouldFilter={!props.setInputValue}>
 					<CommandInput ref={inputRef} placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>

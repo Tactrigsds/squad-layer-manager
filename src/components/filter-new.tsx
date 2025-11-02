@@ -1,21 +1,20 @@
 import * as AR from '@/app-routes.ts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
+import * as ARClient from '@/systems.client/app-routes.client'
 import { useFilterCreate } from '@/systems.client/filter-entity.client.ts'
 import { invalidateLoggedInUser } from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
-import { useState } from 'react'
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
@@ -26,11 +25,19 @@ import { Textarea } from './ui/textarea'
 
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
-export default function FilterNew() {
+export default function FilterNewWrapper() {
+	const route = ARClient.assertActiveRoute('/filters/new')
+	const frameInputRef = React.useRef(EditFrame.createInput({ startingFilter: DEFAULT_FILTER }))
+	const frameKey = useFrameLifecycle(EditFrame.frame, frameInputRef.current, undefined, Obj.deepEqual)
+
+	return <FilterNew frameKey={frameKey} />
+}
+
+function FilterNew(props: { frameKey: EditFrame.Key }) {
 	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()
-	const nodeStore = F.useEditableFilterNodeStore(DEFAULT_FILTER)
+
 	const form = Form.useForm({
 		defaultValues: {
 			id: '',
@@ -41,7 +48,7 @@ export default function FilterNew() {
 		},
 		onSubmit: async ({ value }) => {
 			const description = value.description?.trim() || null
-			const state = nodeStore.getState()
+			const state = getFrameState(props.frameKey)
 
 			if (!state.validatedFilter) {
 				toast({ title: 'Invalid filter', description: 'Please check filter configuration' })
@@ -69,10 +76,7 @@ export default function FilterNew() {
 		},
 	})
 
-	const [pageIndex, setPageIndex] = useState(0)
-
-	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
-	const [isValidFilter, validatedFilter] = Zus.useStore(nodeStore, useShallow(s => [s.isValid, s.validatedFilter]))
+	const isValidFilter = useFrameStore(props.frameKey, s => s.valid)
 
 	const submitBtn = React.useMemo(() => (
 		<form.Subscribe>
@@ -85,12 +89,10 @@ export default function FilterNew() {
 	), [form, isValidFilter])
 
 	const filterCard = React.useMemo(() => (
-		<FilterCard
-			store={nodeStore}
-		>
+		<FilterCard frameKey={props.frameKey}>
 			{submitBtn}
 		</FilterCard>
-	), [nodeStore, submitBtn])
+	), [props.frameKey, submitBtn])
 
 	return (
 		<div className="container mx-auto py-10">
@@ -232,16 +234,9 @@ export default function FilterNew() {
 					}}
 				</form.Field>
 			</div>
-			<FilterValidationErrorDisplay store={nodeStore} />
+			<FilterValidationErrorDisplay frameKey={props.frameKey} />
 			{filterCard}
-			<LayerTable
-				selected={selectedLayers}
-				setSelected={setSelectedLayers}
-				errorStore={nodeStore}
-				baseInput={{ constraints: validatedFilter ? [CB.filterAnon('filter-new', validatedFilter)] : undefined }}
-				pageIndex={pageIndex}
-				setPageIndex={setPageIndex}
-			/>
+			<LayerTable frameKey={props.frameKey} />
 		</div>
 	)
 }

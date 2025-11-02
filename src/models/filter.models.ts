@@ -1,18 +1,11 @@
 // TODO rats nest from manic debugging, need to straighten out naming conventions & break out some modules
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
-import * as MapUtils from '@/lib/map'
-import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
-import * as EFB from '@/models/editable-filter-builders'
 import { type SQL } from 'drizzle-orm'
-import * as Im from 'immer'
-import * as React from 'react'
 import { z } from 'zod'
-import * as Zus from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import * as LC from './layer-columns'
 
 export type ComparisonType = {
@@ -491,7 +484,7 @@ export type NodeValidationError =
 
 export type NodeValidationErrorStore = {
 	errors?: NodeValidationError[]
-	setErrors: (errors: NodeValidationError[]) => void
+	setErrors: (errors: NodeValidationError[] | undefined) => void
 }
 
 export function buildNodePath(parent: Sparse.NodePath, childIndex: number) {
@@ -550,7 +543,7 @@ export function nextChildIndex(tree: FilterNodeTree, parentPath: Sparse.NodePath
 	return last + 1
 }
 
-function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
+export function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
 	if (isEditableBlockNode(node)) {
 		const { children: _c, _id, ...shallowNode } = node as any
 		return shallowNode
@@ -558,7 +551,7 @@ function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
 	return node
 }
 function upsertTreeInPlaceFromSparse(
-	sparseTree: SparseTree,
+	sparseTree: Sparse.SparseNode,
 	basePath: Sparse.NodePath = [],
 	tree?: Partial<FilterNodeTree>,
 ) {
@@ -589,7 +582,7 @@ function upsertTreeInPlaceFromSparse(
 	return tree
 }
 
-function upsertFilterNodeTreeInPlace(
+export function upsertFilterNodeTreeInPlace(
 	filter: EditableFilterNode,
 	baseFilterPath?: Sparse.NodePath,
 	tree?: FilterNodeTree,
@@ -625,7 +618,7 @@ function upsertFilterNodeTreeInPlace(
 	return tree
 }
 
-function resolveImmediateChildren(tree: FilterNodeTree, id: string): string[] {
+export function resolveImmediateChildren(tree: FilterNodeTree, id: string): string[] {
 	const targetPath = tree.paths.get(id)
 	if (!targetPath) return []
 	const children: string[] = []
@@ -693,7 +686,6 @@ export function toBreadthFirstTreePathEntries(paths: Map<string, Sparse.NodePath
 	})
 	return pathsArr
 }
-type SparseTree = { id: string; children?: SparseTree[] }
 
 export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
 	if (Sparse.isChildPath(sourcePath, targetPath)) {
@@ -714,302 +706,6 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	let sparseTree = treeToSparseTree(tree, parentPath)
 	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
 	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
-}
-
-export type FilterEditStore =
-	& {
-		tree: FilterNodeTree
-		getIdForPath: (path: Sparse.NodePath) => string | undefined
-		validatedFilter: FilterNode | null
-		editedFilterId?: string
-		isValid: boolean
-		startingFilter: EditableFilterNode
-		moveNode(sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath): void
-		updateRoot(filter: EditableFilterNode): void
-		updateNode(id: string, cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void): void
-		deleteNode(id: string): void
-		addChild(parentId: string, type: NodeType): void
-		reset(filter?: EditableFilterNode): void
-		modified: boolean
-	}
-	& NodeValidationErrorStore
-	& NodeMap.NodeMapStore
-
-type FilterEditStoreViewCommonActions = {
-	delete(): void
-	setNegation(negative: boolean): void
-}
-
-type ViewActionsOfType<T extends NodeType> = Extract<FilterEditStoreViewActions, { type: T }>
-type FilterEditStoreViewActions =
-	& FilterEditStoreViewCommonActions
-	& (
-		| {
-			type: BlockType
-			setBlockType: (type: BlockType) => void
-			addChild: (type: NodeType) => void
-		}
-		| {
-			type: 'comp'
-			setComp: React.Dispatch<React.SetStateAction<EditableComparison>>
-		}
-		| {
-			type: 'apply-filter'
-			setFilterId: (filterId: FilterEntityId) => void
-		}
-		| {
-			type: 'allow-matchups'
-			setMasks: React.Dispatch<React.SetStateAction<FactionMask[][]>>
-			setMode: React.Dispatch<React.SetStateAction<FactionMaskMode>>
-		}
-	)
-
-export type FilterEditStoreView<T extends NodeType = NodeType> = ShallowEditableFilterNodeOfType<T> & ViewActionsOfType<T>
-
-export function useEditableFilterNodeStore(startingFilter: EditableFilterNode) {
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const [store, subHandle] = React.useMemo(() => createEditableFilterNodeStore(startingFilter), [])
-	React.useEffect(() => {
-		const subscription = subHandle.subscribe()
-		return () => subscription.unsubscribe()
-	}, [subHandle])
-	React.useEffect(() => {
-		const state = store.getState()
-		if (state.startingFilter !== startingFilter) state.reset(startingFilter)
-	}, [store, startingFilter])
-	return store
-}
-
-function createEditableFilterNodeStore(startingFilter: EditableFilterNode, filterEntityId?: string) {
-	const store = Zus.createStore<FilterEditStore>((set, get, store) => {
-		const validatedFilter = isValidFilterNode(startingFilter) ? startingFilter : null
-
-		return {
-			startingFilter,
-			validatedFilter,
-			tree: upsertFilterNodeTreeInPlace(startingFilter),
-			isValid: !!validatedFilter,
-			getIdForPath(path) {
-				return MapUtils.revLookup(get().tree.paths, path, Sparse.serializeNodePath)
-			},
-			moveNode(sourcePath, targetPath) {
-				set(state => {
-					const tree = Obj.deepClone(state.tree)
-					moveTreeNodeInPlace(tree, sourcePath, targetPath)
-					return ({ tree })
-				})
-			},
-			updateRoot(filter) {
-				set({ tree: upsertFilterNodeTreeInPlace(filter) })
-			},
-			updateNode(id, update) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						update(draft.nodes.get(id)!)
-					}),
-				})
-			},
-			deleteNode(id) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						deleteTreeNode(draft, id)
-					}),
-				})
-			},
-			addChild(parentId, type) {
-				set({
-					tree: Im.produce(get().tree, draft => {
-						const node: ShallowEditableFilterNode = toShallowNode(EFB.nodeOfType(type))
-						const id = createId(4)
-						const parentPath = draft.paths.get(parentId)!
-						let last: number = -1
-						for (const path of draft.paths.values()) {
-							if (!Sparse.isChildPath(parentPath, path)) continue
-							last = Math.max(last, path[parentPath.length])
-						}
-
-						const newPath = [...parentPath, last + 1]
-						draft.paths.set(id, newPath)
-						draft.nodes.set(id, node)
-					}),
-				})
-			},
-			reset(filter?: EditableFilterNode) {
-				filter ??= this.startingFilter
-				set({
-					startingFilter: filter,
-					tree: upsertFilterNodeTreeInPlace(filter),
-				})
-			},
-
-			// these are for errors returned from server-side validation from running queries
-			errors: [],
-			setErrors(errors) {
-				set({ errors })
-			},
-			editedFilterId: filterEntityId,
-			modified: false,
-
-			...NodeMap.initNodeMap(store),
-		} satisfies FilterEditStore
-	})
-	const subHandle: { subscribe: () => { unsubscribe: () => void } } = {
-		subscribe: () => {
-			const unsubscribe = store.subscribe((state, prev) => {
-				if (state.tree !== prev.tree) {
-					const filter = treeToFilterNode(state.tree)
-					const validatedFilter = isValidFilterNode(filter) ? filter : null
-					store.setState({
-						validatedFilter,
-						isValid: !!validatedFilter,
-						modified: !Obj.deepEqual(state.startingFilter, filter),
-					})
-				}
-
-				if (state.startingFilter !== prev.startingFilter) {
-					store.setState({
-						modified: !Obj.deepEqual(state.startingFilter, prev.startingFilter),
-						tree: upsertFilterNodeTreeInPlace(state.startingFilter, []),
-					})
-				}
-			})
-			return { unsubscribe }
-		},
-	}
-	return [store, subHandle] as const
-}
-
-export function useNodePath(id: string | undefined, rootStore: Zus.StoreApi<FilterEditStore>) {
-	return Zus.useStore(rootStore, useShallow((s) => id ? s.tree.paths.get(id) : undefined))
-}
-
-export function useImmediateChildren(id: string, store: Zus.StoreApi<FilterEditStore>) {
-	return Zus.useStore(store, useShallow(s => resolveImmediateChildren(s.tree, id)))
-}
-
-export function useEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditStore>) {
-	const [store, subHandle] = React.useMemo(() => deriveEditStoreView(id, rootStore), [id, rootStore])
-	React.useEffect(() => {
-		const sub = subHandle.subscribe()
-		return () => sub.unsubscribe()
-	}, [subHandle])
-	return Zus.useStore(store)
-}
-
-export function deriveEditStoreView(id: string, rootStore: Zus.StoreApi<FilterEditStore>) {
-	const updateNode: UpdateNodeFn = (cb) => rootStore.getState().updateNode(id, (draft) => cb(draft))
-	const deleteNode = () => rootStore.getState().deleteNode(id)
-	const addChild = (type: NodeType) => {
-		rootStore.getState().addChild(id, type)
-	}
-
-	const viewStore = Zus.createStore<FilterEditStoreView>(() => {
-		const node = rootStore.getState().tree.nodes.get(id)!
-		const actions = getViewActions(node.type, updateNode, deleteNode, addChild)
-		return { ...node, ...actions } as FilterEditStoreView
-	})
-
-	const subscription: { subscribe: () => { unsubscribe: () => void } } = {
-		subscribe: () => {
-			const unsubscribe = rootStore.subscribe(
-				(rootState, prevRootState) => {
-					const node = rootState.tree.nodes.get(id)
-					const prevNode = prevRootState.tree.nodes.get(id)
-					if (!node || !prevNode) return
-					if (node == prevNode) return
-					if (node.type !== prevNode.type) {
-						viewStore.setState({
-							...getViewActions(node.type, updateNode, deleteNode, addChild),
-						})
-					}
-
-					viewStore.setState({ ...node })
-				},
-			)
-			return { unsubscribe }
-		},
-	}
-	return [viewStore, subscription] as const
-}
-
-type UpdateNodeFn = (cb: (draft: Im.Draft<ShallowEditableFilterNode>) => void) => void
-function getViewActions<T extends NodeType>(
-	type: T,
-	updateNode: UpdateNodeFn,
-	deleteNode: () => void,
-	addChild: (type: NodeType) => void,
-): FilterEditStoreViewActions {
-	const common: FilterEditStoreViewCommonActions = {
-		delete() {
-			deleteNode()
-		},
-		setNegation(neg: boolean) {
-			updateNode(draft => {
-				draft.neg = neg
-			})
-		},
-	}
-	let actions: FilterEditStoreViewActions
-
-	if (isBlockType(type)) {
-		actions = {
-			...common,
-			type,
-			setBlockType(type) {
-				updateNode(draft => {
-					draft.type = type
-				})
-			},
-			addChild,
-		}
-	}
-
-	if (type === 'comp') {
-		actions = {
-			...common,
-			type,
-			setComp(update) {
-				updateNode(draft => {
-					if (draft.type !== 'comp') return
-					draft.comp = typeof update === 'function' ? update(draft.comp) : update
-				})
-			},
-		}
-	}
-
-	if (type === 'apply-filter') {
-		actions = {
-			...common,
-			type,
-			setFilterId(id) {
-				updateNode(draft => {
-					if (draft.type !== 'apply-filter') return
-					draft.filterId = id
-				})
-			},
-		}
-	}
-
-	if (type === 'allow-matchups') {
-		actions = {
-			...common,
-			type,
-			setMasks(update) {
-				updateNode(draft => {
-					if (draft.type !== 'allow-matchups') return
-					draft.allowMatchups.allMasks = typeof update === 'function' ? update(draft.allowMatchups.allMasks) : update
-				})
-			},
-			setMode(update) {
-				updateNode(draft => {
-					if (draft.type !== 'allow-matchups') return
-					draft.allowMatchups.mode = typeof update === 'function' ? update(draft.allowMatchups.mode ?? 'either') : update
-				})
-			},
-		}
-	}
-
-	return actions!
 }
 
 export function areFilterNodesLocallyEqual(a: EditableFilterNode, b: EditableFilterNode): boolean {

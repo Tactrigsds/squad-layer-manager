@@ -20,11 +20,11 @@ const Checkbox = React.forwardRef<
 			else props.onCheckedChange?.(checked)
 		}}
 	>
-		<CheckboxPrimitive.Indicator className={cn('flex items-center justify-center text-current')}>
+		<CheckboxPrimitive.Indicator className={cn('flex items-center justify-center text-current absolute inset-0')}>
 			<CheckIcon className="h-4 w-4" />
 		</CheckboxPrimitive.Indicator>
-		{/* hacky way to make sure the size of this component doesn't shift around */}
-		{!props.checked && <CheckIcon data-checked={props.checked} className="h-4 w-4 invisible" />}
+		{/* Invisible placeholder to prevent layout shift when checkbox state changes */}
+		<CheckIcon className="h-4 w-4 invisible" aria-hidden="true" />
 	</CheckboxPrimitive.Root>
 ))
 Checkbox.displayName = CheckboxPrimitive.Root.displayName

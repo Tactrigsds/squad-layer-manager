@@ -2,8 +2,13 @@ import * as AR from '@/app-routes.ts'
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
+import { sleep } from '@/lib/async'
 import { useNavigateAlert } from '@/lib/browser'
+import * as FRM from '@/lib/frame'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -13,7 +18,8 @@ import * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
-import * as AppRoutesClient from '@/systems.client/app-routes.client'
+import * as ARClient from '@/systems.client/app-routes.client'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
@@ -25,7 +31,6 @@ import React from 'react'
 import Markdown from 'react-markdown'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
-import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -43,8 +48,8 @@ import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
 export default function FilterWrapper() {
-	// could also be /filters/new, in which case we're creating a new filter and id is undefined
-	const editParams = AppRoutesClient.useAppParams('/filters/:id')
+	const route = ARClient.assertActiveRoute('/filters/:id')
+	const editParams = ARClient.useAppParams(route)
 	const { toast } = useToast()
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const navigate = useNavigate()
@@ -80,7 +85,6 @@ export default function FilterWrapper() {
 	const userRes = UsersClient.useUser(filterEntity?.owner)
 	const filterContributorRes = useQuery(FilterEntityClient.getFilterContributorsBase(editParams.id))
 
-	// TODO handle not found
 	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
 		return <FullPageSpinner />
 	}
@@ -95,13 +99,22 @@ export default function FilterWrapper() {
 	return <FilterEdit entity={filterEntity} contributors={filterContributorRes.data} owner={owner} />
 }
 
-export function FilterEdit(props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User }) {
+export function FilterEdit(
+	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User },
+) {
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const { toast } = useToast()
+	const frameInputRef = React.useRef(EditFrame.createInput({ editedFilterId: props.entity.id, startingFilter: props.entity.filter }))
+	const frameKey = useFrameLifecycle(
+		EditFrame.frame,
+		frameInputRef.current,
+		undefined,
+		Obj.deepEqual,
+	)
+	const frameState = () => getFrameState(frameKey)
+	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => useFrameStore(frameKey, selector)
 
 	const navigate = useNavigate()
-
-	const nodeStore = F.useEditableFilterNodeStore(props.entity.filter)
 
 	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
@@ -121,7 +134,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				...value,
 				description,
 				emoji: value.emoji ?? null,
-				filter: nodeStore.getState().validatedFilter ?? undefined,
+				filter: frameState().validatedFilter ?? undefined,
 			}])
 			switch (res.code) {
 				case 'err:permission-denied':
@@ -145,9 +158,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		},
 	})
 
-	const [pageIndex, setPageIndex] = useState(0)
-
-	const [selectedLayers, setSelectedLayers] = React.useState([] as L.LayerId[])
 	const loggedInUser = UsersClient.useLoggedInUser()
 
 	const onDelete = React.useCallback(async () => {
@@ -206,18 +216,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 		return 'none'
 	})()
 
-	const [validFilter, modifiedFilter] = Zus.useStore(
-		nodeStore,
-		useShallow((state) => [state.validatedFilter, state.modified]),
+	const [filterValid, filterModified] = useFrame(
+		useShallow((state) => [state.valid, state.modified]),
 	)
 
-	const queryContext: LQY.BaseQueryInput | undefined = React.useMemo(() =>
-		validFilter
-			? LQY.getEditFilterPageInput(validFilter)
-			: undefined, [validFilter])
-
 	const isDirty = Form.useStore(form.store, s => s.isDirty)
-	useNavigateAlert(modifiedFilter || isDirty)
+	useNavigateAlert(filterModified || isDirty)
 
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
@@ -225,14 +229,14 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 				return (
 					<Button
 						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || !validFilter || (!modifiedFilter && !isDirty) || loggedInUserRole == 'none'}
+						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || loggedInUserRole == 'none'}
 					>
 						Save
 					</Button>
 				)
 			}}
 		</form.Subscribe>
-	), [form, validFilter, modifiedFilter, loggedInUserRole])
+	), [form, filterValid, filterModified, loggedInUserRole])
 
 	const deleteBtn = React.useMemo(() => (
 		<DeleteFilterDialog onDelete={onDelete}>
@@ -242,12 +246,14 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 
 	const filterCard = React.useMemo(() => (
 		<FilterCard
-			store={nodeStore}
+			frameKey={frameKey}
 		>
 			{saveBtn}
 			{deleteBtn}
 		</FilterCard>
-	), [nodeStore, deleteBtn, saveBtn])
+	), [frameKey, deleteBtn, saveBtn])
+
+	const _nodeMapStore = useFrame((s) => s.nodeMapStore)
 
 	return (
 		<div className="container mx-auto pt-2">
@@ -425,17 +431,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; contributors: { user
 						</div>
 					)}
 			</div>
-			<FilterValidationErrorDisplay store={nodeStore} />
+			<FilterValidationErrorDisplay frameKey={frameKey} />
 			<div className="mt-2 flex space-x-2">
 				{filterCard}
 			</div>
 			<LayerTable
-				selected={selectedLayers}
-				setSelected={setSelectedLayers}
-				baseInput={queryContext}
-				pageIndex={pageIndex}
-				setPageIndex={setPageIndex}
-				errorStore={nodeStore}
+				frameKey={frameKey}
 			/>
 		</div>
 	)

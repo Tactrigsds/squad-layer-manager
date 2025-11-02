@@ -88,7 +88,6 @@ export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
 	return (
 		<Link
 			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-			{...FilterEntityClient.filterEditPrefetch(props.filterId)}
 			to={AR.link('/filters/:id', props.filterId)}
 		>
 			<Icons.Edit />

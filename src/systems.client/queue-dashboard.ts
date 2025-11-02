@@ -98,17 +98,21 @@ export function setup() {
 
 export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, get, store) => {
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
-	if (extraFilters.size === 0) {
-		;(async () => {
-			const config = await ConfigClient.fetchConfig()
-			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
-			if (!config.layerTable.defaultExtraFilters) return
+	;(async () => {
+		const config = await ConfigClient.fetchConfig()
+		const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
 
-			set({
-				extraFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
-			})
-		})()
-	}
+		set(state => ({
+			...state,
+			extraFilters: new Set(Gen.filter(state.extraFilters.values(), f => filterEntities.has(f))),
+		}))
+
+		if (!config.layerTable.defaultExtraFilters) return
+
+		set({
+			extraFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
+		})
+	})()
 
 	store.subscribe((state, prev) => {
 		const extraFilters = Array.from(state.extraFilters)
@@ -121,11 +125,9 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 	return {
 		extraFilters,
 		select(update) {
-			const filterIds = typeof update === 'function' ? update(Array.from(get().extraFilters)) : update
+			let filterIds = typeof update === 'function' ? update(Array.from(get().extraFilters)) : update
 			const filterConfig = ServerSettingsClient.Store.getState().saved.queue.mainPool.filters
-			if (filterConfig.some(filterConfig => filterIds.includes(filterConfig.filterId))) {
-				throw new Error('Cannot select a filter from the main pool!')
-			}
+			filterIds = filterIds.filter(id => !filterConfig.some(filterConfig => filterConfig.filterId === id))
 			set({
 				extraFilters: new Set(filterIds),
 			})

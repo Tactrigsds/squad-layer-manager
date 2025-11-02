@@ -1,8 +1,10 @@
+import * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as Im from 'immer'
@@ -10,18 +12,17 @@ import * as Rx from 'rxjs'
 
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 
-export type Predicates = { sub: Rx.Subscription }
-
-export type Store = {
+export type State = {
 	appliedFilters: Map<F.FilterEntityId, ApplyAs>
 	setAppliedFilterState: (filterId: F.FilterEntityId, active: ApplyAs) => void
 }
 
+export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, State>
 export function initAppliedFiltersStore(
-	get: ZusUtils.Getter<Store & Predicates>,
-	set: ZusUtils.Setter<Store>,
-	poolDefaultDisabled: boolean,
+	args: Args,
 ) {
+	const set = args.set
+	const get = args.get
 	const setFilterState = (filterId: F.FilterEntityId, newState: 'regular' | 'inverted' | 'disabled') => {
 		set(
 			storeState =>
@@ -31,7 +32,24 @@ export function initAppliedFiltersStore(
 				}),
 		)
 	}
-	const initialState: Store['appliedFilters'] = new Map()
+	set({ appliedFilters: new Map(), setAppliedFilterState: setFilterState })
+	;(async () => {
+		const states = await getInitialFilterStates(args.input.poolDefaultDisabled)
+		if (args.sub.closed) return
+		set({ appliedFilters: states })
+
+		const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
+			set(state => ({
+				appliedFilters: new Map(Gen.filter(state.appliedFilters, ([id]) => extraFiltersState.extraFilters.has(id))),
+			}))
+		})
+
+		args.sub.add(ZusUtils.toRxSub(unsub))
+	})()
+}
+
+export async function getInitialFilterStates(poolDefaultDisabled: boolean) {
+	const initialState: State['appliedFilters'] = new Map()
 	const extraFilters = QD.ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
 		initialState.set(filterid, 'disabled')
@@ -43,18 +61,18 @@ export function initAppliedFiltersStore(
 		}
 	}
 
-	set({ appliedFilters: initialState, setAppliedFilterState: setFilterState })
+	const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
+	for (const filterId of initialState.keys()) {
+		const filterEntity = filterEntities.get(filterId)
+		if (!filterEntity) {
+			initialState.delete(filterId)
+		}
+	}
 
-	const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
-		set(state => ({
-			appliedFilters: new Map(Gen.filter(state.appliedFilters, ([id]) => extraFiltersState.extraFilters.has(id))),
-		}))
-	})
-
-	get().sub.add(ZusUtils.toRxSub(unsub))
+	return initialState
 }
 
-export function getAppliedFiltersConstraints(state: Store) {
+export function getAppliedFiltersConstraints(state: State) {
 	const constraints: LQY.Constraint[] = []
 	for (const [filterId, applyAs] of state.appliedFilters.entries()) {
 		constraints.push(CB.filterEntity('selected-filter', filterId, {

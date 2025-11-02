@@ -12,6 +12,25 @@ import { SQL, sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'
 
+// Simple FNV-1a hash function for creating cache keys
+// Works in both Node.js and browsers, collisions are acceptable for this use case
+function simpleHash(str: string): string {
+	let hash = 2166136261 // FNV offset basis
+	for (let i = 0; i < str.length; i++) {
+		hash ^= str.charCodeAt(i)
+		hash = Math.imul(hash, 16777619) // FNV prime
+	}
+	// Convert to positive number and base36 for compact representation
+	return (hash >>> 0).toString(36)
+}
+
+// Cache for randomized layer query results
+// Two-tier structure: Map<queryHash, Map<pageIndex, layerIds[]>>
+const randomLayerCache = new Map<string, Map<number, number[]>>()
+let cachedSeed: string | null = null
+const MAX_PAGES_PER_QUERY = 1000 // Store up to 1000 pages per unique query
+const MAX_CACHED_QUERIES = 512 // Store up to 512 unique query hashes
+
 export type QueriedLayer = {
 	layers: L.KnownLayer & { constraints: boolean[] }
 	totalCount: number
@@ -43,8 +62,9 @@ export async function queryLayers(args: {
 			input,
 			true,
 			input.sort.seed ?? LQY.getSeed(),
+			input.pageIndex!,
 		)
-		return { code: 'ok' as const, layers, totalCount, pageCount: 1 }
+		return { code: 'ok' as const, layers, totalCount, pageCount: Math.ceil(totalCount / input.pageSize!) }
 	}
 
 	const includeWhere = (query: any) => {
@@ -63,10 +83,14 @@ export async function queryLayers(args: {
 
 	if (input.sort) {
 		const isNumericSortCol = LC.isNumericColumn(input.sort.sortBy, ctx)
-		const direction = input.sort.sortDirection
-		if (direction === 'ASC' || direction === 'ASC:ABS' && !isNumericSortCol) {
+		let direction = input.sort.direction
+		if (!isNumericSortCol && direction.endsWith('ABS')) {
+			direction = direction.split(':')[0] as 'ASC' | 'DESC'
+		}
+
+		if (direction === 'ASC') {
 			query = query.orderBy(E.asc(LC.viewCol(input.sort.sortBy, ctx)))
-		} else if (direction === 'DESC' || direction === 'DESC:ABS' && !isNumericSortCol) {
+		} else if (direction === 'DESC') {
 			query = query.orderBy(E.desc(LC.viewCol(input.sort.sortBy, ctx)))
 		} else if (direction === 'ASC:ABS') {
 			query = query.orderBy(E.asc(sql`abs(${LC.viewCol(input.sort.sortBy, ctx)})`))
@@ -697,6 +721,7 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	input: LQY.BaseQueryInput,
 	returnLayers: ReturnLayers,
 	seed: string,
+	pageIndex: number,
 ): Promise<GenLayerOutput<ReturnLayers>> {
 	const totalCount = await ctx.layerDb().$count(LC.layersView(ctx), p_condition)
 
@@ -707,17 +732,71 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		return { ids: [], totalCount: 0 } as { ids: string[]; totalCount: number }
 	}
 
-	const rng = seedrandom(seed.toString())
+	// Clear cache if seed has changed
+	if (cachedSeed !== seed) {
+		randomLayerCache.clear()
+		cachedSeed = seed
+	}
+
+	// Create cache key from query inputs
+	// Note: p_condition is derived from constraints, so we don't need to include it separately
+	const cacheKeyInput = JSON.stringify({
+		constraints: input.constraints,
+		cursor: input.cursor,
+		weights: ctx.effectiveColsConfig.generation.weights,
+		columnOrder: ctx.effectiveColsConfig.generation.columnOrder,
+	})
+	const cacheKey = simpleHash(cacheKeyInput)
+
+	// Check cache first
+	let queryCacheForSeed = randomLayerCache.get(cacheKey)
+	if (!queryCacheForSeed) {
+		queryCacheForSeed = new Map<number, number[]>()
+		randomLayerCache.set(cacheKey, queryCacheForSeed)
+
+		// LRU eviction: if we exceed max cached queries, remove the oldest one
+		if (randomLayerCache.size > MAX_CACHED_QUERIES) {
+			const firstKey = randomLayerCache.keys().next().value
+			if (firstKey !== undefined) {
+				randomLayerCache.delete(firstKey)
+			}
+		}
+	} else {
+		// Move to end for LRU (delete and re-add)
+		randomLayerCache.delete(cacheKey)
+		randomLayerCache.set(cacheKey, queryCacheForSeed)
+	}
+
+	const cachedIds = queryCacheForSeed.get(pageIndex)
+	if (cachedIds) {
+		return await getResultLayers(cachedIds, returnLayers)
+	}
+
+	// Collect all previously seen IDs from other pages to exclude them
+	const excludedIds = new Set<number>()
+	for (const [cachedPageIndex, ids] of queryCacheForSeed.entries()) {
+		if (cachedPageIndex !== pageIndex) {
+			for (const id of ids) {
+				excludedIds.add(id)
+			}
+		}
+	}
+
+	// Include page index in the seed for different results per page
+	const rng = seedrandom(seed.toString() + pageIndex.toString())
 
 	const baseLayersQuery = ctx.layerDb()
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
 		.from(LC.layersView(ctx))
-		.where(p_condition)
+		.where(E.and(p_condition, E.notInArray(LC.viewCol('id', ctx), Array.from(excludedIds))))
 		.orderBy(sql`((id * 2654435761) + ${rng.int32()}) & 0x7FFFFFFF`)
 		.limit(Math.min(numLayers * 500, 5000))
 
 	const baseLayers = await baseLayersQuery
-	const indexedBaseLayers = baseLayers.map((layer, index): Record<string, number | null> & { index: number } => ({ ...layer, index }))
+	const indexedBaseLayers = baseLayers.map((layer, index): Record<string, number | null> & { index: number } => ({
+		...layer,
+		index,
+	}))
 	const selectedIndexes: number[] = []
 
 	for (let i = 0; i < numLayers; i++) {
@@ -769,6 +848,12 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 	}
 
 	const selectedIds = selectedIndexes.map(index => baseLayers[index].id as number)
+
+	// Store in cache, limiting the number of pages stored per query
+	if (queryCacheForSeed!.size < MAX_PAGES_PER_QUERY) {
+		queryCacheForSeed!.set(pageIndex, selectedIds)
+	}
+
 	return await getResultLayers(selectedIds, returnLayers)
 
 	async function getResultLayers<ReturnLayers extends boolean>(

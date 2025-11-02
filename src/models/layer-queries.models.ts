@@ -56,12 +56,14 @@ export type Constraint =
 
 export type ViewableConstraint = Exclude<Constraint, { indicateMatches: false }>
 
+export const LAYERS_QUERY_SORT_DIRECTION = z.enum(['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS'])
+export type LayersQuerySortDirection = z.infer<typeof LAYERS_QUERY_SORT_DIRECTION>
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
 		z.object({
 			type: z.literal('column'),
 			sortBy: z.string(),
-			sortDirection: z.enum(['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS']).optional().default('ASC'),
+			direction: LAYERS_QUERY_SORT_DIRECTION.optional().default('ASC'),
 		}),
 		z.object({
 			type: z.literal('random'),
@@ -75,14 +77,14 @@ export type LayersQuerySort = z.infer<typeof LayersQuerySortSchema>
 export const DEFAULT_SORT: LayersQuerySort = {
 	type: 'column',
 	sortBy: 'Asymmetry_Score',
-	sortDirection: 'ASC',
+	direction: 'ASC',
 }
 export const DEFAULT_PAGE_SIZE = 20
 
 export type LayersQueryInput = {
 	pageIndex?: number
 	pageSize?: number
-	sort?: LayersQuerySort
+	sort: LayersQuerySort | null
 } & BaseQueryInput
 
 export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }
@@ -106,14 +108,17 @@ export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
 
 type LayerItemPatch = {
 	type: 'splice'
-	cursor: LayerQueryCursor
+	cursor: Cursor
 	deleteCount: number
 	insertions?: LayerItem[]
 }
 
 export type BaseQueryInput = {
 	constraints?: Constraint[]
-	cursor?: LayerQueryCursor
+
+	// right now if there is no cursor and  there are repeat rules then the cursor will be inferred as at the end of the list
+	cursor?: Cursor
+
 	patches?: LayerItemPatch[]
 }
 
@@ -127,7 +132,7 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 
 export const LAYER_VOTE_ITEM_CURSOR_ACTION = z.enum(['add-after', 'edit', 'add-vote-choice'])
 export type LayerItemCursorAction = z.infer<typeof LAYER_VOTE_ITEM_CURSOR_ACTION>
-export type LayerQueryCursor = {
+export type Cursor = {
 	type: 'id'
 	// could be LayerItemId or itemId for parent layer queue item
 	itemId: LayerItemId | string
@@ -447,7 +452,7 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 export function getQueryCursorForLayerItem(
 	_item: ParentVoteItem | LayerItem | LayerItemId,
 	action: LayerItemCursorAction,
-): LayerQueryCursor {
+): Cursor {
 	const itemId = typeof _item === 'string' ? _item : isParentVoteItem(_item) ? _item.parentItemId : toLayerItemId(_item)
 	return {
 		type: 'id',
@@ -462,7 +467,7 @@ export function getBaseQueryInputForAddingVoteChoice(
 	parentItemId: string,
 ): BaseQueryInput {
 	const parentItem = layerItemsState.layerItems.find(item => item.type === 'parent-vote-item' && item.parentItemId === parentItemId)
-	const cursor: LayerQueryCursor = {
+	const cursor: Cursor = {
 		type: 'id',
 		action: 'add-vote-choice',
 		itemId: parentItemId,
@@ -482,14 +487,14 @@ export function getBaseQueryInputForAddingVoteChoice(
 }
 
 // assumes current item at index will be shifted to the right if one exists
-export function getQueryCursorForQueueIndex(index: number): LayerQueryCursor {
+export function getQueryCursorForQueueIndex(index: number): Cursor {
 	return {
 		type: 'layer-queue-index',
 		index,
 	}
 }
 
-export function getQueryCursorForItemIndex(index: number): LayerQueryCursor {
+export function getQueryCursorForItemIndex(index: number): Cursor {
 	return {
 		type: 'layer-item-index',
 		index,

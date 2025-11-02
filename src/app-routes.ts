@@ -54,6 +54,7 @@ export type KnownRoutes = typeof routes
 export type KnownRoute = KnownRoutes[number]
 export type KnownRouteId = KnownRoute['id']
 export type PageRoutes = Extract<KnownRoute, { handle: 'page' }>
+export type PageRouteId = PageRoutes['id']
 export type RouteDefForId<R extends KnownRouteId> = Extract<KnownRoutes[number], { id: R }>
 
 export type RouteParamObj<R extends KnownRouteId> = RouteDefForId<R>['params'] extends never[] ? never
@@ -61,6 +62,7 @@ export type RouteParamObj<R extends KnownRouteId> = RouteDefForId<R>['params'] e
 
 export type ResolvedRoute<R extends KnownRouteId = KnownRouteId> = {
 	id: R
+	path: string
 	def: RouteDefForId<R>
 	params: RouteParamObj<R>
 }
@@ -137,18 +139,21 @@ export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' 
 		const match = routeDef.regex.exec(path)
 		if (!match) continue
 
-		const params: Record<string, string> = {}
+		const paramsArr: [string, string][] = []
 		if (match.groups) {
 			for (const [key, value] of Object.entries(match.groups)) {
 				if (value !== undefined) {
-					params[key.startsWith('__glob') ? '*' : key] = value
+					paramsArr.push([key.startsWith('__glob') ? '*' : key, value])
 				}
 			}
 		}
 
 		if (opts?.expectedHandleType && routeDef.handle !== opts.expectedHandleType) return null
+		const params = Object.fromEntries(paramsArr)
 		return {
 			id: routeDef.id,
+			// eww
+			path: (link as any)(routeDef.id, ...paramsArr.map(([_, value]) => value)) as string,
 			def: routeDef,
 			params: params as RouteParamObj<KnownRouteId>,
 		}

@@ -1,137 +1,168 @@
-import * as AppliedFiltersCtx from '@/frame-contexts/applied-filters'
-import * as LayerFilterMenuCtx from '@/frame-contexts/layer-filter-menu'
-import * as PoolCheckboxesCtx from '@/frame-contexts/pool-checkboxes'
-import * as FR from '@/lib/frame'
+import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
+import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
+import * as FRM from '@/lib/frame'
+import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as Rx from 'rxjs'
-import * as FrameStore from './store'
+import { frameManager, useFrameStore } from './frame-manager'
 
 export type SelectType = 'generic' | 'indexed'
+export type Key = FRM.InstanceKey<Types>
 
-// don't export this. should call createKey
-const KEY_PROP = Symbol('frameKey')
-export type Key = { [KEY_PROP]: string | { itemId: LL.ItemId; action: LQY.LayerItemCursorAction } }
-export function createKey(id: Key[typeof KEY_PROP]): Key {
-	return { [KEY_PROP]: id }
+export function createInput(
+	opts: {
+		selected?: L.LayerId[]
+		initialEditedLayerId?: L.LayerId
+		cursor?: LQY.Cursor
+		maxSelected?: number
+		minSelected?: number
+	},
+): Input {
+	const base: BaseInput = {
+		colConfig: ConfigClient.getColConfig(),
+		cursor: opts.cursor,
+		initialEditedLayerId: opts.initialEditedLayerId,
+		instanceId: createId(4),
+	}
+	return {
+		...LayerTablePrt.getInputDefaults({
+			...opts,
+			colConfig: ConfigClient.getColConfig(),
+			pageSize: 16,
+			...(opts.initialEditedLayerId
+				? {
+					selected: [opts.initialEditedLayerId],
+					showSelectedLayers: true,
+					maxSelected: opts.maxSelected ?? 1,
+					minSelected: opts.minSelected ?? 1,
+				}
+				: {}),
+		}),
+		...base,
+	}
 }
 
-type Input = { colConfig: LQY.EffectiveColumnAndTableConfig; cursor?: LQY.LayerQueryCursor; initialEditedLayerId?: L.LayerId }
+type BaseInput = { colConfig: LQY.EffectiveColumnAndTableConfig; cursor?: LQY.Cursor; initialEditedLayerId?: L.LayerId; instanceId: string }
 
-type SelectState =
-	& AppliedFiltersCtx.Store
-	& PoolCheckboxesCtx.Store
-	& LayerFilterMenuCtx.Store
-	& {
-		sub: Rx.Subscription
-		setCursor: (cursor: LQY.LayerQueryCursor) => void
-		initialEditedLayerId?: L.LayerId
-		cursor?: LQY.LayerQueryCursor
-		key: Key
-	}
+type Input = BaseInput & LayerTablePrt.Input
+
+type Primary = {
+	setCursor: (cursor: LQY.Cursor | undefined) => void
+	initialEditedLayerId?: L.LayerId
+	cursor: LQY.Cursor | undefined
+}
+
+type Store =
+	& Primary
+	& AppliedFiltersPrt.State
+	& PoolCheckboxesPrt.Store
+	& LayerFilterMenuPrt.Store
+	& LayerTablePrt.Store
+	& LayerTablePrt.Predicates
 
 export type Types = {
-	key: Key
+	key: FRM.RawInstanceKey<{ editedLayerId?: L.LayerId; id: string }>
 	input: Input
-	state: { selectLayers: SelectState[] }
-	globalState: FrameStore.State
-	startingState: FrameStore.State
-}
-{
-	const _ = {} as Types satisfies FR.FrameTypes<FrameStore.State>
+	state: Store
 }
 
-type Frame = FR.Frame<Types>
+type Frame = FRM.Frame<Types>
 
-export const selectSelectState = ((state, key) => {
-	return state.selectLayers.find(s => frame.keysEqual(s.key, key))!
-}) satisfies FR.Selector<Types, SelectState>
+const setup: Frame['setup'] = (args) => {
+	const get = args.get
+	const set = args.set
+	const input = args.input
+	// will never change
+	const colConfig = input.colConfig
 
-const setup: Frame['setup'] = (key, input, store) => {
-	console.log('setting up ', key)
-	// const sub = new Rx.Subscription()
-	const get: ZusUtils.Getter<SelectState> = () => {
-		const state = (frame.store.getState() as Types['state']).selectLayers?.find(s => frame.keysEqual(s.key, key))
-		if (!state) {
-			frame.store.setState(state => ({ selectLayers: [...(state.selectLayers ?? []), { key }] }))
-		}
-		return selectSelectState(store.getState(), key)
-	}
-	const set: ZusUtils.Setter<SelectState> = (update) => {
-		const selectState = get()
-		const updatePartial = typeof update === 'function' ? update(selectState) : update
-		const newSelectState = { ...selectState, ...updatePartial }
-		store.setState(state => ({ selectLayers: state.selectLayers.map(s => frame.keysEqual(s.key, key) ? newSelectState : s) }))
-	}
-
-	store.setState({
-		selectLayers: [
-			...(store.getState().selectLayers ?? []),
-		],
-	})
-	set({
-		key: Obj.selectProps(key, [KEY_PROP]),
-		sub: new Rx.Subscription(),
-		cursor: input.cursor,
-		setCursor: (cursor: LQY.LayerQueryCursor) => {
-			set({ cursor })
-		},
-		initialEditedLayerId: input.initialEditedLayerId,
-	})
-
-	AppliedFiltersCtx.initAppliedFiltersStore(get, set, !!input.initialEditedLayerId)
-	PoolCheckboxesCtx.initNewPoolCheckboxes({ dnr: !input.initialEditedLayerId }, set)
-	LayerFilterMenuCtx.initLayerFilterMenuStore(
-		get,
-		set,
-		input.colConfig,
-		getFilterMenuDefaults(input?.initialEditedLayerId, input.colConfig),
+	set(
+		{
+			cursor: args.input.cursor,
+			setCursor: (cursor) => {
+				set({ cursor })
+			},
+			initialEditedLayerId: args.input.initialEditedLayerId,
+		} satisfies Primary,
 	)
-	return store.getState()
+
+	set(
+		{
+			baseQueryInput: undefined,
+			onLayerFocused: (layerId) => {
+				const defaultFields = getFilterMenuDefaultFields(layerId, input.colConfig)
+				const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, input.colConfig)
+				const state = get()
+				state.filterMenu.setMenuItems(itemState)
+			},
+		} satisfies LayerTablePrt.Predicates,
+	)
+
+	AppliedFiltersPrt.initAppliedFiltersStore({
+		...args,
+		input: { poolDefaultDisabled: !!input.initialEditedLayerId },
+	})
+	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: !input.initialEditedLayerId } } })
+	LayerFilterMenuPrt.initLayerFilterMenuStore({
+		...args,
+		input: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
+	})
+	LayerTablePrt.initLayerTable(args)
+
+	set({ baseQueryInput: selectBaseQueryInput(get()) })
+	args.sub.add(
+		args.update$.pipe(
+			Rx.retry({ count: Infinity, delay: 1000 }),
+		).subscribe(([state]) => {
+			const baseQueryInput = selectBaseQueryInput(state)
+			if (!Obj.deepEqual(baseQueryInput, get().baseQueryInput)) {
+				set({ baseQueryInput: baseQueryInput })
+			}
+		}),
+	)
 }
 
-const teardown: Frame['teardown'] = (globalState, key, setTeardown) => {
-	const state = selectSelectState(globalState, key)
-	if (!state) debugger
-	state.sub.unsubscribe()
-	setTeardown({ selectLayers: undefined })
+const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
+	// column visibility not handled, and colConfig is never expected to change
+
+	const get = setupArgs.get
+	// with this we're expecting that we can use one frame for all instances
+	get().setCursor(newInput.cursor)
+	setupArgs.set(s => ({ layerTable: { ...s.layerTable, minSelected: newInput.minSelected, maxSelected: newInput.maxSelected } }))
+	get().layerTable.setPageSize(newInput.pageSize)
+	get().layerTable.setSelected(newInput.selected)
+	get().layerTable.setSort(newInput.sort)
+	get().setCheckbox('dnr', !newInput.initialEditedLayerId)
+
+	if (newInput.initialEditedLayerId !== get().initialEditedLayerId) {
+		const defaultFields = getFilterMenuDefaultFields(newInput.initialEditedLayerId, newInput.colConfig)
+		const defaultItemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, newInput.colConfig)
+		get().filterMenu.setMenuItems(defaultItemState)
+	}
+	;(async () => {
+		const states = await AppliedFiltersPrt.getInitialFilterStates(!!newInput.initialEditedLayerId)
+		if (setupArgs.sub.closed) return
+		setupArgs.set({ appliedFilters: states })
+	})()
 }
 
-const keysEqual = (a: Key, b: Key) => Obj.deepEqual(a[KEY_PROP], b[KEY_PROP])
-
-export const frame = FR.create<Types>({
-	store: FrameStore.FrameStore,
-	exists: (state, key) => Boolean((state as Partial<Types['state']>)?.selectLayers?.find(f => keysEqual(f.key, key))),
+export const frame = frameManager.createFrame<Types>({
+	name: 'select-layers',
 	setup,
-	teardown,
-	keysEqual,
+	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, id: input.instanceId }),
+	onInputChanged: onInputChanged,
+	checkInputChanged: Obj.deepEqual,
 })
 
-export function useFrameExists(key: Key) {
-	return FR.useFrameExists(frame, key)
-}
-
-export function useSelectLayersState(key: Key) {
-	return FR.useExistingFrameState<Types, SelectState>(frame, key, s => {
-		return selectSelectState(s, key)
-	})
-}
-
-type SelectLayersSelector<T> = (state: SelectState) => T
-export function useSelectedSelectLayersState<T>(key: Key, selector: SelectLayersSelector<T>) {
-	return FR.useExistingFrameState<Types, T>(frame, key, s => {
-		return selector(selectSelectState(s, key))
-	})
-}
-
-export function selectPreMenuFilteredQueryInput(state: SelectState): LQY.BaseQueryInput {
-	const appliedConstraints = AppliedFiltersCtx.getAppliedFiltersConstraints(state)
+export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInput {
+	const appliedConstraints = AppliedFiltersPrt.getAppliedFiltersConstraints(state)
 
 	// should generally not do this, but we're going to move this into frames anyway and it's low impact
 	const settings = ServerSettingsClient.Store.getState().saved
@@ -147,42 +178,28 @@ export function selectPreMenuFilteredQueryInput(state: SelectState): LQY.BaseQue
 	}
 }
 
-export function selectQueryInput(state: SelectState) {
+// "base" but it's stil after filter menu constraints have been applied
+export function selectBaseQueryInput(state: Store) {
 	const preFiltered = selectPreMenuFilteredQueryInput(state)
-	const filterMenuConstraints = LayerFilterMenuCtx.selectFilterMenuConstraints(state)
+	const filterMenuConstraints = LayerFilterMenuPrt.selectFilterMenuConstraints(state)
 	return LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
 }
 
-export function selectMenuItemQueryInput(state: SelectState, field: string) {
+export function selectMenuItemQueryInput(state: Store, field: string) {
 	const preFiltered = selectPreMenuFilteredQueryInput(state)
-	const itemConstraints = LayerFilterMenuCtx.selectFilterMenuItemConstraints(state, field)
+	const itemConstraints = LayerFilterMenuPrt.selectFilterMenuItemConstraints(state, field)
 	return LQY.mergeBaseInputs(preFiltered, { constraints: [...itemConstraints] })
 }
 
-export function useQueryInput(key: Key) {
-	return useSelectedSelectLayersState(key, ZusUtils.useDeep(selectQueryInput))
-}
+// export function usePreMenuFilteredQueryInput(key: Key) {
+// 	return useFrameStore(key, ZusUtils.useDeep(selectPreMenuFilteredQueryInput))
+// }
 
-export function usePreMenuFilteredQueryInput(key: Key) {
-	return useSelectedSelectLayersState(key, ZusUtils.useDeep(selectPreMenuFilteredQueryInput))
-}
+// export function useMenuItemQueryInput(key: Key, field: string) {
+// 	return useStore(key, ZusUtils.useDeep(state => selectMenuItemQueryInput(state, field)))
+// }
 
-export function useMenuItemQueryInput(key: Key, field: string) {
-	return useSelectedSelectLayersState(key, ZusUtils.useDeep(state => selectMenuItemQueryInput(state, field)))
-}
-
-export const getState = (key: Key) => {
-	const state = frame.store.getState()
-	if (!frame.exists(state, key)) throw new Error('SelectLayersFrame does not exist')
-	return selectSelectState(state as Types['state'], key)
-}
-
-export const exists = (key: Key) => {
-	const state = frame.store.getState()
-	return frame.exists(state, key)
-}
-
-function getFilterMenuDefaults(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {
+function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {
 	let defaults: Partial<L.KnownLayer> = {}
 	if (editedLayerId && colConfig) {
 		const layer = L.toLayer(editedLayerId)

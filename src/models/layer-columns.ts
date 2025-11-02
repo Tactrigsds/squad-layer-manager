@@ -398,16 +398,22 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 	return packed
 }
 
-export function isKnownAndValidLayer(layer: L.LayerId | L.UnvalidatedLayer, cfg = BASE_COLUMN_CONFIG) {
+export function isKnownAndValidLayer(
+	layer: L.LayerId | L.UnvalidatedLayer,
+	cfg = BASE_COLUMN_CONFIG,
+	components = L.StaticLayerComponents,
+) {
+	layer = L.toLayer(layer)
 	if (!L.isKnownLayer(layer)) return false
 	for (const [key, value] of Obj.objEntries(layer)) {
 		const colDef = getColumnDef(key, cfg)
 		if (!colDef) return false
 		if (colDef.type === 'string' && colDef.enumMapping) {
-			if (!colDef.enumMapping.includes(value as string)) return false
+			const mapping = components[colDef.enumMapping as keyof typeof components] as string[]
+			if (!mapping.includes(value as string)) return false
 		}
 	}
-	return false
+	return true
 }
 
 export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {

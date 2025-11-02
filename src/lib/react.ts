@@ -66,3 +66,20 @@ export function useDeepEqualsMemo<T>(cb: () => T, deps: unknown[]) {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, deps) as T
 }
+
+export function useMemo<T>(
+	cb: () => T,
+	deps: unknown[],
+	equals?: (a: T, b: T) => boolean,
+) {
+	const ref = React.useRef<T>(null)
+	return React.useMemo(() => {
+		const newValue = cb()
+		if (!equals) return newValue
+		if (ref.current === null || !equals(ref.current, newValue)) {
+			ref.current = newValue
+		}
+		return ref.current
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [...deps, equals]) as T
+}

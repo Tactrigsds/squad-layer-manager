@@ -4,7 +4,9 @@ import * as EMO from '@/models/emoji.models'
 import * as DiscordClient from '@/systems.client/discord.client'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-export default function EmojiDisplay(props: { emoji: string | EMO.Emoji; showTooltip?: boolean; className?: string; size?: 'sm' }) {
+export default function EmojiDisplay(
+	props: { emoji: string | EMO.Emoji; showTooltip?: boolean; className?: string; size?: 'sm' | number },
+) {
 	let emoji: EMO.Emoji | undefined
 	{
 		const id = typeof props.emoji === 'string' ? props.emoji : undefined
@@ -12,7 +14,8 @@ export default function EmojiDisplay(props: { emoji: string | EMO.Emoji; showToo
 		if (typeof props.emoji !== 'string') emoji = props.emoji ?? undefined
 	}
 
-	const sizeClass = props.size === 'sm' ? 'w-6 h-6' : 'text-xl'
+	const sizeClass = props.size === 'sm' ? 'w-6 h-6' : typeof props.size === 'number' ? '' : 'text-xl'
+	const sizeStyle = typeof props.size === 'number' ? { width: `${props.size}px`, height: `${props.size}px` } : undefined
 
 	let inner: React.ReactNode
 	if (!emoji) return
@@ -20,12 +23,13 @@ export default function EmojiDisplay(props: { emoji: string | EMO.Emoji; showToo
 		inner = (
 			<img
 				className={cn(props.className, 'rounded-md', sizeClass, 'object-center')}
+				style={sizeStyle}
 				src={DiscordClient.getEmojiUrl(emoji)}
 				alt={EMO.displayName(emoji)}
 			/>
 		)
 	} else if (emoji.type === 'unicode') {
-		inner = <span className={cn(props.className, 'text-xl', sizeClass)}>{emoji.id}</span>
+		inner = <span className={cn(props.className, 'text-xl', sizeClass)} style={sizeStyle}>{emoji.id}</span>
 	} else {
 		assertNever(emoji)
 	}

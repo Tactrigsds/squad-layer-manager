@@ -607,7 +607,7 @@
               "properties": {
                 "type": {"type": "string", "const": "column"},
                 "sortBy": {"type": "string"},
-                "sortDirection": {
+                "direction": {
                   "type": "string",
                   "enum": ["ASC", "DESC", "ASC:ABS", "DESC:ABS"],
                   "default": "ASC"
