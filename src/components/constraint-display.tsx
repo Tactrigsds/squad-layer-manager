@@ -75,7 +75,7 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 	return (
 		<Tooltip delayDuration={0}>
 			<TooltipTrigger
-				className={cn('flex -space-x-2 items-center flex-nowrap', props.className)}
+				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={props.layerItemId ? onMouseOver : undefined}
 				onMouseOut={props.layerItemId ? onMouseOut : undefined}
