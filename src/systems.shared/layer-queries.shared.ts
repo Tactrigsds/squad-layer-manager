@@ -610,7 +610,7 @@ function getRepeatSQLConditions(
 	const values = new Set<number>()
 	const valuesA = new Set<number>()
 	const valuesB = new Set<number>()
-	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`1=1` }
+	if (rule.within <= 0) return { code: 'ok' as const, condition: sql`false` }
 
 	const previousLayers = ctx.layerItemsState.layerItems
 
@@ -678,7 +678,7 @@ function getRepeatSQLConditions(
 		case 'Size':
 		case 'Layer': {
 			if (values.size === 0) {
-				return { code: 'ok' as const, condition: sql`1=1` }
+				return { code: 'ok' as const, condition: sql`false` }
 			}
 			resultSql = E.inArray(LC.viewCol(rule.field, ctx), Array.from(values))
 			break
