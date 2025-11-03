@@ -1,5 +1,5 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
-import { coldOrpcSubscription } from '@/lib/async'
+
 import * as Browser from '@/lib/browser'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
@@ -64,7 +64,7 @@ export type Store = {
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
-	coldOrpcSubscription(() => RPC.orpc.sharedLayerList.watchUpdates.call()),
+	RPC.observe(() => RPC.orpc.sharedLayerList.watchUpdates.call()),
 )
 
 export const Store = createStore()

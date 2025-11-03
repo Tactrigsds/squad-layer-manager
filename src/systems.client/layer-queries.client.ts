@@ -11,7 +11,6 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
-import { queryClient } from '@/orpc.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
@@ -137,7 +136,7 @@ export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput) {
 	const cfg = await ConfigClient.fetchEffectiveColConfig()
 	const input = getQueryLayersInput(baseInput, { cfg })
 	const baseQuery = getQueryLayersOptions(input, Store.getState().counters)
-	return await queryClient.prefetchQuery(
+	return await RPC.queryClient.prefetchQuery(
 		baseQuery,
 	)
 }
@@ -867,5 +866,5 @@ export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
 }
 
 export function fetchLayerInfo(layer: L.LayerId | L.KnownLayer) {
-	return queryClient.getQueryCache().build(queryClient, getLayerInfoQueryOptions(layer)).fetch()
+	return RPC.queryClient.getQueryCache().build(RPC.queryClient, getLayerInfoQueryOptions(layer)).fetch()
 }

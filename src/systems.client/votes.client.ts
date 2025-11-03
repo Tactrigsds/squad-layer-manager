@@ -1,4 +1,3 @@
-import { coldOrpcSubscription } from '@/lib/async'
 import * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
 import * as PartSys from '@/systems.client/parts'
@@ -6,7 +5,7 @@ import { bind } from '@react-rxjs/core'
 import * as Rx from 'rxjs'
 import { map, share } from 'rxjs'
 
-const voteStateCold$ = coldOrpcSubscription(() => RPC.orpc.layerQueue.watchVoteStateUpdates.call()).pipe(
+const voteStateCold$ = RPC.observe(() => RPC.orpc.layerQueue.watchVoteStateUpdates.call()).pipe(
 	Rx.tap((update) => {
 		if (update.code === 'initial-state' && update.state) {
 			PartSys.stripParts(update.state)

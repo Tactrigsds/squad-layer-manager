@@ -1,4 +1,3 @@
-import { coldOrpcSubscription } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
@@ -54,7 +53,7 @@ export const filterEntityChanged$ = new Rx.Subject<void>()
 const [initialized$, setInitialized] = createSignal<true>()
 
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
-	const promise = coldOrpcSubscription(() => RPC.orpc.filters.watchFilters.call()).subscribe(
+	const promise = RPC.observe(() => RPC.orpc.filters.watchFilters.call()).subscribe(
 		(_output) => {
 			const output = PartsSys.stripParts(_output) as FilterEntityChange
 			switch (output.code) {

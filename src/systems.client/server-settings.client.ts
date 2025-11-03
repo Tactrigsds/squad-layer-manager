@@ -1,5 +1,5 @@
 import { globalToast$ } from '@/hooks/use-global-toast'
-import { coldOrpcSubscription } from '@/lib/async'
+
 import * as Obj from '@/lib/object'
 import { devValidate } from '@/lib/zod.dev'
 import * as ZusUtils from '@/lib/zustand'
@@ -10,7 +10,7 @@ import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
 import * as Zus from 'zustand'
 
-const [_useServerSettings, serverSettings$] = ReactRx.bind(coldOrpcSubscription(() => RPC.orpc.serverSettings.watchSettings.call()))
+const [_useServerSettings, serverSettings$] = ReactRx.bind(RPC.observe(() => RPC.orpc.serverSettings.watchSettings.call()))
 
 export type EditSettingsStore = {
 	ops: SS.SettingMutation[]

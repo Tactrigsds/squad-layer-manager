@@ -23,7 +23,7 @@ import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const flags = FeatureFlags.useFeatureFlags()
-	const trpcConnected = RPC.useConnected()
+	const rpcConnected = RPC.useConnected()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
@@ -81,7 +81,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						</div>
 					)}
 
-					{trpcConnected === false && (
+					{rpcConnected === false && (
 						<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
 							<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
 						</Alert>
@@ -135,7 +135,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										Stop Simulating Roles
 									</DropdownMenuItem>
 								)}
-								{trpcConnected === false && (
+								{rpcConnected === false && (
 									<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
 										<Icons.WifiOff className="mr-2 h-4 w-4" />
 										Websocket Disconnected

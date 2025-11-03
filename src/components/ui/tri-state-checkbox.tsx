@@ -32,7 +32,7 @@ const TriStateCheckbox = React.forwardRef<HTMLButtonElement, TriStateCheckboxPro
 			if (disabled) return
 			if (e.key === ' ' || e.key === 'Enter') {
 				e.preventDefault()
-				handleClick(e)
+				handleClick(e as any)
 			}
 		}
 

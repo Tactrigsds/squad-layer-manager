@@ -7,7 +7,7 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
-import { queryClient } from '@/orpc.client'
+import * as RPC from '@/orpc.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
 import React from 'react'
@@ -248,7 +248,7 @@ export function initLayerTable(
 				const queryInput = selectQueryInput(state)
 				// we always want to fetch to keep the cache fresh
 				const base = LayerQueriesClient.getQueryLayersOptions(queryInput, LayerQueriesClient.Store.getState().counters)
-				const dataPromise = queryClient.fetchQuery(base)
+				const dataPromise = RPC.queryClient.fetchQuery(base)
 				if (state.layerTable.pageIndex === 0 || state.layerTable.showSelectedLayers) return null
 				const data = await dataPromise
 				return data?.code === 'ok' ? data.pageCount : null

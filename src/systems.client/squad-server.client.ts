@@ -1,5 +1,5 @@
 import * as AR from '@/app-routes'
-import { coldOrpcSubscription, distinctDeepEquals } from '@/lib/async'
+import { distinctDeepEquals } from '@/lib/async'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
@@ -14,10 +14,10 @@ import * as Zus from 'zustand'
 
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
 export const [useLayersStatus, layersStatus$] = ReactRx.bind<SM.LayersStatusResExt>(
-	coldOrpcSubscription(() => RPC.orpc.squadServer.watchLayersStatus.call()),
+	RPC.observe(() => RPC.orpc.squadServer.watchLayersStatus.call()),
 )
 export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind<SM.ServerInfoRes>(
-	coldOrpcSubscription(() => RPC.orpc.squadServer.watchServerInfo.call()),
+	RPC.observe(() => RPC.orpc.squadServer.watchServerInfo.call()),
 )
 export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 	serverInfoRes$.pipe(
@@ -27,7 +27,7 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 )
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind<boolean>(
-	coldOrpcSubscription(() => RPC.orpc.squadServer.watchServerRolling.call()),
+	RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call()),
 )
 
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | null>(

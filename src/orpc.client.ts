@@ -3,7 +3,7 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import type { PublicConfig } from '@/server/config'
 import type { OrpcAppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
-import { createORPCClient, createSafeClient, ORPCError } from '@orpc/client'
+import { createORPCClient, createSafeClient, onError, ORPCError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
@@ -11,7 +11,7 @@ import * as ReactRx from '@react-rxjs/core'
 import { QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
-import { sleep } from './lib/async'
+import { sleep, toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
@@ -20,21 +20,25 @@ const websocket = new WebSocket(wsUrl)
 
 const orpcLink = new RPCLink({
 	websocket,
-	interceptors: [
-		options => {
-			return options.next().catch(error => {
-				console.error(error)
-				if (error instanceof ORPCError) {
-					globalToast$.next({
-						title: 'Error',
-						description: error.message,
-						variant: 'destructive',
-					})
-				} else {
-					throw error
-				}
-			})
-		},
+	clientInterceptors: [
+		onError(error => {
+			// AbortErrors happen whenever an unsubscribe happens, we can safely ignore them
+			if (error instanceof Error && error.name === 'AbortError') return
+			console.error(error)
+			if (error instanceof Error) {
+				globalToast$.next({
+					title: 'Transport Error',
+					description: error.message,
+					variant: 'destructive',
+				})
+			} else {
+				globalToast$.next({
+					title: 'Transport Error',
+					description: 'Unknown error',
+					variant: 'destructive',
+				})
+			}
+		}),
 	],
 })
 
@@ -54,7 +58,11 @@ const connectedCold$ = Rx.merge([
 	closed$.pipe(Rx.map(() => !!websocket.OPEN)),
 	error$.pipe(Rx.map(() => !!websocket.OPEN)),
 ])
-	.pipe(Rx.distinctUntilChanged(), Rx.switchMap((open) => open ? Rx.of(true) : Rx.of(false).pipe(Rx.delay(1000))))
+	.pipe(
+		Rx.distinctUntilChanged(),
+		Rx.switchMap((open) => open ? Rx.of(true) : Rx.of(false).pipe(Rx.delay(1000))),
+		Rx.retry(),
+	)
 
 export const [useConnected, connected$] = ReactRx.bind(connectedCold$, false)
 
@@ -105,3 +113,27 @@ closed$.pipe(
 
 export const queryClient = new QueryClient()
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
+
+export function observe<T>(task: () => Promise<AsyncGenerator<T>>) {
+	return Rx.from(toCold(task)).pipe(
+		traceTag('ORPC_OBSERVE'),
+		Rx.concatAll(),
+		Rx.tap({
+			error: (err) => {
+				console.error(err)
+			},
+		}),
+		// we don't need to delay here, that's handled upstream
+		Rx.retry({ delay: 0, count: 2, resetOnSuccess: true }),
+		Rx.tap({
+			error: (err) => {
+				globalToast$.next({
+					title: 'Remote Subscription Error',
+					description: err.message,
+					variant: 'destructive',
+				})
+			},
+		}),
+		Rx.retry({ delay: (error, count) => Rx.timer(Math.pow(2, count) * 1000) }),
+	)
+}

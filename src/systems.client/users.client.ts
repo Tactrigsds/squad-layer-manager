@@ -1,7 +1,6 @@
-import { coldOrpcSubscription } from '@/lib/async'
 import * as Obj from '@/lib/object'
 import * as USR from '@/models/users.models'
-import { orpc, queryClient } from '@/orpc.client'
+import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as PartSys from '@/systems.client/parts'
@@ -19,7 +18,7 @@ export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: ['users', 'getUser', superjson.serialize(id)],
 		queryFn: async () => {
-			return orpc.users.getUser.call(id!)
+			return RPC.orpc.users.getUser.call(id!)
 		},
 		enabled: !!id && opts?.enabled !== false,
 	})
@@ -29,12 +28,12 @@ export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: ['users', 'getUsers', superjson.serialize(userIds)],
 		enabled: opts?.enabled,
-		queryFn: async () => orpc.users.getUsers.call(userIds),
+		queryFn: async () => RPC.orpc.users.getUsers.call(userIds),
 	})
 }
 
 async function _fetchLoggedInUser() {
-	const user = await orpc.users.getLoggedInUser.call()
+	const user = await RPC.orpc.users.getLoggedInUser.call()
 	PartSys.upsertParts({ users: [user] })
 	loggedInUserId = user.discordId
 	return user
@@ -72,27 +71,27 @@ export function useLoggedInUser() {
 }
 
 export async function fetchLoggedInUser() {
-	return queryClient.getQueryCache().build(queryClient, {
+	return RPC.queryClient.getQueryCache().build(RPC.queryClient, {
 		...loggedInUserBaseQuery,
 	}).fetch()
 }
 
 export function invalidateLoggedInUser() {
-	queryClient.invalidateQueries(loggedInUserBaseQuery)
+	RPC.queryClient.invalidateQueries(loggedInUserBaseQuery)
 }
 
 export function invalidateUsers() {
-	queryClient.invalidateQueries({ queryKey: ['users'] })
+	RPC.queryClient.invalidateQueries({ queryKey: ['users'] })
 	PartSys.PartsStore.setState({ users: [] })
 }
 
-const [_, userInvalidation$] = ReactRx.bind(coldOrpcSubscription(() => orpc.users.watchUserInvalidation.call()))
+const [_, userInvalidation$] = ReactRx.bind(RPC.observe(() => RPC.orpc.users.watchUserInvalidation.call()))
 
 export function setup() {
 	userInvalidation$.subscribe(() => {
 		invalidateUsers()
 	})
-	void queryClient.prefetchQuery(loggedInUserBaseQuery)
+	void RPC.queryClient.prefetchQuery(loggedInUserBaseQuery)
 	FilterEntityClient.filterMutation$.subscribe(async s => {
 		const loggedInUser = await fetchLoggedInUser()
 		if (!loggedInUser) return
@@ -102,7 +101,7 @@ export function setup() {
 }
 
 export const [useSteamAccountLinkCompleted, steamAccountLinkCompleted$] = ReactRx.bind<{ discordId: bigint }>(
-	coldOrpcSubscription(() => orpc.users.watchSteamAccountLinkCompletion.call()).pipe(Rx.tap<{ discordId: bigint }>({
+	RPC.observe(() => RPC.orpc.users.watchSteamAccountLinkCompletion.call()).pipe(Rx.tap<{ discordId: bigint }>({
 		next: () => {
 			return invalidateLoggedInUser()
 		},

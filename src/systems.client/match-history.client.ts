@@ -1,4 +1,3 @@
-import { coldOrpcSubscription } from '@/lib/async'
 import * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems.client/parts'
@@ -10,7 +9,7 @@ import * as Rx from 'rxjs'
 const [initialized$, setInitialized] = createSignal<boolean>()
 
 export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.PublicMatchHistoryState>(
-	coldOrpcSubscription(() => RPC.orpc.matchHistory.watchMatchHistoryState.call()).pipe(Rx.map(PartsSys.stripParts)),
+	RPC.observe(() => RPC.orpc.matchHistory.watchMatchHistoryState.call()).pipe(Rx.map(PartsSys.stripParts)),
 	{ recentBalanceTriggerEvents: [], recentMatches: [] },
 )
 
