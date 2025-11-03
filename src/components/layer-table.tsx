@@ -131,9 +131,6 @@ function buildColumn(
 			)
 		},
 		cell: (info) => {
-			const value = info.getValue()
-			if (value === null) return DH.NULL_DISPLAY
-
 			const violationDescriptors = info.row.original.violationDescriptors
 			if (colDef.name === 'Layer') {
 				return (
@@ -150,7 +147,11 @@ function buildColumn(
 				)
 			}
 
-			const emptyElt = <span className="min-w-0 w-full text-center">-</span>
+			const emptyElt = (
+				<div className="flex w-full justify-center">
+					<span>-</span>
+				</div>
+			)
 			const extraStyles = DH.getColumnExtraStyles(
 				colDef.name as keyof L.KnownLayer,
 				teamParity,
@@ -164,13 +165,11 @@ function buildColumn(
 					{value}
 				</div>
 			)
+			const value = info.getValue()
+			if (value === null || value === undefined) return emptyElt
 			let elt: React.ReactNode
 			switch (colDef.type) {
 				case 'float':
-					if (value === null || value === undefined) {
-						elt = emptyElt
-						break
-					}
 					elt = valueElt(formatFloat(value as unknown as number))
 					break
 				case 'string':
