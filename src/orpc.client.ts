@@ -43,32 +43,51 @@ const orpcLink = new RPCLink({
 })
 
 const _orpcClient: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
+websocket.addEventListener('close', () => {
+	console.log('WebSocket close event')
+})
+websocket.addEventListener('error', () => {
+	console.log('WebSocket error event')
+})
 
-const opened$ = Rx.fromEvent(websocket, 'open').pipe(Rx.retry())
-const closed$ = Rx.fromEvent(websocket, 'close').pipe(Rx.retry())
-const error$ = Rx.fromEvent(websocket, 'error').pipe(Rx.retry())
+const opened$ = Rx.fromEvent(websocket, 'open')
+const closed$ = Rx.fromEvent(websocket, 'close')
+const error$ = Rx.fromEvent(websocket, 'error')
 
 let previousConnections = false
 let previousConfig: PublicConfig | undefined
+let disconnectTime: number | undefined
 
-// this whole thing is probably just paranoia
-const connectedCold$ = Rx.merge([
-	Rx.of(!!websocket.OPEN),
-	opened$.pipe(Rx.map(() => !!websocket.OPEN)),
-	closed$.pipe(Rx.map(() => !!websocket.OPEN)),
-	error$.pipe(Rx.map(() => !!websocket.OPEN)),
-])
-	.pipe(
+export type ConnectionStatus = 'open' | 'closed' | 'pending' | 'reconnecting'
+
+export const [useConnectStatus, connectStatus$] = (() => {
+	const connectStatusCold$: Rx.Observable<ConnectionStatus> = Rx.merge(
+		Rx.of(websocket.readyState === WebSocket.OPEN ? 'open' as const : 'pending' as const).pipe(Rx.map(state => state as ConnectionStatus)),
+		opened$.pipe(Rx.map(() => 'open' as const)),
+		closed$.pipe(Rx.map(() => 'reconnecting' as const)),
+	).pipe(
 		Rx.distinctUntilChanged(),
-		Rx.switchMap((open) => open ? Rx.of(true) : Rx.of(false).pipe(Rx.delay(1000))),
-		Rx.retry(),
+		Rx.switchMap((status) => {
+			if (status === 'reconnecting') return Rx.concat(Rx.of(status), Rx.of('closed' as const).pipe(Rx.delay(750))) // don't indicate there's anything wrong until we haven't been able to reconnect for a while
+			return Rx.of(status)
+		}),
 	)
 
-export const [useConnected, connected$] = ReactRx.bind(connectedCold$, false)
+	return ReactRx.bind(connectStatusCold$, 'pending')
+})()
+connectStatus$.subscribe((connected) => {
+	console.log('Connected state changed:', connected)
+})
 
 opened$.pipe(
 	Rx.concatMap(async () => {
-		console.log('WebSocket connection opened to ' + wsUrl)
+		if (disconnectTime) {
+			const reconnectionDuration = Date.now() - disconnectTime
+			console.log(`WebSocket reconnected to ${wsUrl} (took ${reconnectionDuration}ms)`)
+			disconnectTime = undefined
+		} else {
+			console.log('WebSocket connection opened to ' + wsUrl)
+		}
 		if (previousConnections) ConfigClient.invalidateConfig()
 		previousConnections = true
 		const config = await ConfigClient.fetchConfig()
@@ -94,21 +113,21 @@ opened$.pipe(
 	Rx.retry(),
 ).subscribe()
 
-error$.subscribe(event => {
-	console.error('Websocket encountered an error: ', event)
+error$.subscribe(() => {
+	console.error('Websocket encountered an error')
 })
 
 closed$.pipe(
-	Rx.concatMap(async (event: Event) => {
-		console.error('WebSocket connection closed: ', JSON.stringify(event))
+	Rx.concatMap(async (event: any) => {
+		disconnectTime = Date.now()
+		console.error(`WebSocket connection closed: ${event.code}, ${event.reason}`)
 		if (websocket.retryCount > 5) {
 			const res = await fetch(AR.link('/check-auth'))
-			if (!res.ok) {
-				window.location.reload()
+			if (res.status === 401) {
+				window.location.href = AR.link('/login')
 			}
 		}
 	}),
-	Rx.retry(),
 ).subscribe()
 
 export const queryClient = new QueryClient()
@@ -118,22 +137,24 @@ export function observe<T>(task: () => Promise<AsyncGenerator<T>>) {
 	return Rx.from(toCold(task)).pipe(
 		traceTag('ORPC_OBSERVE'),
 		Rx.concatAll(),
-		Rx.tap({
-			error: (err) => {
-				console.error(err)
+		Rx.retry({
+			delay: (error, count) => {
+				const backoff$ = Rx.timer(Math.pow(2, count) * 250)
+
+				// we only want to log the error if the connection is closed
+				if (connectStatus$.getValue() === 'open') return backoff$
+
+				console.error(error)
+				if (count > 2) {
+					globalToast$.next({
+						title: 'Remote Subscription Error',
+						description: error.message,
+						variant: 'destructive',
+					})
+				}
+
+				return backoff$
 			},
 		}),
-		// we don't need to delay here, that's handled upstream
-		Rx.retry({ delay: 0, count: 2, resetOnSuccess: true }),
-		Rx.tap({
-			error: (err) => {
-				globalToast$.next({
-					title: 'Remote Subscription Error',
-					description: err.message,
-					variant: 'destructive',
-				})
-			},
-		}),
-		Rx.retry({ delay: (error, count) => Rx.timer(Math.pow(2, count) * 1000) }),
 	)
 }

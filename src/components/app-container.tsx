@@ -1,4 +1,5 @@
 import * as AR from '@/app-routes.ts'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import * as USR from '@/models/users.models.ts'
 import * as RPC from '@/orpc.client'
@@ -19,11 +20,12 @@ import NicknameDialog from './nickname-dialog'
 import { Alert, AlertTitle } from './ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { Spinner } from './ui/spinner'
 import UserPermissionsDialog from './user-permissions-dialog'
 
 export default function AppContainer(props: { children: React.ReactNode }) {
 	const flags = FeatureFlags.useFeatureFlags()
-	const rpcConnected = RPC.useConnected()
+	const wsStatus = RPC.useConnectStatus()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
 	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
@@ -81,10 +83,15 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 						</div>
 					)}
 
-					{rpcConnected === false && (
+					{wsStatus === 'closed' && (
 						<Alert variant="destructive" className="hidden w-max md:flex items-center space-x-2 py-1 px-2">
 							<AlertTitle className="text-xs font-medium">WebSocket Disconnected</AlertTitle>
 						</Alert>
+					)}
+					{(wsStatus === 'reconnecting' || wsStatus === 'pending') && (
+						<div title="Connecting to server...">
+							<Spinner />
+						</div>
 					)}
 					{flags.displayWsClientId && config && (
 						<span
@@ -135,7 +142,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 										Stop Simulating Roles
 									</DropdownMenuItem>
 								)}
-								{rpcConnected === false && (
+								{wsStatus === 'closed' && (
 									<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
 										<Icons.WifiOff className="mr-2 h-4 w-4" />
 										Websocket Disconnected
