@@ -164,7 +164,9 @@ function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: Se
 	const handleClick = (e: React.MouseEvent) => {
 		if (e.button === 2) e.preventDefault()
 		if (e.ctrlKey || e.metaKey) {
-			changeThrottled('disabled')
+			// Ctrl+click cycles between disabled and regular, skipping inverted
+			const nextState = appliedState === 'disabled' ? 'regular' : 'disabled'
+			changeThrottled(nextState)
 		} else {
 			const direction = e.button === 2 ? -1 : 1
 			const nextState = states[(states.indexOf(appliedState) + direction + states.length) % states.length]

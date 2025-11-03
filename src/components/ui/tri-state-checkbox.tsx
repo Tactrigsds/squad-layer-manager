@@ -15,17 +15,24 @@ export interface TriStateCheckboxProps extends Omit<React.HTMLAttributes<HTMLBut
 
 const TriStateCheckbox = React.forwardRef<HTMLButtonElement, TriStateCheckboxProps>(
 	({ className, checked = 'disabled', onCheckedChange, disabled = false, ...props }, ref) => {
-		const handleClick = () => {
+		const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
 			if (disabled) return
-			const nextState = STATES[(STATES.indexOf(checked) + 1) % STATES.length]
-			onCheckedChange?.(nextState)
+
+			// If ctrl+clicking, cycle only between disabled and regular (skip inverted)
+			if (e.ctrlKey || e.metaKey) {
+				const nextState = checked === 'disabled' ? 'regular' : 'disabled'
+				onCheckedChange?.(nextState)
+			} else {
+				const nextState = STATES[(STATES.indexOf(checked) + 1) % STATES.length]
+				onCheckedChange?.(nextState)
+			}
 		}
 
 		const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
 			if (disabled) return
 			if (e.key === ' ' || e.key === 'Enter') {
 				e.preventDefault()
-				handleClick()
+				handleClick(e)
 			}
 		}
 
@@ -37,7 +44,7 @@ const TriStateCheckbox = React.forwardRef<HTMLButtonElement, TriStateCheckboxPro
 				aria-checked={checked === 'regular' ? 'true' : checked === 'inverted' ? 'mixed' : 'false'}
 				aria-disabled={disabled}
 				disabled={disabled}
-				onClick={handleClick}
+				onClick={(e) => handleClick(e)}
 				onKeyDown={handleKeyDown}
 				className={cn(
 					'peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors',
