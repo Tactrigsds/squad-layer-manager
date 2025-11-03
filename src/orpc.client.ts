@@ -3,7 +3,7 @@ import { globalToast$ } from '@/hooks/use-global-toast'
 import type { PublicConfig } from '@/server/config'
 import type { OrpcAppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
-import { createORPCClient } from '@orpc/client'
+import { createORPCClient, createSafeClient, ORPCError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
@@ -20,7 +20,22 @@ const websocket = new WebSocket(wsUrl)
 
 const orpcLink = new RPCLink({
 	websocket,
-	clientInterceptors: [],
+	interceptors: [
+		options => {
+			return options.next().catch(error => {
+				console.error(error)
+				if (error instanceof ORPCError) {
+					globalToast$.next({
+						title: 'Error',
+						description: error.message,
+						variant: 'destructive',
+					})
+				} else {
+					throw error
+				}
+			})
+		},
+	],
 })
 
 const _orpcClient: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
