@@ -243,7 +243,7 @@ export function initLayerTable(
 	// set page
 	args.sub.add(
 		args.update$.pipe(
-			Rx.startWith([args.get(), null]),
+			Rx.startWith([args.get(), null] as const),
 			Rx.switchMap(async ([state]) => {
 				const queryInput = selectQueryInput(state)
 				// we always want to fetch to keep the cache fresh
