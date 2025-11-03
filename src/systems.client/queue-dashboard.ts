@@ -1,5 +1,6 @@
 // this file no longer has a decent organizing principle, we should be annexing it over time
 import { distinctDeepEquals } from '@/lib/async'
+import { sleep } from '@/lib/async'
 import * as Gen from '@/lib/generator'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
@@ -99,19 +100,12 @@ export function setup() {
 export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, get, store) => {
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	;(async () => {
-		const config = await ConfigClient.fetchConfig()
+		await sleep(0)
 		const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
-
 		set(state => ({
 			...state,
 			extraFilters: new Set(Gen.filter(state.extraFilters.values(), f => filterEntities.has(f))),
 		}))
-
-		if (!config.layerTable.defaultExtraFilters) return
-
-		set({
-			extraFilters: new Set(config.layerTable.defaultExtraFilters.filter(f => filterEntities.has(f))),
-		})
 	})()
 
 	store.subscribe((state, prev) => {

@@ -23,19 +23,27 @@ export function useDebounced<T>(
 	return React.useCallback((value: T) => subRef.current.next(value), [])
 }
 
-// for when you still want to rerender immediately when state is set but you have some expensive side-effect you would like to compute asynchronously
+// for when you still want to rerender immediately when state is set but you have some expensive side-effect you would like to compute asynchronously. defaultValue is expected to be referentially stable
 export function useDebouncedState<T>(defaultValue: T, opts: {
 	delay: number
 	mode?: 'debounce' | 'throttle'
 	onChange: (value: T) => void
 }) {
-	const [state, setState] = React.useState(defaultValue)
+	const prevDefaultValue = React.useRef(defaultValue)
+	const [_state, setState] = React.useState(defaultValue)
+	let state: T
+	if (prevDefaultValue.current !== defaultValue) {
+		state = defaultValue
+	} else {
+		state = _state
+	}
 
-	const setDebounced = useDebounced({ defaultValue: () => defaultValue, ...opts })
+	const setDebounced = useDebounced<T>({ ...opts })
 
-	const setCombinedState = (value: T) => {
+	const setCombinedState = React.useCallback((value: T) => {
+		prevDefaultValue.current = defaultValue
 		setState(value)
 		setDebounced(value)
-	}
+	}, [defaultValue, setDebounced])
 	return [state, setCombinedState] as const
 }

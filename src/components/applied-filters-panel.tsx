@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import { useDebounced } from '@/hooks/use-debounce.ts'
+import { useDebouncedState } from '@/hooks/use-debounce.ts'
 import * as Gen from '@/lib/generator.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models.ts'
@@ -16,7 +16,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import { TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
+import { TriState as TriStateCheckboxState, TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
@@ -135,7 +135,12 @@ export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame
 				<Icons.ChevronRight className="h-4 w-4" />
 			</Button>
 			<ComboBoxMulti options={options} values={extraFilterIds} onSelect={(update) => QD.ExtraFiltersStore.getState().select(update)}>
-				<Button title="Edit extra filters" variant="ghost" size="icon">
+				<Button title="Edit extra filters" variant="ghost" size={extraFilterIds.length > 0 ? 'icon' : 'default'}>
+					{extraFilterIds.length === 0 && (
+						<div className="text-sm text-muted-foreground px-2">
+							Add Extra Filters
+						</div>
+					)}
 					<Icons.Edit />
 				</Button>
 			</ComboBoxMulti>
@@ -149,43 +154,26 @@ export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame
 }
 
 function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: SelectLayersFrame.Key }) {
-	const [appliedState, setAppliedFilterState] = useFrameStore(
+	const [storeAppliedState, setAppliedFilterState] = useFrameStore(
 		frameKey,
-		useShallow(s => [s.appliedFilters.get(filterId)!, s.setAppliedFilterState]),
+		useShallow(s => [s.appliedFilters.get(filterId) ?? 'disabled', s.setAppliedFilterState]),
 	)
-	// const [appliedState, setAppliedFilterState] = React.useState
 	const filter = FilterEntityClient.useFilterEntities().get(filterId)
-	const states = ['disabled', 'regular', 'inverted'] as const
-	const handleChange = (applyAs: (typeof states)[number]) => {
-		setAppliedFilterState(filterId, applyAs)
-	}
 
-	const changeThrottled = useDebounced<(typeof states)[number]>({ delay: 0, mode: 'throttle', onChange: handleChange })
-	const handleClick = (e: React.MouseEvent) => {
-		if (e.button === 2) e.preventDefault()
-		if (e.ctrlKey || e.metaKey) {
-			// Ctrl+click cycles between disabled and regular, skipping inverted
-			const nextState = appliedState === 'disabled' ? 'regular' : 'disabled'
-			changeThrottled(nextState)
-		} else {
-			const direction = e.button === 2 ? -1 : 1
-			const nextState = states[(states.indexOf(appliedState) + direction + states.length) % states.length]
-			changeThrottled(nextState)
-		}
-	}
+	const [appliedState, changeThrottled] = useDebouncedState<TriStateCheckboxState>(storeAppliedState, {
+		delay: 0,
+		mode: 'throttle',
+		onChange: React.useCallback((applyAs: TriStateCheckboxState) => {
+			setAppliedFilterState(filterId, applyAs)
+		}, [filterId, setAppliedFilterState]),
+	})
 
-	const titleMap = {
-		disabled: 'Not filtering',
-		regular: 'Filtering',
-		inverted: 'Inverted',
-	}
+	if (!filter) return
 
-	const btn = (
-		<Button title={titleMap[appliedState]} onClick={handleClick} onContextMenu={handleClick} variant="ghost" size="sm">
+	return (
+		<TriStateCheckbox checked={appliedState} onCheckedChange={changeThrottled}>
 			{filter?.emoji && <EmojiDisplay size="sm" emoji={filter?.emoji} />}
 			<span>{filter?.name}</span>
-			<TriStateCheckboxDisplay state={appliedState} />
-		</Button>
+		</TriStateCheckbox>
 	)
-	return btn
 }

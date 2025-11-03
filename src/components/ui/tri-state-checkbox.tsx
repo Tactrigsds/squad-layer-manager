@@ -2,66 +2,89 @@ import { CheckIcon } from '@radix-ui/react-icons'
 import { X } from 'lucide-react'
 import * as React from 'react'
 
+import { Button, type ButtonProps } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const STATES = ['disabled', 'regular', 'inverted'] as const
 export type TriState = typeof STATES[number]
 
-export interface TriStateCheckboxProps extends Omit<React.HTMLAttributes<HTMLButtonElement>, 'onChange'> {
+export interface TriStateCheckboxProps extends Omit<ButtonProps, 'onChange' | 'onClick' | 'onTouchEnd'> {
 	checked?: TriState
 	onCheckedChange?: (checked: TriState) => void
-	disabled?: boolean
+	children?: React.ReactNode
 }
 
 const TriStateCheckbox = React.forwardRef<HTMLButtonElement, TriStateCheckboxProps>(
-	({ className, checked = 'disabled', onCheckedChange, disabled = false, ...props }, ref) => {
+	({ className, checked = 'disabled', onCheckedChange, disabled = false, children, variant = 'ghost', size, ...props }, ref) => {
+		// Default size based on whether children are provided
+		const defaultSize = children ? 'sm' : 'icon'
+		const buttonSize = size ?? defaultSize
+
+		const cycleState = (currentState: TriState, skipInverted: boolean) => {
+			const states = ['disabled', 'regular'] as TriState[]
+			if (!skipInverted) states.push('inverted')
+			const currentIndex = states.indexOf(currentState)
+			const nextIndex = (currentIndex + 1) % states.length
+			return states[nextIndex]
+		}
+
 		const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
 			if (disabled) return
 
-			// If ctrl+clicking, cycle only between disabled and regular (skip inverted)
 			if (e.ctrlKey || e.metaKey) {
-				const nextState = checked === 'disabled' ? 'regular' : 'disabled'
-				onCheckedChange?.(nextState)
+				// Ctrl+click sets inverted
+				onCheckedChange?.('inverted')
 			} else {
-				const nextState = STATES[(STATES.indexOf(checked) + 1) % STATES.length]
+				// Regular click cycles between disabled and regular
+				const nextState = cycleState(checked, true)
 				onCheckedChange?.(nextState)
 			}
 		}
 
-		const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+		const handleTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
 			if (disabled) return
-			if (e.key === ' ' || e.key === 'Enter') {
-				e.preventDefault()
-				handleClick(e as any)
-			}
+
+			// Prevent onClick from firing
+			e.preventDefault()
+
+			// On touch, cycle through all states (don't skip inverted)
+			const nextState = cycleState(checked, false)
+			onCheckedChange?.(nextState)
 		}
 
 		return (
-			<button
+			<Button
 				ref={ref}
 				type="button"
 				role="checkbox"
 				aria-checked={checked === 'regular' ? 'true' : checked === 'inverted' ? 'mixed' : 'false'}
 				aria-disabled={disabled}
 				disabled={disabled}
-				onClick={(e) => handleClick(e)}
-				onKeyDown={handleKeyDown}
-				className={cn(
-					'peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors',
-					checked === 'regular' && 'bg-primary text-primary-foreground',
-					checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
-					checked === 'disabled' && 'bg-background',
-					className,
-				)}
+				onClick={handleClick}
+				onTouchEnd={handleTouchEnd}
+				variant={variant}
+				size={buttonSize}
+				className={className}
+				title="Ctrl+Click to invert"
 				{...props}
 			>
-				<span className="flex items-center justify-center">
-					{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
-					{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-[3]" />}
-					{/* Invisible icon to maintain consistent sizing */}
-					{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
-				</span>
-			</button>
+				{children}
+				<div
+					className={cn(
+						'h-4 w-4 shrink-0 rounded-sm border border-primary shadow transition-colors',
+						checked === 'regular' && 'bg-primary text-primary-foreground',
+						checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
+						checked === 'disabled' && 'bg-background',
+					)}
+				>
+					<span className="flex items-center justify-center">
+						{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
+						{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-[3]" />}
+						{/* Invisible icon to maintain consistent sizing */}
+						{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
+					</span>
+				</div>
+			</Button>
 		)
 	},
 )

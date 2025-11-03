@@ -105,9 +105,11 @@ export function getSettingsConstraints(
 		}
 
 		for (const { filterId, applyAs } of poolConfig.filters) {
-			if (applyAs === 'disabled') continue
 			constraints.push(
-				CB.filterEntity(`layer-pool:${poolName}:${filterId}`, filterId, { filterResults: true, invert: applyAs === 'inverted' }),
+				CB.filterEntity(`layer-pool:${poolName}:${filterId}`, filterId, {
+					filterResults: applyAs !== 'disabled',
+					invert: applyAs === 'inverted',
+				}),
 			)
 		}
 	}

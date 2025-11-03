@@ -150,46 +150,47 @@ function buildColumn(
 				)
 			}
 
-			let text: string
-			switch (colDef.type) {
-				case 'float':
-					if (value === null || value === undefined) {
-						text = '-'
-						break
-					}
-					text = formatFloat(value as unknown as number)
-					break
-				case 'string':
-					text = value ?? '-'
-					break
-				case 'integer':
-					text = value?.toString() ?? '-'
-					break
-				case 'boolean':
-					if (value === null || value === undefined) {
-						text = '-'
-						break
-					}
-					text = value ? 'True' : 'False'
-					break
-				default:
-					assertNever(colDef)
-			}
-
+			const emptyElt = <span className="min-w-0 w-full text-center">-</span>
 			const extraStyles = DH.getColumnExtraStyles(
 				colDef.name as keyof L.KnownLayer,
 				teamParity,
 				displayLayersNormalized,
 				violationDescriptors,
 			)
-
-			return (
+			const valueElt = (value: React.ReactNode) => (
 				<div
 					className={`pl-4 ${extraStyles}`}
 				>
-					{text}
+					{value}
 				</div>
 			)
+			let elt: React.ReactNode
+			switch (colDef.type) {
+				case 'float':
+					if (value === null || value === undefined) {
+						elt = emptyElt
+						break
+					}
+					elt = valueElt(formatFloat(value as unknown as number))
+					break
+				case 'string':
+					elt = value ? valueElt(value) : emptyElt
+					break
+				case 'integer':
+					elt = value ? valueElt(value.toString()) : emptyElt
+					break
+				case 'boolean':
+					if (value === null || value === undefined) {
+						elt = emptyElt
+						break
+					}
+					elt = valueElt(value ? 'True' : 'False')
+					break
+				default:
+					assertNever(colDef)
+			}
+
+			return elt
 		},
 	})
 }

@@ -1,13 +1,11 @@
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as LQYClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
-import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import { TooltipContentProps } from '@radix-ui/react-tooltip'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -77,7 +75,7 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 	return (
 		<Tooltip delayDuration={0}>
 			<TooltipTrigger
-				className={cn('flex -space-x-3 items-center flex-nowrap', props.className)}
+				className={cn('flex -space-x-2 items-center flex-nowrap', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={props.layerItemId ? onMouseOver : undefined}
 				onMouseOut={props.layerItemId ? onMouseOut : undefined}

@@ -30,7 +30,7 @@ import FilterEntitySelect from './filter-entity-select.tsx'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import { TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
+import { TriStateCheckbox, TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
 
 export type ServerSettingsPopoverHandle = {
 	reset(settings: SS.ServerSettings): void
@@ -230,12 +230,9 @@ function PoolFiltersConfigurationPanel({
 						disabled: 'When selecting layers, filter is disabled by default',
 					}
 
-					const checked = filterConfig.applyAs
-					const handleApplyAsChanged = () => {
-						const options = SS.POOL_FILTER_APPLY_AS.options
-						const nextState = options[(options.indexOf(checked) + 1) % options.length]
+					const handleApplyAsChanged = (newApplyAs: SS.PoolFilterApplyAs) => {
 						const state = ServerSettingsClient.Store.getState()
-						state.set({ path: [...filterPath, 'applyAs'], value: nextState })
+						state.set({ path: [...filterPath, 'applyAs'], value: newApplyAs })
 					}
 
 					return (
@@ -252,12 +249,10 @@ function PoolFiltersConfigurationPanel({
 							/>
 							<Tooltip>
 								<TooltipTrigger asChild>
-									<Button onClick={handleApplyAsChanged} variant="ghost" size="icon">
-										<TriStateCheckboxDisplay state={checked} />
-									</Button>
+									<TriStateCheckbox checked={filterConfig.applyAs} onCheckedChange={handleApplyAsChanged} title={''} />
 								</TooltipTrigger>
 								<TooltipContent>
-									<p>{descriptions[checked]}</p>
+									<p>{descriptions[filterConfig.applyAs]}</p>
 								</TooltipContent>
 							</Tooltip>
 							<Button
