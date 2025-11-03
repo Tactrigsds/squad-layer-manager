@@ -1,4 +1,4 @@
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as F from '@/models/filter.models'
@@ -120,13 +120,15 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 								return [
 									index > 0 && <Separator key={`separator-${v.id}`} />,
 									(
-										<Item key={v.id} variant="default" className="w-max">
+										<Item key={v.id} variant="default" className="w-full">
 											<ItemMedia>
 												{filter.emoji ? <EmojiDisplay emoji={filter.emoji} /> : <Icons.Filter key={v.id} className="bg-orange-500" />}
 											</ItemMedia>
 											<ItemContent>
 												<ItemTitle>{filter.name}</ItemTitle>
-												{filter.alertMessage && <ItemDescription>{filter.alertMessage}</ItemDescription>}
+												{filter.alertMessage && (
+													<ItemDescription className="whitespace-normal line-clamp-none">{filter.alertMessage}</ItemDescription>
+												)}
 											</ItemContent>
 											<ItemActions>
 												<FilterEntityLink filterId={filter.id} />
