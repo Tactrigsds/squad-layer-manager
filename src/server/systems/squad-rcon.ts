@@ -184,7 +184,7 @@ export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | stri
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
 export async function getPlayer(ctx: CS.Log & C.SquadRcon, anyID: string) {
-	const { value: playersRes } = await ctx.server.playerList.get(ctx)
+	const playersRes = await ctx.server.playerList.get(ctx)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
 	const player = players.find(p => p.playerID.toString() === anyID || p.steamID.toString() === anyID)
@@ -231,7 +231,7 @@ export const warnAllAdmins = C.spanOp(
 	'squad-server:warn-all-admins',
 	{ tracer, eventLogLevel: 'info' },
 	async (ctx: CS.Log & C.SquadServer, options: WarnOptions) => {
-		const [{ value: currentAdminList }, { value: playersRes }] = await Promise.all([
+		const [currentAdminList, playersRes] = await Promise.all([
 			ctx.server.adminList.get(ctx),
 			ctx.server.playerList.get(ctx),
 		])
@@ -303,7 +303,7 @@ export const setNextLayer = C.spanOp(
 		ctx.log.info(`Setting next layer: %s, `, cmd)
 		await ctx.rcon.execute(ctx, cmd)
 		ctx.server.layersStatus.invalidate(ctx)
-		const newStatus = (await ctx.server.layersStatus.get(ctx)).value
+		const newStatus = await ctx.server.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully

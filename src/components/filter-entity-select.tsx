@@ -8,9 +8,9 @@ import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Link } from 'react-router-dom'
 import { Checkbox } from './ui/checkbox.tsx'
 
 export default function FilterEntitySelect(props: {
@@ -88,7 +88,8 @@ export function FilterEntityLink(props: { filterId: F.FilterEntityId }) {
 	return (
 		<Link
 			className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-			to={AR.link('/filters/:id', props.filterId)}
+			params={{ filterId: props.filterId }}
+			to="/filters/$filterId"
 		>
 			<Icons.Edit />
 		</Link>

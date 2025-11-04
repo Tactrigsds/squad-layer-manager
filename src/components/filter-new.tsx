@@ -1,4 +1,3 @@
-import * as AR from '@/app-routes.ts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -12,8 +11,8 @@ import * as ARClient from '@/systems.client/app-routes.client'
 import { useFilterCreate } from '@/systems.client/filter-entity.client.ts'
 import { invalidateLoggedInUser } from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
+import { useNavigate } from '@tanstack/react-router'
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
@@ -28,7 +27,11 @@ const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 export default function FilterNewWrapper() {
 	const route = ARClient.assertActiveRoute('/filters/new')
 	const frameInputRef = React.useRef(EditFrame.createInput({ startingFilter: DEFAULT_FILTER }))
-	const frameKey = useFrameLifecycle(EditFrame.frame, frameInputRef.current, undefined, Obj.deepEqual)
+	const frameKey = useFrameLifecycle(EditFrame.frame, {
+		input: frameInputRef.current,
+		deps: undefined,
+		equalityFn: Obj.deepEqual,
+	})
 
 	return <FilterNew frameKey={frameKey} />
 }
@@ -67,7 +70,7 @@ function FilterNew(props: { frameKey: EditFrame.Key }) {
 				case 'ok':
 					invalidateLoggedInUser()
 					toast({ title: 'Filter created' })
-					navigate(AR.link(`/filters/:id`, value.id))
+					navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 
 				default:

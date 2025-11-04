@@ -19,7 +19,7 @@ describe('AsyncResource', () => {
 			count++
 			return count
 		})
-		const { value } = await resource.get(ctx)
+		const value = await resource.get(ctx)
 		expect(value).toBe(1)
 	})
 
@@ -29,8 +29,8 @@ describe('AsyncResource', () => {
 			count++
 			return count
 		})
-		const { value: value1 } = await resource.get(ctx)
-		const { value: value2 } = await resource.get(ctx)
+		const value1 = await resource.get(ctx)
+		const value2 = await resource.get(ctx)
 		expect(value1).toBe(1)
 		expect(value2).toBe(1)
 		expect(count).toBe(1)
@@ -42,9 +42,9 @@ describe('AsyncResource', () => {
 			count++
 			return count
 		})
-		const { value: value1 } = await resource.get(ctx)
+		const value1 = await resource.get(ctx)
 		resource.invalidate(ctx)
-		const { value: value2 } = await resource.get(ctx)
+		const value2 = await resource.get(ctx)
 		expect(value1).toBe(1)
 		expect(value2).toBe(2)
 		expect(count).toBe(2)

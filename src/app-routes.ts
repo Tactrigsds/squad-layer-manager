@@ -3,7 +3,6 @@
 import Cookie from 'cookie'
 import { z } from 'zod'
 import * as Arr from './lib/array'
-import { MapTuple } from './lib/types'
 
 type GenericRouteDefinition = {
 	id: string
@@ -27,28 +26,25 @@ export type RouteDefinition<Params extends ParamsBase, Handle extends 'page' | '
 	regex: RegExp
 }
 
-type GetLink<Params extends ParamsBase> = (...args: Params) => string
+type GetLink<Params extends ParamsBase> = (...args: ToGenericStrings<Params>) => string
 
-export const routes = {
-	...defRoute('/', [], 'page'),
-	...defRoute('/servers/:id', ['id'] as const, 'page'),
+export const routes = [
+	defRoute('/login', [], 'custom', { authed: false }),
+	defRoute('/login/callback', [], 'custom', { authed: false }),
+	defRoute('/logout', [], 'custom'),
+	defRoute('/layers.sqlite3', [], 'custom'),
+	defRoute('/check-auth', [], 'custom'),
 
-	...defRoute('/filters', [], 'page'),
-	...defRoute('/filters/new', [], 'page'),
-	...defRoute('/filters/:id', ['id'] as const, 'page'),
-	...defRoute('/layers/:id', ['id'] as const, 'page'),
-	...defRoute('/layers/:id/scores', ['id'] as const, 'page'),
+	defRoute('/discord-cdn/*', ['*'] as const, 'custom'),
 
-	...defRoute('/login', [], 'custom', { authed: false }),
-	...defRoute('/login/callback', [], 'custom', { authed: false }),
-	...defRoute('/logout', [], 'custom'),
-	...defRoute('/layers.sqlite3', [], 'custom'),
-	...defRoute('/check-auth', [], 'custom'),
+	defRoute('/orpc', [], 'custom', { websocket: true }),
 
-	...defRoute('/discord-cdn/*', ['*'] as const, 'custom'),
-
-	...defRoute('/orpc', [], 'custom', { websocket: true }),
-} as const satisfies Record<string, GenericRouteDefinition>
+	defRoute('/', [], 'page'),
+	defRoute('/servers/:id', ['id'] as const, 'page'),
+	defRoute('/layers/:id/scores', ['id'] as const, 'page'),
+	defRoute('/layers/:id/details', ['id'] as const, 'page'),
+	defRoute('/*', [], 'page'),
+] as const satisfies GenericRouteDefinition[]
 
 export type KnownRoutes = typeof routes
 export type KnownRoute = KnownRoutes[number]
@@ -91,31 +87,37 @@ function defRoute<T extends string, Params extends ParamsBase, Handle extends 'p
 	})
 
 	return {
-		[str]: {
-			id: str,
-			params: params as Params,
-			authed: options?.authed ?? true,
+		id: str,
+		params: params as Params,
+		authed: options?.authed ?? true,
 
-			link: getLink,
+		link: getLink,
 
-			handle: handle,
-			websocket: options?.websocket ?? false,
-			regex: getRouteRegex(str),
-		} satisfies RouteDefinition<Params, Handle>,
-	} as const
+		handle: handle,
+		websocket: options?.websocket ?? false,
+		regex: getRouteRegex(str),
+	} satisfies RouteDefinition<Params, Handle>
+}
+
+function routeForId<Id extends KnownRouteId>(id: Id) {
+	return routes.find(route => route.id === id) as RouteDefForId<Id>
 }
 
 export function route<R extends KnownRouteId>(path: R) {
-	if (!routes[path]) {
+	if (!routes.some(r => r.id === path)) {
 		throw new Error(`Route ${path} is not defined in the routes object`)
 	}
 	return path
 }
 
-export function link<R extends KnownRouteId>(path: R, ...args: MapTuple<KnownRoutes[R]['params'], string>) {
-	const linkFn = routes[path].link
+type ToGenericStrings<T extends string[]> = {
+	[K in keyof T]: K extends keyof string[] ? T[K] : string
+}
+export function link<R extends KnownRouteId>(id: R, ...args: ToGenericStrings<RouteDefForId<R>['params']>) {
+	const route = routeForId(id)
+	const linkFn = routeForId(id).link
 	// @ts-expect-error idgaf
-	return linkFn(...args)
+	return linkFn(...args.map((arg, index) => route.params[index] === '*' ? arg : encodeURIComponent(arg)))
 }
 
 export function checkResolvedRouteInIds<R extends KnownRouteId>(

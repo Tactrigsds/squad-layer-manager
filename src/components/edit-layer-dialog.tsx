@@ -47,9 +47,11 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, initialEditedLayerId: defaultLayerId.current }))
 	const frameKey = useFrameLifecycle(
 		SelectLayersFrame.frame,
-		frameInputRef.current,
-		undefined,
-		Obj.deepEqual,
+		{
+			input: frameInputRef.current,
+			deps: undefined,
+			equalityFn: Obj.deepEqual,
+		},
 	)
 
 	const [initialLayerId, editedLayerId] = useFrameStore(

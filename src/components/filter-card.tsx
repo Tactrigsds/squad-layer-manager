@@ -20,11 +20,11 @@ import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import { useLayerComponents as useLayerComponent } from '@/systems.client/layer-queries.client.ts'
+import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import React from 'react'
-import { Link } from 'react-router-dom'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
@@ -402,7 +402,8 @@ export function LeafFilterNode(props: NodeProps) {
 					setFilterId={id => actions.applyFilter.setFilterId(id)}
 				/>
 				<Link
-					to={AR.link('/filters/:id', node.filterId ?? '')}
+					to={'/filters/$filterId'}
+					params={{ filterId: node.filterId ?? '' }}
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
 					<ExternalLink color="hsl(var(--primary))" />

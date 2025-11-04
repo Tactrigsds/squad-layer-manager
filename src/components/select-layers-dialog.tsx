@@ -26,6 +26,7 @@ type SelectLayersDialogProps = {
 	pinMode?: SelectMode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
+	frames: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	headerAdditions?: React.ReactNode
@@ -46,7 +47,12 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 	const defaultSelectedRef = React.useRef(props.defaultSelected ?? [])
 
 	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current }))
-	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, frameInputRef.current, undefined, Obj.deepEqual)
+	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
+		frameKey: props.frames.selectLayers,
+		input: frameInputRef.current,
+		deps: undefined,
+		equalityFn: Obj.deepEqual,
+	})
 
 	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 

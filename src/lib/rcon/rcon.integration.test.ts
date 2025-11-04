@@ -98,7 +98,7 @@ test('can set next layer', async () => {
 		Unit_2: 'CombinedArms',
 	})!
 	await SquadRcon.setNextLayer(ctx, layer2Id)
-	const status2 = (await ctx.server.layersStatus.get(ctx)).value
+	const status2 = await ctx.server.layersStatus.get(ctx)
 	expect(status2.code).toBe('ok')
 	if (status2.code !== 'ok') throw new Error('Failed to get server status')
 	const nextLayer2 = status2.data.nextLayer

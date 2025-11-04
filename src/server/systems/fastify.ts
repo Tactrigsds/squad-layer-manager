@@ -57,7 +57,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
-		baseLogger.debug(`incoming request %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
+		baseLogger.info(`REQUEST %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
 		monkeyPatchContextAndLogs(request)
 	})
 
@@ -256,7 +256,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	instance.addHook('preValidation', async (req, reply) => {
 		const baseCtx = buildFastifyRequestContext(req)
-		if (!baseCtx.route?.def.authed) return
+		if (baseCtx.route?.def.authed === false) return
 		const authRes = await authorizeRequest(baseCtx)
 		switch (authRes.code) {
 			case 'ok':
@@ -282,7 +282,11 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 	})
 
-	instance.addHook('onResponse', async (req) => {
+	instance.addHook('onResponse', async (req, res) => {
+		const statusCode = res.statusCode
+		if (statusCode >= 400) {
+			req.log.warn('Response %d for %s %s', statusCode, req.method, req.url)
+		}
 		authedCtxMap.delete(req.id)
 		authedCtxCreatedAt.delete(req.id)
 		for (const [reqId, createdAt] of Object.entries(authedCtxCreatedAt)) {
@@ -319,18 +323,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'development': {
 				// --------  dev server proxy setup --------
 				// When running in dev mode, we're proxying all html routes through to fastify so we can do auth and stuff. Non-proxied routes will just return the dev index.html, So we can just get it from the dev server. convoluted, but easier than trying to deeply integrate vite into fastify like what @fastify/vite does(badly)
-				const htmlRes = await fetch(`${ENV.ORIGIN}/idk`).catch(err => {
-					console.error('ERROR while getting /idk')
-					console.error(err)
-					return err
-				})
-				const body = await htmlRes.text()
 				return res
 					.type('text/html')
 					.header('Access-Control-Allow-Origin', '*')
 					.header('Access-Control-Allow-Methods', '*')
 					.header('Access-Control-Allow-Headers', '*')
-					.send(body)
+					.send('')
 			}
 			case 'production': {
 				return res.sendFile('index.html')
@@ -343,10 +341,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 	}
 
-	for (const route of Object.values(AR.routes)) {
-		if (route.handle !== 'page') continue
-		instance.get(route.id, getHtmlResponse)
-	}
+	instance.get('/', getHtmlResponse)
+	instance.get('/*', getHtmlResponse)
 
 	// --------  start server  --------
 	instance.log.info('Starting server...')
@@ -429,7 +425,7 @@ function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	const route = AR.resolveRoute(request.url) ?? undefined
 	const span = Otel.trace.getActiveSpan()
 	const ctx: C.AttachedFastify = DB.addPooledDb({ log: instance.log as CS.Logger, route, span })
-	request.log = ctx.log
+	request.log = ctx.log.child({ module: 'fastify' })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
 }

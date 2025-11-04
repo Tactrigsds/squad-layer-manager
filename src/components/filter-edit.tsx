@@ -6,7 +6,6 @@ import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
 import { sleep } from '@/lib/async'
-import { useNavigateAlert } from '@/lib/browser'
 import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
@@ -25,11 +24,11 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
-import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useShallow } from 'zustand/react/shallow'
 import EmojiDisplay from './emoji-display'
@@ -47,17 +46,15 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
-export default function FilterWrapper() {
-	const route = ARClient.assertActiveRoute('/filters/:id')
-	const editParams = ARClient.useAppParams(route)
+export default function FilterWrapper(props: { filterId: string }) {
 	const { toast } = useToast()
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const navigate = useNavigate()
-	const filterEntity = FilterEntityClient.useFilterEntities().get(editParams.id)
+	const filterEntity = FilterEntityClient.useFilterEntities().get(props.filterId)
 
 	React.useEffect(() => {
 		const sub = FilterEntityClient.filterMutation$.subscribe((mutation) => {
-			if (!mutation || mutation.key !== editParams.id) return
+			if (!mutation || mutation.key !== props.filterId) return
 			switch (mutation.type) {
 				case 'add':
 					break
@@ -73,7 +70,7 @@ export default function FilterWrapper() {
 					toast({
 						title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
 					})
-					navigate(AR.route('/filters'))
+					navigate({ to: '/filters' })
 					break
 				}
 				default:
@@ -81,9 +78,9 @@ export default function FilterWrapper() {
 			}
 			return () => sub.unsubscribe()
 		})
-	}, [editParams.id, navigate, toast, loggedInUser?.username])
+	}, [navigate, toast, loggedInUser?.username, props.filterId])
 	const userRes = UsersClient.useUser(filterEntity?.owner)
-	const filterContributorRes = useQuery(FilterEntityClient.getFilterContributorsBase(editParams.id))
+	const filterContributorRes = useQuery(FilterEntityClient.getFilterContributorsBase(props.filterId))
 
 	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
 		return <FullPageSpinner />
@@ -107,9 +104,11 @@ export function FilterEdit(
 	const frameInputRef = React.useRef(EditFrame.createInput({ editedFilterId: props.entity.id, startingFilter: props.entity.filter }))
 	const frameKey = useFrameLifecycle(
 		EditFrame.frame,
-		frameInputRef.current,
-		undefined,
-		Obj.deepEqual,
+		{
+			input: frameInputRef.current,
+			deps: undefined,
+			equalityFn: Obj.deepEqual,
+		},
 	)
 	const frameState = () => getFrameState(frameKey)
 	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => useFrameStore(frameKey, selector)
@@ -169,7 +168,7 @@ export function FilterEdit(
 			toast({
 				title: `Filter "${props.entity.name}" deleted`,
 			})
-			navigate(AR.link('/filters'))
+			navigate({ to: '/filters' })
 		} else {
 			let blurb: string
 			switch (res.code) {
@@ -219,9 +218,6 @@ export function FilterEdit(
 	const [filterValid, filterModified] = useFrame(
 		useShallow((state) => [state.valid, state.modified]),
 	)
-
-	const isDirty = Form.useStore(form.store, s => s.isDirty)
-	useNavigateAlert(filterModified || isDirty)
 
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>

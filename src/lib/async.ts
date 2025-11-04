@@ -162,44 +162,36 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		this.opts.tracer ??= AsyncResource.tracer
 	}
 	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation) {
-		const promise = this.cb(ctx)
-		this.fetchedValue = null
-		this.fetchedValue = promise
-		const res = await promise
-		this.lastResolveTime = Date.now()
-		this.valueSubject.next(res)
-		return res
-	}
-	async get(
-		_ctx: Ctx,
-		opts?: {
-			// locks other calls to get this resource that also invoke the lock
-			lock?: boolean
-			ttl?: number
-		},
-	) {
-		opts ??= {}
-		opts.lock ??= false
-		opts.ttl ??= this.opts.defaultTTL
-		const ctx = { ..._ctx, resOpts: { ttl: opts.ttl } }
-		let startUnlockCount: (() => void) | undefined
-
 		try {
-			startUnlockCount?.()
-			if (this.lastResolveTime === null && this.fetchedValue) {
-				return { value: await this.fetchedValue }
-			}
-			if (this.lastResolveTime === null && this.fetchedValue === null) {
-				return { value: await this.fetchValue(ctx) }
-			}
-			if (this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
-				return { value: await this.fetchedValue! }
-			} else {
-				return { value: await this.fetchValue(ctx) }
-			}
+			const promise = this.cb(ctx)
+			this.fetchedValue = null
+			this.fetchedValue = promise
+			const res = await promise
+			this.lastResolveTime = Date.now()
+			this.valueSubject.next(res)
+			return res
 		} catch (err) {
 			this.fetchedValue = null
+			this.lastResolveTime = null
+			ctx.log.error(err)
 			throw err
+		}
+	}
+	async get(_ctx: Ctx, opts?: { ttl?: number }) {
+		opts ??= {}
+		opts.ttl ??= this.opts.defaultTTL
+		const ctx = { ..._ctx, resOpts: { ttl: opts.ttl } }
+
+		if (this.lastResolveTime === null && this.fetchedValue) {
+			return await this.fetchedValue
+		}
+		if (this.lastResolveTime === null && this.fetchedValue === null) {
+			return await this.fetchValue(ctx)
+		}
+		if (this.fetchedValue && this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
+			return await this.fetchedValue!
+		} else {
+			return await this.fetchValue(ctx)
 		}
 	}
 

@@ -11,11 +11,13 @@ import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
+import { GetSelectTableName } from 'drizzle-orm/query-builders/select.types'
 import * as Rx from 'rxjs'
-import { frameManager, useFrameStore } from './frame-manager'
+import { frameManager } from './frame-manager'
 
 export type SelectType = 'generic' | 'indexed'
 export type Key = FRM.InstanceKey<Types>
+export type KeyProp = FRM.KeyProp<Types>
 
 export function createInput(
 	opts: {
@@ -69,6 +71,7 @@ type Store =
 	& LayerTablePrt.Predicates
 
 export type Types = {
+	name: 'selectLayers'
 	key: FRM.RawInstanceKey<{ editedLayerId?: L.LayerId; id: string }>
 	input: Input
 	state: Store
@@ -97,8 +100,8 @@ const setup: Frame['setup'] = (args) => {
 		{
 			baseQueryInput: undefined,
 			onLayerFocused: (layerId) => {
-				const defaultFields = getFilterMenuDefaultFields(layerId, input.colConfig)
-				const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, input.colConfig)
+				const defaultFields = getFilterMenuDefaultFields(layerId, colConfig)
+				const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, colConfig)
 				const state = get()
 				state.filterMenu.setMenuItems(itemState)
 			},
@@ -154,7 +157,7 @@ const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
 }
 
 export const frame = frameManager.createFrame<Types>({
-	name: 'select-layers',
+	name: 'selectLayers',
 	setup,
 	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, id: input.instanceId }),
 	onInputChanged: onInputChanged,

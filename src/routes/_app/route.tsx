@@ -1,33 +1,40 @@
 import * as AR from '@/app-routes.ts'
-import { Badge } from '@/components/ui/badge'
+import CommandsHelpDialog from '@/components/commands-help-dialog'
+import NicknameDialog from '@/components/nickname-dialog'
+import { Alert, AlertTitle } from '@/components/ui/alert'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Spinner } from '@/components/ui/spinner'
+import UserPermissionsDialog from '@/components/user-permissions-dialog'
+import { cn } from '@/lib/utils'
 import * as USR from '@/models/users.models.ts'
 import * as RPC from '@/orpc.client'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FeatureFlags from '@/systems.client/feature-flags'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
+import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeClient from '@/systems.client/theme'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import { createFileRoute, Link, Outlet, useMatchRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Link } from 'react-router-dom'
 import * as Zus from 'zustand'
-import CommandsHelpDialog from './commands-help-dialog'
-import NicknameDialog from './nickname-dialog'
-import { Alert, AlertTitle } from './ui/alert'
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
-import { Spinner } from './ui/spinner'
-import UserPermissionsDialog from './user-permissions-dialog'
 
-export default function AppContainer(props: { children: React.ReactNode }) {
+export const Route = createFileRoute('/_app')({
+	loader: () => {
+		void LayerQueriesClient.ensureFullSetup()
+	},
+	component: RouteComponent,
+})
+
+function RouteComponent() {
 	const flags = FeatureFlags.useFeatureFlags()
 	const wsStatus = RPC.useConnectStatus()
 	const { simulateRoles, setSimulateRoles } = Zus.useStore(RbacClient.RbacStore)
-	const route = AppRoutesClient.useRoute()
 	const user = useLoggedInUser()
 
 	const avatarUrl = user && USR.getAvatarUrl(user)
@@ -59,19 +66,15 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 				style={{ backgroundColor: config?.topBarColor ?? undefined }}
 			>
 				<div className="flex items-start space-x-3 sm:space-x-6">
-					<Link
-						to={AR.link('/servers/:id', selectedServerId)}
-						className={`text-sm sm:text-base font-medium ${route?.id === '/servers/:id' ? 'underline' : ''}`}
+					<NavLink
+						params={{ serverId: selectedServerId }}
+						to="/servers/$serverId"
 					>
 						Queue
-					</Link>
-					<Link
-						to={AR.link('/filters')}
-						{...FilterEntityClient.filterIndexPrefetch()}
-						className={`text-sm sm:text-base font-medium ${route?.id === '/filters' ? 'underline' : ''}`}
-					>
+					</NavLink>
+					<NavLink to="/filters">
 						Filters
-					</Link>
+					</NavLink>
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 lg:space-x-6 overflow-hidden">
 					{simulateRoles && (
@@ -114,7 +117,7 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 									<DropdownMenuContent>
 										{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
 											<DropdownMenuItem asChild>
-												<Link to={AR.link('/servers/:id', server.id)}>
+												<Link to={'/servers/$serverId'} params={{ serverId: server.id }}>
 													{server.displayName}
 												</Link>
 											</DropdownMenuItem>
@@ -210,7 +213,23 @@ export default function AppContainer(props: { children: React.ReactNode }) {
 					)}
 				</div>
 			</nav>
-			<div className="flex flex-grow p-4">{props.children}</div>
+			<div className="flex flex-grow p-4">
+				<Outlet />
+			</div>
 		</div>
+	)
+}
+
+const NavLink: typeof Link = (props) => {
+	const baseClasses = 'text-sm sm:text-base font-medium'
+	return (
+		<Link
+			activeProps={{ className: cn(`${baseClasses} font-bold`, props.className) }}
+			preload="intent"
+			className={cn(baseClasses, props.className)}
+			{...props}
+		>
+			Filters
+		</Link>
 	)
 }

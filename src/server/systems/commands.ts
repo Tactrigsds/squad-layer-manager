@@ -47,7 +47,7 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.Mutexes & C.ServerSli
 	if (cmdConfig.enabled === false) {
 		return await showError('command-disabled', `Command "${cmd}" is disabled`)
 	}
-	const playerListRes = (await ctx.server.playerList.get(ctx)).value
+	const playerListRes = await ctx.server.playerList.get(ctx)
 	if (!msg.steamID) return
 	if (playerListRes.code === 'err:rcon') {
 		return await showError('rcon-error', 'RCON error')

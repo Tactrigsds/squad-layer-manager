@@ -1,5 +1,5 @@
+import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
-
 import * as Browser from '@/lib/browser'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
@@ -10,7 +10,7 @@ import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
-import * as AppRoutesClient from '@/systems.client/app-routes.client.ts'
+import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
@@ -383,26 +383,43 @@ export async function setup() {
 	settingsModified$.pipe(
 		Rx.withLatestFrom(wsClientId$),
 	).subscribe(([modified, wsClientId]) => {
-		const currentActivity = Store.getState().presence.get(wsClientId)?.currentActivity
-		if (!modified && currentActivity?.code === 'changing-settings') {
-			Store.getState().pushPresenceAction(PresenceActions.endActivity({ code: 'changing-settings' }))
-		}
-		if (modified && (!currentActivity || currentActivity?.code !== 'changing-settings')) {
-			Store.getState().pushPresenceAction(PresenceActions.startActivity({ code: 'changing-settings' }))
+		try {
+			const currentActivity = Store.getState().presence.get(wsClientId)?.currentActivity
+			if (!modified && currentActivity?.code === 'changing-settings') {
+				Store.getState().pushPresenceAction(PresenceActions.endActivity({ code: 'changing-settings' }))
+			}
+			if (modified && (!currentActivity || currentActivity?.code !== 'changing-settings')) {
+				Store.getState().pushPresenceAction(PresenceActions.startActivity({ code: 'changing-settings' }))
+			}
+		} catch (error) {
+			console.error('Error handling settings modification:', error)
 		}
 	})
 
-	const onQueuePage$ = AppRoutesClient.route$
-		.pipe(Rx.map(route => route?.id === '/servers/:id'))
-
-	const pageLoaded$ = onQueuePage$.pipe(Rx.filter((visiting) => visiting))
+	// const onQueuePage$ = AppRoutesClient.route$
+	// 	.pipe(Rx.map(route => route?.id === '/servers/:id'))
+	const onQueuePage$ = new Rx.Observable<boolean>(observer => {
+		const isCurrentPath = window.location.pathname.startsWith('/servers/')
+		observer.next(isCurrentPath)
+		const unsub = rootRouter.subscribe('onBeforeLoad', (event) => {
+			if (!event.pathChanged) return
+			if (event.toLocation) {
+				const toRoute = AR.resolveRoute(event.toLocation.pathname)
+				if (toRoute.id === '/servers/:id') observer.next(true)
+			} else if (event.fromLocation) {
+				const fromRoute = AR.resolveRoute(event.fromLocation.pathname)
+				if (fromRoute.id === '/servers/:id') observer.next(false)
+			}
+		})
+		return () => unsub()
+	})
 
 	const pageInteraction$ = onQueuePage$.pipe(
 		Rx.switchMap((visiting) => {
 			if (!visiting) return Rx.EMPTY
 			const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
 			return Browser.interaction$.pipe(
-				Rx.throttleTime(3000),
+				Rx.auditTime(1000),
 				Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
 				Rx.startWith(true),
 			)
@@ -420,24 +437,27 @@ export async function setup() {
 		}),
 	)
 
-	pageLoaded$.subscribe(() => {
-		const storeState = Store.getState()
-		storeState.pushPresenceAction(PresenceActions.pageLoaded)
-	})
-
 	pageInteraction$
 		.subscribe((active) => {
-			const storeState = Store.getState()
-			if (active) {
-				storeState.pushPresenceAction(PresenceActions.pageInteraction)
-			} else {
-				storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+			try {
+				const storeState = Store.getState()
+				if (active) {
+					storeState.pushPresenceAction(PresenceActions.pageInteraction)
+				} else {
+					storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+				}
+			} catch (error) {
+				console.error('Error in pushing pageInteraction$', error)
 			}
 		})
 
 	onNavigateAway$.subscribe(() => {
 		const storeState = Store.getState()
-		storeState.pushPresenceAction(PresenceActions.navigatedAway)
+		try {
+			storeState.pushPresenceAction(PresenceActions.navigatedAway)
+		} catch (error) {
+			console.error('Error in pushing navigatedAway action', error)
+		}
 	})
 }
 

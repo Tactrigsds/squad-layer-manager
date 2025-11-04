@@ -365,7 +365,7 @@ export const startVote = C.spanOp(
 		}
 
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
-		const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
+		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
 			return statusRes
 		}
@@ -677,7 +677,7 @@ const handleVoteTimeout = C.spanOp(
 					...Obj.selectProps(ctx.vote.state, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
 				}
 			} else {
-				const { value: serverInfoRes } = await ctx.server.serverInfo.get(ctx, { ttl: 10_000 })
+				const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 10_000 })
 				if (serverInfoRes.code !== 'ok') return serverInfoRes
 
 				const serverInfo = serverInfoRes.data
@@ -933,7 +933,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		}
 		wroteServerState = true
 	}
-	const currentStatusRes = (await ctx.server.layersStatus.get(ctx)).value
+	const currentStatusRes = await ctx.server.layersStatus.get(ctx)
 	if (currentStatusRes.code !== 'ok') return currentStatusRes
 	if (!serverState.settings.updatesToSquadServerDisabled) {
 		const res = await SquadRcon.setNextLayer(ctx, nextLayerId)

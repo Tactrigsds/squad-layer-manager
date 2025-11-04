@@ -120,7 +120,7 @@ error$.subscribe(() => {
 closed$.pipe(
 	Rx.concatMap(async (event: any) => {
 		disconnectTime = Date.now()
-		console.error(`WebSocket connection closed: ${event.code}, ${event.reason}`)
+		console.error(`WebSocket connection closed: ${event.code}, ${event.reason?.reason}`)
 		if (websocket.retryCount > 5) {
 			const res = await fetch(AR.link('/check-auth'))
 			if (res.status === 401) {

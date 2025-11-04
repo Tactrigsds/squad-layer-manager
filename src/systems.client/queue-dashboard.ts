@@ -101,7 +101,7 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	;(async () => {
 		await sleep(0)
-		const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
+		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		set(state => ({
 			...state,
 			extraFilters: new Set(Gen.filter(state.extraFilters.values(), f => filterEntities.has(f))),

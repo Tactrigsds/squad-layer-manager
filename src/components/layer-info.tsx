@@ -13,10 +13,10 @@ import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerInfoDialogClient from '@/systems.client/layer-info-dialog'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { useQuery } from '@tanstack/react-query'
+import { createLink, useLinkProps } from '@tanstack/react-router'
+import { Navigate, useMatchRoute, useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React, { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Navigate, useParams } from 'react-router-dom'
 import FullPageSpinner from './full-page-spinner.tsx'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
@@ -44,7 +44,7 @@ type LayerInfoContentProps = {
 }
 
 const TAB_TO_ROUTE = {
-	details: AR.route('/layers/:id'),
+	details: AR.route('/layers/:id/details'),
 	scores: AR.route('/layers/:id/scores'),
 } satisfies { [k in Tab]: AR.KnownRouteId }
 
@@ -68,29 +68,7 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 	)
 }
 
-export function LayerInfoPage() {
-	const route = AR.checkResolvedRouteInIds(AppRoutesClient.useRoute(), '/layers/:id', '/layers/:id/scores')
-	const navigate = useNavigate()
-	if (!route) {
-		return <Navigate to={AR.route('/')} />
-	}
-
-	const id = route.params.id
-	const tab = Obj.revLookup(TAB_TO_ROUTE, route.id)
-	const setTab = (tab: Tab) => {
-		const path = AR.link(TAB_TO_ROUTE[tab], id)
-		navigate(path)
-	}
-	const isKnownLayer = L.isKnownLayer(route.params.id)
-	if (!isKnownLayer) return null
-	return (
-		<div className="w-[100vw] h-[100vh] p-4">
-			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton={true} layerId={route.params.id} />
-		</div>
-	)
-}
-
-function LayerInfo(props: LayerInfoContentProps) {
+export function LayerInfo(props: LayerInfoContentProps) {
 	const activeTab = props.tab
 	const setActiveTab = props.setTab
 	const contentRef = useRef<HTMLDivElement>(null)
@@ -119,6 +97,7 @@ function LayerInfo(props: LayerInfoContentProps) {
 		const layer = layerRes.data as L.KnownLayer
 		scores = LC.partitionScores(layer, cfg)
 	}
+	const { href } = useLinkProps({ to: '/layers/$layerId/$tab', params: { layerId: props.layerId, tab: activeTab } })
 	const openInPopoutWindow = () => {
 		let width = 650
 		let height = 450
@@ -130,9 +109,7 @@ function LayerInfo(props: LayerInfoContentProps) {
 			height = Math.max(Math.min(rect.height + 80, window.screen.height * 0.8), 300)
 		}
 
-		const path = AR.link(TAB_TO_ROUTE[activeTab], props.layerId)
-
-		window.open(path, '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
+		window.open(href, '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
 		props.close?.()
 	}
 

@@ -10,9 +10,9 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import * as PartsSys from '@/systems.client/parts.ts'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Link } from 'react-router-dom'
 import EmojiDisplay from './emoji-display'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Badge } from './ui/badge'
@@ -33,7 +33,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	return (
 		<li key={entity.id}>
 			<Item variant="outline" className="h-full transition-none hover:shadow-md hover:border-primary/50" asChild>
-				<Link to={AR.link('/filters/:id', entity.id)}>
+				<Link to={'/filters/$filterId'} params={{ filterId: entity.id }}>
 					{entity.emoji && (
 						<ItemMedia>
 							<EmojiDisplay emoji={entity.emoji} />
@@ -92,7 +92,7 @@ export default function FiltersIndex() {
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typo.H2}>Filters</h2>
-				<Link className={buttonVariants({ variant: 'secondary' })} to={AR.link('/filters/new')}>
+				<Link className={buttonVariants({ variant: 'secondary' })} to={'/filters/new'}>
 					<Icons.Plus />
 					<span>New Filter</span>
 				</Link>

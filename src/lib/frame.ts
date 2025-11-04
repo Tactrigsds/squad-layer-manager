@@ -2,6 +2,7 @@ import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import * as ReactUtils from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand'
+import React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -14,8 +15,19 @@ export type RawInstanceKey<Props extends { [key: string]: any } = object> = Read
 // }
 // export type RawKeyring<Keys extends { [key: string]: RawInstanceKey } = { [key: string]: RawInstanceKey }> = Keys & { [KEYRING]: true }
 
+export type KeyProp<FT extends FrameTypes> = {
+	[k in FT['name']]: InstanceKey<FT>
+}
+export function toProp<T extends FrameTypes>(key: InstanceKey<T>) {
+	const name = key.frameId.description?.split('-')[1] as T['name']
+	return { [name]: key } as const satisfies KeyProp<T>
+}
+function createFrameId(frame: Frame<FrameTypes>) {
+	return Symbol('frame-' + frame.name)
+}
+
 export type KeyCollection<FT extends { [key: string]: FrameTypes } = { [key: string]: FrameTypes }> = {
-	[k in keyof FT]: k extends keyof FT ? InstanceKey<FT[k]>
+	[k in keyof FT as FT[k]['name']]: k extends keyof FT ? InstanceKey<FT[k]>
 		: never
 }
 
@@ -26,6 +38,7 @@ export type InstanceKey<T extends FrameTypes> = RawInstanceKey & Readonly<{ _: T
 export const DELETE_PROP = Symbol('DELETE')
 export type DELETE_PROP = typeof DELETE_PROP
 export type FrameTypes = {
+	name: string
 	// data that can be used to retrieve a specific instance of the frame
 	key: RawInstanceKey
 
@@ -37,6 +50,7 @@ export type FrameTypes = {
 	// The state once the frame has been initialized
 	state: NonNullable<object>
 }
+export type InputUpdater<T extends FrameTypes> = ((input: T['input']) => T['input']) | T['input']
 
 type FramesOfKeys<KC extends KeyCollection> = {
 	[k in keyof KC]: KC[k]['_']['deps'] extends KeyCollection ? FramesOfKeys<KC[k]['_']['deps']> : object
@@ -62,7 +76,7 @@ export type SetupArgs<
 export type Frame<
 	T extends FrameTypes,
 > = {
-	name: string
+	name: T['name']
 	id: FrameId
 	createKey: (frameId: FrameId, input: T['input']) => T['key']
 	setup(args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>): void
@@ -73,7 +87,7 @@ export type Frame<
 }
 
 type FrameOps<T extends FrameTypes> = {
-	name: string
+	name: T['name']
 	createKey: Frame<T>['createKey']
 	setup: Frame<T>['setup']
 	beforeTeardown?: Frame<T>['beforeTeardown']
@@ -141,7 +155,7 @@ export class FrameManager {
 	createFrame<Types extends FrameTypes>(
 		opts: FrameOps<Types>,
 	) {
-		const id = Symbol(opts.name)
+		const id = createFrameId(opts.name)
 		const frame: Frame<Types> = {
 			id,
 			canInitialize: opts.canInitialize ?? (() => true),
@@ -152,14 +166,18 @@ export class FrameManager {
 		return frame
 	}
 
-	ensureSetup<T extends FrameTypes>(frameIdOrFrame: FrameId | Frame<T>, input: T['input'], depKeys?: T['deps']): InstanceKey<T> {
+	ensureSetup<T extends FrameTypes>(
+		frameIdOrFrame: FrameId | Frame<T>,
+		inputArg: T['input'] | ((prev?: T['input']) => T['input']),
+		opts?: { depKeys?: T['deps'] },
+	): InstanceKey<T> {
 		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
 		const frameId = frame?.id ?? frameIdOrFrame as FrameId
 		if (!frame) throw new Error(`Frame ${frameId.toString()} not found`)
 		let depInstances: { [name: string]: FrameInstance } | undefined
-		if (depKeys) {
+		if (opts?.depKeys) {
 			depInstances = {}
-			for (const [name, key] of Object.entries(depKeys)) {
+			for (const [name, key] of Object.entries(opts.depKeys)) {
 				const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
 				if (!entry) {
 					throw new Error(`Dependency ${key} not found`)
@@ -167,17 +185,18 @@ export class FrameManager {
 				depInstances[name] = entry[1]
 			}
 		}
-		const key = frame.createKey(frameId, input)
+		const initialInput = typeof inputArg === 'function' ? inputArg() : inputArg
+		const key = frame.createKey(frameId, initialInput)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
 		let directKey: DirectInstanceKey
 		let instance: FrameInstance
 		if (!entry) {
-			if (!frame.canInitialize?.(input)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${input}`)
-			directKey = frame.createKey(frameId, input)
+			if (!frame.canInitialize?.(initialInput)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${inputArg}`)
+			directKey = frame.createKey(frameId, initialInput)
 			const writeStore = Zus.createStore(() => ({}))
 			instance = {
 				frameId,
-				input,
+				input: inputArg,
 				refCount: 0,
 				writeStore: writeStore,
 				readStore: undefined!,
@@ -189,10 +208,10 @@ export class FrameManager {
 				lastUsed: Date.now(),
 			}
 
-			if (depKeys) {
+			if (opts?.depKeys) {
 				instance.readStore = ZusUtils.deriveStores((get) => ({
 					...get(this.frameInstances.get(directKey)!.writeStore),
-					...Obj.map(depKeys, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
+					...Obj.map(opts.depKeys, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
 				}))
 			} else {
 				instance.readStore = instance.writeStore
@@ -214,8 +233,9 @@ export class FrameManager {
 		} else {
 			;[directKey, instance] = entry
 			instance.lastUsed = Date.now()
-			if (frame.onInputChanged && !frame.checkInputChanged(input, instance.input)) {
-				frame.onInputChanged(input, {
+			const newInput = typeof inputArg === 'function' ? inputArg(instance.input) : inputArg
+			if (frame.onInputChanged && !frame.checkInputChanged(newInput, instance.input)) {
+				frame.onInputChanged(newInput, {
 					input: instance.input,
 					get: instance.get as ZusUtils.Getter<StateWithDeps<T>>,
 					set: instance.set as ZusUtils.Setter<T['input']>,
@@ -231,20 +251,33 @@ export class FrameManager {
 		return key
 	}
 
+	changeInput<T extends FrameTypes>(key: InstanceKey<T>, updater: T['input'] | ((input: T['input']) => T['input'])) {
+		const frame = this.frameMap.get(key.frameId) as Frame<T> | undefined
+		if (!frame) throw new Error(`Frame ${key.toString()} not found`)
+
+		const instance = this.getInstance(key)
+		if (!instance) throw new Error(`Instance ${key.toString()} not found`)
+		if (!frame.onInputChanged) return
+		const input = typeof updater === 'function' ? updater(instance.input) : updater
+		if (frame.checkInputChanged(input, instance.input)) {
+			instance.lastUsed = Date.now()
+			frame.onInputChanged(input, {
+				input: instance.input,
+				get: instance.get as ZusUtils.Getter<StateWithDeps<T>>,
+				set: instance.set as ZusUtils.Setter<T['input']>,
+				sub: instance.sub,
+				update$: instance.update$,
+			})
+		}
+	}
+
+	// will only resolve keys known to the frame manager
 	getInstance<T extends FrameTypes>(key: InstanceKey<T>) {
 		const directKey = this.keys.get(key)
-		if (directKey) {
-			const instance = this.frameInstances.get(directKey)
-			if (instance) instance.lastUsed = Date.now()
-			return instance
-		}
-		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
-		if (!entry) return
-		this.keys.set(key, entry[0])
-		this.registry.register(key, entry[0])
-		entry[1].refCount++
-		entry[1].lastUsed = Date.now()
-		return entry[1]
+		if (!directKey) return
+		const instance = this.frameInstances.get(directKey)
+		if (instance) instance.lastUsed = Date.now()
+		return instance
 	}
 
 	getState<T extends FrameTypes>(key: InstanceKey<T>) {
@@ -267,20 +300,48 @@ export function createFrameHelpers(frameManager: FrameManager) {
 		return Zus.useStore(instance.readStore, selector as any)
 	}
 
+	type FrameLifecycleOptions<T extends FrameTypes> =
+		& ({ input: T['input'] } | { frameKey: InstanceKey<T>; input?: InputUpdater<T> })
+		& {
+			deps?: T['deps']
+			equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>
+		}
+
+	function isInputOptions<T extends FrameTypes>(options: FrameLifecycleOptions<T>): options is { input: T['input'] } {
+		return 'input' in options
+	}
+
+	function isFrameKeyOptions<T extends FrameTypes>(options: FrameLifecycleOptions<T>): options is { frameKey: InstanceKey<T> } {
+		return 'frameKey' in options
+	}
+
 	// crudely just ensure the frame exists for the given input. for now just relies on FrameManagers GC behavior to clean up unused frames
 	function useFrameLifecycle<T extends FrameTypes>(
 		frameOrId: Frame<T> | FrameId,
-		input: T['input'],
-		deps?: T['deps'],
-		equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>,
+		options: FrameLifecycleOptions<T>,
 	) {
-		return ReactUtils.useMemo<InstanceKey<T>>(
+		const optFrameKey = isFrameKeyOptions(options) ? options.frameKey : undefined
+		const optInput = options.input
+		const frameKey = ReactUtils.useMemo<InstanceKey<T>>(
 			() => {
-				return frameManager.ensureSetup(frameOrId, input, deps)
+				if (optInput) {
+					return frameManager.ensureSetup(frameOrId, optInput, options.deps)
+				} else {
+					return optFrameKey!
+				}
 			},
-			[frameOrId, input],
-			equalityFn,
+			[frameOrId, optFrameKey, optInput, options.deps],
+			options.equalityFn,
 		)
+
+		React.useEffect(() => {
+			if (optInput && optFrameKey) {
+				// this is fast, don't over-memoize input
+				frameManager.changeInput(optFrameKey, optInput)
+			}
+		}, [optInput, optFrameKey])
+
+		return frameKey
 	}
 
 	function getFrameState<T extends FrameTypes>(key: InstanceKey<T>) {
@@ -291,35 +352,5 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	function getFrameReaderStore<T extends FrameTypes>(key: InstanceKey<T>) {
 		const instance = frameManager.getInstance(key)!
 		return instance.readStore as Zus.StoreApi<StateWithDeps<T>>
-	}
-}
-
-// only allows maxSize keys of a given permutation to exist. keys returned have LRU_ID attached, which is 0..maxSize
-export function newLRUKeyCreator<K extends RawInstanceKey, I extends FrameTypes['input']>(
-	manager: FrameManager,
-	maxSize: number,
-	createKeyInner: (frameId: string, input: I) => K = (frameId) => ({ frameId }) as unknown as K,
-): (frameId: string, input: I) => K & { [LRU_ID]: number } {
-	const LRU_ID = Symbol('LRU')
-	return (frameId, input) => {
-		const newInnerKey = createKeyInner(frameId, input)
-		let lastUsedInstance: FrameInstance | undefined
-		let lastUsedId: number = -1
-		let numAllocated = 0
-		for (const [directKey, instance] of manager.frameInstances.entries()) {
-			const { [LRU_ID]: lruId, ...innerKey } = directKey as K & { [LRU_ID]: number }
-			if (!Obj.deepEqual(newInnerKey, innerKey)) continue
-			if (lruId === undefined) continue
-			numAllocated++
-			if (!lastUsedInstance || instance.lastUsed > lastUsedInstance.lastUsed) {
-				lastUsedInstance = instance
-				lastUsedId = lruId
-			}
-		}
-
-		if (numAllocated >= maxSize) {
-			return { ...newInnerKey, [LRU_ID]: lastUsedId }
-		}
-		return { ...newInnerKey, [LRU_ID]: numAllocated }
 	}
 }

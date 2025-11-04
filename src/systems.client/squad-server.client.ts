@@ -3,6 +3,7 @@ import { distinctDeepEquals } from '@/lib/async'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
+import { newRoute$ } from '@/root-router'
 import { ServerEntry } from '@/server/config'
 import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import * as Cookies from '@/systems.client/app-routes.client'
@@ -82,7 +83,7 @@ export function setup() {
 	// -------- persist selected server id according to navigation, and inform backend of any changes --------
 	//
 	Rx.merge(
-		AppRoutesClient.route$,
+		newRoute$.pipe(Rx.map(AR.resolveRoute)),
 		// when this window is the last focused it should decide what server is selected for new tabs
 		Rx.fromEvent(window, 'focus').pipe(Rx.map(() => AR.resolveRoute(window.location.pathname))),
 	).subscribe((route) => {

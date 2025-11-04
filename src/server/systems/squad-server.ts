@@ -188,7 +188,7 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 				if (!connected) return Rx.EMPTY
 				const ctx = { ...getBaseCtx(), ...slice }
 
-				const { value: statusRes } = await layersStatus.get(ctx)
+				const statusRes = await layersStatus.get(ctx)
 				if (statusRes.code === 'err:rcon') return Rx.EMPTY
 				await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
 				ctx.log.info('rcon connection established, current layer synced with match history')
@@ -276,7 +276,7 @@ async function handleSquadEvent(ctx: C.Db & C.Mutexes & C.SquadServer & C.MatchH
 			break
 		}
 		case 'ROUND_ENDED': {
-			const { value: statusRes } = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
+			const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
 			if (statusRes.code !== 'ok') return statusRes
 			// -------- use debug ticketOutcome if one was set --------
 			if (state.debug__ticketOutcome) {
@@ -397,7 +397,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 								return
 							} else if (out === 'timeout') {
 								ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
-								const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
+								const statusRes = await ctx.server.layersStatus.get(ctx)
 								if (statusRes.code === 'err:rcon') {
 									ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
 									return
@@ -485,7 +485,7 @@ function getLayersStatusExt$(
 }
 
 async function fetchLayersStatusExt(ctx: CS.Log & C.SquadServer & C.MatchHistory) {
-	const { value: statusRes } = await ctx.server.layersStatus.get(ctx)
+	const statusRes = await ctx.server.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
 	return buildServerStatusRes(statusRes.data, MatchHistory.getCurrentMatch(ctx))
 }
@@ -613,7 +613,7 @@ export const orpcRouter = {
 			const ctx = resolveWsClientSliceCtx(_ctx)
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
 			if (denyRes) return denyRes
-			const { value: serverStatusRes } = await ctx.server.layersStatus.get(ctx)
+			const serverStatusRes = await ctx.server.layersStatus.get(ctx)
 			if (serverStatusRes.code !== 'ok') return serverStatusRes
 			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
 			if (input.disabled) {

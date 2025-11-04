@@ -114,7 +114,7 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 				)}
 				{filterMatches.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground w-full text-center')}>Matching Filters:</div>
+						<div className={cn(Typo.Label, 'text-foreground w-full text-center')}>Matching Filters</div>
 						<ItemGroup>
 							{filterMatches.map(([v, filter], index) => {
 								return [
