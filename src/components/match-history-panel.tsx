@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
@@ -25,6 +25,17 @@ import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+
+const STD_PADDING = 'pl-4'
+
+// Wrapper components for consistent styling
+function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
+	return <ShadcnTableHead className={`${STD_PADDING} ${className}`} {...props} />
+}
+
+function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
+	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
+}
 
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails

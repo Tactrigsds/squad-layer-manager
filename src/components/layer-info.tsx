@@ -70,9 +70,6 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 
 export function LayerInfoPage() {
 	const route = AR.checkResolvedRouteInIds(AppRoutesClient.useRoute(), '/layers/:id', '/layers/:id/scores')
-	React.useEffect(() => {
-		console.log('inforoute', route)
-	}, [route])
 	const navigate = useNavigate()
 	if (!route) {
 		return <Navigate to={AR.route('/')} />
@@ -80,7 +77,6 @@ export function LayerInfoPage() {
 
 	const id = route.params.id
 	const tab = Obj.revLookup(TAB_TO_ROUTE, route.id)
-	console.log({ id, tab, route: route.id })
 	const setTab = (tab: Tab) => {
 		const path = AR.link(TAB_TO_ROUTE[tab], id)
 		navigate(path)
@@ -136,7 +132,6 @@ function LayerInfo(props: LayerInfoContentProps) {
 
 		const path = AR.link(TAB_TO_ROUTE[activeTab], props.layerId)
 
-		console.log({ path })
 		window.open(path, '_blank', `popup=yes,height=${height},width=${width},scrollbars=yes,resizable=yes`)
 		props.close?.()
 	}

@@ -145,7 +145,7 @@ function NormTeamsSwitch() {
 
 function QueueControlPanel() {
 	type AddLayersPosition = 'next' | 'after'
-	const [addLayersOpen, setAddLayersOpen] = React.useState(false)
+	const [addLayersOpen, setAddLayersOpen] = SLLClient.useActivityState({ code: 'adding-item' })
 	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
 	const listLength = Zus.useStore(SLLClient.Store, useShallow(s => s.layerList.length))
 	const queryCursors = {
