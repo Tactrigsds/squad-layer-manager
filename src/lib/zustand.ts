@@ -10,8 +10,6 @@ import * as Zus from 'zustand'
 import { StoreApi, StoreMutatorIdentifier, StoreMutators, useStore } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { distinctDeepEquals } from './async'
-import { useDeepEqualsMemo, useStableReferenceDeepEquals } from './react'
 
 // ripped from zustand types
 type Get<T, K, F> = K extends keyof T ? T[K] : F

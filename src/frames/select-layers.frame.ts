@@ -26,13 +26,14 @@ export function createInput(
 		cursor?: LQY.Cursor
 		maxSelected?: number
 		minSelected?: number
+		sharedInstanceId?: string
 	},
 ): Input {
 	const base: BaseInput = {
 		colConfig: ConfigClient.getColConfig(),
 		cursor: opts.cursor,
 		initialEditedLayerId: opts.initialEditedLayerId,
-		instanceId: createId(4),
+		instanceId: opts.sharedInstanceId ?? createId(4),
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -132,29 +133,29 @@ const setup: Frame['setup'] = (args) => {
 	)
 }
 
-const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
-	// column visibility not handled, and colConfig is never expected to change
+// const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
+// 	// column visibility not handled, and colConfig is never expected to change
 
-	const get = setupArgs.get
-	// with this we're expecting that we can use one frame for all instances
-	get().setCursor(newInput.cursor)
-	setupArgs.set(s => ({ layerTable: { ...s.layerTable, minSelected: newInput.minSelected, maxSelected: newInput.maxSelected } }))
-	get().layerTable.setPageSize(newInput.pageSize)
-	get().layerTable.setSelected(newInput.selected)
-	get().layerTable.setSort(newInput.sort)
-	get().setCheckbox('dnr', !newInput.initialEditedLayerId)
+// 	const get = setupArgs.get
+// 	// with this we're expecting that we can use one frame for all instances
+// 	get().setCursor(newInput.cursor)
+// 	setupArgs.set(s => ({ layerTable: { ...s.layerTable, minSelected: newInput.minSelected, maxSelected: newInput.maxSelected } }))
+// 	get().layerTable.setPageSize(newInput.pageSize)
+// 	get().layerTable.setSelected(newInput.selected)
+// 	get().layerTable.setSort(newInput.sort)
+// 	get().setCheckbox('dnr', !newInput.initialEditedLayerId)
 
-	if (newInput.initialEditedLayerId !== get().initialEditedLayerId) {
-		const defaultFields = getFilterMenuDefaultFields(newInput.initialEditedLayerId, newInput.colConfig)
-		const defaultItemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, newInput.colConfig)
-		get().filterMenu.setMenuItems(defaultItemState)
-	}
-	;(async () => {
-		const states = await AppliedFiltersPrt.getInitialFilterStates(!!newInput.initialEditedLayerId)
-		if (setupArgs.sub.closed) return
-		setupArgs.set({ appliedFilters: states })
-	})()
-}
+// 	if (newInput.initialEditedLayerId !== get().initialEditedLayerId) {
+// 		const defaultFields = getFilterMenuDefaultFields(newInput.initialEditedLayerId, newInput.colConfig)
+// 		const defaultItemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, newInput.colConfig)
+// 		get().filterMenu.setMenuItems(defaultItemState)
+// 	}
+// 	;(async () => {
+// 		const states = await AppliedFiltersPrt.getInitialFilterStates(!!newInput.initialEditedLayerId)
+// 		if (setupArgs.sub.closed) return
+// 		setupArgs.set({ appliedFilters: states })
+// 	})()
+// }
 
 export const frame = frameManager.createFrame<Types>({
 	name: 'selectLayers',

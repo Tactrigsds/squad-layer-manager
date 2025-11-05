@@ -38,7 +38,7 @@ export default defineConfig({
 
 							fetch(proxyUrl, {
 								method: 'GET',
-								headers: req.headers as HeadersInit,
+								headers: req.headers as RequestInit['headers'],
 							})
 								.then(async (proxyRes) => {
 									if (proxyRes.status !== 200) {
@@ -98,7 +98,7 @@ function buildDevServerConfig(): UserConfig['server'] {
 	ensureEnvSetup()
 	// don't resolve these in prod
 	const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
-	let proxy: CommonServerOptions['proxy'] = {}
+	const proxy: CommonServerOptions['proxy'] = {}
 	for (const r of AR.routes) {
 		if (r.handle === 'page') continue
 		const protocol = r.websocket ? 'ws://' : 'http://'

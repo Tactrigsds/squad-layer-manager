@@ -55,7 +55,7 @@ function MatchHistoryRow({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
-	const layerItemId = LQY.toLayerItemId({ type: 'match-history-entry', historyEntryId: entry.historyEntryId, layerId: entry.layerId })
+	const layerItemId = LQY.toSerial({ type: 'match-history-entry', itemId: entry.historyEntryId, layerId: entry.layerId })
 	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(layerItemId)
 
 	// Get trigger info for this entry

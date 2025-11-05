@@ -10,11 +10,15 @@ type GenericRouteDefinition = {
 	websocket: boolean
 	params: ParamsBase
 	authed: boolean
-	link: ((...args: string[]) => string) | ((...args: never[]) => string)
+	link: (...paramValues: ToGenericStrings<ParamsBase>) => string
 	regex: RegExp
 }
 
-type ParamsBase = [string, ...string[]] | never[]
+type ToGenericStrings<T extends ParamsBase> = T extends never[] ? [] : {
+	[K in keyof T]: K extends keyof string[] ? T[K] : string
+}
+
+type ParamsBase<U extends string | never = string | never> = U[]
 
 export type RouteDefinition<Params extends ParamsBase, Handle extends 'page' | 'custom'> = {
 	id: string
@@ -35,7 +39,7 @@ export const routes = [
 	defRoute('/layers.sqlite3', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),
 
-	defRoute('/discord-cdn/*', ['*'] as const, 'custom'),
+	defRoute('/discord-cdn/*', ['*'], 'custom'),
 
 	defRoute('/orpc', [], 'custom', { websocket: true }),
 
@@ -110,9 +114,6 @@ export function route<R extends KnownRouteId>(path: R) {
 	return path
 }
 
-type ToGenericStrings<T extends string[]> = {
-	[K in keyof T]: K extends keyof string[] ? T[K] : string
-}
 export function link<R extends KnownRouteId>(id: R, ...args: ToGenericStrings<RouteDefForId<R>['params']>) {
 	const route = routeForId(id)
 	const linkFn = routeForId(id).link

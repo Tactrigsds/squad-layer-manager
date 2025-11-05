@@ -87,44 +87,30 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 
 export const useFetchingBuffer = Zus.create(() => false)
 
-export function useLayersQuery(
-	input: LQY.LayersQueryInput,
-	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
-) {
-	options = options ? { ...options } : {}
-	options.enabled = options.enabled ?? true
+export function useQueryLayersOptions(input: LQY.LayersQueryInput, errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>) {
 	const counters = Zus.useStore(Store, s => s.counters)
-	const baseQuery = getQueryLayersOptions(input, counters)
-	const baseQueryFn = baseQuery.queryFn
-	const queryFn = async () => {
-		if (input.sort?.type === 'random' && !input.sort.seed) {
-			throw new Error('Random sort requires a random seed when used with react query')
-		}
-		const res = await baseQueryFn()
-		if (res?.code === 'err:invalid-node') {
-			options?.errorStore?.setState({ errors: res.errors })
-			throw new Error(res.code + ': ' + JSON.stringify(res.errors))
-		} else {
-			options?.errorStore?.setState({ errors: undefined })
-		}
-		return res
-	}
-	return useQuery({
-		...options,
-		...baseQuery,
-		queryFn,
-		placeholderData: (prev) => prev,
-		enabled: options.enabled,
-	})
+	return getQueryLayersOptions(input, errorStore, counters)
 }
 
-export function getQueryLayersOptions(input: LQY.LayersQueryInput, counters: LayerCtxModifiedCounters) {
+export function getQueryLayersOptions(
+	input: LQY.LayersQueryInput,
+	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
+	counters?: LayerCtxModifiedCounters,
+) {
+	counters = counters ?? Store.getState().counters
 	return {
 		queryKey: ['layers', 'queryLayers', getDepKey(input, counters)],
 		queryFn: async () => {
+			if (input.sort?.type === 'random' && !input.sort.seed) {
+				throw new Error('Random sort requires a random seed when used with react query')
+			}
 			const res = await sendQuery('queryLayers', input)
 			if (res?.code === 'err:invalid-node') {
 				console.error('queryLayers: Invalid node error:', res.errors)
+				errorStore?.setState({ errors: res.errors })
+				throw new Error('Invalid node')
+			} else {
+				errorStore?.setState({ errors: undefined })
 			}
 			return res
 		},
@@ -132,10 +118,10 @@ export function getQueryLayersOptions(input: LQY.LayersQueryInput, counters: Lay
 	}
 }
 
-export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput) {
+export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput, errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>) {
 	const cfg = await ConfigClient.fetchEffectiveColConfig()
 	const input = getQueryLayersInput(baseInput, { cfg })
-	const baseQuery = getQueryLayersOptions(input, Store.getState().counters)
+	const baseQuery = getQueryLayersOptions(input, errorStore, Store.getState().counters)
 	return await RPC.queryClient.prefetchQuery(
 		baseQuery,
 	)
@@ -210,11 +196,11 @@ export function useLayerItemStatusConstraints() {
 }
 
 export function useLayerItemStatusDataForItem(
-	layerItem: LQY.LayerItem | LQY.LayerItemId,
+	layerItem: LQY.LayerItem | LQY.SerialLayerItem,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
-	const layerItemId = typeof layerItem === 'string' ? layerItem : LQY.toLayerItemId(layerItem)
-	layerItem = typeof layerItem === 'string' ? LQY.fromLayerItemId(layerItem) : layerItem
+	const layerItemId = typeof layerItem === 'string' ? layerItem : LQY.toSerial(layerItem)
+	layerItem = typeof layerItem === 'string' ? LQY.fromSerial(layerItem) : layerItem
 	const constraints = useLayerItemStatusConstraints()
 	const queryRes = useLayerItemStatuses(constraints, options)
 	const hoveredConstraintItemId = Zus.useStore(Store, s => s.hoveredConstraintItemId ?? undefined)

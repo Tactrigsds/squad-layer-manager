@@ -20,3 +20,8 @@ export function resToOptional<R extends { code: 'ok' | string }>(res: R) {
 export type MapTuple<T extends readonly unknown[], U> = {
 	[K in keyof T]: U
 }
+
+export function toEmpty<T extends object>(obj: T | undefined) {
+	if (obj) return obj
+	return {} as T | { [k in keyof T]: undefined }
+}

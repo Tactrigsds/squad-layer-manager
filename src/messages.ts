@@ -132,7 +132,7 @@ export const WARNS = {
 
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
 
-			if (LL.isParentVoteItem(item)) {
+			if (LL.isVoteItem(item)) {
 				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
 					const msg = `Next Layer (Chosen via vote)\n${
 						DH.displayLayer(item.endingVoteState.winner, playerNextTeamId, ['layer', 'factions', 'units'])

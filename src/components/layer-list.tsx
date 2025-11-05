@@ -83,7 +83,7 @@ export function LayerList(
 		if (event.active.type === 'layer-item') {
 			props.store.getState().dispatch({
 				op: 'move',
-				indexOrCursor: cursor,
+				cursor: cursor,
 				itemId: event.active.id,
 				newFirstItemId: LL.createLayerListItemId(),
 			})
@@ -131,8 +131,8 @@ type LayerListItemProps = {
 function LayerListItem(props: LayerListItemProps) {
 	const itemRes = ZusUtils.useStoreDeep(props.llStore, s => LL.findItemById(s.layerList, props.itemId), { dependencies: [props.itemId] })
 	if (!itemRes) return null
-	const item = itemRes.item
-	if (LL.isParentVoteItem(item)) {
+	const { item } = itemRes
+	if (LL.isVoteItem(item)) {
 		return <VoteLayerListItem {...props} />
 	}
 	return <SingleLayerListItem {...props} />
@@ -141,7 +141,7 @@ function LayerListItem(props: LayerListItemProps) {
 function SingleLayerListItem(props: LayerListItemProps) {
 	const parentItem = ZusUtils.useStoreDeep(props.llStore, s => {
 		const parentItem = LL.findParentItem(s.layerList, props.itemId)
-		if (!parentItem || !LL.isParentVoteItem(parentItem)) return undefined
+		if (!parentItem || !LL.isVoteItem(parentItem)) return undefined
 		return parentItem
 	}, {
 		dependencies: [props.itemId],
@@ -154,7 +154,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			return [s.item, s.index, s.isLocallyLast, getDisplayedMutation(s.mutationState)]
 		}),
 	)
-	const isVoteChoice = LL.isParentVoteItem(item)
+	const isVoteChoice = LL.isVoteItem(item)
 
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 	const canEdit = !SLLClient.useIsItemLocked(item.itemId)
@@ -254,10 +254,10 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			<Icons.GripVertical />
 		</Button>
 	)
-	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
-	const afterItemLinks: LL.ItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
+	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
+	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
-	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ itemId: item.itemId, position: 'on' }]))
+	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ type: 'item-relative', itemId: item.itemId, position: 'on' }]))
 
 	return (
 		<>
@@ -371,8 +371,8 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		itemId: props.itemId,
 	} satisfies Partial<ItemDropdownProps>
 
-	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ position: 'before', itemId: item.itemId }]
-	const afterItemLinks: LL.ItemRelativeCursor[] = [{ position: 'after', itemId: item.itemId }]
+	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
+	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = SLLClient.useActivityState({ code: 'editing-item', itemId: item.itemId })
 	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({ code: 'configuring-vote', itemId: item.itemId })
 
@@ -781,7 +781,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const [cursors, dropdownMapping] = React.useMemo(() => {
 		const cursors = {
-			'add-after': LQY.getQueryCursorForLayerItem(item.itemId, 'add-after'),
+			'add-after': LQY.getQueryCursorForItemIndex(index),
 			'create-vote': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
 			'add-before': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
 			'edit': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
@@ -811,7 +811,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 				<DropdownMenuContent>
 					<DropdownMenuGroup>
-						{!LL.isParentVoteItem(item) && (
+						{!LL.isVoteItem(item) && (
 							<DropdownMenuItem
 								onClick={() => setSubDropdownState('edit')}
 							>
@@ -836,7 +836,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
 
-					{!LL.isParentVoteItem(item) && (
+					{!LL.isVoteItem(item) && (
 						<DropdownMenuItem
 							disabled={isLocked}
 							onClick={() => setSubDropdownState('create-vote')}
@@ -862,7 +862,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 								itemActions().dispatch({
 									op: 'move',
 									newFirstItemId: LL.createLayerListItemId(),
-									indexOrCursor: { itemId: firstItem.itemId, position: 'before' },
+									cursor: { type: 'item-relative', itemId: firstItem.itemId, position: 'before' },
 								})
 							}}
 						>
@@ -880,7 +880,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 								itemActions().dispatch({
 									op: 'move',
 									newFirstItemId: LL.createLayerListItemId(),
-									indexOrCursor: { itemId: targetItemId, position: 'after' },
+									cursor: { type: 'item-relative', itemId: targetItemId, position: 'after' },
 								})
 							}}
 						>
@@ -891,7 +891,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 			</DropdownMenu>
 
 			{/* Dialogs rendered separately */}
-			{!LL.isParentVoteItem(item) && (
+			{!LL.isVoteItem(item) && (
 				<EditLayerDialog
 					cursor={cursors.edit}
 					open={subDropdownState === 'edit'}
@@ -900,7 +900,20 @@ function ItemDropdown(props: ItemDropdownProps) {
 						return setSubDropdownState(open ? 'edit' : null)
 					}}
 					layerId={item.layerId}
-					onSelectLayer={(layerId) => {
+					onSelectLayer={async (layerId) => {
+						const list = props.listStore.getState().layerList
+						const parentVoteItem = LL.resolveParentVoteItem(item.itemId, list)
+						if (parentVoteItem) {
+							const otherChoices = parentVoteItem?.choices.filter(choice => choice.itemId !== props.itemId)
+							if (Arr.deref('layerId', otherChoices).includes(layerId)) {
+								await sleep(250)
+								globalToast$.next({
+									variant: 'destructive',
+									title: 'Layer already exists in vote',
+								})
+								return
+							}
+						}
 						itemActions().dispatch({
 							op: 'edit-layer',
 							newLayerId: layerId,
@@ -980,4 +993,7 @@ function QueueItemSeparator(props: {
 			data-is-over={!disabled && isDropTarget}
 		/>
 	)
+}
+
+export function AddLayersDialog() {
 }

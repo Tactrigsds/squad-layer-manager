@@ -1,6 +1,8 @@
+import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
+import { toEmpty } from '@/lib/types'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
 import { VisibilityState } from '@tanstack/react-table'
@@ -116,8 +118,9 @@ type LayerItemPatch = {
 export type BaseQueryInput = {
 	constraints?: Constraint[]
 
-	// right now if there is no cursor and  there are repeat rules then the cursor will be inferred as at the end of the list
+	// no cursor or action == repeat rules ignored
 	cursor?: Cursor
+	action?: LayerItemCursorAction
 
 	patches?: LayerItemPatch[]
 }
@@ -130,19 +133,20 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 	}
 }
 
-export const LAYER_VOTE_ITEM_CURSOR_ACTION = z.enum(['add-after', 'edit', 'add-vote-choice'])
+export const LAYER_VOTE_ITEM_CURSOR_ACTION = z.enum(['add', 'edit'])
 export type LayerItemCursorAction = z.infer<typeof LAYER_VOTE_ITEM_CURSOR_ACTION>
+export type ItemIndex = LL.ItemIndex
+// literally just LL.Cursor currently
 export type Cursor = {
-	type: 'id'
-	// could be LayerItemId or itemId for parent layer queue item
-	itemId: LayerItemId | string
-	action: LayerItemCursorAction
+	type: 'item-relative'
+	itemId: ItemId
+	position: 'before' | 'after' | 'on'
 } | {
-	type: 'layer-queue-index'
-	index: number
-} | {
-	type: 'layer-item-index'
-	index: number
+	type: 'index'
+	index: ItemIndex
+}
+{
+	const _ = {} as Cursor satisfies LL.Cursor
 }
 
 export type GenLayerQueueItemsOptions = {
@@ -212,93 +216,87 @@ export function getFactionAndUnitValue(faction: string, unit: string | null | un
 	return faction + '_' + unit || ''
 }
 
-type LayerItemPartsCommon = {
+type ItemId = LL.ItemId | number
+export type SingleListItem = {
+	type: 'single-list-item'
+	itemId: LL.ItemId
 	layerId: L.LayerId
-}
+} & LL.SparseSingleItem
 
 // uniquely identifies positions layers can appear within the application's state
 // TODO this has become awkwardly structured after changes to layer list items
-export type LayerItem =
-	| LayerItemPartsCommon & {
-		type: 'list-item'
-		itemId: string
-	}
-	| VoteChoiceLayerItem
-	| LayerItemPartsCommon & {
-		type: 'match-history-entry'
-		historyEntryId: number
-	}
-
-type VoteChoiceLayerItem = LayerItemPartsCommon & {
-	type: 'vote-item'
-	itemId: string
-	choiceIndex: number
+export type VoteListItem = {
+	type: 'vote-list-item'
+	choices: LL.SparseSingleItem[]
+	voteDecided: boolean
+	itemId: LL.ItemId
+	layerId: L.LayerId
 }
+
+export type MatchHistoryItem = {
+	type: 'match-history-entry'
+	layerId: L.LayerId
+	itemId: number
+}
+
+export type LayerItem =
+	| SingleListItem
+	| VoteListItem
+	| MatchHistoryItem
+
+{
+	const _ = {} as LayerItem satisfies LL.SparseItem
+	const _id = _.itemId satisfies ItemId
+}
+
 export type LayerItemsState = {
 	layerItems: OrderedLayerItems
 	firstLayerItemParity: number
 }
 
-type ParentVoteItem = { type: 'parent-vote-item'; parentItemId: string; choices: VoteChoiceLayerItem[] }
-export type OrderedLayerItems = (LayerItem | ParentVoteItem)[]
-export function isParentVoteItem(item: ParentVoteItem | LayerItem): item is ParentVoteItem {
-	return !!(item as any).parentItemId
+export type OrderedLayerItems = LayerItem[]
+export function isVoteListitem(item: LayerItem): item is VoteListItem {
+	return LL.isVoteItem(item0
 }
 
-export function coalesceLayerItems(item: ParentVoteItem | LayerItem) {
-	return isParentVoteItem(item) ? item.choices : [item]
-}
-function layerItemsEqual(a: LayerItem | string | ParentVoteItem, b: LayerItem | string | ParentVoteItem) {
-	const aStr = typeof a === 'string' ? a : a.type === 'parent-vote-item' ? a.parentItemId : toLayerItemId(a)
-	const bStr = typeof b === 'string' ? b : b.type === 'parent-vote-item' ? b.parentItemId : toLayerItemId(b)
-	return aStr === bStr
+export function coalesceLayerItems(item: LayerItem) {
+	return isVoteListitem(item) ? item.choices : [item]
 }
 
-export function* iterLayerItems(items: OrderedLayerItems): Generator<LayerItem> {
-	for (const item of items) {
-		if (isParentVoteItem(item)) {
-			yield* iterLayerItems(item.choices)
-		} else {
-			yield item
+export type LayerItemsIterResult = { index: ItemIndex; item: LayerItem }
+export const IterItems = LL.iterItems
+
+export function findItemById(items: LayerItem[], itemId: ItemId): LayerItemsIterResult | undefined {
+	return LL.findItemById(items, itemId)
+}
+
+export function findItemByCursor(items: LayerItem[], cursor: Cursor): LayerItemsIterResult | undefined {
+  if (cursor.type === 'item-relative') {
+  }
+	for (const res of IterItems(items)) {
+		if (res.item.id === cursor.id) {
+			return res
 		}
 	}
+	return undefined
 }
 
-export type LayerItemId = string
-export function toLayerItemId(item: LayerItem) {
-	switch (item.type) {
-		case 'list-item':
-			return `l:${item.layerId}:${item.itemId}`
-		case 'vote-item':
-			return `v:${item.layerId}:${item.itemId}:${item.choiceIndex}`
-		case 'match-history-entry':
-			return `h:${item.layerId}:${item.historyEntryId}`
+
+export type SerialLayerItem = string
+export function toSerial(item: LayerItem | SerialLayerItem) {
+	if (typeof item === 'string') {
+		return item
 	}
+	const json = JSON.stringify(item)
+	return btoa(json)
 }
 
-export function fromLayerItemId(id: LayerItemId): LayerItem {
-	const parts = id.split(':')
-	if (parts[0] === 'l') {
-		return {
-			type: 'list-item',
-			layerId: parts[1] as L.LayerId,
-			itemId: parts[2],
-		}
-	} else if (parts[0] === 'v') {
-		return {
-			type: 'vote-item',
-			layerId: parts[1] as L.LayerId,
-			itemId: parts[2],
-			choiceIndex: parseInt(parts[3]),
-		}
-	} else if (parts[0] === 'h') {
-		return {
-			type: 'match-history-entry',
-			layerId: parts[1] as L.LayerId,
-			historyEntryId: parseInt(parts[2]),
-		}
+export function fromSerial(id: SerialLayerItem | LayerItem): LayerItem {
+	if (typeof id === 'string') {
+		const json = atob(id)
+		return JSON.parse(json)
 	}
-	throw new Error(`Invalid LayerItemId: ${id}`)
+	return id
 }
 
 export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDetails[]): LayerItemsState {
@@ -308,29 +306,56 @@ export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDeta
 		layerItems.push(getLayerItemForMatchHistoryEntry(entry))
 	}
 
-	for (const listItem of layerList) {
-		if (LL.isParentVoteItem(listItem)) {
-			const choiceItems: VoteChoiceLayerItem[] = []
-			for (let i = 0; i < listItem.choices.length; i++) {
-				choiceItems.push(getLayerItemForVoteItem(listItem, i))
-			}
-			const parent: ParentVoteItem = { type: 'parent-vote-item', parentItemId: listItem.itemId, choices: choiceItems }
-			layerItems.push(parent)
-		} else {
-			layerItems.push(getLayerItemForLayerListItem(listItem))
-		}
+	for (const { item } of LL.iterItems(...layerList)) {
+		layerItems.push(getItemForLayerListItem(item))
 	}
+
 	return { layerItems, firstLayerItemParity }
+}
+
+// mirrors LL.splice with small changes
+export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number, ...items: LayerItem[]) {
+	if (index.innerIndex !== null) {
+		const parentItem = list[index.outerIndex]
+		if (!isVoteListitem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
+
+		let newItems = Gen.map(IterItems(...items), res => res.item)
+		newItems = Gen.filter(newItems, item => !isVoteListitem(item))
+
+		parentItem.choices.splice(
+			index.innerIndex,
+			deleteCount,
+			...newItems,
+		)
+		if (parentItem.choices.length === 0) {
+			list.splice(index.outerIndex, 1)
+		}
+		if (parentItem.choices.length === 1) {
+			// only one choice left, just make this a regular item
+			const regularItem: LayerItem = {
+				type: 'single-list-item',
+				itemId: parentItem.itemId,
+				layerId: parentItem.layerId,
+			}
+			list.splice(index.outerIndex, 1, regularItem)
+		}
+		if (!parentItem.voteDecided) {
+			parentItem.layerId = parentItem.choices[0].layerId
+		}
+	} else {
+		list.splice(index.outerIndex, deleteCount, ...items)
+	}
 }
 
 export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<BaseQueryInput, 'patches'>) {
 	if (!input.patches || input.patches.length === 0) return baseState
 	return Im.produce(baseState, (draft) => {
 		for (const patch of input.patches!) {
-			const index = resolveCursorIndex(draft, { cursor: patch.cursor })
+			const index = resolveCursorIndex(draft, patch.cursor)
+			if (!index) throw new Error('Invalid cursor')
 			switch (patch.type) {
 				case 'splice':
-					draft.layerItems.splice(index, patch.deleteCount, ...(patch.insertions ?? []))
+					splice(baseState.layerItems, index, patch.deleteCount, ...(patch.insertions ?? []))
 					break
 				default:
 					assertNever(patch.type)
@@ -341,138 +366,110 @@ export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<Ba
 
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
-	input: Pick<BaseQueryInput, 'cursor'>,
+	cursor: Cursor,
 ) {
 	const orderedItems = orderedItemsState.layerItems
-	const cursor = input.cursor
-	if (!cursor) return orderedItemsState.layerItems.length
 
-	if (cursor.type === 'id') {
-		const id = cursor.itemId
-		if (cursor.action === 'add-vote-choice') {
-			const itemIndex = orderedItems.findIndex(item => item.type === 'vote-item' && item.itemId === cursor.itemId)
-			return itemIndex + 1
-		}
-		const itemIndex = orderedItems.findIndex(item =>
-			layerItemsEqual(item, id) || coalesceLayerItems(item).some(item => toLayerItemId(item) === id)
-		)
-		if (itemIndex === -1) {
-			return orderedItemsState.layerItems.length
-		}
-		if (cursor.action === 'add-after') {
-			return itemIndex + 1
-		} else if (cursor.action === 'edit' || cursor.action === 'add-vote-choice') {
-			return itemIndex
-		} else {
-			assertNever(cursor.action)
-		}
+	if (cursor.type === 'item-relative') {
+		const { index } = toEmpty(findItemById(orderedItems, cursor.itemId))
+		if (!index) return
+		if (cursor.position === 'after') return LL.shiftIndex(index, 1)
+		return index
 	}
-	if (cursor.type === 'layer-queue-index') {
-		let lastHistoryEntryIndex = -1
-		for (let i = orderedItems.length - 1; i >= 0; i--) {
-			const item = orderedItems[i]
-			if (item.type === 'match-history-entry') {
-				lastHistoryEntryIndex = i
-				break
-			}
-		}
-		return lastHistoryEntryIndex + 1 + cursor.index
-	}
-
-	if (cursor.type === 'layer-item-index') {
+	if (cursor.type === 'index') {
 		return cursor.index
 	}
+
 	assertNever(cursor)
 }
 
-export function resolveTeamParityForCursor(state: LayerItemsState, input: BaseQueryInput) {
-	const index = resolveCursorIndex(state, input)
-	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index)
+export function resolveTeamParityForCursor(state: LayerItemsState, cursor: Cursor) {
+	// if (!input.cursor)  return
+	const index = resolveCursorIndex(state, cursor)
+	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index?.outerIndex ?? 0)
 }
 
 export function isLookbackTerminatingLayerItem(item: LayerItem | ParentVoteItem): boolean {
-	if (isParentVoteItem(item)) return false
+	if (isVoteListitem(item)) return false
 	const layer = L.toLayer(item.layerId)
 	return layer && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer.Gamemode as string)
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {
 	const ids: L.LayerId[] = []
-	for (const item of iterLayerItems(items)) {
+	for (const { item } of IterItems(...items)) {
 		ids.push(item.layerId)
 	}
 	return ids
 }
 
-export function getLayerItemForLayerListItem(item: LL.Item): LayerItem | ParentVoteItem {
-	if (LL.isParentVoteItem(item)) {
+export function getItemForLayerListItem(item: LL.Item): LayerItem {
+	if (LL.isVoteItem(item)) {
+		const voteDecided = item.endingVoteState?.code === 'ended:winner'
 		return {
-			type: 'parent-vote-item',
-			choices: item.choices.map((_, index) => (getLayerItemForVoteItem(item, index))),
-			parentItemId: item.itemId,
+			type: 'vote-list-item',
+			itemId: item.itemId,
+			voteDecided,
+			layerId: item.layerId,
+			choices: item.choices!.map(choice => ({
+				type: 'single-list-item',
+				itemId: choice.itemId,
+				layerId: choice.layerId,
+			})),
 		}
 	}
 	return {
-		type: 'list-item',
+		type: 'single-list-item',
 		itemId: item.itemId,
 		layerId: item.layerId,
-	}
-}
-
-export function getLayerItemForVoteItem(item: LL.Item, choiceIndex: number): VoteChoiceLayerItem {
-	return {
-		type: 'vote-item',
-		itemId: item.itemId,
-		layerId: item.choices![choiceIndex].layerId,
-		choiceIndex: choiceIndex,
 	}
 }
 
 export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerItem {
 	return {
 		type: 'match-history-entry',
-		historyEntryId: entry.historyEntryId,
+		itemId: entry.historyEntryId,
 		layerId: entry.layerId,
 	}
 }
 
-export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem | LayerItemId) {
-	const item = typeof _item === 'string' ? fromLayerItemId(_item) : _item
+export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem | SerialLayerItem) {
+	const item = typeof _item === 'string' ? fromSerial(_item) : _item
 
 	if (!state.layerItems) return 0
-	const itemIndex = state.layerItems.findIndex(elt => coalesceLayerItems(elt).some(currItem => Obj.deepEqual(currItem, item)))
-	if (isNullOrUndef(itemIndex)) throw new Error('Item not found')
-	const parity = itemIndex + (state.firstLayerItemParity ?? 0)
+	const { index } = toEmpty(LL.findItemById(state.layerItems, item.itemId))
+	if (isNullOrUndef(index)) throw new Error('Item not found')
+	const parity = index.outerIndex + (state.firstLayerItemParity ?? 0)
 	return parity
 }
 
 /**
  * Gets the query context for editing a particular layer item
  */
-export function getQueryCursorForLayerItem(
-	_item: ParentVoteItem | LayerItem | LayerItemId,
-	action: LayerItemCursorAction,
-): Cursor {
-	const itemId = typeof _item === 'string' ? _item : isParentVoteItem(_item) ? _item.parentItemId : toLayerItemId(_item)
-	return {
-		type: 'id',
-		action: action,
-		itemId,
-	}
-}
+// export function getQueryCursorForLayerItem(
+// 	_item: ParentVoteItem | LayerItem | SerialLayerItem,
+// 	action: LayerItemCursorAction,
+// ): Cursor {
+// 	const itemId = typeof _item === 'string' ? _item : isParentVoteItem(_item) ? _item.parentItemId : toSerial(_item)
+// 	return {
+// 		type: 'id',
+// 		action: action,
+// 		itemId,
+// 	}
+// }
 
 export function getBaseQueryInputForAddingVoteChoice(
 	layerItemsState: LayerItemsState,
 	constraints: Constraint[],
 	parentItemId: string,
 ): BaseQueryInput {
-	const parentItem = layerItemsState.layerItems.find(item => item.type === 'parent-vote-item' && item.parentItemId === parentItemId)
+	const parentItem = layerItemsState.layerItems.find(item => item.type === 'vote-list-item' && item.itemId === parentItemId)
+	if (!parentItem) return { constraints, cursor }
 	const cursor: Cursor = {
-		type: 'id',
-		action: 'add-vote-choice',
+		type: 'item-relative',
+		action: 'add-after',
 		itemId: parentItemId,
 	}
-	if (!parentItem) return { constraints, cursor }
 	const layerIds: L.LayerId[] = []
 	for (const currentItem of (parentItem as ParentVoteItem).choices) {
 		layerIds.push(currentItem.layerId)
@@ -494,6 +491,7 @@ export function getQueryCursorForQueueIndex(index: number): Cursor {
 	}
 }
 
+// ????
 export function getQueryCursorForItemIndex(index: number): Cursor {
 	return {
 		type: 'layer-item-index',

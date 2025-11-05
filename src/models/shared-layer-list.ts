@@ -1,6 +1,7 @@
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
+import { toEmpty } from '@/lib/types'
 import * as LL from '@/models/layer-list.models'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
@@ -12,7 +13,7 @@ function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(bas
 		z.object({
 			...base,
 			op: z.literal('move'),
-			indexOrCursor: z.union([LL.LayerListItemIndex, LL.ItemRelativeCursorSchema]),
+			cursor: LL.CursorSchema,
 			newFirstItemId: LL.ItemIdSchema,
 		}),
 		z.object({
@@ -52,7 +53,7 @@ function buildOperationSchema<T extends { [key: string]: z.ZodTypeAny }, ItemSch
 			...base,
 			op: z.literal('add'),
 			items: z.array(itemSchema),
-			index: LL.LayerListItemIndex,
+			index: LL.ItemIndexSchema,
 		}),
 		...buildItemOpSchemaEntries({ ...base, itemId: LL.ItemIdSchema }),
 		z.object({
@@ -143,7 +144,7 @@ export function containsConflict(session: EditSession, expectedIndex: number, ne
 export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('editing-item'), itemId: LL.ItemIdSchema }),
 	z.object({ code: z.literal('configuring-vote'), itemId: LL.ItemIdSchema }),
-	z.object({ code: z.literal('adding-item') }),
+	z.object({ code: z.literal('adding-item'), cursor: LL.CursorSchema }),
 	z.object({ code: z.literal('moving-item'), itemId: LL.ItemIdSchema }),
 
 	// for changing pool configuration
@@ -224,10 +225,11 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			break
 		}
 		case 'move': {
-			const { merged, modified } = LL.moveItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.indexOrCursor)
+			const { merged, modified } = LL.moveItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.cursor)
 			if (modified) {
 				if (merged) {
-					const item = LL.findItemById(list, merged)!.item as LL.ParentVoteItem
+					const { item } = LL.findItemById(list, merged)!
+					if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
 					ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
 					ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
 					ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
@@ -239,11 +241,11 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'swap-factions': {
-			const itemRes = LL.findItemById(list, newOp.itemId)
-			if (!itemRes) return
-			const swapped = LL.swapFactions(itemRes.item, source)
+			const { index, item } = toEmpty(LL.findItemById(list, newOp.itemId))
+			if (!index || !item) return
+			const swapped = LL.swapFactions(item, source)
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
-			LL.splice(list, itemRes, 1, swapped)
+			LL.splice(list, index, 1, swapped)
 			break
 		}
 
@@ -267,8 +269,8 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'delete': {
-			const itemRes = LL.findItemById(list, newOp.itemId)
-			if (itemRes) {
+			const { index } = toEmpty(LL.findItemById(list, newOp.itemId))
+			if (index) {
 				LL.deleteItem(list, newOp.itemId)
 				ItemMut.tryApplyMutation('removed', [newOp.itemId], mutations)
 			}
@@ -277,8 +279,8 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 		case 'clear':
 			for (const itemId of newOp.itemIds) {
-				const itemRes = LL.findItemById(list, itemId)
-				if (itemRes) {
+				const { index } = toEmpty(LL.findItemById(list, itemId))
+				if (index) {
 					LL.deleteItem(list, itemId)
 					ItemMut.tryApplyMutation('removed', [itemId], mutations)
 				}
@@ -287,9 +289,9 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 
 		case 'create-vote': {
 			LL.createVoteOutOfItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.otherLayers)
-			const itemRes = LL.findItemById(list, newOp.itemId)
-			if (itemRes && LL.isParentVoteItem(itemRes.item)) {
-				ItemMut.tryApplyMutation('added', itemRes.item.choices.map(choice => choice.itemId), mutations)
+			const { item } = toEmpty(LL.findItemById(list, newOp.itemId))
+			if (item && LL.isVoteItem(item)) {
+				ItemMut.tryApplyMutation('added', item.choices.map(choice => choice.itemId), mutations)
 			}
 			break
 		}
@@ -440,7 +442,7 @@ export function itemsToLockForActivity(list: LL.List, activity: Activity): LL.It
 	if (parentItem) {
 		ids.push(parentItem.itemId)
 	}
-	if (LL.isParentVoteItem(item)) {
+	if (LL.isVoteItem(item)) {
 		ids.push(...item.choices.map(choice => choice.itemId))
 	}
 	return ids
@@ -488,7 +490,7 @@ export function applyListUpdate(session: EditSession, list: LL.List) {
 }
 
 export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
-	for (const { item } of LL.iterLayerList(session.list)) {
+	for (const { item } of LL.iterItems(...session.list)) {
 		if (!ItemMut.idMutated(session.mutations, item.itemId)) continue
 		if (item.source.type === 'manual' && item.source.userId === userId) return true
 	}

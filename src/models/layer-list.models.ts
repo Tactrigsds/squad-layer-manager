@@ -1,14 +1,19 @@
+import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
-import * as Generator from '@/lib/generator'
+import * as Gen from '@/lib/generator'
 import * as ItemMut from '@/lib/item-mutations'
 import { assertNever } from '@/lib/type-guards'
+import { toEmpty } from '@/lib/types'
 import * as DND from '@/models/dndkit.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 import { z } from 'zod'
 import { createId } from '../lib/id'
 import * as L from './layer'
-import { iterLayerItems } from './layer-queries.models'
+
+// ============================================================================
+// Base Schemas and Types
+// ============================================================================
 
 export const SourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('generated') }),
@@ -18,8 +23,13 @@ export const SourceSchema = z.discriminatedUnion('type', [
 ])
 
 export type Source = z.infer<typeof SourceSchema>
+
 export const ItemIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{6,24}$/)
 export type ItemId = z.infer<typeof ItemIdSchema>
+
+// ============================================================================
+// Item Schemas and Types
+// ============================================================================
 
 export const InnerLayerListItemSchema = z.object({
 	itemId: ItemIdSchema,
@@ -51,35 +61,25 @@ export const LayerListItemSchema = NewLayerListItemSchema.extend({
 	source: SourceSchema,
 })
 	.refine((item) => {
-		if (!isParentVoteItem(item)) return true
+		if (!item.choices) return true
 		const choiceSet = new Set<string>()
-		for (const choice of item.choices!) {
+		for (const choice of item.choices) {
 			if (choiceSet.has(choice.layerId)) return false
 			choiceSet.add(choice.layerId)
 		}
 		return true
 	}, { message: 'Duplicate layer IDs in choices' })
 	.refine((item): boolean => {
-		if (!isParentVoteItem(item)) return true
-		return item.choices!.some(choice => choice.layerId === item.layerId)
+		if (!item.choices) return true
+		return item.choices.some(choice => choice.layerId === item.layerId)
 	}, { message: 'The parent layerId must be included in the choices' })
 	.refine((item): boolean => {
-		if (!isParentVoteItem(item)) return true
+		if (!item.choices) return true
 		if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return true
 		return !!item.choices && item.choices[0].layerId === item.layerId
 	}, { message: "if vote isn't complete, then the layerId should always be the first layer choice" })
 
-const Index = z.number().min(0)
-
-export const LayerListItemIndex = z.object({
-	outerIndex: Index,
-	innerIndex: Index.nullable(),
-})
-
-export const LayerListItemRelativeCursor = z.object({
-	itemId: ItemIdSchema,
-	position: z.enum(['before', 'after', 'on']),
-})
+export type Item = z.infer<typeof LayerListItemSchema>
 
 export type ParentVoteItem = Item & {
 	choices: InnerLayerListItem[]
@@ -87,32 +87,98 @@ export type ParentVoteItem = Item & {
 	voteDisplayProps?: DH.LayerDisplayProp[]
 }
 
+// ============================================================================
+// Sparse Item Types
+// ============================================================================
+
+type GenericItemId = string | number
+export type SparseSingleItem<Id extends GenericItemId = GenericItemId> = {
+	itemId: Id
+	layerId: L.LayerId
+}
+
+export type SparseVoteItem<I extends SparseSingleItem = SparseSingleItem> = {
+	itemId: I['itemId']
+	layerId: L.LayerId
+	choices: I[]
+}
+
+export type SparseItem<Id extends GenericItemId = GenericItemId> = SparseSingleItem<Id> | SparseVoteItem<SparseSingleItem<Id>>
+
+{
+	const _ = {} as Item satisfies SparseItem
+}
+
+// ============================================================================
+// Index Schemas and Types
+// ============================================================================
+
+export const ItemIndexSchema = z.object({
+	outerIndex: z.number().min(0),
+	innerIndex: z.number().min(0).nullable(),
+})
+export type ItemIndex = z.infer<typeof ItemIndexSchema>
+
+// ============================================================================
+// Cursor Schemas and Types
+// ============================================================================
+
 export const ItemRelativeCursorSchema = z.object({
 	itemId: ItemIdSchema,
 	position: z.enum(['before', 'after', 'on']),
 })
 
-export type ItemRelativeCursor = z.infer<typeof ItemRelativeCursorSchema>
+export const CursorSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('item-relative'),
+		itemId: ItemIdSchema,
+		position: z.enum(['before', 'after', 'on']),
+	}),
+	z.object({
+		type: z.literal('index'),
+		index: ItemIndexSchema,
+	}),
+])
+export type Cursor = z.infer<typeof CursorSchema>
+export type ItemRelativeCursor = Extract<Cursor, { type: 'item-relative' }>
 
-export type ItemIndex = {
-	outerIndex: number
-	innerIndex: number | null
-}
-
-export type LayerListIteratorResult = ItemIndex & {
-	item: Item | InnerLayerListItem
-}
+// ============================================================================
+// List Schemas and Types
+// ============================================================================
 
 export const ListSchema = z.array(LayerListItemSchema)
 
 export type List = z.infer<typeof ListSchema>
-export type Item = z.infer<typeof LayerListItemSchema>
 
-export function getActiveItemLayerId(item: Item) {
+// ============================================================================
+// Functions
+// ============================================================================
+
+export function getActiveItemLayerId<T extends SparseItem>(item: T) {
 	return item.layerId
 }
-export function getDefaultLayerId(item: Item & { choices: InnerLayerListItem[] }) {
+
+export function getDefaultLayerId<T extends SparseItem & { choices: SparseSingleItem[] }>(item: T) {
 	return item.choices[0].layerId
+}
+
+export function toSparseItem<I extends InnerLayerListItem | ParentVoteItem>(item: I) {
+	if (isVoteItem(item as any)) {
+		const voteItem = item as ParentVoteItem
+		return {
+			itemId: voteItem.itemId,
+			layerId: voteItem.layerId,
+			choices: voteItem.choices.map(choice => ({
+				itemId: choice.itemId,
+				layerId: choice.layerId,
+			})),
+		} satisfies SparseVoteItem
+	}
+	const singleItem = item as InnerLayerListItem
+	return {
+		itemId: singleItem.itemId,
+		layerId: singleItem.layerId,
+	} satisfies SparseSingleItem
 }
 
 export function layerItemToDragItem(item: Pick<Item, 'itemId'>): DND.DragItem {
@@ -121,6 +187,7 @@ export function layerItemToDragItem(item: Pick<Item, 'itemId'>): DND.DragItem {
 		type: 'layer-item',
 	}
 }
+
 export function llItemCursorsToDropItem(cursors: ItemRelativeCursor[]): DND.DropItem {
 	return {
 		type: 'relative-to-drag-item',
@@ -147,6 +214,7 @@ export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCur
 	for (const slot of dropItem.slots) {
 		if (slot.dragItem.type === 'layer-item') {
 			slots.push({
+				type: 'item-relative',
 				itemId: slot.dragItem.id as ItemId,
 				position: slot.position,
 			})
@@ -158,13 +226,13 @@ export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCur
 export function resolveQualfiedIndexFromCursorForMove(list: List, cursor: ItemRelativeCursor): ItemIndex | undefined {
 	const itemRes = findItemById(list, cursor.itemId)
 	if (!itemRes) return undefined
-	if (cursor.position === 'before' || cursor.position === 'on') return itemRes
-	if (itemRes.innerIndex !== null) {
+	if (cursor.position === 'before' || cursor.position === 'on') return itemRes.index
+	if (itemRes.index.innerIndex !== null) {
 		// we'll shift item up
-		if (cursor.position === 'after') return { innerIndex: itemRes.innerIndex + 1, outerIndex: itemRes.outerIndex }
+		if (cursor.position === 'after') return { innerIndex: itemRes.index.innerIndex + 1, outerIndex: itemRes.index.outerIndex }
 		assertNever(cursor.position)
 	}
-	if (cursor.position === 'after') return { innerIndex: itemRes.innerIndex, outerIndex: itemRes.outerIndex + 1 }
+	if (cursor.position === 'after') return { innerIndex: itemRes.index.innerIndex, outerIndex: itemRes.index.outerIndex + 1 }
 	assertNever(cursor.position)
 }
 
@@ -181,12 +249,15 @@ export function createLayerListItem(newItem: NewLayerListItem, source: Source): 
 }
 
 export function getNextLayerId(layerQueue: List) {
-	if (layerQueue.length === 0) return
 	return layerQueue[0].layerId
 }
 
 export function isParentVoteItem(item: Item): item is ParentVoteItem {
 	return !!item.choices
+}
+
+export function isVoteItem<T extends SparseItem>(item: T): item is T & { choices: any[] } {
+	return !!(item as any).choices
 }
 
 export function isChildItem(itemId: ItemId, parentItemId: ItemId, layerList: List): boolean {
@@ -195,59 +266,70 @@ export function isChildItem(itemId: ItemId, parentItemId: ItemId, layerList: Lis
 	return true
 }
 
-export function resolveParentItemIndex(itemId: ItemId, layerQueue: List): number | undefined {
-	const index = layerQueue.findIndex((layer) => layer.itemId === itemId || layer.choices?.some(l => l.itemId === itemId))
+export function resolveParentItemIndex<T extends SparseItem>(itemId: ItemId, layerQueue: T[]): number | undefined {
+	const index = layerQueue.findIndex((layer) =>
+		layer.itemId === itemId || (isVoteItem(layer) && layer.choices.some(l => l.itemId === itemId))
+	)
 	if (index === -1) return undefined
 	return index
 }
 
-export function findParentItem(layerQueue: List, itemId: ItemId): Item | undefined {
+export function findParentItem<T extends SparseItem>(layerQueue: T[], itemId: ItemId): T | undefined {
 	const index = resolveParentItemIndex(itemId, layerQueue)
 	if (index === undefined) return undefined
 	return layerQueue[index]
 }
 
-export function getAllItemLayerIds(item: Item, opts?: { excludeVoteChoices?: boolean }) {
+export function getAllItemLayerIds<T extends SparseItem>(item: T, opts?: { excludeVoteChoices?: boolean }) {
 	const ids = new Set<L.LayerId>()
 	if (item.layerId) {
 		ids.add(item.layerId)
 	}
 
-	if (item.choices && !opts?.excludeVoteChoices) {
-		for (const choice of item.choices) ids.add(choice.itemId)
+	if (isVoteItem(item) && !opts?.excludeVoteChoices) {
+		for (const choice of item.choices) {
+			if ('layerId' in choice) {
+				ids.add(choice.layerId)
+			}
+		}
 	}
 	return ids
 }
 
-export function* iterLayerList(layerQueue: List): Generator<LayerListIteratorResult> {
-	for (let outerIndex = 0; outerIndex < layerQueue.length; outerIndex++) {
-		const item = layerQueue[outerIndex]
-		yield { item, outerIndex, innerIndex: null }
-		if (item.choices) {
+export type ItemIteratorResult<I extends SparseItem> = {
+	index: ItemIndex
+	item: I
+}
+
+export function* iterItems<T extends SparseItem>(...items: T[]): Generator<ItemIteratorResult<T>> {
+	for (let outerIndex = 0; outerIndex < items.length; outerIndex++) {
+		const item = items[outerIndex]
+		yield { item, index: { outerIndex, innerIndex: null } }
+		if (isVoteItem(item)) {
 			for (let innerIndex = 0; innerIndex < item.choices.length; innerIndex++) {
 				const choice = item.choices[innerIndex]
-				yield { item: choice, outerIndex, innerIndex }
+				yield { item: choice, index: { outerIndex, innerIndex } }
 			}
 		}
 	}
 }
 
-export function findItemById(layerQueue: List, itemId: ItemId): LayerListIteratorResult | undefined {
-	for (const { item, outerIndex, innerIndex } of iterLayerList(layerQueue)) {
-		if (item.itemId === itemId) return { item, outerIndex, innerIndex }
+export function findItemById<T extends SparseItem>(layerQueue: T[], itemId: T['itemId']): ItemIteratorResult<T> | undefined {
+	for (const result of iterItems(...layerQueue)) {
+		if (result.item.itemId === itemId) return result
 	}
 }
 
-export function getItemIndex(list: List, itemId: ItemId): ItemIndex | undefined {
-	for (const { item, outerIndex, innerIndex } of iterLayerList(list)) {
-		if (!innerIndex) continue
-		if (item.itemId === itemId) return { outerIndex, innerIndex }
+export function getItemIndex<T extends SparseItem>(list: T[], itemId: ItemId): ItemIndex | undefined {
+	for (const { item, index } of iterItems(...list)) {
+		if (index.innerIndex === null) continue
+		if (item.itemId === itemId) return index
 	}
 	return undefined
 }
 
-export function isVoteChoiceResult(result: Pick<LayerListIteratorResult, 'innerIndex'>) {
-	return result.innerIndex !== null
+export function isVoteChoiceResult<T extends SparseItem = SparseItem>(result: Pick<ItemIteratorResult<T>, 'index'>) {
+	return result.index.innerIndex !== null
 }
 
 /** */
@@ -255,7 +337,7 @@ export function mergeItems(newFirstItemId: ItemId, ...items: Item[]): Item | und
 	if (items.length === 0) return undefined
 	const [first] = items
 
-	let choicesGenerator = Generator.map(iterLayerList(items), res => {
+	let choicesGenerator = Gen.map(iterItems(...items), res => {
 		if (res.item.itemId === first.itemId) {
 			return {
 				...res.item,
@@ -265,7 +347,7 @@ export function mergeItems(newFirstItemId: ItemId, ...items: Item[]): Item | und
 		return res.item
 	})
 	const seenLayerIds = new Set<L.LayerId>()
-	choicesGenerator = Generator.filter(choicesGenerator, item => {
+	choicesGenerator = Gen.filter(choicesGenerator, item => {
 		if (isParentVoteItem(item)) return false
 		if (seenLayerIds.has(item.layerId)) return false
 		seenLayerIds.add(item.layerId)
@@ -306,65 +388,70 @@ export function moveItem(
 	movedItemId: ItemId,
 	// needed in case we're merging and we need a new id for the added first choice
 	newFirstItemId: ItemId,
-	targetCursorOrIndex: ItemRelativeCursor | ItemIndex,
+	cursor: Cursor,
 ): { merged: false | ItemId; modified: boolean } {
-	const movedItemRes = findItemById(list, movedItemId)
-	const targetIndex = isItemIndex(targetCursorOrIndex)
-		? targetCursorOrIndex
-		: resolveQualfiedIndexFromCursorForMove(list, targetCursorOrIndex)
+	const { index: movedIndex, item: movedItem } = toEmpty(findItemById(list, movedItemId))
+	const targetIndex = cursor.type === 'index'
+		? cursor.index
+		: resolveQualfiedIndexFromCursorForMove(list, cursor)
 
-	if (movedItemRes === undefined) {
+	if (movedIndex === undefined) {
 		console.warn('Failed to move item. item not found', movedItemId, movedItemId)
 		return { merged: false, modified: false }
 	}
 	if (targetIndex === undefined) {
-		console.warn('Failed to move item. target item not found', movedItemId, targetCursorOrIndex)
+		console.warn('Failed to move item. target item not found', movedItemId, cursor)
 		return { merged: false, modified: false }
 	}
-	if (indexesEqual(targetIndex, movedItemRes)) return { merged: false, modified: false }
+	if (indexesEqual(targetIndex, movedIndex)) return { merged: false, modified: false }
 
 	const targetItem = resolveItemForIndex(list, targetIndex)
 	const targetItemParent = targetItem ? findParentItem(list, targetItem.itemId) : undefined
 
-	splice(list, movedItemRes, 1, { itemId: '__placeholder__', layerId: L.DEFAULT_LAYER_ID, source })
+	splice(list, movedIndex, 1, { itemId: '__placeholder__', layerId: L.DEFAULT_LAYER_ID, source })
 
 	let merged: false | string
 	// create a vote out of two existing items
-	if (targetItem && !isItemIndex(targetCursorOrIndex) && targetCursorOrIndex.position === 'on') {
-		const mergedItem = mergeItems(newFirstItemId, targetItem, movedItemRes.item)
+	if (targetItem && cursor.type === 'item-relative' && cursor.position === 'on') {
+		const mergedItem = mergeItems(newFirstItemId, targetItem, movedItem)
 		if (!mergedItem) throw new Error('Failed to merge items')
 		splice(list, targetIndex, 1, mergedItem)
 		merged = mergedItem.itemId
 	} else {
-		const movedAndModifiedItem: Item = { ...movedItemRes.item, source }
+		const movedAndModifiedItem: Item = { ...movedItem, source }
 		splice(list, targetIndex, 0, movedAndModifiedItem)
 		if (targetItemParent && isParentVoteItem(targetItemParent)) {
-			setCorrectChosenLayerIdInPlace(targetItemParent as ParentVoteItem)
+			setCorrectChosenLayerIdInPlace(targetItemParent)
 		}
 		merged = false
 	}
-	const placeholderRes = findItemById(list, '__placeholder__')!
+	const { index: placeholderIndex } = findItemById(list, '__placeholder__')!
 	// finally, remove placeholder
-	splice(list, placeholderRes, 1)
+	splice(list, placeholderIndex, 1)
 	return { merged, modified: true }
 }
 
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
-	const itemRes = findItemById(list, itemId)
-	if (!itemRes) return
-	const item = itemRes.item
+	const { item } = toEmpty(findItemById(list, itemId))
+	if (!item) return
+	const parentVoteItem = resolveParentVoteItem(itemId, list)
+	if (parentVoteItem) {
+		const otherChoices = parentVoteItem?.choices.filter(choice => choice.itemId !== itemId)
+		if (Arr.deref('layerId', otherChoices).includes(layerId)) {
+			return
+		}
+	}
 	item.source = source
 	item.layerId = layerId
-	const parentVoteItem = resolveParentVoteItem(itemId, list)
 	if (parentVoteItem) {
 		setCorrectChosenLayerIdInPlace(parentVoteItem)
 	}
 }
 
 export function deleteItem(list: List, itemId: ItemId) {
-	const itemRes = findItemById(list, itemId)
-	if (!itemRes) return
-	splice(list, itemRes, 1)
+	const { index } = toEmpty(findItemById(list, itemId))
+	if (!index) return
+	splice(list, index, 1)
 }
 
 export function configureVote(
@@ -374,9 +461,8 @@ export function configureVote(
 	voteConfig?: Partial<V.AdvancedVoteConfig> | null,
 	displayProps?: DH.LayerDisplayProp[] | null,
 ) {
-	const itemRes = findItemById(list, itemId)
-	if (!itemRes) return
-	const item = itemRes.item
+	const { item } = toEmpty(findItemById(list, itemId))
+	if (!item) return
 	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
 	if (voteConfig === null) {
 		item.voteConfig = { source }
@@ -392,14 +478,13 @@ export function configureVote(
 }
 
 export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: Item[]) {
-	const itemRes = findItemById(list, itemId)
-	if (!itemRes) return
-	const item = itemRes.item
+	const { index, item } = toEmpty(findItemById(list, itemId))
+	if (!item || !index) return
 	if (isParentVoteItem(item)) return
 	const voteItem = mergeItems(newFirstItemId, item, ...addedChoices)
 	if (!voteItem) return
 	voteItem.source = source
-	splice(list, itemRes, 1, voteItem)
+	splice(list, index, 1, voteItem)
 	return voteItem.itemId
 }
 
@@ -410,8 +495,8 @@ export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex
 		const parentItem = list[index.outerIndex]
 		if (!isParentVoteItem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
 
-		let newItems = Generator.map(iterLayerList(items), res => res.item)
-		newItems = Generator.filter(newItems, item => !isParentVoteItem(item))
+		let newItems = Gen.map(iterItems(...items), res => res.item)
+		newItems = Gen.filter(newItems, item => !isParentVoteItem(item))
 
 		parentItem.choices.splice(
 			index.innerIndex,
@@ -450,7 +535,7 @@ export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
 export function changeGeneratedLayerAttributionInPlace(layerList: List, mutations: ItemMut.Mutations, userId: bigint) {
 	let afterModified = false
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
-	for (const { item } of iterLayerList(layerList)) {
+	for (const { item } of iterItems(...layerList)) {
 		if (item.source.type === 'generated') {
 			if (afterModified) item.source = { type: 'manual', userId }
 		} else if (!afterModified && allModifiedItems.has(item.itemId)) {
@@ -477,14 +562,15 @@ export function clearTally(_item: Item) {
 	return item
 }
 
-export function isLocallyLastIndex(itemId: ItemId, list: List) {
-	const res = findItemById(list, itemId)
-	if (!res) return false
-	if (res.innerIndex != null) {
-		const parentRes = findParentItem(list, itemId)! as ParentVoteItem
-		return parentRes.choices.length - 1 === res.innerIndex
+export function isLocallyLastIndex<T extends SparseItem>(itemId: ItemId, list: T[]) {
+	const { index } = toEmpty(findItemById(list, itemId))
+	if (!index) return false
+	if (index.innerIndex != null) {
+		const parentRes = findParentItem(list, itemId)!
+		if (!isVoteItem(parentRes)) return false
+		return parentRes.choices.length - 1 === index.innerIndex
 	}
-	return list.length - 1 === res.outerIndex
+	return list.length - 1 === index.outerIndex
 }
 
 export function isLocallyFirstIndex(index: ItemIndex) {
@@ -495,7 +581,7 @@ export function isLocallyFirstIndex(index: ItemIndex) {
 }
 
 export function displayLayerListItem(item: Item, index: ItemIndex) {
-	if (isParentVoteItem(item)) {
+	if (isVoteItem(item)) {
 		return item.choices.map((choice, innerIndex) =>
 			`${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`
 		).join('\n')
@@ -508,7 +594,7 @@ export function getItemNumber(index: ItemIndex) {
 	return `${index.outerIndex + 1}.${inner}`
 }
 
-export function resolveLayerQueueItemIndexForNumber(layerList: List, number: string) {
+export function resolveLayerQueueItemIndexForNumber(number: string) {
 	const match = /^(\d+)(?:\.(\d+))?$/
 	const matchResult = match.exec(number)
 	if (!matchResult) return null
@@ -517,14 +603,21 @@ export function resolveLayerQueueItemIndexForNumber(layerList: List, number: str
 	return { outerIndex, innerIndex }
 }
 
-export function resolveItemForIndex(layerList: List, index: ItemIndex): Item | undefined {
+export function resolveItemForIndex<T extends SparseItem>(
+	layerList: T[],
+	index: ItemIndex,
+): T | Extract<T, { choices: unknown[] }>['choices'][number] | undefined {
 	const { outerIndex, innerIndex } = index
 	if (innerIndex === null) return layerList[outerIndex]
-	return layerList[outerIndex]?.choices?.[innerIndex]
+	const item = layerList[outerIndex]
+	if (isVoteItem(item)) {
+		return item.choices[innerIndex]
+	}
+	return undefined
 }
 
-export function resolveLayerQueueItemForNumber(layerList: List, number: string) {
-	const index = resolveLayerQueueItemIndexForNumber(layerList, number)
+export function resolveLayerQueueItemForNumber<T extends SparseItem>(layerList: T[], number: string) {
+	const index = resolveLayerQueueItemIndexForNumber(number)
 	if (!index) return undefined
 	return resolveItemForIndex(layerList, index)
 }
@@ -533,13 +626,21 @@ export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 	return a.outerIndex === b.outerIndex && a.innerIndex === b.innerIndex
 }
 
-export function getLastLocalIndexForItem(itemId: ItemId, layerList: List): ItemIndex | undefined {
-	const res = findItemById(layerList, itemId)
-	if (!res) return undefined
-	if (res.innerIndex === null) {
-		const parentItem = layerList[res.outerIndex]
-		if (!isParentVoteItem(parentItem)) return undefined
-		return { outerIndex: res.outerIndex, innerIndex: parentItem.choices.length - 1 }
+export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, layerList: T[]): ItemIndex | undefined {
+	const { index } = toEmpty(findItemById(layerList, itemId))
+	if (!index) return undefined
+	if (index.innerIndex === null) {
+		const parentItem = layerList[index.outerIndex]
+		if (!isVoteItem(parentItem)) return undefined
+		return { outerIndex: index.outerIndex, innerIndex: parentItem.choices.length - 1 }
 	}
 	return { outerIndex: layerList.length - 1, innerIndex: null }
+}
+
+export function shiftIndex(index: ItemIndex, offset: number = 1): ItemIndex | undefined {
+	const { outerIndex, innerIndex } = index
+	if (innerIndex === null) {
+		return { outerIndex: outerIndex + offset, innerIndex: null }
+	}
+	return { outerIndex, innerIndex: innerIndex + offset }
 }

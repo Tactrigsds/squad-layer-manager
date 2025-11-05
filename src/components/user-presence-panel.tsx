@@ -97,7 +97,7 @@ export default function UserPresencePanel() {
 					const currentActivity = presence.currentActivity
 					const hasActivity = currentActivity !== null
 					const itemIndex = (currentActivity && SLL.isItemOwnedActivity(currentActivity))
-						? LL.findItemById(layerList, currentActivity.itemId)
+						? LL.findItemById(layerList, currentActivity.itemId)?.index
 						: undefined
 					const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity.code, itemIndex) : null
 

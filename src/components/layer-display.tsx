@@ -24,7 +24,7 @@ export default function LayerDisplay(
 		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
-	const layerItemId = LQY.toLayerItemId(props.item)
+	const layerItemId = LQY.toSerial(props.item)
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
 		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),

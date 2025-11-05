@@ -32,7 +32,8 @@
 		"assets/**",
 		"**/*-lock.json",
 		"**/*-lock.yaml",
-		"**/routeTree.gen.ts"
+		"**/routeTree.gen.ts",
+		".tanstack/**/*"
 	],
 	"plugins": [
 		"https://plugins.dprint.dev/typescript-0.94.0.wasm",

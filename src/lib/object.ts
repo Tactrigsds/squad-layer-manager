@@ -28,6 +28,7 @@ export function exclude<T extends object, K extends keyof T>(obj: T, keys: K[]):
 	}
 	return result
 }
+export const omit = exclude
 
 export function selectProps<T extends object, K extends keyof T>(obj: T, selected: K[]) {
 	const result: Partial<T> = {}

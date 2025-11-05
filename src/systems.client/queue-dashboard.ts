@@ -56,7 +56,7 @@ export function getLLItemActions(llStore: LLStore, itemId: string): LLItemAction
 
 		addVoteItems(choices) {
 			const itemState = selectLLItemState(llStore, itemId)
-			if (!LL.isParentVoteItem(itemState.item)) return
+			if (!LL.isVoteItem(itemState.item)) return
 			const index: LL.ItemIndex = { innerIndex: itemState.item.choices.length, outerIndex: itemState.index.outerIndex }
 			llStore.dispatch({ op: 'add', index, items: choices })
 		},
@@ -70,7 +70,7 @@ export function selectLLItemState(llStore: LLStore, itemId: string): LLItemState
 	const res = LL.findItemById(layerList, itemId)
 	if (!res) throw new Error(`Item not found: ${itemId}`)
 	const parentItem = LL.findParentItem(layerList, itemId)
-	const { item, ...index } = res
+	const { index, item } = res
 	const isLocallyLast = LL.isLocallyLastIndex(itemId, layerList)
 
 	return {

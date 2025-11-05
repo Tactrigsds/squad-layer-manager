@@ -27,6 +27,7 @@ import * as GlobalSettings from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import { useQuery } from '@tanstack/react-query'
 import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, OnChangeFn, PaginationState, Row, RowSelectionState, SortDirection, useReactTable, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -358,7 +359,11 @@ export default function LayerTable(props: {
 	)
 	const onPaginationChange: OnChangeFn<PaginationState> = useTableFrame(t => t.onPaginationChange)
 	const queryInput = useFrameStore(props.frameKey, ZusUtils.useDeep(LayerTablePrt.selectQueryInput))
-	const layersRes = LayerQueriesClient.useLayersQuery(queryInput)
+	const options = LayerQueriesClient.useQueryLayersOptions(queryInput)
+	const layersRes = useQuery({
+		...options,
+		placeholderData: (prev) => prev,
+	})
 
 	const page = React.useMemo(() => {
 		let _page = layersRes.data
@@ -407,7 +412,8 @@ export default function LayerTable(props: {
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
 		React.useCallback((state) => {
-			LQY.resolveTeamParityForCursor(state, queryInput)
+			if (!queryInput.cursor) return
+			return LQY.resolveTeamParityForCursor(state, queryInput.cursor)
 		}, [queryInput]),
 	)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)

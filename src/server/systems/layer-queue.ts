@@ -4,7 +4,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
-import { Parts } from '@/lib/types'
+import { Parts, toEmpty } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -103,7 +103,7 @@ export const init = C.spanOp(
 						const voteState = ctx.vote.state
 						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (
-							LL.isParentVoteItem(serverState.layerQueue[0])
+							LL.isVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
 							&& serverState.lastRoll
 							&& serverState.lastRoll.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
@@ -305,8 +305,8 @@ async function syncVoteStateWithQueueStateInPlace(
 		// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
 		newVoteState = null
 	} else if (
-		newQueueItem && LL.isParentVoteItem(newQueueItem) && !newQueueItem.endingVoteState
-		&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isParentVoteItem(oldQueueItem))
+		newQueueItem && LL.isVoteItem(newQueueItem) && !newQueueItem.endingVoteState
+		&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isVoteItem(oldQueueItem))
 		&& currentMatch.status !== 'post-game'
 	) {
 		let autostartTime: Date | undefined
@@ -322,7 +322,7 @@ async function syncVoteStateWithQueueStateInPlace(
 			voterType: vote.state?.voterType ?? 'public',
 			autostartTime,
 		}
-	} else if (!newQueueItem || !LL.isParentVoteItem(newQueueItem)) {
+	} else if (!newQueueItem || !LL.isVoteItem(newQueueItem)) {
 		newVoteState = null
 	}
 
@@ -547,9 +547,8 @@ export const abortVote = C.spanOp(
 			ctx.vote.voteEndTask?.unsubscribe()
 			ctx.vote.voteEndTask = null
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
-			const itemRes = LL.findItemById(layerQueue, newVoteState.itemId)
-			if (!itemRes || !LL.isParentVoteItem(itemRes.item)) throw new Error('vote item not found or is invalid')
-			const item = itemRes.item
+			const { item } = toEmpty(LL.findItemById(layerQueue, newVoteState.itemId))
+			if (!item || !LL.isVoteItem(item)) throw new Error('vote item not found or is invalid')
 			item.endingVoteState = newVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
 			await updateServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
@@ -666,9 +665,8 @@ const handleVoteTimeout = C.spanOp(
 				}
 			}
 			const serverState = Obj.deepClone(await getServerState(ctx))
-			const listItemRes = LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId)
-			if (!listItemRes || !LL.isParentVoteItem(listItemRes.item)) throw new Error('Invalid vote item')
-			const listItem = listItemRes.item as LL.ParentVoteItem
+			const { item: listItem } = toEmpty(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
+			if (!listItem || !LL.isVoteItem(listItem)) throw new Error('Invalid vote item')
 			let endingVoteState: V.EndingVoteState
 			let tally: V.Tally | null = null
 			if (Object.values(ctx.vote.state.votes).length === 0) {
@@ -805,7 +803,7 @@ export async function updateQueue(
 		}
 
 		for (const item of input.layerQueue) {
-			if (LL.isParentVoteItem(item) && item.choices.length > CONFIG.vote.maxNumVoteChoices) {
+			if (LL.isVoteItem(item) && item.choices.length > CONFIG.vote.maxNumVoteChoices) {
 				return {
 					code: 'err:too-many-vote-choices' as const,
 					msg: `Max choices allowed is ${CONFIG.vote.maxNumVoteChoices}`,
@@ -821,14 +819,14 @@ export async function updateQueue(
 		}
 
 		for (const item of input.layerQueue) {
-			if (LL.isParentVoteItem(item) && item.choices.length > CONFIG.vote.maxNumVoteChoices) {
+			if (LL.isVoteItem(item) && item.choices.length > CONFIG.vote.maxNumVoteChoices) {
 				return {
 					code: 'err:too-many-vote-choices' as const,
 					msg: `Max choices allowed is ${CONFIG.vote.maxNumVoteChoices}`,
 				}
 			}
 			if (
-				LL.isParentVoteItem(item)
+				LL.isVoteItem(item)
 				&& !V.validateChoicesWithDisplayProps(item.choices.map(c => c.layerId), item.displayProps ?? CONFIG.vote.voteDisplayProps)
 			) {
 				return {
@@ -984,8 +982,8 @@ export async function requestFeedback(
 	const serverState = await getServerState(ctx)
 	let index: LL.ItemIndex | undefined
 	if (serverState.layerQueue.length === 0) return { code: 'err:empty' as const }
-	if (layerQueueNumber === undefined) index = LL.iterLayerList(serverState.layerQueue).next().value
-	else index = LL.resolveLayerQueueItemIndexForNumber(serverState.layerQueue, layerQueueNumber) ?? undefined
+	if (layerQueueNumber === undefined) index = LL.iterItems(...serverState.layerQueue).next().value
+	else index = LL.resolveLayerQueueItemIndexForNumber(layerQueueNumber) ?? undefined
 	if (!index) return { code: 'err:not-found' as const }
 	const item = LL.resolveItemForIndex(serverState.layerQueue, index)!
 	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, playerName, item))

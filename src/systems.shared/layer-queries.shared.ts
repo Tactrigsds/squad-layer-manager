@@ -1,6 +1,9 @@
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
+import * as Arr from '@/lib/array'
+import * as CB from '@/models/constraint-builders'
 import { assertNever } from '@/lib/type-guards'
+import { toEmpty } from '@/lib/types'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -49,7 +52,7 @@ export async function queryLayers(args: {
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
 
-	const conditionsRes = buildConstraintSqlCondition(ctx, input)
+	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return conditionsRes
 	const { conditions: whereConditions, selectProperties } = conditionsRes
 
@@ -150,7 +153,7 @@ export async function queryLayerComponent(args: {
 }) {
 	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
 	const input = args.input
-	const conditionsRes = buildConstraintSqlCondition(ctx, input)
+	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return conditionsRes
 	const { conditions: whereConditions } = conditionsRes
 	const colDef = LC.getColumnDef(input.column, ctx.effectiveColsConfig)
@@ -380,15 +383,15 @@ export function getFilterNodeSQLConditions(
 	return { code: 'ok' as const, condition: condition! }
 }
 
-function buildConstraintSqlCondition(
+function buildQueryInputSqlCondition(
 	ctx: CS.Log & CS.Filters & CS.LayerDb & CS.LayerItemsState,
 	input: LQY.BaseQueryInput,
 ) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
-	const constraints = input.constraints ?? []
+	const constraints = [...(input.constraints ?? []]
 
-	const cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, input)
+	const cursorIndex = input.cursor ? LQY.resolveCursorIndex(ctx.layerItemsState, input.cursor) : undefined
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
@@ -406,7 +409,9 @@ function buildConstraintSqlCondition(
 				)
 				break
 			case 'do-not-repeat':
-				res = getRepeatSQLConditions(ctx, cursorIndex, constraint.rule)
+				{
+					res = getRepeatSQLConditions(ctx, cursorIndex?.outerIndex ?? 0, constraint.rule)
+				}
 				break
 			default:
 				assertNever(constraint)
@@ -446,7 +451,7 @@ export async function getLayerItemStatuses(args: {
 	let maxLookbackIndex = 0
 	for (let i = layerItems.length - 1; i >= 0; i--) {
 		const item = layerItems[i]
-		if (LQY.isParentVoteItem(item)) continue
+		if (LQY.isVoteListitem(item)) continue
 		if (item.type !== 'match-history-entry') continue
 		if (lookbackLeft <= 0) break
 		lookbackLeft--
@@ -457,7 +462,7 @@ export async function getLayerItemStatuses(args: {
 	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const matchDescriptors: LQY.MatchDescriptor[] = []
-			const itemId = LQY.toLayerItemId(item)
+			const itemId = LQY.toSerial(item)
 			for (const constraint of constraints) {
 				if (constraint.type === 'do-not-repeat') {
 					const descriptors = getisMatchedByRepeatRuleDirect(
@@ -488,7 +493,7 @@ export async function getLayerItemStatuses(args: {
 				}
 				assertNever(constraint)
 			}
-			violationDescriptorsState.set(LQY.toLayerItemId(item), matchDescriptors)
+			violationDescriptorsState.set(LQY.toSerial(item), matchDescriptors)
 		}
 	}
 
@@ -502,12 +507,12 @@ export async function getLayerItemStatuses(args: {
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const item of LQY.iterLayerItems(layerItems.slice(maxLookbackIndex))) {
+		for (const item of LQY.IterItems(layerItems.slice(maxLookbackIndex))) {
 			if (item.layerId !== layerId) continue
 			for (const [constraintId, isMatched] of Object.entries(row)) {
 				if (constraintId === '_id') continue
 				if (Number(isMatched) === 1) {
-					OneToMany.set(matchedState, LQY.toLayerItemId(item), constraintId)
+					OneToMany.set(matchedState, LQY.toSerial(item), constraintId)
 				}
 			}
 		}

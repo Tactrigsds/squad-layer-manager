@@ -82,8 +82,6 @@ export type Frame<
 	setup(args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>): void
 	beforeTeardown?: (state: StateWithDeps<T>) => void
 	canInitialize?: (input: T['input']) => boolean
-	checkInputChanged: typeof Obj.shallowEquals
-	onInputChanged?: (newInput: T['input'], args: SetupArgs<T['input'], T['state'], StateWithDeps<T>>) => void
 }
 
 type FrameOps<T extends FrameTypes> = {
@@ -92,9 +90,6 @@ type FrameOps<T extends FrameTypes> = {
 	setup: Frame<T>['setup']
 	beforeTeardown?: Frame<T>['beforeTeardown']
 	canInitialize?: Frame<T>['canInitialize']
-
-	checkInputChanged?: Frame<T>['checkInputChanged']
-	onInputChanged?: Frame<T>['onInputChanged']
 }
 
 export type PartialType<T extends FrameTypes['state']> = FrameTypes & { state: T }
@@ -140,7 +135,6 @@ export class FrameManager {
 		instance?.sub.unsubscribe()
 		instance.update$.complete()
 	}
-
 	teardown(key: RawInstanceKey) {
 		this.keys.delete(key)
 		this.registry.unregister(key)
@@ -159,7 +153,6 @@ export class FrameManager {
 		const frame: Frame<Types> = {
 			id,
 			canInitialize: opts.canInitialize ?? (() => true),
-			checkInputChanged: Obj.shallowEquals ?? opts.checkInputChanged,
 			...opts,
 		}
 		this.frameMap.set(id, frame)
@@ -168,7 +161,7 @@ export class FrameManager {
 
 	ensureSetup<T extends FrameTypes>(
 		frameIdOrFrame: FrameId | Frame<T>,
-		inputArg: T['input'] | ((prev?: T['input']) => T['input']),
+		input: T['input'],
 		opts?: { depKeys?: T['deps'] },
 	): InstanceKey<T> {
 		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
@@ -185,24 +178,23 @@ export class FrameManager {
 				depInstances[name] = entry[1]
 			}
 		}
-		const initialInput = typeof inputArg === 'function' ? inputArg() : inputArg
-		const key = frame.createKey(frameId, initialInput)
+		const key = frame.createKey(frameId, input)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
 		let directKey: DirectInstanceKey
 		let instance: FrameInstance
 		if (!entry) {
-			if (!frame.canInitialize?.(initialInput)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${inputArg}`)
-			directKey = frame.createKey(frameId, initialInput)
+			if (!frame.canInitialize?.(input)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${input}`)
+			directKey = frame.createKey(frameId, input)
 			const writeStore = Zus.createStore(() => ({}))
 			instance = {
 				frameId,
-				input: inputArg,
+				input: input,
 				refCount: 0,
 				writeStore: writeStore,
 				readStore: undefined!,
 				sub: new Rx.Subscription(),
 				update$: new Rx.Subject(),
-				deps: depKeys,
+				deps: opts?.depKeys,
 				get: undefined!,
 				set: undefined!,
 				lastUsed: Date.now(),
@@ -211,7 +203,7 @@ export class FrameManager {
 			if (opts?.depKeys) {
 				instance.readStore = ZusUtils.deriveStores((get) => ({
 					...get(this.frameInstances.get(directKey)!.writeStore),
-					...Obj.map(opts.depKeys, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
+					...Obj.map(opts!.depKeys!, (key) => get(this.frameInstances.get(this.keys.get(key)!)!.writeStore)),
 				}))
 			} else {
 				instance.readStore = instance.writeStore
@@ -233,42 +225,12 @@ export class FrameManager {
 		} else {
 			;[directKey, instance] = entry
 			instance.lastUsed = Date.now()
-			const newInput = typeof inputArg === 'function' ? inputArg(instance.input) : inputArg
-			if (frame.onInputChanged && !frame.checkInputChanged(newInput, instance.input)) {
-				frame.onInputChanged(newInput, {
-					input: instance.input,
-					get: instance.get as ZusUtils.Getter<StateWithDeps<T>>,
-					set: instance.set as ZusUtils.Setter<T['input']>,
-					sub: instance.sub,
-					update$: instance.update$,
-				})
-			}
 		}
 		this.keys.set(key, directKey)
 		this.registry.register(key, directKey)
 		instance.refCount++
 
 		return key
-	}
-
-	changeInput<T extends FrameTypes>(key: InstanceKey<T>, updater: T['input'] | ((input: T['input']) => T['input'])) {
-		const frame = this.frameMap.get(key.frameId) as Frame<T> | undefined
-		if (!frame) throw new Error(`Frame ${key.toString()} not found`)
-
-		const instance = this.getInstance(key)
-		if (!instance) throw new Error(`Instance ${key.toString()} not found`)
-		if (!frame.onInputChanged) return
-		const input = typeof updater === 'function' ? updater(instance.input) : updater
-		if (frame.checkInputChanged(input, instance.input)) {
-			instance.lastUsed = Date.now()
-			frame.onInputChanged(input, {
-				input: instance.input,
-				get: instance.get as ZusUtils.Getter<StateWithDeps<T>>,
-				set: instance.set as ZusUtils.Setter<T['input']>,
-				sub: instance.sub,
-				update$: instance.update$,
-			})
-		}
 	}
 
 	// will only resolve keys known to the frame manager
@@ -301,7 +263,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	}
 
 	type FrameLifecycleOptions<T extends FrameTypes> =
-		& ({ input: T['input'] } | { frameKey: InstanceKey<T>; input?: InputUpdater<T> })
+		& ({ input: T['input'] } | { frameKey: InstanceKey<T> })
 		& {
 			deps?: T['deps']
 			equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>
@@ -320,26 +282,17 @@ export function createFrameHelpers(frameManager: FrameManager) {
 		frameOrId: Frame<T> | FrameId,
 		options: FrameLifecycleOptions<T>,
 	) {
-		const optFrameKey = isFrameKeyOptions(options) ? options.frameKey : undefined
-		const optInput = options.input
-		const frameKey = ReactUtils.useMemo<InstanceKey<T>>(
-			() => {
-				if (optInput) {
-					return frameManager.ensureSetup(frameOrId, optInput, options.deps)
+		const frameKey = ReactUtils.useStableValue(
+			(frameOrId, options) => {
+				if (isInputOptions(options)) {
+					return frameManager.ensureSetup(frameOrId, options.input, options.deps)
 				} else {
-					return optFrameKey!
+					return options.frameKey
 				}
 			},
-			[frameOrId, optFrameKey, optInput, options.deps],
+			[frameOrId, options],
 			options.equalityFn,
 		)
-
-		React.useEffect(() => {
-			if (optInput && optFrameKey) {
-				// this is fast, don't over-memoize input
-				frameManager.changeInput(optFrameKey, optInput)
-			}
-		}, [optInput, optFrameKey])
 
 		return frameKey
 	}

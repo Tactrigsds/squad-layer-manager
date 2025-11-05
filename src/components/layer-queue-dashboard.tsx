@@ -11,6 +11,7 @@ import * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
+import { rootRouter } from '@/root-router.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
@@ -19,6 +20,7 @@ import * as ServerSettingsClient from '@/systems.client/server-settings.client.t
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import { getRouteApi } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -34,6 +36,8 @@ import { Separator } from './ui/separator.tsx'
 import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
+
+const Route = getRouteApi('/_app/servers/$serverId')
 
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useServerInfoRes()
@@ -143,15 +147,7 @@ function NormTeamsSwitch() {
 }
 
 function QueueControlPanel() {
-	type AddLayersPosition = 'next' | 'after'
-	const [addLayersOpen, setAddLayersOpen] = SLLClient.useActivityState({ code: 'adding-item' })
-	const [addLayersPosition, setAddLayersPosition] = React.useState<AddLayersPosition>('next')
-	const listLength = Zus.useStore(SLLClient.Store, useShallow(s => s.layerList.length))
-	const queryCursors = {
-		next: LQY.getQueryCursorForQueueIndex(0),
-		after: LQY.getQueryCursorForQueueIndex(listLength),
-	} satisfies Record<AddLayersPosition, LQY.Cursor | undefined>
-
+	type AddLayersPosition = 'before' | 'after'
 	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
 
 	async function saveLqState() {
@@ -165,24 +161,55 @@ function QueueControlPanel() {
 		state.dispatch({ op: 'clear', itemIds })
 	}
 
-	const addItems = React.useMemo(() => {
-		return (items: LL.NewLayerListItem[]) => {
-			const state = QD.LQStore.getState()
-			const index: LL.ItemIndex = addLayersPosition === 'next'
-				? { innerIndex: null, outerIndex: 0 }
-				: { innerIndex: null, outerIndex: queueLength }
-			state.dispatch({ op: 'add', items, index })
+	const deps = Route.useLoaderDeps()
+	const frames = Route.useLoaderData()
+	const addedLayerPlacement = deps.addLayers?.placement ?? 'before'
+	const addLayersOpen = !!deps.addLayers
+	const setAddLayersOpen = (open: boolean) => {
+		if (open) {
 		}
-	}, [addLayersPosition, queueLength])
+	}
+	const addItems = React.useCallback((items: LL.NewLayerListItem[]) => {
+		if (!deps.addLayers) return
+		const sllState = SLLClient.Store.getState()
+		let index: LL.ItemIndex | undefined
+		if (deps.addLayers?.itemId) {
+			index = LL.findItemById(sllState.layerList, deps.addLayers.itemId)?.index
+		}
+		if (index) {
+			if (deps.addLayers.placement === 'after') {
+				LL.shiftIndex(index, 1)
+			}
+		}
+		if (!index) {
+			if (deps.addLayers.placement === 'before') {
+				index = { outerIndex: 0, innerIndex: null }
+			} else {
+				index = { outerIndex: sllState.layerList.length, innerIndex: null }
+			}
+		}
+
+		sllState.dispatch({ op: 'add', items, index })
+	}, [deps.addLayers])
+
+	const navigate = Route.useNavigate()
+
+	const setPosition = (placement: AddLayersPosition) => {
+		const newState = { ...(deps.addLayers!), placement }
+		navigate({
+			to: '.',
+			search: { addLayers: newState },
+		})
+	}
 
 	const addLayersTabslist = (
 		<TabsList
 			options={[
-				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play Next', value: 'before' },
 				{ label: 'Play After', value: 'after' },
 			]}
-			active={addLayersPosition}
-			setActive={setAddLayersPosition}
+			active={deps.addLayers?.placement ?? 'before'}
+			setActive={setPosition}
 		/>
 	)
 
@@ -241,9 +268,9 @@ function QueueControlPanel() {
 				title="Add Layers"
 				footerAdditions={addLayersTabslist}
 				selectQueueItems={addItems}
+				frames={frames}
 				open={addLayersOpen}
 				onOpenChange={setAddLayersOpen}
-				cursor={queryCursors[addLayersPosition]}
 			>
 				<Button className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />

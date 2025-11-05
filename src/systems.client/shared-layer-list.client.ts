@@ -1,10 +1,14 @@
 import * as AR from '@/app-routes'
+import { getFrameState } from '@/frames/frame-manager'
+import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
+import * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
+import * as ZusUtils from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
@@ -61,6 +65,10 @@ export type Store = {
 	layerList: LL.Item[]
 	isModified: boolean
 	userPresence: Map<bigint, SLL.ClientPresence>
+
+	frames: {
+		selectLayer?: SelectLayersFrame.Key
+	}
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
@@ -69,8 +77,35 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 
 export const Store = createStore()
 
+type ActionConfig<A extends SLL.Activity, O> = {
+	load?: (opts: { state: Store; activity: SLL.Activity; preload: boolean }) => Awaited<O>
+	onEnter?: (opts: { activity: SLL.Activity; data: Awaited<O>; state: Store }) => Promise<void>
+	onLeave?: (opts: { activity: SLL.Activity; state: Store }) => Promise<void>
+}
+
+type ActionConfigs = { [k in SLL.Activity['code']]: ActionConfig<Extract<SLL.Activity, { code: k }>, Awaited<any>> }
+function getActionConfigs(set: ZusUtils.Setter<Store>, get: ZusUtils.Getter<Store>) {
+	const actionConfigs = {
+		['adding-item']: {
+			load({ activity, preload, state }) {
+				if (!state.frames.selectLayer) throw new Error('no SelectLayer frame exists')
+				const frame = getFrameState(state.frames.selectLayer)
+			},
+		},
+	} satisfies Partial<ActionConfigs>
+}
+
 function createStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
+		const preloadAction = (() => {
+			const actionConfigs = {
+				['adding-item']: {
+					load(activity, { preload }) {
+					},
+				},
+			} satisfies Partial<ActionConfigs>
+		})()
+
 		const session = SLL.createNewSession()
 		store.subscribe((state, prev) => {
 			if (state.session.list !== state.layerList) {
@@ -519,6 +554,14 @@ export function useActivityState(
 		})
 		return () => unsub()
 	}, [config, _setActive])
+
+	React.useEffect(() => {
+		if (!active) return
+		const activity = activityRef.current
+		// end activity if this component unmounts
+		return () => Store.getState().pushPresenceAction(PresenceActions.endActivity(activity))
+	}, [active])
+
 	return [active, setActive] as const
 }
 
@@ -548,6 +591,14 @@ export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.Act
 		})
 		return () => unsub()
 	}, [config])
+
+	React.useEffect(() => {
+		if (!active) return
+		const mapping = mappingRef.current
+		// end activity if this component unmounts
+		return () => Store.getState().pushPresenceAction(PresenceActions.endActivity(mapping[active]))
+	}, [active])
+
 	return [active, setActive] as const
 }
 
@@ -570,4 +621,39 @@ export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: S
 		}
 	}
 	return false
+}
+
+export function useStartActivityProps(activity: SLL.Activity, opts?: { preload?: boolean | { dwellTime?: number } }) {
+	const [isHovered, setIsHovered] = React.useState(false)
+	const hoverTimeoutRef = React.useRef(-1)
+
+	const handleMouseEnter = React.useCallback(() => {
+		setIsHovered(true)
+		if (opts?.preload && typeof opts.preload === 'object' && opts.preload.dwellTime) {
+			hoverTimeoutRef.current = setTimeout(() => {
+				Store.getState().preloadActivity(activity)
+			}, opts.preload.dwellTime) as unknown as number
+		}
+	}, [activity, opts])
+
+	const handleMouseLeave = React.useCallback(() => {
+		setIsHovered(false)
+		if (hoverTimeoutRef.current) {
+			clearTimeout(hoverTimeoutRef.current)
+		}
+	}, [])
+
+	React.useEffect(() => {
+		return () => {
+			if (hoverTimeoutRef.current) {
+				clearTimeout(hoverTimeoutRef.current)
+			}
+		}
+	}, [])
+
+	return {
+		onClick: () => Store.getState().pushPresenceAction(PresenceActions.startActivity(activity)),
+		onMouseEnter: handleMouseEnter,
+		onMouseLeave: handleMouseLeave,
+	}
 }

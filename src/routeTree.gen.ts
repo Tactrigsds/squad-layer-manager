@@ -17,7 +17,6 @@ import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$
 import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
 import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
 import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
-import { Route as AppServersServerIdAddLayersRouteImport } from './routes/_app/servers.$serverId.addLayers'
 
 const TestrouteRoute = TestrouteRouteImport.update({
   id: '/testroute',
@@ -58,32 +57,24 @@ const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
   path: '/filters/$filterId',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppServersServerIdAddLayersRoute =
-  AppServersServerIdAddLayersRouteImport.update({
-    id: '/addLayers',
-    path: '/addLayers',
-    getParentRoute: () => AppServersServerIdRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/testroute': typeof TestrouteRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
-  '/servers/$serverId': typeof AppServersServerIdRouteWithChildren
+  '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
-  '/servers/$serverId/addLayers': typeof AppServersServerIdAddLayersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/testroute': typeof TestrouteRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
-  '/servers/$serverId': typeof AppServersServerIdRouteWithChildren
+  '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
-  '/servers/$serverId/addLayers': typeof AppServersServerIdAddLayersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -92,10 +83,9 @@ export interface FileRoutesById {
   '/testroute': typeof TestrouteRoute
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/_app/filters/new': typeof AppFiltersNewRoute
-  '/_app/servers/$serverId': typeof AppServersServerIdRouteWithChildren
+  '/_app/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/_app/filters/': typeof AppFiltersIndexRoute
-  '/_app/servers/$serverId/addLayers': typeof AppServersServerIdAddLayersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,7 +97,6 @@ export interface FileRouteTypes {
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
-    | '/servers/$serverId/addLayers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -117,7 +106,6 @@ export interface FileRouteTypes {
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
-    | '/servers/$serverId/addLayers'
   id:
     | '__root__'
     | '/'
@@ -128,7 +116,6 @@ export interface FileRouteTypes {
     | '/_app/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/_app/filters/'
-    | '/_app/servers/$serverId/addLayers'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -196,38 +183,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFiltersFilterIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/servers/$serverId/addLayers': {
-      id: '/_app/servers/$serverId/addLayers'
-      path: '/addLayers'
-      fullPath: '/servers/$serverId/addLayers'
-      preLoaderRoute: typeof AppServersServerIdAddLayersRouteImport
-      parentRoute: typeof AppServersServerIdRoute
-    }
   }
 }
-
-interface AppServersServerIdRouteChildren {
-  AppServersServerIdAddLayersRoute: typeof AppServersServerIdAddLayersRoute
-}
-
-const AppServersServerIdRouteChildren: AppServersServerIdRouteChildren = {
-  AppServersServerIdAddLayersRoute: AppServersServerIdAddLayersRoute,
-}
-
-const AppServersServerIdRouteWithChildren =
-  AppServersServerIdRoute._addFileChildren(AppServersServerIdRouteChildren)
 
 interface AppRouteRouteChildren {
   AppFiltersFilterIdRoute: typeof AppFiltersFilterIdRoute
   AppFiltersNewRoute: typeof AppFiltersNewRoute
-  AppServersServerIdRoute: typeof AppServersServerIdRouteWithChildren
+  AppServersServerIdRoute: typeof AppServersServerIdRoute
   AppFiltersIndexRoute: typeof AppFiltersIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppFiltersFilterIdRoute: AppFiltersFilterIdRoute,
   AppFiltersNewRoute: AppFiltersNewRoute,
-  AppServersServerIdRoute: AppServersServerIdRouteWithChildren,
+  AppServersServerIdRoute: AppServersServerIdRoute,
   AppFiltersIndexRoute: AppFiltersIndexRoute,
 }
 
