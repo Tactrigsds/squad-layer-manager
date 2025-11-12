@@ -133,6 +133,7 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 							frameKey={frameKey}
 							canChangeRowsPerPage={false}
 							canToggleColumns={true}
+							enableForceSelect={true}
 						/>
 					</div>
 

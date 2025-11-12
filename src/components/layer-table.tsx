@@ -501,7 +501,6 @@ export default function LayerTable(props: {
 							</Button>
 						</ComboBoxMulti>
 					)}
-					<Separator orientation="vertical" className="h-full min-h-0" />
 
 					{props.enableForceSelect && (
 						<Toggle
@@ -515,6 +514,8 @@ export default function LayerTable(props: {
 							<Icons.TextCursorInput />
 						</Toggle>
 					)}
+
+					<Separator orientation="vertical" className="h-full min-h-0" />
 
 					{/*--------- show selected ---------*/}
 					<div className="flex items-center space-x-1">
