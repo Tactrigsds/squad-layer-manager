@@ -1,5 +1,6 @@
 import * as AR from '@/app-routes'
-import { getFrameState } from '@/frames/frame-manager'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import { frameManager, getFrameState } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
@@ -7,22 +8,28 @@ import * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
+import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
+import { destrNullable } from '@/lib/types'
 import * as ZusUtils from '@/lib/zustand'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as LQYClient from '@/systems.client/layer-queries.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import * as ReactRx from '@react-rxjs/core'
+import * as TQ from '@tanstack/react-query'
 import * as Im from 'immer'
-import React from 'react'
+import React, { cache } from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { toStream } from 'zustand-rx'
@@ -66,8 +73,13 @@ export type Store = {
 	isModified: boolean
 	userPresence: Map<bigint, SLL.ClientPresence>
 
+	updateActivity: (update: (prev: SLL.Activity) => SLL.Activity) => void
+	preloadActivity: (update: (prev: SLL.Activity) => SLL.Activity) => void
+
+	_activityState: SLL.Activity | null
+
 	frames: {
-		selectLayer?: SelectLayersFrame.Key
+		selectLayers: SelectLayersFrame.Key | null
 	}
 }
 
@@ -77,35 +89,31 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 
 export const Store = createStore()
 
-type ActionConfig<A extends SLL.Activity, O> = {
-	load?: (opts: { state: Store; activity: SLL.Activity; preload: boolean }) => Awaited<O>
-	onEnter?: (opts: { activity: SLL.Activity; data: Awaited<O>; state: Store }) => Promise<void>
-	onLeave?: (opts: { activity: SLL.Activity; state: Store }) => Promise<void>
+type MatchFn<Predicate extends ST.Match.Node> = (state: SLL.Activity) => Predicate | undefined
+
+type ActivityEventConfigOptions<Predicate extends ST.Match.Node, Data = never> = {
+	// the time before we unload an inactive action
+	staleTime?: number
+
+	load?: (opts: { activity: Predicate; preload: boolean }) => Awaited<Data>
+	onEnter?: (opts: { activity: Predicate; data: Data }) => Promise<void> | void
+	onUnload?: (opts: { activity: Predicate; data: Data }) => Promise<void> | void
+	onLeave?: (opts: { activity: Predicate; data: Data }) => Promise<void> | void
 }
 
-type ActionConfigs = { [k in SLL.Activity['code']]: ActionConfig<Extract<SLL.Activity, { code: k }>, Awaited<any>> }
-function getActionConfigs(set: ZusUtils.Setter<Store>, get: ZusUtils.Getter<Store>) {
-	const actionConfigs = {
-		['adding-item']: {
-			load({ activity, preload, state }) {
-				if (!state.frames.selectLayer) throw new Error('no SelectLayer frame exists')
-				const frame = getFrameState(state.frames.selectLayer)
-			},
-		},
-	} satisfies Partial<ActionConfigs>
+type ActivityEventConfig<Predicate extends ST.Match.Node, O = never> = ActivityEventConfigOptions<Predicate, O> & {
+	match: MatchFn<Predicate>
+}
+
+function newActivityEventConfig<Predicate extends ST.Match.Node>(match: (state: SLL.Activity) => Predicate | undefined) {
+	return <O>(config: ActivityEventConfigOptions<Predicate, O>): ActivityEventConfig<Predicate, O> => ({
+		match,
+		...config,
+	})
 }
 
 function createStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
-		const preloadAction = (() => {
-			const actionConfigs = {
-				['adding-item']: {
-					load(activity, { preload }) {
-					},
-				},
-			} satisfies Partial<ActionConfigs>
-		})()
-
 		const session = SLL.createNewSession()
 		store.subscribe((state, prev) => {
 			if (state.session.list !== state.layerList) {
@@ -122,6 +130,147 @@ function createStore() {
 				set({ userPresence: SLL.resolveUserPresence(state.presence) })
 			}
 		})
+
+		ZusUtils.toObservable(store).pipe(
+			Rx.concatMap(async ([state, prev]) => {
+				const wsClientId = (await ConfigClient.fetchConfig()).wsClientId
+				const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
+				const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
+				if (prevClientActivityState !== clientActivityState) {
+					dispatchClientActivityEvents(clientActivityState, prevClientActivityState, false)
+				}
+			}),
+			Rx.retry({
+				count: undefined,
+				delay: (error, retryCount) => {
+					console.error(`Retry attempt ${retryCount}:`, error)
+					return Rx.of(1)
+				},
+			}),
+		).subscribe()
+
+		const activityEventConfigs = (function getActionConfigs() {
+			const eventConfigs = [
+				newActivityEventConfig(
+					s => {
+						const node = s.child.EDITING?.child
+						if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
+						return undefined
+					},
+				)(
+					{
+						load(args) {
+							let editedLayerId: L.LayerId | undefined
+							if (args.activity.id === 'EDITING_ITEM') {
+								const { item } = destrNullable(LL.findItemById(get().layerList, args.activity.opts.itemId))
+								if (item) editedLayerId = item.layerId
+							}
+							const input = SelectLayersFrame.createInput(
+								args.activity.id === 'EDITING_ITEM'
+									? { initialEditedLayerId: editedLayerId }
+									: { cursor: args.activity.opts.cursor },
+							)
+							const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
+							const frameState = getFrameState(frameKey)
+							const queryInput = LayerTablePrt.selectQueryInput(frameState)
+							RPC.queryClient.prefetchQuery(LQYClient.getQueryLayersOptions(queryInput))
+							console.log(`loaded ${args.activity.id}`, args.activity.opts, frameKey)
+							return { frameKey }
+						},
+						onEnter(args) {
+							console.log(`entered ${args.activity.id}`, args.activity.opts, args.data.frameKey)
+							set(prev => ({ frames: { ...prev.frames, selectLayers: args.data.frameKey } }))
+						},
+						staleTime: 30_000,
+						onUnload(args) {
+							console.log('unloaded', args.activity.id, args.activity.opts, args.data.frameKey)
+							set(prev =>
+								Im.produce(prev, draft => {
+									if (draft.frames.selectLayers === args.data.frameKey) {
+										draft.frames.selectLayers = null
+									}
+								})
+							)
+							frameManager.teardown(args.data.frameKey)
+						},
+					},
+				),
+			] as const
+
+			return eventConfigs
+		})()
+
+		type CacheEntry = {
+			key: object
+			data: Promise<object> | object | undefined
+			active: boolean
+			unloadSub?: Rx.Subscription
+		}
+
+		let activityActionCache: CacheEntry[] = []
+
+		function dispatchClientActivityEvents(
+			updated: SLL.Activity | null,
+			prev: SLL.Activity | null,
+			preload: boolean,
+		) {
+			if (updated == prev) return
+			if (!preload) set({ _activityState: updated })
+			for (const config of activityEventConfigs) {
+				const predicate = updated ? config.match(updated) : undefined
+				const prevPredicate = prev ? config.match(prev) : undefined
+				if (Obj.deepEqual(predicate, prevPredicate)) continue
+				if (!predicate) {
+					if (!prevPredicate) continue
+					for (const entry of activityActionCache) {
+						if (!entry.active || !Obj.deepEqual(prevPredicate, entry.key)) continue
+						;(async () => {
+							const data = await entry.data as any
+							if (!activityActionCache.includes(entry)) return
+							const args = { activity: prevPredicate, data } as any
+							config.onLeave?.(args)
+							entry.unloadSub = scheduleUnload(config as any, prevPredicate as any)
+						})()
+					}
+					continue
+				}
+				const existingEntry = activityActionCache.find(e => Obj.deepEqual(e.key, predicate))
+				let cacheEntry: CacheEntry
+				if (!existingEntry) {
+					const data = config.load?.({ activity: predicate, preload })
+					cacheEntry = { key: predicate, data: data, active: undefined! }
+					activityActionCache.push(cacheEntry)
+				} else {
+					cacheEntry = existingEntry
+				}
+				if (preload) {
+					if (cacheEntry.active) continue
+					cacheEntry.active = false
+					cacheEntry.unloadSub?.unsubscribe()
+					cacheEntry.unloadSub = scheduleUnload(config as any, predicate as any)
+				} else {
+					cacheEntry.active = true
+					cacheEntry.unloadSub?.unsubscribe()
+					;(async () => {
+						const data = await cacheEntry.data
+						if (!activityActionCache.includes(cacheEntry)) return
+						config.onEnter?.({ activity: predicate, data: data as any })
+					})()
+					delete cacheEntry.unloadSub
+				}
+			}
+
+			function scheduleUnload<Predicate extends ST.Match.Node>(config: ActivityEventConfig<Predicate>, predicate: Predicate) {
+				return Rx.of(1).pipe(Rx.delay(config.staleTime ?? 1000)).subscribe(async () => {
+					const cacheEntry = activityActionCache.find(e => Obj.deepEqual(e.key, predicate))
+					if (!cacheEntry) return
+					activityActionCache = activityActionCache.filter(e => !Obj.deepEqual(e.key, predicate))
+					const args = { activity: predicate, data: await cacheEntry.data } as any
+					config.onUnload?.(args)
+				})
+			}
+		}
+
 		return {
 			session,
 
@@ -148,6 +297,9 @@ function createStore() {
 			// shorthands
 			layerList: session.list,
 			isModified: false,
+
+			frames: { selectLayers: null },
+			_activityState: null,
 
 			async handleServerUpdate(update) {
 				switch (update.code) {
@@ -337,6 +489,34 @@ function createStore() {
 				}
 			},
 
+			updateActivity(update) {
+				let prev: SLL.Activity | null = get()._activityState
+				if (!prev) {
+					prev = {
+						_tag: 'branch',
+						id: 'ON_QUEUE_PAGE',
+						opts: {},
+						child: {},
+					}
+				}
+				const next = update(prev)
+				get().pushPresenceAction(PresenceActions.updateActivity(next))
+			},
+
+			preloadActivity(update) {
+				let prev: SLL.Activity | null = get()._activityState
+				if (!prev) {
+					prev = {
+						_tag: 'branch',
+						id: 'ON_QUEUE_PAGE',
+						opts: {},
+						child: {},
+					}
+				}
+				const next = update(prev)
+				dispatchClientActivityEvents(prev, next, true)
+			},
+
 			saving: false,
 			async save() {
 				set({ saving: true })
@@ -384,10 +564,17 @@ export function useItemPresence(itemId: LL.ItemId) {
 		useShallow(state => {
 			const res = MapUtils.find(
 				state.presence,
-				(_, v) => !!v.currentActivity && SLL.isItemOwnedActivity(v.currentActivity) && v.currentActivity.itemId === itemId,
+				(_, v) => {
+					const activity = v.activityState?.child.EDITING?.child
+					return !!activity && SLL.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
+				},
 			)
-
-			const presence = res?.[1] as (SLL.ClientPresence & { currentActivity: SLL.ItemOwnedActivity }) | undefined
+			if (!res) return [undefined, undefined] as const
+			const root = res[1].activityState!
+			const presence = {
+				...res?.[1],
+				itemActivity: root.child.EDITING!.child as SLL.ItemOwnedActivity,
+			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
 			return [presence, hovered] as const
@@ -419,86 +606,33 @@ export async function setup() {
 		Rx.withLatestFrom(wsClientId$),
 	).subscribe(([modified, wsClientId]) => {
 		try {
-			const currentActivity = Store.getState().presence.get(wsClientId)?.currentActivity
-			if (!modified && currentActivity?.code === 'changing-settings') {
-				Store.getState().pushPresenceAction(PresenceActions.endActivity({ code: 'changing-settings' }))
+			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
+			const dialogActivity = currentActivity?.child?.VIEWING_SETTINGS
+			const inChangingSettingsActivity = dialogActivity?.id === 'VIEWING_SETTINGS' && dialogActivity?.child?.CHANGING_SETTINGS
+			if (!modified && inChangingSettingsActivity) {
+				Store.getState().updateActivity(Im.produce(draft => {
+					const activity = draft.child?.VIEWING_SETTINGS
+					if (!activity) return
+					delete activity.child.CHANGING_SETTINGS
+				}))
 			}
-			if (modified && (!currentActivity || currentActivity?.code !== 'changing-settings')) {
-				Store.getState().pushPresenceAction(PresenceActions.startActivity({ code: 'changing-settings' }))
+			if (modified) {
+				Store.getState().updateActivity(Im.produce(draft => {
+					draft.child.VIEWING_SETTINGS = ST.Match.branch('VIEWING_SETTINGS', draft.child.VIEWING_SETTINGS?.opts ?? {}, {
+						CHANGING_SETTINGS: ST.Match.leaf('CHANGING_SETTINGS', {}),
+					})
+				}))
 			}
 		} catch (error) {
 			console.error('Error handling settings modification:', error)
-		}
-	})
-
-	// const onQueuePage$ = AppRoutesClient.route$
-	// 	.pipe(Rx.map(route => route?.id === '/servers/:id'))
-	const onQueuePage$ = new Rx.Observable<boolean>(observer => {
-		const isCurrentPath = window.location.pathname.startsWith('/servers/')
-		observer.next(isCurrentPath)
-		const unsub = rootRouter.subscribe('onBeforeLoad', (event) => {
-			if (!event.pathChanged) return
-			if (event.toLocation) {
-				const toRoute = AR.resolveRoute(event.toLocation.pathname)
-				if (toRoute.id === '/servers/:id') observer.next(true)
-			} else if (event.fromLocation) {
-				const fromRoute = AR.resolveRoute(event.fromLocation.pathname)
-				if (fromRoute.id === '/servers/:id') observer.next(false)
-			}
-		})
-		return () => unsub()
-	})
-
-	const pageInteraction$ = onQueuePage$.pipe(
-		Rx.switchMap((visiting) => {
-			if (!visiting) return Rx.EMPTY
-			const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
-			return Browser.interaction$.pipe(
-				Rx.auditTime(1000),
-				Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
-				Rx.startWith(true),
-			)
-		}),
-	)
-
-	const onNavigateAway$ = onQueuePage$.pipe(
-		// satisfy pairwise so we emit immediately
-		Rx.startWith(false),
-		Rx.pairwise(),
-		Rx.switchMap(([visitingPrev, visiting]) => {
-			if (!visiting) return Rx.of(true)
-			// handle non-spa navigation while we're on a queue page
-			return Rx.fromEvent(window, 'beforeunload')
-		}),
-	)
-
-	pageInteraction$
-		.subscribe((active) => {
-			try {
-				const storeState = Store.getState()
-				if (active) {
-					storeState.pushPresenceAction(PresenceActions.pageInteraction)
-				} else {
-					storeState.pushPresenceAction(PresenceActions.interactionTimeout)
-				}
-			} catch (error) {
-				console.error('Error in pushing pageInteraction$', error)
-			}
-		})
-
-	onNavigateAway$.subscribe(() => {
-		const storeState = Store.getState()
-		try {
-			storeState.pushPresenceAction(PresenceActions.navigatedAway)
-		} catch (error) {
-			console.error('Error in pushing navigatedAway action', error)
 		}
 	})
 }
 
 export function useIsEditing() {
 	const config = ConfigClient.useConfig()
-	const isEditing = Zus.useStore(Store, (s) => config ? s.presence.get(config.wsClientId)?.editing : undefined) ?? false
+	const isEditing = Zus.useStore(Store, (s) => config ? s.presence.get(config.wsClientId)?.activityState?.child?.EDITING : undefined)
+		?? false
 
 	return isEditing
 }
@@ -517,86 +651,57 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 
 // allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
 export function useActivityState(
-	activity: SLL.Activity,
-	opts?: {
-		hookedState?: [boolean, React.Dispatch<React.SetStateAction<boolean>>]
-		defaultState?: boolean
-		// Normally if we see a change of activities we reset the state. passthroughActivities are excempted from this.
-		passthroughActivities?: SLL.Activity[]
+	opts: {
+		createActivity: (prev: SLL.Activity) => SLL.Activity
+		removeActivity: (prev: SLL.Activity) => SLL.Activity
+		matchActivity: (prev: SLL.Activity) => boolean
 	},
 ) {
-	const defaultState = opts?.defaultState ?? false
-	const activityRef = React.useRef(activity)
+	const createActivityRef = React.useRef(opts.createActivity)
+	const matchActivityRef = React.useRef(opts.matchActivity)
+	const removeActivityRef = React.useRef(opts.removeActivity)
+
 	const config = ConfigClient.useConfig()
-	const [activeFallback, _setActiveFallback] = React.useState(defaultState)
-	const [active, _setActive] = opts?.hookedState ?? [activeFallback, _setActiveFallback] as const
+	const [active, _setActive] = React.useState(() => {
+		const state = Store.getState()._activityState
+		return !!state && !!matchActivityRef.current(state)
+	})
 	const activeRef = React.useRef(active)
-	const passthroughActivitiesRef = React.useRef(opts?.passthroughActivities)
 
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
 		const newActive = typeof update === 'function' ? update(active) : update
-		const action = newActive ? PresenceActions.startActivity(activityRef.current) : PresenceActions.endActivity(activityRef.current)
-		Store.getState().pushPresenceAction(action)
+		const storeState = Store.getState()
+		if (!storeState._activityState) return
+		const alreadyActive = !matchActivityRef.current(storeState._activityState)
+		if (newActive && !alreadyActive) {
+			storeState.updateActivity(createActivityRef.current)
+		}
+		if (!newActive && alreadyActive) {
+			storeState.updateActivity(removeActivityRef.current)
+		}
+
 		_setActive(newActive)
 		activeRef.current = newActive
 	}, [_setActive, active])
 
 	React.useEffect(() => {
-		passthroughActivitiesRef.current = opts?.passthroughActivities
-	}, [opts?.passthroughActivities])
-
-	React.useEffect(() => {
 		if (!config) return
 		const unsub = Store.subscribe((state) => {
-			const currentActivity = state.presence.get(config.wsClientId)?.currentActivity
-			if (passthroughActivitiesRef.current?.find(a => Obj.deepEqual(a, currentActivity))) return
-			if (activeRef.current && (!currentActivity || !Obj.deepEqual(currentActivity, activityRef.current))) _setActive(false)
+			const currentActivity = state._activityState
+			if (!currentActivity || !matchActivityRef.current(currentActivity)) {
+				_setActive(false)
+				activeRef.current = false
+			}
 		})
 		return () => unsub()
 	}, [config, _setActive])
 
 	React.useEffect(() => {
 		if (!active) return
-		const activity = activityRef.current
+
 		// end activity if this component unmounts
-		return () => Store.getState().pushPresenceAction(PresenceActions.endActivity(activity))
-	}, [active])
-
-	return [active, setActive] as const
-}
-
-// allows familiar useState binding to multiple presence activities. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
-export function useActivityKeyState<K extends string>(mapping: Record<K, SLL.Activity>, defaultState: K | null = null) {
-	const mappingRef = React.useRef(mapping)
-	const config = ConfigClient.useConfig()
-	const [active, _setActive] = React.useState<K | null>(defaultState)
-	const activeRef = React.useRef(active)
-
-	const setActive: React.Dispatch<React.SetStateAction<K | null>> = React.useCallback((update) => {
-		const newActive = typeof update === 'function' ? update(active) : update
-		const mapping = mappingRef.current
-		const action = newActive ? PresenceActions.startActivity(mapping[newActive]) : PresenceActions.endActivity(mapping[active])
-		Store.getState().pushPresenceAction(action)
-		_setActive(newActive)
-		activeRef.current = newActive
-	}, [_setActive, active])
-
-	React.useEffect(() => {
-		if (!config) return
-		const unsub = Store.subscribe((state) => {
-			const currentActivity = state.presence.get(config.wsClientId)?.currentActivity
-			if (activeRef.current && (!currentActivity || !Obj.deepEqual(currentActivity, mappingRef.current[activeRef.current]))) {
-				_setActive(null)
-			}
-		})
-		return () => unsub()
-	}, [config])
-
-	React.useEffect(() => {
-		if (!active) return
-		const mapping = mappingRef.current
-		// end activity if this component unmounts
-		return () => Store.getState().pushPresenceAction(PresenceActions.endActivity(mapping[active]))
+		const removeActivity = removeActivityRef.current
+		return () => Store.getState().updateActivity(removeActivity)
 	}, [active])
 
 	return [active, setActive] as const
@@ -607,13 +712,6 @@ export function useHoveredActivityUser() {
 	return [hovered, setHovered] as const
 }
 
-export async function resolveClientPresence() {
-	const config = await ConfigClient.fetchConfig()
-
-	const state = Store.getState()
-	return state.presence.get(config.wsClientId)
-}
-
 export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: Store) => {
 	for (const [activity] of SLL.iterActivities(state.presence)) {
 		if (Obj.deepEqual(activity, targetActivity)) {
@@ -621,39 +719,4 @@ export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: S
 		}
 	}
 	return false
-}
-
-export function useStartActivityProps(activity: SLL.Activity, opts?: { preload?: boolean | { dwellTime?: number } }) {
-	const [isHovered, setIsHovered] = React.useState(false)
-	const hoverTimeoutRef = React.useRef(-1)
-
-	const handleMouseEnter = React.useCallback(() => {
-		setIsHovered(true)
-		if (opts?.preload && typeof opts.preload === 'object' && opts.preload.dwellTime) {
-			hoverTimeoutRef.current = setTimeout(() => {
-				Store.getState().preloadActivity(activity)
-			}, opts.preload.dwellTime) as unknown as number
-		}
-	}, [activity, opts])
-
-	const handleMouseLeave = React.useCallback(() => {
-		setIsHovered(false)
-		if (hoverTimeoutRef.current) {
-			clearTimeout(hoverTimeoutRef.current)
-		}
-	}, [])
-
-	React.useEffect(() => {
-		return () => {
-			if (hoverTimeoutRef.current) {
-				clearTimeout(hoverTimeoutRef.current)
-			}
-		}
-	}, [])
-
-	return {
-		onClick: () => Store.getState().pushPresenceAction(PresenceActions.startActivity(activity)),
-		onMouseEnter: handleMouseEnter,
-		onMouseLeave: handleMouseLeave,
-	}
 }

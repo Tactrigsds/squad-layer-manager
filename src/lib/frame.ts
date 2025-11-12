@@ -19,10 +19,10 @@ export type KeyProp<FT extends FrameTypes> = {
 	[k in FT['name']]: InstanceKey<FT>
 }
 export function toProp<T extends FrameTypes>(key: InstanceKey<T>) {
-	const name = key.frameId.description?.split('-')[1] as T['name']
-	return { [name]: key } as const satisfies KeyProp<T>
+	const name = key.frameId.description?.replace(/^frame-/, '') as T['name']
+	return { [name]: key } as KeyProp<T>
 }
-function createFrameId(frame: Frame<FrameTypes>) {
+function createFrameId(frame: { name: string }) {
 	return Symbol('frame-' + frame.name)
 }
 
@@ -149,7 +149,7 @@ export class FrameManager {
 	createFrame<Types extends FrameTypes>(
 		opts: FrameOps<Types>,
 	) {
-		const id = createFrameId(opts.name)
+		const id = createFrameId(opts)
 		const frame: Frame<Types> = {
 			id,
 			canInitialize: opts.canInitialize ?? (() => true),
@@ -252,6 +252,7 @@ export class FrameManager {
 export function createFrameHelpers(frameManager: FrameManager) {
 	return {
 		useFrameStore,
+		useNullableFrameStore,
 		useFrameLifecycle,
 		getFrameState,
 		getFrameReaderStore,
@@ -262,19 +263,21 @@ export function createFrameHelpers(frameManager: FrameManager) {
 		return Zus.useStore(instance.readStore, selector as any)
 	}
 
-	type FrameLifecycleOptions<T extends FrameTypes> =
-		& ({ input: T['input'] } | { frameKey: InstanceKey<T> })
-		& {
-			deps?: T['deps']
-			equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>
-		}
+	function useNullableFrameStore<T extends FrameTypes, O>(
+		key: InstanceKey<T> | null | undefined,
+		selector: (state: StateWithDeps<T> | null) => O,
+	): O {
+		const placeholderStoreRef = React.useRef<Zus.StoreApi<unknown>>(Zus.createStore(() => null))
 
-	function isInputOptions<T extends FrameTypes>(options: FrameLifecycleOptions<T>): options is { input: T['input'] } {
-		return 'input' in options
+		const store = key ? frameManager.getInstance(key)?.readStore ?? placeholderStoreRef.current : placeholderStoreRef.current
+		return Zus.useStore(store, state => store === placeholderStoreRef.current ? selector(null) : selector(state as StateWithDeps<T>))
 	}
 
-	function isFrameKeyOptions<T extends FrameTypes>(options: FrameLifecycleOptions<T>): options is { frameKey: InstanceKey<T> } {
-		return 'frameKey' in options
+	type FrameLifecycleOptions<T extends FrameTypes> = {
+		input?: T['input']
+		frameKey?: InstanceKey<T>
+		deps?: T['deps']
+		equalityFn?: typeof Obj.shallowEquals<InstanceKey<T>>
 	}
 
 	// crudely just ensure the frame exists for the given input. for now just relies on FrameManagers GC behavior to clean up unused frames
@@ -284,14 +287,15 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	) {
 		const frameKey = ReactUtils.useStableValue(
 			(frameOrId, options) => {
-				if (isInputOptions(options)) {
+				if (options.frameKey) return options.frameKey
+				if (options.input) {
 					return frameManager.ensureSetup(frameOrId, options.input, options.deps)
 				} else {
-					return options.frameKey
+					throw new Error('Frame lifecycle options must include either input or frameKey')
 				}
 			},
 			[frameOrId, options],
-			options.equalityFn,
+			{ equals: options.equalityFn },
 		)
 
 		return frameKey

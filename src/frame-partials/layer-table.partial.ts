@@ -248,12 +248,12 @@ export function initLayerTable(
 				const queryInput = selectQueryInput(state)
 				if (state.layerTable.pageIndex === 0 || state.layerTable.showSelectedLayers) return null
 				// we always want to fetch to keep the cache fresh
-				const base = LayerQueriesClient.getQueryLayersOptions(queryInput, LayerQueriesClient.Store.getState().counters)
+				const base = LayerQueriesClient.getQueryLayersOptions(queryInput)
 				const data = await RPC.queryClient.fetchQuery(base)
 				return data?.code === 'ok' ? data.pageCount : null
 			}),
 			Rx.distinctUntilChanged(),
-			// Rx.retry(),
+			Rx.retry(),
 		).subscribe(pageCount => {
 			const table = get()
 			if (pageCount === null) return

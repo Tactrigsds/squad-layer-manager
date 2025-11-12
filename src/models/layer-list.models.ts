@@ -3,7 +3,7 @@ import * as DH from '@/lib/display-helpers'
 import * as Gen from '@/lib/generator'
 import * as ItemMut from '@/lib/item-mutations'
 import { assertNever } from '@/lib/type-guards'
-import { toEmpty } from '@/lib/types'
+import { destrNullable } from '@/lib/types'
 import * as DND from '@/models/dndkit.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -223,7 +223,8 @@ export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCur
 	return slots
 }
 
-export function resolveQualfiedIndexFromCursorForMove(list: List, cursor: ItemRelativeCursor): ItemIndex | undefined {
+export function resolveCursorIndex(list: List, cursor: Cursor): ItemIndex | undefined {
+	if (cursor.type === 'index') return cursor.index
 	const itemRes = findItemById(list, cursor.itemId)
 	if (!itemRes) return undefined
 	if (cursor.position === 'before' || cursor.position === 'on') return itemRes.index
@@ -301,9 +302,12 @@ export type ItemIteratorResult<I extends SparseItem> = {
 	item: I
 }
 
-export function* iterItems<T extends SparseItem>(...items: T[]): Generator<ItemIteratorResult<T>> {
-	for (let outerIndex = 0; outerIndex < items.length; outerIndex++) {
-		const item = items[outerIndex]
+export function iterItems<T extends SparseItem>(items: T[]): Generator<ItemIteratorResult<T>>
+export function iterItems<T extends SparseItem>(...items: T[]): Generator<ItemIteratorResult<T>>
+export function* iterItems<T extends SparseItem>(...items: T[] | [T[]]): Generator<ItemIteratorResult<T>> {
+	const itemsArray = Array.isArray(items[0]) && !('itemId' in items[0]) ? (items[0] as T[]) : (items as T[])
+	for (let outerIndex = 0; outerIndex < itemsArray.length; outerIndex++) {
+		const item = itemsArray[outerIndex]
 		yield { item, index: { outerIndex, innerIndex: null } }
 		if (isVoteItem(item)) {
 			for (let innerIndex = 0; innerIndex < item.choices.length; innerIndex++) {
@@ -390,10 +394,10 @@ export function moveItem(
 	newFirstItemId: ItemId,
 	cursor: Cursor,
 ): { merged: false | ItemId; modified: boolean } {
-	const { index: movedIndex, item: movedItem } = toEmpty(findItemById(list, movedItemId))
+	const { index: movedIndex, item: movedItem } = destrNullable(findItemById(list, movedItemId))
 	const targetIndex = cursor.type === 'index'
 		? cursor.index
-		: resolveQualfiedIndexFromCursorForMove(list, cursor)
+		: resolveCursorIndex(list, cursor)
 
 	if (movedIndex === undefined) {
 		console.warn('Failed to move item. item not found', movedItemId, movedItemId)
@@ -420,7 +424,7 @@ export function moveItem(
 	} else {
 		const movedAndModifiedItem: Item = { ...movedItem, source }
 		splice(list, targetIndex, 0, movedAndModifiedItem)
-		if (targetItemParent && isParentVoteItem(targetItemParent)) {
+		if (targetItemParent) {
 			setCorrectChosenLayerIdInPlace(targetItemParent)
 		}
 		merged = false
@@ -432,7 +436,7 @@ export function moveItem(
 }
 
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
-	const { item } = toEmpty(findItemById(list, itemId))
+	const { item } = destrNullable(findItemById(list, itemId))
 	if (!item) return
 	const parentVoteItem = resolveParentVoteItem(itemId, list)
 	if (parentVoteItem) {
@@ -443,13 +447,11 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 	}
 	item.source = source
 	item.layerId = layerId
-	if (parentVoteItem) {
-		setCorrectChosenLayerIdInPlace(parentVoteItem)
-	}
+	if (parentVoteItem) setCorrectChosenLayerIdInPlace(parentVoteItem)
 }
 
 export function deleteItem(list: List, itemId: ItemId) {
-	const { index } = toEmpty(findItemById(list, itemId))
+	const { index } = destrNullable(findItemById(list, itemId))
 	if (!index) return
 	splice(list, index, 1)
 }
@@ -461,7 +463,7 @@ export function configureVote(
 	voteConfig?: Partial<V.AdvancedVoteConfig> | null,
 	displayProps?: DH.LayerDisplayProp[] | null,
 ) {
-	const { item } = toEmpty(findItemById(list, itemId))
+	const { item } = destrNullable(findItemById(list, itemId))
 	if (!item) return
 	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
 	if (voteConfig === null) {
@@ -478,7 +480,7 @@ export function configureVote(
 }
 
 export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: Item[]) {
-	const { index, item } = toEmpty(findItemById(list, itemId))
+	const { index, item } = destrNullable(findItemById(list, itemId))
 	if (!item || !index) return
 	if (isParentVoteItem(item)) return
 	const voteItem = mergeItems(newFirstItemId, item, ...addedChoices)
@@ -489,7 +491,7 @@ export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, 
 }
 
 export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex, deleteCount: number, ...items: Item[]) {
-	const index = isItemIndex(indexOrCursor) ? indexOrCursor : resolveQualfiedIndexFromCursorForMove(list, indexOrCursor)
+	const index = isItemIndex(indexOrCursor) ? indexOrCursor : resolveCursorIndex(list, indexOrCursor)
 	if (index === undefined) return
 	if (index.innerIndex !== null) {
 		const parentItem = list[index.outerIndex]
@@ -525,9 +527,9 @@ export function isItemIndex(item: ItemRelativeCursor | ItemIndex): item is ItemI
 	return (item as any).outerIndex !== undefined
 }
 
-export function setCorrectChosenLayerIdInPlace(item: ParentVoteItem) {
+export function setCorrectChosenLayerIdInPlace(item: Item) {
 	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return item
-	item.layerId = item.choices[0].layerId
+	if (item.choices) item.layerId = item.choices[0].layerId
 	return item
 }
 
@@ -563,7 +565,7 @@ export function clearTally(_item: Item) {
 }
 
 export function isLocallyLastIndex<T extends SparseItem>(itemId: ItemId, list: T[]) {
-	const { index } = toEmpty(findItemById(list, itemId))
+	const { index } = destrNullable(findItemById(list, itemId))
 	if (!index) return false
 	if (index.innerIndex != null) {
 		const parentRes = findParentItem(list, itemId)!
@@ -627,7 +629,7 @@ export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 }
 
 export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, layerList: T[]): ItemIndex | undefined {
-	const { index } = toEmpty(findItemById(layerList, itemId))
+	const { index } = destrNullable(findItemById(layerList, itemId))
 	if (!index) return undefined
 	if (index.innerIndex === null) {
 		const parentItem = layerList[index.outerIndex]
@@ -637,7 +639,7 @@ export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, l
 	return { outerIndex: layerList.length - 1, innerIndex: null }
 }
 
-export function shiftIndex(index: ItemIndex, offset: number = 1): ItemIndex | undefined {
+export function shiftIndex(index: ItemIndex, offset: number = 1): ItemIndex {
 	const { outerIndex, innerIndex } = index
 	if (innerIndex === null) {
 		return { outerIndex: outerIndex + offset, innerIndex: null }

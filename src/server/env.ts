@@ -15,6 +15,8 @@ export const groups = {
 		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
 
 		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
+
+		QUERY_PARAM_AUTH_BYPASS: StrFlag.optional(),
 	},
 
 	squadcalc: {
@@ -99,6 +101,11 @@ export function getEnvBuilder<G extends Record<string, z.ZodTypeAny>>(groups: G)
 
 let setup = false
 
+const buildForValidation = getEnvBuilder({
+	NODE_ENV: groups.general.NODE_ENV,
+	QUERY_PARAM_AUTH_BYPASS: groups.general.QUERY_PARAM_AUTH_BYPASS,
+})
+
 export function ensureEnvSetup() {
 	if (setup) return
 	dotenv.config({ path: Cli.options?.envFile })
@@ -110,5 +117,11 @@ export function ensureEnvSetup() {
 			rawEnv[key] = process.env[key]
 		}
 	}
+
+	const toValidate = buildForValidation()
+	if (toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
+		throw new Error('QUERY_PARAM_AUTH_BYPASS=true is not allowed in production')
+	}
+
 	setup = true
 }

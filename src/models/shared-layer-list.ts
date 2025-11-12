@@ -1,12 +1,82 @@
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import { toEmpty } from '@/lib/types'
+
+import { destrNullable } from '@/lib/types'
 import * as LL from '@/models/layer-list.models'
+import * as LQY from '@/models/layer-queries.models'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as USR from '@/models/users.models'
+import * as Im from 'immer'
 import { z } from 'zod'
 import * as L from './layer'
+
+import * as ST from '@/lib/state-tree'
+
+export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
+	const { variant, leaf, branch } = ST.Def
+
+	const activities = branch('ON_QUEUE_PAGE', [
+		variant('EDITING', [
+			leaf('IDLE'),
+			leaf(
+				'ADDING_ITEM',
+				z.object({
+					cursor: LL.CursorSchema,
+					action: LQY.LAYER_ITEM_ACTION.default('add'),
+					title: z.string().optional(),
+					variant: z.enum(['toggle-position']).optional(),
+					selected: z.array(LL.ItemIdSchema).optional(),
+				}),
+			),
+
+			leaf('EDITING_ITEM', z.object({ itemId: LL.ItemIdSchema })),
+			// leaf('MOVING_ITEM', z.object({ itemId: LL.ItemIdSchema })),
+			leaf('CONFIGURING_VOTE', z.object({ itemId: LL.ItemIdSchema })),
+		]),
+		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
+	]) satisfies ST.Def.Node
+	const codes = ST.DefUtils.buildIdEnum(activities)
+	return [codes, activities] as const
+})()
+
+const _editActivities = ACTIVITIES.child.EDITING.child
+
+type QueueEditActivityKey = (typeof _editActivities)[keyof typeof _editActivities]['id']
+
+export type QueueEditActivity<
+	K extends QueueEditActivityKey = QueueEditActivityKey,
+> = ST.Match.Node<
+	(typeof _editActivities)[K]
+>
+
+export function createQueueEditActivity<K extends QueueEditActivityKey>(
+	activity: QueueEditActivity<K>,
+): (prev: Activity) => Activity {
+	return Im.produce((state: Im.WritableDraft<Activity>) => {
+		state.child.EDITING = {
+			_tag: 'variant',
+			id: 'EDITING',
+			opts: {},
+			child: activity,
+		} as any
+	})
+}
+
+export function idleActivity(): (prev: Activity) => Activity {
+	return Im.produce((state: Im.WritableDraft<Activity>) => {
+		if (!state.child.EDITING) return
+		state.child.EDITING = {
+			_tag: 'variant',
+			id: 'EDITING',
+			opts: {},
+			child: ST.Match.leaf('IDLE', {}),
+		} as any
+	})
+}
+
+export type _ActivityCode = z.infer<typeof ACTIVITY_CODE>
+export type Activity = ST.Match.Node<typeof ACTIVITIES>
 
 function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(base: T) {
 	return [
@@ -141,58 +211,21 @@ export function containsConflict(session: EditSession, expectedIndex: number, ne
 	return false
 }
 
-export const UserPresenceActivitySchema = z.discriminatedUnion('code', [
-	z.object({ code: z.literal('editing-item'), itemId: LL.ItemIdSchema }),
-	z.object({ code: z.literal('configuring-vote'), itemId: LL.ItemIdSchema }),
-	z.object({ code: z.literal('adding-item'), cursor: LL.CursorSchema }),
-	z.object({ code: z.literal('moving-item'), itemId: LL.ItemIdSchema }),
+export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVITIES)
+export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE'])
+type ItemOwnedActivityId = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 
-	// for changing pool configuration
-	z.object({ code: z.literal('changing-settings') }),
-])
-
-export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['editing-item', 'configuring-vote', 'moving-item'])
-export type ItemOwnedActivityCode = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
-export type Activity = z.infer<typeof UserPresenceActivitySchema>
-
-export function isEditingStateActivity(
-	activity: Activity,
-): activity is Extract<Activity, { code: 'editing-item' }> {
-	return isItemOwnedActivity(activity) || activity.code === 'adding-item'
-}
-
-export type ItemOwnedActivity = Extract<Activity, { code: ItemOwnedActivityCode }>
-export function isItemOwnedActivity(activity: Activity): activity is ItemOwnedActivity {
-	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.code)
-}
-
-export function opToActivity(op: Operation): Activity | undefined {
-	switch (op.op) {
-		case 'add':
-			return { code: 'adding-item' }
-		case 'move':
-			return { code: 'moving-item', itemId: op.itemId }
-		case 'configure-vote':
-			return { code: 'configuring-vote', itemId: op.itemId }
-		case 'edit-layer':
-		case 'create-vote':
-		case 'swap-factions':
-			return { code: 'editing-item', itemId: op.itemId }
-		case 'delete':
-		case 'clear':
-			return undefined
-		default:
-			assertNever(op)
-	}
+export type ItemOwnedActivity = Extract<QueueEditActivity, { id: ItemOwnedActivityId }>
+export function isItemOwnedActivity(activity: QueueEditActivity): activity is QueueEditActivity<ItemOwnedActivityId> {
+	return (ITEM_OWNED_ACTIVITY_CODE.options as string[]).includes(activity.id)
 }
 
 // presence may evolve into its own system eventually if we're doing non SLL related stuff with it
 export const ClientPresenceSchema = z.object({
 	userId: USR.UserIdSchema,
 	away: z.boolean(),
-	editing: z.boolean(),
 	lastSeen: z.number().positive(),
-	currentActivity: UserPresenceActivitySchema.nullable(),
+	activityState: UserPresenceActivitySchema.nullable(),
 })
 
 export type ClientPresence = z.infer<typeof ClientPresenceSchema>
@@ -241,7 +274,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'swap-factions': {
-			const { index, item } = toEmpty(LL.findItemById(list, newOp.itemId))
+			const { index, item } = destrNullable(LL.findItemById(list, newOp.itemId))
 			if (!index || !item) return
 			const swapped = LL.swapFactions(item, source)
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
@@ -269,7 +302,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'delete': {
-			const { index } = toEmpty(LL.findItemById(list, newOp.itemId))
+			const { index } = destrNullable(LL.findItemById(list, newOp.itemId))
 			if (index) {
 				LL.deleteItem(list, newOp.itemId)
 				ItemMut.tryApplyMutation('removed', [newOp.itemId], mutations)
@@ -279,7 +312,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 		case 'clear':
 			for (const itemId of newOp.itemIds) {
-				const { index } = toEmpty(LL.findItemById(list, itemId))
+				const { index } = destrNullable(LL.findItemById(list, itemId))
 				if (index) {
 					LL.deleteItem(list, itemId)
 					ItemMut.tryApplyMutation('removed', [itemId], mutations)
@@ -289,7 +322,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 
 		case 'create-vote': {
 			LL.createVoteOutOfItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.otherLayers)
-			const { item } = toEmpty(LL.findItemById(list, newOp.itemId))
+			const { item } = destrNullable(LL.findItemById(list, newOp.itemId))
 			if (item && LL.isVoteItem(item)) {
 				ItemMut.tryApplyMutation('added', item.choices.map(choice => choice.itemId), mutations)
 			}
@@ -386,8 +419,7 @@ export function getClientPresenceDefaults(userId: bigint): ClientPresence {
 	return {
 		userId,
 		away: false,
-		editing: false,
-		currentActivity: null,
+		activityState: null,
 		lastSeen: Date.now(),
 	}
 }
@@ -433,8 +465,9 @@ export type ItemLocks = Map<LL.ItemId, string>
 export type LockMutation = [LL.ItemId, string]
 
 export function itemsToLockForActivity(list: LL.List, activity: Activity): LL.ItemId[] {
-	if (!isItemOwnedActivity(activity)) return []
-	const itemId = activity.itemId
+	const dialogActivity = activity.child.EDITING?.child
+	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
+	const itemId = dialogActivity.opts.itemId
 	const item = LL.findItemById(list, itemId)?.item
 	if (!item) return []
 	const ids: LL.ItemId[] = [itemId]
@@ -469,8 +502,8 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 
 export function endAllEditing(state: PresenceState) {
 	for (const presence of state.values()) {
-		if (presence.editing) {
-			updateClientPresence(presence, { editing: false, currentActivity: null })
+		if (presence.activityState?.child.EDITING) {
+			updateClientPresence(presence, { activityState: null })
 		}
 	}
 }
@@ -497,44 +530,63 @@ export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
 	return false
 }
 
-export const getHumanReadableActivity = (activityCode: Activity['code'], index?: LL.ItemIndex) => {
-	const name = index ? LL.getItemNumber(index) : 'Item'
-	switch (activityCode) {
-		case 'editing-item':
-			return `Editing ${name} `
-		case 'configuring-vote':
-			return ` Configuring vote for ${name}`
-		case 'adding-item':
-			return 'Adding an item'
-		case 'moving-item':
-			return `Moving ${name}`
-		case 'changing-settings':
-			return 'Changing Settings'
+export const getHumanReadableActivity = (activity: Activity, list: LL.List) => {
+	const editingActivity = activity.child.EDITING
+	const settingsActivity = activity.child.VIEWING_SETTINGS
+
+	if (settingsActivity) {
+		if (settingsActivity.child.CHANGING_SETTINGS) {
+			return 'Changing Pool Settings'
+		}
+	}
+
+	if (!editingActivity) return null
+	if (editingActivity.child.id === 'IDLE') {
+		return `Editing`
+	}
+	if (editingActivity.child.id === 'ADDING_ITEM') {
+		return 'Adding an item'
+	}
+
+	const { index } = destrNullable(LL.findItemById(list, editingActivity.child.opts.itemId))
+	const itemName = index ? LL.getItemNumber(index) : 'Item'
+	switch (editingActivity.child.id) {
+		case 'EDITING_ITEM':
+			return `Editing ${itemName} `
+		case 'CONFIGURING_VOTE':
+			return ` Configuring vote for ${itemName}`
 		default:
-			assertNever(activityCode)
+			assertNever(editingActivity.child)
 	}
 }
 
-export const getHumanReadableActivityWithUser = (activityCode: Activity['code'], displayName: string) => {
-	switch (activityCode) {
-		case 'editing-item':
+export const getHumanReadableActivityWithUser = (activity: Activity, displayName: string) => {
+	const editingActivity = activity.child.EDITING
+	const id = (() => {
+		if (activity?.child.VIEWING_SETTINGS) {
+			return activity?.child.VIEWING_SETTINGS?.child.CHANGING_SETTINGS?.id ?? editingActivity?.child.id
+		}
+		return editingActivity?.child.id
+	})()
+
+	if (!id || id === 'IDLE') return null
+	switch (id) {
+		case 'EDITING_ITEM':
 			return `${displayName} is editing`
-		case 'configuring-vote':
+		case 'CONFIGURING_VOTE':
 			return `${displayName} is configuring vote`
-		case 'adding-item':
+		case 'ADDING_ITEM':
 			return `${displayName} is adding`
-		case 'moving-item':
-			return `${displayName} is moving`
-		case 'changing-settings':
+		case 'CHANGING_SETTINGS':
 			return `${displayName} is changing settings`
 		default:
-			assertNever(activityCode)
+			assertNever(id)
 	}
 }
 
 export function* iterActivities(state: PresenceState) {
 	for (const [wsClientId, presence] of state.entries()) {
-		if (!presence.currentActivity) continue
-		yield [presence.currentActivity, wsClientId] as const
+		if (!presence.activityState) continue
+		yield [presence.activityState, wsClientId] as const
 	}
 }

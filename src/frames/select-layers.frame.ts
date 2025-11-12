@@ -11,7 +11,6 @@ import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
-import { GetSelectTableName } from 'drizzle-orm/query-builders/select.types'
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
@@ -31,7 +30,9 @@ export function createInput(
 ): Input {
 	const base: BaseInput = {
 		colConfig: ConfigClient.getColConfig(),
-		cursor: opts.cursor,
+		cursor: opts.cursor ?? (opts.initialEditedLayerId
+			? { type: 'item-relative', itemId: opts.initialEditedLayerId!, position: 'on' }
+			: undefined),
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
 	}
@@ -161,8 +162,6 @@ export const frame = frameManager.createFrame<Types>({
 	name: 'selectLayers',
 	setup,
 	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, id: input.instanceId }),
-	onInputChanged: onInputChanged,
-	checkInputChanged: Obj.deepEqual,
 })
 
 export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInput {

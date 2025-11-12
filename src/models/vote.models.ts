@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
-import { Parts, toEmpty } from '@/lib/types'
+import { destrNullable, Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as L from '@/models/layer'
 import * as USR from '@/models/users.models'
@@ -211,7 +211,7 @@ export function canInitiateVote(
 	voteState?: Pick<VoteState | EndingVoteState, 'code'>,
 	isEditing?: boolean,
 ) {
-	const { index, item } = toEmpty(LL.findItemById(queue, itemId))
+	const { index, item } = destrNullable(LL.findItemById(queue, itemId))
 	if (isEditing) {
 		return {
 			code: 'err:editing-in-progress' as const,

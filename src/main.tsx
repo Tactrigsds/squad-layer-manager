@@ -32,6 +32,7 @@ enableMapSet()
 	QueueDashboard.setup()
 	VotesClient.setup()
 	ServerSettingsClient.setup()
+	console.debug('systems initialized')
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')
 	if (loadConsoleOnStartup) {

@@ -14,9 +14,11 @@ import * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
+import * as SLL from '@/models/shared-layer-list'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
+import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
@@ -30,7 +32,7 @@ import FilterEntitySelect from './filter-entity-select.tsx'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Input } from './ui/input.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import { TriStateCheckbox, TriStateCheckboxDisplay } from './ui/tri-state-checkbox.tsx'
+import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export type ServerSettingsPopoverHandle = {
 	reset(settings: SS.ServerSettings): void
@@ -51,7 +53,20 @@ export default function ServerSettingsPopover(
 
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
-	const [open, _setOpen] = React.useState(false)
+	const [open, _setOpen] = SLLClient.useActivityState({
+		matchActivity: (activity) => !!activity.child.VIEWING_SETTINGS,
+		createActivity: Im.produce((draft: Im.WritableDraft<SLL.Activity>) => {
+			draft.child.VIEWING_SETTINGS = {
+				_tag: 'branch',
+				id: 'VIEWING_SETTINGS',
+				opts: {},
+				child: {},
+			}
+		}),
+		removeActivity: Im.produce((draft: Im.WritableDraft<SLL.Activity>) => {
+			delete draft.child.VIEWING_SETTINGS
+		}),
+	})
 	const setOpen = (open: boolean) => {
 		if (!open) {
 			ServerSettingsClient.Store.getState().reset()

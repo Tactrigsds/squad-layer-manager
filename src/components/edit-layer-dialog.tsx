@@ -23,13 +23,15 @@ export type EditLayerDialogProps = {
 // itemStore
 type InnerEditLayerDialogProps = {
 	open: boolean
-	onOpenChange: React.Dispatch<React.SetStateAction<boolean>>
+	onOpenChange: (open: boolean) => void
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LQY.Cursor
+	frames?: Partial<SelectLayersFrame.KeyProp>
 }
 
 export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
+	return null
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
@@ -48,6 +50,7 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 	const frameKey = useFrameLifecycle(
 		SelectLayersFrame.frame,
 		{
+			frameKey: props.frames?.selectLayers,
 			input: frameInputRef.current,
 			deps: undefined,
 			equalityFn: Obj.deepEqual,

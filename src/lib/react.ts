@@ -58,18 +58,25 @@ export function useStableReferenceDeepEquals<T>(value: T) {
 export function useStableValue<Deps extends [] | [unknown, ...unknown[]], O>(
 	cb: (...args: Deps) => O,
 	deps: Deps,
-	equals?: (a: O, b: O) => boolean,
+	opts?: {
+		// do equality fheck for deps or the output value
+		compare?: 'deps' | 'value'
+		equals?: (a: any, b: any) => boolean
+	},
 ) {
-	const cbRef = React.useRef(cb)
-	const ref = React.useRef<O | null>(null)
-	return React.useMemo(() => {
-		const newValue = cbRef.current(...deps)
-		if (!equals) return newValue
-		if (ref.current === null || !equals(ref.current, newValue)) {
-			ref.current = newValue
+	const ref = React.useRef<any>(null)
+	const outValueRef = React.useRef<O | undefined>(undefined)
+	const compare = opts?.compare ?? 'deps'
+	const compareValue = compare === 'deps' ? deps : cb(...deps)
+	const equals = opts?.equals ?? Obj.deepEqual
+	if (!equals(ref.current!, compareValue)) {
+		ref.current = compareValue
+		if (compare === 'deps') {
+			outValueRef.current = cb(...(compareValue as Deps))
+		} else {
+			outValueRef.current = compareValue as any
 		}
-		return ref.current
+	}
 
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...deps, equals]) as O
+	return outValueRef.current as O
 }

@@ -57,6 +57,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
+		console.log('LMAOOOOO')
 		baseLogger.info(`REQUEST %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
 		monkeyPatchContextAndLogs(request)
 	})
@@ -122,42 +123,9 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			}
 		}
 
-		const sessionId = createId(64)
-		const expiresAt = new Date(Date.now() + Sessions.SESSION_MAX_AGE)
-
-		await DB.runTransaction(ctx, async (ctx) => {
-			const [user] = await ctx.db()
-				.select()
-				.from(Schema.users)
-				.where(eq(Schema.users.discordId, discordUser.id))
-				.for('update')
-			if (!user) {
-				await ctx.db().insert(Schema.users).values({
-					discordId: discordUser.id,
-					username: discordUser.username,
-				})
-			} else {
-				await ctx.db()
-					.update(Schema.users)
-					.set({ username: discordUser.username })
-					.where(eq(Schema.users.discordId, discordUser.id))
-			}
-			// Use the transaction-aware write-through cache for session creation
-			await Sessions.createSessionTx(ctx, {
-				id: sessionId,
-				userId: discordUser.id,
-				expiresAt,
-				user: await Users.buildUser(ctx, {
-					discordId: discordUser.id,
-					username: discordUser.username,
-					steam64Id: user?.steam64Id || null,
-					nickname: null,
-				}),
-			})
-		})
 		const requestCtx = buildHttpRequestContext(req, reply)
-
-		await Sessions.setSessionCookie(requestCtx, sessionId).redirect(AR.route('/'), 302)
+		await Sessions.logInUser(requestCtx, discordUser)
+		reply.redirect(AR.route('/'), 302)
 	})
 
 	instance.post(AR.route('/logout'), async function(req, res) {
@@ -183,7 +151,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	instance.get(AR.route('/check-auth'), async (req, res) => {
 		const ctx = buildHttpRequestContext(req, res)
-		const authRes = await authorizeRequest(ctx)
+		const authRes = await authorizeRequest(ctx, res)
 		if (authRes.code !== 'ok') {
 			return ctx.res.status(401).send({ error: 'Unauthorized' })
 		}
@@ -255,9 +223,10 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	}
 
 	instance.addHook('preValidation', async (req, reply) => {
+		console.log('PRE VALIDATION ', req.url)
 		const baseCtx = buildFastifyRequestContext(req)
 		if (baseCtx.route?.def.authed === false) return
-		const authRes = await authorizeRequest(baseCtx)
+		const authRes = await authorizeRequest(baseCtx, reply)
 		switch (authRes.code) {
 			case 'ok':
 				authedCtxMap.set(req.id, authRes.ctx)
@@ -297,13 +266,13 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 	})
 
-	instance.addContentTypeParser('*', (request, payload, done) => {
-		if (!request.url.startsWith('/orpc')) return
+	// instance.addContentTypeParser('*', (request, payload, done) => {
+	// 	if (!request.url.startsWith('/orpc')) return
 
-		// Fully utilize oRPC feature by allowing any content type
-		// And let oRPC parse the body manually by passing `undefined`
-		done(null, undefined)
-	})
+	// 	// Fully utilize oRPC feature by allowing any content type
+	// 	// And let oRPC parse the body manually by passing `undefined`
+	// 	done(null, undefined)
+	// })
 	instance.register(fastifyWebsocket)
 	instance.register(async function(instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
@@ -358,8 +327,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 export async function authorizeRequest<
 	T extends C.FastifyRequestFull,
->(ctx: T) {
-	const validSessionRes = await Sessions.validateAndUpdate(ctx)
+>(ctx: T, res?: FastifyReply) {
+	const validSessionRes = await Sessions.validateAndUpdate({ ...ctx, res })
 	if (validSessionRes.code !== 'ok') {
 		return validSessionRes
 	}

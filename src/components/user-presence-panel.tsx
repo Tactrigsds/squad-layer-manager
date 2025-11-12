@@ -60,15 +60,21 @@ export default function UserPresencePanel() {
 				return 0
 			}
 
-			// Priority: has activity > editing > present
-			const aHasActivity = aPresence.currentActivity !== null
-			const bHasActivity = bPresence.currentActivity !== null
+			// Priority: has queue non-idle edit activity > editing > present
+			const aEditingActivity = aPresence.activityState?.child.EDITING
+			const bEditingActivity = bPresence.activityState?.child.EDITING
 
-			if (aHasActivity && !bHasActivity) return -1
-			if (!aHasActivity && bHasActivity) return 1
+			const aNonIdle = !!aEditingActivity?.child && aEditingActivity.child.id !== 'IDLE'
+			const bNonIdle = !!bEditingActivity?.child && bEditingActivity.child.id !== 'IDLE'
 
-			if (aPresence.editing && !bPresence.editing) return -1
-			if (!aPresence.editing && bPresence.editing) return 1
+			if (aNonIdle && !bNonIdle) return -1
+			if (!aNonIdle && bNonIdle) return 1
+
+			const aEditing = !!aEditingActivity
+			const bEditing = !!bEditingActivity
+
+			if (aEditing && !bEditing) return -1
+			if (!aEditing && bEditing) return 1
 
 			return a.user.displayName.localeCompare(b.user.displayName)
 		})
@@ -93,13 +99,10 @@ export default function UserPresencePanel() {
 			<div className="flex flex-wrap space-x-1">
 				{sortedUserPresence.map(({ user, presence }) => {
 					const isAway = presence.away
-					const isEditing = presence.editing
-					const currentActivity = presence.currentActivity
+					const currentActivity = presence.activityState
+					const isEditing = !!currentActivity?.child?.EDITING
 					const hasActivity = currentActivity !== null
-					const itemIndex = (currentActivity && SLL.isItemOwnedActivity(currentActivity))
-						? LL.findItemById(layerList, currentActivity.itemId)?.index
-						: undefined
-					const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity.code, itemIndex) : null
+					const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity, layerList) : null
 
 					return (
 						<div key={user.discordId.toString()} className="flex items-center space-x-1">

@@ -1,6 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
+import { createId } from '@/lib/id'
 import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
@@ -10,11 +11,16 @@ import * as Rbac from '@/server/systems/rbac.system'
 import * as Otel from '@opentelemetry/api'
 import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
+import * as Env from '../env'
 import * as Users from './users'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
 const tracer = Otel.trace.getTracer('sessions')
+
+const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
+
+let ENV!: ReturnType<typeof buildEnv>
 
 // In-memory cache for sessions
 type CachedSession = {
@@ -104,6 +110,8 @@ async function createSessionTx(ctx: C.Db & C.Tx, session: CachedSession) {
 }
 
 export async function setup() {
+	ENV = buildEnv()
+
 	// --------  load valid sessions into cache  --------
 	const ctx = DB.addPooledDb({ log: baseLogger })
 	await loadValidSessionsIntoCache(ctx)
@@ -135,34 +143,51 @@ export async function setup() {
 export const validateAndUpdate = C.spanOp(
 	'sessions:validate-and-update',
 	{ tracer },
-	async (ctx: CS.Log & C.Db & C.FastifyRequest, allowRefresh = false) => {
+	async (ctx: CS.Log & C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
+		async function errorOrBypass<Res>(res: Res) {
+			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
+				const res = ctx.res
+				const query = ctx.req.query as Record<string, string>
+				if (!query.login) return res
+				const username = query['login']
+				ctx.log.info('bypassing with username %s', username)
+				const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.username, username))
+				ctx.log.info('resolved user: %o', user)
+				if (!user) throw new Error(`User ${username} not found during bypass`)
+				const loginRes = await logInUser({ ...ctx, res }, { username, id: user.discordId })
+
+				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(ctx, user) }
+			}
+			return res
+		}
+
 		const cookie = ctx.req.headers.cookie
 		if (!cookie) {
-			return {
+			return await errorOrBypass({
 				code: 'unauthorized:no-cookie' as const,
 				message: 'No cookie provided',
-			}
+			})
 		}
 		const sessionId = ctx.cookies['session-id']
 		if (!sessionId) {
-			return {
+			return await errorOrBypass({
 				code: 'unauthorized:no-session' as const,
 				message: 'No session provided',
-			}
+			})
 		}
 
 		// Check cache first
 		const cachedSession = sessionCache.get(sessionId)
 
 		if (!cachedSession) {
-			return { code: 'unauthorized:not-found' as const }
+			return await errorOrBypass({ code: 'unauthorized:not-found' as const })
 		}
 
 		const currentTime = new Date()
 		if (currentTime > cachedSession.expiresAt) {
 			// Remove expired session from cache and database
 			await removeSessionFromCacheAndDb(ctx, sessionId)
-			return { code: 'unauthorized:expired' as const }
+			return await errorOrBypass({ code: 'unauthorized:expired' as const })
 		}
 
 		const discordId = cachedSession.user.discordId
@@ -179,17 +204,55 @@ export const validateAndUpdate = C.spanOp(
 	},
 )
 
+export async function logInUser(ctx: CS.Log & C.Db & C.FastifyRequest & C.FastifyReply, discordUser: { username: string; id: bigint }) {
+	const sessionId = createId(64)
+	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
+
+	await DB.runTransaction(ctx, async (ctx) => {
+		const [user] = await ctx.db()
+			.select()
+			.from(Schema.users)
+			.where(E.eq(Schema.users.discordId, discordUser.id))
+			.for('update')
+		if (!user) {
+			await ctx.db().insert(Schema.users).values({
+				discordId: discordUser.id,
+				username: discordUser.username,
+			})
+		} else {
+			await ctx.db()
+				.update(Schema.users)
+				.set({ username: discordUser.username })
+				.where(E.eq(Schema.users.discordId, discordUser.id))
+		}
+		// Use the transaction-aware write-through cache for session creation
+		await createSessionTx(ctx, {
+			id: sessionId,
+			userId: discordUser.id,
+			expiresAt,
+			user: await Users.buildUser(ctx, {
+				discordId: discordUser.id,
+				username: discordUser.username,
+				steam64Id: user?.steam64Id || null,
+				nickname: null,
+			}),
+		})
+	})
+	await setSessionCookie(ctx, sessionId)
+	return { sessionId, expiresAt, res: ctx.res }
+}
+
 export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	await clearInvalidSession(ctx)
 })
 
-export function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
+export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
+	ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {

@@ -1,9 +1,7 @@
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
-import * as Arr from '@/lib/array'
-import * as CB from '@/models/constraint-builders'
 import { assertNever } from '@/lib/type-guards'
-import { toEmpty } from '@/lib/types'
+import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -389,7 +387,7 @@ function buildQueryInputSqlCondition(
 ) {
 	const conditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
-	const constraints = [...(input.constraints ?? []]
+	const constraints = [...(input.constraints ?? [])]
 
 	const cursorIndex = input.cursor ? LQY.resolveCursorIndex(ctx.layerItemsState, input.cursor) : undefined
 
@@ -440,12 +438,9 @@ export async function getLayerItemStatuses(args: {
 	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
 	const input = args.input
 	const constraints = input.constraints ?? []
-	const violationDescriptorsState = new Map<
-		string,
-		LQY.MatchDescriptor[]
-	>()
+	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
-	const matchedState: OneToMany.OneToManyMap<string, string> = new Map()
+	const matchedState: Map<LQY.ItemId, string> = new Map()
 	const layerItems = ctx.layerItemsState.layerItems ?? []
 	let lookbackLeft = input.numHistoryEntriesToResolve ?? 15
 	let maxLookbackIndex = 0
@@ -461,8 +456,7 @@ export async function getLayerItemStatuses(args: {
 	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
 	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
-			const matchDescriptors: LQY.MatchDescriptor[] = []
-			const itemId = LQY.toSerial(item)
+			const itemMatchDescriptors: LQY.MatchDescriptor[] = []
 			for (const constraint of constraints) {
 				if (constraint.type === 'do-not-repeat') {
 					const descriptors = getisMatchedByRepeatRuleDirect(
@@ -473,8 +467,8 @@ export async function getLayerItemStatuses(args: {
 						item.layerId,
 					)
 					if (descriptors) {
-						OneToMany.set(matchedState, itemId, constraint.id)
-						matchDescriptors.push(...descriptors)
+						matchedState.set(item.itemId, constraint.id)
+						itemMatchDescriptors.push(...descriptors)
 					}
 					continue
 				}
@@ -493,7 +487,7 @@ export async function getLayerItemStatuses(args: {
 				}
 				assertNever(constraint)
 			}
-			violationDescriptorsState.set(LQY.toSerial(item), matchDescriptors)
+			matchDescriptors.set(item.itemId, itemMatchDescriptors)
 		}
 	}
 
@@ -507,27 +501,30 @@ export async function getLayerItemStatuses(args: {
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const item of LQY.IterItems(layerItems.slice(maxLookbackIndex))) {
+		for (const { item } of LQY.IterItems(layerItems.slice(maxLookbackIndex))) {
 			if (item.layerId !== layerId) continue
 			for (const [constraintId, isMatched] of Object.entries(row)) {
 				if (constraintId === '_id') continue
 				if (Number(isMatched) === 1) {
-					OneToMany.set(matchedState, LQY.toSerial(item), constraintId)
+					const existing = matchDescriptors.get(item.itemId)
+					if (existing) {
+						existing.push({ constraintId, type: 'filter-entity' })
+						matchDescriptors.set(item.itemId, [...existing])
+					}
 				}
 			}
 		}
 	}
 
 	const statuses: LQY.LayerItemStatuses = {
-		matching: matchedState,
 		present,
-		matchDescriptors: violationDescriptorsState,
+		matchDescriptors: matchDescriptors,
 	}
-	const res = {
+
+	return {
 		code: 'ok' as const,
 		statuses,
 	}
-	return res
 }
 
 function getisMatchedByRepeatRuleDirect(
@@ -547,11 +544,11 @@ function getisMatchedByRepeatRuleDirect(
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: ctx.layerItemsState.firstLayerItemParity }, i)
 		for (const layerItem of LQY.coalesceLayerItems(previousLayers[i])) {
 			const layer = L.toLayer(layerItem.layerId)
-			const getViolationDescriptor = (field: LQY.MatchDescriptor['field']): LQY.MatchDescriptor => ({
+			const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
+				itemId: layerItem.itemId,
 				constraintId,
 				type: 'repeat-rule',
 				field: field,
-				reasonItem: layerItem,
 			})
 
 			switch (rule.field) {
@@ -887,7 +884,7 @@ function postProcessLayers(
 	layers: ({ id: number } & Record<string, string | number | boolean> & Record<string, boolean>)[],
 	baseInput: LQY.BaseQueryInput,
 ) {
-	const cursorIndex = LQY.resolveCursorIndex(ctx.layerItemsState, baseInput)
+	const cursorIndex = baseInput.cursor ? LQY.resolveCursorIndex(ctx.layerItemsState, baseInput.cursor) : undefined
 	const constraints = baseInput.constraints ?? []
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
@@ -906,10 +903,11 @@ function postProcessLayers(
 			const constraint = constraints[constraintIdx]
 			switch (constraint.type) {
 				case 'do-not-repeat': {
+					if (!cursorIndex) break
 					// TODO being able to do this makes the SQL conditions we made for the dnr rules redundant, we should remove them
 					const descriptors = getisMatchedByRepeatRuleDirect(
 						ctx,
-						cursorIndex,
+						cursorIndex.outerIndex,
 						constraint.id,
 						constraint.rule,
 						strId,
@@ -920,6 +918,7 @@ function postProcessLayers(
 					}
 					break
 				}
+
 				case 'filter-entity': {
 					constraintResults[constraintIdx] = Number(layer[key as keyof L.KnownLayer]) === 1
 				}

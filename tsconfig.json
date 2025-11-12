@@ -6,6 +6,7 @@
 		"moduleResolution": "Node",
 		"lib": ["ESNext", "DOM"],
 		"target": "ESNext",
+		"noErrorTruncation": true,
 		"strict": true,
 		"noImplicitAny": false,
 		"baseUrl": ".",

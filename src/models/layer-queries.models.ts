@@ -1,10 +1,7 @@
 import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
-import * as OneToMany from '@/lib/one-to-many-map'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
-import { toEmpty } from '@/lib/types'
+import { destrNullable } from '@/lib/types'
 import * as CB from '@/models/constraint-builders'
-import * as FB from '@/models/filter-builders'
 import { VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
 import { z } from 'zod'
@@ -101,9 +98,8 @@ export type SearchIdsInput = {
 export type LayerItemStatusesInput = BaseQueryInput & { numHistoryEntriesToResolve?: number }
 
 export type LayerItemStatuses = {
-	matching: OneToMany.OneToManyMap<string, string>
-	present: Set<string>
-	matchDescriptors: Map<string, MatchDescriptor[]>
+	present: Set<ItemId>
+	matchDescriptors: Map<ItemId, MatchDescriptor[]>
 }
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
@@ -115,12 +111,15 @@ type LayerItemPatch = {
 	insertions?: LayerItem[]
 }
 
+export const LAYER_ITEM_ACTION = z.enum(['add', 'edit'])
+export type LayerItemAction = z.infer<typeof LAYER_ITEM_ACTION>
+
 export type BaseQueryInput = {
 	constraints?: Constraint[]
 
 	// no cursor or action == repeat rules ignored
 	cursor?: Cursor
-	action?: LayerItemCursorAction
+	action?: LayerItemAction
 
 	patches?: LayerItemPatch[]
 }
@@ -133,10 +132,9 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 	}
 }
 
-export const LAYER_VOTE_ITEM_CURSOR_ACTION = z.enum(['add', 'edit'])
-export type LayerItemCursorAction = z.infer<typeof LAYER_VOTE_ITEM_CURSOR_ACTION>
 export type ItemIndex = LL.ItemIndex
-// literally just LL.Cursor currently
+
+// literally just LL.Cursor currently except differnt id
 export type Cursor = {
 	type: 'item-relative'
 	itemId: ItemId
@@ -144,9 +142,10 @@ export type Cursor = {
 } | {
 	type: 'index'
 	index: ItemIndex
-}
-{
-	const _ = {} as Cursor satisfies LL.Cursor
+} | {
+	type: 'start'
+} | {
+	type: 'end'
 }
 
 export type GenLayerQueueItemsOptions = {
@@ -160,14 +159,7 @@ export function getEditFilterPageInput(filter: F.FilterNode): BaseQueryInput {
 	return { constraints: [CB.filterAnon('edited-filter', filter)] }
 }
 
-export type LayerStatuses = {
-	// keys are (itemId:(choiceLayerId)?)
-	blocked: OneToMany.OneToManyMap<string, string>
-	present: Set<L.LayerId>
-	violationDescriptors: Map<string, MatchDescriptor[]>
-}
-
-export type MatchDescriptor = {
+export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
 	field:
@@ -179,35 +171,45 @@ export type MatchDescriptor = {
 		| 'Faction_B'
 		| 'Alliance_A'
 		| 'Alliance_B'
-	reasonItem?: LayerItem
+	itemId?: ItemId
 }
+export type FilterEntityMatchDescriptor = {
+	type: 'filter-entity'
+	constraintId: string
+	itemId?: ItemId
+}
+export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor
 
-export function resolveViolatedLayerProperties(descriptors: MatchDescriptor[], teamParity: number) {
-	const violatedFields: OneToMany.OneToManyMap<string, MatchDescriptor> = new Map()
+export function resolveRepeatedLayerProperties(descriptors: MatchDescriptor[], teamParity: number) {
+	const violatedFields: Map<ItemId, MatchDescriptor> = new Map()
 	for (const descriptor of descriptors) {
-		// Map ViolationDescriptor fields to KnownLayer fields
-		switch (descriptor.field) {
-			case 'Map':
-			case 'Layer':
-			case 'Size':
-			case 'Gamemode':
-				OneToMany.set(violatedFields, descriptor.field, descriptor)
-				break
-			case 'Faction_A':
-				OneToMany.set(violatedFields, MH.getTeamNormalizedFactionProp(teamParity, 'A'), descriptor)
-				break
-			case 'Faction_B':
-				OneToMany.set(violatedFields, MH.getTeamNormalizedFactionProp(teamParity, 'B'), descriptor)
-				break
-			case 'Alliance_A':
-				OneToMany.set(violatedFields, MH.getTeamNormalizedAllianceProp(teamParity, 'A'), descriptor)
-				break
-			case 'Alliance_B':
-				OneToMany.set(violatedFields, MH.getTeamNormalizedAllianceProp(teamParity, 'B'), descriptor)
-				break
-			default:
-				assertNever(descriptor.field)
+		if (descriptor.type === 'filter-entity') continue
+		if (descriptor.type === 'repeat-rule') {
+			switch (descriptor.field) {
+				case 'Map':
+				case 'Layer':
+				case 'Size':
+				case 'Gamemode':
+					violatedFields.set(descriptor.field, descriptor)
+					break
+				case 'Faction_A':
+					violatedFields.set(MH.getTeamNormalizedFactionProp(teamParity, 'A'), descriptor)
+					break
+				case 'Faction_B':
+					violatedFields.set(MH.getTeamNormalizedFactionProp(teamParity, 'B'), descriptor)
+					break
+				case 'Alliance_A':
+					violatedFields.set(MH.getTeamNormalizedAllianceProp(teamParity, 'A'), descriptor)
+					break
+				case 'Alliance_B':
+					violatedFields.set(MH.getTeamNormalizedAllianceProp(teamParity, 'B'), descriptor)
+					break
+				default:
+					assertNever(descriptor.field)
+			}
+			continue
 		}
+		assertNever(descriptor)
 	}
 	return violatedFields
 }
@@ -216,7 +218,7 @@ export function getFactionAndUnitValue(faction: string, unit: string | null | un
 	return faction + '_' + unit || ''
 }
 
-type ItemId = LL.ItemId | number
+export type ItemId = LL.ItemId | number
 export type SingleListItem = {
 	type: 'single-list-item'
 	itemId: LL.ItemId
@@ -254,9 +256,17 @@ export type LayerItemsState = {
 	firstLayerItemParity: number
 }
 
+export function resolveId(item: LayerItem | ItemId) {
+	if (typeof item === 'string' || typeof item === 'number') return item
+	if (item.type === 'match-history-entry') {
+		return item.itemId
+	}
+	return item.itemId
+}
+
 export type OrderedLayerItems = LayerItem[]
 export function isVoteListitem(item: LayerItem): item is VoteListItem {
-	return LL.isVoteItem(item0
+	return LL.isVoteItem(item)
 }
 
 export function coalesceLayerItems(item: LayerItem) {
@@ -270,17 +280,16 @@ export function findItemById(items: LayerItem[], itemId: ItemId): LayerItemsIter
 	return LL.findItemById(items, itemId)
 }
 
-export function findItemByCursor(items: LayerItem[], cursor: Cursor): LayerItemsIterResult | undefined {
-  if (cursor.type === 'item-relative') {
-  }
-	for (const res of IterItems(items)) {
-		if (res.item.id === cursor.id) {
-			return res
-		}
-	}
-	return undefined
-}
-
+// export function findItemByCursor(items: LayerItem[], cursor: Cursor): LayerItemsIterResult | undefined {
+// 	if (cursor.type === 'item-relative') {
+// 	}
+// 	for (const res of IterItems(items)) {
+// 		if (res.item.id === cursor.id) {
+// 			return res
+// 		}
+// 	}
+// 	return undefined
+// }
 
 export type SerialLayerItem = string
 export function toSerial(item: LayerItem | SerialLayerItem) {
@@ -346,7 +355,6 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		list.splice(index.outerIndex, deleteCount, ...items)
 	}
 }
-
 export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<BaseQueryInput, 'patches'>) {
 	if (!input.patches || input.patches.length === 0) return baseState
 	return Im.produce(baseState, (draft) => {
@@ -367,17 +375,26 @@ export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<Ba
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
 	cursor: Cursor,
-) {
+): ItemIndex {
 	const orderedItems = orderedItemsState.layerItems
 
 	if (cursor.type === 'item-relative') {
-		const { index } = toEmpty(findItemById(orderedItems, cursor.itemId))
-		if (!index) return
+		const { index } = destrNullable(findItemById(orderedItems, cursor.itemId))
+		if (!index) throw new Error('Invalid cursor ' + JSON.stringify(cursor))
 		if (cursor.position === 'after') return LL.shiftIndex(index, 1)
 		return index
 	}
+
 	if (cursor.type === 'index') {
 		return cursor.index
+	}
+
+	if (cursor.type === 'start') {
+		return { outerIndex: 0, innerIndex: null }
+	}
+
+	if (cursor.type === 'end') {
+		return { outerIndex: orderedItems.length, innerIndex: null }
 	}
 
 	assertNever(cursor)
@@ -389,7 +406,7 @@ export function resolveTeamParityForCursor(state: LayerItemsState, cursor: Curso
 	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index?.outerIndex ?? 0)
 }
 
-export function isLookbackTerminatingLayerItem(item: LayerItem | ParentVoteItem): boolean {
+export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
 	if (isVoteListitem(item)) return false
 	const layer = L.toLayer(item.layerId)
 	return layer && item.type === 'match-history-entry' && ['Seed', 'Training'].includes(layer.Gamemode as string)
@@ -437,7 +454,7 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 	const item = typeof _item === 'string' ? fromSerial(_item) : _item
 
 	if (!state.layerItems) return 0
-	const { index } = toEmpty(LL.findItemById(state.layerItems, item.itemId))
+	const { index } = destrNullable(LL.findItemById(state.layerItems, item.itemId))
 	if (isNullOrUndef(index)) throw new Error('Item not found')
 	const parity = index.outerIndex + (state.firstLayerItemParity ?? 0)
 	return parity
@@ -458,43 +475,9 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 // 	}
 // }
 
-export function getBaseQueryInputForAddingVoteChoice(
-	layerItemsState: LayerItemsState,
-	constraints: Constraint[],
-	parentItemId: string,
-): BaseQueryInput {
-	const parentItem = layerItemsState.layerItems.find(item => item.type === 'vote-list-item' && item.itemId === parentItemId)
-	if (!parentItem) return { constraints, cursor }
-	const cursor: Cursor = {
-		type: 'item-relative',
-		action: 'add-after',
-		itemId: parentItemId,
-	}
-	const layerIds: L.LayerId[] = []
-	for (const currentItem of (parentItem as ParentVoteItem).choices) {
-		layerIds.push(currentItem.layerId)
-	}
-	const filter = FB.comp(FB.inValues('id', layerIds), { neg: true })
-	constraints.push(CB.filterAnon('vote-choice-sibling-exclusion:' + parentItemId, filter))
-
+export function getQueryCursorForItemIndex(index: ItemIndex): Cursor {
 	return {
-		constraints,
-		cursor,
-	}
-}
-
-// assumes current item at index will be shifted to the right if one exists
-export function getQueryCursorForQueueIndex(index: number): Cursor {
-	return {
-		type: 'layer-queue-index',
-		index,
-	}
-}
-
-// ????
-export function getQueryCursorForItemIndex(index: number): Cursor {
-	return {
-		type: 'layer-item-index',
+		type: 'index',
 		index,
 	}
 }

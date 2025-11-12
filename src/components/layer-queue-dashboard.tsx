@@ -6,12 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
-import * as FRM from '@/lib/frame.ts'
 import * as BAL from '@/models/balance-triggers.models'
-import * as LL from '@/models/layer-list.models.ts'
-import * as LQY from '@/models/layer-queries.models.ts'
+import * as SLL from '@/models/shared-layer-list'
 import * as RBAC from '@/rbac.models'
-import { rootRouter } from '@/root-router.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
@@ -20,15 +17,13 @@ import * as ServerSettingsClient from '@/systems.client/server-settings.client.t
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { getRouteApi } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import BalanceTriggerAlert from './balance-trigger-alert.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
-import { LayerList } from './layer-list.tsx'
-import SelectLayersDialog from './select-layers-dialog.tsx'
+import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
@@ -36,8 +31,6 @@ import { Separator } from './ui/separator.tsx'
 import { Switch } from './ui/switch.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
-
-const Route = getRouteApi('/_app/servers/$serverId')
 
 export default function LayerQueueDashboard() {
 	const serverStatusRes = SquadServerClient.useServerInfoRes()
@@ -147,8 +140,10 @@ function NormTeamsSwitch() {
 }
 
 function QueueControlPanel() {
-	type AddLayersPosition = 'before' | 'after'
-	const [isModified, saving, queueLength] = Zus.useStore(SLLClient.Store, useShallow(s => [s.isModified, s.saving, s.layerList.length]))
+	const [isModified, saving] = Zus.useStore(
+		SLLClient.Store,
+		useShallow(s => [s.isModified, s.saving]),
+	)
 
 	async function saveLqState() {
 		await SLLClient.Store.getState().save()
@@ -160,58 +155,6 @@ function QueueControlPanel() {
 		const itemIds = state.layerList.map(item => item.itemId)
 		state.dispatch({ op: 'clear', itemIds })
 	}
-
-	const deps = Route.useLoaderDeps()
-	const frames = Route.useLoaderData()
-	const addedLayerPlacement = deps.addLayers?.placement ?? 'before'
-	const addLayersOpen = !!deps.addLayers
-	const setAddLayersOpen = (open: boolean) => {
-		if (open) {
-		}
-	}
-	const addItems = React.useCallback((items: LL.NewLayerListItem[]) => {
-		if (!deps.addLayers) return
-		const sllState = SLLClient.Store.getState()
-		let index: LL.ItemIndex | undefined
-		if (deps.addLayers?.itemId) {
-			index = LL.findItemById(sllState.layerList, deps.addLayers.itemId)?.index
-		}
-		if (index) {
-			if (deps.addLayers.placement === 'after') {
-				LL.shiftIndex(index, 1)
-			}
-		}
-		if (!index) {
-			if (deps.addLayers.placement === 'before') {
-				index = { outerIndex: 0, innerIndex: null }
-			} else {
-				index = { outerIndex: sllState.layerList.length, innerIndex: null }
-			}
-		}
-
-		sllState.dispatch({ op: 'add', items, index })
-	}, [deps.addLayers])
-
-	const navigate = Route.useNavigate()
-
-	const setPosition = (placement: AddLayersPosition) => {
-		const newState = { ...(deps.addLayers!), placement }
-		navigate({
-			to: '.',
-			search: { addLayers: newState },
-		})
-	}
-
-	const addLayersTabslist = (
-		<TabsList
-			options={[
-				{ label: 'Play Next', value: 'before' },
-				{ label: 'Play After', value: 'after' },
-			]}
-			active={deps.addLayers?.placement ?? 'before'}
-			setActive={setPosition}
-		/>
-	)
 
 	return (
 		<div className="flex items-center space-x-1">
@@ -264,19 +207,19 @@ function QueueControlPanel() {
 					<p>Clear Queue</p>
 				</TooltipContent>
 			</Tooltip>
-			<SelectLayersDialog
-				title="Add Layers"
-				footerAdditions={addLayersTabslist}
-				selectQueueItems={addItems}
-				frames={frames}
-				open={addLayersOpen}
-				onOpenChange={setAddLayersOpen}
+			<StartActivityInteraction
+				createActivity={SLL.createQueueEditActivity({
+					_tag: 'leaf',
+					id: 'ADDING_ITEM',
+					opts: { cursor: { type: 'index', index: { outerIndex: 0, innerIndex: 0 } }, variant: 'toggle-position' },
+				})}
+				preload="render"
 			>
 				<Button className="flex w-min items-center space-x-0">
 					<Icons.PlusIcon />
 					<span>Add Layers</span>
 				</Button>
-			</SelectLayersDialog>
+			</StartActivityInteraction>
 			<PoolConfigurationPopover>
 				<Button size="icon" variant="ghost" title="Pool Configuration">
 					<Icons.Settings />

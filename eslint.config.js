@@ -19,15 +19,10 @@ export default tseslint.config(
 		},
 		rules: {
 			...reactHooks.configs.recommended.rules,
-			'react-hooks/exhaustive-deps': [
-				'warn',
-				{
-					additionalHooks: '(useCustomMemo)',
-				},
-			],
 			'@typescript-eslint/no-implicit-any': 'off',
 			'no-constant-condition': 'off',
 			'@typescript-eslint/no-explicit-any': 'off',
+			'@typescript-eslint/no-namespace': 'off',
 			'react-refresh/only-export-components': [
 				'warn',
 				{

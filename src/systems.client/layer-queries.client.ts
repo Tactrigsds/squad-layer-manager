@@ -1,7 +1,5 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
-import * as Arr from '@/lib/array'
-import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
@@ -194,38 +192,69 @@ export function useLayerItemStatusConstraints() {
 		},
 	)
 }
+function filterAndReportInvalidDescriptors(
+	allConstraints: LQY.Constraint[],
+	matchDescriptors: LQY.MatchDescriptor[] | undefined,
+) {
+	if (!matchDescriptors) return undefined
+
+	const validDescriptors: LQY.MatchDescriptor[] = []
+	for (let i = 0; i < matchDescriptors.length; i++) {
+		if (!allConstraints.some(c => c.id === matchDescriptors[i].constraintId)) {
+			console.error(`Matched constraint ${matchDescriptors[i].constraintId} is not present in the system`)
+		} else {
+			validDescriptors.push(matchDescriptors[i])
+		}
+	}
+	return validDescriptors.length > 0 ? validDescriptors : undefined
+}
 
 export function useLayerItemStatusDataForItem(
-	layerItem: LQY.LayerItem | LQY.SerialLayerItem,
+	layerItem: LQY.LayerItem | LQY.ItemId,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
-	const layerItemId = typeof layerItem === 'string' ? layerItem : LQY.toSerial(layerItem)
+	const allConstraints = useLayerItemStatusConstraints()
+	const queryRes = useLayerItemStatuses(allConstraints, options)
+	const itemId = LQY.resolveId(layerItem)
 	layerItem = typeof layerItem === 'string' ? LQY.fromSerial(layerItem) : layerItem
-	const constraints = useLayerItemStatusConstraints()
-	const queryRes = useLayerItemStatuses(constraints, options)
 	const hoveredConstraintItemId = Zus.useStore(Store, s => s.hoveredConstraintItemId ?? undefined)
 
 	const allViolationDescriptors = queryRes.data?.matchDescriptors
 
-	const hoveredMatchDescriptors = (hoveredConstraintItemId && hoveredConstraintItemId !== layerItemId
-		&& allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.reasonItem && Obj.deepEqual(vd.reasonItem, layerItem)))
+	const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
+			&& filterAndReportInvalidDescriptors(
+				allConstraints,
+				allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
+			)
 		|| undefined
 
-	const localMatchDescriptors = hoveredConstraintItemId === layerItemId && allViolationDescriptors?.get(layerItemId)
+	const localMatchDescriptors = hoveredConstraintItemId === itemId
+			&& filterAndReportInvalidDescriptors(
+				allConstraints,
+				allViolationDescriptors?.get(itemId),
+			)
 		|| undefined
 
-	const matchingConstraintIds = Array.from(queryRes.data?.matching.get(layerItemId) ?? [])
-	const matchingConstraints = constraints.filter(c => matchingConstraintIds.includes(c.id))
+	const matchingDescriptors = filterAndReportInvalidDescriptors(
+		allConstraints,
+		queryRes.data?.matchDescriptors.get(itemId),
+	) ?? []
+
+	// we're much more confident that hovered descriptors are present
+
+	const matchingConstraints = allConstraints.filter(c => matchingDescriptors.find(d => d.constraintId === c.id))
 
 	return {
 		present: queryRes.data?.present,
-		matchingConstraints: matchingConstraints.length > 0 ? matchingConstraints : undefined,
+		matchingConstraints,
+		matchingDescriptors,
 
 		// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item
 		highlightedMatchDescriptors: localMatchDescriptors ?? hoveredMatchDescriptors,
 	}
 }
 
+// TODO prefetching
 export function useLayerItemStatuses(
 	constraints: LQY.Constraint[],
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },

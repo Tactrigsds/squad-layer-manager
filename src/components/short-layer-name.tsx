@@ -33,10 +33,9 @@ export default function ShortLayerName(
 		backfillLayer = L.toLayer(backfillLayerId)
 	}
 
-	// Create violation field mapping
-	let violatedFields: OneToManyMap<string, LQY.MatchDescriptor> = new Map()
+	let violatedFields: Map<LQY.ItemId, LQY.MatchDescriptor> = new Map()
 	if (matchDescriptors && !isNullOrUndef(teamParity)) {
-		violatedFields = LQY.resolveViolatedLayerProperties(matchDescriptors, teamParity)
+		violatedFields = LQY.resolveRepeatedLayerProperties(matchDescriptors, teamParity)
 	}
 
 	const combineStyles = (field: keyof typeof partialLayer) => {

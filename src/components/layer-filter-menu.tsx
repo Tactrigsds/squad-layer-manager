@@ -11,6 +11,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import { Comparison, ComparisonHandle } from './filter-card'
+Rx.pipe
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
 	const clearAll$Ref = useRefConstructor(() => new Rx.Subject<void>())

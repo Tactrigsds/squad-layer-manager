@@ -21,7 +21,9 @@ export type MapTuple<T extends readonly unknown[], U> = {
 	[K in keyof T]: U
 }
 
-export function toEmpty<T extends object>(obj: T | undefined) {
+export function destrNullable<T extends object>(obj: T | undefined) {
 	if (obj) return obj
 	return {} as T | { [k in keyof T]: undefined }
 }
+
+export type StrKeys<T extends object> = Extract<keyof T, string>

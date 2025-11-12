@@ -29,6 +29,9 @@ importers:
       drizzle-orm:
         specifier: ^0.40.1
         version: 0.40.1(@libsql/client-wasm@0.15.9)(@libsql/client@0.15.9(bufferutil@4.0.9)(utf-8-validate@6.0.5))(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.6.1)(@types/sql.js@1.4.9)(better-sqlite3@12.2.0)(gel@2.1.1)(mysql2@3.14.1)(sql.js@1.13.0)(sqlite3@5.1.7)
+      fp-ts:
+        specifier: ^2.16.11
+        version: 2.16.11
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
@@ -4660,6 +4663,9 @@ packages:
 
   forwarded-parse@2.1.2:
     resolution: {integrity: sha512-alTFZZQDKMporBH77856pXgzhEzaUVmLCDk+egLgIgHst3Tpndzz8MnKe+GzRJRfvVdn69HhpW7cmXzvtLvJAw==}
+
+  fp-ts@2.16.11:
+    resolution: {integrity: sha512-LaI+KaX2NFkfn1ZGHoKCmcfv7yrZsC3b8NtWsTVQeHkq4F27vI5igUuO53sxqDEa2gNQMHFPmpojDw/1zmUK7w==}
 
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
@@ -11073,6 +11079,8 @@ snapshots:
     optional: true
 
   forwarded-parse@2.1.2: {}
+
+  fp-ts@2.16.11: {}
 
   fraction.js@4.3.7: {}
 

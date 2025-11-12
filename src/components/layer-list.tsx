@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge.tsx'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonProps } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
@@ -7,16 +7,18 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { getFrameState, useNullableFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers.ts'
 import * as FRM from '@/lib/frame'
+import * as Gen from '@/lib/generator'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
+import * as ST from '@/lib/state-tree.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
-import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
@@ -38,6 +40,7 @@ import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
+import { Slot } from '@radix-ui/react-slot'
 import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
@@ -49,12 +52,17 @@ import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from './ui/dropdown-menu.tsx'
+import TabsList from './ui/tabs-list.tsx'
 
 export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
 	const user = UsersClient.useLoggedInUser()
 	const queueItemIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
+	const [activityState, frames] = Zus.useStore(
+		props.store,
+		ZusUtils.useShallow(state => [state._activityState, state.frames]),
+	)
 	DndKit.useDragEnd(React.useCallback(async (event) => {
 		if (!user || !event.over) return
 		const target = event.over.slots[0]
@@ -76,7 +84,7 @@ export function LayerList(
 			const activeId = event.active.id
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
-			const index = LL.resolveQualfiedIndexFromCursorForMove(layerList, cursor)!
+			const index = LL.resolveCursorIndex(layerList, cursor)!
 			props.store.getState().dispatch({ op: 'add', items: [{ layerId: entry.layerId }], index })
 		}
 
@@ -90,16 +98,97 @@ export function LayerList(
 		}
 	}, [user, props.store]))
 
+	const editAction = activityState?.child.EDITING?.child
+	const onSelectLayersChange = (open: boolean) => {
+		props.store.getState().updateActivity(SLL.idleActivity())
+	}
+
+	const onAddItems = (items: LL.NewLayerListItem[]) => {
+		const state = props.store.getState()
+		const activity = editAction as Extract<typeof editAction, { id: 'ADDING_ITEM' }>
+		const cursor = activity.opts.cursor
+		const index = LL.resolveCursorIndex(state.layerList, cursor)
+		if (!index) return
+
+		state.dispatch({
+			op: 'add',
+			items,
+			index,
+		})
+	}
+
+	const onEditedLayer = (layerId: L.LayerId) => {
+		const state = props.store.getState()
+		const activity = editAction as Extract<typeof editAction, { id: 'EDITING_ITEM' }>
+		const itemId = activity.opts.itemId
+		state.dispatch({
+			op: 'edit-layer',
+			itemId,
+			newLayerId: layerId,
+		})
+	}
+
+	type AddLayersPosition = 'next' | 'after'
+	const positionCursors = (() => {
+		const next: LQY.Cursor = { type: 'start' }
+		const after: LQY.Cursor = { type: 'end' }
+		return { next, after }
+	})()
+	const selectPosition = (s: SelectLayersFrame.Types['state'] | null) => {
+		if (s?.cursor?.type === 'index' && Obj.deepEqual(s.cursor.index, positionCursors.after)) return 'next' as const
+		return 'after' as const
+	}
+
+	const position = useNullableFrameStore(frames.selectLayers, selectPosition)
+
+	const setPosition = (newPosition: AddLayersPosition) => {
+		if (!frames.selectLayers) return
+		const frameState = getFrameState(frames.selectLayers)
+		frameState.setCursor(positionCursors[newPosition])
+	}
+
+	React.useEffect(() => {
+		console.log('frames:', frames)
+		console.log('activityState:', activityState)
+	}, [frames, activityState])
+
+	const addLayersTabsList = (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={position}
+			setActive={setPosition}
+		/>
+	)
+
 	return (
-		<ul className="flex w-full flex-col">
-			{queueItemIds.map((id) => (
-				<LayerListItem
-					llStore={props.store}
-					key={id}
-					itemId={id}
-				/>
-			))}
-		</ul>
+		<>
+			<ul className="flex w-full flex-col">
+				{queueItemIds.map((id) => (
+					<LayerListItem
+						llStore={props.store}
+						key={id}
+						itemId={id}
+					/>
+				))}
+			</ul>
+			<SelectLayersDialog
+				title={(editAction?.id === 'ADDING_ITEM' ? editAction.opts.title : undefined) ?? 'Add Layer'}
+				frames={(frames.selectLayers) ? { selectLayers: frames.selectLayers } : {}}
+				open={editAction?.id === 'ADDING_ITEM' && !!frames.selectLayers}
+				onOpenChange={onSelectLayersChange}
+				selectQueueItems={onAddItems}
+				footerAdditions={(editAction?.id === 'ADDING_ITEM' && editAction.opts.variant === 'toggle-position') && addLayersTabsList}
+			/>
+			<EditLayerDialog
+				frames={frames.selectLayers ? { selectLayers: frames.selectLayers } : {}}
+				open={editAction?.id === 'EDITING_ITEM' && !!frames.selectLayers}
+				onOpenChange={onSelectLayersChange}
+				onSelectLayer={onEditedLayer}
+			/>
+		</>
 	)
 }
 
@@ -180,10 +269,10 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const badges: React.ReactNode[] = []
 	let sourceDisplay: React.ReactNode | undefined
 
-	if (user && itemPresence && itemActivityUser.discordId !== user.discordId) {
+	if (user && itemPresence?.itemActivity && itemActivityUser.discordId !== user.discordId) {
 		sourceDisplay = (
-			<Badge key={`activity ${itemPresence.currentActivity.code}`} variant="info" className="text-nowrap">
-				{SLL.getHumanReadableActivityWithUser(itemPresence.currentActivity.code, itemActivityUser.displayName)}...
+			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
+				{SLL.getHumanReadableActivityWithUser(itemPresence.activityState!, itemActivityUser.displayName)}...
 			</Badge>
 		)
 	} else {
@@ -287,7 +376,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							className="data-[over=true]:bg-secondary rounded flex space-y-1 w-full flex-col"
 						>
 							<LayerDisplay
-								item={{ type: 'list-item', layerId: item.layerId, itemId: item.itemId }}
+								item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
 							/>
 							{itemChoiceTallyPercentage !== undefined && (
@@ -332,8 +421,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		},
 	)
 
-	const itemActions = () => QD.getLLItemActions(props.llStore.getState(), props.itemId)
-
 	const globalVoteState = VotesClient.useVoteState()
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? endingVoteState
 
@@ -345,7 +432,6 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const dragProps = DndKit.useDraggable(draggableItem)
 
 	const [dropdownOpen, setDropdownOpen] = React.useState(false)
-	const layerItem = LQY.getLayerItemForLayerListItem(item)
 	const isMobile = useIsMobile()
 
 	const editButtonProps = (className?: string) => ({
@@ -373,8 +459,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
-	const [addVoteChoicesOpen, setAddVoteChoicesOpen] = SLLClient.useActivityState({ code: 'editing-item', itemId: item.itemId })
-	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({ code: 'configuring-vote', itemId: item.itemId })
+
+	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
+	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({
+		createActivity: SLL.createQueueEditActivity({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+		matchActivity: state => state.child.EDITING?.child.id === 'CONFIGURING_VOTE',
+		removeActivity: SLL.idleActivity(),
+	})
 
 	const startVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.startVote.mutationOptions())
 	async function startVote() {
@@ -547,13 +638,20 @@ function VoteLayerListItem(props: LayerListItemProps) {
 								>
 									<Icons.Play />
 								</Button>
-								<SelectLayersDialog
-									title="Add Vote Choices"
-									pinMode="layers"
-									selectQueueItems={(items) => itemActions().addVoteItems(items)}
-									open={addVoteChoicesOpen}
-									onOpenChange={setAddVoteChoicesOpen}
-									cursor={LQY.getQueryCursorForLayerItem(layerItem, 'add-vote-choice')}
+								<StartActivityInteraction
+									preload="intent"
+									createActivity={(() => {
+										const cursor = {
+											type: 'index',
+											index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
+										} satisfies LQY.Cursor
+										return SLL.createQueueEditActivity(
+											ST.Match.leaf('ADDING_ITEM', {
+												cursor,
+												title: 'Add Vote Choices',
+											}) satisfies SLL.QueueEditActivity<'ADDING_ITEM'>,
+										)
+									})()}
 								>
 									<Button
 										variant="ghost"
@@ -563,7 +661,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									>
 										<Icons.Plus />
 									</Button>
-								</SelectLayersDialog>
+								</StartActivityInteraction>
 								<VoteDisplayPropsPopover
 									open={voteDisplayPropsOpen}
 									onOpenChange={setVoteDisplayPropsOpen}
@@ -765,8 +863,6 @@ type ItemDropdownProps = {
 type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote'
 
 function ItemDropdown(props: ItemDropdownProps) {
-	const allowVotes = props.allowVotes ?? true
-
 	const [item, index, lastLocalIndex] = Zus.useStore(
 		props.listStore,
 		ZusUtils.useDeep((llStore) => {
@@ -779,44 +875,73 @@ function ItemDropdown(props: ItemDropdownProps) {
 		}),
 	)
 
-	const [cursors, dropdownMapping] = React.useMemo(() => {
-		const cursors = {
-			'add-after': LQY.getQueryCursorForItemIndex(index),
-			'create-vote': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
-			'add-before': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
-			'edit': LQY.getQueryCursorForLayerItem(item.itemId, 'edit'),
+	const [activities] = React.useMemo(() => {
+		const activities = {
+			'add-after': SLL.createQueueEditActivity({
+				_tag: 'leaf',
+				id: 'ADDING_ITEM',
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' } },
+			}),
+			'add-before': SLL.createQueueEditActivity({
+				_tag: 'leaf',
+				id: 'ADDING_ITEM',
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' } },
+			}),
+			'create-vote': SLL.createQueueEditActivity({
+				_tag: 'leaf',
+				id: 'ADDING_ITEM',
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote' },
+			}),
+			'edit': SLL.createQueueEditActivity({
+				_tag: 'leaf',
+				id: 'EDITING_ITEM',
+				opts: { itemId: item.itemId },
+			}),
 		} satisfies { [k in SubDropdownState]: any }
-		const dropdownMapping: Record<SubDropdownState, SLL.Activity> = {
-			edit: { code: 'editing-item', itemId: item.itemId },
-			'create-vote': { code: 'editing-item', itemId: item.itemId },
-			'add-after': { code: 'adding-item' },
-			'add-before': { code: 'adding-item' },
-		}
-		return [cursors, dropdownMapping] as const
-	}, [item.itemId])
 
-	const [subDropdownState, _setSubDropdownState] = SLLClient.useActivityKeyState(dropdownMapping)
-	function setSubDropdownState(state: SubDropdownState | null) {
-		if (state === null) props.setOpen(false)
-		_setSubDropdownState(state)
-	}
+		return [activities] as const
+	}, [item.itemId])
 
 	const isLocked = SLLClient.useIsItemLocked(item.itemId)
 	const itemActions = () => QD.getLLItemActions(props.listStore.getState(), props.itemId)
 
+	function sendToFront() {
+		if (!user) return
+		const firstItem = props.listStore.getState().layerList[0]
+		itemActions().dispatch({
+			op: 'move',
+			newFirstItemId: LL.createLayerListItemId(),
+			cursor: { type: 'item-relative', itemId: firstItem.itemId, position: 'before' },
+		})
+	}
+	function sendToBack() {
+		if (!user) return
+		const itemState = QD.selectLLItemState(props.listStore.getState(), props.itemId)
+		const state = props.listStore.getState()
+		const layerList = state.layerList
+		const lastLocalIndex = LL.getLastLocalIndexForItem(itemState.item.itemId, layerList)!
+		const targetItemId = LL.resolveItemForIndex(layerList, lastLocalIndex)!.itemId
+		itemActions().dispatch({
+			op: 'move',
+			newFirstItemId: LL.createLayerListItemId(),
+			cursor: { type: 'item-relative', itemId: targetItemId, position: 'after' },
+		})
+	}
+
 	const user = UsersClient.useLoggedInUser()
 	return (
 		<>
-			<DropdownMenu modal={false} open={props.open || !!subDropdownState} onOpenChange={props.setOpen}>
+			<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
 				<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
 				<DropdownMenuContent>
 					<DropdownMenuGroup>
 						{!LL.isVoteItem(item) && (
-							<DropdownMenuItem
-								onClick={() => setSubDropdownState('edit')}
+							<StartActivityInteraction
+								createActivity={activities['edit']}
+								preload="viewport"
 							>
-								Edit
-							</DropdownMenuItem>
+								<DropdownMenuItem>Edit</DropdownMenuItem>
+							</StartActivityInteraction>
 						)}
 						<DropdownMenuItem
 							disabled={isLocked}
@@ -837,143 +962,50 @@ function ItemDropdown(props: ItemDropdownProps) {
 					</DropdownMenuGroup>
 
 					{!LL.isVoteItem(item) && (
-						<DropdownMenuItem
-							disabled={isLocked}
-							onClick={() => setSubDropdownState('create-vote')}
+						<StartActivityInteraction
+							createActivity={activities['create-vote']!}
+							preload="viewport"
 						>
-							Create Vote
-						</DropdownMenuItem>
+							<DropdownMenuItem
+								disabled={isLocked}
+							>
+								Create Vote
+							</DropdownMenuItem>
+						</StartActivityInteraction>
 					)}
 
 					<DropdownMenuSeparator />
 
 					<DropdownMenuGroup>
-						<DropdownMenuItem disabled={isLocked} onClick={() => setSubDropdownState('add-before')}>Add layers before</DropdownMenuItem>
-						<DropdownMenuItem disabled={isLocked} onClick={() => setSubDropdownState('add-after')}>Add layers after</DropdownMenuItem>
+						<StartActivityInteraction createActivity={activities['add-after']} preload="viewport">
+							<DropdownMenuItem>
+								Add Layers Before
+							</DropdownMenuItem>
+						</StartActivityInteraction>
+						<StartActivityInteraction createActivity={activities['add-before']} preload="viewport">
+							<DropdownMenuItem>
+								Add Layers After
+							</DropdownMenuItem>
+						</StartActivityInteraction>
 					</DropdownMenuGroup>
 
 					<DropdownMenuSeparator />
 					<DropdownMenuGroup>
 						<DropdownMenuItem
 							disabled={(index.innerIndex ?? index.outerIndex) === 0 || isLocked}
-							onClick={() => {
-								if (!user) return
-								const firstItem = props.listStore.getState().layerList[0]
-								itemActions().dispatch({
-									op: 'move',
-									newFirstItemId: LL.createLayerListItemId(),
-									cursor: { type: 'item-relative', itemId: firstItem.itemId, position: 'before' },
-								})
-							}}
+							onClick={sendToFront}
 						>
 							Send to Front
 						</DropdownMenuItem>
 						<DropdownMenuItem
 							disabled={(index.innerIndex ?? index.outerIndex) === lastLocalIndex || isLocked}
-							onClick={() => {
-								if (!user) return
-								const itemState = QD.selectLLItemState(props.listStore.getState(), props.itemId)
-								const state = props.listStore.getState()
-								const layerList = state.layerList
-								const lastLocalIndex = LL.getLastLocalIndexForItem(itemState.item.itemId, layerList)!
-								const targetItemId = LL.resolveItemForIndex(layerList, lastLocalIndex)!.itemId
-								itemActions().dispatch({
-									op: 'move',
-									newFirstItemId: LL.createLayerListItemId(),
-									cursor: { type: 'item-relative', itemId: targetItemId, position: 'after' },
-								})
-							}}
+							onClick={sendToBack}
 						>
 							Send to Back
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
 				</DropdownMenuContent>
 			</DropdownMenu>
-
-			{/* Dialogs rendered separately */}
-			{!LL.isVoteItem(item) && (
-				<EditLayerDialog
-					cursor={cursors.edit}
-					open={subDropdownState === 'edit'}
-					onOpenChange={(update) => {
-						const open = typeof update === 'function' ? update(subDropdownState === 'edit') : update
-						return setSubDropdownState(open ? 'edit' : null)
-					}}
-					layerId={item.layerId}
-					onSelectLayer={async (layerId) => {
-						const list = props.listStore.getState().layerList
-						const parentVoteItem = LL.resolveParentVoteItem(item.itemId, list)
-						if (parentVoteItem) {
-							const otherChoices = parentVoteItem?.choices.filter(choice => choice.itemId !== props.itemId)
-							if (Arr.deref('layerId', otherChoices).includes(layerId)) {
-								await sleep(250)
-								globalToast$.next({
-									variant: 'destructive',
-									title: 'Layer already exists in vote',
-								})
-								return
-							}
-						}
-						itemActions().dispatch({
-							op: 'edit-layer',
-							newLayerId: layerId,
-						})
-					}}
-				/>
-			)}
-
-			<SelectLayersDialog
-				title="Create Vote"
-				description="Select additional layers vote on"
-				open={subDropdownState === 'create-vote'}
-				onOpenChange={(open) => setSubDropdownState(open ? 'create-vote' : null)}
-				cursor={cursors['create-vote']}
-				pinMode="layers"
-				defaultSelected={Array.from(LL.getAllItemLayerIds(item))}
-				selectQueueItems={(newItems) => {
-					if (index.innerIndex === null) return
-					const layerList = props.listStore.getState().layerList
-					const targetIndex = LL.getLastLocalIndexForItem(item.itemId, layerList)!
-					if (targetIndex?.innerIndex !== null) targetIndex.innerIndex++
-					const source: LL.Source = { type: 'manual', userId: UsersClient.loggedInUserId! }
-					props.listStore.getState().dispatch({
-						op: 'create-vote',
-						itemId: item.itemId,
-						otherLayers: newItems.map((item) => LL.createLayerListItem(item, source)),
-						newFirstItemId: LL.createLayerListItemId(),
-					})
-				}}
-			/>
-
-			<SelectLayersDialog
-				title="Add layers before"
-				description="Select layers to add before"
-				open={subDropdownState === 'add-before'}
-				cursor={cursors['add-before']}
-				onOpenChange={(open) => setSubDropdownState(open ? 'add-before' : null)}
-				pinMode={!allowVotes ? 'layers' : undefined}
-				selectQueueItems={(items) => {
-					const state = props.listStore.getState()
-					const index = LL.getItemIndex(state.layerList, item.itemId)!
-					state.dispatch({ op: 'add', items, index })
-				}}
-			/>
-
-			<SelectLayersDialog
-				title="Add layers after"
-				description="Select layers to add after"
-				open={subDropdownState === 'add-after'}
-				cursor={cursors['add-after']}
-				onOpenChange={(open) => setSubDropdownState(open ? 'add-after' : null)}
-				pinMode={!allowVotes ? 'layers' : undefined}
-				selectQueueItems={(items) => {
-					const state = props.listStore.getState()
-					const index = LL.getItemIndex(state.layerList, item.itemId)!
-					if (index.innerIndex !== null) index.innerIndex++
-					else index.outerIndex++
-					state.dispatch({ op: 'add', items, index })
-				}}
-			/>
 		</>
 	)
 }
@@ -995,5 +1027,88 @@ function QueueItemSeparator(props: {
 	)
 }
 
-export function AddLayersDialog() {
+export function StartActivityInteraction(
+	props: {
+		// can't be changed on rerender
+		createActivity: (prev: SLL.Activity) => SLL.Activity
+		preload: 'intent' | 'viewport' | 'render'
+		intentDelay?: number
+		children: React.ReactNode
+	},
+) {
+	const createActivityRef = React.useRef(props.createActivity)
+	const buttonRef = React.useRef<HTMLDivElement>(null)
+
+	const startActivity = () => {
+		return SLLClient.Store.getState().updateActivity(createActivityRef.current)
+	}
+
+	const preloadActivity = React.useCallback(
+		() => {
+			return SLLClient.Store.getState().preloadActivity(createActivityRef.current)
+		},
+		[],
+	)
+
+	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
+
+	React.useEffect(() => {
+		if (props.preload === 'render') {
+			preloadActivity()
+		}
+	}, [props.preload, preloadActivity])
+
+	// Use IntersectionObserver for viewport-based preloading
+	React.useEffect(() => {
+		if (props.preload !== 'viewport' || !buttonRef.current) return
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				entries.forEach((entry) => {
+					if (entry.isIntersecting) {
+						preloadActivity()
+					}
+				})
+			},
+			{ threshold: 0.1 }, // Trigger when 10% of the button is visible
+		)
+
+		observer.observe(buttonRef.current)
+
+		return () => {
+			observer.disconnect()
+		}
+	}, [props.preload, preloadActivity, buttonRef])
+
+	const handleMouseEnter = () => {
+		if (props.preload === 'intent') {
+			const delay = props.intentDelay ?? 150
+			const timeout = setTimeout(() => {
+				preloadActivity()
+			}, delay)
+			setIntentTimeout(timeout)
+		}
+	}
+
+	const handleMouseLeave = () => {
+		if (intentTimeout) {
+			clearTimeout(intentTimeout)
+			setIntentTimeout(null)
+		}
+	}
+
+	const handleClick = () => {
+		startActivity()
+	}
+
+	return (
+		<Slot
+			ref={buttonRef}
+			onClick={handleClick}
+			onMouseEnter={handleMouseEnter}
+			onMouseLeave={handleMouseLeave}
+		>
+			{props.children}
+		</Slot>
+	)
 }

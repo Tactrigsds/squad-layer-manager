@@ -2,14 +2,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import * as FRM from '@/lib/frame.ts'
 import * as Obj from '@/lib/object'
-import * as ReactUtils from '@/lib/react'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as ConfigClient from '@/systems.client/config.client'
-import * as LayerQueriesClient from '@/systems.client/layer-queries.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -26,7 +22,7 @@ type SelectLayersDialogProps = {
 	pinMode?: SelectMode
 	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
-	frames: Partial<SelectLayersFrame.KeyProp>
+	frames?: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	headerAdditions?: React.ReactNode
@@ -48,7 +44,7 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 
 	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current }))
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
-		frameKey: props.frames.selectLayers,
+		frameKey: props.frames?.selectLayers,
 		input: frameInputRef.current,
 		deps: undefined,
 		equalityFn: Obj.deepEqual,

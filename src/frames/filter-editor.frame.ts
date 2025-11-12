@@ -77,6 +77,7 @@ export type FilterEditor =
 export type Key = FRM.InstanceKey<Types>
 
 export type Types = {
+	name: 'filterEditor'
 	key: FRM.RawInstanceKey<{ editedFilterId?: string }>
 	//
 	input: Input
@@ -188,7 +189,7 @@ const setup: Frame['setup'] = (args) => {
 }
 
 export const frame = frameManager.createFrame<Types>({
-	name: 'filter-editor',
+	name: 'filterEditor',
 	setup,
 	createKey: (frameId, input) => ({ frameId, editedFilterId: input.editedFilterId, instanceId: input.instanceId }),
 })

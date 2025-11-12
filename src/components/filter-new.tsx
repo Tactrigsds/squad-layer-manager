@@ -7,7 +7,6 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
-import * as ARClient from '@/systems.client/app-routes.client'
 import { useFilterCreate } from '@/systems.client/filter-entity.client.ts'
 import { invalidateLoggedInUser } from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
@@ -25,8 +24,8 @@ import { Textarea } from './ui/textarea'
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
 export default function FilterNewWrapper() {
-	const route = ARClient.assertActiveRoute('/filters/new')
 	const frameInputRef = React.useRef(EditFrame.createInput({ startingFilter: DEFAULT_FILTER }))
+	// TODO create frame in loader
 	const frameKey = useFrameLifecycle(EditFrame.frame, {
 		input: frameInputRef.current,
 		deps: undefined,

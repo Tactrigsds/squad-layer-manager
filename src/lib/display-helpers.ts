@@ -232,7 +232,7 @@ export function getColumnExtraStyles(
 	descriptors?: LQY.MatchDescriptor[],
 ) {
 	if (!descriptors) return
-	const properties = LQY.resolveViolatedLayerProperties(descriptors, teamParity ?? 0)
+	const properties = LQY.resolveRepeatedLayerProperties(descriptors, teamParity ?? 0)
 	if (properties.has(column)) {
 		return Typo.ConstraintViolationDescriptor
 	}

@@ -60,9 +60,9 @@ type SelectedServerStore = {
 	setSelectedServer: (serverId: string) => Promise<void>
 }
 
-let selectedServerStore!: Zus.StoreApi<SelectedServerStore>
+export let SelectedServerStore!: Zus.StoreApi<SelectedServerStore>
 export function useSelectedServerId() {
-	return Zus.useStore(selectedServerStore, state => state.selectedServerId)
+	return Zus.useStore(SelectedServerStore, state => state.selectedServerId)
 }
 
 export function setup() {
@@ -71,29 +71,19 @@ export function setup() {
 	serverRolling$.subscribe()
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
-	const serverId = Cookies.getCookie('default-server-id')!
+	const cookieServerId = Cookies.getCookie('default-server-id')
+	const route = AR.resolveRoute(window.location.pathname)
+	const serverId = route?.id === '/servers/:id' ? route?.params.id : cookieServerId
+	if (!serverId) throw new Error('No server id found')
+	Cookies.setCookie('default-server-id', serverId)
 
-	selectedServerStore = Zus.createStore((set) => ({
+	SelectedServerStore = Zus.createStore((set) => ({
 		selectedServerId: serverId,
 		setSelectedServer: async (serverId: string) => {
+			Cookies.setCookie('default-server-id', serverId)
 			return set({ selectedServerId: serverId })
 		},
 	}))
 
-	// -------- persist selected server id according to navigation, and inform backend of any changes --------
-	//
-	Rx.merge(
-		newRoute$.pipe(Rx.map(AR.resolveRoute)),
-		// when this window is the last focused it should decide what server is selected for new tabs
-		Rx.fromEvent(window, 'focus').pipe(Rx.map(() => AR.resolveRoute(window.location.pathname))),
-	).subscribe((route) => {
-		const state = selectedServerStore.getState()
-		if (!route || route.id !== '/servers/:id' || route.params.id === state.selectedServerId) return
-
-		Cookies.setCookie('default-server-id', route.params.id)
-		void RPC.orpc.squadServer.setSelectedServer.call(route.params.id)
-		state.setSelectedServer(route.params.id)
-	})
-
-	return selectedServerStore
+	return SelectedServerStore
 }

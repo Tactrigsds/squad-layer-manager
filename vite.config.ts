@@ -33,7 +33,7 @@ export default defineConfig({
 						if (req.url && acceptHeader.includes('text/html') && res.statusCode === 200) {
 							ensureEnvSetup()
 							const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
-							const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.url}`
+							const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
 							console.log(`Fetching from upstream:`, proxyUrl)
 
 							fetch(proxyUrl, {
@@ -61,8 +61,6 @@ export default defineConfig({
 											res.setHeader('set-cookie', cookieHeader)
 										}
 
-										console.log('headers: ', res.getHeaders())
-										// Let Vite handle serving the actual content
 										next()
 									}
 								})

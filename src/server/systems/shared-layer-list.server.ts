@@ -241,22 +241,22 @@ function handlePresenceUpdate(
 		return
 	}
 
-	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.currentActivity
+	const prevActivity = ctx.sharedList.presence.get(update.wsClientId)?.activityState
 	const lockMutations: Map<LL.ItemId, string | null> = new Map()
 	if (
-		prevActivity && (update.changes === null || update.changes.currentActivity === null)
+		prevActivity && (update.changes === null || update.changes.activityState === null)
 	) {
 		const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
 		for (const itemId of itemIds) {
 			lockMutations.set(itemId, null)
 		}
-	} else if (update.changes?.currentActivity) {
+	} else if (update.changes?.activityState) {
 		const existingItemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, update.wsClientId)
 		for (const itemId of existingItemIds) {
 			lockMutations.set(itemId, null)
 		}
 
-		const itemIds = SLL.itemsToLockForActivity(ctx.sharedList.session.list, update.changes.currentActivity)
+		const itemIds = SLL.itemsToLockForActivity(ctx.sharedList.session.list, update.changes.activityState)
 		if (itemIds.length > 0) {
 			if (SLL.anyLocksInaccessible(ctx.sharedList.itemLocks, itemIds, ctx.wsClientId)) {
 				return { code: 'err:locked' as const, msg: 'Failed to acquire all locks' }
