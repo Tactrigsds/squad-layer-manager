@@ -344,7 +344,6 @@ export function fromPossibleRawId(id: string, components = StaticLayerComponents
 export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 'set-next' | 'change-layer' | 'none') {
 	if (layerOrId === 'string' && layerOrId.startsWith('RAW')) return layerOrId.slice('RAW:'.length)
 	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId) : layerOrId
-	if (isRawLayer(layer)) return layer.id.slice('RAW:'.length)
 	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
 		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
@@ -362,6 +361,9 @@ export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 
 		default:
 			assertNever(cmdType)
 	}
+
+	if (isRawLayer(layer)) return `${cmd} ${layer.id.slice('RAW:'.length)}`
+
 	if (layer.Layer.startsWith('JensensRange')) {
 		return `${cmd} ${layer.Layer}`.trim()
 	}
