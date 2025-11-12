@@ -3,7 +3,26 @@ import { z } from 'zod'
 
 // do not expose these enums, use layer-components.json instead
 const FACTION_ID = z.string().transform(fixFactions).pipe(
-	z.enum(['ADF', 'PLA', 'PLANMC', 'PLAAGF', 'MEI', 'RGF', 'VDV', 'TLF', 'GFI', 'WPMC', 'BAF', 'CAF', 'USA', 'USMC', 'IMF', 'CRF', 'INS']),
+	z.enum([
+		'ADF',
+		'PLA',
+		'PLANMC',
+		'PLAAGF',
+		'MEI',
+		'RGF',
+		'VDV',
+		'TLF',
+		'GFI',
+		'WPMC',
+		'BAF',
+		'CAF',
+		'USA',
+		'USMC',
+		'IMF',
+		'CRF',
+		'INS',
+		'AFU',
+	]),
 )
 
 const UNIT_TYPE = z.enum([
