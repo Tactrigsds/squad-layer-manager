@@ -32,3 +32,12 @@ export function find<T>(iterable: Iterable<T>, predicate: (item: T) => boolean):
 	}
 	return undefined
 }
+
+export function some<T>(iterable: Iterable<T>, predicate: (item: T) => boolean): boolean {
+	for (const item of iterable) {
+		if (predicate(item)) {
+			return true
+		}
+	}
+	return false
+}

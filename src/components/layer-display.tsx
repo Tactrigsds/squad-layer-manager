@@ -2,6 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
+import * as SetUtils from '@/lib/set'
 import { cn } from '@/lib/utils.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -59,7 +60,7 @@ export default function LayerDisplay(
 				</TooltipContent>
 			</Tooltip>,
 		)
-	} else if (!statusData.present?.has(props.item.layerId)) {
+	} else if (!statusData.present?.has(L.normalize(props.item.layerId))) {
 		badges.push(
 			<Tooltip key="layer doesn't exist">
 				<TooltipTrigger>

@@ -98,7 +98,7 @@ export type SearchIdsInput = {
 export type LayerItemStatusesInput = BaseQueryInput & { numHistoryEntriesToResolve?: number }
 
 export type LayerItemStatuses = {
-	present: Set<ItemId>
+	present: Set<L.LayerId>
 	matchDescriptors: Map<ItemId, MatchDescriptor[]>
 }
 

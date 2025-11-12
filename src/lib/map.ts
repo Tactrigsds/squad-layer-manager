@@ -94,3 +94,29 @@ export function bulkDelete<K, T>(map: Map<K, T>, ...keys: K[]): Map<K, T> {
 	}
 	return map
 }
+
+export function getWith<M extends Map<any, any>>(
+	map: M,
+	key: M extends Map<infer K, any> ? K : never,
+	compare: (a: keyof M, b: keyof M) => boolean,
+): M[keyof M] | undefined {
+	for (const [k, v] of map.entries()) {
+		if (compare(k as keyof M, key as keyof M)) {
+			return v
+		}
+	}
+	return undefined
+}
+
+export function hasWith<M extends Map<any, any>>(
+	map: M,
+	key: M extends Map<infer K, any> ? K : never,
+	compare: (a: keyof M, b: keyof M) => boolean,
+): boolean {
+	for (const [k] of map.entries()) {
+		if (compare(k as keyof M, key as keyof M)) {
+			return true
+		}
+	}
+	return false
+}
