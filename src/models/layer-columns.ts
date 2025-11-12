@@ -79,6 +79,40 @@ export const GROUP_BY_COLUMNS = [
 ] as const satisfies L.LayerColumnKey[]
 export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
 
+export function groupByColumnDefaultValues<C extends GroupByColumn>(column: C, components = L.StaticLayerComponents) {
+	switch (column) {
+		case 'Map':
+			return components.maps
+
+		case 'Layer':
+			return components.layers
+
+		case 'Size':
+			return components.size
+
+		case 'Gamemode':
+			return components.gamemodes
+
+		case 'LayerVersion':
+			return components.versions
+
+		case 'Alliance_1':
+		case 'Alliance_2':
+			return components.alliances
+
+		case 'Faction_1':
+		case 'Faction_2':
+			return components.factions
+
+		case 'Unit_1':
+		case 'Unit_2':
+			return components.units
+
+		default:
+			assertNever(column)
+	}
+}
+
 export function isLayerColumnKey(key: string, cfg = BASE_COLUMN_CONFIG): key is L.LayerColumnKey {
 	return key in cfg.defs
 }
@@ -123,7 +157,6 @@ export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 		switch (c.type) {
 			case 'string':
 				columns[c.name] = text(c.name)
-				break
 			case 'float':
 				columns[c.name] = real(c.name)
 				break

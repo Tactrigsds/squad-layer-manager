@@ -28,6 +28,7 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 export interface ComboBoxOption<T> {
 	value: T
 	label?: React.ReactNode
+	disabled?: boolean
 }
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
@@ -116,7 +117,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 									<CommandItem
 										key={option.value}
 										value={option.value ?? undefined}
+										disabled={option.disabled}
 										onSelect={() => {
+											if (option.disabled) return
 											onSelect(option.value)
 										}}
 									>
