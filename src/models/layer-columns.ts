@@ -157,6 +157,7 @@ export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 		switch (c.type) {
 			case 'string':
 				columns[c.name] = text(c.name)
+				break
 			case 'float':
 				columns[c.name] = real(c.name)
 				break
