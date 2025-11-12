@@ -368,7 +368,11 @@ export default function LayerTable(props: {
 			const selectedLayers = layerIdsForPage.map((id) => {
 				const layer = _page!.layers.find(l => l.id === id)
 				if (layer) return layer
-				return L.toLayer(id)
+				return {
+					...L.toLayer(id),
+					constraints: Array(queryInput.constraints?.length ?? 0).fill(false),
+					violationDescriptors: [],
+				}
 			})
 			if (sort) {
 				;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
@@ -389,7 +393,7 @@ export default function LayerTable(props: {
 					}
 				})
 			}
-			_page = { ..._page, layers: [..._page.layers] }
+			_page = { ..._page, layers: [...selectedLayers as any] }
 		}
 		if (_page) {
 			return {
@@ -402,7 +406,7 @@ export default function LayerTable(props: {
 		} else {
 			return undefined
 		}
-	}, [layersRes.data, showSelectedLayers, selectedLayerIds, pageIndex, pageSize, sort])
+	}, [layersRes.data, showSelectedLayers, selectedLayerIds, pageIndex, pageSize, sort, queryInput.constraints?.length])
 
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
@@ -587,7 +591,8 @@ export default function LayerTable(props: {
 						? L.getLayerCommand(selectedLayerIds[0], 'set-next')
 						: undefined}
 					onSubmit={layers => {
-						getTableFrame().setSelected(layers.map(l => l.id))
+						getTableFrame().setSelected(prev => [...prev, ...layers.map(l => l.id)])
+						getTableFrame().setShowSelectedLayers(true)
 					}}
 				/>
 			</div>

@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array'
 import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as ZusUtils from '@/lib/zustand'
@@ -149,7 +150,8 @@ export function initLayerTable(
 		setSelected(update) {
 			const state = get()
 			const original = state.selected
-			const updated = typeof update === 'function' ? update(original) : update
+			let updated = typeof update === 'function' ? update(original) : update
+			updated = Arr.dedupe(updated)
 
 			const numToTrim = Math.max(0, updated.length - (state.maxSelected ?? updated.length))
 			const updatedByTimeTrimmed = updated.slice(numToTrim)

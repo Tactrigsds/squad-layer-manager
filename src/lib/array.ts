@@ -69,3 +69,7 @@ export function delta<T>(before: T[], after: T[]): { added: T[]; removed: T[] } 
 export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry, arr: Entry[]) {
 	return arr.map((entry) => entry[key])
 }
+
+export function dedupe<T>(arr: T[]): T[] {
+	return Array.from(new Set(arr))
+}
