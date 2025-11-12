@@ -174,8 +174,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 											<CommandItem
 												key={option.value}
 												value={option.value === null ? NULL.current : option.value}
-												disabled={selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false}
+												disabled={option.disabled
+													|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
 												onSelect={() => {
+													if (option.disabled) return
 													onSelect((prevValues) => {
 														if (prevValues.includes(option.value)) {
 															return prevValues.filter((v) => v !== option.value)
@@ -232,9 +234,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										variant="ghost"
 										size="sm"
 										onClick={() => {
-											const allValues = options.map(opt => opt.value).filter(val =>
-												!selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit
-											)
+											const allValues = options
+												.filter(opt => !opt.disabled)
+												.map(opt => opt.value)
+												.filter(val => !selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit)
 											onSelect(allValues)
 										}}
 										className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"

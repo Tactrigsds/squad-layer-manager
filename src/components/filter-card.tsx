@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as DND from '@/models/dndkit.models.ts'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
@@ -733,7 +734,6 @@ function ApplyFilter(props: ApplyFilterProps) {
 		</>
 	)
 }
-
 function StringEqConfig<T extends string | null>(
 	props: {
 		value: T | undefined
@@ -747,7 +747,13 @@ function StringEqConfig<T extends string | null>(
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
-	const options = valuesRes.isSuccess ? Array.isArray(valuesRes.data) ? valuesRes.data : [] : LOADING
+	const matchedValues = Array.isArray(valuesRes.data) ? valuesRes.data : undefined
+	const options: ComboBoxOption<string>[] = []
+	for (const value of LC.groupByColumnDefaultValues(props.column)) {
+		if (value === null) continue
+		const matched = !matchedValues || matchedValues.includes(value)
+		options.push({ label: value, value, disabled: !matched })
+	}
 	return (
 		<ComboBox
 			ref={props.ref}
@@ -755,7 +761,7 @@ function StringEqConfig<T extends string | null>(
 			className={props.className}
 			title={props.column}
 			disabled={valuesRes.isSuccess && lockOnSingleOption && options.length === 1}
-			value={(valuesRes.isSuccess && lockOnSingleOption && options.length === 1) ? options[0] : props.value}
+			value={(valuesRes.isSuccess && lockOnSingleOption && options.length === 1) ? options[0].value : props.value}
 			options={options}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
@@ -774,7 +780,14 @@ function StringInConfig(
 	},
 ) {
 	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
-	const options = Array.isArray(valuesRes.data) ? valuesRes.data : []
+	const matchedValues = Array.isArray(valuesRes.data) ? valuesRes.data : undefined
+	const options: ComboBoxOption<string>[] = []
+	for (const value of LC.groupByColumnDefaultValues(props.column)) {
+		if (value === null) continue
+		const matched = !matchedValues || matchedValues.includes(value)
+		options.push({ label: value, value, disabled: !matched })
+	}
+	console.log(options)
 	return (
 		<ComboBoxMulti
 			title={props.column}

@@ -37,7 +37,7 @@ let ENV!: ReturnType<typeof envBuilder>
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
-		args.push('update-layers-table')
+		args.push('update-layers-table', 'write-components-and-units')
 	}
 	Env.ensureEnvSetup()
 	ENV = envBuilder()

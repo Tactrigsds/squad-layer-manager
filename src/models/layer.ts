@@ -342,9 +342,7 @@ export function fromPossibleRawId(id: string, components = StaticLayerComponents
 }
 
 export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 'set-next' | 'change-layer' | 'none') {
-	if (layerOrId === 'string' && layerOrId.startsWith('RAW')) return layerOrId.slice('RAW:'.length)
 	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId) : layerOrId
-	if (isRawLayer(layer)) return layer.id.slice('RAW:'.length)
 	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
 		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
@@ -362,21 +360,23 @@ export function getLayerCommand(layerOrId: UnvalidatedLayer | LayerId, cmdType: 
 		default:
 			assertNever(cmdType)
 	}
-	if (layer.Layer.startsWith('JensensRange')) {
-		return `${cmd} ${layer.Layer}`.trim()
-	}
 
-	let fullCommand = `${cmd} ${layer.Layer?.replace('FRAAS', 'RAAS')}`
-	if (layer.Faction_1) {
-		fullCommand += ' '
-		fullCommand += getFactionModifier(layer.Faction_1, layer.Unit_1 ?? lookupDefaultUnit(layer.Layer, layer.Faction_1)!)
+	let commandArgs: string
+	if (isRawLayer(layer)) commandArgs = layer.id.slice('RAW:'.length)
+	else if (layer.Layer.startsWith('JensensRange')) {
+		commandArgs = layer.Layer
+	} else {
+		commandArgs = layer.Layer
+		if (layer.Faction_1) {
+			commandArgs += ' '
+			commandArgs += getFactionModifier(layer.Faction_1, layer.Unit_1 ?? lookupDefaultUnit(layer.Layer, layer.Faction_1)!)
+		}
+		if (layer.Faction_2) {
+			commandArgs += ' '
+			commandArgs += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2)!)
+		}
 	}
-	if (layer.Faction_1 && layer.Faction_2) {
-		fullCommand += ' '
-		fullCommand += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2)!)
-	}
-
-	return fullCommand.trim()
+	return `${cmd} ${commandArgs.replace('FRAAS', 'RAAS')}`.trim().replace(/\s+/g, ' ')
 }
 
 export function parseRawLayerText(rawLayerText: string): UnvalidatedLayer | null {

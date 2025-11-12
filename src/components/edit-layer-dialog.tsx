@@ -90,6 +90,7 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
 							canChangeRowsPerPage={false}
 							canToggleColumns={false}
+							enableForceSelect={true}
 						/>
 						<div className="flex justify-end">
 							<Button disabled={!canSubmit} onClick={submit}>

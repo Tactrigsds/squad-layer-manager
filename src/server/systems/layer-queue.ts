@@ -910,7 +910,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	let nextLayerId = LL.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextLayerId) {
-		const constraints = SS.getSettingsConstraints(serverState.settings)
+		const constraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 
 		const res = await LayerQueries.queryLayers({

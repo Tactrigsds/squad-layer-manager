@@ -46,19 +46,6 @@ export default function LayerDisplay(
 	if (props.badges) badges.push(...props.badges)
 
 	const layer = L.toLayer(props.item.layerId)
-	if (!statusData.present?.has(props.item.layerId)) {
-		badges.push(
-			<Tooltip key="layer doesn't exist">
-				<TooltipTrigger>
-					<Icons.ShieldOff className="text-red-500" />
-				</TooltipTrigger>
-				<TooltipContent>
-					<b>Layer is unknown</b>
-				</TooltipContent>
-			</Tooltip>,
-		)
-	}
-
 	if (!L.isKnownLayer(layer)) {
 		badges.push(
 			<Tooltip key="is unknown layer">
@@ -69,6 +56,17 @@ export default function LayerDisplay(
 					<p>
 						This layer is unknown and was not able to be fully parsed: (<b>{DH.displayLayer(layer)}</b>)
 					</p>
+				</TooltipContent>
+			</Tooltip>,
+		)
+	} else if (!statusData.present?.has(props.item.layerId)) {
+		badges.push(
+			<Tooltip key="layer doesn't exist">
+				<TooltipTrigger>
+					<Icons.ShieldOff className="text-red-500" />
+				</TooltipTrigger>
+				<TooltipContent>
+					<b>Layer is unknown</b>
 				</TooltipContent>
 			</Tooltip>,
 		)

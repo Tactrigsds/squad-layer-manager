@@ -93,8 +93,8 @@ export function getSettingsConstraints(
 	const poolConfigs: Record<string, PoolConfiguration> = { main: settings.queue.mainPool, generation: settings.queue.generationPool }
 	if (!opts?.generatingLayers) {
 		delete poolConfigs.generation
-	} else if (settings.queue.applyMainPoolToGenerationPool) {
-		delete poolConfigs.generation
+	} else if (!settings.queue.applyMainPoolToGenerationPool) {
+		delete poolConfigs.mainPool
 	}
 
 	for (const [poolName, poolConfig] of Object.entries(poolConfigs)) {
