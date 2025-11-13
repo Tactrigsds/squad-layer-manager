@@ -3,6 +3,7 @@ import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, Headl
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react.ts'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -30,18 +31,49 @@ type SelectLayersDialogProps = {
 	cursor?: LQY.Cursor
 }
 
-export default function SelectLayersDialog(props: SelectLayersDialogProps) {
-	const defaultSelectedRef = React.useRef(props.defaultSelected ?? [])
+type SelectLayersDialogContentProps = {
+	title: string
+	description?: React.ReactNode
+	pinMode?: SelectMode
+	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
+	defaultSelected: L.LayerId[]
+	frames?: Partial<SelectLayersFrame.KeyProp>
+	footerAdditions?: React.ReactNode
+	cursor?: LQY.Cursor
+	onClose: () => void
+}
 
-	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current }))
+const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
+	console.log('SelectLayersDialogContent')
+	const prevPropsRef = React.useRef<SelectLayersDialogContentProps | null>(null)
+
+	React.useEffect(() => {
+		if (prevPropsRef.current) {
+			const changedProps: string[] = []
+			const keys = Object.keys(props) as Array<keyof SelectLayersDialogContentProps>
+			for (const key of keys) {
+				if (prevPropsRef.current[key] !== props[key]) {
+					changedProps.push(key)
+				}
+			}
+			if (changedProps.length > 0) {
+				console.log('Props changed:', changedProps)
+			}
+		}
+		prevPropsRef.current = props
+	}, [props])
+	const defaultSelectedRef = React.useRef(props.defaultSelected)
+
+	const frameInputRef = useRefConstructor(() => {
+		if (props.frames?.selectLayers) return undefined
+		SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current })
+	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
 		frameKey: props.frames?.selectLayers,
 		input: frameInputRef.current,
 		deps: undefined,
 		equalityFn: Obj.deepEqual,
 	})
-
-	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
 	const setSelectedLayers = useFrameStore(frameKey, (s) => s.layerTable.setSelected)
@@ -88,68 +120,92 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 				}
 				props.selectQueueItems([item])
 			}
-			onOpenChange(false)
+			props.onClose()
 		} finally {
 			setSubmitted(false)
 		}
 	}
 
+	// Reset selected layers when component mounts or default selection changes
+	React.useEffect(() => {
+		setSelectedLayers(props.defaultSelected)
+	}, [props.defaultSelected, setSelectedLayers])
+
+	return (
+		<HeadlessDialogContent className="max-w-[90vw] max-h-[95vh] flex flex-col overflow-auto">
+			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+				<div className="flex items-center">
+					<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
+					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
+				</div>
+				<div className="flex justify-end items-center space-x-2 flex-grow">
+					<AppliedFiltersPanel frameKey={frameKey} />
+				</div>
+			</HeadlessDialogHeader>
+
+			<div className="flex min-h-0 items-start space-x-2 flex-1">
+				<LayerFilterMenu frameKey={frameKey} />
+				<div className="flex flex-col space-y-2 justify-between h-full flex-1 min-h-0">
+					<div className={'flex h-full flex-grow min-h-0'}>
+						<LayerTable
+							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
+							frameKey={frameKey}
+							canChangeRowsPerPage={false}
+							canToggleColumns={true}
+							enableForceSelect={true}
+						/>
+					</div>
+				</div>
+			</div>
+
+			<HeadlessDialogFooter>
+				<div className="flex items-center justify-end w-full">
+					<div className="flex items-center space-x-2">
+						{props.footerAdditions}
+						{!props.pinMode && (
+							<TabsList
+								options={[
+									{ label: 'Vote', value: 'vote' },
+									{ label: 'Set Layer', value: 'layers' },
+								]}
+								active={selectMode}
+								setActive={setAdditionType}
+							/>
+						)}
+						<Button disabled={!canSubmit} onClick={submit}>
+							Submit
+						</Button>
+					</div>
+				</div>
+			</HeadlessDialogFooter>
+		</HeadlessDialogContent>
+	)
+})
+
+export default function SelectLayersDialog(props: SelectLayersDialogProps) {
+	const defaultSelected: L.LayerId[] = React.useMemo(() => props.defaultSelected ?? [], [props.defaultSelected])
+
 	function onOpenChange(open: boolean) {
-		if (open) {
-			setSelectedLayers(defaultSelected)
-		}
 		props.onOpenChange?.(open)
 	}
 
+	const onClose = React.useCallback(() => {
+		props.onOpenChange?.(false)
+	}, [props.onOpenChange])
+
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>
-			<HeadlessDialogContent className="max-w-[90vw] max-h-[95vh] flex flex-col transition-all duration-300 ease-out overflow-auto">
-				<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-					<div className="flex items-center">
-						<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
-						{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
-					</div>
-					<div className="flex justify-end items-center space-x-2 flex-grow">
-						<AppliedFiltersPanel frameKey={frameKey} />
-					</div>
-				</HeadlessDialogHeader>
-
-				<div className="flex min-h-0 items-start space-x-2 flex-1">
-					<LayerFilterMenu frameKey={frameKey} />
-					<div className="flex flex-col space-y-2 justify-between h-full flex-1 min-h-0">
-						<div className={'flex h-full flex-grow min-h-0'}>
-							<LayerTable
-								extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
-								frameKey={frameKey}
-								canChangeRowsPerPage={false}
-								canToggleColumns={true}
-								enableForceSelect={true}
-							/>
-						</div>
-					</div>
-				</div>
-
-				<HeadlessDialogFooter>
-					<div className="flex items-center justify-end w-full">
-						<div className="flex items-center space-x-2">
-							{props.footerAdditions}
-							{!props.pinMode && (
-								<TabsList
-									options={[
-										{ label: 'Vote', value: 'vote' },
-										{ label: 'Set Layer', value: 'layers' },
-									]}
-									active={selectMode}
-									setActive={setAdditionType}
-								/>
-							)}
-							<Button disabled={!canSubmit} onClick={submit}>
-								Submit
-							</Button>
-						</div>
-					</div>
-				</HeadlessDialogFooter>
-			</HeadlessDialogContent>
+			<SelectLayersDialogContent
+				title={props.title}
+				description={props.description}
+				pinMode={props.pinMode}
+				selectQueueItems={props.selectQueueItems}
+				defaultSelected={defaultSelected}
+				frames={props.frames}
+				footerAdditions={props.footerAdditions}
+				cursor={props.cursor}
+				onClose={onClose}
+			/>
 		</HeadlessDialog>
 	)
 }

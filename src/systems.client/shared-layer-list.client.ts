@@ -163,7 +163,7 @@ const activityLoaderConfigs = (function getActivityLoaderConfigs() {
 						frameState.layerTable.randomize()
 					}
 				},
-				staleTime: 30_000,
+				staleTime: 30_00,
 				onUnload(args) {
 					frameManager.teardown(args.data.selectLayersFrame)
 				},
@@ -263,7 +263,8 @@ function createStore() {
 			}))
 
 			function scheduleUnload<Predicate extends ST.Match.Node>(config: ActivityLoaderConfig<string, Predicate>, predicate: Predicate) {
-				return Rx.of(1).pipe(Rx.delay(config.staleTime ?? 1000)).subscribe(async () => {
+				if (!config.staleTime) return
+				return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(async () => {
 					const data = get().activityLoaderCache.find(e => Obj.deepEqual(e.key, predicate))?.data
 					set(Im.produce<Store>(draft => {
 						const loaderCache = draft.activityLoaderCache
@@ -494,12 +495,7 @@ function createStore() {
 			updateActivity(update) {
 				let prev: SLL.Activity | null = get().presence.get(ConfigClient.getConfig().wsClientId)?.activityState ?? null
 				if (!prev) {
-					prev = {
-						_tag: 'branch',
-						id: 'ON_QUEUE_PAGE',
-						opts: {},
-						child: {},
-					}
+					prev = SLL.DEFAULT_ACTIVITY
 				}
 				const next = update(prev)
 				get().pushPresenceAction(PresenceActions.updateActivity(next))
@@ -652,34 +648,36 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 }
 
 // allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
-export function useActivityState(
+export function useActivityState<P>(
 	opts: {
 		createActivity: (prev: SLL.Activity) => SLL.Activity
 		removeActivity: (prev: SLL.Activity) => SLL.Activity
-		matchActivity: (prev: SLL.Activity) => boolean
+
+		// the callback passed here should probably be memoized
+		matchActivity: (prev: SLL.Activity) => P
 	},
 ) {
-	const createActivityRef = React.useRef(opts.createActivity)
-	const matchActivityRef = React.useRef(opts.matchActivity)
-	const removeActivityRef = React.useRef(opts.removeActivity)
-
 	const config = ConfigClient.useConfig()
-	const [active, _setActive] = React.useState(() => {
-		const state = Store.getState().presence.get(ConfigClient.getConfig().wsClientId)?.activityState
-		return !!state && !!matchActivityRef.current(state)
-	})
-	const activeRef = React.useRef(active)
+	const { matchActivity, createActivity, removeActivity } = opts
 
+	const createActivityRef = React.useRef(createActivity)
+	const removeActivityRef = React.useRef(removeActivity)
+	createActivityRef.current = createActivity
+	removeActivityRef.current = removeActivity
+
+	const predicate = Zus.useStore(
+		Store,
+		ZusUtils.useDeep(React.useCallback(() => {
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? SLL.DEFAULT_ACTIVITY
+			return matchActivity(state)
+		}, [config, matchActivity])),
+	)
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
-		const newActive = typeof update === 'function' ? update(active) : update
-
-		_setActive(newActive)
-		activeRef.current = newActive
-
 		const storeState = Store.getState()
-		const state = storeState.presence.get(ConfigClient.getConfig().wsClientId)?.activityState
-		if (!state) return
-		const alreadyActive = !!state && !matchActivityRef.current(state)
+		const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? SLL.DEFAULT_ACTIVITY
+
+		const alreadyActive = !!matchActivity(state)
+		const newActive = typeof update === 'function' ? update(alreadyActive) : update
 
 		if (newActive && !alreadyActive) {
 			storeState.updateActivity(createActivityRef.current)
@@ -687,29 +685,8 @@ export function useActivityState(
 		if (!newActive && alreadyActive) {
 			storeState.updateActivity(removeActivityRef.current)
 		}
-	}, [_setActive, active])
-
-	React.useEffect(() => {
-		if (!config) return
-		const unsub = Store.subscribe((state) => {
-			const currentActivity = state.presence.get(ConfigClient.getConfig().wsClientId)?.activityState
-			if (!currentActivity || !matchActivityRef.current(currentActivity)) {
-				_setActive(false)
-				activeRef.current = false
-			}
-		})
-		return () => unsub()
-	}, [config, _setActive])
-
-	React.useEffect(() => {
-		if (!active) return
-
-		// end activity if this component unmounts
-		const removeActivity = removeActivityRef.current
-		return () => Store.getState().updateActivity(removeActivity)
-	}, [active])
-
-	return [active, setActive] as const
+	}, [matchActivity, config])
+	return [predicate, setActive] as const
 }
 
 export function useHoveredActivityUser() {
@@ -732,6 +709,15 @@ export function useLoadedActivities() {
 		ZusUtils.useShallow(state => {
 			const loadedEntries = state.activityLoaderCache.filter(entry => !!entry.data)
 			return loadedEntries as unknown as LoadedActivityState[]
+		}),
+	)
+}
+
+export function useActivityLoaded(matchActivity: (state: SLL.Activity) => boolean) {
+	return Zus.useStore(
+		Store,
+		ZusUtils.useShallow(state => {
+			return state.activityLoaderCache.some(entry => entry.data !== undefined)
 		}),
 	)
 }

@@ -40,6 +40,12 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 	return [codes, activities] as const
 })()
 
+export const DEFAULT_ACTIVITY: Activity = {
+	_tag: 'branch',
+	id: 'ON_QUEUE_PAGE',
+	opts: {},
+	child: {},
+}
 const _editActivities = ACTIVITIES.child.EDITING.child
 
 type QueueEditActivityKey = (typeof _editActivities)[keyof typeof _editActivities]['id']

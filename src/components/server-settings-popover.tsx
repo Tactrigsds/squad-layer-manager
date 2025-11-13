@@ -55,7 +55,7 @@ export default function ServerSettingsPopover(
 	const [poolId, setPoolId] = React.useState<'mainPool' | 'generationPool'>('mainPool')
 
 	const [open, _setOpen] = SLLClient.useActivityState({
-		matchActivity: (activity) => !!activity.child.VIEWING_SETTINGS,
+		matchActivity: React.useCallback((activity) => !!activity.child.VIEWING_SETTINGS, []),
 		createActivity: Im.produce((draft: Im.WritableDraft<SLL.Activity>) => {
 			draft.child.VIEWING_SETTINGS = {
 				_tag: 'branch',

@@ -17,6 +17,7 @@ import * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
+import { useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
@@ -132,33 +133,34 @@ type AddLayersPosition = 'next' | 'after'
 
 function LoadedSelectLayersView({
 	store,
-	entry,
+	entry: _entry,
 }: {
 	store: Zus.StoreApi<QD.LLStore>
 	entry: SLLClient.LoadedActivityState
 }) {
+	const entry = useStableValue((e) => e, [_entry])
 	const positionCursors = React.useMemo(() => {
 		const next: LQY.Cursor = { type: 'start' }
 		const after: LQY.Cursor = { type: 'end' }
 		return { next, after }
 	}, [])
 
-	const setPosition = (newPosition: AddLayersPosition) => {
+	const setPosition = React.useCallback((newPosition: AddLayersPosition) => {
 		const frameState = getFrameState(entry.data.selectLayersFrame)
 		frameState.setCursor(positionCursors[newPosition])
-	}
+	}, [entry.data.selectLayersFrame, positionCursors])
 
-	const selectPositionToAddLayers = (s: SelectLayersFrame.Types['state']) => {
+	const selectPositionToAddLayers = React.useCallback((s: SelectLayersFrame.Types['state']) => {
 		if (s.cursor?.type === 'end') return 'after' as const
 		return 'next' as const
-	}
+	}, [])
 
 	const addLayersAtPosition = useFrameStore(entry.data.selectLayersFrame, selectPositionToAddLayers)
 
 	const activity = entry.key
 	const data = entry.data
 
-	const onAddItems = (items: LL.NewLayerListItem[]) => {
+	const onAddItems = React.useCallback((items: LL.NewLayerListItem[]) => {
 		if (activity.id !== 'ADDING_ITEM') return
 		const state = store.getState()
 		const cursor = activity.opts.cursor
@@ -170,9 +172,9 @@ function LoadedSelectLayersView({
 			items,
 			index,
 		})
-	}
+	}, [activity.id, activity.opts.cursor, store])
 
-	const onEditedLayer = (layerId: L.LayerId) => {
+	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
 		if (activity.id !== 'EDITING_ITEM') return
 		const state = store.getState()
 		const itemId = activity.opts.itemId
@@ -181,38 +183,42 @@ function LoadedSelectLayersView({
 			itemId,
 			newLayerId: layerId,
 		})
-	}
+	}, [activity.id, (activity.opts as any).itemId, store])
 
-	const onSelectLayersChange = (open: boolean) => {
+	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
 		store.getState().updateActivity(SLL.idleActivity())
-	}
+	}, [store])
+
+	const frames = React.useMemo(() => ({
+		selectLayers: data.selectLayersFrame,
+	}), [data.selectLayersFrame])
+
+	const addLayersTabsList = React.useMemo(() => (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={addLayersAtPosition}
+			setActive={setPosition}
+		/>
+	), [addLayersAtPosition, setPosition])
 
 	if (activity.id === 'EDITING_ITEM') {
 		return (
 			<EditLayerDialog
-				frames={{ selectLayers: data.selectLayersFrame }}
+				frames={frames}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				onSelectLayer={onEditedLayer}
 			/>
 		)
 	} else if (activity.id === 'ADDING_ITEM') {
-		const addLayersTabsList = (
-			<TabsList
-				options={[
-					{ label: 'Play Next', value: 'next' },
-					{ label: 'Play After', value: 'after' },
-				]}
-				active={addLayersAtPosition}
-				setActive={setPosition}
-			/>
-		)
-
 		return (
 			<SelectLayersDialog
 				title={activity.opts.title ?? 'Add Layers'}
-				frames={{ selectLayers: data.selectLayersFrame }}
+				frames={frames}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
@@ -220,7 +226,6 @@ function LoadedSelectLayersView({
 			/>
 		)
 	}
-
 	return null
 }
 
@@ -495,7 +500,10 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
 	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({
 		createActivity: SLL.createQueueEditActivity({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
-		matchActivity: state => state.child.EDITING?.child.id === 'CONFIGURING_VOTE',
+		matchActivity: React.useCallback(
+			(state) => state.child.EDITING?.child.id === 'CONFIGURING_VOTE' && state.child.EDITING?.child.opts.itemId === item.itemId,
+			[item.itemId],
+		),
 		removeActivity: SLL.idleActivity(),
 	})
 
@@ -670,7 +678,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 								>
 									<Icons.Play />
 								</Button>
-								<StartActivityInteraction
+								<StartActivityInteraction<ButtonProps>
 									preload="intent"
 									createActivity={(() => {
 										const cursor = {
@@ -968,6 +976,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isVoteItem(item) && (
 							<StartActivityInteraction
+								matchActivity={(state) => state.child.EDITING?.child?.id === 'EDITING_ITEM'}
 								createActivity={activities['edit']}
 								preload="viewport"
 								render={DropdownMenuItem}
@@ -1064,6 +1073,7 @@ function QueueItemSeparator(props: {
 
 export function StartActivityInteraction<EltProps extends object>(
 	_props: {
+		loaderName: N
 		// can't be changed on rerender
 		createActivity: (prev: SLL.Activity) => SLL.Activity
 		preload: 'intent' | 'viewport' | 'render'
@@ -1078,7 +1088,7 @@ export function StartActivityInteraction<EltProps extends object>(
 		) => React.ReactNode
 	},
 ) {
-	const buttonRef = React.useRef<HTMLButtonElement>(null)
+	const buttonRef = React.useRef<HTMLButtonElement | null>(null)
 	const [props, eltProps] = Obj.partition(_props, 'createActivity', 'preload', 'intentDelay', 'render')
 	const createActivityRef = React.useRef(props.createActivity)
 
@@ -1094,6 +1104,8 @@ export function StartActivityInteraction<EltProps extends object>(
 	)
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
+
+	// unfortunately we currently don't have a way to preload again when the activity becomes unloaded
 
 	React.useEffect(() => {
 		if (props.preload === 'render') {
@@ -1147,7 +1159,7 @@ export function StartActivityInteraction<EltProps extends object>(
 	return (
 		<props.render
 			{...(eltProps as EltProps)}
-			ref={buttonRef}
+			ref={buttonRef as any}
 			onClick={handleClick}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
