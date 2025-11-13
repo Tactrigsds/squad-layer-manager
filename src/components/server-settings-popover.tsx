@@ -263,14 +263,11 @@ function PoolFiltersConfigurationPanel({
 								allowEmpty={false}
 								excludedFilterIds={excludedFilterIds}
 							/>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<TriStateCheckbox checked={filterConfig.applyAs} onCheckedChange={handleApplyAsChanged} title={''} />
-								</TooltipTrigger>
-								<TooltipContent>
-									<p>{descriptions[filterConfig.applyAs]}</p>
-								</TooltipContent>
-							</Tooltip>
+							<TriStateCheckbox
+								checked={filterConfig.applyAs}
+								onCheckedChange={handleApplyAsChanged}
+								title={descriptions[filterConfig.applyAs]}
+							/>
 							<Button
 								disabled={!canWriteSettings}
 								size="icon"
