@@ -214,11 +214,11 @@ function QueueControlPanel() {
 					opts: { cursor: { type: 'index', index: { outerIndex: 0, innerIndex: 0 } }, variant: 'toggle-position' },
 				})}
 				preload="render"
+				className="flex w-min items-center space-x-0"
+				render={Button}
 			>
-				<Button className="flex w-min items-center space-x-0">
-					<Icons.PlusIcon />
-					<span>Add Layers</span>
-				</Button>
+				<Icons.PlusIcon />
+				<span>Add Layers</span>
 			</StartActivityInteraction>
 			<PoolConfigurationPopover>
 				<Button size="icon" variant="ghost" title="Pool Configuration">

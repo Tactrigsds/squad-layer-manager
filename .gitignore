@@ -45,3 +45,5 @@ docker/logs
 docker/squad-dedicated
 
 .tanstack/
+
+dist-server/

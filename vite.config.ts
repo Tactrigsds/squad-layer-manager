@@ -22,7 +22,11 @@ export default defineConfig({
 			REACT_SCAN_ENABLED_OVERRIDE: ENV.REACT_SCAN_ENABLED_OVERRIDE,
 			NODE_ENV: ENV.NODE_ENV,
 		}),
-		react(),
+		react({
+			babel: {
+				plugins: ['babel-plugin-react-compiler'],
+			},
+		}),
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {

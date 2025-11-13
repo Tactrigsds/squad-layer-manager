@@ -19,7 +19,6 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 		} else {
 			throw notFound()
 		}
-		console.log({ layerId: layer.id, tab })
 		return { layerId: layer.id, tab }
 	},
 	caseSensitive: true,
@@ -28,10 +27,8 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 
 function RouteComponent() {
 	const { layerId, tab } = Route.useRouteContext()
-	console.log({ layerId, tab })
 	const navigate = Route.useNavigate()
 	const setTab = (newTab: string) => {
-		console.log({ layerId, tab, newTab })
 		navigate({
 			to: '/layers/$layerId/$tab',
 			params: { tab: newTab },

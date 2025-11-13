@@ -32,23 +32,20 @@ export function initAppliedFiltersStore(
 				}),
 		)
 	}
-	set({ appliedFilters: new Map(), setAppliedFilterState: setFilterState })
-	;(async () => {
-		const states = await getInitialFilterStates(args.input.poolDefaultDisabled)
-		if (args.sub.closed) return
-		set({ appliedFilters: states })
+	const states = getInitialFilterStates(args.input.poolDefaultDisabled)
+	if (args.sub.closed) return
+	set({ appliedFilters: states, setAppliedFilterState: setFilterState })
 
-		const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
-			set(state => ({
-				appliedFilters: new Map(Gen.filter(state.appliedFilters, ([id]) => extraFiltersState.extraFilters.has(id))),
-			}))
-		})
+	const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
+		set(state => ({
+			appliedFilters: new Map(Gen.filter(state.appliedFilters, ([id]) => extraFiltersState.extraFilters.has(id))),
+		}))
+	})
 
-		args.sub.add(ZusUtils.toRxSub(unsub))
-	})()
+	args.sub.add(ZusUtils.toRxSub(unsub))
 }
 
-export async function getInitialFilterStates(poolDefaultDisabled: boolean) {
+function getInitialFilterStates(poolDefaultDisabled: boolean) {
 	const initialState: State['appliedFilters'] = new Map()
 	const extraFilters = QD.ExtraFiltersStore.getState().extraFilters
 	for (const filterid of extraFilters) {
@@ -61,7 +58,7 @@ export async function getInitialFilterStates(poolDefaultDisabled: boolean) {
 		}
 	}
 
-	const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
+	const filterEntities = FilterEntityClient.filterEntities
 	for (const filterId of initialState.keys()) {
 		const filterEntity = filterEntities.get(filterId)
 		if (!filterEntity) {

@@ -57,7 +57,6 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.log = baseLogger
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
-		console.log('LMAOOOOO')
 		baseLogger.info(`REQUEST %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
 		monkeyPatchContextAndLogs(request)
 	})
@@ -67,6 +66,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		case 'production':
 			instance.register(fastifyStatic, {
 				root: Paths.DIST,
+
+				// if this is on it'll cause a duplicate route issue, but it means we can't do dynamic files at the moment
+				wildcard: false,
+
+				// don't try to server index.html, conflicting with our routes
+				index: false,
 				setHeaders: (header) => {
 					for (const [key, value] of Object.entries(BASE_HEADERS)) {
 						header.setHeader(key, value)
@@ -223,7 +228,6 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	}
 
 	instance.addHook('preValidation', async (req, reply) => {
-		console.log('PRE VALIDATION ', req.url)
 		const baseCtx = buildFastifyRequestContext(req)
 		if (baseCtx.route?.def.authed === false) return
 		const authRes = await authorizeRequest(baseCtx, reply)
@@ -266,13 +270,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 		}
 	})
 
-	// instance.addContentTypeParser('*', (request, payload, done) => {
-	// 	if (!request.url.startsWith('/orpc')) return
+	instance.addContentTypeParser('*', (request, payload, done) => {
+		// Fully utilize oRPC feature by allowing any content type
+		// And let oRPC parse the body manually by passing `undefined`
+		done(null, undefined)
+	})
 
-	// 	// Fully utilize oRPC feature by allowing any content type
-	// 	// And let oRPC parse the body manually by passing `undefined`
-	// 	done(null, undefined)
-	// })
 	instance.register(fastifyWebsocket)
 	instance.register(async function(instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {

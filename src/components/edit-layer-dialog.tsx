@@ -31,7 +31,6 @@ type InnerEditLayerDialogProps = {
 }
 
 export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
-	return null
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}

@@ -60,7 +60,7 @@ export default function LayerDisplay(
 				</TooltipContent>
 			</Tooltip>,
 		)
-	} else if (!statusData.present?.has(L.normalize(props.item.layerId))) {
+	} else if (statusData.present && !statusData.present?.has(L.normalize(props.item.layerId))) {
 		badges.push(
 			<Tooltip key="layer doesn't exist">
 				<TooltipTrigger>

@@ -787,7 +787,6 @@ function StringInConfig(
 		const matched = !matchedValues || matchedValues.includes(value)
 		options.push({ label: value, value, disabled: !matched })
 	}
-	console.log(options)
 	return (
 		<ComboBoxMulti
 			title={props.column}

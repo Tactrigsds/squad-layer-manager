@@ -30,7 +30,7 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 				}),
 			),
 
-			leaf('EDITING_ITEM', z.object({ itemId: LL.ItemIdSchema })),
+			leaf('EDITING_ITEM', z.object({ itemId: LL.ItemIdSchema, cursor: LL.CursorSchema })),
 			// leaf('MOVING_ITEM', z.object({ itemId: LL.ItemIdSchema })),
 			leaf('CONFIGURING_VOTE', z.object({ itemId: LL.ItemIdSchema })),
 		]),
@@ -545,14 +545,14 @@ export const getHumanReadableActivity = (activity: Activity, list: LL.List) => {
 		return `Editing`
 	}
 	if (editingActivity.child.id === 'ADDING_ITEM') {
-		return 'Adding an item'
+		return 'Adding layers'
 	}
 
 	const { index } = destrNullable(LL.findItemById(list, editingActivity.child.opts.itemId))
 	const itemName = index ? LL.getItemNumber(index) : 'Item'
 	switch (editingActivity.child.id) {
 		case 'EDITING_ITEM':
-			return `Editing ${itemName} `
+			return `Editing ${itemName}`
 		case 'CONFIGURING_VOTE':
 			return ` Configuring vote for ${itemName}`
 		default:

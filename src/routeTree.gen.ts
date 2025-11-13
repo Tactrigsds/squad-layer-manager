@@ -9,20 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TestrouteRouteImport } from './routes/testroute'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
 import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
 import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
 import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
 import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
 import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
 
-const TestrouteRoute = TestrouteRouteImport.update({
-  id: '/testroute',
-  path: '/testroute',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -30,6 +25,11 @@ const AppRouteRoute = AppRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SandboxSandboxRoute = SandboxSandboxRouteImport.update({
+  id: '/_sandbox/sandbox',
+  path: '/sandbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
@@ -60,7 +60,7 @@ const AppFiltersFilterIdRoute = AppFiltersFilterIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/testroute': typeof TestrouteRoute
+  '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
@@ -69,7 +69,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/testroute': typeof TestrouteRoute
+  '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
@@ -80,7 +80,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteRouteWithChildren
-  '/testroute': typeof TestrouteRoute
+  '/_sandbox/sandbox': typeof SandboxSandboxRoute
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/_app/filters/new': typeof AppFiltersNewRoute
   '/_app/servers/$serverId': typeof AppServersServerIdRoute
@@ -91,7 +91,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/testroute'
+    | '/sandbox'
     | '/filters/$filterId'
     | '/filters/new'
     | '/servers/$serverId'
@@ -100,7 +100,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/testroute'
+    | '/sandbox'
     | '/filters/$filterId'
     | '/filters/new'
     | '/servers/$serverId'
@@ -110,7 +110,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
-    | '/testroute'
+    | '/_sandbox/sandbox'
     | '/_app/filters/$filterId'
     | '/_app/filters/new'
     | '/_app/servers/$serverId'
@@ -121,19 +121,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
-  TestrouteRoute: typeof TestrouteRoute
+  SandboxSandboxRoute: typeof SandboxSandboxRoute
   LayersLayerIdTabRoute: typeof LayersLayerIdTabRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/testroute': {
-      id: '/testroute'
-      path: '/testroute'
-      fullPath: '/testroute'
-      preLoaderRoute: typeof TestrouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -146,6 +139,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_sandbox/sandbox': {
+      id: '/_sandbox/sandbox'
+      path: '/sandbox'
+      fullPath: '/sandbox'
+      preLoaderRoute: typeof SandboxSandboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/filters/': {
@@ -207,7 +207,7 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
-  TestrouteRoute: TestrouteRoute,
+  SandboxSandboxRoute: SandboxSandboxRoute,
   LayersLayerIdTabRoute: LayersLayerIdTabRoute,
 }
 export const routeTree = rootRouteImport

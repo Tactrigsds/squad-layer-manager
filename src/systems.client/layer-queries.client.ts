@@ -97,7 +97,7 @@ export function getQueryLayersOptions(
 ) {
 	counters = counters ?? Store.getState().counters
 	return {
-		queryKey: ['layers', 'queryLayers', getDepKey(input, counters)],
+		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
 		queryFn: async () => {
 			if (input.sort?.type === 'random' && !input.sort.seed) {
 				throw new Error('Random sort requires a random seed when used with react query')

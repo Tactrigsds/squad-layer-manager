@@ -38,6 +38,20 @@ export function selectProps<T extends object, K extends keyof T>(obj: T, selecte
 	return result as Pick<T, K>
 }
 
+export function partition<T extends object, K extends keyof T>(obj: T, ...selected: K[]): [Pick<T, K>, Omit<T, K>] {
+	const selectedSet = new Set(selected)
+	const picked: Partial<T> = {}
+	const omitted: Partial<T> = {}
+	for (const key of Object.keys(obj)) {
+		if (selectedSet.has(key as K)) {
+			picked[key as keyof T] = obj[key as unknown as keyof T]
+		} else {
+			omitted[key as keyof T] = obj[key as unknown as keyof T]
+		}
+	}
+	return [picked as Pick<T, K>, omitted as Omit<T, K>]
+}
+
 export const deepEqual = fastDeepEqual
 
 /*

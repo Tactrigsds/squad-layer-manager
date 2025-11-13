@@ -27,3 +27,5 @@ export function destrNullable<T extends object>(obj: T | undefined) {
 }
 
 export type StrKeys<T extends object> = Extract<keyof T, string>
+
+export type NumericKeys<T extends object> = Extract<keyof T, number>

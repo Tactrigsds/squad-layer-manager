@@ -1,13 +1,13 @@
 import { Badge } from '@/components/ui/badge.tsx'
 import { Button, ButtonProps } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, dropdownMenuItemClassesBase, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import { getFrameState, useNullableFrameStore } from '@/frames/frame-manager.ts'
+import { getFrameState, useFrameStore, useNullableFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
@@ -58,11 +58,7 @@ export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
 	const user = UsersClient.useLoggedInUser()
-	const queueItemIds = ZusUtils.useStoreDeep(props.store, (store) => store.layerList.map((item) => item.itemId), { dependencies: [] })
-	const [activityState, frames] = Zus.useStore(
-		props.store,
-		ZusUtils.useShallow(state => [state._activityState, state.frames]),
-	)
+	const queueItemIds = Zus.useStore(props.store, ZusUtils.useShallow((store) => store.layerList.map((item) => item.itemId)))
 	DndKit.useDragEnd(React.useCallback(async (event) => {
 		if (!user || !event.over) return
 		const target = event.over.slots[0]
@@ -98,14 +94,73 @@ export function LayerList(
 		}
 	}, [user, props.store]))
 
-	const editAction = activityState?.child.EDITING?.child
-	const onSelectLayersChange = (open: boolean) => {
-		props.store.getState().updateActivity(SLL.idleActivity())
+	return (
+		<>
+			<ul className="flex w-full flex-col">
+				{queueItemIds.map((id) => (
+					<LayerListItem
+						llStore={props.store}
+						key={id}
+						itemId={id}
+					/>
+				))}
+			</ul>
+			<LoadedActivitiesRenderer store={props.store} />
+		</>
+	)
+}
+
+function LoadedActivitiesRenderer({ store }: { store: Zus.StoreApi<QD.LLStore> }) {
+	return (
+		<>
+			{SLLClient.useLoadedActivities().map((entry) =>
+				entry.name === 'selectLayers'
+					? (
+						<LoadedSelectLayersView
+							key={entry.data.selectLayersFrame.instanceId}
+							store={store}
+							entry={entry}
+						/>
+					)
+					: null
+			)}
+		</>
+	)
+}
+
+type AddLayersPosition = 'next' | 'after'
+
+function LoadedSelectLayersView({
+	store,
+	entry,
+}: {
+	store: Zus.StoreApi<QD.LLStore>
+	entry: SLLClient.LoadedActivityState
+}) {
+	const positionCursors = React.useMemo(() => {
+		const next: LQY.Cursor = { type: 'start' }
+		const after: LQY.Cursor = { type: 'end' }
+		return { next, after }
+	}, [])
+
+	const setPosition = (newPosition: AddLayersPosition) => {
+		const frameState = getFrameState(entry.data.selectLayersFrame)
+		frameState.setCursor(positionCursors[newPosition])
 	}
 
+	const selectPositionToAddLayers = (s: SelectLayersFrame.Types['state']) => {
+		if (s.cursor?.type === 'end') return 'after' as const
+		return 'next' as const
+	}
+
+	const addLayersAtPosition = useFrameStore(entry.data.selectLayersFrame, selectPositionToAddLayers)
+
+	const activity = entry.key
+	const data = entry.data
+
 	const onAddItems = (items: LL.NewLayerListItem[]) => {
-		const state = props.store.getState()
-		const activity = editAction as Extract<typeof editAction, { id: 'ADDING_ITEM' }>
+		if (activity.id !== 'ADDING_ITEM') return
+		const state = store.getState()
 		const cursor = activity.opts.cursor
 		const index = LL.resolveCursorIndex(state.layerList, cursor)
 		if (!index) return
@@ -118,8 +173,8 @@ export function LayerList(
 	}
 
 	const onEditedLayer = (layerId: L.LayerId) => {
-		const state = props.store.getState()
-		const activity = editAction as Extract<typeof editAction, { id: 'EDITING_ITEM' }>
+		if (activity.id !== 'EDITING_ITEM') return
+		const state = store.getState()
 		const itemId = activity.opts.itemId
 		state.dispatch({
 			op: 'edit-layer',
@@ -128,68 +183,45 @@ export function LayerList(
 		})
 	}
 
-	type AddLayersPosition = 'next' | 'after'
-	const positionCursors = (() => {
-		const next: LQY.Cursor = { type: 'start' }
-		const after: LQY.Cursor = { type: 'end' }
-		return { next, after }
-	})()
-	const selectPosition = (s: SelectLayersFrame.Types['state'] | null) => {
-		if (s?.cursor?.type === 'index' && Obj.deepEqual(s.cursor.index, positionCursors.after)) return 'next' as const
-		return 'after' as const
+	const onSelectLayersChange = (open: boolean) => {
+		if (open) return
+		store.getState().updateActivity(SLL.idleActivity())
 	}
 
-	const position = useNullableFrameStore(frames.selectLayers, selectPosition)
-
-	const setPosition = (newPosition: AddLayersPosition) => {
-		if (!frames.selectLayers) return
-		const frameState = getFrameState(frames.selectLayers)
-		frameState.setCursor(positionCursors[newPosition])
-	}
-
-	React.useEffect(() => {
-		console.log('frames:', frames)
-		console.log('activityState:', activityState)
-	}, [frames, activityState])
-
-	const addLayersTabsList = (
-		<TabsList
-			options={[
-				{ label: 'Play Next', value: 'next' },
-				{ label: 'Play After', value: 'after' },
-			]}
-			active={position}
-			setActive={setPosition}
-		/>
-	)
-
-	return (
-		<>
-			<ul className="flex w-full flex-col">
-				{queueItemIds.map((id) => (
-					<LayerListItem
-						llStore={props.store}
-						key={id}
-						itemId={id}
-					/>
-				))}
-			</ul>
-			<SelectLayersDialog
-				title={(editAction?.id === 'ADDING_ITEM' ? editAction.opts.title : undefined) ?? 'Add Layer'}
-				frames={(frames.selectLayers) ? { selectLayers: frames.selectLayers } : {}}
-				open={editAction?.id === 'ADDING_ITEM' && !!frames.selectLayers}
-				onOpenChange={onSelectLayersChange}
-				selectQueueItems={onAddItems}
-				footerAdditions={(editAction?.id === 'ADDING_ITEM' && editAction.opts.variant === 'toggle-position') && addLayersTabsList}
-			/>
+	if (activity.id === 'EDITING_ITEM') {
+		return (
 			<EditLayerDialog
-				frames={frames.selectLayers ? { selectLayers: frames.selectLayers } : {}}
-				open={editAction?.id === 'EDITING_ITEM' && !!frames.selectLayers}
+				frames={{ selectLayers: data.selectLayersFrame }}
+				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				onSelectLayer={onEditedLayer}
 			/>
-		</>
-	)
+		)
+	} else if (activity.id === 'ADDING_ITEM') {
+		const addLayersTabsList = (
+			<TabsList
+				options={[
+					{ label: 'Play Next', value: 'next' },
+					{ label: 'Play After', value: 'after' },
+				]}
+				active={addLayersAtPosition}
+				setActive={setPosition}
+			/>
+		)
+
+		return (
+			<SelectLayersDialog
+				title={activity.opts.title ?? 'Add Layers'}
+				frames={{ selectLayers: data.selectLayersFrame }}
+				open={entry.active}
+				onOpenChange={onSelectLayersChange}
+				selectQueueItems={onAddItems}
+				footerAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
+			/>
+		)
+	}
+
+	return null
 }
 
 export type QueueItemAction =
@@ -652,15 +684,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											}) satisfies SLL.QueueEditActivity<'ADDING_ITEM'>,
 										)
 									})()}
+									render={Button}
+									variant="ghost"
+									size="icon"
+									title="Add Vote Choices"
+									{...editButtonProps()}
 								>
-									<Button
-										variant="ghost"
-										size="icon"
-										title="Add Vote Choices"
-										{...editButtonProps()}
-									>
-										<Icons.Plus />
-									</Button>
+									<Icons.Plus />
 								</StartActivityInteraction>
 								<VoteDisplayPropsPopover
 									open={voteDisplayPropsOpen}
@@ -895,9 +925,10 @@ function ItemDropdown(props: ItemDropdownProps) {
 			'edit': SLL.createQueueEditActivity({
 				_tag: 'leaf',
 				id: 'EDITING_ITEM',
-				opts: { itemId: item.itemId },
+				opts: { itemId: item.itemId, cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' } },
 			}),
 		} satisfies { [k in SubDropdownState]: any }
+		// activities.edit = activities['add-after']
 
 		return [activities] as const
 	}, [item.itemId])
@@ -939,8 +970,9 @@ function ItemDropdown(props: ItemDropdownProps) {
 							<StartActivityInteraction
 								createActivity={activities['edit']}
 								preload="viewport"
+								render={DropdownMenuItem}
 							>
-								<DropdownMenuItem>Edit</DropdownMenuItem>
+								Edit
 							</StartActivityInteraction>
 						)}
 						<DropdownMenuItem
@@ -960,32 +992,35 @@ function ItemDropdown(props: ItemDropdownProps) {
 							Delete
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
-
 					{!LL.isVoteItem(item) && (
 						<StartActivityInteraction
-							createActivity={activities['create-vote']!}
+							createActivity={activities['create-vote']}
 							preload="viewport"
+							disabled={isLocked}
+							render={DropdownMenuItem}
 						>
-							<DropdownMenuItem
-								disabled={isLocked}
-							>
-								Create Vote
-							</DropdownMenuItem>
+							Create Vote
 						</StartActivityInteraction>
 					)}
 
 					<DropdownMenuSeparator />
 
 					<DropdownMenuGroup>
-						<StartActivityInteraction createActivity={activities['add-after']} preload="viewport">
-							<DropdownMenuItem>
-								Add Layers Before
-							</DropdownMenuItem>
+						<StartActivityInteraction
+							className={dropdownMenuItemClassesBase}
+							createActivity={activities['add-after']}
+							preload="viewport"
+							render={DropdownMenuItem}
+						>
+							Add Layers Before
 						</StartActivityInteraction>
-						<StartActivityInteraction createActivity={activities['add-before']} preload="viewport">
-							<DropdownMenuItem>
-								Add Layers After
-							</DropdownMenuItem>
+						<StartActivityInteraction
+							className={dropdownMenuItemClassesBase}
+							createActivity={activities['add-before']}
+							preload="viewport"
+							render={DropdownMenuItem}
+						>
+							Add Layers After
 						</StartActivityInteraction>
 					</DropdownMenuGroup>
 
@@ -1027,17 +1062,25 @@ function QueueItemSeparator(props: {
 	)
 }
 
-export function StartActivityInteraction(
-	props: {
+export function StartActivityInteraction<EltProps extends object>(
+	_props: {
 		// can't be changed on rerender
 		createActivity: (prev: SLL.Activity) => SLL.Activity
 		preload: 'intent' | 'viewport' | 'render'
 		intentDelay?: number
-		children: React.ReactNode
+		render: (
+			props: EltProps & {
+				ref: React.RefObject<HTMLButtonElement>
+				onClick: () => void
+				onMouseEnter: () => void
+				onMouseLeave: () => void
+			},
+		) => React.ReactNode
 	},
 ) {
+	const buttonRef = React.useRef<HTMLButtonElement>(null)
+	const [props, eltProps] = Obj.partition(_props, 'createActivity', 'preload', 'intentDelay', 'render')
 	const createActivityRef = React.useRef(props.createActivity)
-	const buttonRef = React.useRef<HTMLDivElement>(null)
 
 	const startActivity = () => {
 		return SLLClient.Store.getState().updateActivity(createActivityRef.current)
@@ -1102,13 +1145,12 @@ export function StartActivityInteraction(
 	}
 
 	return (
-		<Slot
+		<props.render
+			{...(eltProps as EltProps)}
 			ref={buttonRef}
 			onClick={handleClick}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
-		>
-			{props.children}
-		</Slot>
+		/>
 	)
 }

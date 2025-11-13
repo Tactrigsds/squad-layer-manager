@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
@@ -25,21 +25,12 @@ type SelectLayersDialogProps = {
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	headerAdditions?: React.ReactNode
 	footerAdditions?: React.ReactNode
 	children?: React.ReactNode
 	cursor?: LQY.Cursor
 }
-export default function SelectLayersDialogWrapper(props: SelectLayersDialogProps & { children?: React.ReactNode }) {
-	return (
-		<Dialog open={props.open} onOpenChange={props.onOpenChange} modal={true}>
-			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
-			{props.open && <SelectLayersDialog {...props} />}
-		</Dialog>
-	)
-}
 
-export function SelectLayersDialog(props: SelectLayersDialogProps) {
+export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 	const defaultSelectedRef = React.useRef(props.defaultSelected ?? [])
 
 	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, selected: defaultSelectedRef.current }))
@@ -54,6 +45,7 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 
 	const [selectMode, _setSelectMode] = React.useState<SelectMode>(props.pinMode ?? 'layers')
 	const setSelectedLayers = useFrameStore(frameKey, (s) => s.layerTable.setSelected)
+
 	function setAdditionType(newAdditionType: SelectMode) {
 		if (newAdditionType === 'vote') {
 			setSelectedLayers((prev) => {
@@ -69,10 +61,12 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 		}
 		_setSelectMode(newAdditionType)
 	}
+
 	const user = useLoggedInUser()
 	const [submitted, setSubmitted] = React.useState(false)
 
-	const canSubmit = useFrameStore(frameKey, (s) => s.layerTable.selected.length > 0) || !submitted
+	const canSubmit = useFrameStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
+
 	function submit() {
 		if (!canSubmit) return
 		setSubmitted(true)
@@ -108,58 +102,54 @@ export function SelectLayersDialog(props: SelectLayersDialogProps) {
 	}
 
 	return (
-		<DialogContent className="w-auto max-w-full overflow-x-auto min-w-0 pb-2">
-			<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-				<div className="flex items-center space-x-2">
-					<DialogTitle>{props.title}</DialogTitle>
-					{props.description
-						&& (
-							<>
-								<div className="mx-8 font-light">-</div>
-								<DialogDescription>{props.description}</DialogDescription>
-							</>
-						)}
-				</div>
-				<div className="flex justify-end items-center space-x-2 flex-grow">
-					<AppliedFiltersPanel frameKey={frameKey} />
-					{props.headerAdditions}
-				</div>
-			</DialogHeader>
-
-			<div className="flex min-h-0 items-start space-x-2">
-				<LayerFilterMenu frameKey={frameKey} />
-				<div className="flex flex-col space-y-2 justify-between h-full">
-					<div className={'flex h-full flex-grow'}>
-						<LayerTable
-							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
-							frameKey={frameKey}
-							canChangeRowsPerPage={false}
-							canToggleColumns={true}
-							enableForceSelect={true}
-						/>
+		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>
+			<HeadlessDialogContent className="max-w-[90vw] max-h-[95vh] flex flex-col transition-all duration-300 ease-out overflow-auto">
+				<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+					<div className="flex items-center">
+						<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
+						{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
 					</div>
+					<div className="flex justify-end items-center space-x-2 flex-grow">
+						<AppliedFiltersPanel frameKey={frameKey} />
+					</div>
+				</HeadlessDialogHeader>
 
-					<div className="grow self-end space-x-2">
-						{props.footerAdditions}
-						{!props.pinMode && (
-							<TabsList
-								options={[
-									{ label: 'Vote', value: 'vote' },
-									{ label: 'Set Layer', value: 'layers' },
-								]}
-								active={selectMode}
-								setActive={setAdditionType}
+				<div className="flex min-h-0 items-start space-x-2 flex-1">
+					<LayerFilterMenu frameKey={frameKey} />
+					<div className="flex flex-col space-y-2 justify-between h-full flex-1 min-h-0">
+						<div className={'flex h-full flex-grow min-h-0'}>
+							<LayerTable
+								extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
+								frameKey={frameKey}
+								canChangeRowsPerPage={false}
+								canToggleColumns={true}
+								enableForceSelect={true}
 							/>
-						)}
-						<Button disabled={!canSubmit} onClick={submit}>
-							Submit
-						</Button>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			<DialogFooter>
-			</DialogFooter>
-		</DialogContent>
+				<HeadlessDialogFooter>
+					<div className="flex items-center justify-end w-full">
+						<div className="flex items-center space-x-2">
+							{props.footerAdditions}
+							{!props.pinMode && (
+								<TabsList
+									options={[
+										{ label: 'Vote', value: 'vote' },
+										{ label: 'Set Layer', value: 'layers' },
+									]}
+									active={selectMode}
+									setActive={setAdditionType}
+								/>
+							)}
+							<Button disabled={!canSubmit} onClick={submit}>
+								Submit
+							</Button>
+						</div>
+					</div>
+				</HeadlessDialogFooter>
+			</HeadlessDialogContent>
+		</HeadlessDialog>
 	)
 }

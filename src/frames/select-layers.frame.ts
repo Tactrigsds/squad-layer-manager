@@ -30,9 +30,6 @@ export function createInput(
 ): Input {
 	const base: BaseInput = {
 		colConfig: ConfigClient.getColConfig(),
-		cursor: opts.cursor ?? (opts.initialEditedLayerId
-			? { type: 'item-relative', itemId: opts.initialEditedLayerId!, position: 'on' }
-			: undefined),
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
 	}
@@ -74,7 +71,7 @@ type Store =
 
 export type Types = {
 	name: 'selectLayers'
-	key: FRM.RawInstanceKey<{ editedLayerId?: L.LayerId; id: string }>
+	key: FRM.RawInstanceKey<{ editedLayerId?: L.LayerId; instanceId: string }>
 	input: Input
 	state: Store
 }
@@ -161,7 +158,7 @@ const setup: Frame['setup'] = (args) => {
 export const frame = frameManager.createFrame<Types>({
 	name: 'selectLayers',
 	setup,
-	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, id: input.instanceId }),
+	createKey: (frameId, input) => ({ frameId, editedLayerId: input.initialEditedLayerId, instanceId: input.instanceId }),
 })
 
 export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInput {
@@ -174,6 +171,7 @@ export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInpu
 
 	return {
 		cursor: state.cursor,
+		action: !!state.initialEditedLayerId ? 'edit' : 'add',
 		constraints: [
 			...appliedConstraints,
 			...repeatRuleConstraints,

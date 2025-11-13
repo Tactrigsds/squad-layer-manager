@@ -7,7 +7,7 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
 type FrameId = symbol
-export type RawInstanceKey<Props extends { [key: string]: any } = object> = Readonly<{ frameId: FrameId } & Props>
+export type RawInstanceKey<Props extends { [key: string]: any } = any> = Readonly<{ frameId: FrameId } & Props>
 
 // const KEYRING = Symbol('KEYRING')
 // export function createKeyring<Keys extends { [key: string]: RawInstanceKey }>(keys: Keys) {
@@ -31,7 +31,7 @@ export type KeyCollection<FT extends { [key: string]: FrameTypes } = { [key: str
 		: never
 }
 
-export type InstanceKey<T extends FrameTypes> = RawInstanceKey & Readonly<{ _: T }> // for inference
+export type InstanceKey<T extends FrameTypes> = T['key'] & Readonly<{ _: T }> // for inference
 
 // export type Keyring<Keys extends KeyCollection> = Keys & { [KEYRING]: true }
 

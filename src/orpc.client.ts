@@ -142,7 +142,7 @@ export function observe<T>(task: () => Promise<AsyncGenerator<T>>) {
 				const backoff$ = Rx.timer(Math.pow(2, count) * 250)
 
 				// we only want to log the error if the connection is closed
-				if (connectStatus$.getValue() === 'open') return backoff$
+				if (connectStatus$.getValue() !== 'open') return backoff$
 
 				console.error(error)
 				if (count > 2) {

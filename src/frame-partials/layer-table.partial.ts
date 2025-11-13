@@ -83,6 +83,7 @@ export type LayerTable = {
 	sort: ({} & LQY.LayersQuerySort) | null
 	setSort: React.Dispatch<React.SetStateAction<LQY.LayersQuerySort | null>>
 	randomize: () => void
+	reseed: () => void
 
 	defaultSelected: L.LayerId[]
 	selected: L.LayerId[]
