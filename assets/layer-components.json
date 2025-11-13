@@ -143208,7 +143208,8 @@
   },
   "backwardsCompat": {
     "factions": {
-      "INS": "MEI"
+      "INS": "MEI",
+      "MEA": "GFI"
     },
     "gamemodes": {},
     "maps": {},

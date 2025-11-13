@@ -74,10 +74,11 @@ export type RawLayer = UnvalidatedLayer & {
 	id: `RAW:${string}`
 }
 
-export const LayerIdSchema = z.string().min(1).max(255)
+export const LayerIdSchema = createLayerIdSchema()
 
-export function createLayerIdSchema(components = StaticLayerComponents) {
-	return LayerIdSchema.refine(id => {
+export function createLayerIdSchema() {
+	return z.string().min(1).max(255).refine(id => {
+		const components = StaticLayerComponents
 		if (id.startsWith('RAW:')) return true
 		const res = parseLayerId(id, components)
 		if (res.code !== 'ok') {
@@ -86,6 +87,9 @@ export function createLayerIdSchema(components = StaticLayerComponents) {
 		return res.code === 'ok'
 	}, {
 		message: 'Is valid layer id',
+		// normalize the id, but avoid cirucular type definitions
+	}).transform(id => {
+		return (normalize as any)(id, StaticLayerComponents) as string
 	})
 }
 

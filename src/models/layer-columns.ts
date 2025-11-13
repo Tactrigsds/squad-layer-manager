@@ -499,8 +499,10 @@ export function unpackId(
 	const layerIndex = (packed >> bitOffset) & layerMask
 
 	const layer = components.layers[layerIndex]
+	const parsedSegments = L.parseLayerStringSegment(layer)!
+	const compatMappedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
 	return L.getKnownLayerId({
-		...L.parseLayerStringSegment(layer)!,
+		...compatMappedSegments,
 		Faction_1: components.factions[faction1Index],
 		Unit_1: components.units[unit1Index],
 		Faction_2: components.factions[faction2Index],
@@ -769,6 +771,7 @@ export function buildFullLayerComponents(
 	const BACKWARDS_COMPAT = {
 		factions: {
 			INS: 'MEI',
+			MEA: 'GFI',
 		},
 		gamemodes: {},
 		maps: {},

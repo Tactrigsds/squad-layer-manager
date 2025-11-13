@@ -119,8 +119,9 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 			if (row.SubFac_1) row.Unit_1 = row.SubFac_1
 			if (row.SubFac_2) row.Unit_2 = row.SubFac_2
 
-			const segments = L.parseLayerStringSegment(row['Layer'])
+			let segments = L.parseLayerStringSegment(row['Layer'])
 			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
+			segments = L.applyBackwardsCompatMappings(segments, components)
 
 			if (!segments) throw new Error(`Layer ${row['Layer']} is invalid`)
 			const idArgs = {
@@ -385,8 +386,9 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				if (availEntry1.Faction === availEntry2.Faction) continue
 				if (alliance1 === alliance2 && alliance1 !== 'INDEPENDENT') continue
 
-				const parsedSegments = L.parseLayerStringSegment(layer.Layer)
+				let parsedSegments = L.parseLayerStringSegment(layer.Layer)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
+				parsedSegments = L.applyBackwardsCompatMappings(parsedSegments, LC.toLayerComponentsJson(components))
 				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
 				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
 				components.versions.add(parsedSegments.LayerVersion)

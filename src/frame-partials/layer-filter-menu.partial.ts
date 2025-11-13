@@ -91,11 +91,12 @@ export function initLayerFilterMenuStore(
 
 						if (comp.column === 'Layer' && comp.value) {
 							// TODO this section doesn't handle training modes well
-							const parsedLayer = L.parseLayerStringSegment(comp.value as string)
+							let parsedLayer = L.parseLayerStringSegment(comp.value as string)
 							draft['Layer'].value = comp.value
 							if (!parsedLayer) {
 								return
 							}
+							parsedLayer = L.applyBackwardsCompatMappings(parsedLayer)
 							draft['Map'].value = parsedLayer.Map
 							draft['Gamemode'].value = parsedLayer.Gamemode
 							draft['LayerVersion'].value = parsedLayer.LayerVersion
