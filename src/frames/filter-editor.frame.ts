@@ -32,12 +32,12 @@ type Input = {
 } & LayerTablePrt.Input
 
 export const createInput = (
-	args: { editedFilterId?: string; startingFilter?: F.EditableFilterNode },
+	args: { editedFilterId?: string; startingFilter?: F.EditableFilterNode; colConfig: LQY.EffectiveColumnAndTableConfig },
 ): Input => {
 	return {
 		editedFilterId: args.editedFilterId,
 		startingFilter: args.startingFilter,
-		...LayerTablePrt.getInputDefaults({ colConfig: ConfigClient.getColConfig() }),
+		...LayerTablePrt.getInputDefaults({ colConfig: args.colConfig }),
 		instanceId: createId(4),
 	}
 }

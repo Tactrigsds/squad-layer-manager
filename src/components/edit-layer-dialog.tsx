@@ -32,9 +32,16 @@ type EditLayerDialogContentProps = {
 }
 
 const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function EditLayerDialogContent(props) {
-	const defaultLayerId = React.useRef(props.layerId)
+	const defaultLayerIdRef = React.useRef(props.layerId)
 	const frameInputRef = useRefConstructor(
-		() => SelectLayersFrame.createInput({ cursor: props.cursor, initialEditedLayerId: defaultLayerId.current }),
+		() =>
+			SelectLayersFrame.createInput({
+				cursor: props.cursor,
+				initialEditedLayerId: defaultLayerIdRef.current,
+				selected: defaultLayerIdRef.current ? [defaultLayerIdRef.current] : [],
+				maxSelected: 1,
+				minSelected: defaultLayerIdRef.current ? 1 : 0,
+			}),
 	)
 	const frameKey = useFrameLifecycle(
 		SelectLayersFrame.frame,

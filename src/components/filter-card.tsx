@@ -1,4 +1,3 @@
-import * as AR from '@/app-routes.ts'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -865,17 +864,16 @@ export function LayerEqConfig(
 
 	return (
 		<div className="flex space-x-2 items-center">
+			<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
+				{props.value !== null && DH.displayLayer(props.value)}
+				<Icons.Edit />
+			</Button>
 			<EditLayerDialog
 				open={open}
 				onOpenChange={setOpen}
 				layerId={props.value ?? undefined}
 				onSelectLayer={(v) => props.setValue(v)}
-			>
-				<Button className="flex items-center space-x-1" variant="ghost" onClick={() => setOpen(true)}>
-					{props.value !== null && DH.displayLayer(props.value)}
-					<Icons.Edit />
-				</Button>
-			</EditLayerDialog>
+			/>
 		</div>
 	)
 }

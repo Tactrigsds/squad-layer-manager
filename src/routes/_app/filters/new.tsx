@@ -3,6 +3,7 @@ import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
+import * as ConfigClient from '@/systems.client/config.client'
 import { createFileRoute } from '@tanstack/react-router'
 
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
@@ -12,7 +13,8 @@ export const Route = createFileRoute('/_app/filters/new')({
 	staleTime: Infinity,
 	preloadStaleTime: Infinity,
 	loader: async () => {
-		const frameInput = EditFrame.createInput({ startingFilter: DEFAULT_FILTER })
+		const colConfig = await ConfigClient.fetchEffectiveColConfig()
+		const frameInput = EditFrame.createInput({ startingFilter: DEFAULT_FILTER, colConfig })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
 		return { frameKey }
 	},

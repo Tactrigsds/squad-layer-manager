@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as UsersClient from '@/systems.client/users.client'
 import { createFileRoute, useParams } from '@tanstack/react-router'
@@ -32,7 +33,8 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		if (!filterEntity) return null
 		const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.getFetchUserOptions(filterEntity.owner))
 		if (ownerRes.code !== 'ok') return null
-		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter })
+		const colConfig = await ConfigClient.fetchEffectiveColConfig()
+		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter, colConfig })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
 
 		return {
