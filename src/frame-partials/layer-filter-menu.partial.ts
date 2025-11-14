@@ -8,6 +8,7 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as Im from 'immer'
 import React from 'react'
+import * as Rx from 'rxjs'
 
 export type FilterMenuStore = {
 	filter?: F.FilterNode
@@ -18,6 +19,7 @@ export type FilterMenuStore = {
 	swapTeams: () => void
 	setComparison: (field: keyof L.KnownLayer | string, update: React.SetStateAction<F.EditableComparison>) => void
 	resetFilter: (field: keyof L.KnownLayer | string) => void
+	clearAll$: Rx.Subject<void>
 	resetAllFilters: () => void
 }
 
@@ -142,7 +144,9 @@ export function initLayerFilterMenuStore(
 			Object.entries(emptyItems).forEach(([field, item]) => {
 				this.setComparison(field, item)
 			})
+			this.clearAll$.next()
 		},
+		clearAll$: new Rx.Subject<void>(),
 	}
 
 	args.set({ filterMenu: state })

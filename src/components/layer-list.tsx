@@ -163,8 +163,8 @@ function LoadedSelectLayersView({
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 	const positionCursors = React.useMemo(() => {
-		const next: LQY.Cursor = { type: 'start' }
-		const after: LQY.Cursor = { type: 'end' }
+		const next: LQY.Cursor = { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' }
+		const after: LQY.Cursor = { type: 'item-relative', itemId: LQY.SpecialItemId.LAST_LIST_ITEM, position: 'after' }
 		return { next, after }
 	}, [])
 
@@ -174,7 +174,7 @@ function LoadedSelectLayersView({
 	}, [entry.data.selectLayersFrame, positionCursors])
 
 	const selectPositionToAddLayers = React.useCallback((s: SelectLayersFrame.Types['state']) => {
-		if (s.cursor?.type === 'end') return 'after' as const
+		if (s.cursor?.type === 'item-relative' && s.cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) return 'after' as const
 		return 'next' as const
 	}, [])
 
@@ -195,7 +195,7 @@ function LoadedSelectLayersView({
 			items,
 			index,
 		})
-	}, [activity.id, activity.opts.cursor, store])
+	}, [activity.id, activity.opts, store])
 
 	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
 		if (activity.id !== 'EDITING_ITEM') return
@@ -206,7 +206,7 @@ function LoadedSelectLayersView({
 			itemId,
 			newLayerId: layerId,
 		})
-	}, [activity.id, (activity.opts as any).itemId, store])
+	}, [activity.id, activity.opts, store])
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return

@@ -135,18 +135,46 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 
 export type ItemIndex = LL.ItemIndex
 
-// literally just LL.Cursor currently except differnt id
-export type Cursor = {
-	type: 'item-relative'
-	itemId: ItemId
-	position: 'before' | 'after' | 'on'
-} | {
-	type: 'index'
-	index: ItemIndex
-} | {
-	type: 'start'
-} | {
-	type: 'end'
+// we're using a ts enum here (*gags) to distinguish these from regular itemIds
+export enum SpecialItemId {
+	FIRST_LIST_ITEM = 0,
+	LAST_LIST_ITEM = 1,
+}
+
+export const CursorSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal('item-relative'),
+		itemId: z.union([z.string(), z.nativeEnum(SpecialItemId)]),
+		position: z.enum(['before', 'after', 'on']),
+	}),
+	z.object({
+		type: z.literal('index'),
+		index: z.object({
+			outerIndex: z.number(),
+			innerIndex: z.number().nullable(),
+		}),
+	}),
+])
+
+export type Cursor = z.infer<typeof CursorSchema>
+
+export function fromLayerListCursor(cursor: LL.Cursor): Cursor {
+	if (cursor.type === 'item-relative' || cursor.type === 'index') return cursor
+	if (cursor.type === 'start') {
+		return {
+			type: 'item-relative',
+			itemId: SpecialItemId.FIRST_LIST_ITEM,
+			position: 'before',
+		}
+	}
+	if (cursor.type === 'end') {
+		return {
+			type: 'item-relative',
+			itemId: SpecialItemId.LAST_LIST_ITEM,
+			position: 'after',
+		}
+	}
+	assertNever(cursor)
 }
 
 export type GenLayerQueueItemsOptions = {
@@ -275,9 +303,19 @@ export function coalesceLayerItems(item: LayerItem) {
 }
 
 export type LayerItemsIterResult = { index: ItemIndex; item: LayerItem }
-export const IterItems = LL.iterItems
+export const iterItems = LL.iterItems
 
-export function findItemById(items: LayerItem[], itemId: ItemId): LayerItemsIterResult | undefined {
+export function findItemById(items: LayerItem[], itemId: ItemId | SpecialItemId): LayerItemsIterResult | undefined {
+	if (itemId === SpecialItemId.FIRST_LIST_ITEM) {
+		return Gen.find(LL.iterItems(items), ({ item }) => item.type === 'single-list-item' || item.type === 'vote-list-item')
+	}
+	if (itemId === SpecialItemId.LAST_LIST_ITEM) {
+		return Gen.find(
+			LL.iterItems(items, { reverse: true }),
+			({ item }) => item.type === 'single-list-item' || item.type === 'vote-list-item',
+		)
+	}
+
 	return LL.findItemById(items, itemId)
 }
 
@@ -316,7 +354,7 @@ export function resolveLayerItemsState(layerList: LL.List, history: MH.MatchDeta
 		layerItems.push(getLayerItemForMatchHistoryEntry(entry))
 	}
 
-	for (const { item } of LL.iterItems(...layerList)) {
+	for (const { item } of LL.iterItems(layerList)) {
 		layerItems.push(getItemForLayerListItem(item))
 	}
 
@@ -329,7 +367,7 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		const parentItem = list[index.outerIndex]
 		if (!isVoteListitem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
 
-		let newItems = Gen.map(IterItems(...items), res => res.item)
+		let newItems = Gen.map(iterItems(...items), res => res.item)
 		newItems = Gen.filter(newItems, item => !isVoteListitem(item))
 
 		parentItem.choices.splice(
@@ -390,14 +428,6 @@ export function resolveCursorIndex(
 		return cursor.index
 	}
 
-	if (cursor.type === 'start') {
-		return { outerIndex: 0, innerIndex: null }
-	}
-
-	if (cursor.type === 'end') {
-		return { outerIndex: orderedItems.length, innerIndex: null }
-	}
-
 	assertNever(cursor)
 }
 
@@ -415,7 +445,7 @@ export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
 
 export function getAllLayerIds(items: OrderedLayerItems) {
 	const ids: L.LayerId[] = []
-	for (const { item } of IterItems(...items)) {
+	for (const { item } of iterItems(...items)) {
 		ids.push(item.layerId)
 	}
 	return ids

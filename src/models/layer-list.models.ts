@@ -310,15 +310,36 @@ export type ItemIteratorResult<I extends SparseItem> = {
 	item: I
 }
 
-export function iterItems<T extends SparseItem>(items: T[]): Generator<ItemIteratorResult<T>>
+export function iterItems<T extends SparseItem>(items: T[], opts?: { reverse?: boolean }): Generator<ItemIteratorResult<T>>
 export function iterItems<T extends SparseItem>(...items: T[]): Generator<ItemIteratorResult<T>>
-export function* iterItems<T extends SparseItem>(...items: T[] | [T[]]): Generator<ItemIteratorResult<T>> {
-	const itemsArray = Array.isArray(items[0]) && !('itemId' in items[0]) ? (items[0] as T[]) : (items as T[])
-	for (let outerIndex = 0; outerIndex < itemsArray.length; outerIndex++) {
+export function* iterItems<T extends SparseItem>(
+	...args: T[] | [T[], { reverse?: boolean }]
+): Generator<ItemIteratorResult<T>> {
+	let itemsArray: T[]
+	let reverse = false
+
+	// Handle different argument patterns
+	if (Array.isArray(args[0]) && !('itemId' in args[0])) {
+		// Pattern: iterItems(items, opts)
+		itemsArray = args[0] as T[]
+		reverse = (args[1] as any)?.reverse ?? false
+	} else {
+		// Pattern: iterItems(...items)
+		itemsArray = args as T[]
+	}
+
+	const indices = reverse
+		? Array.from({ length: itemsArray.length }, (_, i) => itemsArray.length - 1 - i)
+		: Array.from({ length: itemsArray.length }, (_, i) => i)
+
+	for (const outerIndex of indices) {
 		const item = itemsArray[outerIndex]
 		yield { item, index: { outerIndex, innerIndex: null } }
 		if (isVoteItem(item)) {
-			for (let innerIndex = 0; innerIndex < item.choices.length; innerIndex++) {
+			const choiceIndices = reverse
+				? Array.from({ length: item.choices.length }, (_, i) => item.choices.length - 1 - i)
+				: Array.from({ length: item.choices.length }, (_, i) => i)
+			for (const innerIndex of choiceIndices) {
 				const choice = item.choices[innerIndex]
 				yield { item: choice, index: { outerIndex, innerIndex } }
 			}

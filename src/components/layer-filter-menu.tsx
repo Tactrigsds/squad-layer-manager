@@ -11,41 +11,22 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Rx from 'rxjs'
 import { Comparison, ComparisonHandle } from './filter-card'
-Rx.pipe
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
-	const clearAll$Ref = useRefConstructor(() => new Rx.Subject<void>())
-
-	const getState = () => getFrameState(props.frameKey).filterMenu
-
 	const fields = useFrameStore(
 		props.frameKey,
 		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
 
 	return (
-		<div className="flex flex-col space-y-2">
-			<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
-				{fields.map((field) => (
-					<LayerFilterMenuItem
-						key={field}
-						field={field}
-						clearAll$={clearAll$Ref.current}
-						frameKey={props.frameKey}
-					/>
-				))}
-			</div>
-			<div>
-				<Button
-					variant="secondary"
-					onClick={() => {
-						getState().resetAllFilters()
-						clearAll$Ref.current.next()
-					}}
-				>
-					Clear All
-				</Button>
-			</div>
+		<div className="grid h-full grid-cols-[auto_min-content_auto_auto] gap-2">
+			{fields.map((field) => (
+				<LayerFilterMenuItem
+					key={field}
+					field={field}
+					frameKey={props.frameKey}
+				/>
+			))}
 		</div>
 	)
 }
@@ -53,7 +34,6 @@ export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key
 function LayerFilterMenuItem(
 	props: {
 		field: string
-		clearAll$: Rx.Subject<void>
 		frameKey: SelectLayersFrame.Key
 	},
 ) {
@@ -72,11 +52,11 @@ function LayerFilterMenuItem(
 	)
 
 	React.useEffect(() => {
-		const sub = props.clearAll$.subscribe(() => {
+		const sub = getFrameState(props.frameKey).filterMenu.clearAll$.subscribe(() => {
 			ref.current?.clear(true)
 		})
 		return () => sub.unsubscribe()
-	}, [props.clearAll$])
+	}, [props.frameKey])
 
 	return (
 		<React.Fragment key={props.field}>

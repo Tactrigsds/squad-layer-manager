@@ -380,27 +380,13 @@ export function getTanstackActions(table: LayerTable) {
 }
 
 export function selectQueryInput(store: Store & Predicates): LQY.LayersQueryInput {
-	let queryInput: LQY.BaseQueryInput = store.baseQueryInput ?? {}
-	const selectedLayers = store.layerTable.selected
-	if (store.layerTable.showSelectedLayers) {
-		const filter = FB.comp(
-			FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, store.layerTable.colConfig))),
-		)
-		queryInput = {
-			...queryInput,
-			constraints: [
-				...(queryInput.constraints?.flatMap(c => c.type !== 'filter-anon' ? [{ ...c, filterResults: false }] : []) ?? []),
-				CB.filterAnon('show-selected', filter),
-			],
-		}
-	}
-
-	return {
-		...queryInput,
+	return LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
+		cfg: store.layerTable.colConfig,
+		selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
 		pageIndex: store.layerTable.pageIndex,
 		pageSize: store.layerTable.pageSize,
 		sort: store.layerTable.sort,
-	}
+	})
 }
 
 export function selectEditingSingleValue(state: LayerTable) {

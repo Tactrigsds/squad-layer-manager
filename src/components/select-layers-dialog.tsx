@@ -141,7 +141,16 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			</div>
 
 			<HeadlessDialogFooter>
-				<div className="flex items-center justify-end w-full">
+				<div className="flex items-center justify-between w-full">
+					<Button
+						variant="secondary"
+						onClick={() => {
+							const frameState = getFrameState(frameKey)
+							frameState.filterMenu.resetAllFilters()
+						}}
+					>
+						Clear All
+					</Button>
 					<div className="flex items-center space-x-2">
 						{props.footerAdditions}
 						{!props.pinMode && (

@@ -479,7 +479,14 @@ export default function LayerTable(props: {
 	)
 }
 
-const MouseDownRowIndexStore = Zus.createStore<{ index: number; originalSelected: boolean } | null>(() => null)
+// Why? this seems to niche and thrashy to go on the frame idk
+const MouseDownRowIndexStoreMap = new WeakMap<LayerTablePrt.Key, Zus.StoreApi<{ index: number; originalSelected: boolean } | null>>()
+function getMouseDownRowIndexStore(frameKey: LayerTablePrt.Key) {
+	if (!MouseDownRowIndexStoreMap.has(frameKey)) {
+		MouseDownRowIndexStoreMap.set(frameKey, Zus.createStore<{ index: number; originalSelected: boolean } | null>(() => null))
+	}
+	return MouseDownRowIndexStoreMap.get(frameKey)!
+}
 
 const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: LayerTablePrt.Key; row: Row<LayerTablePrt.RowData> }) {
 	const { row } = props
@@ -487,15 +494,6 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 	const getStore = () => getFrameState(props.frameKey)
 	const getTableFrame = () => getFrameState(props.frameKey).layerTable
 	const canFocusLayers = useFrameStore(props.frameKey, s => !!s.onLayerFocused)
-	function selectRow() {
-		if (row.original.isRowDisabled) return
-
-		getTableFrame().onSetRowSelection(
-			Im.produce<RowSelectionState>((draft) => {
-				draft[id] = true
-			}),
-		)
-	}
 	function toggleRow() {
 		if (row.original.isRowDisabled) return
 
@@ -511,10 +509,11 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 		if (getTableFrame().showSelectedLayers) return
 		const rows = getTableFrame().pageData?.layers
 		if (!rows) return
-		const mouseDownIndex = MouseDownRowIndexStore.getState()?.index
-		const originalState = MouseDownRowIndexStore.getState()?.originalSelected
+		const mouseDownStore = getMouseDownRowIndexStore(props.frameKey)
+		const mouseDownIndex = mouseDownStore.getState()?.index
+		const originalState = mouseDownStore.getState()?.originalSelected
 		if (mouseDownIndex === undefined || originalState === undefined) return
-		let [lowIdx, highIdx] = [Math.min(mouseDownIndex, row.index), Math.max(mouseDownIndex, row.index)]
+		const [lowIdx, highIdx] = [Math.min(mouseDownIndex, row.index), Math.max(mouseDownIndex, row.index)]
 		const allIds = new Set(getTableFrame().selected)
 		for (let i = lowIdx; i <= highIdx; i++) {
 			if (originalState) {
@@ -525,7 +524,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 		}
 		getTableFrame().setSelected(Array.from(allIds))
 		// update this a little so we're not n+1 :shrug:
-		MouseDownRowIndexStore.setState({ index: row.index, originalSelected: originalState })
+		mouseDownStore.setState({ index: row.index, originalSelected: originalState })
 	}
 	return (
 		<ContextMenu key={row.id}>
@@ -544,12 +543,12 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 					onMouseDown={e => {
 						if (e.ctrlKey || e.button !== 0) return
 						const originalSelected = !getTableFrame().selected.includes(row.original.id)
-						MouseDownRowIndexStore.setState({ index: row.index, originalSelected })
+						getMouseDownRowIndexStore(props.frameKey).setState({ index: row.index, originalSelected })
 					}}
-					onMouseUp={(e) => {
-						MouseDownRowIndexStore.setState(null)
+					onMouseUp={() => {
+						getMouseDownRowIndexStore(props.frameKey).setState(null)
 					}}
-					onMouseEnter={(e) => {
+					onMouseEnter={() => {
 						setAllRowsSinceMouseDown()
 					}}
 				>

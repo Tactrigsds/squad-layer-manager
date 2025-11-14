@@ -1,7 +1,7 @@
+import { createId } from '@/lib/id'
 import * as OneToMany from '@/lib/one-to-many-map'
 import { shuffled, weightedRandomSelection } from '@/lib/random'
 import { assertNever } from '@/lib/type-guards'
-import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
@@ -49,6 +49,9 @@ export async function queryLayers(args: {
 	const input = { ...args.input }
 	input.pageSize ??= 100
 	input.pageIndex ??= 0
+
+	ctx.log = ctx.log.child({ query: 'queryLayers-' + createId(4) })
+	ctx.log.debug({ input }, 'running queryLayers')
 
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return conditionsRes
@@ -501,7 +504,7 @@ export async function getLayerItemStatuses(args: {
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const { item } of LQY.IterItems(layerItems.slice(maxLookbackIndex))) {
+		for (const { item } of LQY.iterItems(layerItems.slice(maxLookbackIndex))) {
 			if (item.layerId !== layerId) continue
 			for (const [constraintId, isMatched] of Object.entries(row)) {
 				if (constraintId === '_id') continue

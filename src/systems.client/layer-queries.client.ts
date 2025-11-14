@@ -246,6 +246,9 @@ export function getQueryLayersInput(queryContext: LQY.BaseQueryInput, opts: {
 	const pageSize = opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE
 	const pageIndex = opts.pageIndex ?? 0
 	const selectedLayers = opts.selectedLayers
+	if (queryContext.cursor && !queryContext.action) {
+		queryContext = { ...queryContext, action: 'add' }
+	}
 
 	if (selectedLayers) {
 		const filter = FB.comp(

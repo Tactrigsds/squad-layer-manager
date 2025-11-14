@@ -85,8 +85,6 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 
 export const Store = createStore()
 
-type MatchFn<Predicate> = (state: SLL.RootActivity) => Predicate | undefined
-
 type ActivityLoaderConfigOptions<Predicate, Data = never> =
 	& {
 		// the time before we unload an inactive action. default no unload
@@ -118,8 +116,6 @@ function hasAsyncLoader<Config extends ActivityLoaderConfig>(
 	return typeof (config as any).loadAsync === 'function'
 }
 
-type ActivityLoaderConfigEvents = {}
-
 type ActivityLoaderConfig<Name extends string = string, Key = any, Data = any> =
 	& {
 		match: (state: SLL.RootActivity) => Key | undefined
@@ -140,7 +136,7 @@ export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends
 }
 export type LoaderResult<Config extends ActivityLoaderConfig> = Config extends { loadAsync: () => infer Result } ? Result
 	: LoaderData<Config>
-export type LoaderData<Config extends ActivityLoaderConfig> = Config extends ActivityLoaderConfig<infer Name, infer Key, infer Data> ? Data
+export type LoaderData<Config extends ActivityLoaderConfig> = Config extends ActivityLoaderConfig<any, any, infer Data> ? Data
 	: never
 export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Exclude<ReturnType<Config['match']>, undefined>
 export type LoadedActivityState = LoaderCacheEntry<ConfiguredLoaderConfig, true>
@@ -179,11 +175,10 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 						if (item) editedLayerId = item.layerId
 					}
 					const input = SelectLayersFrame.createInput({
-						cursor: args.activity.opts.cursor,
+						cursor: LQY.fromLayerListCursor(args.activity.opts.cursor),
 						initialEditedLayerId: editedLayerId,
 					})
 					const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
-					const frameState = getFrameState(frameKey)
 					return { selectLayersFrame: frameKey, activity: args.activity }
 				},
 				onEnter(args) {},
@@ -250,7 +245,7 @@ function createStore() {
 							}
 							if (config.onLeave) {
 								entry.active = false
-								config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!), draft })
+								config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!) as LoaderData<typeof config>, draft })
 							}
 						}
 						continue

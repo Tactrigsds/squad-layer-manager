@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
+import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
@@ -93,7 +93,17 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			</div>
 
 			<HeadlessDialogFooter>
-				<div className="flex items-center justify-end w-full">
+				<div className="flex items-center justify-between w-full">
+					<Button
+						variant="secondary"
+						onClick={() => {
+							const frameState = getFrameState(frameKey)
+							frameState.filterMenu.resetAllFilters()
+						}}
+					>
+						Clear All
+					</Button>
+
 					<Button disabled={!canSubmit} onClick={submit}>
 						Submit
 					</Button>
