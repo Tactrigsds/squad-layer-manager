@@ -46,13 +46,13 @@ export const DEFAULT_ACTIVITY: RootActivity = {
 	child: {},
 }
 
-const editActivityVariant = ACTIVITIES.child.EDITING.child
-type EditActivityVariant = (typeof editActivityVariant)[keyof typeof editActivityVariant]['id']
+const _editActivityVariants = ACTIVITIES.child.EDITING.child
+type EditActivityVariant = (typeof _editActivityVariants)[keyof typeof _editActivityVariants]['id']
 
 export type QueueEditActivity<
 	K extends EditActivityVariant = EditActivityVariant,
 > = ST.Match.Node<
-	Extract<(typeof editActivityVariant)[keyof typeof editActivityVariant], { id: K }>
+	Extract<(typeof _editActivityVariants)[keyof typeof _editActivityVariants], { id: K }>
 >
 
 export function createEditActivityVariant<K extends EditActivityVariant>(
@@ -233,7 +233,7 @@ export function containsConflict(session: EditSession, expectedIndex: number, ne
 }
 
 export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVITIES)
-export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE'])
+export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE', 'MOVING_ITEM'])
 type ItemOwnedActivityId = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
 
 export type ItemOwnedActivity = Extract<QueueEditActivity, { id: ItemOwnedActivityId }>
@@ -282,7 +282,8 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			const { merged, modified } = LL.moveItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.cursor)
 			if (modified) {
 				if (merged) {
-					const { item } = LL.findItemById(list, merged)!
+					const { item } = Obj.destrNullable(LL.findItemById(list, merged))
+					if (!item) break
 					if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
 					ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
 					ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
@@ -551,7 +552,7 @@ export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
 	return false
 }
 
-export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex) => {
+export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
 	const editingActivity = activity.child.EDITING
 	const settingsActivity = activity.child.VIEWING_SETTINGS
 
@@ -571,6 +572,19 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
 		return 'Adding layer from History'
 	}
+	if (!withItemName) {
+		switch (editingActivity.chosen.id) {
+			case 'EDITING_ITEM':
+				return `Editing`
+			case 'CONFIGURING_VOTE':
+				return `Configuring vote`
+			case 'MOVING_ITEM':
+				return `Moving`
+			default:
+				assertNever(editingActivity.chosen)
+		}
+	}
+
 	let index: LL.ItemIndex
 	if (Array.isArray(listOrIndex)) {
 		const foundIndex = Obj.destrNullable(LL.findItemById(listOrIndex, editingActivity.chosen.opts.itemId))?.index
@@ -597,7 +611,12 @@ export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL
 	}
 }
 
-export const getAttributedHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, displayName: string) => {
+export const getAttributedHumanReadableActivity = (
+	activity: RootActivity,
+	listOrIndex: LL.List | LL.ItemIndex,
+	displayName: string,
+	withItemName?: boolean,
+) => {
 	const activityText = getHumanReadableActivity(activity, listOrIndex)
 	if (!activityText) return null
 	return `${displayName} is ${activityText.toLowerCase()}`
