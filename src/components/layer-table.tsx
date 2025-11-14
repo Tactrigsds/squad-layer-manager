@@ -252,7 +252,7 @@ function buildColDefs(
 					</div>
 				)
 			},
-			cell: ({ row }) => {
+			cell: function SelectCell({ row }) {
 				const isDisabled = row.original.isRowDisabled
 				const isSelected = useTableFrame(table => table.selected.includes(row.original.id))
 

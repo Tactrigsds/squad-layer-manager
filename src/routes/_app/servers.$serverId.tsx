@@ -19,7 +19,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 		const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
 		const interaction$ = Browser.interaction$.pipe(
 			Rx.scan((acc) => acc + 1, 0),
-			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(1000))),
+			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(2000))),
 			Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
 			withAbortSignal(abortController.signal),
 		)

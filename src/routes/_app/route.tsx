@@ -229,7 +229,7 @@ const NavLink: typeof Link = (props) => {
 			className={cn(baseClasses, props.className)}
 			{...props}
 		>
-			Filters
+			{props.children}
 		</Link>
 	)
 }
