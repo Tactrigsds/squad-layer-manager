@@ -584,6 +584,8 @@ export function LayerTableControlPanel(
 		})),
 	)
 
+	const showSelectedId = React.useId()
+
 	const canToggleColumns = props.canToggleColumns ?? true
 	// Compute default visible columns from config
 	const defaultVisibleColumns = React.useMemo(() => {
@@ -666,6 +668,7 @@ export function LayerTableControlPanel(
 					{/*--------- show selected ---------*/}
 					<div className="flex items-center space-x-1">
 						<Switch
+							id={showSelectedId}
 							checked={frameState.showSelectedLayers}
 							disabled={frameState.selectedLayerIds.length === 0}
 							onCheckedChange={() =>
@@ -674,7 +677,7 @@ export function LayerTableControlPanel(
 									return !show
 								})}
 						/>
-						<Label htmlFor="toggle-show-selected">Show Selected</Label>
+						<Label htmlFor={showSelectedId}>Show Selected</Label>
 					</div>
 					<Button
 						variant="ghost"
@@ -685,9 +688,12 @@ export function LayerTableControlPanel(
 						}}
 						title="Reset Selected Layers"
 					>
-						<X className="h-4 w-4" />
+						<Icons.Trash className="h-4 w-4" />
 					</Button>
-					<p className="whitespace-nowrap text-muted-foreground">
+					<p
+						className="whitespace-nowrap text-muted-foreground data-[hide=true]:invisible"
+						data-hide={frameState.selectedLayerIds.length === 0}
+					>
 						{frameState.selectedLayerIds.length} selected
 					</p>
 				</span>
