@@ -13,6 +13,7 @@ import * as DH from '@/lib/display-helpers'
 import * as FRM from '@/lib/frame'
 import { Focusable, inline } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
+import * as SetUtils from '@/lib/set'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as ZusUtils from '@/lib/zustand'
@@ -211,13 +212,18 @@ function buildColDefs(
 	const tableColDefs: ColumnDef<RowData>[] = [
 		{
 			id: 'select',
-			header: ({ table }) => {
+			header: function SelectHeader({ table }) {
 				const selectState = useTableFrame(table => {
 					if (table.pageData === null) return
-					if (table.selected.length === table.pageData.layers.length) return 'all' as const
-					if (table.selected.length > 0) return 'some' as const
+					const selected = new Set(table.selected)
+					const pageIds = new Set(table.pageData.layers.map(l => l.id))
+					const intersect = SetUtils.intersection(selected, pageIds)
+					console.log('intersect', intersect)
+					if (intersect.size === pageIds.size) return 'all' as const
+					if (intersect.size > 0) return 'some' as const
 					return null
 				})
+				console.log('SELECT_STATE: ' + selectState)
 				const toggleAllSelected = (state: CheckedState) => {
 					const table = getTableFrame()
 					if (state === 'indeterminate') return
@@ -229,10 +235,19 @@ function buildColDefs(
 						table.setSelected(selected => selected.filter(id => !ids.includes(id)))
 					}
 				}
+				let checkState: true | false | 'indeterminate'
+				if (selectState === 'all') {
+					checkState = true
+				} else if (selectState === 'some') {
+					checkState = 'indeterminate'
+				} else {
+					checkState = false
+				}
+
 				return (
 					<div className="pl-4">
 						<Checkbox
-							checked={selectState === 'all' || (selectState === 'some' && 'indeterminate')}
+							checked={checkState}
 							onCheckedChange={toggleAllSelected}
 							aria-label="Select all"
 						/>
@@ -331,14 +346,9 @@ export default function LayerTable(props: {
 			setSort: table.setSort,
 			columnVisibility: table.columnVisibility,
 			onColumnVisibilityChange: table.onColumnVisibilityChange,
-			maxSelectedLayers: table.maxSelected,
-			editingSingleValue: LayerTablePrt.selectEditingSingleValue(table),
-			selectedLayerIds: table.selected,
-			onSetRowSelection: table.onSetRowSelection,
 			pageSize: table.pageSize,
 			pageIndex: table.pageIndex,
 			onPaginationChange: table.onPaginationChange,
-			isFetching: table.isFetching,
 		})),
 	)
 

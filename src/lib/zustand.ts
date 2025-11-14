@@ -45,7 +45,8 @@ export function useCombinedStores<States extends unknown[], Selector extends (st
 
 	return React.useMemo(() => {
 		return selector(values)
-	}, [selector, values]) as ReturnType<Selector>
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [selector, ...values]) as ReturnType<Selector>
 }
 
 export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, opts: { sub: Rx.Subscription }) {
