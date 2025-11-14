@@ -15,14 +15,18 @@ import * as Zus from 'zustand'
 export let loggedInUserId: bigint | undefined
 export let loggedInUser: USR.User | undefined
 
-export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
-	return useQuery({
+export function getFetchUserOptions(id?: bigint, opts?: { enabled?: boolean }) {
+	return {
 		queryKey: ['users', 'getUser', superjson.serialize(id)],
 		queryFn: async () => {
 			return RPC.orpc.users.getUser.call(id!)
 		},
 		enabled: !!id && opts?.enabled !== false,
-	})
+	}
+}
+
+export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
+	return useQuery(getFetchUserOptions(id, opts))
 }
 
 export function useUsers(userIds?: USR.UserId[], opts?: { enabled?: boolean }) {

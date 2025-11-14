@@ -23,7 +23,9 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
+import { useStore } from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
@@ -97,19 +99,11 @@ export default function FilterWrapper(props: { filterId: string }) {
 }
 
 export function FilterEdit(
-	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User },
+	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User; frameKey: EditFrame.Key },
 ) {
+	const frameKey = props.frameKey
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const { toast } = useToast()
-	const frameInputRef = React.useRef(EditFrame.createInput({ editedFilterId: props.entity.id, startingFilter: props.entity.filter }))
-	const frameKey = useFrameLifecycle(
-		EditFrame.frame,
-		{
-			input: frameInputRef.current,
-			deps: undefined,
-			equalityFn: Obj.deepEqual,
-		},
-	)
 	const frameState = () => getFrameState(frameKey)
 	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => useFrameStore(frameKey, selector)
 
@@ -218,6 +212,15 @@ export function FilterEdit(
 	const [filterValid, filterModified] = useFrame(
 		useShallow((state) => [state.valid, state.modified]),
 	)
+
+	useBlocker({
+		shouldBlockFn: () => {
+			if (!filterModified && !form.state.isDirty) return false
+
+			const shouldLeave = confirm('You have unsaved changes. Are you sure you want to leave?')
+			return !shouldLeave
+		},
+	})
 
 	const saveBtn = React.useMemo(() => (
 		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
