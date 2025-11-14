@@ -279,6 +279,7 @@ export function initLayerTable(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
 			Rx.startWith([args.get(), null] as const),
+			Rx.filter(([store]) => !!store.baseQueryInput),
 			Rx.map(([store]) => selectQueryInput(store)),
 			distinctDeepEquals(),
 			// Rx.auditTime(250),
