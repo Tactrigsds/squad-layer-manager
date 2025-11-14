@@ -48,7 +48,7 @@ export type Constraint =
 		rule: RepeatRule
 		indicateMatches: true
 		// always inverted when filtering results
-		invert: true
+		invert: boolean
 		filterResults: boolean
 		id: string
 	}

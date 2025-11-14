@@ -240,13 +240,13 @@ function PoolFiltersConfigurationPanel({
 
 					const excludedFilterIds = filterConfigs.flatMap((c) => filterId !== c.filterId ? [c.filterId] : [])
 
-					const descriptions: { [k in SS.PoolFilterApplyAs]: string } = {
+					const descriptions: { [k in SS.ConstraintApplyAs]: string } = {
 						regular: 'When selecting layers, filter is applied by default',
 						inverted: 'When selecting layers, filter is applied and inverted by default',
 						disabled: 'When selecting layers, filter is disabled by default',
 					}
 
-					const handleApplyAsChanged = (newApplyAs: SS.PoolFilterApplyAs) => {
+					const handleApplyAsChanged = (newApplyAs: SS.ConstraintApplyAs) => {
 						const state = ServerSettingsClient.Store.getState()
 						state.set({ path: [...filterPath, 'applyAs'], value: newApplyAs })
 					}

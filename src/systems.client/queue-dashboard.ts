@@ -158,12 +158,15 @@ export function useToggleSquadServerUpdates() {
 	}
 }
 
-export function getToggledRepeatRuleConstraints(settings: SS.PublicServerSettings, filterResults: boolean) {
+export function getToggledRepeatRuleConstraints(settings: SS.PublicServerSettings, applyAs: SS.ConstraintApplyAs) {
 	const dnrConstraints: LQY.Constraint[] = []
 	const repeatRules = settings.queue.mainPool.repeatRules
 	for (let i = 0; i < repeatRules.length; i++) {
 		const rule = repeatRules[i]
-		dnrConstraints.push(CB.repeatRule(`pool-checkboxes:dnr:${i}`, rule, { filterResults }))
+		dnrConstraints.push(CB.repeatRule(`pool-checkboxes:dnr:${i}`, rule, {
+			filterResults: applyAs !== 'disabled',
+			invert: applyAs === 'inverted',
+		}))
 	}
 	return dnrConstraints
 }

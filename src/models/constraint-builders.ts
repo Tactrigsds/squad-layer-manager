@@ -23,11 +23,15 @@ export const filterEntity = (idPrefix: string, filterId: F.FilterEntityId, opts?
 	invert: opts?.invert ?? false,
 })
 
-export const repeatRule = (idPrefix: string, rule: LQY.RepeatRule, opts?: { filterResults?: boolean }): LQY.Constraint => ({
+export const repeatRule = (
+	idPrefix: string,
+	rule: LQY.RepeatRule,
+	opts?: { filterResults?: boolean; invert?: boolean },
+): LQY.Constraint => ({
 	type: 'do-not-repeat',
 	id: idPrefix + ':' + (rule.label ?? rule.field),
 	rule,
 	indicateMatches: true,
 	filterResults: opts?.filterResults ?? true,
-	invert: true,
+	invert: opts?.invert ?? true,
 })

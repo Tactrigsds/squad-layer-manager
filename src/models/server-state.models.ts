@@ -13,7 +13,7 @@ const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
-export type PoolFilterApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
+export type ConstraintApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
 export const DEFAULT_POOL_FILTER_APPLY_AS = 'regular'
 
 export const PoolFilterConfigSchema = z.object({
@@ -101,7 +101,7 @@ export function getSettingsConstraints(
 		for (let j = 0; j < poolConfig.repeatRules.length; j++) {
 			const rule = poolConfig.repeatRules[j]
 			// label/field might not be unique so we're doing this instead. cringe
-			constraints.push(CB.repeatRule(`layer-pool:${rule.label}`, rule, { filterResults: true }))
+			constraints.push(CB.repeatRule(`layer-pool:${rule.label}`, rule, { filterResults: true, invert: true }))
 		}
 
 		for (const { filterId, applyAs } of poolConfig.filters) {

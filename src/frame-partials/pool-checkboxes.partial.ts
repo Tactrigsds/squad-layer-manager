@@ -1,13 +1,14 @@
 // this is very sparse at the moment, maybe we'll add more of these on-off flags later
 import * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
+import * as SS from '@/models/server-state.models'
 export type PoolCheckboxesState = {
-	dnr: boolean
+	dnr: SS.ConstraintApplyAs
 }
 
 export type Store = {
 	checkboxesState: PoolCheckboxesState
-	setCheckbox: (type: keyof PoolCheckboxesState, value: boolean) => void
+	setCheckbox: (type: keyof PoolCheckboxesState, value: SS.ConstraintApplyAs) => void
 }
 type Args = FRM.SetupArgs<{ defaultState: PoolCheckboxesState }, Store>
 

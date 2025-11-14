@@ -70,7 +70,7 @@ function buildColumn(
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
-		size: colDef.name === 'Layer' ? 300 : colDef.name === 'Size' ? 100 : isNumeric ? 50 : undefined,
+		size: ({ 'Layer': 300, 'Size': 100 } as const)[colDef.name] ?? (isNumeric ? 50 : undefined),
 		minSize: colDef.name === 'Layer' ? 200 : undefined,
 		header: () => {
 			const [sortingState, setSorting] = useTableFrame(ZusUtils.useShallow(table => [table.sort, table.setSort]))
@@ -214,21 +214,31 @@ function buildColDefs(
 			id: 'select',
 			size: 40,
 			header: function SelectHeader({ table }) {
-				const selectState = useTableFrame(table => {
-					if (table.pageData === null) return
+				const [selectState, disabled] = useTableFrame(ZusUtils.useShallow(table => {
+					if (table.pageData === null) return [null, true] as const
 					const selected = new Set(table.selected)
 					const pageIds = new Set(table.pageData.layers.map(l => l.id))
 					const intersect = SetUtils.intersection(selected, pageIds)
-					if (intersect.size === pageIds.size) return 'all' as const
-					if (intersect.size > 0) return 'some' as const
-					return null
-				})
+					const selectState: 'all' | 'some' | null = (() => {
+						if (intersect.size === pageIds.size) return 'all' as const
+						if (intersect.size > 0) return 'some' as const
+						return null
+					})()
+
+					const ifAllSelected = SetUtils.union(selected, pageIds)
+					const ifAllUnselected = SetUtils.difference(selected, pageIds)
+
+					const disabled = (table.maxSelected ?? Infinity) < (ifAllSelected.size)
+						|| (table.minSelected ?? 0) > ifAllUnselected.size
+						|| (table.pageData.layers.some(t => t.isRowDisabled))
+					return [selectState, disabled] as const
+				}))
+
 				const toggleAllSelected = (state: CheckedState) => {
 					const table = getTableFrame()
-					if (state === 'indeterminate') return
 					if (!table.pageData) return
 					const ids = table.pageData.layers.map(l => l.id)
-					if (state) {
+					if (state === true) {
 						table.setSelected(selected => Array.from(new Set([...ids, ...selected])))
 					} else {
 						table.setSelected(selected => selected.filter(id => !ids.includes(id)))
@@ -247,6 +257,7 @@ function buildColDefs(
 					<div className="pl-4">
 						<Checkbox
 							checked={checkState}
+							disabled={disabled}
 							onCheckedChange={toggleAllSelected}
 							aria-label="Select all"
 						/>
@@ -254,13 +265,44 @@ function buildColDefs(
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const isDisabled = row.original.isRowDisabled
-				const isSelected = useTableFrame(table => table.selected.includes(row.original.id))
+				const [isDisabled, isSelected] = useTableFrame(ZusUtils.useShallow(table => {
+					const rowId = row.original.id
+					const isSelected = table.selected.includes(rowId)
+					const isRowDisabled = row.original.isRowDisabled
+
+					// If row is already disabled, it's disabled
+					if (isRowDisabled) return [true, isSelected] as const
+
+					// Check if unchecking would violate minSelected
+					if (isSelected) {
+						const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
+						if (wouldBeUnderMin) return [true, isSelected] as const
+					}
+
+					// Check if checking would violate maxSelected
+					if (!isSelected) {
+						const wouldBeOverMax = (table.maxSelected ?? Infinity) < (table.selected.length + 1)
+						if (wouldBeOverMax) return [true, isSelected] as const
+					}
+
+					return [false, isSelected] as const
+				}))
+
+				const toggleSelected = (checked: CheckedState) => {
+					const table = getTableFrame()
+					if (checked === true) {
+						table.setSelected(selected => [...selected, row.original.id])
+					} else {
+						table.setSelected(selected => selected.filter(id => id !== row.original.id))
+					}
+				}
 
 				return (
 					<Checkbox
 						checked={isSelected}
-						className={isDisabled ? 'invisible' : ''}
+						disabled={isDisabled}
+						className={row.original.isRowDisabled ? 'invisible' : ''}
+						onCheckedChange={toggleSelected}
 						aria-label="Select row"
 					/>
 				)
@@ -301,6 +343,7 @@ function buildColDefs(
 	const constraintsCol = columnHelper.accessor('constraints', {
 		header: '',
 		enableHiding: false,
+		size: 80,
 		cell: ({ row }) => {
 			const matchingConstraints = row.original.constraints.matchedConstraints
 
@@ -309,15 +352,12 @@ function buildColDefs(
 			}
 
 			return (
-				<div>
-					<ConstraintDisplay
-						className="w-full"
-						side="right"
-						padEmpty={true}
-						matchingConstraints={matchingConstraints}
-						height={32}
-					/>
-				</div>
+				<ConstraintDisplay
+					side="right"
+					padEmpty={true}
+					matchingConstraints={matchingConstraints}
+					height={32}
+				/>
 			)
 		},
 	})
@@ -622,7 +662,8 @@ export function LayerTableControlPanel(
 
 	return (
 		<>
-			<div className="flex items-center justify-between">
+			{/* pl-1.5 for near-perfect spacing with checkboxes */}
+			<div className="flex items-center justify-between pl-1.5 pr-2">
 				<span className="flex h-10 items-center space-x-2">
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
@@ -702,7 +743,7 @@ export function LayerTableControlPanel(
 					<Button
 						onClick={() => getTableFrame().randomize()}
 						disabled={frameState.isFetching}
-						variant="outline"
+						variant="ghost"
 						size="icon"
 						data-enabled={randomized}
 						className="data-[enabled=true]:visible invisible"
@@ -921,11 +962,13 @@ function LayerTablePaginationControls(props: { frameKey: LayerTablePrt.Key; tabl
 		<div className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
 				<div className="text-sm text-muted-foreground">
-					{frameState.totalRowCount && (
-						<>
-							<span className="font-semibold text-foreground">{frameState.totalRowCount.toLocaleString()}</span> matched layers
-						</>
-					)}
+					{(frameState.totalRowCount ?? 0) > 0
+						? (
+							<>
+								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched layers
+							</>
+						)
+						: <span className="font-semibold text-foreground">No layers matched</span>}
 				</div>
 				<div data-loading={frameState.isFetching} className="flex items-center space-x-2 invisible data-[loading=true]:visible ">
 					<LoaderCircle className="h-4 w-4 animate-spin" />
