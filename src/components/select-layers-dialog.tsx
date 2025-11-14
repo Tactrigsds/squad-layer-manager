@@ -44,20 +44,6 @@ type SelectLayersDialogContentProps = {
 }
 
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
-	const prevPropsRef = React.useRef<SelectLayersDialogContentProps | null>(null)
-
-	React.useEffect(() => {
-		if (prevPropsRef.current) {
-			const changedProps: string[] = []
-			const keys = Object.keys(props) as Array<keyof SelectLayersDialogContentProps>
-			for (const key of keys) {
-				if (prevPropsRef.current[key] !== props[key]) {
-					changedProps.push(key)
-				}
-			}
-		}
-		prevPropsRef.current = props
-	}, [props])
 	const defaultSelectedRef = React.useRef(props.defaultSelected)
 
 	const frameInputRef = useRefConstructor(() => {
@@ -128,21 +114,21 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	}, [props.defaultSelected, setSelectedLayers])
 
 	return (
-		<HeadlessDialogContent className="max-w-[90vw] max-h-[95vh] flex flex-col overflow-auto">
+		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
 					<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
 					{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
 				</div>
-				<div className="flex justify-end items-center space-x-2 flex-grow">
+				<div className="flex justify-end items-center space-x-2">
 					<AppliedFiltersPanel frameKey={frameKey} />
 				</div>
 			</HeadlessDialogHeader>
 
-			<div className="flex min-h-0 items-start space-x-2 flex-1">
+			<div className="flex min-h-0 items-start space-x-2 ">
 				<LayerFilterMenu frameKey={frameKey} />
-				<div className="flex flex-col space-y-2 justify-between h-full flex-1 min-h-0">
-					<div className={'flex h-full flex-grow min-h-0'}>
+				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
+					<div className={'flex h-full min-h-0'}>
 						<LayerTable
 							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
 							frameKey={frameKey}
@@ -181,13 +167,11 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 	const defaultSelected: L.LayerId[] = React.useMemo(() => props.defaultSelected ?? [], [props.defaultSelected])
 
-	function onOpenChange(open: boolean) {
-		props.onOpenChange?.(open)
-	}
-
+	const onOpenChange = props.onOpenChange
 	const onClose = React.useCallback(() => {
-		props.onOpenChange?.(false)
-	}, [props.onOpenChange])
+		if (!onOpenChange) return
+		onOpenChange(false)
+	}, [onOpenChange])
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>

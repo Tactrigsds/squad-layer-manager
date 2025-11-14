@@ -141,7 +141,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	}
 	// we don't fully unbound the size here, just relax the limit
 	return (
-		<Popover open={open} onOpenChange={setOpen} modal={true}>
+		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				{props.children ?? (
 					<Button

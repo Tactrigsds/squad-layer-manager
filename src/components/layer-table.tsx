@@ -70,7 +70,7 @@ function buildColumn(
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
-		size: colDef.name === 'Layer' ? 300 : isNumeric ? 50 : undefined,
+		size: colDef.name === 'Layer' ? 300 : colDef.name === 'Size' ? 100 : isNumeric ? 50 : undefined,
 		minSize: colDef.name === 'Layer' ? 200 : undefined,
 		header: () => {
 			const [sortingState, setSorting] = useTableFrame(ZusUtils.useShallow(table => [table.sort, table.setSort]))
@@ -212,6 +212,7 @@ function buildColDefs(
 	const tableColDefs: ColumnDef<RowData>[] = [
 		{
 			id: 'select',
+			size: 40,
 			header: function SelectHeader({ table }) {
 				const selectState = useTableFrame(table => {
 					if (table.pageData === null) return
@@ -491,7 +492,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none hover:bg-unset bg-grey-800 data-[disabled=true]:hover:bg-unset data-[disabled=true]:bg-grey-800"
+					className="select-none data-[disabled=true]:hover:bg-unset data-[disabled=true]:bg-grey-800"
 					data-disabled={row.original.isRowDisabled}
 					onClick={(e) => {
 						if (e.ctrlKey && e.button === 0) {

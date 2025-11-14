@@ -48,56 +48,6 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
-export default function FilterWrapper(props: { filterId: string }) {
-	const { toast } = useToast()
-	const loggedInUser = UsersClient.useLoggedInUser()
-	const navigate = useNavigate()
-	const filterEntity = FilterEntityClient.useFilterEntities().get(props.filterId)
-
-	React.useEffect(() => {
-		const sub = FilterEntityClient.filterMutation$.subscribe((mutation) => {
-			if (!mutation || mutation.key !== props.filterId) return
-			switch (mutation.type) {
-				case 'add':
-					break
-				case 'update': {
-					if (mutation.username === loggedInUser?.username) return
-					toast({
-						title: `Filter ${mutation.value.name} was updated by ${mutation.displayName}`,
-					})
-					break
-				}
-				case 'delete': {
-					if (mutation.username === loggedInUser?.username) return
-					toast({
-						title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
-					})
-					navigate({ to: '/filters' })
-					break
-				}
-				default:
-					assertNever(mutation.type)
-			}
-			return () => sub.unsubscribe()
-		})
-	}, [navigate, toast, loggedInUser?.username, props.filterId])
-	const userRes = UsersClient.useUser(filterEntity?.owner)
-	const filterContributorRes = useQuery(FilterEntityClient.getFilterContributorsBase(props.filterId))
-
-	if (!filterEntity || !userRes.data || !filterContributorRes.data) {
-		return <FullPageSpinner />
-	}
-	let owner: USR.User
-	switch (userRes.data.code) {
-		case 'err:not-found':
-			return <div>Owner not found</div>
-		case 'ok':
-			owner = userRes.data.user
-			break
-	}
-	return <FilterEdit entity={filterEntity} contributors={filterContributorRes.data} owner={owner} />
-}
-
 export function FilterEdit(
 	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User; frameKey: EditFrame.Key },
 ) {
@@ -212,8 +162,10 @@ export function FilterEdit(
 	const [filterValid, filterModified] = useFrame(
 		useShallow((state) => [state.valid, state.modified]),
 	)
+	const isDirty = useStore(form.store, s => s.isDirty)
 
 	useBlocker({
+		enableBeforeUnload: filterModified || form.state.isDirty,
 		shouldBlockFn: () => {
 			if (!filterModified && !form.state.isDirty) return false
 

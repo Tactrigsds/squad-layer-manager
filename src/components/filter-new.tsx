@@ -1,11 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager'
+import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
-import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import * as EFB from '@/models/editable-filter-builders.ts'
 import * as F from '@/models/filter.models'
 import { useFilterCreate } from '@/systems.client/filter-entity.client.ts'
 import { invalidateLoggedInUser } from '@/systems.client/users.client'
@@ -21,21 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 
-const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
-
-export default function FilterNewWrapper() {
-	const frameInputRef = React.useRef(EditFrame.createInput({ startingFilter: DEFAULT_FILTER }))
-	// TODO create frame in loader
-	const frameKey = useFrameLifecycle(EditFrame.frame, {
-		input: frameInputRef.current,
-		deps: undefined,
-		equalityFn: Obj.deepEqual,
-	})
-
-	return <FilterNew frameKey={frameKey} />
-}
-
-function FilterNew(props: { frameKey: EditFrame.Key }) {
+export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 	const { toast } = useToast()
 	const navigate = useNavigate()
 	const createFilterMutation = useFilterCreate()

@@ -78,7 +78,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	}
 
 	return (
-		<Popover modal={true} open={open} onOpenChange={setOpen}>
+		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				{props.children
 					? props.children

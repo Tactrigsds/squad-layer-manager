@@ -10,6 +10,7 @@ import { rootRouter } from '@/root-router'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as UsersClient from '@/systems.client/users.client'
 import { createFileRoute, useParams } from '@tanstack/react-router'
+import React from 'react'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
@@ -24,7 +25,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	},
 	staleTime: Infinity,
 	preloadStaleTime: Infinity,
-	loader: async ({ params, preload }) => {
+	loader: async ({ params }) => {
 		const filterContributorsRes = await RPC.queryClient.fetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		const filterEntity = filterEntities.get(params.filterId)
@@ -33,7 +34,6 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		if (ownerRes.code !== 'ok') return null
 		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
-		console.log('loaded', params.filterId, { ...frameInput.sort, preload })
 
 		return {
 			entity: filterEntity,
@@ -42,41 +42,44 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 			owner: ownerRes.user,
 		}
 	},
-	onEnter: async ({ params, abortController }) => {
-		const loggedInUser = await UsersClient.fetchLoggedInUser()
-		FilterEntityClient.filterMutation$.pipe(
-			withAbortSignal(abortController.signal),
-		)
-			.subscribe((mutation) => {
-				if (!mutation || mutation.key !== params.filterId) return
-				switch (mutation.type) {
-					case 'add':
-						break
-					case 'update': {
-						if (mutation.username === loggedInUser?.username) return
-						globalToast$.next({
-							title: `Filter ${mutation.value.name} was updated by ${mutation.displayName}`,
-						})
-						break
-					}
-					case 'delete': {
-						if (mutation.username === loggedInUser?.username) return
-						globalToast$.next({
-							title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
-						})
-						rootRouter.navigate({ to: '/filters' })
-						break
-					}
-					default:
-						assertNever(mutation.type)
-				}
-				return () => sub.unsubscribe()
-			})
-	},
 })
 
 function RouteComponent() {
 	const loaderData = Route.useLoaderData()
+	const params = Route.useParams()
+
+	React.useEffect(() => {
+		const sub = FilterEntityClient.filterMutation$.pipe()
+			.subscribe({
+				next: async (mutation) => {
+					const loggedInUser = await UsersClient.fetchLoggedInUser()
+					if (!mutation || mutation.key !== params.filterId) return
+					switch (mutation.type) {
+						case 'add':
+							break
+						case 'update': {
+							if (mutation.username === loggedInUser?.username) return
+							globalToast$.next({
+								title: `Filter ${mutation.value.name} was updated by ${mutation.displayName}`,
+							})
+							break
+						}
+						case 'delete': {
+							if (mutation.username === loggedInUser?.username) return
+							globalToast$.next({
+								title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
+							})
+							rootRouter.navigate({ to: '/filters' })
+							break
+						}
+						default:
+							assertNever(mutation.type)
+					}
+				},
+			})
+		return () => sub.unsubscribe()
+	}, [params.filterId])
+
 	if (!loaderData) return <p>Something went wrong</p>
 	return <FilterEdit {...loaderData} />
 }
