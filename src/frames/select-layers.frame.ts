@@ -7,13 +7,10 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
-import { SJSHighlightRules } from 'ace-builds/src-noconflict/mode-sjs_highlight_rules'
-import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
@@ -176,7 +173,7 @@ export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInpu
 
 	return {
 		cursor: state.cursor,
-		action: !!state.initialEditedLayerId ? 'edit' : 'add',
+		action: state.initialEditedLayerId ? 'edit' : 'add',
 		constraints: [
 			...appliedConstraints,
 			...repeatRuleConstraints,

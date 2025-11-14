@@ -1,5 +1,4 @@
 import * as Zus from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type Tab = 'details' | 'scores'
 

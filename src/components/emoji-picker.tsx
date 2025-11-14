@@ -1,6 +1,5 @@
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as EMO from '@/models/emoji.models'
 import * as DiscordClient from '@/systems.client/discord.client'
 import * as ThemeClient from '@/systems.client/theme'
 import { useQuery } from '@tanstack/react-query'

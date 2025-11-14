@@ -1,4 +1,3 @@
-import * as AR from '@/app-routes.ts'
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import EmojiDisplay from '@/components/emoji-display.tsx'

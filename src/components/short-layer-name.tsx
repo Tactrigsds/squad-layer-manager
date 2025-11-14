@@ -1,6 +1,5 @@
 import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
-import { OneToManyMap } from '@/lib/one-to-many-map.ts'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
 import * as L from '@/models/layer'

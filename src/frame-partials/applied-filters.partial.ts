@@ -8,7 +8,6 @@ import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as Im from 'immer'
-import * as Rx from 'rxjs'
 
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 

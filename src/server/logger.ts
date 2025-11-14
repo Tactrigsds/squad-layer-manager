@@ -10,7 +10,6 @@ import format from 'quick-format-unescaped'
 import * as Env from './env'
 
 import { assertNever } from '@/lib/type-guards'
-import build from 'pino-abstract-transport'
 export let baseLogger!: CS.Logger
 
 let otelLogger: OtelLogger | undefined

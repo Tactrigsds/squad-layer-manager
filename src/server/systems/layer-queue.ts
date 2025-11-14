@@ -34,7 +34,6 @@ import * as Otel from '@opentelemetry/api'
 
 import { Mutex } from 'async-mutex'
 import * as dateFns from 'date-fns'
-import { _AddUndefinedToPossiblyUndefinedPropertiesOfInterface } from 'discord.js'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'

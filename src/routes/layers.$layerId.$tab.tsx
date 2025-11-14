@@ -1,6 +1,6 @@
 import { LayerInfo } from '@/components/layer-info'
 import * as L from '@/models/layer'
-import { createFileRoute, Navigate, notFound, redirect } from '@tanstack/react-router'
+import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import * as React from 'react'
 
 export const Route = createFileRoute('/layers/$layerId/$tab')({

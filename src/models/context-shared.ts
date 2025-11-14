@@ -1,5 +1,4 @@
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'

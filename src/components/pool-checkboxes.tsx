@@ -1,13 +1,9 @@
 import { useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { assertNever } from '@/lib/type-guards.ts'
-import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
-import * as QD from '@/systems.client/queue-dashboard.ts'
 import React from 'react'
-import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import { Label } from './ui/label.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key }) {

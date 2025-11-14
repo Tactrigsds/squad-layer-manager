@@ -4,9 +4,7 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
-import { KnownPublicKeys } from 'ssh2'
 import * as z from 'zod'
-import { getAllLayerIds } from './layer-queries.models'
 
 export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
 

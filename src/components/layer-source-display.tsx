@@ -1,8 +1,5 @@
-import { Badge } from '@/components/ui/badge.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import * as Text from '@/lib/text'
 import { assertNever } from '@/lib/type-guards'
-import { cn } from '@/lib/utils'
 import * as LL from '@/models/layer-list.models'
 import * as USR from '@/models/users.models'
 import * as PartsSys from '@/systems.client/parts.ts'

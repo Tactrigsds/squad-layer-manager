@@ -77,7 +77,7 @@ export function showLogEvent(obj: any & { level: number }) {
 	const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
 
 	// Extract additional properties
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	 
 	const { time: _, level: __, msg: ___, pid, hostname, ...props } = obj
 
 	// Format additional context if any

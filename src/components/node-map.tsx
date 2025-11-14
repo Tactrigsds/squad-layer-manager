@@ -44,7 +44,7 @@ export function NodePortal(props: { nodeId: NodeMap.NodeId; store: Zus.StoreApi<
 				allocated.delete(props.nodeId)
 			}
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		 
 	}, [props.nodeId])
 
 	return createPortal(

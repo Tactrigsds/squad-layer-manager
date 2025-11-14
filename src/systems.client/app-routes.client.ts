@@ -1,5 +1,4 @@
 import * as AR from '@/app-routes'
-import * as Rx from 'rxjs'
 
 export function setCookie(name: AR.CookieKey, value: string) {
 	document.cookie = `${name}=${encodeURIComponent(value)}; path=/`

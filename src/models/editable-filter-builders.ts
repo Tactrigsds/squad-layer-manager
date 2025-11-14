@@ -1,6 +1,5 @@
 import { assertNever } from '@/lib/type-guards'
 import * as F from './filter.models'
-import * as LC from './layer-columns'
 
 // claude likes curry I guess
 export const createBlock = <T extends F.BlockType>(type: T) => {

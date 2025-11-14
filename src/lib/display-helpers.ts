@@ -63,7 +63,7 @@ export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?:
 	const showFactions = displayProps.includes('factions')
 	const showUnits = displayProps.includes('units')
 
-	let parts: string[] = []
+	const parts: string[] = []
 
 	if (showLayer) {
 		parts.push(layer.Layer)
@@ -131,7 +131,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 		parts.push(layer.Layer)
 	} else {
 		// Show individual components as requested
-		let layerComponents: string[] = []
+		const layerComponents: string[] = []
 		if (showMap) {
 			layerComponents.push(layer.Map)
 		}
@@ -152,8 +152,8 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 			// Show both factions and units
 			const subfaction1 = toShortUnit(layer.Unit_1)
 			const subFaction2 = toShortUnit(layer.Unit_2)
-			let team1 = `${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}${youMarker1}`.trim()
-			let team2 = `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}${youMarker2}`.trim()
+			const team1 = `${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}${youMarker1}`.trim()
+			const team2 = `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}${youMarker2}`.trim()
 			teamsDisplay = `${team1} vs ${team2}`
 		} else if (showFactions) {
 			// Show only factions
@@ -163,8 +163,8 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 			const subfaction1 = toShortUnit(layer.Unit_1)
 			const subFaction2 = toShortUnit(layer.Unit_2)
 			if (subfaction1 || subFaction2) {
-				let unit1 = `${subfaction1}${youMarker1}`.trim()
-				let unit2 = `${subFaction2}${youMarker2}`.trim()
+				const unit1 = `${subfaction1}${youMarker1}`.trim()
+				const unit2 = `${subFaction2}${youMarker2}`.trim()
 				teamsDisplay = `${unit1} vs ${unit2}`.trim()
 			}
 		}

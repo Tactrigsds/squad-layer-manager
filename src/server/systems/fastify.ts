@@ -1,4 +1,3 @@
-import * as Schema from '$root/drizzle/schema.ts'
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
@@ -23,11 +22,9 @@ import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
-import { eq } from 'drizzle-orm'
 import fastify, { FastifyReply, FastifyRequest } from 'fastify'
 import { Readable } from 'node:stream'
 import { WebSocket } from 'ws'
-import * as Users from './users'
 
 const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'require-corp',

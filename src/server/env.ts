@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
-import { HumanTime, NormedUrl, ParsedIntSchema, StrFlag } from '../lib/zod'
+import { NormedUrl, ParsedIntSchema, StrFlag } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {
@@ -66,7 +66,7 @@ let rawEnv!: Record<string, string | undefined>
 
 const parsedProperties = new Map<string, object>()
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 function parseGroups<G extends Record<string, z.ZodTypeAny>>(groups: G) {
 	return z.object(groups).parse(rawEnv)
 }

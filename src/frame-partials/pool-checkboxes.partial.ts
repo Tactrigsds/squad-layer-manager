@@ -1,6 +1,5 @@
 // this is very sparse at the moment, maybe we'll add more of these on-off flags later
 import * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 export type PoolCheckboxesState = {
 	dnr: SS.ConstraintApplyAs

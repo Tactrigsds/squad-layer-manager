@@ -3,13 +3,11 @@ import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
-import { useRefConstructor } from '@/lib/react'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Rx from 'rxjs'
 import { Comparison, ComparisonHandle } from './filter-card'
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {

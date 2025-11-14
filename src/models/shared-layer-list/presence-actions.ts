@@ -1,6 +1,5 @@
 import * as Obj from '@/lib/object'
 import * as SLL from '@/models/shared-layer-list'
-import { b } from 'vitest/dist/chunks/mocker.d.BE_2ls6u.js'
 
 export type ActionInput = { hasEdits: boolean; prev?: SLL.ClientPresence }
 export type ActionOutput = Partial<Omit<SLL.ClientPresence, 'userId'>>

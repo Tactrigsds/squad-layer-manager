@@ -1,7 +1,6 @@
 import { useFrameStore } from '@/frames/frame-manager'
 import * as FRM from '@/lib/frame'
 import * as F from '@/models/filter.models'
-import * as Zus from 'zustand'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
 export function FilterValidationErrorDisplay(props: { frameKey: FRM.InstanceKey<FRM.PartialType<F.NodeValidationErrorStore>> }) {

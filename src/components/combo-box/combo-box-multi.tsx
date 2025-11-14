@@ -7,7 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 
-import { sleep } from '@/lib/async.ts'
 import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 

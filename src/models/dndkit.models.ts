@@ -1,4 +1,3 @@
-import { assertNever } from '@/lib/type-guards'
 import type * as LL from '@/models/layer-list.models'
 
 export type DragEndHandler = (evt: { active: DragItem; over?: DropItem }) => void
