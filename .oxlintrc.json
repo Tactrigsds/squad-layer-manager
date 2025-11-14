@@ -1,0 +1,38 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": [
+		"import",
+		"typescript",
+		"promise",
+		"react",
+		"react-perf"
+	],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"perf": "warn",
+		"nursery": "warn",
+		"pedantic": "warn",
+		"restriction": "warn",
+		"style": "warn"
+	},
+	"rules": {
+		"@typescript-eslint/no-implicit-any": "off",
+		"no-constant-condition": "off",
+		"@typescript-eslint/no-explicit-any": "off",
+		"@typescript-eslint/no-namespace": "off",
+		"eslint/no-unused-vars": ["error", { "args": "after-used", "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+		"import/no-unused-modules": "error",
+		"eslint/sort-keys": "off"
+	},
+	"overrides": [
+		{
+			"files": [
+				"*.test.ts"
+			],
+			"rules": {
+				"@typescript-eslint/no-explicit-any": "off"
+			}
+		}
+	]
+}

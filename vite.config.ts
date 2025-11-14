@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { CommonServerOptions, defineConfig, UserConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
+import oxLintPlugin from 'vite-plugin-oxlint'
 import * as AR from './src/app-routes.ts'
-import * as Dbg from './src/lib/debug.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
 
@@ -15,6 +15,7 @@ const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
+		oxlintPlugin(),
 		tanstackRouter({
 			target: 'react',
 		}),
