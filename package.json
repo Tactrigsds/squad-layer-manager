@@ -121,6 +121,7 @@
 		"@tanstack/react-router-devtools": "^1.134.9",
 		"@tanstack/react-table": "^8.21.3",
 		"@tanstack/router-plugin": "^1.134.9",
+		"@tanstack/table-core": "^8.21.3",
 		"@tanstack/zod-adapter": "^1.134.12",
 		"@tanstack/zod-form-adapter": "^0.33.0",
 		"@types/ace": "^0.0.52",

@@ -1,6 +1,8 @@
 import * as Arr from '@/lib/array'
+import { distinctDeepEquals, traceTag } from '@/lib/async'
 import * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
@@ -9,7 +11,9 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
+import * as UsersClient from '@/systems.client/users.client'
 import { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
 import React from 'react'
@@ -39,6 +43,11 @@ export type Input = {
 
 export function getInputDefaults(args: InputArgs): Input {
 	const sort = Obj.deepClone(args.sort ?? args.colConfig.defaultSortBy)
+	if (sort.type === 'random' && !sort.seed) {
+		// we want to ensure that there's always a seed here to ensure we don't run into non-deterministic cache issues with react query
+		// note that we also always reseed after a reset
+		sort.seed = LQY.getSeed()
+	}
 
 	const columnVisibility: Record<string, boolean> = {}
 	for (const colName of Object.keys(args.colConfig.defs)) {
@@ -70,12 +79,6 @@ export function getInputDefaults(args: InputArgs): Input {
 		input.selected = input.selected.slice(0, input.maxSelected)
 	}
 
-	if (input.sort?.type === 'random' && !input.sort.seed) {
-		// we want to ensure that there's always a seed here to ensure we don't run into non-deterministic cache issues with react query
-		// note that we also always reseed after a reset
-		input.sort = { type: 'random', seed: LQY.getSeed() }
-	}
-
 	return input
 }
 
@@ -91,6 +94,14 @@ export function reset(input: Input, draft: Im.WritableDraft<LayerTable>) {
 	draft.errors = []
 	draft.columnVisibility = input.columnVisibility
 }
+
+export type ConstraintRowDetails = {
+	values: boolean[]
+	violationDescriptors: LQY.MatchDescriptor[]
+	matchedConstraints: LQY.Constraint[]
+	matchedConstraintDescriptors: LQY.MatchDescriptor[]
+}
+export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
 
 export type LayerTable = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
@@ -122,6 +133,9 @@ export type LayerTable = {
 
 	columnVisibility: VisibilityState
 	onColumnVisibilityChange: OnChangeFn<VisibilityState>
+
+	isFetching: boolean
+	pageData: LayerQueriesClient.QueryLayersPageData | null
 } & F.NodeValidationErrorStore
 
 export type Predicates = {
@@ -252,30 +266,69 @@ export function initLayerTable(
 		},
 
 		columnVisibility: input.columnVisibility,
+
+		pageData: null,
+		isFetching: false,
 	}
 
 	setStore({ layerTable: initialLayerTable })
 	initialLayerTable.setSelected(input.selected)
 
-	// set page
+	// -------- schedule queries --------
 	args.sub.add(
 		args.update$.pipe(
+			traceTag('QUERY_LAYERS'),
 			Rx.startWith([args.get(), null] as const),
-			Rx.switchMap(async ([state]) => {
-				const queryInput = selectQueryInput(state)
-				if (state.layerTable.pageIndex === 0 || state.layerTable.showSelectedLayers) return null
-				// we always want to fetch to keep the cache fresh
+			Rx.map(([store]) => selectQueryInput(store)),
+			distinctDeepEquals(),
+			// Rx.auditTime(250),
+			Rx.switchMap(async (queryInput) => {
+				console.log('constraints', queryInput)
 				const base = LayerQueriesClient.getQueryLayersOptions(queryInput)
-				const data = await RPC.queryClient.fetchQuery(base)
-				return data?.code === 'ok' ? data.pageCount : null
+
+				console.log('querying layers')
+				const data = await (async () => {
+					try {
+						set({ isFetching: true })
+						const data = await RPC.queryClient.fetchQuery(base)
+						return data
+					} finally {
+						set({ isFetching: false })
+					}
+				})()
+				console.log('layers queried')
+				if (!data || data.code !== 'ok') return null
+				return data
 			}),
-			Rx.distinctUntilChanged(),
-			Rx.retry(),
-		).subscribe(pageCount => {
-			const table = get()
-			if (pageCount === null) return
-			const newPageIndex = Math.max(Math.min(pageCount - 1, table.pageIndex), 0)
-			set({ pageIndex: newPageIndex })
+			Rx.retry({
+				delay: (error, count) => {
+					console.error('error during query setup', error)
+					return Rx.timer(Math.min(Math.pow(2, count) * 250, 10_000))
+				},
+			}),
+		).subscribe((data) => {
+			set({ pageData: data })
+		}),
+	)
+
+	// -------- updates from query results --------
+	args.sub.add(
+		args.update$.subscribe(([state, prev]) => {
+			;(() => {
+				const table = state.layerTable
+				if (table.pageData === prev.layerTable.pageData || table.pageIndex === 0 || !table.pageData) return
+				const pageCount = table.pageData.pageCount
+				const newPageIndex = Math.max(Math.min(pageCount - 1, table.pageIndex), 0)
+				set({ pageIndex: newPageIndex })
+			})()
+			;(() => {
+				const table = state.layerTable
+				if (!table.pageData || table.pageData !== prev.layerTable.pageData) return
+				if (table.minSelected !== 1 || table.maxSelected !== 1) return
+				if (table.pageData.layers.length !== 1) return
+				// we're in edit mode and we're editing a single layer, so let's just select the layer we just queried
+				table.setSelected([table.pageData.layers[0].id])
+			})()
 		}),
 	)
 }

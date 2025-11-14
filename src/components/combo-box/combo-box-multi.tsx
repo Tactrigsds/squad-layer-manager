@@ -106,10 +106,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	}
 
 	let options: ComboBoxOption<T>[] | typeof LOADING
-	if (props.options !== LOADING && props.options.length > 0 && (typeof props.options[0] === 'string' || props.options[0] === null)) {
-		options = (props.options as T[]).map((v) => ({ value: v }))
+	if (props.options === LOADING) {
+		options = LOADING
 	} else {
-		options = props.options as ComboBoxOption<T>[] | typeof LOADING
+		options = (props.options as (T | ComboBoxOption<T>)[]).map((item): ComboBoxOption<T> =>
+			typeof item === 'string' || item === null ? { value: item as T } : item
+		)
+
+		options.sort((a, b) => (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0))
 	}
 
 	// Use internal values for display when selectOnClose is true

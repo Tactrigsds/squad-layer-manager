@@ -652,7 +652,7 @@ export namespace MatchUtils {
 						id: z.literal(defNode.id),
 						_tag: z.literal('variant' as const),
 						opts: optsSchema,
-						choice: variantChildSchemas[childId],
+						chosen: variantChildSchemas[childId],
 					})
 				)
 

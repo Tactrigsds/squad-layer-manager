@@ -1,6 +1,7 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
@@ -9,12 +10,14 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
+import * as UsersClient from '@/systems.client/users.client'
 import { useQuery } from '@tanstack/react-query'
 import { derive } from 'derive-zustand'
 import * as Im from 'immer'
@@ -83,11 +86,64 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 	})
 })
 
-export const useFetchingBuffer = Zus.create(() => false)
+export const useIsFetchingLayerData = Zus.create(() => false)
 
 export function useQueryLayersOptions(input: LQY.LayersQueryInput, errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>) {
 	const counters = Zus.useStore(Store, s => s.counters)
 	return getQueryLayersOptions(input, errorStore, counters)
+}
+
+function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
+	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
+}
+
+export type ConstraintRowDetails = {
+	values: boolean[]
+	violationDescriptors: LQY.MatchDescriptor[]
+	matchedConstraints: LQY.Constraint[]
+	matchedConstraintDescriptors: LQY.MatchDescriptor[]
+}
+export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
+/**
+ * Convert a layer to RowData format with constraints and isRowDisabled computed
+ */
+function layerToRowData(
+	layer: any,
+	userCanForceSelect: boolean,
+	queryConstraints: LQY.Constraint[],
+): RowData {
+	const constraintValues = Array.isArray(layer.constraints)
+		? layer.constraints
+		: layer.constraints?.values ?? []
+
+	const violationDescriptors = Array.isArray(layer.violationDescriptors)
+		? layer.violationDescriptors
+		: layer.violationDescriptors ?? []
+
+	const matchedConstraints = queryConstraints.filter((c: LQY.Constraint, i: number) => constraintValues[i])
+	const matchedConstraintDescriptors = violationDescriptors
+
+	const constraints: ConstraintRowDetails = {
+		values: constraintValues,
+		violationDescriptors,
+		matchedConstraints,
+		matchedConstraintDescriptors,
+	}
+
+	const isRowDisabled = !userCanForceSelect && getIsLayerDisabled({ ...layer, constraints }, userCanForceSelect, queryConstraints)
+
+	return {
+		...layer,
+		constraints,
+		isRowDisabled,
+	} as RowData
+}
+
+export type QueryLayersPageData = {
+	layers: RowData[]
+	totalCount: number
+	pageCount: number
+	input: LQY.LayersQueryInput
 }
 
 export function getQueryLayersOptions(
@@ -99,6 +155,7 @@ export function getQueryLayersOptions(
 	return {
 		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
 		queryFn: async () => {
+			console.log('constraints in input', input.constraints)
 			if (input.sort?.type === 'random' && !input.sort.seed) {
 				throw new Error('Random sort requires a random seed when used with react query')
 			}
@@ -110,7 +167,61 @@ export function getQueryLayersOptions(
 			} else {
 				errorStore?.setState({ errors: undefined })
 			}
-			return res
+			if (res?.code !== 'ok') return res
+
+			const user = await UsersClient.fetchLoggedInUser()
+			const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
+			let page = {
+				...res,
+				input,
+			}
+			if (input.selectedLayers) {
+				const layerIdsForPage = input.selectedLayers.slice(
+					(input.pageIndex ?? 0) * input.pageSize,
+					((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
+				)
+				const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
+					const layer = page!.layers.find(l => l.id === id)
+					if (layer) {
+						return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
+					}
+					const newLayer: any = {
+						...L.toLayer(id),
+						constraints: Array(input.constraints?.length ?? 0).fill(false),
+						violationDescriptors: [],
+					}
+					return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
+				})
+				if (input.sort) {
+					;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
+						const sort = input.sort!
+						if (sort.type === 'random') {
+							// For random sort just shuffle the entries
+							return Math.random() - 0.5
+						} else if (sort.type === 'column') {
+							const column = sort.sortBy
+							const direction = sort.direction === 'ASC' ? 1 : -1
+
+							if (a[column] === b[column]) return 0
+							if (a[column] === null || a[column] === undefined) return direction
+							if (b[column] === null || b[column] === undefined) return -direction
+
+							return a[column] < b[column] ? -direction : direction
+						} else {
+							assertNever(sort)
+						}
+					})
+				}
+				page = { ...page, layers: selectedLayers as any }
+			}
+			if (page) {
+				return {
+					...page,
+					layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
+				}
+			} else {
+				return undefined
+			}
 		},
 		staleTime: Infinity,
 	}
@@ -126,15 +237,15 @@ export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput, errorSt
 }
 
 export function getQueryLayersInput(queryContext: LQY.BaseQueryInput, opts: {
-	cfg?: LC.EffectiveColumnConfig
+	cfg?: LQY.EffectiveColumnAndTableConfig
 	selectedLayers?: L.LayerId[]
 	sort?: LQY.LayersQueryInput['sort']
 	pageSize?: number
 	pageIndex?: number
 }): LQY.LayersQueryInput {
-	const sort = opts?.sort ?? LQY.DEFAULT_SORT
+	const sort = opts?.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
 	const pageSize = opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE
-	const pageIndex = opts.pageIndex
+	const pageIndex = opts.pageIndex ?? 0
 	const selectedLayers = opts.selectedLayers
 
 	if (selectedLayers) {
@@ -155,6 +266,7 @@ export function getQueryLayersInput(queryContext: LQY.BaseQueryInput, opts: {
 		pageIndex,
 		sort,
 		pageSize,
+		selectedLayers: selectedLayers,
 	}
 }
 
@@ -805,7 +917,7 @@ export async function cleanupWorkerPool() {
 }
 
 async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
-	useFetchingBuffer.setState(true)
+	useIsFetchingLayerData.setState(true)
 	try {
 		// Check if SharedArrayBuffer is available
 		if (typeof SharedArrayBuffer === 'undefined') {
@@ -871,7 +983,7 @@ async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
 		sharedView.set(bufferView)
 		return sharedBuffer
 	} finally {
-		useFetchingBuffer.setState(false)
+		useIsFetchingLayerData.setState(false)
 	}
 }
 

@@ -28,28 +28,24 @@ export function useStoreDeep<S, O>(store: StoreApi<S>, selector: (s: S) => O, op
 	return useStoreWithEqualityFn(store, selector, Obj.deepEqual)
 }
 
-export function useCombinedStoresDeep<States extends unknown[], Selector extends (states: States) => any>(
+export function useCombinedStores<States extends unknown[], Selector extends (states: States) => any>(
 	stores: StoresTuple<States>,
 	selector: Selector,
-	opts: { dependencies: unknown[] },
 ) {
 	const [values, setValues] = React.useState(() => stores.map(s => s.getState()) as States)
 
-	const updateValues = React.useCallback(() => {
-		setValues(stores.map(s => s.getState()) as States)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...stores])
-
 	React.useEffect(() => {
+		const updateValues = () => {
+			setValues(stores.map(s => s.getState()) as States)
+		}
 		const subscriptions = stores.map(s => s.subscribe(updateValues))
 		return () => subscriptions.forEach(unsub => unsub())
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...stores])
+	}, [...stores, setValues])
 
 	return React.useMemo(() => {
 		return selector(values)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...opts.dependencies, values]) as ReturnType<Selector>
+	}, [selector, values]) as ReturnType<Selector>
 }
 
 export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, opts: { sub: Rx.Subscription }) {

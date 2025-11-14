@@ -82,8 +82,9 @@ export const DEFAULT_PAGE_SIZE = 20
 
 export type LayersQueryInput = {
 	pageIndex?: number
-	pageSize?: number
+	pageSize: number
 	sort: LayersQuerySort | null
+	selectedLayers?: L.LayerId[]
 } & BaseQueryInput
 
 export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }

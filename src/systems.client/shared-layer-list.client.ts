@@ -185,8 +185,6 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 					})
 					const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 					const frameState = getFrameState(frameKey)
-					const queryInput = LayerTablePrt.selectQueryInput(frameState)
-					RPC.queryClient.prefetchQuery(LQYClient.getQueryLayersOptions(queryInput))
 					return { selectLayersFrame: frameKey, activity: args.activity }
 				},
 				onEnter(args) {},
