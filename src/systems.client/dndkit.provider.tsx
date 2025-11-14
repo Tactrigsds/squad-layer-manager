@@ -4,13 +4,13 @@ import * as DndKitReact from '@dnd-kit/react'
 import React from 'react'
 
 export function DragContextProvider(props: { children: React.ReactNode }) {
-	const hooksRef = React.useRef({} as Record<string, DND.DragEndHandler>)
+	const handlersRef = React.useRef(new Map<string, DND.DragEndHandler>())
 
-	function addHook(key: string, hook: DND.DragEndHandler) {
-		hooksRef.current[key] = hook
+	function addHandler(key: string, handler: DND.DragEndHandler) {
+		handlersRef.current.set(key, handler)
 	}
-	function removeHook(key: string) {
-		delete hooksRef.current[key]
+	function removeHandler(key: string) {
+		handlersRef.current.delete(key)
 	}
 
 	return (
@@ -19,7 +19,7 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 				const { operation } = event
 				const { source, target } = operation
 				if (!target || !source) return
-				for (const hook of Object.values(hooksRef.current)) {
+				for (const hook of handlersRef.current.values()) {
 					hook({
 						active: DND.deserializeDragItem(source.id as string),
 						over: DND.deserializeDropItem(target.id as string),
@@ -27,7 +27,9 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 				}
 			}}
 		>
-			<DndKit.DragEndContext.Provider value={{ addHook, removeHook }}>{props.children}</DndKit.DragEndContext.Provider>
+			<DndKit.DragEndContext.Provider value={{ addHook: addHandler, removeHook: removeHandler }}>
+				{props.children}
+			</DndKit.DragEndContext.Provider>
 		</DndKitReact.DragDropProvider>
 	)
 }

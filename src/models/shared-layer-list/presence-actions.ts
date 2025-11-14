@@ -51,7 +51,7 @@ export const disconnectedTimeout: Action = () => {
 	}
 }
 
-export const updateActivity = (activity: SLL.Activity): Action => {
+export const updateActivity = (activity: SLL.RootActivity): Action => {
 	return () => ({
 		away: false,
 		activityState: activity,
@@ -59,8 +59,8 @@ export const updateActivity = (activity: SLL.Activity): Action => {
 	})
 }
 
-export const endActivity = (activity?: SLL.Activity): Action => (input) => {
-	let newActivity: SLL.Activity | null = null
+export const endActivity = (activity?: SLL.RootActivity): Action => (input) => {
+	let newActivity: SLL.RootActivity | null = null
 	if (activity) {
 		newActivity = Obj.deepEqual(activity, input.prev?.activityState) ? null : input.prev!.activityState
 	}

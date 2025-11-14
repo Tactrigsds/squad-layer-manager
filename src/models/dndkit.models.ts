@@ -1,4 +1,5 @@
 import { assertNever } from '@/lib/type-guards'
+import type * as LL from '@/models/layer-list.models'
 
 export type DragEndHandler = (evt: { active: DragItem; over?: DropItem }) => void
 export type DragEndContext = {
@@ -7,11 +8,18 @@ export type DragEndContext = {
 }
 
 export type DragItem = {
-	type: 'layer-item' | 'filter-node'
+	type: 'filter-node'
 	id: string
+} | {
+	type: 'layer-item'
+	id: LL.ItemId
 } | {
 	type: 'history-entry'
 	id: number
+}
+
+{
+	const _: DragItem = undefined! satisfies { id: string | number }
 }
 
 export type DragItemType = DragItem['type']

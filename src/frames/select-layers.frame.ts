@@ -11,6 +11,8 @@ import * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
+import { SJSHighlightRules } from 'ace-builds/src-noconflict/mode-sjs_highlight_rules'
+import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
@@ -32,6 +34,7 @@ export function createInput(
 		colConfig: ConfigClient.getColConfig(),
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
+		cursor: opts.cursor,
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -41,7 +44,6 @@ export function createInput(
 			...(opts.initialEditedLayerId
 				? {
 					selected: [opts.initialEditedLayerId],
-					showSelectedLayers: true,
 					maxSelected: opts.maxSelected ?? 1,
 					minSelected: opts.minSelected ?? 1,
 				}
@@ -59,6 +61,7 @@ type Primary = {
 	setCursor: (cursor: LQY.Cursor | undefined) => void
 	initialEditedLayerId?: L.LayerId
 	cursor: LQY.Cursor | undefined
+	input: Input
 }
 
 type Store =
@@ -91,6 +94,7 @@ const setup: Frame['setup'] = (args) => {
 			setCursor: (cursor) => {
 				set({ cursor })
 			},
+			input,
 			initialEditedLayerId: args.input.initialEditedLayerId,
 		} satisfies Primary,
 	)

@@ -64,8 +64,8 @@ export default function UserPresencePanel() {
 			const aEditingActivity = aPresence.activityState?.child.EDITING
 			const bEditingActivity = bPresence.activityState?.child.EDITING
 
-			const aNonIdle = !!aEditingActivity?.child && aEditingActivity.child.id !== 'IDLE'
-			const bNonIdle = !!bEditingActivity?.child && bEditingActivity.child.id !== 'IDLE'
+			const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
+			const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'
 
 			if (aNonIdle && !bNonIdle) return -1
 			if (!aNonIdle && bNonIdle) return 1

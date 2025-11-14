@@ -3,6 +3,7 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { frameManager, getFrameState } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { sleep } from '@/lib/async'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
@@ -10,7 +11,7 @@ import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
-import { destrNullable, NumericKeys } from '@/lib/types'
+import { NumericKeys } from '@/lib/types'
 import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -72,22 +73,10 @@ export type Store = {
 	isModified: boolean
 	userPresence: Map<bigint, SLL.ClientPresence>
 
-	activityLoaderCache: ActivityLoaderCacheEntry<(typeof activityLoaderConfigs)[number]>[]
+	activityLoaderCache: LoaderCacheEntry<(typeof ACTIVITY_LOADER_CONFIGS)[number]>[]
 
-	updateActivity: (update: (prev: SLL.Activity) => SLL.Activity) => void
-	preloadActivity: (update: (prev: SLL.Activity) => SLL.Activity) => void
-}
-
-export type ActivityLoaderCacheEntry<Config extends ActivityLoaderConfig<any, any, any>> = {
-	name: Config['name']
-	key: Config extends ActivityLoaderConfig<any, infer Predicate, any> ? Predicate : never
-	data?: Config extends ActivityLoaderConfig<any, any, infer Data> ? Data : never
-	active: boolean
-	unloadSub?: Rx.Subscription
-}
-
-type ActivityLoaderCacheEntryLoaded<Config extends ActivityLoaderConfig<any, any, any>> = ActivityLoaderCacheEntry<Config> & {
-	data: Config extends ActivityLoaderConfig<any, any, infer Data> ? Data : never
+	updateActivity: (update: (prev: SLL.RootActivity) => SLL.RootActivity) => void
+	preloadActivity: (update: (prev: SLL.RootActivity) => SLL.RootActivity) => void
 }
 
 const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
@@ -96,34 +85,75 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 
 export const Store = createStore()
 
-type MatchFn<Predicate> = (state: SLL.Activity) => Predicate | undefined
+type MatchFn<Predicate> = (state: SLL.RootActivity) => Predicate | undefined
 
-type ActivityLoaderConfigOptions<Predicate, Data = never> = {
-	// the time before we unload an inactive action
-	staleTime?: number
+type ActivityLoaderConfigOptions<Predicate, Data = never> =
+	& {
+		// the time before we unload an inactive action. default no unload
+		staleTime?: number
 
-	// don't mutate the store from the loader pretty please
-	load?: (opts: { activity: Predicate; preload: boolean; state: Store }) => Awaited<Data>
+		// don't mutate the store from the loader pretty please
+		// load?: (opts: { activity: Predicate; preload: boolean; state: Store }) => Data
+		// loadAsync?: (opts: { activity: Predicate; preload: boolean; state: Store }) => Promise<Data>
 
-	onEnter?: (opts: { activity: Predicate; data: Data; state: Im.WritableDraft<Store> }) => Promise<void> | void
-	onUnload?: (opts: { activity: Predicate; data: Data; state: Im.WritableDraft<Store> }) => Promise<void> | void
-	onLeave?: (opts: { activity: Predicate; data: Data; state: Im.WritableDraft<Store> }) => Promise<void> | void
+		// default false
+		unloadOnLeave?: boolean
+
+		onEnter?: (opts: { activity: Predicate; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
+		onUnload?: (opts: { activity: Predicate; data: Data | undefined; state: Im.WritableDraft<Store> }) => Promise<void> | void
+		onLeave?: (opts: { activity: Predicate; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
+	}
+	& ({
+		load: (opts: { activity: Predicate; preload: boolean; state: Store }) => Data
+	} | {
+		loadAsync: (opts: { activity: Predicate; preload: boolean; state: Store; abortController: AbortController }) => Promise<Data>
+	})
+
+function hasSyncLoader<Config extends ActivityLoaderConfig>(config: Config): config is Extract<Config, { load: (...args: any[]) => any }> {
+	return typeof (config as any).load === 'function'
+}
+function hasAsyncLoader<Config extends ActivityLoaderConfig>(
+	config: Config,
+): config is Extract<Config, { loadAsync: (...args: any[]) => any }> {
+	return typeof (config as any).loadAsync === 'function'
 }
 
-type ActivityLoaderConfig<Name extends string = string, Predicate = any, O = never> =
-	& ActivityLoaderConfigOptions<Predicate, O>
+type ActivityLoaderConfigEvents = {}
+
+type ActivityLoaderConfig<Name extends string = string, Key = any, Data = any> =
 	& {
-		match: MatchFn<Predicate>
+		match: (state: SLL.RootActivity) => Key | undefined
 		name: Name
 	}
-export type LoadedActivityState = ActivityLoaderCacheEntryLoaded<(typeof activityLoaderConfigs)[number]>
+	& ActivityLoaderConfigOptions<Key, Data>
 
-const activityLoaderConfigs = (function getActivityLoaderConfigs() {
+export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends boolean = boolean> = {
+	name: Config['name']
+	key: LoaderCacheKey<Config>
+	data: Loaded extends true ? LoaderData<Config> : Loaded extends false ? undefined : LoaderData<Config> | undefined
+	active: boolean
+	// unsubscribe to unschedule staletime unload
+	unloadSub?: Rx.Subscription
+
+	// aborts loading if async
+	loadAbortController?: AbortController
+}
+export type LoaderResult<Config extends ActivityLoaderConfig> = Config extends { loadAsync: () => infer Result } ? Result
+	: LoaderData<Config>
+export type LoaderData<Config extends ActivityLoaderConfig> = Config extends ActivityLoaderConfig<infer Name, infer Key, infer Data> ? Data
+	: never
+export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Exclude<ReturnType<Config['match']>, undefined>
+export type LoadedActivityState = LoaderCacheEntry<ConfiguredLoaderConfig, true>
+
+// -------- configure loaders --------
+export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
+export type ConfiguredLoaderConfig = ConfiguredLoaders[number]
+const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 	function newActivityLoaderConfig<Name extends string, Predicate extends ST.Match.Node>(
 		name: Name,
-		match: (state: SLL.Activity) => Predicate | undefined,
+		match: (state: SLL.RootActivity) => Predicate | undefined,
 	) {
-		return <O>(config: ActivityLoaderConfigOptions<Predicate, O>): ActivityLoaderConfig<Name, Predicate, O> => ({
+		return <Data>(config: ActivityLoaderConfigOptions<Predicate, Data>): ActivityLoaderConfig<Name, Predicate, Data> => ({
 			name,
 			match,
 			...config,
@@ -133,23 +163,26 @@ const activityLoaderConfigs = (function getActivityLoaderConfigs() {
 		newActivityLoaderConfig(
 			'selectLayers',
 			s => {
-				const node = s.child.EDITING?.child
+				const node = s.child.EDITING?.chosen
 				if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return node
 				return undefined
 			},
 		)(
 			{
+				// this is what ensures that we reset the dialogs after they're closed
+				unloadOnLeave: true,
+
 				load(args) {
+					console.trace('load ', args.activity)
 					let editedLayerId: L.LayerId | undefined
 					if (args.activity.id === 'EDITING_ITEM') {
-						const { item } = destrNullable(LL.findItemById(args.state.layerList, args.activity.opts.itemId))
+						const { item } = Obj.destrNullable(LL.findItemById(args.state.layerList, args.activity.opts.itemId))
 						if (item) editedLayerId = item.layerId
 					}
-					const input = SelectLayersFrame.createInput(
-						args.activity.id === 'EDITING_ITEM'
-							? { initialEditedLayerId: editedLayerId }
-							: { cursor: args.activity.opts.cursor },
-					)
+					const input = SelectLayersFrame.createInput({
+						cursor: args.activity.opts.cursor,
+						initialEditedLayerId: editedLayerId,
+					})
 					const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 					const frameState = getFrameState(frameKey)
 					const queryInput = LayerTablePrt.selectQueryInput(frameState)
@@ -157,15 +190,10 @@ const activityLoaderConfigs = (function getActivityLoaderConfigs() {
 					return { selectLayersFrame: frameKey, activity: args.activity }
 				},
 				onEnter(args) {},
-				onLeave(args) {
-					const frameState = getFrameState(args.data.selectLayersFrame)
-					if (frameState.layerTable.sort?.type === 'random') {
-						frameState.layerTable.randomize()
-					}
-				},
-				staleTime: 30_00,
 				onUnload(args) {
-					frameManager.teardown(args.data.selectLayersFrame)
+					console.trace('unload ', args.activity)
+					// crudely wait for unload to render as  .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
+					if (args.data) sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
 				},
 			},
 		),
@@ -191,7 +219,9 @@ function createStore() {
 			if (prev.presence !== state.presence) {
 				set({ userPresence: SLL.resolveUserPresence(state.presence) })
 
-				const wsClientId = ConfigClient.getConfig().wsClientId
+				const config = ConfigClient.getConfig()
+				if (!config) return
+				const wsClientId = config.wsClientId
 				const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
 				const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
 				if (prevClientActivityState !== clientActivityState) {
@@ -201,78 +231,119 @@ function createStore() {
 		})
 
 		function dispatchClientActivityEvents(
-			updated: SLL.Activity | null,
-			prev: SLL.Activity | null,
-			preload: boolean,
+			updated: SLL.RootActivity | null,
+			prev: SLL.RootActivity | null,
+			preloading: boolean,
 		) {
 			set(Im.produce<Store>(draft => {
 				const loaderCache = draft.activityLoaderCache
 				if (updated == prev) return
-				if (!preload) draft._activityState = updated
-				for (const config of activityLoaderConfigs) {
-					const predicate = updated ? config.match(updated) : undefined
-					const prevPredicate = prev ? config.match(prev) : undefined
-					if (Obj.deepEqual(predicate, prevPredicate)) continue
-					if (!predicate) {
-						if (!prevPredicate) continue
+				for (const config of ACTIVITY_LOADER_CONFIGS) {
+					const cacheKey = updated ? config.match(updated) : undefined
+					const prevCacheKey = prev ? config.match(prev) : undefined
+					if (Obj.deepEqual(cacheKey, prevCacheKey)) continue
+					if (!cacheKey) {
+						if (!prevCacheKey || preloading) continue
 						for (const entry of loaderCache) {
-							if (!entry.active || !Obj.deepEqual(prevPredicate, entry.key)) continue
+							if (!entry.active || !Obj.deepEqual(prevCacheKey, entry.key)) continue
 							if (!loaderCache.includes(entry)) return
-							const args = { activity: prevPredicate, data: Im.current(entry.data), state: draft } as any
-							entry.active = false
-							config.onLeave?.(args)
-							entry.unloadSub = scheduleUnload(config as any, prevPredicate as any)
+							if (config.unloadOnLeave) {
+								unload(config, prevCacheKey, draft)
+							} else {
+								entry.unloadSub = scheduleUnload(config, prevCacheKey)
+							}
+							if (config.onLeave) {
+								entry.active = false
+								config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!), draft })
+							}
 						}
 						continue
 					}
-					const existingEntry = loaderCache.find(e => Obj.deepEqual(e.key, predicate))
-					let cacheEntry: ActivityLoaderCacheEntry<typeof config>
+					const existingEntry = loaderCache.find(e => Obj.deepEqual(e.key, cacheKey))
+					let cacheEntry: LoaderCacheEntry<typeof config>
+					let load$: Rx.Observable<LoaderData<typeof config> | undefined> | undefined
 					if (!existingEntry) {
-						cacheEntry = { name: config.name, key: predicate, active: undefined! }
-						const maybePromise = config.load?.({ activity: predicate, preload, state: draft }) as any
-
-						if (maybePromise && 'then' in maybePromise) {
-							;(maybePromise as Promise<any>).then((data) => (
+						cacheEntry = { name: config.name, key: cacheKey, active: undefined!, data: undefined }
+						const args = { activity: cacheKey, preload: preloading, state: Im.current(draft) as Store }
+						if (hasSyncLoader(config)) {
+							const data = config.load(args)
+							cacheEntry.data = data
+						} else if (hasAsyncLoader(config)) {
+							const controller = new AbortController()
+							cacheEntry.loadAbortController = controller
+							const directLoad$ = Rx.from(
+								config.loadAsync({ ...args, abortController: cacheEntry.loadAbortController }).catch(() => undefined),
+							)
+							const load$ = Rx.race(
+								directLoad$,
+								Rx.fromEvent(controller.signal, 'abort', { once: true }).pipe(Rx.map(() => undefined)),
+							)
+							load$.subscribe((data) => {
+								if (data === undefined) return
 								set(Im.produce<Store>(draft => {
-									const cacheEntry = draft.activityLoaderCache.find(entry => entry.key === predicate)
+									const cacheEntry = draft.activityLoaderCache.find(entry => entry.key === cacheKey)
 									if (cacheEntry) {
 										cacheEntry.data = data
 									}
 								}))
-							))
-						} else {
-							cacheEntry.data = maybePromise as any
+							})
 						}
+
 						loaderCache.push(cacheEntry)
 					} else {
-						cacheEntry = existingEntry as ActivityLoaderCacheEntry<typeof config>
+						cacheEntry = existingEntry as LoaderCacheEntry<typeof config>
 					}
-					if (preload) {
+					if (preloading) {
 						if (cacheEntry.active) continue
 						cacheEntry.active = false
 						cacheEntry.unloadSub?.unsubscribe()
-						cacheEntry.unloadSub = scheduleUnload(config as any, predicate as any)
+						cacheEntry.unloadSub = scheduleUnload(config as any, cacheKey as any)
 					} else {
-						cacheEntry.active = true
-						cacheEntry.unloadSub?.unsubscribe()
-						if (!loaderCache.includes(cacheEntry)) return
-						config.onEnter?.({ activity: predicate, data: cacheEntry.data as any, state: draft })
-						delete cacheEntry.unloadSub
+						if (cacheEntry.data) {
+							cacheEntry.active = true
+							cacheEntry.unloadSub?.unsubscribe()
+							delete cacheEntry.unloadSub
+							config.onEnter?.({ activity: cacheKey, data: cacheEntry.data, draft: draft })
+						} else if (load$) {
+							load$.subscribe(data => {
+								if (!data) return
+								set(Im.produce<Store>(draft => {
+									const cacheEntry = draft.activityLoaderCache.find(entry => entry.key === cacheKey)
+									if (cacheEntry) {
+										cacheEntry.data = data
+									}
+								}))
+							})
+						}
 					}
 				}
 			}))
 
-			function scheduleUnload<Predicate extends ST.Match.Node>(config: ActivityLoaderConfig<string, Predicate>, predicate: Predicate) {
-				if (!config.staleTime) return
-				return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(async () => {
-					const data = get().activityLoaderCache.find(e => Obj.deepEqual(e.key, predicate))?.data
+			function unload<Config extends ActivityLoaderConfig>(
+				config: Config,
+				predicate: LoaderCacheKey<Config>,
+				draft: Im.WritableDraft<Store>,
+			) {
+				const loaderCache = draft.activityLoaderCache
+				const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, predicate))
+				if (!cacheEntry) return
+				draft.activityLoaderCache = loaderCache.filter(e => !Obj.deepEqual(e.key, predicate))
+				if (config.onUnload) {
+					const args = { activity: predicate, data: Im.current(cacheEntry.data), state: draft }
+					config.onUnload(args)
+				}
+				cacheEntry?.loadAbortController?.abort('unloaded')
+			}
+
+			function scheduleUnload<Config extends ActivityLoaderConfig>(
+				config: Config,
+				predicate: LoaderCacheKey<Config>,
+			) {
+				if (config.staleTime === undefined) return
+
+				return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(() => {
 					set(Im.produce<Store>(draft => {
-						const loaderCache = draft.activityLoaderCache
-						const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, predicate))
-						if (!cacheEntry) return
-						draft.activityLoaderCache = loaderCache.filter(e => !Obj.deepEqual(e.key, predicate))
-						const args = { activity: predicate, data, state: draft as any } as any
-						config.onUnload?.(args)
+						unload(config, predicate, draft)
 					}))
 				})
 			}
@@ -412,8 +483,9 @@ function createStore() {
 				}
 			},
 
+			// try to call this such that react will batch the rerenders
 			async dispatch(newOp) {
-				const userId = (await UsersClient.fetchLoggedInUser()).discordId
+				const userId = UsersClient.loggedInUserId!
 				const baseProps = { opId: createId(6), userId }
 
 				let op: SLL.Operation
@@ -444,6 +516,7 @@ function createStore() {
 						SLL.applyOperations(draft.session, [op])
 					})
 				)
+				this.updateActivity(SLL.TOGGLE_EDITING_TRANSITIONS.createActivity)
 
 				await processUpdate({
 					code: 'op',
@@ -455,6 +528,7 @@ function createStore() {
 
 			async pushPresenceAction(action) {
 				const config = ConfigClient.getConfig()
+				if (!config) return
 				const state = get()
 				const userId = UsersClient.loggedInUserId
 				if (!userId) return
@@ -493,7 +567,9 @@ function createStore() {
 			activityLoaderCache: [],
 
 			updateActivity(update) {
-				let prev: SLL.Activity | null = get().presence.get(ConfigClient.getConfig().wsClientId)?.activityState ?? null
+				const config = ConfigClient.getConfig()
+				if (!config) return
+				let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
 				if (!prev) {
 					prev = SLL.DEFAULT_ACTIVITY
 				}
@@ -502,7 +578,9 @@ function createStore() {
 			},
 
 			preloadActivity(update) {
-				let prev: SLL.Activity | null = get().presence.get(ConfigClient.getConfig().wsClientId)?.activityState ?? null
+				const config = ConfigClient.getConfig()
+				if (!config) return
+				let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
 				if (!prev) {
 					prev = {
 						_tag: 'branch',
@@ -563,7 +641,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const res = MapUtils.find(
 				state.presence,
 				(_, v) => {
-					const activity = v.activityState?.child.EDITING?.child
+					const activity = v.activityState?.child.EDITING?.chosen
 					return !!activity && SLL.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 				},
 			)
@@ -571,7 +649,7 @@ export function useItemPresence(itemId: LL.ItemId) {
 			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: root.child.EDITING!.child as SLL.ItemOwnedActivity,
+				itemActivity: root.child.EDITING!.chosen as SLL.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
@@ -650,14 +728,13 @@ export function useIsItemLocked(itemId: LL.ItemId) {
 // allows familiar useState binding to a presence activity. it's expected that multiple dialogs can bind to the same presence so activating a presence will not flip the state
 export function useActivityState<P>(
 	opts: {
-		createActivity: (prev: SLL.Activity) => SLL.Activity
-		removeActivity: (prev: SLL.Activity) => SLL.Activity
+		createActivity: (prev: SLL.RootActivity) => SLL.RootActivity
+		removeActivity: (prev: SLL.RootActivity) => SLL.RootActivity
 
 		// the callback passed here should probably be memoized
-		matchActivity: (prev: SLL.Activity) => P
+		matchActivity: (prev: SLL.RootActivity) => P
 	},
 ) {
-	const config = ConfigClient.useConfig()
 	const { matchActivity, createActivity, removeActivity } = opts
 
 	const createActivityRef = React.useRef(createActivity)
@@ -668,13 +745,16 @@ export function useActivityState<P>(
 	const predicate = Zus.useStore(
 		Store,
 		ZusUtils.useDeep(React.useCallback(() => {
+			const config = ConfigClient.getConfig()
 			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? SLL.DEFAULT_ACTIVITY
 			return matchActivity(state)
-		}, [config, matchActivity])),
+		}, [matchActivity])),
 	)
 	const setActive: React.Dispatch<React.SetStateAction<boolean>> = React.useCallback((update) => {
+		const config = ConfigClient.getConfig()
+		if (!config) return
 		const storeState = Store.getState()
-		const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? SLL.DEFAULT_ACTIVITY
+		const state = Store.getState().presence.get(config?.wsClientId)?.activityState ?? SLL.DEFAULT_ACTIVITY
 
 		const alreadyActive = !!matchActivity(state)
 		const newActive = typeof update === 'function' ? update(alreadyActive) : update
@@ -685,7 +765,7 @@ export function useActivityState<P>(
 		if (!newActive && alreadyActive) {
 			storeState.updateActivity(removeActivityRef.current)
 		}
-	}, [matchActivity, config])
+	}, [matchActivity])
 	return [predicate, setActive] as const
 }
 
@@ -694,7 +774,7 @@ export function useHoveredActivityUser() {
 	return [hovered, setHovered] as const
 }
 
-export const selectActivityPresent = (targetActivity: SLL.Activity) => (state: Store) => {
+export const selectActivityPresent = (targetActivity: SLL.RootActivity) => (state: Store) => {
 	for (const [activity] of SLL.iterActivities(state.presence)) {
 		if (Obj.deepEqual(activity, targetActivity)) {
 			return true
@@ -713,11 +793,29 @@ export function useLoadedActivities() {
 	)
 }
 
-export function useActivityLoaded(matchActivity: (state: SLL.Activity) => boolean) {
+export function useActivityLoaded(matchActivity: (state: SLL.RootActivity) => boolean) {
 	return Zus.useStore(
 		Store,
 		ZusUtils.useShallow(state => {
 			return state.activityLoaderCache.some(entry => entry.data !== undefined)
 		}),
 	)
+}
+
+export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O = LoaderCacheEntry<Loader>['data']>(opts: {
+	loaderName: Loader['name']
+	matchKey?: (predicate: LoaderCacheKey<Loader>) => boolean
+	trace?: string
+	select?: (data: LoaderCacheEntry<Loader> | undefined) => O
+}) {
+	const { loaderName, matchKey: matchPredicate = () => true, trace, select = (entry) => entry?.data } = opts
+	return Zus.useStore(
+		Store,
+		state => {
+			const loadedEntries = state.activityLoaderCache.filter(entry => entry.name === loaderName && matchPredicate(entry.key as any))
+			if (loadedEntries.length > 1) console.warn(`Multiple activities loaded for ${trace ?? loaderName}`)
+			const entry = loadedEntries[0] as LoaderCacheEntry<Loader> | undefined
+			return select(entry)
+		},
+	) as O
 }

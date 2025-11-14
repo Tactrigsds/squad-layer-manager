@@ -3,9 +3,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { TeamIndicator } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
+import { inline } from '@/lib/react'
+import * as ST from '@/lib/state-tree.ts'
 import * as BAL from '@/models/balance-triggers.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as RBAC from '@/rbac.models'
@@ -17,6 +20,7 @@ import * as ServerSettingsClient from '@/systems.client/server-settings.client.t
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -43,6 +47,8 @@ export default function LayerQueueDashboard() {
 	type Tab = 'history' | 'queue'
 	const [activeTab, setActiveTab] = React.useState<Tab>('queue')
 	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.session.mutations)
+
+	const [isEditing, setEditing] = SLLClient.useActivityState(SLL.TOGGLE_EDITING_TRANSITIONS)
 
 	return (
 		<div className="mx-auto grid place-items-center">
@@ -75,11 +81,30 @@ export default function LayerQueueDashboard() {
 					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
 					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
 					<PostGameBalanceTriggerAlert />
-					{/*{isModified && <EditingCard />}*/}
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between">
 							<span className="flex items-center space-x-1">
 								<CardTitle>Up Next</CardTitle>
+								<Toggle
+									pressed={isEditing}
+									onPressedChange={setEditing}
+									aria-label="Toggle bookmark"
+									size="sm"
+								>
+									{isEditing
+										? (
+											<>
+												<Icons.Check className="ml-1" />
+												<span>Finished</span>
+											</>
+										)
+										: (
+											<>
+												<Icons.Edit className="ml-1" />
+												<span>Start Editing</span>
+											</>
+										)}
+								</Toggle>
 								{isModified && (
 									<CardDescription
 										data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
@@ -140,6 +165,21 @@ function NormTeamsSwitch() {
 }
 
 function QueueControlPanel() {
+	const [isEditing, setEditing] = SLLClient.useActivityState({
+		matchActivity: React.useCallback((root) => !!root.child?.EDITING, []),
+		createActivity: Im.produce((root: Im.WritableDraft<SLL.RootActivity>) => {
+			root.child.EDITING ??= {
+				_tag: 'variant',
+				id: 'EDITING',
+				opts: {},
+				chosen: ST.Match.leaf('IDLE', {}),
+			}
+		}),
+		removeActivity: Im.produce((root: Im.WritableDraft<SLL.RootActivity>) => {
+			delete root.child.EDITING
+		}),
+	})
+
 	const [isModified, saving] = Zus.useStore(
 		SLLClient.Store,
 		useShallow(s => [s.isModified, s.saving]),
@@ -157,74 +197,78 @@ function QueueControlPanel() {
 	}
 
 	return (
-		<div className="flex items-center space-x-1">
-			{isModified && (
-				<>
-					<div className="space-x-1 flex items-center">
-						<Icons.LoaderCircle
-							className="animate-spin data-[pending=false]:invisible"
-							data-pending={saving}
-						/>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									onClick={saveLqState}
-									disabled={saving}
-								>
-									<Icons.Save />
-									<span>Save</span>
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Save</p>
-							</TooltipContent>
-						</Tooltip>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
-									<Icons.Undo />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Reset</p>
-							</TooltipContent>
-						</Tooltip>
-					</div>
-					<Separator orientation="vertical" />
-				</>
-			)}
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={() => clear()}
-					>
-						<Icons.Trash />
+		<div className="flex justify-between items-center">
+			<div className="flex items-center space-x-1 flex-grow">
+				{isModified && (
+					<>
+						<div className="space-x-1 flex items-center">
+							<Icons.LoaderCircle
+								className="animate-spin data-[pending=false]:invisible"
+								data-pending={saving}
+							/>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										onClick={saveLqState}
+										disabled={saving}
+									>
+										<Icons.Save />
+										<span>Save</span>
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Save</p>
+								</TooltipContent>
+							</Tooltip>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
+										<Icons.Undo />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Reset</p>
+								</TooltipContent>
+							</Tooltip>
+						</div>
+						<Separator orientation="vertical" />
+					</>
+				)}
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={() => clear()}
+						>
+							<Icons.Trash />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						<p>Clear Queue</p>
+					</TooltipContent>
+				</Tooltip>
+				<StartActivityInteraction
+					loaderName="selectLayers"
+					createActivity={SLL.createEditActivityVariant({
+						_tag: 'leaf',
+						id: 'ADDING_ITEM',
+						opts: { cursor: { type: 'start' }, variant: 'toggle-position' },
+					})}
+					matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
+					preload="render"
+					render={Button}
+					className="flex w-min items-center space-x-0"
+				>
+					<Icons.PlusIcon />
+					<span>Add Layers</span>
+				</StartActivityInteraction>
+				<PoolConfigurationPopover>
+					<Button size="icon" variant="ghost" title="Pool Configuration">
+						<Icons.Settings />
 					</Button>
-				</TooltipTrigger>
-				<TooltipContent>
-					<p>Clear Queue</p>
-				</TooltipContent>
-			</Tooltip>
-			<StartActivityInteraction
-				createActivity={SLL.createQueueEditActivity({
-					_tag: 'leaf',
-					id: 'ADDING_ITEM',
-					opts: { cursor: { type: 'index', index: { outerIndex: 0, innerIndex: 0 } }, variant: 'toggle-position' },
-				})}
-				preload="render"
-				className="flex w-min items-center space-x-0"
-				render={Button}
-			>
-				<Icons.PlusIcon />
-				<span>Add Layers</span>
-			</StartActivityInteraction>
-			<PoolConfigurationPopover>
-				<Button size="icon" variant="ghost" title="Pool Configuration">
-					<Icons.Settings />
-				</Button>
-			</PoolConfigurationPopover>
+				</PoolConfigurationPopover>
+			</div>
 		</div>
 	)
 }

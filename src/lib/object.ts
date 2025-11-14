@@ -54,6 +54,9 @@ export function partition<T extends object, K extends keyof T>(obj: T, ...select
 
 export const deepEqual = fastDeepEqual
 
+// for when you walso want to assert that b is assignable to a
+export const deepEqualStrict = <A, B extends A>(a: A, b: B): a is B => fastDeepEqual(a, b)
+
 /*
 assumes that both objects have the same keys
  */
@@ -268,4 +271,9 @@ export function shallowEquals<T extends object>(a: T, b: T): boolean {
 	}
 
 	return true
+}
+
+export function destrNullable<T extends object>(obj: T | undefined) {
+	if (obj) return obj
+	return {} as T | { [k in keyof T]: undefined }
 }

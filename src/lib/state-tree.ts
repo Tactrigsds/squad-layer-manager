@@ -247,7 +247,7 @@ export namespace Match {
 		{
 			id: V['id']
 			opts: InferredOptions<V['opts']>
-			child: Node<V['child'][K]>
+			chosen: Node<V['child'][K]>
 		}
 	>
 
@@ -278,7 +278,7 @@ export namespace Match {
 	export type AccumulatedOpts<MN extends Node> =
 		& MN['opts']
 		& (
-			MN extends Variant ? AccumulatedOpts<MN['child']>
+			MN extends Variant ? AccumulatedOpts<MN['chosen']>
 				: MN extends Branch ? {
 						[k in StrKeys<MN['child']>]: MN['child'][k] extends Node ? AccumulatedOpts<MN['child'][k]> : never
 					}[StrKeys<MN['child']>]
@@ -327,7 +327,7 @@ export namespace Match {
 			_tag: 'variant' as const,
 			id,
 			opts: opts ?? {},
-			child: child,
+			chosen: child,
 		} satisfies Match.Variant
 	}
 
@@ -396,31 +396,31 @@ export namespace Match {
 	 * Utility functions for state checking
 	 */
 
-	export function isChosen<V extends Match.Variant, C extends V['child']['id']>(
+	export function isChosen<V extends Match.Variant, C extends V['chosen']['id']>(
 		choice: C,
 		variant: V,
 	): variant is V & { child: { id: C } } {
-		return variant.child.id === choice
+		return variant.chosen.id === choice
 	}
 
 	export function hasChild<B extends Match.Branch, K extends string>(childId: K, branch: B): boolean {
 		return childId in branch.child && branch.child[childId] !== undefined
 	}
 
-	export function getChosenVariant<V extends Match.Variant>(variant: V): V['child'] {
-		return variant.child
+	export function getChosenVariant<V extends Match.Variant>(variant: V): V['chosen'] {
+		return variant.chosen
 	}
 
-	export function getVariantChoice<V extends Match.Variant>(variant: V): V['child']['id'] {
-		return variant.child.id
+	export function getVariantChoice<V extends Match.Variant>(variant: V): V['chosen']['id'] {
+		return variant.chosen.id
 	}
 
 	export function foldVariant<V extends Match.Variant, R>(
-		handlers: Record<V['child']['id'], (child: V['child'], opts: V['opts']) => R>,
+		handlers: Record<V['chosen']['id'], (child: V['chosen'], opts: V['opts']) => R>,
 		variant: V,
 	): R {
-		const handler = handlers[variant.child.id as keyof typeof handlers]
-		return handler(variant.child, variant.opts)
+		const handler = handlers[variant.chosen.id as keyof typeof handlers]
+		return handler(variant.chosen, variant.opts)
 	}
 
 	/**
@@ -428,10 +428,10 @@ export namespace Match {
 	 */
 
 	export function mapVariant<V extends Match.Variant, R>(
-		mapper: (child: V['child'], opts: V['opts'], chosen: V['child']['id']) => R,
+		mapper: (child: V['chosen'], opts: V['opts'], chosen: V['chosen']['id']) => R,
 		variant: V,
 	): R {
-		return mapper(variant.child, variant.opts, variant.child.id)
+		return mapper(variant.chosen, variant.opts, variant.chosen.id)
 	}
 
 	export function mapBranch<B extends Match.Branch, R>(
@@ -454,7 +454,7 @@ export namespace Match {
 
 	export function getNodePath<N extends Match.Node>(node: N): string {
 		if (isVariant(node)) {
-			return node.child.id
+			return node.chosen.id
 		}
 		if (isBranch(node)) {
 			return Object.keys(node.child).join('/')
@@ -476,10 +476,10 @@ export namespace Match {
 		// Handle different node types with explicit casting
 		if (state._tag === 'variant' && predicate._tag === 'variant') {
 			// For variants, check that chosen variant matches and child is active
-			if (state.child.id !== predicate.child.id) {
+			if (state.chosen.id !== predicate.chosen.id) {
 				return false
 			}
-			return isActive(state.child, predicate.child)
+			return isActive(state.chosen, predicate.chosen)
 		}
 
 		if (state._tag === 'branch' && predicate._tag === 'branch') {
@@ -652,7 +652,7 @@ export namespace MatchUtils {
 						id: z.literal(defNode.id),
 						_tag: z.literal('variant' as const),
 						opts: optsSchema,
-						child: variantChildSchemas[childId],
+						choice: variantChildSchemas[childId],
 					})
 				)
 

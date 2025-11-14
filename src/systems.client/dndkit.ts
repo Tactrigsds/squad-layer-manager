@@ -37,3 +37,32 @@ export function useDragging() {
 	})
 	return active
 }
+
+export function useDragDropMonitor(
+	onDragStart?: (item: DND.DragItem) => void,
+	onDragEnd?: (source: DND.DragItem, target: DND.DropItem | null) => void,
+) {
+	DndKitReact.useDragDropMonitor({
+		onDragStart: (event) => {
+			const item = DND.deserializeDragItem(event.operation.source!.id as string)
+			onDragStart?.(item)
+		},
+		onDragEnd: (event) => {
+			const source = DND.deserializeDragItem(event.operation.source!.id as string)
+			const target = event.operation.target?.id ? DND.deserializeDropItem(event.operation.target.id as string) : null
+			onDragEnd?.(source, target)
+		},
+	})
+}
+
+export function useDraggingCallback(callback: (item: DND.DragItem | null) => void) {
+	DndKitReact.useDragDropMonitor({
+		onDragStart: (event) => {
+			const item = DND.deserializeDragItem(event.operation.source!.id as string)
+			callback(item)
+		},
+		onDragEnd: () => {
+			callback(null)
+		},
+	})
+}

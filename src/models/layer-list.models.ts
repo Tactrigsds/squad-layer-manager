@@ -2,8 +2,8 @@ import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers'
 import * as Gen from '@/lib/generator'
 import * as ItemMut from '@/lib/item-mutations'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import { destrNullable } from '@/lib/types'
 import * as DND from '@/models/dndkit.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
@@ -138,6 +138,12 @@ export const CursorSchema = z.discriminatedUnion('type', [
 		type: z.literal('index'),
 		index: ItemIndexSchema,
 	}),
+	z.object({
+		type: z.literal('start'),
+	}),
+	z.object({
+		type: z.literal('end'),
+	}),
 ])
 export type Cursor = z.infer<typeof CursorSchema>
 export type ItemRelativeCursor = Extract<Cursor, { type: 'item-relative' }>
@@ -225,6 +231,8 @@ export function dropItemToLLItemCursors(dropItem: DND.DropItem): ItemRelativeCur
 
 export function resolveCursorIndex(list: List, cursor: Cursor): ItemIndex | undefined {
 	if (cursor.type === 'index') return cursor.index
+	if (cursor.type === 'start') return { innerIndex: null, outerIndex: 0 }
+	if (cursor.type === 'end') return { innerIndex: null, outerIndex: list.length - 1 }
 	const itemRes = findItemById(list, cursor.itemId)
 	if (!itemRes) return undefined
 	if (cursor.position === 'before' || cursor.position === 'on') return itemRes.index
@@ -394,7 +402,7 @@ export function moveItem(
 	newFirstItemId: ItemId,
 	cursor: Cursor,
 ): { merged: false | ItemId; modified: boolean } {
-	const { index: movedIndex, item: movedItem } = destrNullable(findItemById(list, movedItemId))
+	const { index: movedIndex, item: movedItem } = Obj.destrNullable(findItemById(list, movedItemId))
 	const targetIndex = cursor.type === 'index'
 		? cursor.index
 		: resolveCursorIndex(list, cursor)
@@ -436,7 +444,7 @@ export function moveItem(
 }
 
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
-	const { item } = destrNullable(findItemById(list, itemId))
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item) return
 	const parentVoteItem = resolveParentVoteItem(itemId, list)
 	if (parentVoteItem) {
@@ -451,7 +459,7 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 }
 
 export function deleteItem(list: List, itemId: ItemId) {
-	const { index } = destrNullable(findItemById(list, itemId))
+	const { index } = Obj.destrNullable(findItemById(list, itemId))
 	if (!index) return
 	splice(list, index, 1)
 }
@@ -463,7 +471,7 @@ export function configureVote(
 	voteConfig?: Partial<V.AdvancedVoteConfig> | null,
 	displayProps?: DH.LayerDisplayProp[] | null,
 ) {
-	const { item } = destrNullable(findItemById(list, itemId))
+	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item) return
 	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
 	if (voteConfig === null) {
@@ -480,7 +488,7 @@ export function configureVote(
 }
 
 export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: Item[]) {
-	const { index, item } = destrNullable(findItemById(list, itemId))
+	const { index, item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || !index) return
 	if (isParentVoteItem(item)) return
 	const voteItem = mergeItems(newFirstItemId, item, ...addedChoices)
@@ -565,7 +573,7 @@ export function clearTally(_item: Item) {
 }
 
 export function isLocallyLastIndex<T extends SparseItem>(itemId: ItemId, list: T[]) {
-	const { index } = destrNullable(findItemById(list, itemId))
+	const { index } = Obj.destrNullable(findItemById(list, itemId))
 	if (!index) return false
 	if (index.innerIndex != null) {
 		const parentRes = findParentItem(list, itemId)!
@@ -629,7 +637,7 @@ export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 }
 
 export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, layerList: T[]): ItemIndex | undefined {
-	const { index } = destrNullable(findItemById(layerList, itemId))
+	const { index } = Obj.destrNullable(findItemById(layerList, itemId))
 	if (!index) return undefined
 	if (index.innerIndex === null) {
 		const parentItem = layerList[index.outerIndex]

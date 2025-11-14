@@ -75,10 +75,10 @@ export function toRxSub(unsub: UnsubscribeFn) {
 export const useShallow = useShallowImported
 export function useDeep<S, U>(selector: (state: S) => U): (state: S) => U {
 	const prev = React.useRef<U | undefined>(void 0)
-	return (state: S) => {
+	return React.useCallback((state: S) => {
 		const next = selector(state)
 		return Obj.deepEqual(prev.current, next) ? (prev.current as U) : prev.current = next
-	}
+	}, [selector])
 }
 
 export function useDeepNoFns<S, U>(selector: (state: S) => U): (state: S) => U {

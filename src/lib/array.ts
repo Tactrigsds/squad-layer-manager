@@ -73,3 +73,8 @@ export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry
 export function dedupe<T>(arr: T[]): T[] {
 	return Array.from(new Set(arr))
 }
+
+export function destrNullable<T>(arr: T[] | undefined) {
+	if (arr) return arr
+	return [] as T[] | undefined[]
+}

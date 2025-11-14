@@ -11,6 +11,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as RPC from '@/orpc.client'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
+import * as Im from 'immer'
 import React from 'react'
 import * as Rx from 'rxjs'
 
@@ -71,10 +72,24 @@ export function getInputDefaults(args: InputArgs): Input {
 
 	if (input.sort?.type === 'random' && !input.sort.seed) {
 		// we want to ensure that there's always a seed here to ensure we don't run into non-deterministic cache issues with react query
+		// note that we also always reseed after a reset
 		input.sort = { type: 'random', seed: LQY.getSeed() }
 	}
 
 	return input
+}
+
+export function reset(input: Input, draft: Im.WritableDraft<LayerTable>) {
+	draft.pageSize = input.pageSize
+	draft.selected = input.selected
+	draft.pageIndex = 0
+	draft.sort = input.sort
+	if (input.sort?.type == 'random') {
+		// always reseed after reset
+		input.sort.seed = LQY.getSeed()
+	}
+	draft.errors = []
+	draft.columnVisibility = input.columnVisibility
 }
 
 export type LayerTable = {
@@ -83,7 +98,6 @@ export type LayerTable = {
 	sort: ({} & LQY.LayersQuerySort) | null
 	setSort: React.Dispatch<React.SetStateAction<LQY.LayersQuerySort | null>>
 	randomize: () => void
-	reseed: () => void
 
 	defaultSelected: L.LayerId[]
 	selected: L.LayerId[]

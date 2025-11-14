@@ -24,7 +24,9 @@ export default defineConfig({
 		}),
 		react({
 			babel: {
-				plugins: ['babel-plugin-react-compiler'],
+				plugins: [
+					...(ENV.NODE_ENV === 'production' ? ['babel-plugin-react-compiler'] : []),
+				],
 			},
 		}),
 		{

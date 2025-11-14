@@ -56,7 +56,7 @@ export default function ServerSettingsPopover(
 
 	const [open, _setOpen] = SLLClient.useActivityState({
 		matchActivity: React.useCallback((activity) => !!activity.child.VIEWING_SETTINGS, []),
-		createActivity: Im.produce((draft: Im.WritableDraft<SLL.Activity>) => {
+		createActivity: Im.produce((draft: Im.WritableDraft<SLL.RootActivity>) => {
 			draft.child.VIEWING_SETTINGS = {
 				_tag: 'branch',
 				id: 'VIEWING_SETTINGS',
@@ -64,7 +64,7 @@ export default function ServerSettingsPopover(
 				child: {},
 			}
 		}),
-		removeActivity: Im.produce((draft: Im.WritableDraft<SLL.Activity>) => {
+		removeActivity: Im.produce((draft: Im.WritableDraft<SLL.RootActivity>) => {
 			delete draft.child.VIEWING_SETTINGS
 		}),
 	})

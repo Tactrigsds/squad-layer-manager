@@ -13,6 +13,7 @@ import superjson from 'superjson'
 import * as Zus from 'zustand'
 
 export let loggedInUserId: bigint | undefined
+export let loggedInUser: USR.User | undefined
 
 export function useUser(id?: bigint, opts?: { enabled?: boolean }) {
 	return useQuery({
@@ -36,6 +37,7 @@ async function _fetchLoggedInUser() {
 	const user = await RPC.orpc.users.getLoggedInUser.call()
 	PartSys.upsertParts({ users: [user] })
 	loggedInUserId = user.discordId
+	loggedInUser = user
 	return user
 }
 const loggedInUserBaseQuery = {

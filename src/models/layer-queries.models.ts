@@ -1,6 +1,6 @@
 import * as Gen from '@/lib/generator'
+import * as Obj from '@/lib/object'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
-import { destrNullable } from '@/lib/types'
 import * as CB from '@/models/constraint-builders'
 import { VisibilityState } from '@tanstack/react-table'
 import * as Im from 'immer'
@@ -379,7 +379,7 @@ export function resolveCursorIndex(
 	const orderedItems = orderedItemsState.layerItems
 
 	if (cursor.type === 'item-relative') {
-		const { index } = destrNullable(findItemById(orderedItems, cursor.itemId))
+		const { index } = Obj.destrNullable(findItemById(orderedItems, cursor.itemId))
 		if (!index) throw new Error('Invalid cursor ' + JSON.stringify(cursor))
 		if (cursor.position === 'after') return LL.shiftIndex(index, 1)
 		return index
@@ -454,7 +454,7 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 	const item = typeof _item === 'string' ? fromSerial(_item) : _item
 
 	if (!state.layerItems) return 0
-	const { index } = destrNullable(LL.findItemById(state.layerItems, item.itemId))
+	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, item.itemId))
 	if (isNullOrUndef(index)) throw new Error('Item not found')
 	const parity = index.outerIndex + (state.firstLayerItemParity ?? 0)
 	return parity

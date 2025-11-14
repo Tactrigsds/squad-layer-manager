@@ -4,7 +4,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
-import { destrNullable, Parts } from '@/lib/types'
+import { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -547,7 +547,7 @@ export const abortVote = C.spanOp(
 			ctx.vote.voteEndTask?.unsubscribe()
 			ctx.vote.voteEndTask = null
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
-			const { item } = destrNullable(LL.findItemById(layerQueue, newVoteState.itemId))
+			const { item } = Obj.destrNullable(LL.findItemById(layerQueue, newVoteState.itemId))
 			if (!item || !LL.isVoteItem(item)) throw new Error('vote item not found or is invalid')
 			item.endingVoteState = newVoteState
 			LL.setCorrectChosenLayerIdInPlace(item)
@@ -665,7 +665,7 @@ const handleVoteTimeout = C.spanOp(
 				}
 			}
 			const serverState = Obj.deepClone(await getServerState(ctx))
-			const { item: listItem } = destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
+			const { item: listItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 			if (!listItem || !LL.isVoteItem(listItem)) throw new Error('Invalid vote item')
 			let endingVoteState: V.EndingVoteState
 			let tally: V.Tally | null = null

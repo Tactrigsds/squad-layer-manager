@@ -17,7 +17,7 @@ import * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
-import { useStableValue } from '@/lib/react.ts'
+import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
@@ -58,9 +58,11 @@ import TabsList from './ui/tabs-list.tsx'
 export function LayerList(
 	props: { store: Zus.StoreApi<QD.LLStore> },
 ) {
-	const user = UsersClient.useLoggedInUser()
 	const queueItemIds = Zus.useStore(props.store, ZusUtils.useShallow((store) => store.layerList.map((item) => item.itemId)))
+
+	// -------- dispatch move events --------
 	DndKit.useDragEnd(React.useCallback(async (event) => {
+		const user = UsersClient.loggedInUser
 		if (!user || !event.over) return
 		const target = event.over.slots[0]
 		if (target.dragItem.type !== 'layer-item') return
@@ -93,7 +95,28 @@ export function LayerList(
 				newFirstItemId: LL.createLayerListItemId(),
 			})
 		}
-	}, [user, props.store]))
+	}, [props.store]))
+	DndKit.useDraggingCallback(item => {
+		const storeState = SLLClient.Store.getState()
+		const getIsDraggingStuff = (root: SLL.RootActivity) => {
+			const id = root.child?.EDITING?.chosen?.id
+			return id === 'MOVING_ITEM' || id === 'ADDING_ITEM_FROM_HISTORY'
+		}
+		if (!item) {
+			storeState.updateActivity(SLL.toEditIdleOrNone(getIsDraggingStuff))
+			return
+		}
+		const { leaf } = ST.Match
+		if (item?.type === 'layer-item') {
+			storeState.updateActivity(SLL.createEditActivityVariant(leaf('MOVING_ITEM', { itemId: item.id })))
+			return
+		}
+
+		if (item?.type === 'history-entry') {
+			storeState.updateActivity(SLL.createEditActivityVariant(leaf('ADDING_ITEM_FROM_HISTORY', {})))
+			return
+		}
+	})
 
 	return (
 		<>
@@ -187,7 +210,7 @@ function LoadedSelectLayersView({
 
 	const onSelectLayersChange = React.useCallback((open: boolean) => {
 		if (open) return
-		store.getState().updateActivity(SLL.idleActivity())
+		store.getState().updateActivity(SLL.toEditIdleOrNone())
 	}, [store])
 
 	const frames = React.useMemo(() => ({
@@ -309,7 +332,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	if (user && itemPresence?.itemActivity && itemActivityUser.discordId !== user.discordId) {
 		sourceDisplay = (
 			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
-				{SLL.getHumanReadableActivityWithUser(itemPresence.activityState!, itemActivityUser.displayName)}...
+				{SLL.getAttributedHumanReadableActivity(itemPresence.activityState!, index, itemActivityUser.displayName)}...
 			</Badge>
 		)
 	} else {
@@ -499,12 +522,12 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
 	const [voteDisplayPropsOpen, setVoteDisplayPropsOpen] = SLLClient.useActivityState({
-		createActivity: SLL.createQueueEditActivity({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+		createActivity: SLL.createEditActivityVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		matchActivity: React.useCallback(
-			(state) => state.child.EDITING?.child.id === 'CONFIGURING_VOTE' && state.child.EDITING?.child.opts.itemId === item.itemId,
+			(state) => state.child.EDITING?.chosen.id === 'CONFIGURING_VOTE' && state.child.EDITING?.chosen.opts.itemId === item.itemId,
 			[item.itemId],
 		),
-		removeActivity: SLL.idleActivity(),
+		removeActivity: SLL.toEditIdleOrNone(),
 	})
 
 	const startVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.startVote.mutationOptions())
@@ -678,28 +701,39 @@ function VoteLayerListItem(props: LayerListItemProps) {
 								>
 									<Icons.Play />
 								</Button>
-								<StartActivityInteraction<ButtonProps>
-									preload="intent"
-									createActivity={(() => {
-										const cursor = {
-											type: 'index',
-											index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
-										} satisfies LQY.Cursor
-										return SLL.createQueueEditActivity(
-											ST.Match.leaf('ADDING_ITEM', {
-												cursor,
-												title: 'Add Vote Choices',
-											}) satisfies SLL.QueueEditActivity<'ADDING_ITEM'>,
-										)
-									})()}
-									render={Button}
-									variant="ghost"
-									size="icon"
-									title="Add Vote Choices"
-									{...editButtonProps()}
-								>
-									<Icons.Plus />
-								</StartActivityInteraction>
+
+								{/* -------- add vote choices -------- */}
+								{inline(() => {
+									const activityTitle = 'Add Vote Choices'
+									return (
+										<StartActivityInteraction
+											loaderName="selectLayers"
+											preload="intent"
+											createActivity={SLL.createEditActivityVariant(
+												{
+													_tag: 'leaf',
+													id: 'ADDING_ITEM',
+													opts: {
+														cursor: {
+															type: 'index',
+															index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
+														},
+														title: activityTitle,
+													},
+												},
+											)}
+											matchKey={React.useCallback(key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle, [activityTitle])}
+											render={Button}
+											variant="ghost"
+											size="icon"
+											title="Add Vote Choices"
+											{...editButtonProps()}
+										>
+											<Icons.Plus />
+										</StartActivityInteraction>
+									)
+								})}
+
 								<VoteDisplayPropsPopover
 									open={voteDisplayPropsOpen}
 									onOpenChange={setVoteDisplayPropsOpen}
@@ -915,27 +949,27 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const [activities] = React.useMemo(() => {
 		const activities = {
-			'add-after': SLL.createQueueEditActivity({
+			'add-after': ({
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
 				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' } },
 			}),
-			'add-before': SLL.createQueueEditActivity({
+			'add-before': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
 				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' } },
-			}),
-			'create-vote': SLL.createQueueEditActivity({
+			},
+			'create-vote': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
 				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote' },
-			}),
-			'edit': SLL.createQueueEditActivity({
+			},
+			'edit': {
 				_tag: 'leaf',
 				id: 'EDITING_ITEM',
 				opts: { itemId: item.itemId, cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' } },
-			}),
-		} satisfies { [k in SubDropdownState]: any }
+			},
+		} satisfies { [k in SubDropdownState]: SLL.QueueEditActivity }
 		// activities.edit = activities['add-after']
 
 		return [activities] as const
@@ -976,8 +1010,9 @@ function ItemDropdown(props: ItemDropdownProps) {
 					<DropdownMenuGroup>
 						{!LL.isVoteItem(item) && (
 							<StartActivityInteraction
-								matchActivity={(state) => state.child.EDITING?.child?.id === 'EDITING_ITEM'}
-								createActivity={activities['edit']}
+								loaderName="selectLayers"
+								createActivity={SLL.createEditActivityVariant(activities['edit'])}
+								matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
 								preload="viewport"
 								render={DropdownMenuItem}
 							>
@@ -1003,7 +1038,10 @@ function ItemDropdown(props: ItemDropdownProps) {
 					</DropdownMenuGroup>
 					{!LL.isVoteItem(item) && (
 						<StartActivityInteraction
-							createActivity={activities['create-vote']}
+							loaderName="selectLayers"
+							createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
+							// we're using deepEqualStrict here so that his breaks if the definition for key changes
+							matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
 							preload="viewport"
 							disabled={isLocked}
 							render={DropdownMenuItem}
@@ -1016,16 +1054,20 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 					<DropdownMenuGroup>
 						<StartActivityInteraction
+							loaderName="selectLayers"
 							className={dropdownMenuItemClassesBase}
-							createActivity={activities['add-after']}
+							createActivity={SLL.createEditActivityVariant(activities['add-after'])}
+							matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
 							preload="viewport"
 							render={DropdownMenuItem}
 						>
 							Add Layers Before
 						</StartActivityInteraction>
 						<StartActivityInteraction
+							loaderName="selectLayers"
 							className={dropdownMenuItemClassesBase}
-							createActivity={activities['add-before']}
+							createActivity={SLL.createEditActivityVariant(activities['add-before'])}
+							matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
 							preload="viewport"
 							render={DropdownMenuItem}
 						>
@@ -1071,51 +1113,71 @@ function QueueItemSeparator(props: {
 	)
 }
 
-export function StartActivityInteraction<EltProps extends object>(
+type ChildPropsBase = {
+	ref?: React.Ref<any>
+	onClick: () => void
+	onMouseEnter: () => void
+	onMouseLeave: () => void
+}
+export function StartActivityInteraction<
+	Loader extends SLLClient.ConfiguredLoaderConfig = SLLClient.ConfiguredLoaderConfig,
+	Component extends React.FunctionComponent<ChildPropsBase> = never,
+>(
 	_props: {
-		loaderName: N
-		// can't be changed on rerender
-		createActivity: (prev: SLL.Activity) => SLL.Activity
+		loaderName: Loader['name']
+		createActivity: (root: SLL.RootActivity) => SLL.RootActivity
+		matchKey: (predicate: SLLClient.LoaderCacheKey<Loader>) => boolean
+
 		preload: 'intent' | 'viewport' | 'render'
 		intentDelay?: number
-		render: (
-			props: EltProps & {
-				ref: React.RefObject<HTMLButtonElement>
-				onClick: () => void
-				onMouseEnter: () => void
-				onMouseLeave: () => void
-			},
-		) => React.ReactNode
-	},
+		render: Component
+		ref?: any
+	} & Omit<React.ComponentProps<Component>, keyof ChildPropsBase>,
 ) {
-	const buttonRef = React.useRef<HTMLButtonElement | null>(null)
-	const [props, eltProps] = Obj.partition(_props, 'createActivity', 'preload', 'intentDelay', 'render')
-	const createActivityRef = React.useRef(props.createActivity)
+	const eltRef = React.useRef<Element | null>(null)
+	const [props, otherEltProps] = Obj.partition(
+		_props,
+		// stop ref from being passed to child so we don't get into weird situations
+		'ref',
+		'loaderName',
+		'createActivity',
+		'matchKey',
+		'preload',
+		'intentDelay',
+		'render',
+	)
+	const [isLoaded, isActive] = SLLClient.useActivityLoaderData({
+		loaderName: props.loaderName,
+		matchKey: props.matchKey,
+		trace: `StartActivityInteraction:${props.loaderName}`,
+		select: ZusUtils.useShallow(entry => [!!entry?.data, !!entry?.active] as const),
+	})
 
 	const startActivity = () => {
-		return SLLClient.Store.getState().updateActivity(createActivityRef.current)
+		return SLLClient.Store.getState().updateActivity(props.createActivity)
 	}
 
 	const preloadActivity = React.useCallback(
-		() => {
-			return SLLClient.Store.getState().preloadActivity(createActivityRef.current)
+		async () => {
+			// this is mostly redundant(maybe slightly better perf) but shows intent
+			if (isLoaded) return
+
+			SLLClient.Store.getState().preloadActivity(props.createActivity)
 		},
-		[],
+		[props.createActivity, isLoaded],
 	)
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
 
-	// unfortunately we currently don't have a way to preload again when the activity becomes unloaded
-
 	React.useEffect(() => {
+		// preloadActivity depends on isLoaded above
 		if (props.preload === 'render') {
 			preloadActivity()
 		}
 	}, [props.preload, preloadActivity])
 
-	// Use IntersectionObserver for viewport-based preloading
 	React.useEffect(() => {
-		if (props.preload !== 'viewport' || !buttonRef.current) return
+		if (props.preload !== 'viewport' || !eltRef.current || isLoaded) return
 
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -1125,18 +1187,18 @@ export function StartActivityInteraction<EltProps extends object>(
 					}
 				})
 			},
-			{ threshold: 0.1 }, // Trigger when 10% of the button is visible
+			{ threshold: 0.1 }, // Trigger when 10% of the element is visible
 		)
 
-		observer.observe(buttonRef.current)
+		observer.observe(eltRef.current as unknown as Element)
 
 		return () => {
 			observer.disconnect()
 		}
-	}, [props.preload, preloadActivity, buttonRef])
+	}, [props.preload, preloadActivity, eltRef, isLoaded])
 
 	const handleMouseEnter = () => {
-		if (props.preload === 'intent') {
+		if (props.preload === 'intent' && !isLoaded) {
 			const delay = props.intentDelay ?? 150
 			const timeout = setTimeout(() => {
 				preloadActivity()
@@ -1156,13 +1218,13 @@ export function StartActivityInteraction<EltProps extends object>(
 		startActivity()
 	}
 
-	return (
-		<props.render
-			{...(eltProps as EltProps)}
-			ref={buttonRef as any}
-			onClick={handleClick}
-			onMouseEnter={handleMouseEnter}
-			onMouseLeave={handleMouseLeave}
-		/>
-	)
+	const childProps = {
+		...otherEltProps,
+		ref: eltRef,
+		onClick: handleClick,
+		onMouseEnter: handleMouseEnter,
+		onMouseLeave: handleMouseLeave,
+	} as any
+
+	return <props.render {...childProps} />
 }

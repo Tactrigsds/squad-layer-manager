@@ -80,3 +80,8 @@ export function useStableValue<Deps extends [] | [unknown, ...unknown[]], O>(
 
 	return outValueRef.current as O
 }
+
+// iife syntax sugar
+export function inline<O>(cb: () => O) {
+	return cb()
+}

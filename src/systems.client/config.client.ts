@@ -11,7 +11,7 @@ const Store = Zus.createStore<PublicConfig | undefined>(() => undefined)
 
 // just hope the config exists already (probably will)
 export function getConfig() {
-	return Store.getState()!
+	return Store.getState()
 }
 export function getColConfig() {
 	const config = Store.getState()!

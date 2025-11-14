@@ -1,8 +1,6 @@
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-
-import { destrNullable } from '@/lib/types'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
@@ -29,10 +27,11 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 					selected: z.array(LL.ItemIdSchema).optional(),
 				}),
 			),
+			leaf('ADDING_ITEM_FROM_HISTORY'),
 
-			leaf('EDITING_ITEM', z.object({ itemId: LL.ItemIdSchema, cursor: LL.CursorSchema })),
-			// leaf('MOVING_ITEM', z.object({ itemId: LL.ItemIdSchema })),
-			leaf('CONFIGURING_VOTE', z.object({ itemId: LL.ItemIdSchema })),
+			leaf('EDITING_ITEM', { itemId: LL.ItemIdSchema, cursor: LL.CursorSchema }),
+			leaf('MOVING_ITEM', { itemId: LL.ItemIdSchema }),
+			leaf('CONFIGURING_VOTE', { itemId: LL.ItemIdSchema }),
 		]),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
@@ -40,49 +39,65 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 	return [codes, activities] as const
 })()
 
-export const DEFAULT_ACTIVITY: Activity = {
+export const DEFAULT_ACTIVITY: RootActivity = {
 	_tag: 'branch',
 	id: 'ON_QUEUE_PAGE',
 	opts: {},
 	child: {},
 }
-const _editActivities = ACTIVITIES.child.EDITING.child
 
-type QueueEditActivityKey = (typeof _editActivities)[keyof typeof _editActivities]['id']
+const editActivityVariant = ACTIVITIES.child.EDITING.child
+type EditActivityVariant = (typeof editActivityVariant)[keyof typeof editActivityVariant]['id']
 
 export type QueueEditActivity<
-	K extends QueueEditActivityKey = QueueEditActivityKey,
+	K extends EditActivityVariant = EditActivityVariant,
 > = ST.Match.Node<
-	(typeof _editActivities)[K]
+	Extract<(typeof editActivityVariant)[keyof typeof editActivityVariant], { id: K }>
 >
 
-export function createQueueEditActivity<K extends QueueEditActivityKey>(
+export function createEditActivityVariant<K extends EditActivityVariant>(
 	activity: QueueEditActivity<K>,
-): (prev: Activity) => Activity {
-	return Im.produce((state: Im.WritableDraft<Activity>) => {
+): (prev: RootActivity) => RootActivity {
+	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
 		state.child.EDITING = {
 			_tag: 'variant',
 			id: 'EDITING',
 			opts: {},
-			child: activity,
-		} as any
+			chosen: activity as any,
+		}
 	})
 }
 
-export function idleActivity(): (prev: Activity) => Activity {
-	return Im.produce((state: Im.WritableDraft<Activity>) => {
+export const TOGGLE_EDITING_TRANSITIONS = {
+	matchActivity: (root: RootActivity) => !!root.child?.EDITING,
+	createActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
+		root.child.EDITING ??= {
+			_tag: 'variant',
+			id: 'EDITING',
+			opts: {},
+			chosen: ST.Match.leaf('IDLE', {}),
+		}
+	}),
+	removeActivity: Im.produce((root: Im.WritableDraft<RootActivity>) => {
+		delete root.child.EDITING
+	}),
+}
+
+export function toEditIdleOrNone(match?: (root: RootActivity) => any): (prev: RootActivity) => RootActivity {
+	return Im.produce((state: Im.WritableDraft<RootActivity>) => {
 		if (!state.child.EDITING) return
+		if (match && !match(state)) return
 		state.child.EDITING = {
 			_tag: 'variant',
 			id: 'EDITING',
 			opts: {},
-			child: ST.Match.leaf('IDLE', {}),
-		} as any
+			chosen: ST.Match.leaf('IDLE', {}),
+		}
 	})
 }
 
 export type _ActivityCode = z.infer<typeof ACTIVITY_CODE>
-export type Activity = ST.Match.Node<typeof ACTIVITIES>
+export type RootActivity = ST.Match.Node<typeof ACTIVITIES>
 
 function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(base: T) {
 	return [
@@ -280,7 +295,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'swap-factions': {
-			const { index, item } = destrNullable(LL.findItemById(list, newOp.itemId))
+			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (!index || !item) return
 			const swapped = LL.swapFactions(item, source)
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
@@ -308,7 +323,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 
 		case 'delete': {
-			const { index } = destrNullable(LL.findItemById(list, newOp.itemId))
+			const { index } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (index) {
 				LL.deleteItem(list, newOp.itemId)
 				ItemMut.tryApplyMutation('removed', [newOp.itemId], mutations)
@@ -318,7 +333,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 		}
 		case 'clear':
 			for (const itemId of newOp.itemIds) {
-				const { index } = destrNullable(LL.findItemById(list, itemId))
+				const { index } = Obj.destrNullable(LL.findItemById(list, itemId))
 				if (index) {
 					LL.deleteItem(list, itemId)
 					ItemMut.tryApplyMutation('removed', [itemId], mutations)
@@ -328,7 +343,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 
 		case 'create-vote': {
 			LL.createVoteOutOfItem(list, source, newOp.itemId, newOp.newFirstItemId, newOp.otherLayers)
-			const { item } = destrNullable(LL.findItemById(list, newOp.itemId))
+			const { item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (item && LL.isVoteItem(item)) {
 				ItemMut.tryApplyMutation('added', item.choices.map(choice => choice.itemId), mutations)
 			}
@@ -470,8 +485,8 @@ export function resolveUserPresence(state: PresenceState) {
 export type ItemLocks = Map<LL.ItemId, string>
 export type LockMutation = [LL.ItemId, string]
 
-export function itemsToLockForActivity(list: LL.List, activity: Activity): LL.ItemId[] {
-	const dialogActivity = activity.child.EDITING?.child
+export function itemsToLockForActivity(list: LL.List, activity: RootActivity): LL.ItemId[] {
+	const dialogActivity = activity.child.EDITING?.chosen
 	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
 	const itemId = dialogActivity.opts.itemId
 	const item = LL.findItemById(list, itemId)?.item
@@ -536,7 +551,7 @@ export function checkUserHasEdits(session: EditSession, userId: USR.UserId) {
 	return false
 }
 
-export const getHumanReadableActivity = (activity: Activity, list: LL.List) => {
+export const getHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex) => {
 	const editingActivity = activity.child.EDITING
 	const settingsActivity = activity.child.VIEWING_SETTINGS
 
@@ -547,47 +562,45 @@ export const getHumanReadableActivity = (activity: Activity, list: LL.List) => {
 	}
 
 	if (!editingActivity) return null
-	if (editingActivity.child.id === 'IDLE') {
+	if (editingActivity.chosen.id === 'IDLE') {
 		return `Editing`
 	}
-	if (editingActivity.child.id === 'ADDING_ITEM') {
+	if (editingActivity.chosen.id === 'ADDING_ITEM') {
 		return 'Adding layers'
 	}
+	if (editingActivity.chosen.id === 'ADDING_ITEM_FROM_HISTORY') {
+		return 'Adding layer from History'
+	}
+	let index: LL.ItemIndex
+	if (Array.isArray(listOrIndex)) {
+		const foundIndex = Obj.destrNullable(LL.findItemById(listOrIndex, editingActivity.chosen.opts.itemId))?.index
+		if (!foundIndex) {
+			console.warn(`Item ${editingActivity.chosen.opts.itemId} not found in list`, listOrIndex)
+			index = { outerIndex: 0, innerIndex: null }
+		} else {
+			index = foundIndex
+		}
+	} else {
+		index = listOrIndex
+	}
 
-	const { index } = destrNullable(LL.findItemById(list, editingActivity.child.opts.itemId))
 	const itemName = index ? LL.getItemNumber(index) : 'Item'
-	switch (editingActivity.child.id) {
+	switch (editingActivity.chosen.id) {
 		case 'EDITING_ITEM':
 			return `Editing ${itemName}`
 		case 'CONFIGURING_VOTE':
 			return ` Configuring vote for ${itemName}`
+		case 'MOVING_ITEM':
+			return `Moving ${itemName}`
 		default:
-			assertNever(editingActivity.child)
+			assertNever(editingActivity.chosen)
 	}
 }
 
-export const getHumanReadableActivityWithUser = (activity: Activity, displayName: string) => {
-	const editingActivity = activity.child.EDITING
-	const id = (() => {
-		if (activity?.child.VIEWING_SETTINGS) {
-			return activity?.child.VIEWING_SETTINGS?.child.CHANGING_SETTINGS?.id ?? editingActivity?.child.id
-		}
-		return editingActivity?.child.id
-	})()
-
-	if (!id || id === 'IDLE') return null
-	switch (id) {
-		case 'EDITING_ITEM':
-			return `${displayName} is editing`
-		case 'CONFIGURING_VOTE':
-			return `${displayName} is configuring vote`
-		case 'ADDING_ITEM':
-			return `${displayName} is adding`
-		case 'CHANGING_SETTINGS':
-			return `${displayName} is changing settings`
-		default:
-			assertNever(id)
-	}
+export const getAttributedHumanReadableActivity = (activity: RootActivity, listOrIndex: LL.List | LL.ItemIndex, displayName: string) => {
+	const activityText = getHumanReadableActivity(activity, listOrIndex)
+	if (!activityText) return null
+	return `${displayName} is ${activityText.toLowerCase()}`
 }
 
 export function* iterActivities(state: PresenceState) {
