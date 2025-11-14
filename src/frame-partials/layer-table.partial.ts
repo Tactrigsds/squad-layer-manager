@@ -323,6 +323,7 @@ export function initLayerTable(
 				if (!table.pageData || table.pageData !== prev.layerTable.pageData) return
 				if (table.minSelected !== 1 || table.maxSelected !== 1) return
 				if (table.pageData.layers.length !== 1) return
+				if (table.pageData.layers[0].id === table.selected[0]) return
 				// we're in edit mode and we're editing a single layer, so let's just select the layer we just queried
 				table.setSelected([table.pageData.layers[0].id])
 			})()

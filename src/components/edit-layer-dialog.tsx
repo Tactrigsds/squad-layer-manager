@@ -1,13 +1,12 @@
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
 import { useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import * as FRM from '@/lib/frame.ts'
 import * as Obj from '@/lib/object'
+import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as AppRoutesClient from '@/systems.client/app-routes.client'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -16,12 +15,6 @@ import LayerTable from './layer-table.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 
 export type EditLayerDialogProps = {
-	children?: React.ReactNode
-} & InnerEditLayerDialogProps
-
-// index
-// itemStore
-type InnerEditLayerDialogProps = {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	layerId?: L.LayerId
@@ -30,22 +23,19 @@ type InnerEditLayerDialogProps = {
 	frames?: Partial<SelectLayersFrame.KeyProp>
 }
 
-export default function EditLayerDialogWrapper(props: EditLayerDialogProps) {
-	return (
-		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			{props.children && <DialogTrigger asChild>{props.children}</DialogTrigger>}
-			<DialogContent className="w-auto max-w-full min-w-0 pb-2 overflow-x-auto">
-				<DragContextProvider>
-					{props.open && <EditLayerListItemDialog {...props} />}
-				</DragContextProvider>
-			</DialogContent>
-		</Dialog>
-	)
+type EditLayerDialogContentProps = {
+	layerId?: L.LayerId
+	onSelectLayer: (layerId: L.LayerId) => void
+	cursor?: LQY.Cursor
+	frames?: Partial<SelectLayersFrame.KeyProp>
+	onClose: () => void
 }
 
-function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
+const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function EditLayerDialogContent(props) {
 	const defaultLayerId = React.useRef(props.layerId)
-	const frameInputRef = React.useRef(SelectLayersFrame.createInput({ cursor: props.cursor, initialEditedLayerId: defaultLayerId.current }))
+	const frameInputRef = useRefConstructor(
+		() => SelectLayersFrame.createInput({ cursor: props.cursor, initialEditedLayerId: defaultLayerId.current }),
+	)
 	const frameKey = useFrameLifecycle(
 		SelectLayersFrame.frame,
 		{
@@ -65,25 +55,25 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 	function submit() {
 		const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId
 		if (!canSubmit) return
-		props.onOpenChange(false)
+		props.onClose()
 		props.onSelectLayer(editedLayerId!)
 	}
 
 	return (
-		<>
-			<DialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
+		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
+			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
-					<DialogTitle>Edit</DialogTitle>
+					<HeadlessDialogTitle>Edit Layer</HeadlessDialogTitle>
 				</div>
-				<div className="flex justify-end items-center space-x-2 flex-grow">
+				<div className="flex justify-end items-center space-x-2">
 					<AppliedFiltersPanel frameKey={frameKey} />
 				</div>
-			</DialogHeader>
+			</HeadlessDialogHeader>
 
-			{
-				<div className="flex items-start space-x-2 min-h-0">
-					<LayerFilterMenu frameKey={frameKey} />
-					<div className="flex flex-col h-full justify-between">
+			<div className="flex min-h-0 items-start space-x-2">
+				<LayerFilterMenu frameKey={frameKey} />
+				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
+					<div className="flex h-full min-h-0">
 						<LayerTable
 							frameKey={frameKey}
 							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
@@ -91,14 +81,39 @@ function EditLayerListItemDialog(props: InnerEditLayerDialogProps) {
 							canToggleColumns={false}
 							enableForceSelect={true}
 						/>
-						<div className="flex justify-end">
-							<Button disabled={!canSubmit} onClick={submit}>
-								Submit
-							</Button>
-						</div>
 					</div>
 				</div>
-			}
-		</>
+			</div>
+
+			<HeadlessDialogFooter>
+				<div className="flex items-center justify-end w-full">
+					<Button disabled={!canSubmit} onClick={submit}>
+						Submit
+					</Button>
+				</div>
+			</HeadlessDialogFooter>
+		</HeadlessDialogContent>
+	)
+})
+
+export default function EditLayerDialog(props: EditLayerDialogProps) {
+	const onClose = React.useCallback(() => {
+		props.onOpenChange(false)
+	}, [props.onOpenChange])
+
+	return (
+		<HeadlessDialog open={props.open} onOpenChange={props.onOpenChange} unmount={false}>
+			<DragContextProvider>
+				{props.open && (
+					<EditLayerDialogContent
+						layerId={props.layerId}
+						onSelectLayer={props.onSelectLayer}
+						cursor={props.cursor}
+						frames={props.frames}
+						onClose={onClose}
+					/>
+				)}
+			</DragContextProvider>
+		</HeadlessDialog>
 	)
 }
