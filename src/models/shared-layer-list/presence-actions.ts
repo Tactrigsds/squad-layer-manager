@@ -22,8 +22,8 @@ export const pageInteraction: Action = (input) => {
 	}
 }
 
-// export const INTERACT_TIMEOUT = 5_000
-export const INTERACT_TIMEOUT = 30_000
+export const INTERACT_TIMEOUT = 5_000
+// export const INTERACT_TIMEOUT = 30_000
 
 // page has been idle for too long
 export const interactionTimeout: Action = (input) => {

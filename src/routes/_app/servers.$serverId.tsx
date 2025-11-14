@@ -6,38 +6,14 @@ import * as Cookies from '@/systems.client/app-routes.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { createFileRoute } from '@tanstack/react-router'
+import React from 'react'
 import * as Rx from 'rxjs'
 
 export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
 
-	onEnter({ abortController, params }) {
-		// -------- schedule presence updates, keep default server id up-to-date --------
-		Cookies.setCookie('default-server-id', params.serverId)
+	onEnter({ params }) {
 		SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
-
-		const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
-		const interaction$ = Browser.interaction$.pipe(
-			Rx.scan((acc) => acc + 1, 0),
-			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(2000))),
-			Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
-			withAbortSignal(abortController.signal),
-		)
-
-		interaction$.subscribe((active) => {
-			try {
-				const storeState = SLLClient.Store.getState()
-				if (active) {
-					// if the user comes back to this page we want to set this as the default server again
-					SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
-					storeState.pushPresenceAction(PresenceActions.pageInteraction)
-				} else {
-					storeState.pushPresenceAction(PresenceActions.interactionTimeout)
-				}
-			} catch (error) {
-				console.error('Error in pushing pageInteraction$', error)
-			}
-		})
 	},
 
 	onLeave() {
@@ -47,5 +23,34 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 })
 
 function RouteComponent() {
+	const serverId = Route.useParams().serverId
+	React.useEffect(() => {
+		// -------- schedule presence updates, keep default server id up-to-date --------
+
+		const timeout$ = Rx.of(false).pipe(Rx.delay(PresenceActions.INTERACT_TIMEOUT))
+		const interaction$ = Browser.userIsActive$.pipe(
+			Rx.scan((acc) => acc + 1, 0),
+			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(2000))),
+			Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
+		)
+
+		const sub = interaction$.subscribe((active) => {
+			try {
+				const storeState = SLLClient.Store.getState()
+				if (active) {
+					// if the user comes back to this page we want to set this as the default server again
+					SquadServerClient.SelectedServerStore.getState().setSelectedServer(serverId)
+					storeState.pushPresenceAction(PresenceActions.pageInteraction)
+				} else {
+					storeState.pushPresenceAction(PresenceActions.interactionTimeout)
+				}
+			} catch (error) {
+				console.error('Error in pushing pageInteraction$', error)
+			}
+		})
+
+		return () => sub.unsubscribe()
+	}, [serverId])
+
 	return <LayerQueueDashboard />
 }

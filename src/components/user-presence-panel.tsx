@@ -102,6 +102,7 @@ export default function UserPresencePanel() {
 					const currentActivity = presence.activityState
 					const isEditing = !!currentActivity?.child?.EDITING
 					const hasActivity = currentActivity && Object.keys(currentActivity.child).length > 0
+						&& currentActivity.child.EDITING?.chosen.id !== 'IDLE'
 					const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity, layerList) : null
 
 					return (
