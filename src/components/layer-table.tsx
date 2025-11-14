@@ -218,12 +218,10 @@ function buildColDefs(
 					const selected = new Set(table.selected)
 					const pageIds = new Set(table.pageData.layers.map(l => l.id))
 					const intersect = SetUtils.intersection(selected, pageIds)
-					console.log('intersect', intersect)
 					if (intersect.size === pageIds.size) return 'all' as const
 					if (intersect.size > 0) return 'some' as const
 					return null
 				})
-				console.log('SELECT_STATE: ' + selectState)
 				const toggleAllSelected = (state: CheckedState) => {
 					const table = getTableFrame()
 					if (state === 'indeterminate') return
@@ -406,7 +404,6 @@ export default function LayerTable(props: {
 							const rowElts: React.ReactNode[] = []
 							const rows = table.getRowModel().rows
 							const columns = table.getVisibleFlatColumns()
-							console.log('page size', frameState.pageSize)
 							const placeholderBase = React.useMemo(() => (
 								<TableRow className="pointer-events-none">
 									{columns.map((column) => (
@@ -506,7 +503,6 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 					onMouseDown={e => {
 						if (e.ctrlKey || e.button !== 0) return
 						const originalSelected = !getTableFrame().selected.includes(row.original.id)
-						console.log('setting')
 						MouseDownRowIndexStore.setState({ index: row.index, originalSelected })
 					}}
 					onMouseUp={(e) => {

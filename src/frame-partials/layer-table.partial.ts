@@ -283,10 +283,8 @@ export function initLayerTable(
 			distinctDeepEquals(),
 			// Rx.auditTime(250),
 			Rx.switchMap(async (queryInput) => {
-				console.log('constraints', queryInput)
 				const base = LayerQueriesClient.getQueryLayersOptions(queryInput)
 
-				console.log('querying layers')
 				const data = await (async () => {
 					try {
 						set({ isFetching: true })
@@ -296,7 +294,6 @@ export function initLayerTable(
 						set({ isFetching: false })
 					}
 				})()
-				console.log('layers queried')
 				if (!data || data.code !== 'ok') return null
 				return data
 			}),

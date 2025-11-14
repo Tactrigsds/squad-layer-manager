@@ -155,7 +155,6 @@ export function getQueryLayersOptions(
 	return {
 		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
 		queryFn: async () => {
-			console.log('constraints in input', input.constraints)
 			if (input.sort?.type === 'random' && !input.sort.seed) {
 				throw new Error('Random sort requires a random seed when used with react query')
 			}

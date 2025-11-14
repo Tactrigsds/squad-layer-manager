@@ -173,7 +173,6 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 				unloadOnLeave: true,
 
 				load(args) {
-					console.trace('load ', args.activity)
 					let editedLayerId: L.LayerId | undefined
 					if (args.activity.id === 'EDITING_ITEM') {
 						const { item } = Obj.destrNullable(LL.findItemById(args.state.layerList, args.activity.opts.itemId))
@@ -189,7 +188,6 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 				},
 				onEnter(args) {},
 				onUnload(args) {
-					console.trace('unload ', args.activity)
 					// crudely wait for unload to render as  .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
 					if (args.data) sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
 				},

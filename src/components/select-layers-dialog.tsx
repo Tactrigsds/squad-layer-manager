@@ -44,7 +44,6 @@ type SelectLayersDialogContentProps = {
 }
 
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
-	console.log('SelectLayersDialogContent')
 	const prevPropsRef = React.useRef<SelectLayersDialogContentProps | null>(null)
 
 	React.useEffect(() => {
@@ -55,9 +54,6 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				if (prevPropsRef.current[key] !== props[key]) {
 					changedProps.push(key)
 				}
-			}
-			if (changedProps.length > 0) {
-				console.log('Props changed:', changedProps)
 			}
 		}
 		prevPropsRef.current = props
