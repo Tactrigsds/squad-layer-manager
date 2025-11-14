@@ -85,7 +85,8 @@ export default function LayerQueueDashboard() {
 						<CardHeader className="flex flex-row items-center justify-between">
 							<span className="flex items-center space-x-1">
 								<CardTitle>Up Next</CardTitle>
-								<Toggle
+								{
+									/*<Toggle
 									pressed={isEditing}
 									onPressedChange={setEditing}
 									aria-label="Toggle bookmark"
@@ -104,7 +105,8 @@ export default function LayerQueueDashboard() {
 												<span>Start Editing</span>
 											</>
 										)}
-								</Toggle>
+								</Toggle>*/
+								}
 								{isModified && (
 									<CardDescription
 										data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
