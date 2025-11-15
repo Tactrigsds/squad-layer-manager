@@ -213,9 +213,9 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 						</div>
 					</div>
 
-					{/* Match Indicator (Inverted) Section */}
+					{/* Miss Indicator Section */}
 					<div className="border rounded-lg p-4 space-y-4">
-						<h3 className="font-semibold text-sm">Match Indicator (Inverted)</h3>
+						<h3 className="font-semibold text-sm">Miss Indicator</h3>
 						<div className="flex gap-4">
 							<form.Field name="invertedEmoji">
 								{(field) => {
