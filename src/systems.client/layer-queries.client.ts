@@ -744,7 +744,7 @@ export async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input:
 		}
 		const errorMessage = String(error)
 		globalToast$.next({ variant: 'destructive', description: errorMessage })
-		throw new Error(errorMessage)
+		throw new Error(errorMessage, { cause: error })
 	}
 }
 

@@ -260,7 +260,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 
 	function useFrameStore<T extends FrameTypes, O>(key: InstanceKey<T>, selector: (state: StateWithDeps<T>) => O): O {
 		const instance = frameManager.getInstance(key)!
-		if (!instance) debugger
+		if (!instance) {}
 		return Zus.useStore(instance.readStore, selector as any)
 	}
 

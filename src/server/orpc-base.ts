@@ -1,6 +1,6 @@
 import { os } from '@orpc/server'
 import * as C from './context.ts'
-import {} from '@/lib/object.ts'
+
 import * as Otel from '@opentelemetry/api'
 
 const tracer = Otel.trace.getTracer('layer-queue')
@@ -24,7 +24,7 @@ const loggerMiddleware = base.middleware(async (opts) => {
 		},
 	}, async (opts) => {
 		const result = await opts.next(opts)
-		debugger
+		
 		return result
 	})(opts)
 })
