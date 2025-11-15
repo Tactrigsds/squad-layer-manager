@@ -305,33 +305,147 @@ function OtherScoreRow({
 }: {
 	scoreType: string
 	score: number
-	scoreRange?: { min: number; max: number; field: string }
+	scoreRange?: { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
 }) {
+	// Helper function to convert value to logarithmic scale
+	const getLogPercentage = (value: number, min: number, max: number): number => {
+		const logMin = Math.log(min)
+		const logMax = Math.log(max)
+		const logValue = Math.log(value)
+		return ((logValue - logMin) / (logMax - logMin)) * 100
+	}
+
 	// Calculate percentage based on actual score range
 	let percentage = 0
 	if (scoreRange) {
-		const range = scoreRange.max - scoreRange.min
-		const normalizedScore = Math.abs(score - scoreRange.min)
-		percentage = range > 0 ? (normalizedScore / range) * 100 : 0
+		if (scoreRange.logarithmic) {
+			percentage = getLogPercentage(Math.max(score, scoreRange.min), scoreRange.min, scoreRange.max)
+		} else {
+			const range = scoreRange.max - scoreRange.min
+			const normalizedScore = Math.abs(score - scoreRange.min)
+			percentage = range > 0 ? (normalizedScore / range) * 100 : 0
+		}
 	} else {
 		percentage = Math.min(Math.abs(score) * 10, 100)
+	}
+
+	// Calculate pool cutoff position if it exists
+	let cutoffPercentage = 0
+	if (scoreRange && scoreRange.poolCutoff !== undefined) {
+		if (scoreRange.logarithmic) {
+			cutoffPercentage = getLogPercentage(scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
+		} else {
+			const range = scoreRange.max - scoreRange.min
+			const normalizedCutoff = scoreRange.poolCutoff - scoreRange.min
+			cutoffPercentage = range > 0 ? (normalizedCutoff / range) * 100 : 0
+		}
 	}
 
 	return (
 		<div className="space-y-1">
 			<div className="flex justify-between items-center">
-				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
+				<div className="flex items-center gap-2">
+					<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
+					{scoreRange?.logarithmic && <span className="text-xs text-muted-foreground">(logarithmic scale)</span>}
+				</div>
 				<span className="text-xs font-medium text-muted-foreground">
 					{score > 0 ? '+' : ''}
 					{score.toFixed(2)}
 				</span>
 			</div>
-			<div className="h-1 rounded-full bg-muted">
-				<div
-					className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
-					style={{ width: `${Math.min(percentage, 100)}%` }}
-				/>
-			</div>
+			{scoreRange && scoreRange.poolCutoff !== undefined
+				? (
+					<div className="space-y-1">
+						<svg width="100%" height={scoreRange.logarithmic ? 56 : 40} className="overflow-visible">
+							{/* Background bar */}
+							<rect
+								x="0"
+								y="4"
+								width="100%"
+								height="8"
+								rx="4"
+								fill="currentColor"
+								className="text-muted"
+							/>
+							{/* Score bar */}
+							<rect
+								x="0"
+								y="4"
+								width={`${Math.min(percentage, 100)}%`}
+								height="8"
+								rx="4"
+								fill="currentColor"
+								className="text-muted-foreground transition-all duration-200"
+							/>
+
+							{/* Logarithmic scale markers */}
+							{scoreRange.logarithmic && (
+								(() => {
+									const logMin = Math.log(scoreRange.min)
+									const logMax = Math.log(scoreRange.max)
+									// Generate tick marks at reasonable intervals for log scale
+									const tickValues = [1, 2, 5, 10, 20, 30]
+										.filter(v => v >= scoreRange.min && v <= scoreRange.max)
+
+									return tickValues.map(tickValue => {
+										const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
+										return (
+											<g key={tickValue}>
+												<line
+													x1={`${tickPercentage}%`}
+													y1="12"
+													x2={`${tickPercentage}%`}
+													y2="16"
+													stroke="currentColor"
+													strokeWidth="1"
+													className="text-muted-foreground/50"
+												/>
+												<text
+													x={`${tickPercentage}%`}
+													y="28"
+													textAnchor="middle"
+													fontSize="9"
+													className="fill-muted-foreground/60"
+												>
+													{tickValue}
+												</text>
+											</g>
+										)
+									})
+								})()
+							)}
+
+							{/* Pool cutoff line */}
+							<line
+								x1={`${cutoffPercentage}%`}
+								y1="0"
+								x2={`${cutoffPercentage}%`}
+								y2="16"
+								stroke="white"
+								strokeWidth="2"
+							/>
+							{/* Pool cutoff label */}
+							<text
+								x={`${cutoffPercentage}%`}
+								y={scoreRange.logarithmic ? 40 : 32}
+								textAnchor="middle"
+								fontSize="10"
+								fill="white"
+								className="font-medium"
+							>
+								Pool Cutoff ({scoreRange.poolCutoff})
+							</text>
+						</svg>
+					</div>
+				)
+				: (
+					<div className="h-1 rounded-full bg-muted">
+						<div
+							className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
+							style={{ width: `${Math.min(percentage, 100)}%` }}
+						/>
+					</div>
+				)}
 		</div>
 	)
 }
@@ -353,18 +467,207 @@ function LayerConfigInfo({ layerConfig }: { layerConfig: L.LayerConfig }) {
 	)
 }
 
+function BalanceDifferentialRow({
+	diff,
+	scoreRange,
+}: {
+	diff: number
+	scoreRange?: { min: number; max: number; field: string; poolCutoff?: number }
+}) {
+	// Calculate percentage based on actual score range
+	// For Balance_Differential, 0 is centered, negative means Team 2 advantage, positive means Team 1 advantage
+	// Invert so positive (Team 1) goes LEFT and negative (Team 2) goes RIGHT
+	let diffPercentage = 50
+	if (scoreRange) {
+		const range = scoreRange.max - scoreRange.min
+		const normalizedDiff = -diff - scoreRange.min // Negate diff to invert the scale
+		diffPercentage = range > 0 ? (normalizedDiff / range) * 100 : 50
+	} else {
+		// Fallback: assume range of -30 to 30
+		diffPercentage = 50 - (diff / 60) * 100 // Subtract to invert
+	}
+
+	// Calculate pool cutoff positions if they exist
+	// The cutoff represents the maximum acceptable absolute differential (both positive and negative)
+	// Inverted: positive cutoff (Team 1) on LEFT, negative cutoff (Team 2) on RIGHT
+	let poolCutoffPositivePercentage = 0
+	let poolCutoffNegativePercentage = 0
+	if (scoreRange && scoreRange.poolCutoff !== undefined) {
+		const range = scoreRange.max - scoreRange.min
+		// Positive cutoff (Team 1 advantage) - inverted so it's on the left
+		const normalizedPositiveCutoff = -scoreRange.poolCutoff - scoreRange.min
+		poolCutoffPositivePercentage = range > 0 ? (normalizedPositiveCutoff / range) * 100 : 0
+		// Negative cutoff (Team 2 advantage) - inverted so it's on the right
+		const normalizedNegativeCutoff = scoreRange.poolCutoff - scoreRange.min
+		poolCutoffNegativePercentage = range > 0 ? (normalizedNegativeCutoff / range) * 100 : 0
+	}
+
+	return (
+		<div className="space-y-1">
+			<div className="flex justify-center items-center">
+				<span className="text-sm font-medium">
+					Balance Differential{' '}
+					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+						({diff > 0 ? '+' : ''}
+						{diff.toFixed(2)})
+					</span>
+				</span>
+			</div>
+			{scoreRange && scoreRange.poolCutoff !== undefined
+				? (
+					<div className="space-y-1">
+						<svg width="100%" height="56" className="overflow-visible">
+							{/* Background bar */}
+							<rect
+								x="0"
+								y="4"
+								width="100%"
+								height="8"
+								rx="4"
+								fill="currentColor"
+								className="text-muted"
+							/>
+
+							{/* Differential indicator - show blue extending left if positive (Team 1 advantage), red extending right if negative (Team 2 advantage) */}
+							{diff > 0
+								? (
+									<rect
+										x={`${diffPercentage}%`}
+										y="4"
+										width={`${Math.min(Math.abs(50 - diffPercentage), 50)}%`}
+										height="8"
+										rx="4"
+										fill="currentColor"
+										className="text-blue-500 transition-all duration-200"
+									/>
+								)
+								: diff < 0
+								? (
+									<rect
+										x="50%"
+										y="4"
+										width={`${Math.min(Math.abs(diffPercentage - 50), 50)}%`}
+										height="8"
+										rx="4"
+										fill="currentColor"
+										className="text-red-500 transition-all duration-200"
+									/>
+								)
+								: null}
+
+							{/* Scale markers */}
+							{scoreRange && (() => {
+								// Generate tick marks at reasonable intervals (inverted scale)
+								const range = scoreRange.max - scoreRange.min
+								const step = range / 4 // Create 5 markers (0, 25%, 50%, 75%, 100%)
+								const markers = []
+								for (let i = 0; i <= 4; i++) {
+									const value = scoreRange.min + (step * i)
+									// Invert position so values match the inverted scale
+									const position = (4 - i) / 4 * 100
+									const isCenter = i === 2
+									markers.push({ value, position, isCenter })
+								}
+								return markers.map(({ value, position, isCenter }) => (
+									<g key={value}>
+										<line
+											x1={`${position}%`}
+											y1={isCenter ? '16' : '20'}
+											x2={`${position}%`}
+											y2={isCenter ? '32' : '28'}
+											stroke="currentColor"
+											strokeWidth={isCenter ? '2' : '1'}
+											className={isCenter ? 'text-foreground/40' : 'text-muted-foreground/30'}
+										/>
+										<text
+											x={`${position}%`}
+											y="48"
+											textAnchor="middle"
+											fontSize="9"
+											className="fill-muted-foreground/50"
+										>
+											{value.toFixed(0)}
+										</text>
+									</g>
+								))
+							})()}
+
+							{/* Positive pool cutoff line */}
+							<line
+								x1={`${poolCutoffPositivePercentage}%`}
+								y1="0"
+								x2={`${poolCutoffPositivePercentage}%`}
+								y2="16"
+								stroke="white"
+								strokeWidth="2"
+							/>
+							{/* Positive pool cutoff label */}
+							<text
+								x={`${poolCutoffPositivePercentage}%`}
+								y="32"
+								textAnchor="middle"
+								fontSize="10"
+								fill="white"
+								className="font-medium"
+							>
+								Pool Cutoff (+{scoreRange.poolCutoff})
+							</text>
+
+							{/* Negative pool cutoff line */}
+							<line
+								x1={`${poolCutoffNegativePercentage}%`}
+								y1="0"
+								x2={`${poolCutoffNegativePercentage}%`}
+								y2="16"
+								stroke="white"
+								strokeWidth="2"
+							/>
+							{/* Negative pool cutoff label */}
+							<text
+								x={`${poolCutoffNegativePercentage}%`}
+								y="32"
+								textAnchor="middle"
+								fontSize="10"
+								fill="white"
+								className="font-medium"
+							>
+								Pool Cutoff (-{scoreRange.poolCutoff})
+							</text>
+
+							{/* Current value indicator */}
+							<circle
+								cx={`${diffPercentage}%`}
+								cy="8"
+								r="5"
+								fill="currentColor"
+								className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
+							/>
+						</svg>
+					</div>
+				)
+				: (
+					<div className="h-1 rounded-full bg-muted">
+						<div
+							className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
+							style={{ width: `${Math.min(Math.abs(diffPercentage - 50), 50)}%`, marginLeft: diff >= 0 ? '50%' : `${diffPercentage}%` }}
+						/>
+					</div>
+				)}
+		</div>
+	)
+}
+
 function ScoreGrid(
 	{ scores, layerDetails }: {
 		scores: LC.PartitionedScores
 		layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 	},
 ) {
-	// List of scores that are NOT z-scores
-	const nonZScores = ['ZERO_Score', 'Balance_Differential']
-
-	// Separate z-scores from non-z-scores in diffs
-	const zScoreTypes = Object.keys(scores.diffs).filter(score => !nonZScores.includes(score)).sort()
-	const diffNonZScores = Object.keys(scores.diffs).filter(score => nonZScores.includes(score) && score !== 'Balance_Differential')
+	// Only render dimensions defined in score-ranges.json paired section
+	const pairedFields = new Set(scoreRanges.paired.map(range => range.field))
+	const zScoreTypes = Object.keys(scores.diffs)
+		.filter(score => score !== 'Balance_Differential' && pairedFields.has(score))
+		.sort()
 	const otherScores = Object.keys(scores.other)
 
 	// Get team roles for headers
@@ -398,23 +701,27 @@ function ScoreGrid(
 					</div>
 				)
 			})}
-			{(diffNonZScores.length > 0 || otherScores.length > 0) && (
+			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
 				<div className="mt-3 pt-3 border-t border-muted space-y-2">
-					{diffNonZScores.map(scoreType => {
-						const scoreRange = [...scoreRanges.paired, ...scoreRanges.regular].find(range => range.field === scoreType)
-						return (
-							<DiffScoreRow
-								key={scoreType}
-								scoreType={scoreType}
-								team1Score={scores.team1[scoreType]}
-								team2Score={scores.team2[scoreType]}
-								diff={scores.diffs[scoreType] || 0}
-								scoreRange={scoreRange}
-							/>
-						)
-					})}
+					{scores.diffs['Balance_Differential'] !== undefined && (
+						<BalanceDifferentialRow
+							diff={scores.diffs['Balance_Differential']}
+							scoreRange={scoreRanges.regular.find(range => range.field === 'Balance_Differential') as {
+								min: number
+								max: number
+								field: string
+								poolCutoff?: number
+							} | undefined}
+						/>
+					)}
 					{otherScores.map(scoreType => {
-						const scoreRange = scoreRanges.regular.find(range => range.field === scoreType)
+						const scoreRange = scoreRanges.regular.find(range => range.field === scoreType) as {
+							min: number
+							max: number
+							field: string
+							poolCutoff?: number
+							logarithmic?: boolean
+						} | undefined
 						return (
 							<OtherScoreRow
 								key={scoreType}
@@ -463,7 +770,7 @@ function ZScoreRow({
 	return (
 		<div className="space-y-2">
 			<div className="flex justify-between items-center">
-				<span className="text-xs text-muted-foreground">
+				<span className="text-xs text-blue-500">
 					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
 				</span>
 				<span className="text-sm font-medium">
@@ -472,7 +779,7 @@ function ZScoreRow({
 						({Math.abs(diff).toFixed(2)})
 					</span>
 				</span>
-				<span className="text-xs text-muted-foreground">
+				<span className="text-xs text-red-500">
 					{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}
 				</span>
 			</div>
@@ -564,62 +871,6 @@ function ZScoreRow({
 					</g>
 				)}
 			</svg>
-		</div>
-	)
-}
-
-function DiffScoreRow({
-	scoreType,
-	team1Score,
-	team2Score,
-	diff,
-	scoreRange,
-}: {
-	scoreType: string
-	team1Score?: number
-	team2Score?: number
-	diff: number
-	scoreRange?: { min: number; max: number; field: string }
-}) {
-	// Calculate percentage based on actual score range
-	let balancePercentage = 50
-	if (scoreRange) {
-		const range = scoreRange.max - scoreRange.min
-		const normalizedDiff = range > 0 ? (diff / range) : 0
-		balancePercentage = 50 + (normalizedDiff * 50)
-	} else {
-		// Fallback if no score range available
-		balancePercentage = 50 + (diff * 10)
-	}
-
-	return (
-		<div className="space-y-1">
-			<div className="flex justify-between items-center">
-				<span className="text-xs text-muted-foreground">
-					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
-				</span>
-				<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
-				<span className="text-xs text-muted-foreground">
-					{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}
-				</span>
-			</div>
-			<div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
-				<div
-					className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-200"
-					style={{ width: `${Math.min(balancePercentage, 100)}%` }}
-				/>
-				<div
-					className="absolute top-0 right-0 h-full bg-red-500 transition-all duration-200"
-					style={{ width: `${Math.min(100 - balancePercentage, 100)}%` }}
-				/>
-				<div className="absolute top-0 left-1/2 w-0.5 h-full bg-foreground/20 transform -translate-x-0.5" />
-			</div>
-			<div className="text-xs text-center">
-				<span className="text-muted-foreground">Diff:</span>
-				<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
-					{Math.abs(diff).toFixed(2)}
-				</span>
-			</div>
 		</div>
 	)
 }

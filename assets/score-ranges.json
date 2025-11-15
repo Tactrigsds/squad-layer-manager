@@ -1,14 +1,17 @@
 {
   "regular": [
     {
-      "min": -28.54891881507126,
-      "max": 28.54891881507126,
-      "field": "Balance_Differential"
+      "min": -30,
+      "max": 30,
+      "field": "Balance_Differential",
+      "poolCutoff": 10
     },
     {
       "min": 0.8436762966981171,
       "max": 33.994152268358334,
-      "field": "Asymmetry_Score"
+      "field": "Asymmetry_Score",
+      "poolCutoff": 2.25,
+      "logarithmic": true
     }
   ],
   "paired": [
@@ -31,11 +34,6 @@
       "min": -3,
       "max": 3,
       "field": "Anti-Infantry"
-    },
-    {
-      "min": 0,
-      "max": 100,
-      "field": "ZERO_Score"
     }
   ]
 }
