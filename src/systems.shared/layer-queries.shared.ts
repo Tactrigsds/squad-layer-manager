@@ -9,7 +9,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import type { SQL} from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'

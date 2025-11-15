@@ -4,7 +4,7 @@ import EventEmitter from 'events'
 import fs from 'fs'
 import { readFile } from 'fs/promises'
 import path from 'path'
-import type { SFTPWrapper } from 'ssh2';
+import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
 
 export type SftpTailOptions = {

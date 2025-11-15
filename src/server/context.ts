@@ -1,5 +1,5 @@
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResourceInvocationOpts} from '@/lib/async.ts';
+import type { AsyncResourceInvocationOpts } from '@/lib/async.ts'
 import { toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'

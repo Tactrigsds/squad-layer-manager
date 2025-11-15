@@ -24,7 +24,7 @@ import * as GlobalSettings from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import type { ColumnDef, Row} from '@tanstack/react-table';
+import type { ColumnDef, Row } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { Table as CoreTable } from '@tanstack/table-core'
 import * as Icons from 'lucide-react'

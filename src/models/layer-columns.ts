@@ -1,5 +1,5 @@
 import * as Obj from '@/lib/object'
-import type { OneToManyMap} from '@/lib/one-to-many-map';
+import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { fromJsonCompatible, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'

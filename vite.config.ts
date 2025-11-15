@@ -2,7 +2,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CommonServerOptions, UserConfig } from 'vite';
+import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 

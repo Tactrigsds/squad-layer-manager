@@ -66,7 +66,6 @@ let rawEnv!: Record<string, string | undefined>
 
 const parsedProperties = new Map<string, object>()
 
- 
 function parseGroups<G extends Record<string, z.ZodTypeAny>>(groups: G) {
 	return z.object(groups).parse(rawEnv)
 }

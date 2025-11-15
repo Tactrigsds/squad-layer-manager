@@ -44,7 +44,6 @@ export function NodePortal(props: { nodeId: NodeMap.NodeId; store: Zus.StoreApi<
 				allocated.delete(props.nodeId)
 			}
 		}
-		 
 	}, [props.nodeId])
 
 	return createPortal(

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Subject } from 'rxjs'
-import type { Toast} from './use-toast.ts';
+import type { Toast } from './use-toast.ts'
 import { useToast } from './use-toast.ts'
 
 // send events to the global toast

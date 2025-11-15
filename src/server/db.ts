@@ -1,9 +1,9 @@
 import type * as CS from '@/models/context-shared'
 import * as Otel from '@opentelemetry/api'
-import type { MySql2Database } from 'drizzle-orm/mysql2';
+import type { MySql2Database } from 'drizzle-orm/mysql2'
 import { drizzle } from 'drizzle-orm/mysql2'
 import type { Pool } from 'mysql2'
-import type { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise';
+import type { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
 import MySQL from 'mysql2/promise'
 import { EventEmitter } from 'node:events'
 import type * as C from './context.ts'

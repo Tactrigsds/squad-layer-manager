@@ -4,7 +4,7 @@ import type * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
-import type { SftpTailOptions } from '../sftp-tail';
+import type { SftpTailOptions } from '../sftp-tail'
 import { SftpTail } from '../sftp-tail'
 import { assertNever } from '../type-guards'
 import * as SLE from './squad-log-events.models'

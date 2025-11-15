@@ -16,7 +16,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import type { TriState as TriStateCheckboxState} from './ui/tri-state-checkbox.tsx';
+import type { TriState as TriStateCheckboxState } from './ui/tri-state-checkbox.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {

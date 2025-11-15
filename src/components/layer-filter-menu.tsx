@@ -8,7 +8,7 @@ import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import type { ComparisonHandle } from './filter-card';
+import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
