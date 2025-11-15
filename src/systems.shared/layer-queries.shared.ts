@@ -44,7 +44,6 @@ export async function queryLayers(args: {
 }) {
 	const ctx: CS.LayerQuery = {
 		...args.ctx,
-		layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input),
 		log: args.ctx.log.child({ query: 'query-layers' }),
 	}
 	const input = { ...args.input }
@@ -153,7 +152,7 @@ export async function queryLayerComponent(args: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerComponentInput
 }) {
-	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const ctx: CS.LayerQuery = args.ctx
 	const input = args.input
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
 	if (conditionsRes.code !== 'ok') return conditionsRes
@@ -439,7 +438,7 @@ export async function getLayerItemStatuses(args: {
 	ctx: CS.LayerQuery
 	input: LQY.LayerItemStatusesInput
 }) {
-	const ctx: CS.LayerQuery = { ...args.ctx, layerItemsState: LQY.applyItemStatePatches(args.ctx.layerItemsState, args.input) }
+	const ctx: CS.LayerQuery = { ...args.ctx }
 	const input = args.input
 	const constraints = input.constraints ?? []
 	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()

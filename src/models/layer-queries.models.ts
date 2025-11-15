@@ -3,7 +3,6 @@ import * as Obj from '@/lib/object'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
 import type { VisibilityState } from '@tanstack/react-table'
-import * as Im from 'immer'
 import { z } from 'zod'
 import * as F from './filter.models'
 import * as L from './layer'
@@ -105,13 +104,6 @@ export type LayerItemStatuses = {
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }
 
-type LayerItemPatch = {
-	type: 'splice'
-	cursor: Cursor
-	deleteCount: number
-	insertions?: LayerItem[]
-}
-
 export const LAYER_ITEM_ACTION = z.enum(['add', 'edit'])
 export type LayerItemAction = z.infer<typeof LAYER_ITEM_ACTION>
 
@@ -121,15 +113,12 @@ export type BaseQueryInput = {
 	// no cursor or action == repeat rules ignored
 	cursor?: Cursor
 	action?: LayerItemAction
-
-	patches?: LayerItemPatch[]
 }
 
 export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQueryInput {
 	return {
 		constraints: [...(a.constraints || []), ...(b.constraints || [])],
 		cursor: b.cursor || a.cursor,
-		patches: [...(a.patches || []), ...(b.patches || [])],
 	}
 }
 
@@ -396,32 +385,15 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		list.splice(index.outerIndex, deleteCount, ...items)
 	}
 }
-export function applyItemStatePatches(baseState: LayerItemsState, input: Pick<BaseQueryInput, 'patches'>) {
-	if (!input.patches || input.patches.length === 0) return baseState
-	return Im.produce(baseState, (draft) => {
-		for (const patch of input.patches!) {
-			const index = resolveCursorIndex(draft, patch.cursor)
-			if (!index) throw new Error('Invalid cursor')
-			switch (patch.type) {
-				case 'splice':
-					splice(baseState.layerItems, index, patch.deleteCount, ...(patch.insertions ?? []))
-					break
-				default:
-					assertNever(patch.type)
-			}
-		}
-	})
-}
-
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
 	cursor: Cursor,
-): ItemIndex {
+): ItemIndex | null {
 	const orderedItems = orderedItemsState.layerItems
 
 	if (cursor.type === 'item-relative') {
 		const { index } = Obj.destrNullable(findItemById(orderedItems, cursor.itemId))
-		if (!index) throw new Error('Invalid cursor ' + JSON.stringify(cursor))
+		if (!index) return null
 		if (cursor.position === 'after') return LL.shiftIndex(index, 1)
 		return index
 	}
