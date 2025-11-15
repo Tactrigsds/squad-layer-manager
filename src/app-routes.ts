@@ -18,7 +18,7 @@ type ToGenericStrings<T extends ParamsBase> = T extends never[] ? [] : {
 	[K in keyof T]: K extends keyof string[] ? T[K] : string
 }
 
-type ParamsBase<U extends string | never = string | never> = U[]
+type ParamsBase<U extends string = string> = U[]
 
 export type RouteDefinition<Params extends ParamsBase, Handle extends 'page' | 'custom'> = {
 	id: string

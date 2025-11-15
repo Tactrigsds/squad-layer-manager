@@ -1,4 +1,5 @@
-import { getTableConfig, MySqlTableWithColumns, TableConfig } from 'drizzle-orm/mysql-core'
+import type { MySqlTableWithColumns, TableConfig } from 'drizzle-orm/mysql-core';
+import { getTableConfig } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 export type Error = {
 	code: string

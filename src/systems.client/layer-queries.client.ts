@@ -5,7 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as FB from '@/models/filter-builders'
-import * as F from '@/models/filter.models'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
@@ -13,7 +13,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
-import * as WorkerTypes from '@/systems.client/layer-queries.worker'
+import type * as WorkerTypes from '@/systems.client/layer-queries.worker'
 
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
@@ -41,7 +41,7 @@ export type Store = {
 export const Store = Zus.createStore<Store>((set, get, store) => {
 	const extraQueryFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	if (extraQueryFilters.size === 0) {
-		;(async () => {
+		void (async () => {
 			const config = await ConfigClient.fetchConfig()
 			const filterEntities = await FilterEntityClient.initializedFilterEntities$().getValue()
 			if (!config.layerTable.defaultExtraFilters) return
@@ -559,7 +559,7 @@ class LayerQueryWorkerPool {
 			this.initialized = true
 			console.debug(`Worker pool initialized with ${this.poolSize} workers`)
 		} catch (error) {
-			this.dispose()
+			void this.dispose()
 			throw error
 		} finally {
 			this.initializing = false
@@ -784,7 +784,7 @@ function _setupWindowFocusHandlers() {
 				console.debug('Terminating worker pool due to window losing focus/visibility')
 				const stats = workerPool.getStats()
 				console.log('Worker pool stats before focus termination:', stats)
-				workerPool.dispose()
+				void workerPool.dispose()
 			}
 		}, FOCUS_CONFIG.BLUR_TERMINATION_DELAY)
 	}

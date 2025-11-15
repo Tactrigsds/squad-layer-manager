@@ -1,5 +1,5 @@
-import * as CS from '@/models/context-shared'
-import * as SS from '@/models/server-state.models'
+import type * as CS from '@/models/context-shared'
+import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
@@ -129,7 +129,7 @@ export default class Rcon extends EventEmitter {
 					reconnected$,
 					Rx.timer(2_000).pipe(Rx.map(() => false)),
 				]))
-				if (res === false) return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+				if (!res) return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
 			}
 			if (!this.connected) return { code: 'err:rcon' as const, msg: "Couldn't establish connection with server" }
 			if (!this.client?.writable) {
@@ -241,7 +241,7 @@ export default class Rcon extends EventEmitter {
 
 	#badPacket(ctx: CS.Log): null {
 		ctx = this.addLogProps(ctx)
-		ctx.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${this.responseString}`)
+		ctx.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${JSON.stringify(this.responseString)}`)
 		this.stream = Buffer.alloc(0)
 		this.responseString = { id: 0, body: '' }
 		return null
@@ -267,16 +267,16 @@ export default class Rcon extends EventEmitter {
 	async warn(ctx: CS.Log, steamID: string, message: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Warned ${steamID}: ${message}`)
-		this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
+		await this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
 	}
 
 	async kick(ctx: CS.Log, steamID: string, reason: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		this.execute(ctx, `AdminKick "${steamID}" ${reason}`)
+		await this.execute(ctx, `AdminKick "${steamID}" ${reason}`)
 	}
 
 	async forceTeamChange(ctx: CS.Log, steamID: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		this.execute(ctx, `AdminForceTeamChange "${steamID}"`)
+		await this.execute(ctx, `AdminForceTeamChange "${steamID}"`)
 	}
 }

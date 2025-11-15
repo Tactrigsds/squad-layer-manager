@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object'
-import { Parts } from '@/lib/types'
+import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as L from '@/models/layer'
 import * as USR from '@/models/users.models'
@@ -51,16 +51,12 @@ const TallyPropertiesSchema = z.object({
 	deadline: z.number(),
 })
 
-type TallyProperties = z.infer<typeof TallyPropertiesSchema>
-
 const LayerVoteSchema = z.object({
 	itemId: z.string(),
 	choices: z.array(z.string()),
 	voterType: VOTER_TYPE,
 	autostartCancelled: z.boolean().optional(),
 })
-
-type LayerVote = z.infer<typeof LayerVoteSchema>
 
 export const VoteStateSchema = z.discriminatedUnion('code', [
 	// the vote state doesn't have to be set to 'ready' before they're started. this is here so we can autostart votes for the next layer

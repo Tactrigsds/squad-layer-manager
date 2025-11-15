@@ -7,5 +7,5 @@ export const Route = createFileRoute('/')({
 
 function RouteComponent() {
 	const serverId = SquadServerClient.useSelectedServerId()
-	return <Navigate to={'/servers/$serverId'} params={{ serverId }} />
+	return <Navigate to="/servers/$serverId" params={{ serverId }} />
 }

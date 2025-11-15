@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
-import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as DH from '@/lib/display-helpers.ts'
@@ -80,11 +80,11 @@ export function LayerList(
 			const entry = history.find((entry) => entry.historyEntryId === activeId)
 			if (!entry) return
 			const index = LL.resolveCursorIndex(layerList, cursor)!
-			props.store.getState().dispatch({ op: 'add', items: [{ layerId: entry.layerId }], index })
+			void props.store.getState().dispatch({ op: 'add', items: [{ layerId: entry.layerId }], index })
 		}
 
 		if (event.active.type === 'layer-item') {
-			props.store.getState().dispatch({
+			void props.store.getState().dispatch({
 				op: 'move',
 				cursor: cursor,
 				itemId: event.active.id,
@@ -186,7 +186,7 @@ function LoadedSelectLayersView({
 		const index = LL.resolveCursorIndex(state.layerList, cursor)
 		if (!index) return
 
-		state.dispatch({
+		void state.dispatch({
 			op: 'add',
 			items,
 			index,
@@ -197,7 +197,7 @@ function LoadedSelectLayersView({
 		if (activity.id !== 'EDITING_ITEM') return
 		const state = store.getState()
 		const itemId = activity.opts.itemId
-		state.dispatch({
+		void state.dispatch({
 			op: 'edit-layer',
 			itemId,
 			newLayerId: layerId,
@@ -650,7 +650,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 														className="font-mono"
 														formatTime={ms => dateFns.format(new Date(ms), 'm:ss')}
 														deadline={voteState.deadline}
-														zeros={true}
+														zeros
 													/>
 												</Badge>
 											</>
@@ -718,7 +718,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 													},
 												},
 											)}
-											matchKey={React.useCallback(key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle, [activityTitle])}
+											matchKey={key => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
 											render={Button}
 											variant="ghost"
 											size="icon"
@@ -754,7 +754,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 								</ItemDropdown>
 							</span>
 						</div>
-						<ol className={'flex flex-col items-start'}>
+						<ol className="flex flex-col items-start">
 							{item.choices!.map((choice) => {
 								return (
 									<SingleLayerListItem
@@ -931,7 +931,7 @@ type ItemDropdownProps = {
 type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote'
 
 function ItemDropdown(props: ItemDropdownProps) {
-	const [item, index, lastLocalIndex] = Zus.useStore(
+	const [item, index, _lastLocalIndex, layerList] = Zus.useStore(
 		props.listStore,
 		ZusUtils.useDeep((llStore) => {
 			const itemState = QD.selectLLItemState(llStore, props.itemId)
@@ -939,6 +939,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 				itemState.item,
 				itemState.index,
 				LL.getLastLocalIndexForItem(itemState.item.itemId, llStore.layerList) ?? llStore.layerList.length,
+				llStore.layerList,
 			] as const
 		}),
 	)
@@ -999,96 +1000,94 @@ function ItemDropdown(props: ItemDropdownProps) {
 
 	const user = UsersClient.useLoggedInUser()
 	return (
-		<>
-			<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
-				<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
-				<DropdownMenuContent>
-					<DropdownMenuGroup>
-						{!LL.isVoteItem(item) && (
-							<StartActivityInteraction
-								loaderName="selectLayers"
-								createActivity={SLL.createEditActivityVariant(activities['edit'])}
-								matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
-								preload="viewport"
-								render={DropdownMenuItem}
-							>
-								Edit
-							</StartActivityInteraction>
-						)}
-						<DropdownMenuItem
-							disabled={isLocked}
-							onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
-						>
-							Swap Factions
-						</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem
-							disabled={isLocked}
-							onClick={() => {
-								itemActions().dispatch({ op: 'delete' })
-							}}
-							className="bg-destructive text-destructive-foreground focus:bg-red-600"
-						>
-							Delete
-						</DropdownMenuItem>
-					</DropdownMenuGroup>
+		<DropdownMenu modal={false} open={props.open} onOpenChange={props.setOpen}>
+			<DropdownMenuTrigger asChild>{props.children}</DropdownMenuTrigger>
+			<DropdownMenuContent>
+				<DropdownMenuGroup>
 					{!LL.isVoteItem(item) && (
 						<StartActivityInteraction
 							loaderName="selectLayers"
-							createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
-							// we're using deepEqualStrict here so that his breaks if the definition for key changes
-							matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
+							createActivity={SLL.createEditActivityVariant(activities['edit'])}
+							matchKey={key => Obj.deepEqualStrict(key, activities['edit'])}
 							preload="viewport"
-							disabled={isLocked}
 							render={DropdownMenuItem}
 						>
-							Create Vote
+							Edit
 						</StartActivityInteraction>
 					)}
-
+					<DropdownMenuItem
+						disabled={isLocked}
+						onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
+					>
+						Swap Factions
+					</DropdownMenuItem>
 					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						disabled={isLocked}
+						onClick={() => {
+							itemActions().dispatch({ op: 'delete' })
+						}}
+						className="bg-destructive text-destructive-foreground focus:bg-red-600"
+					>
+						Delete
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+				{!LL.isVoteItem(item) && (
+					<StartActivityInteraction
+						loaderName="selectLayers"
+						createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
+						// we're using deepEqualStrict here so that his breaks if the definition for key changes
+						matchKey={key => Obj.deepEqualStrict(key, activities['create-vote'])}
+						preload="viewport"
+						disabled={isLocked}
+						render={DropdownMenuItem}
+					>
+						Create Vote
+					</StartActivityInteraction>
+				)}
 
-					<DropdownMenuGroup>
-						<StartActivityInteraction
-							loaderName="selectLayers"
-							className={dropdownMenuItemClassesBase}
-							createActivity={SLL.createEditActivityVariant(activities['add-after'])}
-							matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
-							preload="viewport"
-							render={DropdownMenuItem}
-						>
-							Add Layers Before
-						</StartActivityInteraction>
-						<StartActivityInteraction
-							loaderName="selectLayers"
-							className={dropdownMenuItemClassesBase}
-							createActivity={SLL.createEditActivityVariant(activities['add-before'])}
-							matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
-							preload="viewport"
-							render={DropdownMenuItem}
-						>
-							Add Layers After
-						</StartActivityInteraction>
-					</DropdownMenuGroup>
+				<DropdownMenuSeparator />
 
-					<DropdownMenuSeparator />
-					<DropdownMenuGroup>
-						<DropdownMenuItem
-							disabled={(index.innerIndex ?? index.outerIndex) === 0 || isLocked}
-							onClick={sendToFront}
-						>
-							Send to Front
-						</DropdownMenuItem>
-						<DropdownMenuItem
-							disabled={(index.innerIndex ?? index.outerIndex) === lastLocalIndex || isLocked}
-							onClick={sendToBack}
-						>
-							Send to Back
-						</DropdownMenuItem>
-					</DropdownMenuGroup>
-				</DropdownMenuContent>
-			</DropdownMenu>
-		</>
+				<DropdownMenuGroup>
+					<StartActivityInteraction
+						loaderName="selectLayers"
+						className={dropdownMenuItemClassesBase}
+						createActivity={SLL.createEditActivityVariant(activities['add-after'])}
+						matchKey={key => Obj.deepEqualStrict(key, activities['add-after'])}
+						preload="viewport"
+						render={DropdownMenuItem}
+					>
+						Add Layers Before
+					</StartActivityInteraction>
+					<StartActivityInteraction
+						loaderName="selectLayers"
+						className={dropdownMenuItemClassesBase}
+						createActivity={SLL.createEditActivityVariant(activities['add-before'])}
+						matchKey={key => Obj.deepEqualStrict(key, activities['add-before'])}
+						preload="viewport"
+						render={DropdownMenuItem}
+					>
+						Add Layers After
+					</StartActivityInteraction>
+				</DropdownMenuGroup>
+
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
+					<DropdownMenuItem
+						disabled={(index.innerIndex ?? index.outerIndex) === 0 || isLocked}
+						onClick={sendToFront}
+					>
+						Send to Front
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						disabled={(index.innerIndex ?? index.outerIndex) === layerList.length - 1 || isLocked}
+						onClick={sendToBack}
+					>
+						Send to Back
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	)
 }
 
@@ -1142,7 +1141,7 @@ export function StartActivityInteraction<
 		'intentDelay',
 		'render',
 	)
-	const [isLoaded, isActive] = SLLClient.useActivityLoaderData({
+	const [isLoaded, _isActive] = SLLClient.useActivityLoaderData({
 		loaderName: props.loaderName,
 		matchKey: props.matchKey,
 		trace: `StartActivityInteraction:${props.loaderName}`,
@@ -1168,7 +1167,7 @@ export function StartActivityInteraction<
 	React.useEffect(() => {
 		// preloadActivity depends on isLoaded above
 		if (props.preload === 'render') {
-			preloadActivity()
+			void preloadActivity()
 		}
 	}, [props.preload, preloadActivity])
 
@@ -1179,7 +1178,7 @@ export function StartActivityInteraction<
 			(entries) => {
 				entries.forEach((entry) => {
 					if (entry.isIntersecting) {
-						preloadActivity()
+						void preloadActivity()
 					}
 				})
 			},
@@ -1197,7 +1196,7 @@ export function StartActivityInteraction<
 		if (props.preload === 'intent' && !isLoaded) {
 			const delay = props.intentDelay ?? 150
 			const timeout = setTimeout(() => {
-				preloadActivity()
+				void preloadActivity()
 			}, delay)
 			setIntentTimeout(timeout)
 		}

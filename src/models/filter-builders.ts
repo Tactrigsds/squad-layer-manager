@@ -1,4 +1,4 @@
-import * as F from './filter.models'
+import type * as F from './filter.models'
 
 export const and = <T extends F.FilterNode>(children: T[], options: { neg?: boolean } = {}) => {
 	return {

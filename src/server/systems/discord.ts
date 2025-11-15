@@ -1,5 +1,5 @@
 import { resToOptional } from '@/lib/types'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
 import { CONFIG } from '@/server/config'
 import orpcBase from '@/server/orpc-base'
@@ -44,7 +44,7 @@ export async function setup() {
 		client.once('error', (err) => {
 			reject(err)
 		})
-		client.login(ENV.DISCORD_BOT_TOKEN)
+		void client.login(ENV.DISCORD_BOT_TOKEN)
 	})
 
 	const res = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)

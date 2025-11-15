@@ -27,9 +27,9 @@ export const LEVELS = {
 	60: 'FATAL',
 } as const
 
-export function showLogEvent(obj: any & { level: number }) {
+export function showLogEvent(obj: { level: number; [key: string]: unknown }) {
 	// Format time with 24h time format (HH:MM:SS)
-	const dateObj = new Date(obj.time)
+	const dateObj = new Date(obj.time as number)
 	const time = dateObj.toLocaleTimeString([], { hour12: false })
 	const dimColor = '\x1b[2m' // Dim/reduced weight ANSI escape code
 	const resetColor = '\x1b[0m'
@@ -77,15 +77,20 @@ export function showLogEvent(obj: any & { level: number }) {
 	const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
 
 	// Extract additional properties
-	 
-	const { time: _, level: __, msg: ___, pid, hostname, ...props } = obj
+
+	const { time: _, level: __, msg: ___, pid: _pid, hostname: _hostname, ...props } = obj
 
 	// Format additional context if any
 	let context = ''
 	if (Object.keys(props).length > 0) {
 		context = `\n  ${
 			Object.entries(props)
-				.map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
+				.map(([key, val]) => {
+					if (typeof val === 'object' && val !== null) {
+						return `${key}: ${JSON.stringify(val)}`
+					}
+					return `${key}: ${String(val)}`
+				})
 				.join('\n  ')
 		}`
 	}

@@ -1,4 +1,4 @@
-import * as L from '@/models/layer'
+import type * as L from '@/models/layer'
 import * as RPC from '@/orpc.client'
 import * as ReactRx from '@react-rxjs/core'
 

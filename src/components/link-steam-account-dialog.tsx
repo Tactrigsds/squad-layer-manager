@@ -34,7 +34,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 			if (result.code === 'ok') {
 				setCommand(result.command)
 				// Automatically copy to clipboard
-				copyToClipboard(result.command)
+				void copyToClipboard(result.command)
 			}
 		},
 		onError: (error) => {

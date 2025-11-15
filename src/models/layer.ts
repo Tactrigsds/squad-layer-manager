@@ -3,7 +3,7 @@ import _StaticLayerComponents from '$root/assets/layer-components.json'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
-import * as SLL from '@/models/squad-layer-list.models'
+import type * as SLL from '@/models/squad-layer-list.models'
 import * as z from 'zod'
 
 export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson

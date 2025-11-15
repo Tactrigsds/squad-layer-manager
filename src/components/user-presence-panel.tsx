@@ -94,79 +94,77 @@ export default function UserPresencePanel() {
 	}
 
 	return (
-		<>
-			<div className="flex flex-wrap space-x-1">
-				{sortedUserPresence.map(({ user, presence }) => {
-					const isAway = presence.away
-					const currentActivity = presence.activityState
-					const isEditing = !!currentActivity?.child?.EDITING
-					const hasActivity = currentActivity && Object.keys(currentActivity.child).length > 0
-						&& currentActivity.child.EDITING?.chosen.id !== 'IDLE'
-					const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity, layerList) : null
+		<div className="flex flex-wrap space-x-1">
+			{sortedUserPresence.map(({ user, presence }) => {
+				const isAway = presence.away
+				const currentActivity = presence.activityState
+				const isEditing = !!currentActivity?.child?.EDITING
+				const hasActivity = currentActivity && Object.keys(currentActivity.child).length > 0
+					&& currentActivity.child.EDITING?.chosen.id !== 'IDLE'
+				const activityText = currentActivity ? SLL.getHumanReadableActivity(currentActivity, layerList) : null
 
-					return (
-						<div key={user.discordId.toString()} className="flex items-center space-x-1">
-							<Tooltip
-								delayDuration={0}
-							>
-								<TooltipTrigger asChild>
-									<div
-										onMouseOver={() => setHoveredUser(user.discordId, true)}
-										onMouseOut={() => setHoveredUser(user.discordId, false)}
-										className={cn(
-											'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
-											hasActivity && 'bg-accent px-2',
-											!hasActivity && 'px-0',
-										)}
-									>
-										<div className="flex items-center justify-center w-6 h-6 flex-shrink-0">
-											<Avatar
-												style={{ backgroundColor: user.displayHexColor ?? undefined }}
-												className={cn(
-													'h-6 w-6 transition-all duration-200',
-													isAway && 'grayscale opacity-50',
-													isEditing && 'ring-2 ring-blue-500 ring-offset-0',
-												)}
-											>
-												<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
-												<AvatarFallback className="text-xs">
-													{getUserInitials(user)}
-												</AvatarFallback>
-											</Avatar>
+				return (
+					<div key={user.discordId.toString()} className="flex items-center space-x-1">
+						<Tooltip
+							delayDuration={0}
+						>
+							<TooltipTrigger asChild>
+								<div
+									onMouseOver={() => setHoveredUser(user.discordId, true)}
+									onMouseOut={() => setHoveredUser(user.discordId, false)}
+									className={cn(
+										'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
+										hasActivity && 'bg-accent px-2',
+										!hasActivity && 'px-0',
+									)}
+								>
+									<div className="flex items-center justify-center w-6 h-6 flex-shrink-0">
+										<Avatar
+											style={{ backgroundColor: user.displayHexColor ?? undefined }}
+											className={cn(
+												'h-6 w-6 transition-all duration-200',
+												isAway && 'grayscale opacity-50',
+												isEditing && 'ring-2 ring-blue-500 ring-offset-0',
+											)}
+										>
+											<AvatarImage src={USR.getAvatarUrl(user)} crossOrigin="anonymous" />
+											<AvatarFallback className="text-xs">
+												{getUserInitials(user)}
+											</AvatarFallback>
+										</Avatar>
+									</div>
+									{hasActivity && activityText && (
+										<span className="text-xs font-medium whitespace-nowrap flex items-center h-6">
+											{activityText}
+										</span>
+									)}
+								</div>
+							</TooltipTrigger>
+							{/*<TooltipContent className="bg-secondary text-secondary-foreground">*/}
+							<TooltipContent>
+								<div className="text-center">
+									<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+									{isAway && presence.lastSeen && (
+										<div className="text-xs mt-1">
+											Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 										</div>
-										{hasActivity && activityText && (
-											<span className="text-xs font-medium whitespace-nowrap flex items-center h-6">
-												{activityText}
-											</span>
-										)}
-									</div>
-								</TooltipTrigger>
-								{/*<TooltipContent className="bg-secondary text-secondary-foreground">*/}
-								<TooltipContent>
-									<div className="text-center">
-										<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
-										{isAway && presence.lastSeen && (
-											<div className="text-xs mt-1">
-												Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
-											</div>
-										)}
-										{isEditing && !isAway && (
-											<div className="text-xs text-blue-600 mt-1">
-												Editing
-											</div>
-										)}
-										{isEditing && isAway && (
-											<div className="text-xs text-blue-600 mt-1">
-												Editing (away)
-											</div>
-										)}
-									</div>
-								</TooltipContent>
-							</Tooltip>
-						</div>
-					)
-				})}
-			</div>
-		</>
+									)}
+									{isEditing && !isAway && (
+										<div className="text-xs text-blue-600 mt-1">
+											Editing
+										</div>
+									)}
+									{isEditing && isAway && (
+										<div className="text-xs text-blue-600 mt-1">
+											Editing (away)
+										</div>
+									)}
+								</div>
+							</TooltipContent>
+						</Tooltip>
+					</div>
+				)
+			})}
+		</div>
 	)
 }

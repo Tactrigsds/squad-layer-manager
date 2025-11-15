@@ -1,5 +1,5 @@
 import * as LC from '@/models/layer-columns'
-import * as LQY from '@/models/layer-queries.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
 import type { PublicConfig } from '@/server/config'
 import React from 'react'
@@ -33,7 +33,7 @@ export async function fetchConfig() {
 }
 
 export function setup() {
-	;(async () => {
+	void (async () => {
 		const config = await RPC.orpc.config.getPublicConfig.call()
 		Store.setState(config)
 	})()

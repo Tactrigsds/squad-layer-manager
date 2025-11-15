@@ -1,4 +1,4 @@
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import { beforeAll, describe, expect, test } from 'vitest'

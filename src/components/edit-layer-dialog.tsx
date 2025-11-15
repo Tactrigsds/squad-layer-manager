@@ -5,8 +5,8 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as ZusUtils from '@/lib/zustand'
-import * as L from '@/models/layer'
-import * as LQY from '@/models/layer-queries.models.ts'
+import type * as L from '@/models/layer'
+import type * as LQY from '@/models/layer-queries.models.ts'
 import { DragContextProvider } from '@/systems.client/dndkit.provider.tsx'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -86,7 +86,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
 							canChangeRowsPerPage={false}
 							canToggleColumns={false}
-							enableForceSelect={true}
+							enableForceSelect
 						/>
 					</div>
 				</div>
@@ -114,9 +114,10 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 })
 
 export default function EditLayerDialog(props: EditLayerDialogProps) {
+	const { onOpenChange } = props
 	const onClose = React.useCallback(() => {
-		props.onOpenChange(false)
-	}, [props.onOpenChange])
+		onOpenChange(false)
+	}, [onOpenChange])
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={props.onOpenChange} unmount={false}>

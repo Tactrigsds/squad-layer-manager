@@ -1,6 +1,7 @@
-import { Button, ButtonProps } from '@/components/ui/button'
+import type { ButtonProps } from '@/components/ui/button';
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import * as EMO from '@/models/emoji.models'
+import type * as EMO from '@/models/emoji.models'
 import * as Icons from 'lucide-react'
 import EmojiDisplay from './emoji-display'
 

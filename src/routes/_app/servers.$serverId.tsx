@@ -11,7 +11,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
 
 	onEnter({ params }) {
-		SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
+		void SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)
 	},
 
 	onLeave() {
@@ -37,7 +37,7 @@ function RouteComponent() {
 				const storeState = SLLClient.Store.getState()
 				if (active) {
 					// if the user comes back to this page we want to set this as the default server again
-					SquadServerClient.SelectedServerStore.getState().setSelectedServer(serverId)
+					void SquadServerClient.SelectedServerStore.getState().setSelectedServer(serverId)
 					storeState.pushPresenceAction(PresenceActions.pageInteraction)
 				} else {
 					storeState.pushPresenceAction(PresenceActions.interactionTimeout)

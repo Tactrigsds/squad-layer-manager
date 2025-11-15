@@ -1,5 +1,5 @@
-import * as CS from '@/models/context-shared'
-import * as C from '@/server/context'
+import type * as CS from '@/models/context-shared'
+import type * as C from '@/server/context'
 import * as SquadServer from '@/server/systems/squad-server'
 import { Subject } from 'rxjs'
 export const wsSessions = new Map<string, C.OrpcBase>()

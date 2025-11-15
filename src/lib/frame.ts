@@ -173,7 +173,7 @@ export class FrameManager {
 			for (const [name, key] of Object.entries(opts.depKeys)) {
 				const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
 				if (!entry) {
-					throw new Error(`Dependency ${key} not found`)
+					throw new Error(`Dependency ${JSON.stringify(key)} not found`)
 				}
 				depInstances[name] = entry[1]
 			}
@@ -183,7 +183,7 @@ export class FrameManager {
 		let directKey: DirectInstanceKey
 		let instance: FrameInstance
 		if (!entry) {
-			if (!frame.canInitialize?.(input)) throw new Error(`Frame ${frame.toString()} cannot initialize with input ${input}`)
+			if (!frame.canInitialize?.(input)) throw new Error(`Frame cannot initialize with input ${JSON.stringify(input)}`)
 			directKey = frame.createKey(frameId, input)
 			const writeStore = Zus.createStore(() => ({}))
 			instance = {
@@ -260,7 +260,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 
 	function useFrameStore<T extends FrameTypes, O>(key: InstanceKey<T>, selector: (state: StateWithDeps<T>) => O): O {
 		const instance = frameManager.getInstance(key)!
-		if (!instance) {}
+		if (!instance) throw new Error(`Frame instance not found for key`)
 		return Zus.useStore(instance.readStore, selector as any)
 	}
 

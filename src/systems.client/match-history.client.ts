@@ -1,4 +1,4 @@
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems.client/parts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'

@@ -1,7 +1,7 @@
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import { z } from 'zod'
-import { StrKeys } from './types'
+import type { StrKeys } from './types'
 
 /**
  * Type-level utilities from fp-ts patterns
@@ -368,14 +368,6 @@ export namespace Match {
 			default:
 				assertNever(node)
 		}
-	}
-
-	/**
-	 * Getters
-	 */
-
-	export function getChild<K extends string>(id: K, node: Match.Branch): any | undefined {
-		return node.child[id] || undefined
 	}
 
 	/**

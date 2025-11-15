@@ -73,7 +73,7 @@ export default function CurrentLayerCard() {
 			<div className="flex space-x-2">
 				<Badge variant="outline" className="flex items-center">
 					<span className="pr-1">Post-Game</span>
-					<Timer zeros={true} start={currentMatch.endTime.getTime()} className="font-mono" />
+					<Timer zeros start={currentMatch.endTime.getTime()} className="font-mono" />
 				</Badge>
 				{currentMatch.outcome.type === 'draw' && (
 					<Badge variant="outline" className="flex items-center">
@@ -128,7 +128,7 @@ export default function CurrentLayerCard() {
 						{!serverRolling && !isEmpty && currentMatch?.status === 'in-progress' && (
 							<Badge variant="secondary" className="flex items-center">
 								<span className="pr-1">In progress:</span>
-								{currentMatch.startTime && <Timer zeros={true} start={currentMatch.startTime.getTime()} className="font-mono" />}
+								{currentMatch.startTime && <Timer zeros start={currentMatch.startTime.getTime()} className="font-mono" />}
 							</Badge>
 						)}
 						{serverRolling && (

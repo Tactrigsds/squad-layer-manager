@@ -30,21 +30,16 @@
 			}
 		],
 
-		// change to error
-		"@typescript-eslint/consistent-type-imports": "off",
-		"react/jsx-no-useless-fragment": "off",
-		"react/jsx-curly-brace-presence": "off",
-		"react/jsx-boolean-value": "off",
-		"react/button-has-type": "off",
-		"import/no-named-as-default": "off",
-		"import/extensions": "off",
-		"@typescript-eslint/no-import-type-side-effects": "off",
-		"@typescript-eslint/no-floating-promises": "off",
-		"promise/catch-or-return": "off",
-
-		// change to warn
-		"eslint/no-param-reassign": "off",
-		"react/no-array-index-key": "off",
+		"@typescript-eslint/consistent-type-imports": "error",
+		"react/jsx-no-useless-fragment": "error",
+		"react/jsx-curly-brace-presence": "warn",
+		"react/jsx-boolean-value": "warn",
+		"react/button-has-type": "error",
+		"import/no-named-as-default": "warn",
+		"import/extensions": "error",
+		"@typescript-eslint/no-import-type-side-effects": "error",
+		"@typescript-eslint/no-floating-promises": "error",
+		"react/no-array-index-key": "warn",
 
 		// misc
 		"import/no-cycle": "off",
@@ -89,7 +84,10 @@
 		"eslint/no-plusplus": "off",
 		"eslint/no-bitwise": "off",
 		"eslint/no-await-in-loop": "off",
-		"eslint/no-void": "off"
+		"eslint/no-void": "off",
+		"eslint/no-param-reassign": "off",
+
+		"promise/catch-or-return": "off"
 	},
 	"overrides": [
 		{

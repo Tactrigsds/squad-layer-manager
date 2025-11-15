@@ -1,7 +1,7 @@
 import * as Obj from '@/lib/object'
 import { BasicStrNoWhitespace } from '@/lib/zod'
 import * as Messages from '@/messages'
-import * as SM from '@/models/squad.models.ts'
+import type * as SM from '@/models/squad.models.ts'
 
 import StringComparison from 'string-comparison'
 import { z } from 'zod'

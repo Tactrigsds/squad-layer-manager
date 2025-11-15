@@ -4,15 +4,16 @@ import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import * as Arr from '@/lib/array.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object.ts'
-import { Clearable, eltToFocusable, Focusable } from '@/lib/react'
+import type { Clearable, Focusable } from '@/lib/react'
+import { eltToFocusable } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as DND from '@/models/dndkit.models.ts'
+import type * as DND from '@/models/dndkit.models.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
-import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQY from '@/models/layer-queries.models.ts'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import * as DndKit from '@/systems.client/dndkit.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
@@ -23,11 +24,13 @@ import * as Icons from 'lucide-react'
 import { Braces, EqualNot, ExternalLink, Minus, Plus, Undo2 } from 'lucide-react'
 import React from 'react'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
-import ComboBox, { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
+import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
+import ComboBox from './combo-box/combo-box.tsx'
 import { LOADING } from './combo-box/constants.ts'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
-import FilterTextEditor, { FilterTextEditorHandle } from './filter-text-editor.tsx'
+import type { FilterTextEditorHandle } from './filter-text-editor'
+import { FilterTextEditor } from './filter-text-editor'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
@@ -250,7 +253,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 			<NegationToggle frameKey={props.frameKey} nodeId={props.nodeId} node={node} />
 			<ComboBox
 				className="w-min"
-				title={'Block Type'}
+				title="Block Type"
 				value={node.type}
 				options={['and', 'or']}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
@@ -333,6 +336,7 @@ const NodeWrapper = (
 			{false ? draggingPlaceholder : (
 				<>
 					<button
+						type="button"
 						ref={dragProps.handleRef}
 						className={cn(
 							Obj.deref('background', depthColors)[depth % depthColors.length],
@@ -363,17 +367,15 @@ export function LeafFilterNode(props: NodeProps) {
 	const negationToggle = <NegationToggle frameKey={props.frameKey} nodeId={props.nodeId} node={node} />
 
 	const opCluster = depth > 0 && (
-		<>
-			<Button
-				size="icon"
-				variant="ghost"
-				onClick={() => {
-					actions.common.delete()
-				}}
-			>
-				<Minus color="hsl(var(--destructive))" />
-			</Button>
-		</>
+		<Button
+			size="icon"
+			variant="ghost"
+			onClick={() => {
+				actions.common.delete()
+			}}
+		>
+			<Minus color="hsl(var(--destructive))" />
+		</Button>
 	)
 
 	if (node.type === 'comp') {
@@ -399,7 +401,7 @@ export function LeafFilterNode(props: NodeProps) {
 					setFilterId={id => actions.applyFilter.setFilterId(id)}
 				/>
 				<Link
-					to={'/filters/$filterId'}
+					to="/filters/$filterId"
 					params={{ filterId: node.filterId ?? '' }}
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
@@ -500,7 +502,7 @@ export function Comparison(props: {
 			<ComboBox
 				title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
 				className={componentStyles}
-				allowEmpty={true}
+				allowEmpty
 				value={comp.column}
 				options={columnOptions}
 				ref={columnBoxRef}
@@ -529,7 +531,7 @@ export function Comparison(props: {
 
 	const codeBox = (
 		<ComboBox
-			allowEmpty={true}
+			allowEmpty
 			className={componentStyles}
 			title=""
 			value={comp.code}
@@ -721,7 +723,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 			<ComboBox
 				title="Filter"
 				options={options}
-				allowEmpty={true}
+				allowEmpty
 				value={props.filterId}
 				onSelect={(v) => {
 					return props.setFilterId(v as string)
@@ -753,7 +755,7 @@ function StringEqConfig<T extends string | null>(
 	return (
 		<ComboBox
 			ref={props.ref}
-			allowEmpty={true}
+			allowEmpty
 			className={props.className}
 			title={props.column}
 			disabled={valuesRes.isSuccess && lockOnSingleOption && options.length === 1}
@@ -1287,7 +1289,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Alliance"
-					selectOnClose={true}
+					selectOnClose
 					values={mask.alliance ?? []}
 					options={allPopulated ? alliances : LOADING}
 					onSelect={(v) => updateMask('alliance', v as string[])}
@@ -1298,7 +1300,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Faction"
-					selectOnClose={true}
+					selectOnClose
 					values={mask.faction ?? []}
 					options={allPopulated ? factions : LOADING}
 					onSelect={(v) => updateMask('faction', v as string[])}
@@ -1309,7 +1311,7 @@ function FactionMaskConfig(props: {
 				<ComboBoxMulti
 					className="flex-1"
 					title="Unit"
-					selectOnClose={true}
+					selectOnClose
 					values={mask.unit ?? []}
 					options={allPopulated ? units : LOADING}
 					onSelect={(v) => updateMask('unit', v as string[])}

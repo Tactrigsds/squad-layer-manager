@@ -8,7 +8,7 @@ export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
 		if (text !== '') text += '\n'
 		text += L.getLayerCommand(layerId, 'set-next')
 	}
-	navigator.clipboard.writeText(text)
+	void navigator.clipboard.writeText(text)
 	globalToast$.next({
 		title: 'Copied AdminSetNextLayer Command',
 	})

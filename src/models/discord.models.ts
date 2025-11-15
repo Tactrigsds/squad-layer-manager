@@ -1,5 +1,5 @@
 import * as EMO from '@/models/emoji.models'
-import * as D from 'discord.js'
+import type * as D from 'discord.js'
 import { z } from 'zod'
 
 export function toNormalizedEmoji(emoji: D.GuildEmoji): EMO.DiscordEmoji {

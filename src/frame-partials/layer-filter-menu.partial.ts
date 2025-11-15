@@ -1,23 +1,23 @@
-import * as FRM from '@/lib/frame'
+import type * as FRM from '@/lib/frame'
 import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import * as LQY from '@/models/layer-queries.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as Im from 'immer'
 import React from 'react'
 import * as Rx from 'rxjs'
 
 export type FilterMenuStore = {
 	filter?: F.FilterNode
-	menuItems: Record<keyof L.KnownLayer | string, F.EditableComparison>
-	siblingFilters: { [k in keyof L.KnownLayer | string]: F.FilterNode | undefined }
+	menuItems: Record<string, F.EditableComparison>
+	siblingFilters: { [k in string]: F.FilterNode | undefined }
 	baseQueryInput?: LQY.BaseQueryInput
-	setMenuItems: React.Dispatch<React.SetStateAction<Record<keyof L.KnownLayer | string, F.EditableComparison>>>
+	setMenuItems: React.Dispatch<React.SetStateAction<Record<string, F.EditableComparison>>>
 	swapTeams: () => void
-	setComparison: (field: keyof L.KnownLayer | string, update: React.SetStateAction<F.EditableComparison>) => void
-	resetFilter: (field: keyof L.KnownLayer | string) => void
+	setComparison: (field: string, update: React.SetStateAction<F.EditableComparison>) => void
+	resetFilter: (field: string) => void
 	clearAll$: Rx.Subject<void>
 	resetAllFilters: () => void
 }
@@ -47,7 +47,7 @@ export function initLayerFilterMenuStore(
 		baseQueryInput: {},
 
 		setMenuItems: (update) => {
-			let updated: Record<keyof L.KnownLayer | string, F.EditableComparison>
+			let updated: Record<string, F.EditableComparison>
 			const state = args.get()
 			if (typeof update === 'function') {
 				updated = update(state.filterMenu.menuItems)
@@ -116,7 +116,7 @@ export function initLayerFilterMenuStore(
 
 						if ((L.LAYER_STRING_PROPERTIES as string[]).includes(comp.column as string) && comp.value) {
 							const excludingCurrent = L.LAYER_STRING_PROPERTIES.filter((p) => p !== comp.column)
-							if (excludingCurrent.every((p) => draft[p as keyof L.KnownLayer | string]?.value)) {
+							if (excludingCurrent.every((p) => draft[p as string]?.value)) {
 								const args = {
 									Gamemode: draft['Gamemode'].value!,
 									Map: draft['Map'].value!,
@@ -154,8 +154,8 @@ export function initLayerFilterMenuStore(
 export function getDefaultFilterMenuItemState(
 	defaultFields: Partial<L.KnownLayer>,
 	config?: LQY.EffectiveColumnAndTableConfig,
-): Record<keyof L.KnownLayer | string, F.EditableComparison> {
-	const extraItems: Record<string | keyof L.KnownLayer, F.EditableComparison> = {
+): Record<string, F.EditableComparison> {
+	const extraItems: Record<string, F.EditableComparison> = {
 		Size: EFB.eq('Size', defaultFields['Size'] ?? undefined),
 		Layer: EFB.eq('Layer', defaultFields['Layer']),
 		Map: EFB.eq('Map', defaultFields['Map']),
@@ -193,7 +193,7 @@ function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableCo
  * Derive filter nodes which
  */
 function getSiblingFiltersForMenuItems(items: Record<string, F.EditableComparison>) {
-	const filtersExcludingFields: { [k in keyof string]: F.FilterNode | undefined } = {}
+	const filtersExcludingFields: Record<string, F.FilterNode | undefined> = {}
 
 	for (const key in items) {
 		const item = items[key]

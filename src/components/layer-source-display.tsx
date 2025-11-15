@@ -1,6 +1,6 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { assertNever } from '@/lib/type-guards'
-import * as LL from '@/models/layer-list.models'
+import type * as LL from '@/models/layer-list.models'
 import * as USR from '@/models/users.models'
 import * as PartsSys from '@/systems.client/parts.ts'
 import * as UsersClient from '@/systems.client/users.client'

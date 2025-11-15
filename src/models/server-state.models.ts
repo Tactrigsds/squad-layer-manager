@@ -3,7 +3,7 @@ import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import { z } from 'zod'
 
 const DEFAULT_REPEAT_RULES: LQY.RepeatRule[] = [

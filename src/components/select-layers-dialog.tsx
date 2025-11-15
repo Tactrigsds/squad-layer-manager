@@ -4,9 +4,9 @@ import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
-import * as L from '@/models/layer'
+import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
-import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQY from '@/models/layer-queries.models.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
 import React from 'react'
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -128,13 +128,13 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			<div className="flex min-h-0 items-start space-x-2 ">
 				<LayerFilterMenu frameKey={frameKey} />
 				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
-					<div className={'flex h-full min-h-0'}>
+					<div className="flex h-full min-h-0">
 						<LayerTable
 							extraPanelItems={<PoolCheckboxes frameKey={frameKey} />}
 							frameKey={frameKey}
 							canChangeRowsPerPage={false}
-							canToggleColumns={true}
-							enableForceSelect={true}
+							canToggleColumns
+							enableForceSelect
 						/>
 					</div>
 				</div>

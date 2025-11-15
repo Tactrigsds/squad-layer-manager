@@ -29,14 +29,14 @@ function RouteComponent() {
 	const { layerId, tab } = Route.useRouteContext()
 	const navigate = Route.useNavigate()
 	const setTab = (newTab: string) => {
-		navigate({
+		void navigate({
 			to: '/layers/$layerId/$tab',
 			params: { tab: newTab },
 		})
 	}
 	return (
 		<div className="w-[100vw] h-[100vh] p-4">
-			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton={true} layerId={layerId} />
+			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton layerId={layerId} />
 		</div>
 	)
 }

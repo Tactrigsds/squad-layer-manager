@@ -5,7 +5,7 @@ import type { OrpcAppRouter } from '@/server/router'
 import * as ConfigClient from '@/systems.client/config.client'
 import { createORPCClient, onError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
-import { RouterClient } from '@orpc/server'
+import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import * as ReactRx from '@react-rxjs/core'
 import { QueryClient } from '@tanstack/react-query'
@@ -107,7 +107,7 @@ opened$.pipe(
 			)
 			previousConfig = config
 		} else {
-			queryClient.invalidateQueries()
+			void queryClient.invalidateQueries()
 		}
 	}),
 	Rx.retry(),

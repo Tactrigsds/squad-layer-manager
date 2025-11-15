@@ -2,9 +2,9 @@ import { acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
-import * as LL from '@/models/layer-list.models'
-import * as SS from '@/models/server-state.models'
+import type * as CS from '@/models/context-shared'
+import type * as LL from '@/models/layer-list.models'
+import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as RBAC from '@/rbac.models.ts'
@@ -57,7 +57,7 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId
 
-	sendUpdate(ctx, { code: 'init', session: editSession, presence, sessionSeqId: 1 })
+	void sendUpdate(ctx, { code: 'init', session: editSession, presence, sessionSeqId: 1 })
 	ctx.serverSliceSub.add(ctx.layerQueue.update$.subscribe(async ([update, _ctx]) => {
 		const sliceCtx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		using ctx = await acquireReentrant(C.initLocks(sliceCtx), sliceCtx.sharedList.mtx)
@@ -73,7 +73,7 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 		ctx.sharedList.itemLocks = new Map()
 		// all clients that receive list-updated will update themselves
 		PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
-		sendUpdate(ctx, {
+		void sendUpdate(ctx, {
 			code: 'list-updated',
 			list: ctx.sharedList.session.list,
 			sessionSeqId,
@@ -145,12 +145,12 @@ export const orpcRouter = {
 					if (editSession.ops.length < input.expectedIndex) throw new Error('Invalid index')
 					SLL.applyOperations(editSession, [input.op])
 					ctx.log.info('Applied operation %o:%s', input.op, input.op.opId)
-					sendUpdate(ctx, input)
+					void sendUpdate(ctx, input)
 					break
 				}
 
 				case 'commit': {
-					DB.runTransaction(ctx, async (ctx) => {
+					void DB.runTransaction(ctx, async (ctx) => {
 						let serverState = await LayerQueue.getServerState(ctx)
 						if (serverState.layerQueueSeqId !== ctx.sharedList.queueSeqId) {
 							return {
@@ -176,7 +176,7 @@ export const orpcRouter = {
 							ctx.sharedList.sessionSeqId++
 							ctx.sharedList.itemLocks = new Map()
 							PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
-							sendUpdate(ctx, {
+							void sendUpdate(ctx, {
 								code: 'commit-completed',
 								list: ctx.sharedList.session.list,
 								committer: ctx.user,
@@ -186,7 +186,7 @@ export const orpcRouter = {
 							})
 							SLL.endAllEditing(ctx.sharedList.presence)
 						} else {
-							sendUpdate(ctx, {
+							void sendUpdate(ctx, {
 								code: 'commit-rejected',
 								msg: res.msg,
 								reason: res.code,
@@ -207,7 +207,7 @@ export const orpcRouter = {
 
 					// all clients that receive reset-completed will update themselves
 					PresenceActions.applyToAll(ctx.sharedList.presence, ctx.sharedList.session, PresenceActions.editSessionChanged)
-					sendUpdate(ctx, {
+					void sendUpdate(ctx, {
 						code: 'reset-completed',
 						list: ctx.sharedList.session.list,
 						sessionSeqId,
@@ -272,7 +272,7 @@ function handlePresenceUpdate(
 			if (wsClientId === null) ctx.sharedList.itemLocks.delete(itemId)
 			else ctx.sharedList.itemLocks.set(itemId, wsClientId)
 		}
-		sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
+		void sendUpdate(ctx, { code: 'locks-modified', mutations: Array.from(lockMutations.entries()) })
 	}
 	let clientPresence = ctx.sharedList.presence.get(update.wsClientId)
 	if (!clientPresence) {
@@ -280,14 +280,14 @@ function handlePresenceUpdate(
 		ctx.sharedList.presence.set(update.wsClientId, clientPresence)
 	}
 	const modified = SLL.updateClientPresence(clientPresence, update.changes)
-	if (modified) sendUpdate(ctx, { ...update, changes: update.changes })
+	if (modified) void sendUpdate(ctx, { ...update, changes: update.changes })
 }
 
 function cleanupActivityLocks(ctx: C.SharedLayerList & C.Mutexes, wsClientId: string) {
 	const itemIds = MapUtils.revLookupAll(ctx.sharedList.itemLocks, wsClientId)
 	if (itemIds.length > 0) {
 		MapUtils.bulkDelete(ctx.sharedList.itemLocks, ...itemIds)
-		sendUpdate(ctx, { code: 'locks-modified', mutations: itemIds.map(id => [id, null]) })
+		void sendUpdate(ctx, { code: 'locks-modified', mutations: itemIds.map(id => [id, null]) })
 	}
 }
 

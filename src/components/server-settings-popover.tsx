@@ -10,11 +10,11 @@ import { assertNever } from '@/lib/type-guards.ts'
 import * as Typography from '@/lib/typography.ts'
 import { cn } from '@/lib/utils.ts'
 import { devValidate } from '@/lib/zod.dev.ts'
-import * as F from '@/models/filter.models.ts'
+import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
-import * as SLL from '@/models/shared-layer-list'
+import type * as SLL from '@/models/shared-layer-list'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
@@ -69,7 +69,7 @@ export default function ServerSettingsPopover(
 	})
 	const setOpen = (open: boolean) => {
 		if (!open) {
-			ServerSettingsClient.Store.getState().reset()
+			void ServerSettingsClient.Store.getState().reset()
 		}
 		_setOpen(open)
 	}
@@ -120,7 +120,7 @@ export default function ServerSettingsPopover(
 									variant="ghost"
 									disabled={!settingsChanged || saving}
 									onClick={() => {
-										ServerSettingsClient.Store.getState().reset()
+										void ServerSettingsClient.Store.getState().reset()
 									}}
 								>
 									<Icons.Trash className="h-4 w-4" />
@@ -394,7 +394,7 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<ComboBox
-					title={'Rule'}
+					title="Rule"
 					options={LQY.RepeatRuleFieldSchema.options}
 					value={rule.field}
 					allowEmpty={false}
@@ -420,7 +420,7 @@ function RepeatRuleRow(props: {
 				<ComboBoxMulti
 					className="w-full min-w-0"
 					title="Target"
-					selectOnClose={true}
+					selectOnClose
 					options={targetValueOptions}
 					disabled={!canWriteSettings}
 					values={rule.targetValues ?? []}

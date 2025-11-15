@@ -1,7 +1,7 @@
 import Ace from 'ace-builds'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
-import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameReaderStore, getFrameState } from '@/frames/frame-manager'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useToast } from '@/hooks/use-toast'

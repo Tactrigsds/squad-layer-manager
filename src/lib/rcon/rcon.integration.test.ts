@@ -1,4 +1,4 @@
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'

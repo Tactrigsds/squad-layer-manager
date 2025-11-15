@@ -3,6 +3,6 @@ import pino from 'pino'
 export const baseLogger = pino({
 	level: 'debug',
 	browser: {
-		write: LOGS.showLogEvent,
+		write: LOGS.showLogEvent as any,
 	},
 })

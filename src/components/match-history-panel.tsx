@@ -8,7 +8,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
@@ -390,8 +390,8 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 		const matchLengthMinutes = Math.round(gameRuntime / (1000 * 60))
 		return (
 			<span title={timeDifferenceText}>
-				{`${formattedStartTime}`}
-				<span className="text-muted-foreground">({`${matchLengthMinutes}m`})</span>
+				{formattedStartTime}
+				<span className="text-muted-foreground">({matchLengthMinutes}m)</span>
 			</span>
 		)
 	}

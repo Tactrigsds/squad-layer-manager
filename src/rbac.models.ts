@@ -1,7 +1,7 @@
 import * as Arr from '@/lib/array'
 import * as Obj from '@/lib/object'
 import * as F from '@/models/filter.models'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 
 import { z } from 'zod'
 
@@ -12,7 +12,6 @@ export type GenericRole = {
 export function userDefinedRole(type: string): GenericRole {
 	return { type }
 }
-0
 
 // roles which are inferred by other state, for example the owner of a filter will get the filter-owner role. when an inferred role is present, it's expected to also have access to a particular permission to know what entity the inferred role is associated with.
 export const InferredRoleSchema = z.discriminatedUnion('type', [
@@ -45,7 +44,9 @@ export const UserDefinedRoleIdSchema = z
 	.min(3)
 	.max(32)
 	.refine((roleType) => !isInferredRoleType({ type: roleType }), {
-		message: `Role cannot be the same as one of the inferred roles: ${InferredRoleSchema.options.join(', ')}`,
+		message: `Role cannot be the same as one of the inferred roles: ${
+			InferredRoleSchema.options.map((opt) => opt.shape.type.value).join(', ')
+		}`,
 	})
 
 export type RoleAssignment =

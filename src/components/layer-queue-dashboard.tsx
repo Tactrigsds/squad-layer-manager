@@ -193,7 +193,7 @@ function QueueControlPanel() {
 		const state = QD.LQStore.getState()
 		// we don't have to include children here
 		const itemIds = state.layerList.map(item => item.itemId)
-		state.dispatch({ op: 'clear', itemIds })
+		void state.dispatch({ op: 'clear', itemIds })
 	}
 
 	return (

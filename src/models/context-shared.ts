@@ -1,10 +1,10 @@
-import * as F from '@/models/filter.models'
-import * as LC from '@/models/layer-columns'
-import * as LQY from '@/models/layer-queries.models'
-import * as MH from '@/models/match-history.models'
+import type * as F from '@/models/filter.models'
+import type * as LC from '@/models/layer-columns'
+import type * as LQY from '@/models/layer-queries.models'
+import type * as MH from '@/models/match-history.models'
 import type * as Config from '@/server/config'
 import type pino from 'pino'
-import * as LDB from './layer-db'
+import type * as LDB from './layer-db'
 
 export type EffectiveColumnConfig = { effectiveColsConfig: LC.EffectiveColumnConfig }
 

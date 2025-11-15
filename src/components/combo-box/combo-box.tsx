@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
-import { Clearable, Focusable } from '@/lib/react.ts'
+import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
@@ -97,7 +97,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-[200px] p-0">
 				<Command shouldFilter={!props.setInputValue}>
-					<CommandInput ref={inputRef} placeholder={`Search...`} value={props.inputValue} onValueChange={props.setInputValue} />
+					<CommandInput ref={inputRef} placeholder="Search..." value={props.inputValue} onValueChange={props.setInputValue} />
 					<CommandList>
 						<CommandEmpty>No {props.title} found.</CommandEmpty>
 						<CommandGroup>

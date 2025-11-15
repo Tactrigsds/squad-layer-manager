@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import orpcBase from '@/server/orpc-base'

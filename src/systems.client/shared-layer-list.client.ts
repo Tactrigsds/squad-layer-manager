@@ -8,12 +8,12 @@ import * as Obj from '@/lib/object'
 import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
-import * as L from '@/models/layer'
+import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as RbacClient from '@/systems.client/rbac.client'
@@ -173,10 +173,10 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 					const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 					return { selectLayersFrame: frameKey, activity: args.activity }
 				},
-				onEnter(args) {},
+				onEnter(_args) {},
 				onUnload(args) {
 					// crudely wait for unload to render as  .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
-					if (args.data) sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
+					if (args.data) void sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
 				},
 			},
 		),
@@ -237,7 +237,7 @@ function createStore() {
 							}
 							if (config.onLeave) {
 								entry.active = false
-								config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!) as LoaderData<typeof config>, draft })
+								void config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!) as LoaderData<typeof config>, draft })
 							}
 						}
 						continue
@@ -257,11 +257,11 @@ function createStore() {
 							const directLoad$ = Rx.from(
 								config.loadAsync({ ...args, abortController: cacheEntry.loadAbortController }).catch(() => undefined),
 							)
-							const load$ = Rx.race(
+							load$ = Rx.race(
 								directLoad$,
 								Rx.fromEvent(controller.signal, 'abort', { once: true }).pipe(Rx.map(() => undefined)),
 							)
-							load$.subscribe((data) => {
+							load$.subscribe((data: LoaderData<typeof config> | undefined) => {
 								if (data === undefined) return
 								set(Im.produce<Store>(draft => {
 									const cacheEntry = draft.activityLoaderCache.find(entry => entry.key === cacheKey)
@@ -286,9 +286,9 @@ function createStore() {
 							cacheEntry.active = true
 							cacheEntry.unloadSub?.unsubscribe()
 							delete cacheEntry.unloadSub
-							config.onEnter?.({ activity: cacheKey, data: cacheEntry.data, draft: draft })
+							void config.onEnter?.({ activity: cacheKey, data: cacheEntry.data, draft: draft })
 						} else if (load$) {
-							load$.subscribe(data => {
+							load$.subscribe((data: LoaderData<typeof config> | undefined) => {
 								if (!data) return
 								set(Im.produce<Store>(draft => {
 									const cacheEntry = draft.activityLoaderCache.find(entry => entry.key === cacheKey)
@@ -313,7 +313,7 @@ function createStore() {
 				draft.activityLoaderCache = loaderCache.filter(e => !Obj.deepEqual(e.key, predicate))
 				if (config.onUnload) {
 					const args = { activity: predicate, data: Im.current(cacheEntry.data), state: draft }
-					config.onUnload(args)
+					void config.onUnload(args)
 				}
 				cacheEntry?.loadAbortController?.abort('unloaded')
 			}
@@ -776,7 +776,7 @@ export function useLoadedActivities() {
 	)
 }
 
-export function useActivityLoaded(matchActivity: (state: SLL.RootActivity) => boolean) {
+export function useActivityLoaded(_matchActivity: (state: SLL.RootActivity) => boolean) {
 	return Zus.useStore(
 		Store,
 		ZusUtils.useShallow(state => {

@@ -1,24 +1,25 @@
-import * as AR from '@/app-routes.ts'
-import { AsyncResourceInvocationOpts, toCold } from '@/lib/async.ts'
+import type * as AR from '@/app-routes.ts'
+import type { AsyncResourceInvocationOpts} from '@/lib/async.ts';
+import { toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
-import RconCore from '@/lib/rcon/core-rcon.ts'
-import * as CS from '@/models/context-shared.ts'
-import * as SM from '@/models/squad.models.ts'
-import * as USR from '@/models/users.models.ts'
-import * as RBAC from '@/rbac.models'
-import * as LayerQueueSys from '@/server/systems/layer-queue.ts'
-import * as MatchHistorySys from '@/server/systems/match-history.ts'
-import * as SharedLayerListSys from '@/server/systems/shared-layer-list.server.ts'
-import * as SquadRconSys from '@/server/systems/squad-rcon.ts'
-import * as SquadServerSys from '@/server/systems/squad-server.ts'
+import type RconCore from '@/lib/rcon/core-rcon.ts'
+import type * as CS from '@/models/context-shared.ts'
+import type * as SM from '@/models/squad.models.ts'
+import type * as USR from '@/models/users.models.ts'
+import type * as RBAC from '@/rbac.models'
+import type * as LayerQueueSys from '@/server/systems/layer-queue.ts'
+import type * as MatchHistorySys from '@/server/systems/match-history.ts'
+import type * as SharedLayerListSys from '@/server/systems/shared-layer-list.server.ts'
+import type * as SquadRconSys from '@/server/systems/squad-rcon.ts'
+import type * as SquadServerSys from '@/server/systems/squad-server.ts'
 import * as Otel from '@opentelemetry/api'
-import { Mutex } from 'async-mutex'
+import type { Mutex } from 'async-mutex'
 import type * as Fastify from 'fastify'
-import Pino from 'pino'
+import type Pino from 'pino'
 import * as Rx from 'rxjs'
-import * as ws from 'ws'
-import * as DB from './db.ts'
+import type * as ws from 'ws'
+import type * as DB from './db.ts'
 import { baseLogger } from './logger.ts'
 
 export type OtelCtx = {
@@ -116,7 +117,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
 					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? 'warn' : (opts.eventLogLevel ?? 'debug')
-					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? `${spanStatus?.message ?? 'error'}` : 'ok'
+					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? (spanStatus?.message ?? 'error') : 'ok'
 					logger?.[logLevel](`${name}(${id}) : ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {

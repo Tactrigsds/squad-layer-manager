@@ -27,7 +27,7 @@ enableMapSet()
 	MatchHistoryClient.setup()
 	SquadServerClient.setup()
 	UsersClient.setup()
-	SharedLayerListClient.setup()
+	void SharedLayerListClient.setup()
 	QueueDashboard.setup()
 	VotesClient.setup()
 	ServerSettingsClient.setup()
@@ -35,11 +35,11 @@ enableMapSet()
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')
 	if (loadConsoleOnStartup) {
-		import('@/systems.client/console.client.ts')
+		void import('@/systems.client/console.client.ts')
 	} else {
 		const unsub = FeatureFlags.Store.subscribe((state) => {
 			if (state.flags.loadConsole) {
-				import('@/systems.client/console.client.ts')
+				void import('@/systems.client/console.client.ts')
 				unsub()
 			}
 		})

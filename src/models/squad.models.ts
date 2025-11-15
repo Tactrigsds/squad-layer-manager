@@ -1,8 +1,8 @@
 import * as zUtils from '@/lib/zod'
-import * as L from '@/models/layer'
-import * as MH from '@/models/match-history.models'
+import type * as L from '@/models/layer'
+import type * as MH from '@/models/match-history.models'
 import { z } from 'zod'
-import { OneToManyMap } from '../lib/one-to-many-map'
+import type { OneToManyMap } from '../lib/one-to-many-map'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),

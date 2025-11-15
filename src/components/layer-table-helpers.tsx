@@ -10,7 +10,7 @@ function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 		if (text !== '') text += '\n'
 		text += id
 	}
-	navigator.clipboard.writeText(text)
+	void navigator.clipboard.writeText(text)
 	globalToast$.next({
 		title: `Copied History Entry ID${selectedHistoryEntryIds.length > 1 ? 's' : ''}`,
 	})
@@ -22,7 +22,7 @@ function copyLayerId(selectedLayerIds: L.LayerId[]) {
 		if (text !== '') text += '\n'
 		text += id
 	}
-	navigator.clipboard.writeText(text)
+	void navigator.clipboard.writeText(text)
 	globalToast$.next({
 		title: 'Copied Layer ID',
 	})

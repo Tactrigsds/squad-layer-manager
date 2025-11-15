@@ -1,10 +1,9 @@
 import scoreRanges from '$root/assets/score-ranges.json'
-import * as AR from '@/app-routes.ts'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
-import * as SLL from '@/models/squad-layer-list.models'
+import type * as SLL from '@/models/squad-layer-list.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as LayerInfoDialogClient from '@/systems.client/layer-info-dialog'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
@@ -235,7 +234,7 @@ function TeamInfoOnly({
 			{unit && unit.characteristics && unit.characteristics.length > 0 && (
 				<div className="mt-4">
 					<ul className="space-y-0.5 text-xs font-light ml-4 mt-2">
-						{unit.characteristics.map((char, index) => <li key={index} className="list-disc">{char.description}</li>)}
+						{unit.characteristics.map((char) => <li key={char.description} className="list-disc">{char.description}</li>)}
 					</ul>
 				</div>
 			)}
@@ -279,7 +278,7 @@ function VehiclesOnly({
 						</Tooltip>
 					</div>
 					<div className="font-medium" role="columnheader">Name</div>
-					{vehicles.map((vehicle, index) => <IndividualVehicleRow key={index} vehicle={vehicle} />)}
+					{vehicles.map((vehicle) => <IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />)}
 				</div>
 			)}
 		</section>
@@ -617,7 +616,7 @@ function DiffScoreRow({
 			</div>
 			<div className="text-xs text-center">
 				<span className="text-muted-foreground">Diff:</span>
-				<span className={`${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+				<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
 					{Math.abs(diff).toFixed(2)}
 				</span>
 			</div>

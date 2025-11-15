@@ -69,7 +69,7 @@ function RouteComponent() {
 							globalToast$.next({
 								title: `Filter ${mutation.value.name} was deleted by ${mutation.displayName}`,
 							})
-							rootRouter.navigate({ to: '/filters' })
+							void rootRouter.navigate({ to: '/filters' })
 							break
 						}
 						default:

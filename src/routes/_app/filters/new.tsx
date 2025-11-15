@@ -2,7 +2,7 @@ import FilterNew from '@/components/filter-new'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
 import * as EFB from '@/models/editable-filter-builders.ts'
-import * as F from '@/models/filter.models'
+import type * as F from '@/models/filter.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import { createFileRoute } from '@tanstack/react-router'
 

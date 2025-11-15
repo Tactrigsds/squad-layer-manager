@@ -1,9 +1,9 @@
-import * as FRM from '@/lib/frame'
+import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
-import * as F from '@/models/filter.models'
-import * as LQY from '@/models/layer-queries.models'
+import type * as F from '@/models/filter.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
@@ -21,7 +21,6 @@ export function initAppliedFiltersStore(
 	args: Args,
 ) {
 	const set = args.set
-	const get = args.get
 	const setFilterState = (filterId: F.FilterEntityId, newState: 'regular' | 'inverted' | 'disabled') => {
 		set(
 			storeState =>

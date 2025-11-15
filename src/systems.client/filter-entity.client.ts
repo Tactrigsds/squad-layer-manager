@@ -1,11 +1,11 @@
 import * as MapUtils from '@/lib/map'
 
 import { assertNever } from '@/lib/type-guards'
-import * as F from '@/models/filter.models'
+import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
-import { type FilterEntityChange } from '@/server/systems/filter-entity'
+import type { FilterEntityChange } from '@/server/systems/filter-entity'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as PartsSys from '@/systems.client/parts'
 import * as ReactRx from '@react-rxjs/core'
@@ -24,8 +24,8 @@ export const getAllFilterRoleContributorsBase = () =>
 	})
 
 export function invalidateQueriesForFilter(filterId: F.FilterEntityId) {
-	RPC.queryClient.invalidateQueries({ queryKey: getFilterContributorsBase(filterId).queryKey })
-	RPC.queryClient.invalidateQueries({ queryKey: getAllFilterRoleContributorsBase().queryKey })
+	void RPC.queryClient.invalidateQueries({ queryKey: getFilterContributorsBase(filterId).queryKey })
+	void RPC.queryClient.invalidateQueries({ queryKey: getAllFilterRoleContributorsBase().queryKey })
 }
 
 export async function filterEditPrefetch(filterId?: string) {

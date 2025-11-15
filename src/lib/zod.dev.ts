@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
 // browser only
 export function devValidate<T extends z.ZodTypeAny>(schema: T, value: any) {

@@ -1,10 +1,12 @@
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as Otel from '@opentelemetry/api'
-import { drizzle, MySql2Database } from 'drizzle-orm/mysql2'
-import { Pool } from 'mysql2'
-import MySQL, { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise'
+import type { MySql2Database } from 'drizzle-orm/mysql2';
+import { drizzle } from 'drizzle-orm/mysql2'
+import type { Pool } from 'mysql2'
+import type { FieldPacket, QueryOptions, QueryResult } from 'mysql2/promise';
+import MySQL from 'mysql2/promise'
 import { EventEmitter } from 'node:events'
-import * as C from './context.ts'
+import type * as C from './context.ts'
 import * as Env from './env.ts'
 
 export type Db = MySql2Database<Record<string, never>>
@@ -230,7 +232,7 @@ class TracedPool extends EventEmitter implements MySQL.Pool {
 		return this.basePool.escapeId(values)
 	}
 
-	format(sql: string, values?: any | any[] | { [param: string]: any }): string {
+	format(sql: string, values?: any[] | { [param: string]: any }): string {
 		return this.basePool.format(sql, values)
 	}
 

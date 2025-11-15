@@ -9,13 +9,13 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
-import { Focusable } from '@/lib/react'
+import type { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as SetUtils from '@/lib/set'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as ZusUtils from '@/lib/zustand'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -24,8 +24,9 @@ import * as GlobalSettings from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as QD from '@/systems.client/queue-dashboard'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { ColumnDef, createColumnHelper, flexRender, getCoreRowModel, Row, useReactTable } from '@tanstack/react-table'
-import { Table as CoreTable } from '@tanstack/table-core'
+import type { ColumnDef, Row} from '@tanstack/react-table';
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import type { Table as CoreTable } from '@tanstack/table-core'
 import * as Icons from 'lucide-react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
 import React from 'react'
@@ -42,8 +43,8 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
-import { RowData } from '@/frame-partials/layer-table.partial'
-import { CheckedState } from '@radix-ui/react-checkbox'
+import type { RowData } from '@/frame-partials/layer-table.partial'
+import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<RowData>()
 
@@ -347,7 +348,7 @@ function buildColDefs(
 			return (
 				<ConstraintDisplay
 					side="right"
-					padEmpty={true}
+					padEmpty
 					matchingConstraints={matchingConstraints}
 					height={32}
 				/>

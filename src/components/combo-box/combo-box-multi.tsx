@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 
-import { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
+import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
@@ -124,7 +124,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			const displayText = displayValues
 				.map((value) => {
 					const option = options !== LOADING && options.find((opt) => opt.value === value)
-					return option ? (option.label ?? option.value) : value
+					const displayValue = option ? (option.label ?? option.value) : value
+					return typeof displayValue === 'object' ? JSON.stringify(displayValue) : String(displayValue)
 				})
 				.join(', ')
 

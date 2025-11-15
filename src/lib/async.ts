@@ -1,6 +1,6 @@
 import * as Obj from '@/lib/object'
-import * as CS from '@/models/context-shared'
-import * as C from '@/server/context.ts'
+import type * as CS from '@/models/context-shared'
+import type * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import * as Rx from 'rxjs'
@@ -90,6 +90,7 @@ export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
 		return (o: Rx.Observable<T>) => o
 	}
+	// eslint-disable-next-line no-implied-eval
 	const fn = new Function(
 		'observable',
 		'observableConstructor',
@@ -207,7 +208,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		if (!this.lastResolveTime) return
 		this.fetchedValue = null
 		this.lastResolveTime = null
-		if (this.observingTTLs.length > 0) this.fetchValue({ ...ctx, resOpts: { ttl: 0 } })
+		if (this.observingTTLs.length > 0) void this.fetchValue({ ...ctx, resOpts: { ttl: 0 } })
 	}
 
 	observingTTLs: [string, number][] = []
@@ -222,7 +223,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		const setupRefetches = () => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
-				;(async () => {
+				void (async () => {
 					while (refetching) {
 						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
 						await sleep(activettl)
@@ -247,7 +248,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 				Rx.tap({
 					subscribe: () => {
 						this.observingTTLs.push([refId, opts.ttl!])
-						this.get(ctx, { ttl: opts.ttl })
+						void this.get(ctx, { ttl: opts.ttl })
 						if (this.refetchSub === null) {
 							setupRefetches()
 						}
@@ -317,10 +318,13 @@ export async function acquireReentrant<Ctx extends C.Mutexes>(_ctx: Ctx, ...mute
 
 	// wait for referenced mutexes to be released and then process releaseTasks. There is no execution ordering guarantee
 	const allReleased = Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
-	allReleased.then(async () => {
+	void allReleased.then(async () => {
 		for (const task of ctx.mutexes.releaseTasks) {
 			void task()
 		}
+		return undefined
+	}).catch(() => {
+		// silently ignore errors
 	})
 
 	return {

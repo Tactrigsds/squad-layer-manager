@@ -4,22 +4,23 @@ import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } 
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
-import Rcon, { DecodedPacket } from '@/lib/rcon/core-rcon'
+import type { DecodedPacket } from '@/lib/rcon/core-rcon'
+import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/type-guards'
-import { Parts } from '@/lib/types'
+import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
-import * as BAL from '@/models/balance-triggers.models'
-import * as CS from '@/models/context-shared'
+import type * as BAL from '@/models/balance-triggers.models'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
-import * as SME from '@/models/squad-models.events.ts'
-import * as SM from '@/models/squad.models'
-import * as USR from '@/models/users.models'
-import * as V from '@/models/vote.models.ts'
+import type * as SME from '@/models/squad-models.events.ts'
+import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
+import type * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
@@ -167,7 +168,7 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 			reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
 		},
 	})
-	logEmitter.connect()
+	void logEmitter.connect()
 
 	const server: SquadServer = {
 		layersStatusExt$,
@@ -439,7 +440,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 
 export function destroyServer(ctx: C.ServerSlice & CS.Log) {
 	ctx.serverSliceSub.unsubscribe()
-	ctx.server.logEmitter.disconnect()
+	void ctx.server.logEmitter.disconnect()
 	ctx.rcon.disconnect(ctx)
 	ctx.matchHistory.update$.complete()
 

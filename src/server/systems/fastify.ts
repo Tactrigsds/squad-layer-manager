@@ -3,7 +3,7 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -22,9 +22,10 @@ import oauthPlugin from '@fastify/oauth2'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
-import fastify, { FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
+import fastify from 'fastify'
 import { Readable } from 'node:stream'
-import { WebSocket } from 'ws'
+import type { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -277,7 +278,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 	instance.register(async function(instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
 			const ctx = createOrpcBase(getAuthedCtx(req), connection)
-			ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
+			void ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
 		})
 	})
 

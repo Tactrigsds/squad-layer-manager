@@ -1,6 +1,6 @@
 import * as AR from '@/app-routes'
 import { distinctDeepEquals } from '@/lib/async'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems.client/app-routes.client'

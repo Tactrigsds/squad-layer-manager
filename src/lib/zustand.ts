@@ -1,10 +1,10 @@
 import * as Obj from '@/lib/object'
-import { StateObservable } from '@rx-state/core'
+import type { StateObservable } from '@rx-state/core'
 import { derive } from 'derive-zustand'
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
-import { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
+import type { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 
@@ -57,10 +57,6 @@ type StoresTuple<States extends unknown[]> = [...{ [s in keyof States]: StoreApi
 
 export type UnsubscribeFn = () => void
 export type SubArg = UnsubscribeFn | Rx.Subscription
-
-const isSubscription = (unsub: SubArg): unsub is Rx.Subscription => {
-	return 'unsubscribe' in unsub
-}
 
 export function toRxSub(unsub: UnsubscribeFn) {
 	return Rx.NEVER.pipe(Rx.tap({ unsubscribe: unsub })).subscribe()

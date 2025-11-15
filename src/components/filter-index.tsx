@@ -1,8 +1,8 @@
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as F from '@/models/filter.models'
-import * as LQY from '@/models/layer-queries.models'
+import type * as F from '@/models/filter.models'
+import type * as LQY from '@/models/layer-queries.models'
 import * as USR from '@/models/users.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
@@ -31,7 +31,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	return (
 		<li key={entity.id}>
 			<Item variant="outline" className="h-full transition-none hover:shadow-md hover:border-primary/50" asChild>
-				<Link to={'/filters/$filterId'} params={{ filterId: entity.id }}>
+				<Link to="/filters/$filterId" params={{ filterId: entity.id }}>
 					{entity.emoji && (
 						<ItemMedia>
 							<EmojiDisplay emoji={entity.emoji} />
@@ -90,7 +90,7 @@ export default function FiltersIndex() {
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typo.H2}>Filters</h2>
-				<Link className={buttonVariants({ variant: 'secondary' })} to={'/filters/new'}>
+				<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
 					<Icons.Plus />
 					<span>New Filter</span>
 				</Link>

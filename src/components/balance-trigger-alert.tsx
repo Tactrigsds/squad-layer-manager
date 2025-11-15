@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import { AlertOctagon, AlertTriangle, Info } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 

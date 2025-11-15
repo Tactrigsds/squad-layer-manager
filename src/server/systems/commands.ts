@@ -1,11 +1,11 @@
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages.ts'
 import * as CMD from '@/models/command.models.ts'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as SM from '@/models/squad.models'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
 import * as LayerQueue from '@/server/systems/layer-queue.ts'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Users from '@/server/systems/users.ts'
@@ -44,7 +44,7 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.Mutexes & C.ServerSli
 		return
 	}
 
-	if (cmdConfig.enabled === false) {
+	if (!cmdConfig.enabled) {
 		return await showError('command-disabled', `Command "${cmd}" is disabled`)
 	}
 	const playerListRes = await ctx.server.playerList.get(ctx)

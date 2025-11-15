@@ -1,15 +1,15 @@
 import * as Paths from '$root/paths.ts'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
-import { OneToManyMap } from '@/lib/one-to-many-map.ts'
-import * as CS from '@/models/context-shared'
-import * as SM from '@/models/squad.models.ts'
+import type { OneToManyMap } from '@/lib/one-to-many-map.ts'
+import type * as CS from '@/models/context-shared'
+import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
 
-import WritableBuffer from './writable-buffer.ts'
+import { WritableBuffer } from './writable-buffer'
 
 const tracer = Otel.trace.getTracer('fetch-admin-lists')
 export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: CS.Log, sources: SM.AdminListSource[]): Promise<SM.AdminList> => {
@@ -64,8 +64,10 @@ export default C.spanOp('fetch-admin-lists', { tracer }, async (ctx: CS.Log, sou
 					data = buffer.toString('utf8')
 					break
 				}
-				default:
-					throw new Error(`Unsupported AdminList type:${source.type}`)
+				default: {
+					const _exhaustive: never = source.type
+					throw new Error(`Unsupported AdminList type`)
+				}
 			}
 		} catch (error) {
 			ctx.log.error(`Error fetching ${source.type} admin list: ${source.source}`, error)

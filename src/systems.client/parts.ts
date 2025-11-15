@@ -1,9 +1,9 @@
 import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
-import { Parts } from '@/lib/types'
-import * as LQY from '@/models/layer-queries.models'
-import * as MH from '@/models/match-history.models'
-import * as USR from '@/models/users.models'
+import type { Parts } from '@/lib/types'
+import type * as LQY from '@/models/layer-queries.models'
+import type * as MH from '@/models/match-history.models'
+import type * as USR from '@/models/users.models'
 import * as Zus from 'zustand'
 import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 

@@ -21,12 +21,11 @@ export default function ShortLayerName(
 		allowShowInfo?: boolean
 	},
 ) {
-	allowShowInfo ??= true
+	const _allowShowInfo = allowShowInfo ?? true
 	const backfilledStyle = 'text-gray-500'
 
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	let partialLayer = L.toLayer(layerId)
-	partialLayer = Obj.trimUndefined(partialLayer)
+	let partialLayer = Obj.trimUndefined(L.toLayer(layerId))
 	let backfillLayer: Partial<L.KnownLayer> | undefined
 	if (backfillLayerId) {
 		backfillLayer = L.toLayer(backfillLayerId)
@@ -89,13 +88,13 @@ export default function ShortLayerName(
 				<>
 					<Icons.Dot width={20} height={20} />
 					{leftTeamElt}
-					{<span className="mx-1">vs</span>}
+					<span className="mx-1">vs</span>
 					{rightTeamElt}
 				</>
 			)}
 		</div>
 	)
-	if (!allowShowInfo || !L.isKnownLayer(layerId)) return content
+	if (!_allowShowInfo || !L.isKnownLayer(layerId)) return content
 	return (
 		<LayerInfoDialog layerId={layerId}>
 			<Button className="px-0 py-1" variant="link">{content}</Button>

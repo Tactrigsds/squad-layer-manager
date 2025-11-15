@@ -27,7 +27,7 @@ export default function UserPermissionsDialog(
 	if (!userBase || !user || !permissionsByRole) {
 		return (
 			<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-				<DialogTrigger asChild={true}>
+				<DialogTrigger asChild>
 					{props.children}
 				</DialogTrigger>
 				<DialogContent className="max-w-4xl">
@@ -74,7 +74,7 @@ export default function UserPermissionsDialog(
 	}
 
 	return (
-		<Dialog modal={true} open={props.open} onOpenChange={props.onOpenChange}>
+		<Dialog modal open={props.open} onOpenChange={props.onOpenChange}>
 			{props.children}
 			<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>
@@ -104,10 +104,11 @@ export default function UserPermissionsDialog(
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{user.perms.map((perm, index) => {
+									{user.perms.map((perm) => {
 										if (perm.type === 'site:authorized') return null
+										const permKey = `${perm.type}:${perm.scope}:${perm.negated ? 'neg' : ''}`
 										return (
-											<TableRow key={index}>
+											<TableRow key={permKey}>
 												<TableCell className="font-mono text-sm">
 													<div className="flex items-center gap-2">
 														{perm.negated && (
@@ -129,8 +130,8 @@ export default function UserPermissionsDialog(
 												<TableCell>{formatPermissionScope(perm)}</TableCell>
 												<TableCell>
 													<div className="flex flex-wrap gap-1">
-														{perm.allowedByRoles.map((role, roleIndex) => (
-															<Badge key={roleIndex} variant="secondary" className="text-xs">
+														{perm.allowedByRoles.map((role) => (
+															<Badge key={JSON.stringify(role)} variant="secondary" className="text-xs">
 																{formatRoleName(role)}
 															</Badge>
 														))}
@@ -199,10 +200,11 @@ export default function UserPermissionsDialog(
 
 											{isRoleEnabled && (
 												<div className="space-y-2">
-													{perms.map((perm, permIndex) => {
+													{perms.map((perm) => {
 														if (perm.type === 'site:authorized') return
+														const permKey = `${perm.type}:${perm.scope}:${perm.negated ? 'neg' : ''}`
 														return (
-															<div key={permIndex} className="flex items-start justify-between p-2 bg-muted/50 rounded text-sm">
+															<div key={permKey} className="flex items-start justify-between p-2 bg-muted/50 rounded text-sm">
 																<div className="space-y-1">
 																	<div className="flex items-center gap-2">
 																		{perm.negated && (

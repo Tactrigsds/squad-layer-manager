@@ -8,7 +8,8 @@ import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { Comparison, ComparisonHandle } from './filter-card'
+import type { ComparisonHandle } from './filter-card';
+import { Comparison } from './filter-card'
 
 export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key }) {
 	const fields = useFrameStore(
@@ -84,7 +85,7 @@ function LayerFilterMenuItem(
 					return getState().setComparison(props.field, update)
 				}}
 				baseQueryInput={queryInput}
-				lockOnSingleOption={true}
+				lockOnSingleOption
 			/>
 			<Button
 				disabled={!F.editableComparisonHasValue(comp)}

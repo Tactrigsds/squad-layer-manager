@@ -1,6 +1,6 @@
 import * as Paths from '$root/paths'
 import * as LC from '@/models/layer-columns'
-import { LayerDb } from '@/models/layer-db'
+import type { LayerDb } from '@/models/layer-db'
 import * as Env from '@/server/env'
 import Database from 'better-sqlite3'
 import crypto from 'crypto'

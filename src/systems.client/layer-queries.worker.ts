@@ -1,6 +1,6 @@
 import { acquireInBlock } from '@/lib/async'
-import * as CS from '@/models/context-shared'
-import { LayerDb } from '@/models/layer-db'
+import type * as CS from '@/models/context-shared'
+import type { LayerDb } from '@/models/layer-db'
 import { baseLogger } from '@/server/systems/logger.client'
 import { queries } from '@/systems.shared/layer-queries.shared'
 import { Mutex } from 'async-mutex'

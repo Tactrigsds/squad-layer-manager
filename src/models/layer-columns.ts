@@ -1,7 +1,8 @@
 import * as Obj from '@/lib/object'
-import { fromJsonCompatible, OneToManyMap, toJsonCompatible } from '@/lib/one-to-many-map'
+import type { OneToManyMap} from '@/lib/one-to-many-map';
+import { fromJsonCompatible, toJsonCompatible } from '@/lib/one-to-many-map'
 import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm/expressions'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -38,7 +39,7 @@ export const BASE_COLUMN_DEFS = {
 export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
 export type EffectiveColumnConfig = {
-	defs: Record<string | L.LayerColumnKey, CombinedColumnDef>
+	defs: Record<string, CombinedColumnDef>
 	generation: LayerGenerationConfig
 }
 

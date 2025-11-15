@@ -1,10 +1,10 @@
 import { useFrameStore } from '@/frames/frame-manager.ts'
-import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { assertNever } from '@/lib/type-guards.ts'
-import * as SS from '@/models/server-state.models.ts'
+import type * as SS from '@/models/server-state.models.ts'
 import React from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
+import { TriStateCheckbox } from './ui/tri-state-checkbox'
 
 export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key }) {
 	const [checkboxes, setCheckbox] = useFrameStore(
@@ -13,21 +13,19 @@ export default function PoolCheckboxes(props: { frameKey: SelectLayersFrame.Key 
 	)
 
 	return (
-		<>
-			<div className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
-				<TriStateCheckbox
-					title="Hide layers which violate Repeat rules"
-					size="sm"
-					variant="ghost"
-					onCheckedChange={v => {
-						setCheckbox('dnr', invertApplyAs(v))
-					}}
-					checked={invertApplyAs(checkboxes.dnr)}
-				>
-					Hide Repeats
-				</TriStateCheckbox>
-			</div>
-		</>
+		<div className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
+			<TriStateCheckbox
+				title="Hide layers which violate Repeat rules"
+				size="sm"
+				variant="ghost"
+				onCheckedChange={v => {
+					setCheckbox('dnr', invertApplyAs(v))
+				}}
+				checked={invertApplyAs(checkboxes.dnr)}
+			>
+				Hide Repeats
+			</TriStateCheckbox>
+		</div>
 	)
 }
 

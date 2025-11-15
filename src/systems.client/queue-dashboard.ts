@@ -8,7 +8,7 @@ import * as CB from '@/models/constraint-builders'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
-import * as SLL from '@/models/shared-layer-list'
+import type * as SLL from '@/models/shared-layer-list'
 import * as RPC from '@/orpc.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
@@ -48,14 +48,14 @@ export function getLLItemActions(llStore: LLStore, itemId: string): LLItemAction
 	const actions: LLItemActions = {
 		dispatch(newItemOp) {
 			const newOp: SLL.NewOperation = { ...newItemOp, itemId }
-			llStore.dispatch(newOp)
+			void llStore.dispatch(newOp)
 		},
 
 		addVoteItems(choices) {
 			const itemState = selectLLItemState(llStore, itemId)
 			if (!LL.isVoteItem(itemState.item)) return
 			const index: LL.ItemIndex = { innerIndex: itemState.item.choices.length, outerIndex: itemState.index.outerIndex }
-			llStore.dispatch({ op: 'add', index, items: choices })
+			void llStore.dispatch({ op: 'add', index, items: choices })
 		},
 	}
 	return actions
@@ -96,7 +96,7 @@ export function setup() {
 
 export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, get, store) => {
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
-	;(async () => {
+	void (async () => {
 		await sleep(0)
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		set(state => ({

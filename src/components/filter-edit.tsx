@@ -1,21 +1,20 @@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Typography from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as F from '@/models/filter.models'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as UsersClient from '@/systems.client/users.client'
 import * as Form from '@tanstack/react-form'
-import { useStore } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
@@ -103,7 +102,7 @@ export function FilterEdit(
 			toast({
 				title: `Filter "${props.entity.name}" deleted`,
 			})
-			navigate({ to: '/filters' })
+			void navigate({ to: '/filters' })
 		} else {
 			let blurb: string
 			switch (res.code) {
@@ -521,7 +520,7 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 		setIsOpen(false)
 	}
 	return (
-		<Popover modal={true} open={isOpen} onOpenChange={setIsOpen}>
+		<Popover modal open={isOpen} onOpenChange={setIsOpen}>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
@@ -548,7 +547,7 @@ export function SelectUserDefinedRolePopover(props: { children: React.ReactNode;
 		setIsOpen(false)
 	}
 	return (
-		<Popover open={isOpen} onOpenChange={setIsOpen} modal={true}>
+		<Popover open={isOpen} onOpenChange={setIsOpen} modal>
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>

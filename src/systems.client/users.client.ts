@@ -1,5 +1,5 @@
 import * as Obj from '@/lib/object'
-import * as USR from '@/models/users.models'
+import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
@@ -83,11 +83,11 @@ export async function fetchLoggedInUser() {
 }
 
 export function invalidateLoggedInUser() {
-	RPC.queryClient.invalidateQueries(loggedInUserBaseQuery)
+	void RPC.queryClient.invalidateQueries(loggedInUserBaseQuery)
 }
 
 export function invalidateUsers() {
-	RPC.queryClient.invalidateQueries({ queryKey: ['users'] })
+	void RPC.queryClient.invalidateQueries({ queryKey: ['users'] })
 	PartSys.PartsStore.setState({ users: [] })
 }
 

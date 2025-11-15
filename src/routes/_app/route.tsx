@@ -105,24 +105,22 @@ function RouteComponent() {
 					{selectedServer && config && (config.servers.length === 1
 						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
 						: (
-							<>
-								<DropdownMenu>
-									<DropdownMenuTrigger asChild>
-										<Button variant="outline">
-											{selectedServer.displayName}
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent>
-										{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
-											<DropdownMenuItem asChild>
-												<Link to={'/servers/$serverId'} params={{ serverId: server.id }}>
-													{server.displayName}
-												</Link>
-											</DropdownMenuItem>
-										))}
-									</DropdownMenuContent>
-								</DropdownMenu>
-							</>
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant="outline">
+										{selectedServer.displayName}
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent>
+									{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
+										<DropdownMenuItem asChild key={server.id}>
+											<Link to="/servers/$serverId" params={{ serverId: server.id }}>
+												{server.displayName}
+											</Link>
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
 						))}
 					{user && (
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>

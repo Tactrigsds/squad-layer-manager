@@ -63,7 +63,7 @@ export default function NicknameDialog(
 	const handleKeyDown = (e: React.KeyboardEvent) => {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault()
-			handleSave()
+			void handleSave()
 		}
 		if (e.key === 'Escape') {
 			handleCancel()
@@ -74,8 +74,8 @@ export default function NicknameDialog(
 	const isValid = nickname.length <= 64
 
 	return (
-		<Dialog modal={true} open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogTrigger asChild={true}>
+		<Dialog modal open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogTrigger asChild>
 				{props.children}
 			</DialogTrigger>
 			<DialogContent className="sm:max-w-md">

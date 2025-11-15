@@ -1,6 +1,6 @@
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { sleep } from '@/lib/async'
-import * as FRM from '@/lib/frame'
+import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as NodeMap from '@/lib/node-map'
@@ -165,7 +165,7 @@ const setup: Frame['setup'] = (args) => {
 			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
 	}
-	sleep(0).then(() => validate(get()))
+	void sleep(0).then(() => validate(get()))
 
 	const validateSub = args.update$.pipe(
 		Rx.debounceTime(150),

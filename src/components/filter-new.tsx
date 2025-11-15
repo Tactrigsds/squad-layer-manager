@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useToast } from '@/hooks/use-toast'
 import { assertNever } from '@/lib/type-guards'
@@ -53,7 +53,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 				case 'ok':
 					invalidateLoggedInUser()
 					toast({ title: 'Filter created' })
-					navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
+					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 
 				default:

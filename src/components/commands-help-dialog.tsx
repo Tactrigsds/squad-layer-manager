@@ -108,9 +108,9 @@ export default function CommandsHelpDialog({ children, open, onOpenChange }: Com
 									{cmd.scopes.length > 0 && (
 										<div className="flex flex-wrap items-center gap-1">
 											<span className="text-xs text-muted-foreground">Scopes:</span>
-											{cmd.scopes.map((scope, scopeIndex) => (
+											{cmd.scopes.map((scope) => (
 												<Badge
-													key={scopeIndex}
+													key={scope}
 													variant="outline"
 													className="text-xs"
 												>

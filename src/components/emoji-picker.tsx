@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils'
 import * as DiscordClient from '@/systems.client/discord.client'
 import * as ThemeClient from '@/systems.client/theme'
 import { useQuery } from '@tanstack/react-query'
-import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
+import type { EmojiClickData} from 'emoji-picker-react';
+import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react'
 import React from 'react'
 import { useMemo } from 'react'
 

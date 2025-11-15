@@ -7,6 +7,7 @@ export function HeadlessDialogExample() {
 	return (
 		<div className="p-8">
 			<button
+				type="button"
 				onClick={() => setOpen(true)}
 				className="rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
 			>
@@ -53,6 +54,7 @@ export function SimpleHeadlessDialogExample() {
 	return (
 		<div className="p-8">
 			<button
+				type="button"
 				onClick={() => setOpen(true)}
 				className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
 			>
@@ -70,12 +72,14 @@ export function SimpleHeadlessDialogExample() {
 
 					<HeadlessDialogFooter>
 						<button
+							type="button"
 							onClick={() => setOpen(false)}
 							className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
 						>
 							Cancel
 						</button>
 						<button
+							type="button"
 							onClick={handleConfirm}
 							className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
 						>

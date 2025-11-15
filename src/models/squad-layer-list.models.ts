@@ -35,7 +35,6 @@ const UNIT_TYPE = z.enum([
 	'CombinedArms',
 	'AmphibiousAssault',
 ])
-type UnitType = z.infer<typeof UNIT_TYPE>
 
 const unitIdRegex = /^(FSTemplate_[A-Z]+|[A-Z]+_[A-Z]+_\w+)\d?$/
 const UnitId = z.string().regex(unitIdRegex)

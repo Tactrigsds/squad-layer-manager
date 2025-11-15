@@ -1,4 +1,4 @@
-import * as SM from './squad.models'
+import type * as SM from './squad.models'
 
 export type NewGame = {
 	type: 'NEW_GAME'

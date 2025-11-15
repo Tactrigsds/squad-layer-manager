@@ -1,4 +1,4 @@
-import * as V from '@/models/vote.models'
+import type * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
 import * as PartSys from '@/systems.client/parts'
 import { bind } from '@react-rxjs/core'

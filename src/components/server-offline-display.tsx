@@ -1,4 +1,4 @@
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
 export function ServerUnreachable({ statusRes }: { statusRes: SM.RconError }) {

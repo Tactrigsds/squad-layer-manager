@@ -6,7 +6,7 @@ import { DragContextProvider } from '@/systems.client/dndkit.provider'
 import * as FeatureFlagClient from '@/systems.client/feature-flags'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import React from 'react'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 import { TooltipProvider } from './ui/tooltip'
@@ -28,7 +28,7 @@ function ProvidersInner(props: { children: ReactNode }) {
 
 	return (
 		<>
-			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen={true} />}
+			{(flags.reactQueryDevtools || !slmConfig?.isProduction) && <ReactQueryDevtools initialIsOpen />}
 			<TooltipProvider>
 				<DragContextProvider>
 					<AlertDialogProvider>{props.children}</AlertDialogProvider>

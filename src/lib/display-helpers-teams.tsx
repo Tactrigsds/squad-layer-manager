@@ -23,11 +23,11 @@ export function getTeamsDisplay(
 	let team1Color: string | undefined = undefined
 	let team2Color: string | undefined = undefined
 	const displayLayersNormalized = teamParity !== undefined && _displayLayersNormalized
-	teamParity ??= 0
+	let _teamParity = teamParity ?? 0
 	if (!displayLayersNormalized) {
 		const colors = [teamColors.teamA, teamColors.teamB]
-		team1Color = colors[teamParity % 2]
-		team2Color = colors[(teamParity + 1) % 2]
+		team1Color = colors[_teamParity % 2]
+		team2Color = colors[(_teamParity + 1) % 2]
 	} else if (displayLayersNormalized) {
 		// Colors specifically for (1) and (2) normalized team labels
 		team2Color = teamColors.team2
@@ -38,7 +38,7 @@ export function getTeamsDisplay(
 	const subFaction2 = partialLayer.Unit_2 !== undefined ? DH.toShortUnit(partialLayer.Unit_2) : undefined
 
 	const teamElts = [
-		<span>
+		<span key="team1">
 			<span className={cn(withBackfilledStyles?.Faction_1, withBackfilledStyles?.Alliance_1)}>{partialLayer.Faction_1}</span>
 			{subfaction1
 				? (
@@ -48,14 +48,14 @@ export function getTeamsDisplay(
 				)
 				: ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '1' : teamParity % 2 === 1 ? 'B' : 'A'}`}
+				title={`Team ${displayLayersNormalized ? '1' : _teamParity % 2 === 1 ? 'B' : 'A'}`}
 				className="font-mono text-sm"
 				style={{ color: team1Color }}
 			>
-				{displayLayersNormalized ? '(1)' : teamParity % 2 === 1 ? '(B)' : '(A)'}
+				{displayLayersNormalized ? '(1)' : _teamParity % 2 === 1 ? '(B)' : '(A)'}
 			</span>
 		</span>,
-		<span>
+		<span key="team2">
 			<span className={cn(withBackfilledStyles?.Faction_2, withBackfilledStyles?.Alliance_2)}>{partialLayer.Faction_2}</span>
 			{subFaction2
 				? (
@@ -65,16 +65,16 @@ export function getTeamsDisplay(
 				)
 				: ''}
 			<span
-				title={`Team ${displayLayersNormalized ? '2' : teamParity % 2 === 1 ? 'A' : 'B'}`}
+				title={`Team ${displayLayersNormalized ? '2' : _teamParity % 2 === 1 ? 'A' : 'B'}`}
 				className="font-mono text-sm"
 				style={{ color: team2Color }}
 			>
-				{displayLayersNormalized ? '(2)' : teamParity % 2 === 1 ? '(A)' : '(B)'}
+				{displayLayersNormalized ? '(2)' : _teamParity % 2 === 1 ? '(A)' : '(B)'}
 			</span>
 		</span>,
 	]
 
-	const swapTeamOffset = Number(displayLayersNormalized && teamParity % 2 === 1)
+	const swapTeamOffset = Number(displayLayersNormalized && _teamParity % 2 === 1)
 
 	return [
 		teamElts[swapTeamOffset],

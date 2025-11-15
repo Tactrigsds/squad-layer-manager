@@ -2,9 +2,10 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
-import { CommonServerOptions, defineConfig, UserConfig } from 'vite'
+import type { CommonServerOptions, UserConfig } from 'vite';
+import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
-import oxLintPlugin from 'vite-plugin-oxlint'
+
 import * as AR from './src/app-routes.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
@@ -15,7 +16,6 @@ const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
-		oxlintPlugin(),
 		tanstackRouter({
 			target: 'react',
 		}),
@@ -32,47 +32,48 @@ export default defineConfig({
 			name: 'html-proxy-middleware',
 			configureServer(server) {
 				return () => {
-					server.middlewares.use((req, res, next) => {
+					server.middlewares.use(async (req, res, next) => {
 						const acceptHeader = req.headers.accept || ''
 
 						if (req.url && acceptHeader.includes('text/html') && res.statusCode === 200) {
-							ensureEnvSetup()
-							const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
-							const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
-							console.log(`Fetching from upstream:`, proxyUrl)
+							try {
+								ensureEnvSetup()
+								const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
+								const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
+								console.log(`Fetching from upstream:`, proxyUrl)
 
-							fetch(proxyUrl, {
-								method: 'GET',
-								headers: req.headers as RequestInit['headers'],
-							})
-								.then(async (proxyRes) => {
-									if (proxyRes.status !== 200) {
-										// Proxy the entire response if not 200
-										console.log(`Upstream returned ${proxyRes.status}, proxying entire response`)
-										res.statusCode = proxyRes.status
+								const proxyRes = await fetch(proxyUrl, {
+									method: 'GET',
+									headers: req.headers as RequestInit['headers'],
+								})
 
-										// Copy all headers from upstream
-										proxyRes.headers.forEach((value, key) => {
-											res.setHeader(key, value)
-										})
+								if (proxyRes.status !== 200) {
+									// Proxy the entire response if not 200
+									console.log(`Upstream returned ${proxyRes.status}, proxying entire response`)
+									res.statusCode = proxyRes.status
 
-										// Pipe the body
-										const body = await proxyRes.text()
-										res.end(body)
-									} else {
-										// Apply cookie header from upstream server
-										const cookieHeader = proxyRes.headers.get('set-cookie')
-										if (cookieHeader) {
-											res.setHeader('set-cookie', cookieHeader)
-										}
+									// Copy all headers from upstream
+									proxyRes.headers.forEach((value, key) => {
+										res.setHeader(key, value)
+									})
 
-										next()
+									// Pipe the body
+									const body = await proxyRes.text()
+									res.end(body)
+									return
+								} else {
+									// Apply cookie header from upstream server
+									const cookieHeader = proxyRes.headers.get('set-cookie')
+									if (cookieHeader) {
+										res.setHeader('set-cookie', cookieHeader)
 									}
-								})
-								.catch((error) => {
-									console.error('Error fetching upstream headers:', error)
+
 									next()
-								})
+								}
+							} catch (error) {
+								console.error('Error fetching upstream headers:', error)
+								next()
+							}
 						} else {
 							next()
 						}

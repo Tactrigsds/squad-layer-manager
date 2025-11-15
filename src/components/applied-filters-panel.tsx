@@ -1,10 +1,10 @@
 import { Button } from '@/components/ui/button'
 import { useFrameStore } from '@/frames/frame-manager.ts'
-import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { useDebouncedState } from '@/hooks/use-debounce.ts'
 import * as Gen from '@/lib/generator.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
-import * as F from '@/models/filter.models.ts'
+import type * as F from '@/models/filter.models.ts'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
@@ -16,7 +16,8 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import { TriState as TriStateCheckboxState, TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
+import type { TriState as TriStateCheckboxState} from './ui/tri-state-checkbox.tsx';
+import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()

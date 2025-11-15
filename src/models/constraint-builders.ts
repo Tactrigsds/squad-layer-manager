@@ -1,5 +1,5 @@
-import * as F from '@/models/filter.models'
-import * as LQY from '@/models/layer-queries.models'
+import type * as F from '@/models/filter.models'
+import type * as LQY from '@/models/layer-queries.models'
 
 export const filterAnon = (id: string, filter: F.FilterNode): LQY.Constraint => ({
 	type: 'filter-anon',

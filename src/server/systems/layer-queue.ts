@@ -4,19 +4,19 @@ import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
-import { Parts } from '@/lib/types'
+import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
-import * as SME from '@/models/squad-models.events.ts'
-import * as SM from '@/models/squad.models.ts'
-import * as USR from '@/models/users.models'
+import type * as SME from '@/models/squad-models.events.ts'
+import type * as SM from '@/models/squad.models.ts'
+import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
@@ -32,7 +32,7 @@ import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
 
-import { Mutex } from 'async-mutex'
+import type { Mutex } from 'async-mutex'
 import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
@@ -253,7 +253,7 @@ export async function handleNewGame(
 
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			warnShowNext(ctx, 'all-admins')
+			void warnShowNext(ctx, 'all-admins')
 		}))
 
 		announcementTasks.push(toCold(async () => {
@@ -339,7 +339,7 @@ async function syncVoteStateWithQueueStateInPlace(
 			ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 			vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 				() => {
-					startVote(SquadServer.resolveSliceCtx(C.initLocks(getBaseCtx()), serverId), { initiator: 'autostart' })
+					void startVote(SquadServer.resolveSliceCtx(C.initLocks(getBaseCtx()), serverId), { initiator: 'autostart' })
 				},
 			)
 		}
@@ -503,7 +503,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	void (async () => {
 		const serverState = await getServerState(ctx)
 		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
-		SquadRcon.warn(
+		void SquadRcon.warn(
 			ctx,
 			msg.playerId,
 			Messages.WARNS.vote.voteCast(choice, voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps),
@@ -879,7 +879,7 @@ export async function updateServerState(
 
 export async function warnShowNext(
 	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue,
-	playerId: string | 'all-admins',
+	playerId: string,
 	opts?: { repeat?: number },
 ) {
 	const serverState = await getServerState(ctx)

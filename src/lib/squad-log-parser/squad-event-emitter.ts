@@ -1,10 +1,11 @@
-import * as CS from '@/models/context-shared'
-import * as SME from '@/models/squad-models.events'
-import * as SM from '@/models/squad.models'
+import type * as CS from '@/models/context-shared'
+import type * as SME from '@/models/squad-models.events'
+import type * as SM from '@/models/squad.models'
 import * as C from '@/server/context'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
-import { SftpTail, SftpTailOptions } from '../sftp-tail'
+import type { SftpTailOptions } from '../sftp-tail';
+import { SftpTail } from '../sftp-tail'
 import { assertNever } from '../type-guards'
 import * as SLE from './squad-log-events.models'
 
@@ -28,7 +29,6 @@ export class SquadEventEmitter {
 	event$: Rx.Subject<[EventCtx, SME.Event]> = new Rx.Subject()
 
 	constructor(private ctx: CS.Log, options: { sftp: SftpTailOptions }) {
-		this.ctx = ctx
 		this.reader = new SftpTail(ctx, options.sftp)
 	}
 

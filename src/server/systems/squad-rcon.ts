@@ -1,11 +1,12 @@
 import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async'
 import * as OneToMany from '@/lib/one-to-many-map'
-import Rcon, { DecodedPacket } from '@/lib/rcon/core-rcon'
+import type { DecodedPacket } from '@/lib/rcon/core-rcon'
+import Rcon from '@/lib/rcon/core-rcon'
 import { capitalID, iterateIDs, lowerID } from '@/lib/rcon/id-parser'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as SS from '@/models/server-state.models'
+import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
@@ -307,7 +308,9 @@ export const setNextLayer = C.spanOp(
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
-		if (!newStatus.data.nextLayer) throw new Error(`Failed to set next layer. Expected ${layer}, received undefined`)
+		if (!newStatus.data.nextLayer) {
+			throw new Error(`Failed to set next layer. Expected ${typeof layer === 'string' ? layer : JSON.stringify(layer)}, received undefined`)
+		}
 
 		if (newStatus.data.nextLayer && !L.areLayersCompatible(layer, newStatus.data.nextLayer)) {
 			return {
@@ -356,5 +359,5 @@ export function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
 
 export function endMatch(ctx: CS.Log & C.Rcon) {
 	ctx.log.info(`Ending match`)
-	ctx.rcon.execute(ctx, 'AdminEndMatch')
+	void ctx.rcon.execute(ctx, 'AdminEndMatch')
 }
