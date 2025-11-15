@@ -460,7 +460,10 @@ export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem |
 
 	if (!state.layerItems) return 0
 	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, item.itemId))
-	if (isNullOrUndef(index)) throw new Error('Item not found')
+	if (isNullOrUndef(index)) {
+		console.error('Item not found when getting parity, setting 0 instead', _item)
+		return 0
+	}
 	const parity = index.outerIndex + (state.firstLayerItemParity ?? 0)
 	return parity
 }
