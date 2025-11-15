@@ -511,12 +511,13 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 		// update this a little so we're not n+1 :shrug:
 		mouseDownStore.setState({ index: row.index, originalSelected: originalState })
 	}
+
 	return (
 		<ContextMenu key={row.id}>
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none data-[disabled=true]:hover:bg-unset data-[disabled=true]:bg-grey-800"
+					className="select-none h-8 data-[disabled=true]:hover:bg-unset data-[disabled=true]:bg-grey-800"
 					data-disabled={row.original.isRowDisabled}
 					onClick={(e) => {
 						if (e.ctrlKey && e.button === 0) {
@@ -539,7 +540,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 				>
 					{row.getVisibleCells().map((cell) => (
 						<TableCell
-							className={cell.column.id === 'select' ? 'pl-4' : undefined}
+							className={cell.column.id === 'select' ? 'pl-4 h-full' : 'h-full'}
 							key={cell.id}
 							style={{ width: cell.column.getSize() }}
 						>
