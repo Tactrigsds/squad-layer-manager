@@ -135,16 +135,18 @@ export function mergeBaseInputs(a: BaseQueryInput, b: BaseQueryInput): BaseQuery
 
 export type ItemIndex = LL.ItemIndex
 
-// we're using a ts enum here (*gags) to distinguish these from regular itemIds
-export enum SpecialItemId {
-	FIRST_LIST_ITEM = 0,
-	LAST_LIST_ITEM = 1,
+// cleaning this shit up is incentive to move to zod 4
+export const SpecialItemId = {
+	FIRST_LIST_ITEM: 0,
+	LAST_LIST_ITEM: 1,
 }
+
+export type SpecialItemId = typeof SpecialItemId[keyof typeof SpecialItemId]
 
 export const CursorSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('item-relative'),
-		itemId: z.union([z.string(), z.nativeEnum(SpecialItemId)]),
+		itemId: z.union([z.string(), z.literal(SpecialItemId.FIRST_LIST_ITEM), z.literal(SpecialItemId.LAST_LIST_ITEM)]),
 		position: z.enum(['before', 'after', 'on']),
 	}),
 	z.object({
