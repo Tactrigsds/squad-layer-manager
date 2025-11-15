@@ -36,11 +36,6 @@ type LayerInfoContentProps = {
 	close?: () => void
 }
 
-const TAB_TO_ROUTE = {
-	details: AR.route('/layers/:id/details'),
-	scores: AR.route('/layers/:id/scores'),
-} satisfies { [k in Tab]: AR.KnownRouteId }
-
 export default function LayerInfoDialog(props: LayerInfoProps) {
 	const isKnownLayer = L.isKnownLayer(L.toLayer(props.layerId))
 	const [tab, setTab] = LayerInfoDialogClient.useActiveTab()

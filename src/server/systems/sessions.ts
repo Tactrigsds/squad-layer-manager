@@ -119,7 +119,7 @@ export async function setup() {
 	// --------  cleanup old sessions  --------
 	while (true) {
 		await sleep(1000 * 60 * 60)
-		tracer.startActiveSpan('sessions:cleanup', async (span) => {
+		await tracer.startActiveSpan('sessions:cleanup', async (span) => {
 			const currentTime = new Date()
 
 			await ctx.db().transaction(async (tx) => {

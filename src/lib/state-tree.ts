@@ -1,5 +1,5 @@
 import * as Obj from '@/lib/object'
-
+import { assertNever } from '@/lib/type-guards'
 import { z } from 'zod'
 import { StrKeys } from './types'
 
@@ -365,6 +365,8 @@ export namespace Match {
 				return patterns.branch(node as any)
 			case 'leaf':
 				return patterns.leaf(node as any)
+			default:
+				assertNever(node)
 		}
 	}
 

@@ -80,7 +80,7 @@ async function main() {
 	}
 }
 
-function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
+async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
 	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
@@ -133,7 +133,7 @@ function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerCompon
 				Unit_2: row['Unit_2'],
 			}
 			const ids = [L.getKnownLayerId(idArgs, components)!]
-			if (ids[0] == null) return
+			if (ids[0] === null) return
 			// for now we're just using the same data for FRAAS as RAAS
 			if (segments.Gamemode === 'RAAS') {
 				ids.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
@@ -292,11 +292,11 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				teams: [
 					{
 						defaultFaction: segments.extraFactions[0],
-						tickets: map.teamConfigs.team1!.tickets,
+						tickets: map.teamConfigs.team1.tickets,
 					},
 					{
 						defaultFaction: segments.extraFactions[1],
-						tickets: map.teamConfigs.team2!.tickets,
+						tickets: map.teamConfigs.team2.tickets,
 					},
 				],
 			})
@@ -536,10 +536,10 @@ async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: bool
 	await Promise.all(ops)
 }
 
-function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
+async function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
 	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADSHEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
 
-	return new Promise<void>((resolve, reject) => {
+	return await new Promise<void>((resolve, reject) => {
 		const file = fs.createWriteStream(filepath)
 
 		http.https.get(url, (response) => {

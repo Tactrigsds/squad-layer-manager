@@ -9,7 +9,6 @@
 		"noErrorTruncation": true,
 		"strict": true,
 		"noImplicitAny": false,
-		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"],
 			"$root/*": ["./*"]

@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { getTeamsDisplay } from '@/lib/display-helpers-teams'
+import { assertNever } from '@/lib/type-guards'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -68,7 +69,7 @@ function MatchHistoryRow({
 		const alerts: React.ReactNode[] = ([...balanceTriggerEvents]
 			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
 			.map(
-				(event) => <BalanceTriggerAlert className="rounded-none" event={event} referenceMatch={entry} />,
+				(event) => <BalanceTriggerAlert key={event.id} className="rounded-none" event={event} referenceMatch={entry} />,
 			)
 
 		return alerts
@@ -146,6 +147,8 @@ function MatchHistoryRow({
 				TriggerIcon = Icons.Info
 				triggerIconColor = 'text-blue-500'
 				break
+			default:
+				assertNever(triggerLevel)
 		}
 	}
 
@@ -201,7 +204,7 @@ function MatchHistoryRow({
 									side="right"
 									className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
 								>
-									{entryTriggerAlerts.map((alert, i) => <div key={i}>{alert}</div>)}
+									{entryTriggerAlerts}
 								</TooltipContent>
 							</Tooltip>
 						)}

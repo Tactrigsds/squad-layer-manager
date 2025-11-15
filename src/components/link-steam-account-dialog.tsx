@@ -107,7 +107,7 @@ function LinkSteamAccountDialog({ children, open, onOpenChange }: LinkSteamAccou
 
 	const handleManualCopy = () => {
 		if (command) {
-			copyToClipboard(command)
+			void copyToClipboard(command)
 		}
 	}
 

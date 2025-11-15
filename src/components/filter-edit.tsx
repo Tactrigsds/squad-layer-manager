@@ -153,7 +153,6 @@ export function FilterEdit(
 	const [filterValid, filterModified] = useFrame(
 		useShallow((state) => [state.valid, state.modified]),
 	)
-	const isDirty = useStore(form.store, s => s.isDirty)
 
 	useBlocker({
 		enableBeforeUnload: filterModified || form.state.isDirty,

@@ -14,6 +14,8 @@ import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as WorkerTypes from '@/systems.client/layer-queries.worker'
+
+// oxlint-disable-next-line import/default
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'

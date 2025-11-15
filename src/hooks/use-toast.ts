@@ -1,3 +1,4 @@
+import { assertNever } from '@/lib/type-guards'
 import * as React from 'react'
 
 import type { ToastActionElement, ToastProps } from '@/components/ui/toast'
@@ -118,6 +119,8 @@ export const reducer = (state: State, action: Action): State => {
 				...state,
 				toasts: state.toasts.filter((t) => t.id !== action.toastId),
 			}
+		default:
+			assertNever(action)
 	}
 }
 

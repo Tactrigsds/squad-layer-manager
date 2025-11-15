@@ -192,8 +192,8 @@ function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableCo
 /**
  * Derive filter nodes which
  */
-function getSiblingFiltersForMenuItems(items: Record<keyof L.KnownLayer | string, F.EditableComparison>) {
-	const filtersExcludingFields: { [k in keyof L.KnownLayer | string]: F.FilterNode | undefined } = {}
+function getSiblingFiltersForMenuItems(items: Record<string, F.EditableComparison>) {
+	const filtersExcludingFields: { [k in keyof string]: F.FilterNode | undefined } = {}
 
 	for (const key in items) {
 		const item = items[key]

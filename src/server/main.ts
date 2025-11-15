@@ -28,7 +28,7 @@ await C.spanOp('main', { tracer }, async () => {
 	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	Rbac.setup()
-	Sessions.setup()
+	void Sessions.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 	SharedLayerList.setup()
 	const { serverClosed } = await Fastify.setup()

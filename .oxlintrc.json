@@ -4,26 +4,92 @@
 		"import",
 		"typescript",
 		"promise",
-		"react",
-		"react-perf"
+		"react"
 	],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
 		"perf": "warn",
-		"nursery": "warn",
-		"pedantic": "warn",
-		"restriction": "warn",
-		"style": "warn"
+		"nursery": "off",
+		"pedantic": "off",
+		"restriction": "off",
+		"style": "off"
 	},
 	"rules": {
 		"@typescript-eslint/no-implicit-any": "off",
 		"no-constant-condition": "off",
 		"@typescript-eslint/no-explicit-any": "off",
 		"@typescript-eslint/no-namespace": "off",
-		"eslint/no-unused-vars": ["error", { "args": "after-used", "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-		"import/no-unused-modules": "error",
-		"eslint/sort-keys": "off"
+		"eslint/no-unused-vars": [
+			"error",
+			{
+				"args": "after-used",
+				"argsIgnorePattern": ".",
+				"varsIgnorePattern": "^_",
+				"destructuredArrayIgnorePattern": "."
+			}
+		],
+
+		// change to error
+		"@typescript-eslint/consistent-type-imports": "off",
+		"react/jsx-no-useless-fragment": "off",
+		"react/jsx-curly-brace-presence": "off",
+		"react/jsx-boolean-value": "off",
+		"react/button-has-type": "off",
+		"import/no-named-as-default": "off",
+		"import/extensions": "off",
+		"@typescript-eslint/no-import-type-side-effects": "off",
+		"@typescript-eslint/no-floating-promises": "off",
+		"promise/catch-or-return": "off",
+
+		// change to warn
+		"eslint/no-param-reassign": "off",
+		"react/no-array-index-key": "off",
+
+		// misc
+		"import/no-cycle": "off",
+
+		// maybe turn this on at some point
+		"eslint/no-console": "off",
+
+		// bad
+		"@typescript-eslint/no-unsafe-assignment": "off",
+		"@typescript-eslint/no-unsafe-member-access": "off",
+		"@typescript-eslint/no-unsafe-argument": "off",
+		"@typescript-eslint/no-unsafe-call": "off",
+		"@typescript-eslint/no-unsafe-return": "off",
+		"@typescript-eslint/strict-boolean-expressions": "off",
+		"@typescript-eslint/no-non-null-assertion": "off",
+		"@typescript-eslint/explicit-function-return-type": "off",
+		"@typescript-eslint/explicit-module-boundary-types": "off",
+		"@typescript-eslint/consistent-type-definitions": "off",
+		"@typescript-eslint/no-unsafe-type-assertion": "off",
+		"@typescript-eslint/use-unknown-in-catch-fallback-variable": "off",
+		"@typescript-eslint/no-unnecessary-type-assertion": "off",
+		"@typescript-eslint/unbound-method": "off",
+		"@typescript-eslint/promise-function-async": "off",
+		"@typescript-eslint/no-unnecessary-type-arguments": "off",
+
+		"react/jsx-handler-names": "off",
+		"react/react-in-jsx-scope": "off",
+		"react/jsx-filename-extension": "off",
+
+		"import/no-default-export": "off",
+		"import/no-named-export": "off",
+		"import/max-dependencies": "off",
+		"import/no-namespace": "off",
+		"import/no-unassigned-import": "off",
+		"import/no-named-as-default-member": "off",
+
+		"eslint/sort-keys": "off",
+		"eslint/no-magic-numbers": "off",
+		"eslint/no-undefined": "off",
+		"eslint/no-alert": "off",
+		"eslint/no-empty-function": "off",
+		"eslint/no-plusplus": "off",
+		"eslint/no-bitwise": "off",
+		"eslint/no-await-in-loop": "off",
+		"eslint/no-void": "off"
 	},
 	"overrides": [
 		{

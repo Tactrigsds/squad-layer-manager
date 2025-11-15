@@ -9,7 +9,7 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
-import { Focusable, inline } from '@/lib/react'
+import { Focusable } from '@/lib/react'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers'
 import * as SetUtils from '@/lib/set'
 import { assertNever } from '@/lib/type-guards'
@@ -65,7 +65,7 @@ function buildColumn(
 		enableSorting: false, // Disable default sorting, we'll handle it manually
 		size: ({ 'Layer': 300, 'Size': 100 } as const)[colDef.name] ?? (isNumeric ? 50 : undefined),
 		minSize: colDef.name === 'Layer' ? 200 : undefined,
-		header: () => {
+		header: function ValueColHeader() {
 			const [sortingState, setSorting] = useTableFrame(ZusUtils.useShallow(table => [table.sort, table.setSort]))
 			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
 
@@ -122,7 +122,7 @@ function buildColumn(
 				</Button>
 			)
 		},
-		cell: (info) => {
+		cell: function ValueColCell(info) {
 			const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 			const violationDescriptors = info.row.original.violationDescriptors
 			const cursor = useTableFrame(table => table.pageData?.input.cursor)
@@ -409,8 +409,34 @@ export default function LayerTable(props: {
 		// getSortedRowModel: getSortedRowModel(),
 		manualPagination: true,
 	})
+	const rowElts: React.ReactNode[] = []
+	const rows = table.getRowModel().rows
+	const columns = table.getVisibleFlatColumns()
+	const placeholderBase = React.useMemo(() => (
+		<TableRow className="pointer-events-none">
+			{columns.map((column) => (
+				<TableCell
+					key={column.id}
+					className={column.id === 'select' ? 'pl-4' : undefined}
+					style={{ width: column.getSize() }}
+				>
+					<div style={{ height: '32px' }} />
+				</TableCell>
+			))}
+		</TableRow>
+	), [columns])
 
-	const isFetchingLayerData = LayerQueriesClient.useIsFetchingLayerData()
+	for (let i = 0; i < frameState.pageSize; i++) {
+		if (rows[i]) {
+			rowElts.push(<LayerTableRow key={rows[i].id} row={rows[i]} frameKey={props.frameKey} />)
+		} else {
+			rowElts.push(
+				<React.Fragment key={`placeholder-${i}`}>
+					{placeholderBase}
+				</React.Fragment>,
+			)
+		}
+	}
 
 	return (
 		<div className="space-y-2">
@@ -434,36 +460,7 @@ export default function LayerTable(props: {
 						))}
 					</TableHeader>
 					<TableBody>
-						{inline(() => {
-							const rowElts: React.ReactNode[] = []
-							const rows = table.getRowModel().rows
-							const columns = table.getVisibleFlatColumns()
-							const placeholderBase = React.useMemo(() => (
-								<TableRow className="pointer-events-none">
-									{columns.map((column) => (
-										<TableCell
-											key={column.id}
-											className={column.id === 'select' ? 'pl-4' : undefined}
-											style={{ width: column.getSize() }}
-										>
-											<div style={{ height: '32px' }} />
-										</TableCell>
-									))}
-								</TableRow>
-							), [columns])
-							for (let i = 0; i < frameState.pageSize; i++) {
-								if (rows[i]) {
-									rowElts.push(<LayerTableRow key={rows[i].id} row={rows[i]} frameKey={props.frameKey} />)
-								} else {
-									rowElts.push(
-										<React.Fragment key={`placeholder-${i}`}>
-											{placeholderBase}
-										</React.Fragment>,
-									)
-								}
-							}
-							return rowElts
-						})}
+						{rowElts}
 					</TableBody>
 				</Table>
 			</div>
@@ -599,7 +596,6 @@ export function LayerTableControlPanel(
 	},
 ) {
 	const getTableFrame = () => getFrameState(props.frameKey).layerTable
-	const getStore = () => getFrameState(props.frameKey)
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) => useFrameStore(props.frameKey, s => selector(s.layerTable))
 
 	const frameState = useTableFrame(
