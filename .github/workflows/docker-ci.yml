@@ -130,6 +130,10 @@ jobs:
 
       - name: Run format checking
         run: pnpm run format:check
+
+      - name: Run linting
+        run: pnpm run lint
+
   tag-latest:
     runs-on: ubuntu-latest
     needs: [build, quality-checks]

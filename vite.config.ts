@@ -5,7 +5,6 @@ import path from 'node:path'
 import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
-
 import * as AR from './src/app-routes.ts'
 import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'

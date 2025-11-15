@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"client:dev": "vite",
-		"lint": "eslint .",
+		"lint": "oxlint --type-aware",
 		"preview": "vite preview",
 		"check": "tsc -b",
 		"format": "dprint fmt",
@@ -23,7 +23,9 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:push": "drizzle-kit push",
-		"db:studio": "drizzle-kit studio"
+		"db:studio": "drizzle-kit studio",
+		"setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/pre-push .githooks/pre-push.js",
+		"remove:hooks": "git config --unset core.hooksPath"
 	},
 	"dependencies": {
 		"@node-rs/argon2": "^1.8.3",
