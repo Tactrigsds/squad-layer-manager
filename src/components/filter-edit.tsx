@@ -59,6 +59,8 @@ export function FilterEdit(
 			description: props.entity.description,
 			alertMessage: props.entity.alertMessage,
 			emoji: props.entity.emoji,
+			invertedAlertMessage: props.entity.invertedAlertMessage,
+			invertedEmoji: props.entity.invertedEmoji,
 		},
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
@@ -67,6 +69,9 @@ export function FilterEdit(
 				...value,
 				description,
 				emoji: value.emoji ?? null,
+				alertMessage: value.alertMessage ?? null,
+				invertedEmoji: value.invertedEmoji ?? null,
+				invertedAlertMessage: value.invertedAlertMessage ?? null,
 				filter: frameState().validatedFilter ?? undefined,
 			}])
 			switch (res.code) {
@@ -250,90 +255,162 @@ export function FilterEdit(
 						</div>
 					)
 					: (
-						<div className="flex space-x-2">
-							<div className="flex flex-col space-y-2">
-								<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
-									{(field) => {
-										const label = 'Name'
-										return (
-											<div className="flex flex-col space-y-2">
-												<Label htmlFor={field.name}>{label}</Label>
-												<Input
-													id={field.name}
-													placeholder={label}
-													defaultValue={field.state.value}
-													onBlur={field.handleBlur}
-													onChange={(e) => field.handleChange(e.target.value)}
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
-								<form.Field name="emoji">
-									{(field) => {
-										const label = 'Emoji'
-										return (
-											<div className="flex flex-col space-y-2 max-w-[300px]">
-												<Label htmlFor={field.name}>{label}</Label>
-												<EmojiPickerPopover
-													value={field.state.value ?? undefined}
-													onSelect={(id) => {
-														field.handleChange(id ?? null)
-													}}
-													disabled={false}
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
-								<form.Field
-									name="alertMessage"
-									validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
-								>
-									{(field) => {
-										const label = 'Alert Message'
-										return (
-											<div className="flex flex-col space-y-2 max-w-[300px]">
-												<Label htmlFor={field.name}>{label}</Label>
-												<Textarea
-													id={field.name}
-													placeholder={label}
-													defaultValue={field.state.value ?? ''}
-													onBlur={field.handleBlur}
-													onChange={(e) => field.setValue(e.target.value)}
-													rows={5}
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
-								<form.Field
-									name="description"
-									validators={{ onChange: F.DescriptionSchema.nullable() }}
-								>
-									{(field) => {
-										const label = 'Description'
-										return (
-											<div className="flex flex-grow space-x-2">
-												<div className="flex min-w-[900px] flex-col space-y-1">
+						<div className="space-y-4 w-full">
+							<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+								{/* Left Column - Form Fields */}
+								<div className="space-y-6">
+									{/* Name Section */}
+									<div className="space-y-2">
+										<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
+											{(field) => {
+												const label = 'Name'
+												return (
+													<div className="flex flex-col space-y-2">
+														<Label htmlFor={field.name}>{label}</Label>
+														<Input
+															id={field.name}
+															placeholder={label}
+															defaultValue={field.state.value}
+															onBlur={field.handleBlur}
+															onChange={(e) => field.handleChange(e.target.value)}
+														/>
+														{field.state.meta.errors.length > 0 && (
+															<Alert variant="destructive">
+																<AlertTitle>{label}:</AlertTitle>
+																<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+															</Alert>
+														)}
+													</div>
+												)
+											}}
+										</form.Field>
+									</div>
+
+									{/* Match Indicator Section */}
+									<div className="border rounded-lg p-4 space-y-4">
+										<h3 className="font-semibold text-sm">Match Indicator</h3>
+										<div className="flex gap-4">
+											<form.Field name="emoji">
+												{(field) => {
+													const label = 'Emoji'
+													return (
+														<div className="flex flex-col space-y-2">
+															<Label htmlFor={field.name}>{label}</Label>
+															<EmojiPickerPopover
+																value={field.state.value ?? undefined}
+																onSelect={(id) => {
+																	field.handleChange(id ?? null)
+																}}
+																disabled={false}
+															/>
+															{field.state.meta.errors.length > 0 && (
+																<Alert variant="destructive">
+																	<AlertTitle>{label}:</AlertTitle>
+																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																</Alert>
+															)}
+														</div>
+													)
+												}}
+											</form.Field>
+											<form.Field
+												name="alertMessage"
+												validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+											>
+												{(field) => {
+													const label = 'Alert Message'
+													return (
+														<div className="flex flex-col space-y-2 flex-grow">
+															<Label htmlFor={field.name}>{label}</Label>
+															<Textarea
+																id={field.name}
+																placeholder={label}
+																defaultValue={field.state.value ?? ''}
+																onBlur={field.handleBlur}
+																onChange={(e) => field.setValue(e.target.value)}
+																rows={3}
+															/>
+															{field.state.meta.errors.length > 0 && (
+																<Alert variant="destructive">
+																	<AlertTitle>{label}:</AlertTitle>
+																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																</Alert>
+															)}
+														</div>
+													)
+												}}
+											</form.Field>
+										</div>
+									</div>
+
+									{/* Match Indicator (Inverted) Section */}
+									<div className="border rounded-lg p-4 space-y-4">
+										<h3 className="font-semibold text-sm">Match Indicator (Inverted)</h3>
+										<div className="flex gap-4">
+											<form.Field name="invertedEmoji">
+												{(field) => {
+													const label = 'Emoji'
+													return (
+														<div className="flex flex-col space-y-2">
+															<Label htmlFor={field.name}>{label}</Label>
+															<EmojiPickerPopover
+																value={field.state.value ?? undefined}
+																onSelect={(id) => {
+																	field.handleChange(id ?? null)
+																}}
+																disabled={false}
+															/>
+															{field.state.meta.errors.length > 0 && (
+																<Alert variant="destructive">
+																	<AlertTitle>{label}:</AlertTitle>
+																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																</Alert>
+															)}
+														</div>
+													)
+												}}
+											</form.Field>
+											<form.Field
+												name="invertedAlertMessage"
+												validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+											>
+												{(field) => {
+													const label = 'Alert Message'
+													return (
+														<div className="flex flex-col space-y-2 flex-grow">
+															<Label htmlFor={field.name}>{label}</Label>
+															<Textarea
+																id={field.name}
+																placeholder={label}
+																defaultValue={field.state.value ?? ''}
+																onBlur={field.handleBlur}
+																onChange={(e) => field.setValue(e.target.value)}
+																rows={3}
+															/>
+															{field.state.meta.errors.length > 0 && (
+																<Alert variant="destructive">
+																	<AlertTitle>{label}:</AlertTitle>
+																	<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+																</Alert>
+															)}
+														</div>
+													)
+												}}
+											</form.Field>
+										</div>
+									</div>
+								</div>
+
+								{/* Right Column - Description */}
+								<div className="pt-8">
+									<form.Field
+										name="description"
+										validators={{ onChange: F.DescriptionSchema.nullable() }}
+									>
+										{(field) => {
+											const label = 'Description'
+											return (
+												<div className="flex flex-col space-y-2">
 													<Label htmlFor={field.name}>{label}</Label>
 													<Textarea
 														id={field.name}
@@ -342,23 +419,23 @@ export function FilterEdit(
 														onBlur={field.handleBlur}
 														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
 														rows={15}
+														className="font-mono text-sm"
 													/>
-												</div>
-												{field.state.meta.errors.length > 0 && (
-													<span>
+													{field.state.meta.errors.length > 0 && (
 														<Alert variant="destructive">
 															<AlertTitle>{label}:</AlertTitle>
 															<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
 														</Alert>
-													</span>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
+													)}
+												</div>
+											)
+										}}
+									</form.Field>
+								</div>
 							</div>
+
 							<Button
-								className="ml-4 self-end"
+								className="self-start"
 								variant="ghost"
 								size="icon"
 								onClick={() => {

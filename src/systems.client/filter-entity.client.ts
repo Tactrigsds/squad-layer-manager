@@ -1,4 +1,5 @@
 import * as MapUtils from '@/lib/map'
+import * as ConfigClient from '@/systems.client/config.client'
 
 import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
@@ -31,11 +32,14 @@ export function invalidateQueriesForFilter(filterId: F.FilterEntityId) {
 export async function filterEditPrefetch(filterId?: string) {
 	if (!filterId) return {}
 	return {
-		onMouseEnter() {
+		onMouseEnter: async () => {
 			const entity = filterEntities.get(filterId)
 			if (!entity) return
+			const colConfig = await ConfigClient.fetchEffectiveColConfig()
 			void RPC.queryClient.prefetchQuery(getFilterContributorsBase(filterId))
-			void LayerQueriesClient.prefetchLayersQuery(LQY.getEditFilterPageInput(entity.filter))
+			void RPC.queryClient.prefetchQuery(
+				LayerQueriesClient.getQueryLayersOptions(LQY.getEditFilterPageBaseInput(entity.filter), { cfg: colConfig }),
+			)
 		},
 	}
 }

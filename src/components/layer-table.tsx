@@ -32,7 +32,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-rea
 import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
-import { ConstraintDisplay } from './constraint-display'
+import { ConstraintMatchesIndicator } from './constraint-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { TablePagination } from './table-pagination'
@@ -43,10 +43,9 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
-import type { RowData } from '@/frame-partials/layer-table.partial'
 import type { CheckedState } from '@radix-ui/react-checkbox'
 
-const columnHelper = createColumnHelper<RowData>()
+const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
@@ -203,11 +202,11 @@ function buildColDefs(
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) => useFrameStore(frameKey, s => selector(s.layerTable))
 	const getTableFrame = () => getFrameState(frameKey).layerTable
 
-	const tableColDefs: ColumnDef<RowData>[] = [
+	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
 		{
 			id: 'select',
 			size: 40,
-			header: function SelectHeader({ table }) {
+			header: function SelectHeader() {
 				const [selectState, disabled] = useTableFrame(ZusUtils.useShallow(table => {
 					if (table.pageData === null) return [null, true] as const
 					const selected = new Set(table.selected)
@@ -339,17 +338,12 @@ function buildColDefs(
 		enableHiding: false,
 		size: 80,
 		cell: ({ row }) => {
-			const matchingConstraints = row.original.constraints.matchedConstraints
-
-			if (!matchingConstraints || matchingConstraints.length === 0) {
-				return null
-			}
-
 			return (
-				<ConstraintDisplay
+				<ConstraintMatchesIndicator
 					side="right"
 					padEmpty
-					matchingConstraints={matchingConstraints}
+					matchingConstraintIds={row.original.constraints.matchedConstraintIds}
+					queriedConstraints={row.original.constraints.queriedConstraints}
 					height={32}
 				/>
 			)
@@ -479,7 +473,7 @@ function getMouseDownRowIndexStore(frameKey: LayerTablePrt.Key) {
 	return MouseDownRowIndexStoreMap.get(frameKey)!
 }
 
-const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: LayerTablePrt.Key; row: Row<LayerTablePrt.RowData> }) {
+const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: LayerTablePrt.Key; row: Row<LayerQueriesClient.RowData> }) {
 	const { row } = props
 	const id = row.original.id
 	const getStore = () => getFrameState(props.frameKey)
@@ -827,7 +821,7 @@ function SetRawLayerDialog(props: {
 	return (
 		props.open && (
 			<div
-				className="flex items-center space-x-1 whitespace-nowrap w-full"
+				className="flex items-center space-x-1 whitespace-nowrap w-full px-1"
 				onKeyDown={(e) => {
 					if (e.key === 'Enter' && e.target === inputRef.current) {
 						e.preventDefault()

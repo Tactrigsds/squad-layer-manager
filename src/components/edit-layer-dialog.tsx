@@ -93,17 +93,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			</div>
 
 			<HeadlessDialogFooter>
-				<div className="flex items-center justify-between w-full">
-					<Button
-						variant="secondary"
-						onClick={() => {
-							const frameState = getFrameState(frameKey)
-							frameState.filterMenu.resetAllFilters()
-						}}
-					>
-						Clear All
-					</Button>
-
+				<div className="flex items-center justify-end w-full">
 					<Button disabled={!canSubmit} onClick={submit}>
 						Submit
 					</Button>

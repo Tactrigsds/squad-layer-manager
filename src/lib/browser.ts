@@ -35,7 +35,7 @@ export const userIsActive$ = (function createPageActivityObservable(): Rx.Observ
 	)
 
 	return userActions$.pipe(
-		Rx.observeOn(Rx.asyncScheduler),
+		Rx.throttleTime(300, Rx.asyncScheduler, { leading: true, trailing: true }),
 		Rx.map((): true => true),
 		Rx.share(),
 	)

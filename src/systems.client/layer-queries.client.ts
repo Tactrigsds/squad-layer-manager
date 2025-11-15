@@ -88,11 +88,6 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 
 export const useIsFetchingLayerData = Zus.create(() => false)
 
-export function useQueryLayersOptions(input: LQY.LayersQueryInput, errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>) {
-	const counters = Zus.useStore(Store, s => s.counters)
-	return getQueryLayersOptions(input, errorStore, counters)
-}
-
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
 }
@@ -100,7 +95,8 @@ function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constra
 export type ConstraintRowDetails = {
 	values: boolean[]
 	violationDescriptors: LQY.MatchDescriptor[]
-	matchedConstraints: LQY.Constraint[]
+	queriedConstraints: LQY.Constraint[]
+	matchedConstraintIds: string[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
 }
 export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
@@ -110,8 +106,9 @@ export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': Cons
 function layerToRowData(
 	layer: any,
 	userCanForceSelect: boolean,
-	queryConstraints: LQY.Constraint[],
+	queriedConstraints: LQY.Constraint[],
 ): RowData {
+	// TODO  this is madness
 	const constraintValues = Array.isArray(layer.constraints)
 		? layer.constraints
 		: layer.constraints?.values ?? []
@@ -120,17 +117,21 @@ function layerToRowData(
 		? layer.violationDescriptors
 		: layer.violationDescriptors ?? []
 
-	const matchedConstraints = queryConstraints.filter((c: LQY.Constraint, i: number) => constraintValues[i])
+	const matchedConstraintIds = queriedConstraints.flatMap((c, i) => {
+		if (constraintValues[i]) return [c.id]
+		return []
+	})
 	const matchedConstraintDescriptors = violationDescriptors
 
 	const constraints: ConstraintRowDetails = {
 		values: constraintValues,
 		violationDescriptors,
-		matchedConstraints,
+		queriedConstraints,
+		matchedConstraintIds,
 		matchedConstraintDescriptors,
 	}
 
-	const isRowDisabled = !userCanForceSelect && getIsLayerDisabled({ ...layer, constraints }, userCanForceSelect, queryConstraints)
+	const isRowDisabled = !userCanForceSelect && getIsLayerDisabled({ ...layer, constraints }, userCanForceSelect, queriedConstraints)
 
 	return {
 		...layer,
@@ -145,19 +146,25 @@ export type QueryLayersPageData = {
 	pageCount: number
 	input: LQY.LayersQueryInput
 }
+export type QueryLayersInputOpts = {
+	cfg?: LQY.EffectiveColumnAndTableConfig
+	selectedLayers?: L.LayerId[]
+	sort?: LQY.LayersQueryInput['sort']
+	pageSize?: number
+	pageIndex?: number
+}
 
 export function getQueryLayersOptions(
-	input: LQY.LayersQueryInput,
+	baseInput: LQY.BaseQueryInput,
+	inputOpts: QueryLayersInputOpts,
 	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
 	counters?: LayerCtxModifiedCounters,
 ) {
 	counters = counters ?? Store.getState().counters
+	const input = getQueryLayersInput(baseInput, inputOpts)
 	return {
 		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
 		queryFn: async () => {
-			if (input.sort?.type === 'random' && !input.sort.seed) {
-				throw new Error('Random sort requires a random seed when used with react query')
-			}
 			const res = await sendQuery('queryLayers', input)
 			if (res?.code === 'err:invalid-node') {
 				console.error('queryLayers: Invalid node error:', res.errors)
@@ -226,45 +233,34 @@ export function getQueryLayersOptions(
 	}
 }
 
-export async function prefetchLayersQuery(baseInput: LQY.BaseQueryInput, errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>) {
-	const cfg = await ConfigClient.fetchEffectiveColConfig()
-	const input = getQueryLayersInput(baseInput, { cfg })
-	const baseQuery = getQueryLayersOptions(input, errorStore, Store.getState().counters)
-	return await RPC.queryClient.prefetchQuery(
-		baseQuery,
-	)
-}
-
-export function getQueryLayersInput(queryContext: LQY.BaseQueryInput, opts: {
-	cfg?: LQY.EffectiveColumnAndTableConfig
-	selectedLayers?: L.LayerId[]
-	sort?: LQY.LayersQueryInput['sort']
-	pageSize?: number
-	pageIndex?: number
-}): LQY.LayersQueryInput {
-	const sort = opts?.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
+function getQueryLayersInput(baseInput: LQY.BaseQueryInput, opts: QueryLayersInputOpts): LQY.LayersQueryInput {
+	let sort = opts?.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
+	if (sort?.type === 'random' && !sort.seed) {
+		console.error('Random sort requires a random seed when used with react query')
+		sort = { ...sort, seed: 'SUPER_RANDOM_SEED' }
+	}
 	const pageSize = opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE
 	const pageIndex = opts.pageIndex ?? 0
 	const selectedLayers = opts.selectedLayers
-	if (queryContext.cursor && !queryContext.action) {
-		queryContext = { ...queryContext, action: 'add' }
+	if (baseInput.cursor && !baseInput.action) {
+		baseInput = { ...baseInput, action: 'add' }
 	}
 
 	if (selectedLayers) {
 		const filter = FB.comp(
 			FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, opts.cfg))),
 		)
-		queryContext = {
-			...queryContext,
+		baseInput = {
+			...baseInput,
 			constraints: [
-				...(queryContext.constraints?.filter(c => !c.filterResults) ?? []),
+				...(baseInput.constraints?.filter(c => !c.filterResults) ?? []),
 				CB.filterAnon('show-selected', filter),
 			],
 		}
 	}
 
 	return {
-		...queryContext,
+		...baseInput,
 		pageIndex,
 		sort,
 		pageSize,
@@ -327,40 +323,45 @@ export function useLayerItemStatusDataForItem(
 	layerItem: LQY.LayerItem | LQY.ItemId,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
-	const allConstraints = useLayerItemStatusConstraints()
-	const queryRes = useLayerItemStatuses(allConstraints, options)
-	const itemId = LQY.resolveId(layerItem)
+	const queriedConstraints = useLayerItemStatusConstraints()
 	layerItem = typeof layerItem === 'string' ? LQY.fromSerial(layerItem) : layerItem
 	const hoveredConstraintItemId = Zus.useStore(Store, s => s.hoveredConstraintItemId ?? undefined)
+	const queryRes = useLayerItemStatuses(queriedConstraints, options)
+	if (!queryRes.data) return null
+	const itemId = LQY.resolveId(layerItem)
 
-	const allViolationDescriptors = queryRes.data?.matchDescriptors
+	const allMatchDescriptors = queryRes.data.matchDescriptors
 
 	const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
 			&& filterAndReportInvalidDescriptors(
-				allConstraints,
-				allViolationDescriptors?.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
+				queriedConstraints,
+				allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
 			)
 		|| undefined
 
 	const localMatchDescriptors = hoveredConstraintItemId === itemId
 			&& filterAndReportInvalidDescriptors(
-				allConstraints,
-				allViolationDescriptors?.get(itemId),
+				queriedConstraints,
+				allMatchDescriptors.get(itemId),
 			)
 		|| undefined
 
 	const matchingDescriptors = filterAndReportInvalidDescriptors(
-		allConstraints,
-		queryRes.data?.matchDescriptors.get(itemId),
+		queriedConstraints,
+		allMatchDescriptors.get(itemId),
 	) ?? []
 
 	// we're much more confident that hovered descriptors are present
 
-	const matchingConstraints = allConstraints.filter(c => matchingDescriptors.find(d => d.constraintId === c.id))
+	const matchingConstraintIds = queriedConstraints.flatMap(c => {
+		if (!matchingDescriptors.some(d => d.constraintId === c.id)) return []
+		return c.id
+	})
 
 	return {
-		present: queryRes.data?.present,
-		matchingConstraints,
+		present: queryRes.data.present,
+		queriedConstraints,
+		matchingConstraintIds,
 		matchingDescriptors,
 
 		// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item

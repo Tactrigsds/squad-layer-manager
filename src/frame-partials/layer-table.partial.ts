@@ -1,5 +1,5 @@
 import * as Arr from '@/lib/array'
-import { distinctDeepEquals, traceTag } from '@/lib/async'
+import { distinctDeepEquals, toCold, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type * as ZusUtils from '@/lib/zustand'
@@ -88,14 +88,6 @@ export function reset(input: Input, draft: Im.WritableDraft<LayerTable>) {
 	draft.errors = []
 	draft.columnVisibility = input.columnVisibility
 }
-
-export type ConstraintRowDetails = {
-	values: boolean[]
-	violationDescriptors: LQY.MatchDescriptor[]
-	matchedConstraints: LQY.Constraint[]
-	matchedConstraintDescriptors: LQY.MatchDescriptor[]
-}
-export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
 
 export type LayerTable = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
@@ -268,37 +260,55 @@ export function initLayerTable(
 	setStore({ layerTable: initialLayerTable })
 	initialLayerTable.setSelected(input.selected)
 
-	// -------- schedule queries --------
+	// -------- schedule queries (poor mans useQuery) --------
 	args.sub.add(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
+			Rx.observeOn(Rx.asyncScheduler),
 			Rx.startWith([args.get(), null] as const),
-			Rx.filter(([store]) => !!store.baseQueryInput),
-			Rx.map(([store]) => selectQueryInput(store)),
-			distinctDeepEquals(),
-			// Rx.auditTime(250),
-			Rx.switchMap(async (queryInput) => {
-				const base = LayerQueriesClient.getQueryLayersOptions(queryInput)
+			Rx.map(([store, prev]) => {
+				if (!store.baseQueryInput) return null
+				const getOptionsArgs = (store: Store & Predicates): [LQY.BaseQueryInput, LayerQueriesClient.QueryLayersInputOpts] =>
+					[store.baseQueryInput ?? {}, {
+						cfg: store.layerTable.colConfig,
+						selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
+						pageIndex: store.layerTable.pageIndex,
+						pageSize: store.layerTable.pageSize,
+						sort: store.layerTable.sort,
+					}] as const
 
-				const data = await (async () => {
-					try {
+				const optionsArgs = getOptionsArgs(store)
+				if (!prev || Obj.deepEqual(getOptionsArgs(prev), optionsArgs)) return null
+
+				const data$ = toCold(async () => {
+					const data = await RPC.queryClient.fetchQuery(LayerQueriesClient.getQueryLayersOptions(...optionsArgs))
+					if (!data || data.code !== 'ok') return null
+					return data
+				})
+
+				return data$.pipe(Rx.tap({
+					subscribe: () => {
 						set({ isFetching: true })
-						const data = await RPC.queryClient.fetchQuery(base)
-						return data
-					} finally {
+					},
+					complete: () => {
 						set({ isFetching: false })
-					}
-				})()
-				if (!data || data.code !== 'ok') return null
-				return data
+					},
+					unsubscribe: () => {
+						set({ isFetching: false })
+					},
+				}))
 			}),
+			Rx.filter(o => !!o),
+			Rx.throttleTime(250, undefined, { leading: true, trailing: true }),
+			Rx.switchMap(o => o),
 			Rx.retry({
 				delay: (error, count) => {
-					console.error('error during query setup', error)
+					console.error('error during query:', error)
 					return Rx.timer(Math.min(Math.pow(2, count) * 250, 10_000))
 				},
 			}),
 		).subscribe((data) => {
+			if (!data) return
 			set({ pageData: data })
 		}),
 	)
@@ -371,16 +381,6 @@ export function getTanstackActions(table: LayerTable) {
 	}
 
 	return { setSorting, setRowSelection: onSetRowSelection }
-}
-
-export function selectQueryInput(store: Store & Predicates): LQY.LayersQueryInput {
-	return LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
-		cfg: store.layerTable.colConfig,
-		selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
-		pageIndex: store.layerTable.pageIndex,
-		pageSize: store.layerTable.pageSize,
-		sort: store.layerTable.sort,
-	})
 }
 
 export function selectEditingSingleValue(state: LayerTable) {

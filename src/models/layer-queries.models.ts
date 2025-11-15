@@ -175,7 +175,7 @@ export type GenLayerQueueItemsOptions = {
 	baseFilterId?: F.FilterEntityId
 }
 
-export function getEditFilterPageInput(filter: F.FilterNode): BaseQueryInput {
+export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput {
 	return { constraints: [CB.filterAnon('edited-filter', filter)] }
 }
 

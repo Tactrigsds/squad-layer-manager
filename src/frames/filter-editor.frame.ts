@@ -160,7 +160,7 @@ const setup: Frame['setup'] = (args) => {
 		const validatedFilter = F.isValidFilterNode(filter) ? filter : null
 		set({
 			validatedFilter: validatedFilter ?? null,
-			baseQueryInput: validatedFilter ? LQY.getEditFilterPageInput(validatedFilter) : undefined,
+			baseQueryInput: validatedFilter ? LQY.getEditFilterPageBaseInput(validatedFilter) : undefined,
 			valid: validatedFilter !== null,
 			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
@@ -168,7 +168,7 @@ const setup: Frame['setup'] = (args) => {
 	void sleep(0).then(() => validate(get()))
 
 	const validateSub = args.update$.pipe(
-		Rx.debounceTime(150),
+		Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }),
 		Rx.retry(),
 	).subscribe(([state, prev]) => {
 		if (state.tree !== prev.tree) {

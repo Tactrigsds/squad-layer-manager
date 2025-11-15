@@ -141,32 +141,21 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			</div>
 
 			<HeadlessDialogFooter>
-				<div className="flex items-center justify-between w-full">
-					<Button
-						variant="secondary"
-						onClick={() => {
-							const frameState = getFrameState(frameKey)
-							frameState.filterMenu.resetAllFilters()
-						}}
-					>
-						Clear All
+				<div className="flex items-center justify-end w-full space-x-2">
+					{props.footerAdditions}
+					{!props.pinMode && (
+						<TabsList
+							options={[
+								{ label: 'Vote', value: 'vote' },
+								{ label: 'Set Layer', value: 'layers' },
+							]}
+							active={selectMode}
+							setActive={setAdditionType}
+						/>
+					)}
+					<Button disabled={!canSubmit} onClick={submit}>
+						Submit
 					</Button>
-					<div className="flex items-center space-x-2">
-						{props.footerAdditions}
-						{!props.pinMode && (
-							<TabsList
-								options={[
-									{ label: 'Vote', value: 'vote' },
-									{ label: 'Set Layer', value: 'layers' },
-								]}
-								active={selectMode}
-								setActive={setAdditionType}
-							/>
-						)}
-						<Button disabled={!canSubmit} onClick={submit}>
-							Submit
-						</Button>
-					</div>
 				</div>
 			</HeadlessDialogFooter>
 		</HeadlessDialogContent>

@@ -1,7 +1,6 @@
 import { frameManager } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import { globalToast$ } from '@/hooks/use-global-toast'
-import { sleep } from '@/lib/async'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
@@ -179,7 +178,7 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 				onEnter(_args) {},
 				onUnload(args) {
 					// crudely wait for unload to render as  .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
-					if (args.data) void sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
+					if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.selectLayersFrame))
 				},
 				checkShouldUnload(args) {
 					if (args.key.opts.cursor.type !== 'item-relative') return false
@@ -582,19 +581,21 @@ function createStore() {
 			},
 
 			preloadActivity(update) {
-				const config = ConfigClient.getConfig()
-				if (!config) return
-				let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
-				if (!prev) {
-					prev = {
-						_tag: 'branch',
-						id: 'ON_QUEUE_PAGE',
-						opts: {},
-						child: {},
+				requestIdleCallback(() => {
+					const config = ConfigClient.getConfig()
+					if (!config) return
+					let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
+					if (!prev) {
+						prev = {
+							_tag: 'branch',
+							id: 'ON_QUEUE_PAGE',
+							opts: {},
+							child: {},
+						}
 					}
-				}
-				const next = update(prev)
-				dispatchClientActivityEvents(next, prev, true)
+					const next = update(prev)
+					dispatchClientActivityEvents(next, prev, true)
+				})
 			},
 
 			saving: false,

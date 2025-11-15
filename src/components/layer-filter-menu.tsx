@@ -26,6 +26,16 @@ export default function LayerFilterMenu(props: { frameKey: SelectLayersFrame.Key
 					frameKey={props.frameKey}
 				/>
 			))}
+			<Button
+				className="col-span-full"
+				variant="secondary"
+				onClick={() => {
+					const frameState = getFrameState(props.frameKey)
+					frameState.filterMenu.resetAllFilters()
+				}}
+			>
+				<Icons.Trash /> Clear All
+			</Button>
 		</div>
 	)
 }
@@ -59,9 +69,9 @@ function LayerFilterMenuItem(
 
 	return (
 		<React.Fragment key={props.field}>
-			{(props.field === 'Map' || props.field === 'Alliance_1') && <Separator className="col-span-4 my-2" />}
+			{(props.field === 'Map' || props.field === 'Alliance_1') && <Separator className="col-span-full my-2" />}
 			{props.field === 'Alliance_2' && (
-				<div className="col-span-4 space-x-1 flex flex-row items-center">
+				<div className="col-span-full gap-1 flex items-center">
 					<Button
 						title="Swap Factions"
 						disabled={swapFactionsDisabled}
@@ -73,7 +83,7 @@ function LayerFilterMenuItem(
 					>
 						<Icons.FlipVertical2 />
 					</Button>
-					<Separator />
+					<Separator className="flex-1 shrink-0" />
 				</div>
 			)}
 			<Comparison
@@ -104,7 +114,7 @@ function LayerFilterMenuItem(
 			>
 				<Icons.Trash />
 			</Button>
-			{props.field === 'Unit_2' && <Separator className="col-span-4 my-2" />}
+			{props.field === 'Unit_2' && <Separator className="col-span-full my-2" />}
 		</React.Fragment>
 	)
 }

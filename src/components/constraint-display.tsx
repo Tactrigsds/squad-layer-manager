@@ -1,4 +1,5 @@
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
@@ -13,19 +14,20 @@ import { FilterEntityLink } from './filter-entity-select'
 import { Separator } from './ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
-export type ConstraintDisplayProps = {
-	matchingConstraints: LQY.Constraint[]
+export type ConstraintMatchesIndicator = {
+	queriedConstraints: LQY.Constraint[]
+	matchingConstraintIds: string[]
 	padEmpty?: boolean
 	className?: string
 	layerItemId?: string
 	side?: TooltipContentProps['side']
-	height?: number // Height in pixels, defaults to 24
+	height?: number
 }
 
-export function ConstraintDisplay(props: ConstraintDisplayProps) {
+export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	const filters = FilterEntityClient.useFilterEntities()
 	const height = props.height ?? 24
-	const iconSize = height * 0.75 // Icons are 75% of container height
+	const iconSize = height * 0.75
 
 	const onMouseOver = () => {
 		LQYClient.Store.getState().setHoveredConstraintItemId(props.layerItemId ?? null)
@@ -36,10 +38,62 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 		state.setHoveredConstraintItemId(null)
 	}
 
-	const constraints = props.matchingConstraints.filter(v => v.indicateMatches) as LQY.ViewableConstraint[]
+	const indicatorIcons: React.ReactNode[] = []
+	const renderedRepeats: Extract<LQY.ViewableConstraint, { type: 'do-not-repeat' }>[] = []
+	const renderedFilters: [string, React.ReactNode][] = []
+	for (const constraint of props.queriedConstraints) {
+		if (!constraint.indicateMatches) continue
+		const matched = props.matchingConstraintIds.includes(constraint.id)
+		if (constraint.type === 'do-not-repeat') {
+			if (!matched) continue
+			renderedRepeats.push(constraint)
+			continue
+		}
+		if (constraint.type === 'filter-entity') {
+			const filter = filters.get(constraint.filterId)
+			if (!filter) {
+				console.warn(`Filter not found for constraint ${constraint.id}`)
+				continue
+			}
+			let emoji: string | undefined | null
+			let alertMessage: string | undefined | null
+			if (constraint.invert || !matched) {
+				if (!filter.invertedEmoji || !filter.invertedAlertMessage) continue
+				emoji = filter.invertedEmoji
+				alertMessage = filter.invertedAlertMessage
+			} else {
+				emoji = filter.emoji
+				alertMessage = filter.alertMessage
+			}
+			if (emoji) {
+				indicatorIcons.push(
+					<EmojiDisplay key={constraint.id} showTooltip={false} emoji={emoji} size={iconSize} />,
+				)
+			}
 
-	if (constraints.length == 0) {
-		// Render empty container with fixed height to prevent layout shift
+			renderedFilters.push(
+				[
+					constraint.id,
+					<Item key={constraint.id} variant="default" className="w-full">
+						<ItemMedia>
+							{emoji ? <EmojiDisplay emoji={emoji} /> : <Icons.Filter className="bg-orange-500" />}
+						</ItemMedia>
+						<ItemContent>
+							<ItemTitle>{filter.name}</ItemTitle>
+							{alertMessage && <ItemDescription className="whitespace-normal line-clamp-none">{alertMessage}</ItemDescription>}
+						</ItemContent>
+						<ItemActions>
+							<FilterEntityLink filterId={filter.id} />
+						</ItemActions>
+					</Item>,
+				],
+			)
+			continue
+		}
+		assertNever(constraint)
+	}
+
+	if (renderedFilters.length === 0 && renderedRepeats.length === 0) {
 		return props.padEmpty
 			? (
 				<div
@@ -49,27 +103,12 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 			)
 			: null
 	}
-	const repeatMatches = constraints.filter(v => v.type === 'do-not-repeat')
-	const filterMatches = constraints.flatMap(constraint => {
-		if (constraint.type === 'do-not-repeat') return []
-		const filter = filters.get(constraint.filterId)
-		if (!filter) {
-			console.warn(`Filter not found for constraint ${constraint.id}`)
-			return []
-		}
-		return [[constraint, filter] as const]
-	}) as Array<[LQY.ViewableConstraint, F.FilterEntity]>
 
-	const icons: React.ReactNode[] = []
-	// always appears at the start
-	if (repeatMatches.length > 0) icons.push(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
-	for (const [constraint, filter] of filterMatches) {
-		if (!filter.emoji) {
-			icons.push(<Icons.Filter key={constraint.id} className="bg-orange-500" size={iconSize} />)
-		} else {
-			icons.push(<EmojiDisplay key={constraint.id} showTooltip={false} emoji={filter.emoji} size={iconSize} />)
-		}
+	// repeat icon always appears at the start
+	if (renderedFilters.length > 0 && indicatorIcons.length === 0) {
+		indicatorIcons.push(<Icons.Filter key="__filtered__" className="bg-orange-500" />)
 	}
+	if (renderedRepeats.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
 
 	return (
 		<Tooltip delayDuration={0}>
@@ -79,18 +118,18 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 				onMouseOver={props.layerItemId ? onMouseOver : undefined}
 				onMouseOut={props.layerItemId ? onMouseOut : undefined}
 			>
-				{icons}
+				{indicatorIcons}
 			</TooltipTrigger>
 			<TooltipContent
 				className="max-w-sm p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
 				align="start"
 				side={props.side}
 			>
-				{repeatMatches.length > 0 && (
+				{renderedRepeats.length > 0 && (
 					<div className="flex flex-col">
 						<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
 						<ItemGroup>
-							{repeatMatches.map((constraint, index) => {
+							{renderedRepeats.map((constraint, index) => {
 								return (
 									<React.Fragment key={constraint.id}>
 										{index > 0 && <Separator key={`separator-${constraint.id}`} />}
@@ -111,30 +150,17 @@ export function ConstraintDisplay(props: ConstraintDisplayProps) {
 						</ItemGroup>
 					</div>
 				)}
-				{filterMatches.length > 0 && (
+				{renderedFilters.length > 0 && (
 					<div className="flex flex-col">
 						<div className={cn(Typo.Label, 'text-foreground w-full text-center')}>Matching Filters</div>
 						<ItemGroup>
-							{filterMatches.map(([v, filter], index) => {
-								return [
-									index > 0 && <Separator key={`separator-${v.id}`} />,
-									(
-										<Item key={v.id} variant="default" className="w-full">
-											<ItemMedia>
-												{filter.emoji ? <EmojiDisplay emoji={filter.emoji} /> : <Icons.Filter key={v.id} className="bg-orange-500" />}
-											</ItemMedia>
-											<ItemContent>
-												<ItemTitle>{filter.name}</ItemTitle>
-												{filter.alertMessage && (
-													<ItemDescription className="whitespace-normal line-clamp-none">{filter.alertMessage}</ItemDescription>
-												)}
-											</ItemContent>
-											<ItemActions>
-												<FilterEntityLink filterId={filter.id} />
-											</ItemActions>
-										</Item>
-									),
-								]
+							{renderedFilters.flatMap(([constraintId, elt], index) => {
+								return (
+									<React.Fragment key={constraintId}>
+										{index > 0 && <Separator key={`separator-${constraintId}`} />}
+										{elt}
+									</React.Fragment>
+								)
 							})}
 						</ItemGroup>
 					</div>

@@ -170,10 +170,14 @@ function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: Se
 	})
 
 	if (!filter) return
+	let emoji = filter?.emoji
+	if (appliedState === 'inverted' && filter.invertedEmoji) {
+		emoji = filter.invertedEmoji
+	}
 
 	return (
 		<TriStateCheckbox checked={appliedState} onCheckedChange={changeThrottled}>
-			{filter?.emoji && <EmojiDisplay size="sm" emoji={filter?.emoji} />}
+			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
 			<span>{filter?.name}</span>
 		</TriStateCheckbox>
 	)

@@ -33,7 +33,6 @@
 		"@typescript-eslint/consistent-type-imports": "error",
 		"react/jsx-no-useless-fragment": "error",
 		"react/jsx-curly-brace-presence": "warn",
-		"react/jsx-boolean-value": "warn",
 		"react/button-has-type": "error",
 		"import/no-named-as-default": "warn",
 		"import/extensions": "error",
@@ -68,6 +67,7 @@
 		"react/jsx-handler-names": "off",
 		"react/react-in-jsx-scope": "off",
 		"react/jsx-filename-extension": "off",
+		"react/jsx-boolean-value": "off",
 
 		"import/no-default-export": "off",
 		"import/no-named-export": "off",

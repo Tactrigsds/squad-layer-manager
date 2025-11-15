@@ -8,7 +8,7 @@ import * as LQYClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { ConstraintDisplay } from './constraint-display.tsx'
+import { ConstraintMatchesIndicator } from './constraint-display.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
 export default function LayerDisplay(
@@ -30,11 +30,12 @@ export default function LayerDisplay(
 	const statusData = LQYClient.useLayerItemStatusDataForItem(layerItemId)
 	const badges: React.ReactNode[] = []
 
-	if (statusData.matchingConstraints) {
+	if (statusData) {
 		badges.push(
-			<ConstraintDisplay
+			<ConstraintMatchesIndicator
 				key="constraint violation display"
-				matchingConstraints={statusData.matchingConstraints}
+				queriedConstraints={statusData.queriedConstraints}
+				matchingConstraintIds={statusData.matchingConstraintIds}
 				layerItemId={layerItemId}
 			/>,
 		)
@@ -47,7 +48,7 @@ export default function LayerDisplay(
 		badges.push(
 			<Tooltip key="is unknown layer">
 				<TooltipTrigger>
-					<Icons.ShieldOff className="text-red-500" />
+					<Icons.ShieldBan className="text-red-800" />
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
@@ -56,7 +57,7 @@ export default function LayerDisplay(
 				</TooltipContent>
 			</Tooltip>,
 		)
-	} else if (statusData.present && !statusData.present?.has(L.normalize(props.item.layerId))) {
+	} else if (statusData && !statusData.present.has(L.normalize(props.item.layerId))) {
 		badges.push(
 			<Tooltip key="layer doesn't exist">
 				<TooltipTrigger>
@@ -76,7 +77,7 @@ export default function LayerDisplay(
 					layerId={props.item.layerId}
 					teamParity={teamParity}
 					backfillLayerId={props.backfillLayerId}
-					matchDescriptors={statusData.highlightedMatchDescriptors}
+					matchDescriptors={statusData?.highlightedMatchDescriptors}
 					allowShowInfo={props.allowShowInfo}
 				/>
 			</span>

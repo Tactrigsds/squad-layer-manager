@@ -56,14 +56,17 @@ export const filters = mysqlTable('filters', {
 	id: varchar('id', { length: 64 }).primaryKey().notNull(),
 	name: varchar('name', { length: 128 }).notNull(),
 	description: varchar('description', { length: 2048 }),
-	alertMessage: varchar('alertMessage', { length: 280 }),
 	filter: json('filter').notNull(),
 	owner: bigint('owner', { mode: 'bigint', unsigned: true }).references(
 		() => users.discordId,
 		{ onDelete: 'set null' },
 	),
+	alertMessage: varchar('alertMessage', { length: 280 }),
 	// either a unicode emoji or a custom emoji (prefix discord_)
 	emoji: varchar('emoji', { length: 64 }).unique(),
+	invertedAlertMessage: varchar('invertedAlertMessage', { length: 280 }),
+	// either a unicode emoji or a custom emoji (prefix discord_)
+	invertedEmoji: varchar('invertedEmoji', { length: 64 }),
 })
 
 export const filterUserContributors = mysqlTable(

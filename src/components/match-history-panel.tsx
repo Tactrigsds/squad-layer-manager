@@ -20,7 +20,7 @@ import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
-import { ConstraintDisplay } from './constraint-display'
+import { ConstraintMatchesIndicator } from './constraint-display'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
@@ -79,9 +79,11 @@ function MatchHistoryRow({
 		return null
 	}
 
-	const violationDisplayElt = statusData.matchingConstraints && (
-		<ConstraintDisplay
-			matchingConstraints={statusData.matchingConstraints}
+	const violationDisplayElt = statusData && (
+		<ConstraintMatchesIndicator
+			queriedConstraints={statusData.queriedConstraints}
+			matchingConstraintIds={statusData.matchingConstraintIds}
+			padEmpty={true}
 			layerItemId={layerItemId}
 		/>
 	)
@@ -90,8 +92,9 @@ function MatchHistoryRow({
 		entry.layerId,
 		entry.ordinal,
 		globalSettings.displayTeamsNormalized,
-		statusData.highlightedMatchDescriptors,
+		statusData?.highlightedMatchDescriptors,
 	)
+
 	const layer = L.toLayer(entry.layerId)
 	let outcomeDisp: React.ReactNode
 	if (entry.status === 'in-progress') {
