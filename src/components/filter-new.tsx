@@ -278,7 +278,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 					{(field) => {
 						const label = 'Description'
 						return (
-							<div className="flex flex-col space-y-2 flex-grow">
+							<div className="flex flex-col space-y-2">
 								<Label htmlFor={field.name}>{label}</Label>
 								<Textarea
 									id={field.name}

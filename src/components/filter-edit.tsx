@@ -402,36 +402,34 @@ export function FilterEdit(
 								</div>
 
 								{/* Right Column - Description */}
-								<div className="pt-8">
-									<form.Field
-										name="description"
-										validators={{ onChange: F.DescriptionSchema.nullable() }}
-									>
-										{(field) => {
-											const label = 'Description'
-											return (
-												<div className="flex flex-col space-y-2">
-													<Label htmlFor={field.name}>{label}</Label>
-													<Textarea
-														id={field.name}
-														placeholder={label}
-														defaultValue={field.state.value ?? ''}
-														onBlur={field.handleBlur}
-														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
-														rows={15}
-														className="font-mono text-sm"
-													/>
-													{field.state.meta.errors.length > 0 && (
-														<Alert variant="destructive">
-															<AlertTitle>{label}:</AlertTitle>
-															<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-														</Alert>
-													)}
-												</div>
-											)
-										}}
-									</form.Field>
-								</div>
+								<form.Field
+									name="description"
+									validators={{ onChange: F.DescriptionSchema.nullable() }}
+								>
+									{(field) => {
+										const label = 'Description'
+										return (
+											<div className="flex flex-col space-y-2">
+												<Label htmlFor={field.name}>{label}</Label>
+												<Textarea
+													id={field.name}
+													placeholder={label}
+													defaultValue={field.state.value ?? ''}
+													onBlur={field.handleBlur}
+													onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
+													rows={15}
+													className="font-mono text-sm flex-grow"
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertTitle>{label}:</AlertTitle>
+														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)
+									}}
+								</form.Field>
 							</div>
 
 							<Button
