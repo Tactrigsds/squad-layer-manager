@@ -77,7 +77,7 @@ const [_useServerUpdate, serverUpdate$] = ReactRx.bind<SLL.Update>(
 
 export const Store = createStore()
 
-type ActivityLoaderConfigOptions<Predicate, Data = never> =
+type ActivityLoaderConfigOptions<Key, Data = never> =
 	& {
 		// the time before we unload an inactive action. default no unload
 		staleTime?: number
@@ -89,14 +89,17 @@ type ActivityLoaderConfigOptions<Predicate, Data = never> =
 		// default false
 		unloadOnLeave?: boolean
 
-		onEnter?: (opts: { activity: Predicate; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
-		onUnload?: (opts: { activity: Predicate; data: Data | undefined; state: Im.WritableDraft<Store> }) => Promise<void> | void
-		onLeave?: (opts: { activity: Predicate; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
+		onEnter?: (opts: { key: Key; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
+		onUnload?: (opts: { key: Key; data: Data | undefined; state: Im.WritableDraft<Store> }) => Promise<void> | void
+		onLeave?: (opts: { key: Key; data: Data; draft: Im.WritableDraft<Store> }) => Promise<void> | void
+
+		// use in cases where this loader has ephemeral external dependencies which (we use it to unload entries that reference a removed itemId)
+		checkShouldUnload?: (opts: { key: Key; data: Data | undefined; state: Store }) => boolean
 	}
 	& ({
-		load: (opts: { activity: Predicate; preload: boolean; state: Store }) => Data
+		load: (opts: { activity: Key; preload: boolean; state: Store }) => Data
 	} | {
-		loadAsync: (opts: { activity: Predicate; preload: boolean; state: Store; abortController: AbortController }) => Promise<Data>
+		loadAsync: (opts: { activity: Key; preload: boolean; state: Store; abortController: AbortController }) => Promise<Data>
 	})
 
 function hasSyncLoader<Config extends ActivityLoaderConfig>(config: Config): config is Extract<Config, { load: (...args: any[]) => any }> {
@@ -178,6 +181,11 @@ const ACTIVITY_LOADER_CONFIGS = (function getActivityLoaderConfigs() {
 					// crudely wait for unload to render as  .teardown will probably trigger a react rerender by itself. in future we could do this in a different lifecycle event
 					if (args.data) void sleep(0).then(() => frameManager.teardown(args.data!.selectLayersFrame))
 				},
+				checkShouldUnload(args) {
+					if (args.key.opts.cursor.type !== 'item-relative') return false
+					const itemId = args.key.opts.cursor.itemId
+					return !LL.findItemById(args.state.layerList, itemId)
+				},
 			},
 		),
 	] as const
@@ -199,16 +207,29 @@ function createStore() {
 				set({ isModified })
 			}
 
-			if (prev.presence !== state.presence) {
-				set({ userPresence: SLL.resolveUserPresence(state.presence) })
+			;(() => {
+				if (prev.presence !== state.presence) {
+					set({ userPresence: SLL.resolveUserPresence(state.presence) })
 
-				const config = ConfigClient.getConfig()
-				if (!config) return
-				const wsClientId = config.wsClientId
-				const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
-				const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
-				if (prevClientActivityState !== clientActivityState) {
-					dispatchClientActivityEvents(clientActivityState, prevClientActivityState, false)
+					const config = ConfigClient.getConfig()
+					if (!config) return
+					const wsClientId = config.wsClientId
+					const prevClientActivityState = prev.presence.get(wsClientId)?.activityState ?? null
+					const clientActivityState = state.presence.get(wsClientId)?.activityState ?? null
+					if (prevClientActivityState !== clientActivityState) {
+						dispatchClientActivityEvents(clientActivityState, prevClientActivityState, false)
+					}
+				}
+			})()
+			for (const entry of state.activityLoaderCache) {
+				const config = ACTIVITY_LOADER_CONFIGS.find(e => e.name === entry.name)
+				if (!config?.checkShouldUnload) continue
+
+				const shouldUnload = config.checkShouldUnload({ key: entry.key, data: entry.data, state })
+				if (shouldUnload) {
+					set(Im.produce<Store>(draft => {
+						unloadLoaderEntry(config, entry.key, draft)
+					}))
 				}
 			}
 		})
@@ -231,13 +252,13 @@ function createStore() {
 							if (!entry.active || !Obj.deepEqual(prevCacheKey, entry.key)) continue
 							if (!loaderCache.includes(entry)) return
 							if (config.unloadOnLeave) {
-								unload(config, prevCacheKey, draft)
+								unloadLoaderEntry(config, prevCacheKey, draft)
 							} else {
-								entry.unloadSub = scheduleUnload(config, prevCacheKey)
+								entry.unloadSub = scheduleUnloadLoaderEntry(config, prevCacheKey)
 							}
 							if (config.onLeave) {
 								entry.active = false
-								void config.onLeave({ activity: prevCacheKey, data: Im.current(entry.data!) as LoaderData<typeof config>, draft })
+								void config.onLeave({ key: prevCacheKey, data: Im.current(entry.data!) as LoaderData<typeof config>, draft })
 							}
 						}
 						continue
@@ -280,13 +301,13 @@ function createStore() {
 						if (cacheEntry.active) continue
 						cacheEntry.active = false
 						cacheEntry.unloadSub?.unsubscribe()
-						cacheEntry.unloadSub = scheduleUnload(config as any, cacheKey as any)
+						cacheEntry.unloadSub = scheduleUnloadLoaderEntry(config as any, cacheKey as any)
 					} else {
 						if (cacheEntry.data) {
 							cacheEntry.active = true
 							cacheEntry.unloadSub?.unsubscribe()
 							delete cacheEntry.unloadSub
-							void config.onEnter?.({ activity: cacheKey, data: cacheEntry.data, draft: draft })
+							void config.onEnter?.({ key: cacheKey, data: cacheEntry.data, draft: draft })
 						} else if (load$) {
 							load$.subscribe((data: LoaderData<typeof config> | undefined) => {
 								if (!data) return
@@ -301,35 +322,35 @@ function createStore() {
 					}
 				}
 			}))
+		}
 
-			function unload<Config extends ActivityLoaderConfig>(
-				config: Config,
-				predicate: LoaderCacheKey<Config>,
-				draft: Im.WritableDraft<Store>,
-			) {
-				const loaderCache = draft.activityLoaderCache
-				const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, predicate))
-				if (!cacheEntry) return
-				draft.activityLoaderCache = loaderCache.filter(e => !Obj.deepEqual(e.key, predicate))
-				if (config.onUnload) {
-					const args = { activity: predicate, data: Im.current(cacheEntry.data), state: draft }
-					void config.onUnload(args)
-				}
-				cacheEntry?.loadAbortController?.abort('unloaded')
+		function unloadLoaderEntry<Config extends ActivityLoaderConfig>(
+			config: Config,
+			key: LoaderCacheKey<Config>,
+			draft: Im.WritableDraft<Store>,
+		) {
+			const loaderCache = draft.activityLoaderCache
+			const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, key))
+			if (!cacheEntry) return
+			draft.activityLoaderCache = loaderCache.filter(e => !Obj.deepEqual(e.key, key))
+			if (config.onUnload) {
+				const args = { key, data: Im.current(cacheEntry.data), state: draft }
+				void config.onUnload(args)
 			}
+			cacheEntry?.loadAbortController?.abort('unloaded')
+		}
 
-			function scheduleUnload<Config extends ActivityLoaderConfig>(
-				config: Config,
-				predicate: LoaderCacheKey<Config>,
-			) {
-				if (config.staleTime === undefined) return
+		function scheduleUnloadLoaderEntry<Config extends ActivityLoaderConfig>(
+			config: Config,
+			predicate: LoaderCacheKey<Config>,
+		) {
+			if (config.staleTime === undefined) return
 
-				return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(() => {
-					set(Im.produce<Store>(draft => {
-						unload(config, predicate, draft)
-					}))
-				})
-			}
+			return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(() => {
+				set(Im.produce<Store>(draft => {
+					unloadLoaderEntry(config, predicate, draft)
+				}))
+			})
 		}
 
 		return {
