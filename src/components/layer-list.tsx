@@ -11,7 +11,7 @@ import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
-import { sleep } from '@/lib/async.ts'
+
 import * as DH from '@/lib/display-helpers.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'

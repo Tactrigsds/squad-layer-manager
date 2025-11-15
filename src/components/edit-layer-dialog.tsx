@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
-import { getFrameState, useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
+import { useFrameLifecycle, useFrameStore } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
