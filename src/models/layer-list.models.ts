@@ -258,6 +258,7 @@ export function createLayerListItem(newItem: NewLayerListItem, source: Source): 
 }
 
 export function getNextLayerId(layerQueue: List) {
+	if (layerQueue.length === 0) return L.DEFAULT_LAYER_ID
 	return layerQueue[0].layerId
 }
 
