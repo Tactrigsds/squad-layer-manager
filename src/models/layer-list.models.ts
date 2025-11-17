@@ -258,8 +258,8 @@ export function createLayerListItem(newItem: NewLayerListItem, source: Source): 
 }
 
 export function getNextLayerId(layerQueue: List) {
-	if (layerQueue.length === 0) return L.DEFAULT_LAYER_ID
-	return layerQueue[0].layerId
+	if (layerQueue.length === 0) return null
+	return layerQueue[0]?.layerId ?? null
 }
 
 export function isParentVoteItem(item: Item): item is ParentVoteItem {

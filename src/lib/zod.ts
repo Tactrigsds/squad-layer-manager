@@ -4,9 +4,8 @@ export const PercentageSchema = z.number().min(0).max(100)
 
 export const HumanTime = z.string().regex(/^[0-9._]+(s|m|h|d|w|ms)$/).transform((val) => {
 	const match = val.match(/^([0-9.]+)(s|m|h|d|w|ms)$/)
-	if (!match) throw new Error('Invalid time format')
-	const [_, numStr, unit] = match
-	const num = parseFloat(numStr)
+	const [_, numStr, unit] = match!
+	const num = parseFloat(numStr!)
 	switch (unit) {
 		case 's':
 			return num * 1000

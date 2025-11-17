@@ -129,11 +129,13 @@ export const init = C.spanOp(
 						}
 						return Rx.EMPTY
 					}),
-					C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async (expectedNextLayerId) => {
+					C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async (unexpectedNextlayer) => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await getServerState(ctx)
-						const expectedLayerName = DH.toFullLayerNameFromId(LL.getNextLayerId(serverState.layerQueue)!)
-						const actualLayerName = DH.toFullLayerNameFromId(expectedNextLayerId)
+						const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
+						if (!expectedNextLayer) return
+						const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
+						const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextlayer)
 						await SquadRcon.warnAllAdmins(
 							ctx,
 							`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
@@ -152,7 +154,7 @@ export const init = C.spanOp(
 				Rx.distinctUntilChanged((a, b) => a?.id === b?.id),
 			)
 
-		const nextQueuedLayer$ = ctx.layerQueue.update$.pipe(Rx.map(([update]) => LL.getNextLayerId(update.state.layerQueue) ?? null))
+		const nextQueuedLayer$ = ctx.layerQueue.update$.pipe(Rx.map(([update]) => LL.getNextLayerId(update.state.layerQueue)))
 
 		Rx.combineLatest([
 			nextSetLayer$,
