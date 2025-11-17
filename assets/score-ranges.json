@@ -7,8 +7,8 @@
       "poolCutoff": 2.25
     },
     {
-      "min": 0.8436762966981171,
-      "max": 33.994152268358334,
+      "min": 0,
+      "max": 34,
       "field": "Asymmetry_Score",
       "poolCutoff": 10
     }
