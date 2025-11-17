@@ -343,20 +343,25 @@ function OtherScoreRow({
 
 	return (
 		<div className="space-y-1">
-			<div className="flex justify-between items-center">
-				<div className="flex items-center gap-2">
-					<span className="text-sm font-medium">{scoreType.replace(/_/g, ' ')}</span>
-					{scoreRange?.logarithmic && <span className="text-xs text-muted-foreground">(logarithmic scale)</span>}
-				</div>
-				<span className="text-xs font-medium text-muted-foreground">
-					{score > 0 ? '+' : ''}
-					{score.toFixed(2)}
+			<div className="flex justify-center items-center">
+				<span className="text-sm font-medium">
+					{scoreType.replace(/_/g, ' ')}{' '}
+					<span className="text-xs text-muted-foreground">
+						({score > 0 ? '+' : ''}
+						{score.toFixed(2)})
+					</span>
+					{scoreRange?.logarithmic && (
+						<>
+							{' '}
+							<span className="text-xs text-muted-foreground">(logarithmic scale)</span>
+						</>
+					)}
 				</span>
 			</div>
 			{scoreRange && scoreRange.poolCutoff !== undefined
 				? (
 					<div className="space-y-1">
-						<svg width="100%" height={scoreRange.logarithmic ? 56 : 40} className="overflow-visible">
+						<svg width="100%" height="56" className="overflow-visible">
 							{/* Background bar */}
 							<rect
 								x="0"
@@ -378,42 +383,119 @@ function OtherScoreRow({
 								className="text-muted-foreground transition-all duration-200"
 							/>
 
-							{/* Logarithmic scale markers */}
-							{scoreRange.logarithmic && (
-								(() => {
-									const logMin = Math.log(scoreRange.min)
-									const logMax = Math.log(scoreRange.max)
-									// Generate tick marks at reasonable intervals for log scale
-									const tickValues = [1, 2, 5, 10, 20, 30]
-										.filter(v => v >= scoreRange.min && v <= scoreRange.max)
+							{/* Scale markers */}
+							{scoreRange.logarithmic
+								? (
+									(() => {
+										const logMin = Math.log(scoreRange.min)
+										const logMax = Math.log(scoreRange.max)
+										// Generate tick marks at reasonable intervals for log scale
+										const tickValues = [1, 2, 5, 10, 20, 30]
+											.filter(v => v >= scoreRange.min && v <= scoreRange.max)
 
-									return tickValues.map(tickValue => {
-										const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
-										return (
-											<g key={tickValue}>
-												<line
-													x1={`${tickPercentage}%`}
-													y1="12"
-													x2={`${tickPercentage}%`}
-													y2="16"
-													stroke="currentColor"
-													strokeWidth="1"
-													className="text-muted-foreground/50"
-												/>
-												<text
-													x={`${tickPercentage}%`}
-													y="28"
-													textAnchor="middle"
-													fontSize="9"
-													className="fill-muted-foreground/60"
-												>
-													{tickValue}
-												</text>
-											</g>
-										)
-									})
-								})()
-							)}
+										return tickValues.map(tickValue => {
+											const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
+											return (
+												<g key={tickValue}>
+													<line
+														x1={`${tickPercentage}%`}
+														y1="20"
+														x2={`${tickPercentage}%`}
+														y2="28"
+														stroke="currentColor"
+														strokeWidth="1"
+														className="text-muted-foreground/30"
+													/>
+													<text
+														x={`${tickPercentage}%`}
+														y="48"
+														textAnchor="middle"
+														fontSize="9"
+														className="fill-muted-foreground/50"
+													>
+														{tickValue}
+													</text>
+												</g>
+											)
+										})
+									})()
+								)
+								: (
+									(() => {
+										// Linear scale markers
+										// Target approximately 1 marking per 50px (assuming typical chart width of ~300-500px)
+										const range = scoreRange.max - scoreRange.min
+										const targetMarkingCount = Math.max(2, Math.floor(400 / 50)) // Assume ~400px width, minimum 2 markings
+
+										// Calculate step size to get whole numbers
+										const idealStep = range / targetMarkingCount
+										let step = Math.max(1, Math.round(idealStep))
+
+										// Round step to nice numbers (1, 2, 5, 10, 20, 50, etc.)
+										if (step > 1) {
+											const magnitude = Math.pow(10, Math.floor(Math.log10(step)))
+											const normalized = step / magnitude
+											if (normalized <= 1) step = magnitude
+											else if (normalized <= 2) step = 2 * magnitude
+											else if (normalized <= 5) step = 5 * magnitude
+											else step = 10 * magnitude
+										}
+
+										const tickValues: number[] = []
+										const startValue = Math.ceil(scoreRange.min / step) * step
+
+										for (let value = startValue; value <= scoreRange.max; value += step) {
+											tickValues.push(value)
+										}
+
+										// Always include min and max values
+										if (!tickValues.includes(scoreRange.min)) {
+											tickValues.unshift(scoreRange.min)
+										}
+										if (!tickValues.includes(scoreRange.max)) {
+											tickValues.push(scoreRange.max)
+										}
+
+										// Determine if min/max are whole numbers
+										const minIsWhole = Number.isInteger(scoreRange.min)
+										const maxIsWhole = Number.isInteger(scoreRange.max)
+										const useDecimals = minIsWhole && maxIsWhole
+
+										return tickValues.map(tickValue => {
+											const tickPercentage = ((tickValue - scoreRange.min) / range) * 100
+											// Format: if using decimals and this is a whole number, show 1 decimal, otherwise show 2
+											let label: string
+											if (Number.isInteger(tickValue)) {
+												label = useDecimals ? tickValue.toFixed(1) : tickValue.toString()
+											} else {
+												label = tickValue.toFixed(2)
+											}
+
+											return (
+												<g key={tickValue}>
+													<line
+														x1={`${tickPercentage}%`}
+														y1="20"
+														x2={`${tickPercentage}%`}
+														y2="28"
+														stroke="currentColor"
+														strokeWidth="1"
+														className="text-muted-foreground/30"
+													/>
+													<text
+														x={`${tickPercentage}%`}
+														y="48"
+														textAnchor="middle"
+														fontSize="9"
+														className="fill-muted-foreground/50"
+													>
+														{label}
+													</text>
+												</g>
+											)
+										})
+									})()
+								)}
 
 							{/* Pool cutoff line */}
 							<line
@@ -427,7 +509,7 @@ function OtherScoreRow({
 							{/* Pool cutoff label */}
 							<text
 								x={`${cutoffPercentage}%`}
-								y={scoreRange.logarithmic ? 40 : 32}
+								y="32"
 								textAnchor="middle"
 								fontSize="10"
 								fill="white"
@@ -474,32 +556,48 @@ function BalanceDifferentialRow({
 	diff: number
 	scoreRange?: { min: number; max: number; field: string; poolCutoff?: number }
 }) {
-	// Calculate percentage based on actual score range
+	// Helper function to convert value to logarithmic scale for symmetric centered display
+	// Maps values from [min, max] to [0, 100] using log scale centered at 0
+	const getLogPercentageSymmetric = (value: number, min: number, max: number): number => {
+		// For a symmetric scale centered at 0, we need to handle positive and negative separately
+		// Scale range should be symmetric (e.g., -30 to +30)
+		const maxAbs = Math.max(Math.abs(min), Math.abs(max))
+
+		if (value === 0) return 50
+
+		// Use log scale for the absolute value, then map to appropriate side
+		const absValue = Math.abs(value)
+		const logValue = Math.log(absValue + 1) // +1 to handle log(0)
+		const logMax = Math.log(maxAbs + 1)
+
+		// Map to 0-50 range, then offset based on sign
+		const halfRangePercentage = (logValue / logMax) * 50
+
+		// Positive values go left (inverted), negative values go right
+		return value > 0 ? 50 - halfRangePercentage : 50 + halfRangePercentage
+	}
+
+	// Calculate percentage based on actual score range using logarithmic scale
 	// For Balance_Differential, 0 is centered, negative means Team 2 advantage, positive means Team 1 advantage
 	// Invert so positive (Team 1) goes LEFT and negative (Team 2) goes RIGHT
 	let diffPercentage = 50
 	if (scoreRange) {
-		const range = scoreRange.max - scoreRange.min
-		const normalizedDiff = -diff - scoreRange.min // Negate diff to invert the scale
-		diffPercentage = range > 0 ? (normalizedDiff / range) * 100 : 50
+		diffPercentage = getLogPercentageSymmetric(diff, scoreRange.min, scoreRange.max)
 	} else {
 		// Fallback: assume range of -30 to 30
-		diffPercentage = 50 - (diff / 60) * 100 // Subtract to invert
+		diffPercentage = getLogPercentageSymmetric(diff, -30, 30)
 	}
 
-	// Calculate pool cutoff positions if they exist
+	// Calculate pool cutoff positions if they exist using logarithmic scale
 	// The cutoff represents the maximum acceptable absolute differential (both positive and negative)
 	// Inverted: positive cutoff (Team 1) on LEFT, negative cutoff (Team 2) on RIGHT
 	let poolCutoffPositivePercentage = 0
 	let poolCutoffNegativePercentage = 0
 	if (scoreRange && scoreRange.poolCutoff !== undefined) {
-		const range = scoreRange.max - scoreRange.min
 		// Positive cutoff (Team 1 advantage) - inverted so it's on the left
-		const normalizedPositiveCutoff = -scoreRange.poolCutoff - scoreRange.min
-		poolCutoffPositivePercentage = range > 0 ? (normalizedPositiveCutoff / range) * 100 : 0
+		poolCutoffPositivePercentage = getLogPercentageSymmetric(scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
 		// Negative cutoff (Team 2 advantage) - inverted so it's on the right
-		const normalizedNegativeCutoff = scoreRange.poolCutoff - scoreRange.min
-		poolCutoffNegativePercentage = range > 0 ? (normalizedNegativeCutoff / range) * 100 : 0
+		poolCutoffNegativePercentage = getLogPercentageSymmetric(-scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
 	}
 
 	return (
@@ -510,7 +608,8 @@ function BalanceDifferentialRow({
 					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
 						({diff > 0 ? '+' : ''}
 						{diff.toFixed(2)})
-					</span>
+					</span>{' '}
+					<span className="text-xs text-muted-foreground">(logarithmic scale)</span>
 				</span>
 			</div>
 			{scoreRange && scoreRange.poolCutoff !== undefined
@@ -555,19 +654,29 @@ function BalanceDifferentialRow({
 								)
 								: null}
 
-							{/* Scale markers */}
+							{/* Scale markers - logarithmic */}
 							{scoreRange && (() => {
-								// Generate tick marks at reasonable intervals (inverted scale)
-								const range = scoreRange.max - scoreRange.min
-								const step = range / 4 // Create 5 markers (0, 25%, 50%, 75%, 100%)
 								const markers = []
-								for (let i = 0; i <= 4; i++) {
-									const value = scoreRange.min + (step * i)
-									// Invert position so values match the inverted scale
-									const position = (4 - i) / 4 * 100
-									const isCenter = i === 2
-									markers.push({ value, position, isCenter })
+								const maxAbs = Math.max(Math.abs(scoreRange.min), Math.abs(scoreRange.max))
+
+								// Generate logarithmically spaced markers
+								// Common intervals: 0, ±1, ±2, ±5, ±10, ±20, ±30, etc.
+								const tickValues = [0, 1, 2, 5, 10, 20, 30]
+									.filter(v => v <= maxAbs)
+
+								// Add positive values (going left from center)
+								for (const value of tickValues) {
+									if (value === 0) {
+										markers.push({ value: 0, position: 50, isCenter: true })
+									} else if (value <= maxAbs) {
+										const position = getLogPercentageSymmetric(value, scoreRange.min, scoreRange.max)
+										markers.push({ value, position, isCenter: false })
+										// Add corresponding negative value (going right from center)
+										const negPosition = getLogPercentageSymmetric(-value, scoreRange.min, scoreRange.max)
+										markers.push({ value: -value, position: negPosition, isCenter: false })
+									}
 								}
+
 								return markers.map(({ value, position, isCenter }) => (
 									<g key={value}>
 										<line
@@ -586,7 +695,7 @@ function BalanceDifferentialRow({
 											fontSize="9"
 											className="fill-muted-foreground/50"
 										>
-											{value.toFixed(0)}
+											{value > 0 ? `+${value}` : value}
 										</text>
 									</g>
 								))

@@ -4,14 +4,13 @@
       "min": -30,
       "max": 30,
       "field": "Balance_Differential",
-      "poolCutoff": 10
+      "poolCutoff": 2.25
     },
     {
       "min": 0.8436762966981171,
       "max": 33.994152268358334,
       "field": "Asymmetry_Score",
-      "poolCutoff": 2.25,
-      "logarithmic": true
+      "poolCutoff": 10
     }
   ],
   "paired": [
