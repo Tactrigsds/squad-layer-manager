@@ -101,7 +101,7 @@ export function getSettingsConstraints(
 		for (let j = 0; j < poolConfig.repeatRules.length; j++) {
 			const rule = poolConfig.repeatRules[j]
 			// label/field might not be unique so we're doing this instead. cringe
-			constraints.push(CB.repeatRule(`layer-pool:${rule.label}`, rule, { filterResults: true, invert: true }))
+			constraints.push(CB.repeatRule(`layer-pool:${poolName}:${rule.label}`, rule, { filterResults: true, invert: true }))
 		}
 
 		for (const { filterId, applyAs } of poolConfig.filters) {
