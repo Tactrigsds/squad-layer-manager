@@ -883,9 +883,12 @@ function ZScoreRow({
 					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
 				</span>
 				<span className="text-sm font-medium">
-					{scoreType.replace(/_/g, ' ')}{' '}
-					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-						({Math.abs(diff).toFixed(2)})
+					{scoreType.replace(/_/g, ' ')}
+					<span className="text-xs font-light">
+						<span className="font-light">(diff:{' '}</span>
+						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+							{Math.abs(diff).toFixed(2)}
+						</span>)
 					</span>
 				</span>
 				<span className="text-xs text-red-500">
