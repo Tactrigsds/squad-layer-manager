@@ -281,21 +281,12 @@ function buildColDefs(
 					return [false, isSelected] as const
 				}))
 
-				const toggleSelected = (checked: CheckedState) => {
-					const table = getTableFrame()
-					if (checked === true) {
-						table.setSelected(selected => [...selected, row.original.id])
-					} else {
-						table.setSelected(selected => selected.filter(id => id !== row.original.id))
-					}
-				}
-
 				return (
 					<Checkbox
 						checked={isSelected}
 						disabled={isDisabled}
+						// no handler here because we're already handling onClick on the row
 						className={row.original.isRowDisabled ? 'invisible' : ''}
-						onCheckedChange={toggleSelected}
 						aria-label="Select row"
 					/>
 				)
