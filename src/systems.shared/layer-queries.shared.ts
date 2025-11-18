@@ -794,7 +794,13 @@ async function getRandomGeneratedLayers<ReturnLayers extends boolean>(
 		.select(LC.selectViewCols([...LC.GROUP_BY_COLUMNS, 'id'], ctx))
 		.from(LC.layersView(ctx))
 		.where(E.and(p_condition, E.notInArray(LC.viewCol('id', ctx), Array.from(excludedIds))))
-		.orderBy(sql`((id * 2654435761) + ${rng.int32()}) & 0x7FFFFFFF`)
+		// Hash function using prime multiplication and modulo for pseudo-random distribution
+		// Multiplies ID by large prime (2654435761) and adds random seed
+		// Modulo 2147483647 (2^31 - 1, also prime) ensures bounded output
+		// Deterministic for a given seed, ensuring reproducible results
+		.orderBy(sql`
+			((id * 2654435761) + ${Math.abs(rng.int32())}) % 2147483647
+		`)
 		.limit(Math.min(numLayers * 500, 5000))
 
 	const baseLayers = await baseLayersQuery

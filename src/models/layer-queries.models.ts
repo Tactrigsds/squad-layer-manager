@@ -529,5 +529,6 @@ export type ExtraQueryFiltersState = {
 export type ExtraQueryFiltersStore = ExtraQueryFiltersActions & ExtraQueryFiltersState
 
 export function getSeed() {
-	return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString()
+	const bytes = crypto.getRandomValues(new Uint8Array(8))
+	return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 }
