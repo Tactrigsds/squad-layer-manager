@@ -63,8 +63,8 @@ function buildColumn(
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
-		size: ({ 'Layer': 300, 'Size': 100 } as const)[colDef.name] ?? (isNumeric ? 50 : undefined),
-		minSize: colDef.name === 'Layer' ? 200 : undefined,
+		size: ({ 'Size': 100, 'Faction_1': 40, 'Faction_2': 40 } as const)[colDef.name] ?? (isNumeric ? 50 : undefined),
+		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
 			const [sortingState, setSorting] = useTableFrame(ZusUtils.useShallow(table => [table.sort, table.setSort]))
 			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
