@@ -3,22 +3,24 @@ import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
+import { SftpTail, type SftpTailOptions } from '@/lib/sftp-tail'
 import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import type * as BAL from '@/models/balance-triggers.models'
+import * as CHAT from '@/models/chat.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
-import type * as SME from '@/models/squad-models.events.ts'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
@@ -47,13 +49,11 @@ type State = {
 	// wsClientId => server id
 	selectedServers: Map<string, string>
 	selectedServerUpdate$: Rx.Subject<{ wsClientId: string; serverId: string }>
-	debug__ticketOutcome?: SME.DebugTicketOutcome
+	debug__ticketOutcome?: SM.Events.DebugTicketOutcome
 }
 
 export let state!: State
 export type SquadServer = {
-	logEmitter: SquadEventEmitter
-
 	layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
 
 	adminList: AsyncResource<SM.AdminList, CS.Log & C.Rcon>
@@ -63,6 +63,22 @@ export type SquadServer = {
 	historyConflictsResolved$: Promise<unknown>
 
 	serverRolling$: Rx.BehaviorSubject<boolean>
+
+	sftpReader: SftpTail
+	state: {
+		roundWinner: SM.SquadOutcomeTeam | null
+		roundLoser: SM.SquadOutcomeTeam | null
+		roundEndState: {
+			winner: string | null
+			layer: string
+		} | null
+	}
+	eventBuffer: SM.Events.Event[]
+	event$: Rx.Subject<SM.Events.Event>
+	// chat: {
+	// 	// users: Map<string, UserStatus>
+	// 	buffer: CHAT.Event[]
+	// }
 } & SquadRcon.SquadRconContext
 
 export type MatchHistoryState = {
@@ -146,36 +162,39 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 
 	const sub = new Rx.Subscription()
 
-	const rconEvent$: Rx.Observable<SM.SquadRconEvent> = Rx.fromEvent(rcon, 'server').pipe(
-		Rx.concatMap((pkt): Rx.Observable<SM.SquadRconEvent> => {
+	const rconEvent$: Rx.Observable<SM.RconEvents.Event> = Rx.fromEvent(rcon, 'server').pipe(
+		Rx.concatMap((_pkt): Rx.Observable<SM.RconEvents.Event> => {
+			const pkt = _pkt as DecodedPacket
 			const ctx = getBaseCtx()
-			const message = SquadRcon.processChatPacket(ctx, pkt as DecodedPacket)
-			if (message === null) return Rx.EMPTY
-			ctx.log.debug(`Chat : %s : %s`, message.name, message.message)
-			return Rx.of({ type: 'chat-message', message })
+			for (const matcher of SM.RCON_EVENT_MATCHERS) {
+				const [event, err] = matchLog(pkt.body, matcher)
+				if (err) {
+					ctx.log.error(err, `Error matching event, `, (err as any)?.message)
+					return Rx.EMPTY
+				}
+				if (event) return Rx.of(event)
+			}
+			return Rx.EMPTY
 		}),
 		Rx.share(),
 	)
-
-	const logEmitter = new SquadEventEmitter(getBaseCtx(), {
-		sftp: {
-			filePath: settings.connections!.sftp.logFile,
-			host: settings.connections!.sftp.host,
-			port: settings.connections!.sftp.port,
-			username: settings.connections!.sftp.username,
-			password: settings.connections!.sftp.password,
-			pollInterval: CONFIG.squadServer.sftpPollInterval,
-			reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
-		},
+	const sftpReader = new SftpTail(ctx, {
+		filePath: settings.connections!.sftp.logFile,
+		host: settings.connections!.sftp.host,
+		port: settings.connections!.sftp.port,
+		username: settings.connections!.sftp.username,
+		password: settings.connections!.sftp.password,
+		pollInterval: CONFIG.squadServer.sftpPollInterval,
+		reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
 	})
-	void logEmitter.connect()
+
+	sftpReader.watch()
 
 	const server: SquadServer = {
 		layersStatusExt$,
 		...SquadRcon.initSquadRcon(ctx, serverId, settings.connections!.rcon, sub),
 
 		adminList,
-		logEmitter,
 		postRollEventsSub: null,
 
 		historyConflictsResolved$: Rx.firstValueFrom(rcon.connected$.pipe(
@@ -199,7 +218,38 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 		)),
 
 		serverRolling$: new Rx.BehaviorSubject<boolean>(false),
+
+		sftpReader,
+		eventBuffer: [],
+		event$: new Rx.Subject(),
 	}
+
+	server.sftpReader.on(
+		'line',
+		C.spanOp('squad-log-event-emitter:on-line-parsed', { tracer, eventLogLevel: 'trace', root: true }, async (line: string) => {
+			const ctx = C.pushOtelCtx(C.initLocks(resolveSliceCtx(getBaseCtx(), serverId)))
+			for (const matcher of SM.LogEvents.EventMatchers) {
+				try {
+					const [matched, error] = matchLog(line, matcher)
+					if (!matched) continue
+					if (error) {
+						return {
+							code: 'err:failed-to-parse-log-line' as const,
+							error,
+						}
+					}
+					const event = processServerLogEvent(ctx, matched)
+					if (event) {
+						ctx.log.info(event, 'Emitting Squad Event: %s', event.type)
+						ctx.server.event$.next([ctx, event])
+					}
+					return { code: 'ok' as const }
+				} catch (error) {
+					C.recordGenericError(error)
+				}
+			}
+		}),
+	)
 
 	const slice: C.ServerSlice = {
 		serverId,
@@ -243,10 +293,10 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 				{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
 				async (event) => {
 					const ctx = C.initLocks(resolveSliceCtx(getBaseCtx(), serverId))
-					if (event.type === 'chat-message' && event.message.message.startsWith(CONFIG.commandPrefix)) {
-						await Commands.handleCommand(ctx, event.message)
-					} else if (event.type === 'chat-message' && event.message.message.trim().match(/^\d+$/)) {
-						LayerQueue.handleVote(ctx, event.message)
+					if (event.type === 'CHAT_MESSAGE' && event.message.startsWith(CONFIG.commandPrefix)) {
+						await Commands.handleCommand(ctx, event)
+					} else if (event.type === 'CHAT_MESSAGE' && event.message.trim().match(/^\d+$/)) {
+						LayerQueue.handleVote(ctx, event)
 					}
 				},
 			),
@@ -255,10 +305,63 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 
 	sub.add(
 		slice.server.logEmitter.event$.pipe(
+			Rx.filter(([_, e]) => ['NEW_GAME', 'ROUND_ENDED'].includes(e.type)),
 			C.durableSub(
-				'squad-server:handle-squad-log-event',
+				'squad-server:handle-squad-game-event',
 				{ tracer, ctx, eventLogLevel: 'info' },
-				([_ctx, event]) => handleSquadEvent(resolveSliceCtx(getBaseCtx(), serverId), event),
+				async ([_ctx, event]) => {
+					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					switch (event.type) {
+						case 'NEW_GAME': {
+							// we don't do anything in here right now -- that's all handled separately in some more complicated logic
+							break
+						}
+						case 'ROUND_ENDED': {
+							const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
+							if (statusRes.code !== 'ok') return statusRes
+							// -------- use debug ticketOutcome if one was set --------
+							if (state.debug__ticketOutcome) {
+								let winner: SM.TeamId | null
+								let loser: SM.TeamId | null
+								if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
+									winner = null
+									loser = null
+								} else {
+									winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
+									loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
+								}
+								const partial = L.toLayer(statusRes.data.currentLayer)
+								const teams: SM.SquadOutcomeTeam[] = [
+									{
+										faction: partial.Faction_1!,
+										unit: partial.Unit_1!,
+										team: 1,
+										tickets: state.debug__ticketOutcome.team1,
+									},
+									{
+										faction: partial.Faction_2!,
+										unit: partial.Unit_2!,
+										team: 2,
+										tickets: state.debug__ticketOutcome.team2,
+									},
+								]
+								const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
+								const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
+								event = {
+									...event,
+									loser: loserTeam,
+									winner: winnerTeam,
+								}
+								delete state.debug__ticketOutcome
+							}
+							const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+							return res
+						}
+
+							// default:
+							// 	assertNever(event)
+					}
+				},
 			),
 		).subscribe(),
 	)
@@ -267,58 +370,6 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 	await LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
 	initNewGameHandling({ ...ctx, ...slice })
-}
-
-async function handleSquadEvent(ctx: C.Db & C.Mutexes & C.SquadServer & C.MatchHistory & C.LayerQueue & C.Vote, event: SME.Event) {
-	switch (event.type) {
-		case 'NEW_GAME': {
-			// we don't do anything in here right now -- that's all handled separately in some more complicated logic
-			break
-		}
-		case 'ROUND_ENDED': {
-			const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
-			if (statusRes.code !== 'ok') return statusRes
-			// -------- use debug ticketOutcome if one was set --------
-			if (state.debug__ticketOutcome) {
-				let winner: SM.TeamId | null
-				let loser: SM.TeamId | null
-				if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
-					winner = null
-					loser = null
-				} else {
-					winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
-					loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
-				}
-				const partial = L.toLayer(statusRes.data.currentLayer)
-				const teams: SM.SquadOutcomeTeam[] = [
-					{
-						faction: partial.Faction_1!,
-						unit: partial.Unit_1!,
-						team: 1,
-						tickets: state.debug__ticketOutcome.team1,
-					},
-					{
-						faction: partial.Faction_2!,
-						unit: partial.Unit_2!,
-						team: 2,
-						tickets: state.debug__ticketOutcome.team2,
-					},
-				]
-				const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
-				const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
-				event = {
-					...event,
-					loser: loserTeam,
-					winner: winnerTeam,
-				}
-				delete state.debug__ticketOutcome
-			}
-			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
-			return res
-		}
-		default:
-			assertNever(event)
-	}
 }
 
 // -------- Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
@@ -367,7 +418,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 					try {
 						ctx.server.serverRolling$.next(true)
 
-						let newGameEvent: SME.NewGame | undefined
+						let newGameEvent: SM.Events.NewGame | undefined
 						let newLayer: L.UnvalidatedLayer
 
 						ctx.log.info('Handling new game trigger: %s', triggerType)
@@ -550,6 +601,62 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
 		Rx.startWith(state.selectedServers.get(ctx.wsClientId)!),
 		Rx.map(serverId => resolveSliceCtx(ctx, serverId)),
 	)
+}
+
+/**
+ * Performs state tracking and event consolidation for squad log events.
+ * @param ctx The context of the log event.
+ * @param logEvt The log event to process.
+ * @returns an event if one should be emitted
+ */
+function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents.Event): SM.Events.Event | undefined {
+	const server = ctx.server
+	switch (logEvt.type) {
+		case 'ROUND_DECIDED': {
+			const prop = logEvt.action === 'won' ? 'roundWinner' : 'roundLoser'
+			server.state[prop] = {
+				faction: logEvt.faction,
+				unit: logEvt.unit,
+				team: logEvt.team,
+				tickets: logEvt.tickets,
+			}
+			break
+		}
+
+		// TODO: might be able to remove that case and backing code
+		case 'ROUND_TEAM_OUTCOME': {
+			server.state.roundEndState = {
+				// ported from existing behavior from squadjs -- unsure why it exists though https://github.com/Tactrigsds/SquadJS/blob/psg/squad-server/log-parser/round-winner.js
+				winner: server.state.roundEndState ? logEvt.winner : null,
+				layer: logEvt.layer,
+			}
+			break
+		}
+
+		case 'ROUND_ENDED': {
+			const event: SM.Events.RoundEnded = {
+				type: 'ROUND_ENDED',
+				time: logEvt.time,
+				loser: server.state.roundLoser,
+				winner: server.state.roundWinner,
+			}
+			server.state.roundLoser = null
+			server.state.roundWinner = null
+			return event
+		}
+
+		case 'NEW_GAME': {
+			if (logEvt.layerClassname === 'TransitionMap') return
+			return logEvt satisfies SM.LogEvents.NewGame
+		}
+
+		default:
+			assertNever(logEvt)
+	}
+}
+
+export function processServerRconEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.RconEvents.Event) {
+	const server = ctx.server
 }
 
 export const orpcRouter = {

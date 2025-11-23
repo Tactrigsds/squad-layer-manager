@@ -1,4 +1,6 @@
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
+import ServerChatPanel from '@/components/server-chat-panel.tsx'
+import ServerStatsPanel from '@/components/server-stats-panel.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,7 +14,6 @@ import * as SLL from '@/models/shared-layer-list'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
@@ -26,7 +27,6 @@ import { useShallow } from 'zustand/react/shallow'
 import BalanceTriggerAlert from './balance-trigger-alert.tsx'
 import CurrentLayerCard from './current-layer-card.tsx'
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
-import { ServerUnreachable } from './server-offline-display.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
 import { Separator } from './ui/separator.tsx'
@@ -35,99 +35,62 @@ import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayerQueueDashboard() {
-	const serverStatusRes = SquadServerClient.useServerInfoRes()
+	return (
+		<div className="mx-auto grid place-items-center">
+			<div className="grid grid-cols-[auto,auto]">
+				{/* Desktop: Show only NormTeamsSwitch */}
+				<div className="col-span-2 justify-between pb-2 hidden dash-2col:flex">
+					<NormTeamsSwitch />
+					<UserPresencePanel />
+				</div>
+				{/* left column */}
+				<div className="flex flex-col gap-2">
+					<MatchHistoryPanel />
+					<CurrentLayerCard />
+					<QueuePanel />
+				</div>
+				{/* right column */}
+				<div className="flex flex-col gap-2">
+					<ServerStatsPanel />
+					<ServerChatPanel />
+				</div>
+			</div>
+		</div>
+	)
+}
 
+function QueuePanel() {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
 	const maxQueueSize = ConfigClient.useConfig()?.layerQueue.maxQueueSize
-	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved.updatesToSquadServerDisabled)
-	type Tab = 'history' | 'queue'
-	const [activeTab, setActiveTab] = React.useState<Tab>('queue')
 	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.session.mutations)
 
-	const [isEditing, setEditing] = SLLClient.useActivityState(SLL.TOGGLE_EDITING_TRANSITIONS)
-
 	return (
-		<div className="mx-auto grid place-items-center">
-			{/* Mobile/Tablet: Show tabs */}
-			<div className="w-full flex flex-wrap justify-between items-center pb-2 dash-2col:hidden">
-				<span className="flex items-center">
-					<TabsList
-						active={activeTab}
-						options={[{ label: 'History', value: 'history' }, { label: 'Queue', value: 'queue' }]}
-						setActive={setActiveTab}
-					/>
-					<NormTeamsSwitch />
+		<Card>
+			<CardHeader className="flex flex-row items-center justify-between">
+				<span className="flex items-center space-x-1">
+					<CardTitle>Up Next</CardTitle>
+					{isModified && (
+						<CardDescription
+							data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+							className=" pl-1 data-[limitreached=true]:text-destructive"
+						>
+							{queueLength} / {maxQueueSize}
+						</CardDescription>
+					)}
 				</span>
-				<UserPresencePanel />
-			</div>
-			{/* Desktop: Show only NormTeamsSwitch */}
-			<div className="w-full justify-between pb-2 hidden dash-2col:flex">
-				<NormTeamsSwitch />
-				<UserPresencePanel />
-			</div>
-			<div className="w-full dash-2col:flex dash-2col:space-x-4">
-				{/* History Panel */}
-				<div className={`${activeTab === 'history' ? '' : 'hidden'} dash-2col:block`}>
-					<MatchHistoryPanel />
-				</div>
-				{/* Queue Panel */}
-				<div className={`flex flex-col space-y-4 ${activeTab === 'queue' ? '' : 'hidden'} dash-2col:block`}>
-					{/* ------- top card ------- */}
-					{serverStatusRes?.code === 'err:rcon' && <ServerUnreachable statusRes={serverStatusRes} />}
-					{serverStatusRes?.code === 'ok' && <CurrentLayerCard />}
-					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
-					<PostGameBalanceTriggerAlert />
-					<Card>
-						<CardHeader className="flex flex-row items-center justify-between">
-							<span className="flex items-center space-x-1">
-								<CardTitle>Up Next</CardTitle>
-								{
-									/*<Toggle
-									pressed={isEditing}
-									onPressedChange={setEditing}
-									aria-label="Toggle bookmark"
-									size="sm"
-								>
-									{isEditing
-										? (
-											<>
-												<Icons.Check className="ml-1" />
-												<span>Finished</span>
-											</>
-										)
-										: (
-											<>
-												<Icons.Edit className="ml-1" />
-												<span>Start Editing</span>
-											</>
-										)}
-								</Toggle>*/
-								}
-								{isModified && (
-									<CardDescription
-										data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-										className=" pl-1 data-[limitreached=true]:text-destructive"
-									>
-										{queueLength} / {maxQueueSize}
-									</CardDescription>
-								)}
-							</span>
-							<QueueControlPanel />
-						</CardHeader>
-						{queueMutations.removed.size > 0 && (
-							<Alert variant="destructive">
-								{queueMutations.removed.size} item{queueMutations.removed.size === 1 ? '' : 's'} removed
-							</Alert>
-						)}
-						<CardContent className="p-0 px-1">
-							<LayerList store={SLLClient.Store} />
-						</CardContent>
-					</Card>
-				</div>
-			</div>
-		</div>
+				<QueueControlPanel />
+			</CardHeader>
+			{queueMutations.removed.size > 0 && (
+				<Alert variant="destructive">
+					{queueMutations.removed.size} item{queueMutations.removed.size === 1 ? '' : 's'} removed
+				</Alert>
+			)}
+			<CardContent className="p-0 px-1">
+				<LayerList store={SLLClient.Store} />
+			</CardContent>
+		</Card>
 	)
 }
 
@@ -269,66 +232,6 @@ function QueueControlPanel() {
 					</Button>
 				</PoolConfigurationPopover>
 			</div>
-		</div>
-	)
-}
-
-function SyncToSquadServerDisabledAlert() {
-	const { enableUpdates } = QD.useToggleSquadServerUpdates()
-	const layerStatusRes = SquadServerClient.useLayersStatus()
-	const serverInfoRes = SquadServerClient.useServerInfoRes()
-	const loggedInUser = useLoggedInUser()
-	const hasDisableUpdatesPerm = !!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates'))
-	const nextLayerDisplay = (layerStatusRes.code === 'ok' && layerStatusRes.data.nextLayer)
-		? (
-			<>
-				Next Layer is set to: <b>{DH.displayLayer(layerStatusRes.data.nextLayer)}</b>t
-			</>
-		)
-		: ''
-	return (
-		<Alert variant="destructive">
-			<AlertTitle>Updates to Squad Server have been Disabled</AlertTitle>
-			<div className="flex items-center justify-between">
-				<AlertDescription>
-					<p>
-						SLM is not currently syncing layers in the queue to{' '}
-						<b>{serverInfoRes.code === 'ok' ? serverInfoRes.data.name : 'Squad Server'}</b>.
-					</p>
-					<p>
-						{nextLayerDisplay}
-					</p>
-				</AlertDescription>
-				<Button onClick={enableUpdates} disabled={!hasDisableUpdatesPerm} variant="secondary">Re-Enable</Button>
-			</div>
-		</Alert>
-	)
-}
-
-function PostGameBalanceTriggerAlert() {
-	const currentMatch = SquadServerClient.useCurrentMatch()
-	const allTriggerEvents = MatchHistoryClient.useMatchHistoryState().recentBalanceTriggerEvents
-	if (!currentMatch || currentMatch.status !== 'post-game') return null
-	const events = allTriggerEvents.filter(event => event.matchTriggeredId === currentMatch.historyEntryId)
-		.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level))
-	if (events.length === 0) return null
-	const alerts = events.map(event => <BalanceTriggerAlert key={event.id} event={event} referenceMatch={currentMatch} />)
-	if (alerts.length === 1) return alerts[0]
-	return (
-		<div className="flex flex-col space-y-1">
-			{alerts[0]}
-			<Accordion type="single" collapsible className="w-full">
-				<AccordionItem value="additional-alerts">
-					<AccordionTrigger className="py-2 text-sm">
-						Show {alerts.length - 1} more
-					</AccordionTrigger>
-					<AccordionContent className="max-h-80 overflow-y-auto">
-						<div className="flex flex-col space-y-2">
-							{alerts.slice(1)}
-						</div>
-					</AccordionContent>
-				</AccordionItem>
-			</Accordion>
 		</div>
 	)
 }

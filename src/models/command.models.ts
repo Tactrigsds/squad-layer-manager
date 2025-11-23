@@ -101,7 +101,7 @@ export const AllCommandConfigSchema = z.object(
 // ------- Helpers --------
 //
 
-export function parseCommand(msg: SM.ChatMessage, configs: CommandConfigs, commandPrefix: string) {
+export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs, commandPrefix: string) {
 	const words = msg.message.split(/\s+/)
 	const cmdText = words[0].slice(1)
 	// const args = words.slice(1)

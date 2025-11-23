@@ -3,6 +3,7 @@ import * as Obj from '@/lib/object'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as L from '@/models/layer'
+import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import { z } from 'zod'
 import * as LL from './layer-list.models'
@@ -47,7 +48,7 @@ export function getDefaultVoteConfig() {
 }
 
 const TallyPropertiesSchema = z.object({
-	votes: z.record(z.string(), z.string()),
+	votes: z.array(z.object({ playerIds: SM.PlayerIds.Schema, choice: z.string() })),
 	deadline: z.number(),
 })
 
@@ -129,7 +130,7 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 		tally.set(choice, 0)
 	}
 
-	for (const choice of Object.values(currentVote.votes)) {
+	for (const { choice } of currentVote.votes) {
 		const newVotesForChoice = tally.get(choice)! + 1
 
 		if (leaders.length === 0) {
@@ -141,7 +142,7 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 		}
 		tally.set(choice, newVotesForChoice)
 	}
-	const totalVotes = Object.values(currentVote.votes).length
+	const totalVotes = currentVote.votes.length
 	const percentages = new Map<string, number>()
 	for (const [choice, votes] of tally.entries()) {
 		percentages.set(choice, (totalVotes > 0 ? votes / totalVotes : 0) * 100)

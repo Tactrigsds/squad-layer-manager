@@ -9,7 +9,6 @@ import * as BAL from '@/models/balance-triggers.models'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
-import type * as SME from '@/models/squad-models.events'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as C from '@/server/context'
@@ -158,7 +157,7 @@ export const addNewCurrentMatch = C.spanOp(
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
 	ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes,
 	currentLayerId: string,
-	event: SME.RoundEnded,
+	event: SM.Events.RoundEnded,
 ) => {
 	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const res = await DB.runTransaction(ctx, async ctx => {

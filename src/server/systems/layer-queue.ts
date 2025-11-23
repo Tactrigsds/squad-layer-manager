@@ -14,8 +14,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
-import type * as SME from '@/models/squad-models.events.ts'
-import type * as SM from '@/models/squad.models.ts'
+import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
@@ -179,7 +178,7 @@ export const init = C.spanOp(
 export async function handleNewGame(
 	_ctx: C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 	newLayer: L.UnvalidatedLayer,
-	newGameEvent?: SME.NewGame,
+	newGameEvent?: SM.Events.NewGame,
 ) {
 	if (newGameEvent && newGameEvent?.layerClassname !== newLayer.Layer) {
 		_ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
@@ -415,7 +414,7 @@ export const startVote = C.spanOp(
 			const updatedVoteState = {
 				code: 'in-progress',
 				deadline: Date.now() + duration,
-				votes: {},
+				votes: [],
 				initiator: opts.initiator,
 				choices: item.choices.map(choice => choice.layerId),
 				itemId: item.itemId,
@@ -458,8 +457,8 @@ export const startVote = C.spanOp(
 
 export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	tracer,
-	attrs: (_, msg) => ({ messageId: msg.message, playerId: msg.playerId }),
-}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue, msg: SM.ChatMessage) => {
+	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
+}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue, msg: SM.RconEvents.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	const voteState = ctx.vote.state
@@ -469,35 +468,36 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	}
 	if (voteState.voterType === 'public') {
 		if (msg.chat !== 'ChatAll') {
-			void SquadRcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AllChat'))
+			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AllChat'))
 			return
 		}
 	}
 	if (voteState.voterType === 'internal') {
 		if (msg.chat !== 'ChatAdmin') {
-			void SquadRcon.warn(ctx, msg.playerId, Messages.WARNS.vote.wrongChat('AdminChat'))
+			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
 			return
 		}
 	}
 	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-		void SquadRcon.warn(ctx, msg.playerId, Messages.WARNS.vote.invalidChoice)
+		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice)
 		return
 	}
 	if (voteState.code !== 'in-progress') {
-		void SquadRcon.warn(ctx, msg.playerId, Messages.WARNS.vote.noVoteInProgress)
+		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress)
 		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 		return
 	}
 
 	const choice = voteState.choices[choiceIdx - 1]
-	voteState.votes[msg.playerId] = choice
+	SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice })
+	// voteState.votes[msg.playerIds] = choice
 	const update: V.VoteStateUpdate = {
 		state: voteState,
 		source: {
 			type: 'manual',
 			event: 'vote',
-			user: { steamId: msg.playerId },
+			user: { steamId: msg.playerIds?.steam?.toString() },
 		},
 	}
 
@@ -507,7 +507,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
 		void SquadRcon.warn(
 			ctx,
-			msg.playerId,
+			msg.playerIds,
 			Messages.WARNS.vote.voteCast(choice, voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps),
 		)
 	})()
@@ -739,7 +739,7 @@ async function broadcastVoteUpdate(
 						({ player }) => {
 							if (!ctx.vote.state || !opts?.onlyNotifyNonVotingAdmins) return msg
 							if (!V.isVoteStateWithVoteData(ctx.vote.state)) return
-							if (ctx.vote.state.votes[player.steamID.toString()]) return
+							if (SM.PlayerIds.find(ctx.vote.state.votes, ({ playerIds }) => playerIds, player.ids)) return
 							return msg
 						},
 					)
@@ -881,7 +881,7 @@ export async function updateServerState(
 
 export async function warnShowNext(
 	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue,
-	playerId: string,
+	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {
 	const serverState = await getServerState(ctx)
@@ -893,10 +893,10 @@ export async function warnShowNext(
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
 		parts.users.push(await Users.buildUser(ctx, user))
 	}
-	if (playerId === 'all-admins') {
+	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	} else {
-		await SquadRcon.warn(ctx, playerId, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
+		await SquadRcon.warn(ctx, playerIds, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
 	}
 }
 

@@ -39,3 +39,19 @@ export function withThrownErrorResults<
 	}
 	return resCallback as unknown as InnerCallback
 }
+
+export function withThrown<T>(cb: () => T): [T, null] | [null, unknown] {
+	try {
+		return [cb(), null]
+	} catch (error) {
+		return [null, error]
+	}
+}
+
+export async function withThrownAsync<T>(cb: () => Promise<T>): Promise<[T, null] | [null, unknown]> {
+	try {
+		return [await cb(), null]
+	} catch (error) {
+		return [null, error]
+	}
+}

@@ -19,6 +19,7 @@ export const GuiOrChatUserIdSchema = z.object({
 	steamId: z.string().optional(),
 })
 
+// TODO outdated
 export type GuiOrChatUserId = z.infer<typeof GuiOrChatUserIdSchema>
 
 export type User = SchemaModels.User & {

@@ -66,7 +66,7 @@ export class SftpTail extends EventEmitter {
 		this.fetchLoopPromise = null
 	}
 
-	async watch() {
+	watch() {
 		// Setup temp file.
 		this.tmpFilePath = path.join(
 			'/tmp/',

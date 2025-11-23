@@ -1,23 +1,22 @@
 import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async'
+import { matchLog } from '@/lib/log-parsing'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import Rcon from '@/lib/rcon/core-rcon'
-import { capitalID, iterateIDs, lowerID } from '@/lib/rcon/id-parser'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
-import { baseLogger } from '@/server/logger'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 
 export type SquadRconContext = {
-	rconEvent$: Rx.Observable<SM.SquadRconEvent>
+	rconEvent$: Rx.Observable<SM.RconEvents.Event>
 	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
 
 	serverInfo: AsyncResource<SM.ServerInfoRes, CS.Log & C.Rcon>
@@ -41,12 +40,18 @@ export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnec
 	})
 	const squadList: SquadRconContext['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
 
-	const rconEvent$: Rx.Observable<SM.SquadRconEvent> = Rx.fromEvent(rcon, 'server').pipe(
-		Rx.concatMap((pkt): Rx.Observable<SM.SquadRconEvent> => {
-			const message = processChatPacket({ log: baseLogger }, pkt as DecodedPacket)
-			if (message === null) return Rx.EMPTY
-			ctx.log.debug(`Chat : %s : %s`, message.name, message.message)
-			return Rx.of({ type: 'chat-message', message })
+	const chatEvent$: Rx.Observable<SM.RconEvents.Event> = Rx.fromEvent(rcon, 'server').pipe(
+		Rx.concatMap((_pkt): Rx.Observable<SM.RconEvents.Event> => {
+			const pkt = _pkt as DecodedPacket
+			for (const matcher of SM.RCON_EVENT_MATCHERS) {
+				const [event, err] = matchLog(pkt.body, matcher)
+				if (err) {
+					console.warn({ packet: pkt.body, err }, `Chat packet parsing failed`)
+					return Rx.EMPTY
+				}
+				return Rx.of(event as SM.RconEvents.Event)
+			}
+			return Rx.EMPTY
 		}),
 		Rx.share(),
 	)
@@ -64,7 +69,7 @@ export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnec
 		serverInfo,
 		playerList,
 		squadList,
-		rconEvent$,
+		rconEvent$: chatEvent$,
 	}
 }
 
@@ -109,9 +114,7 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon) {
 		data.isLeader = data.isLeader === 'True'
 		data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
 		data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
-		iterateIDs(match[2]).forEach((platform, id) => {
-			data[lowerID(platform)] = id
-		})
+		data.player = SM.PlayerIds.parsePlayerIds(match.groups!.name, match[2])
 		const parsedData = SM.PlayerSchema.parse(data)
 		players.push(parsedData)
 	}
@@ -145,10 +148,9 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 			...match.groups,
 			teamID: teamID,
 			teamName: teamName,
+			creator: SM.PlayerIds.parsePlayerIds(match[6], match[5]),
 		}
-		iterateIDs(match[6]).forEach((platform, id) => {
-			squad['creator' + capitalID(platform)] = id
-		})
+
 		const parsed = SM.SquadSchema.parse(squad)
 		squads.push(parsed)
 	}
@@ -184,19 +186,19 @@ export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | stri
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
-export async function getPlayer(ctx: CS.Log & C.SquadRcon, anyID: string) {
+export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery) {
 	const playersRes = await ctx.server.playerList.get(ctx)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
-	const player = players.find(p => p.playerID.toString() === anyID || p.steamID.toString() === anyID)
+	const player = SM.PlayerIds.find(players, p => p.ids, query)
 	if (!player) return { code: 'err:player-not-found' as const }
 	return { code: 'ok' as const, player }
 }
 
-export async function warn(ctx: CS.Log & C.SquadRcon, anyID: string, _opts: WarnOptions) {
+export async function warn(ctx: CS.Log & C.SquadRcon, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
 	let opts: WarnOptionsBase
 	if (typeof _opts === 'function') {
-		const playerRes = await getPlayer(ctx, anyID)
+		const playerRes = await getPlayer(ctx, ids)
 		if (playerRes.code !== 'ok') return playerRes
 		const optsRes = _opts({ player: playerRes.player })
 		if (!optsRes) return
@@ -219,11 +221,11 @@ export async function warn(ctx: CS.Log & C.SquadRcon, anyID: string, _opts: Warn
 		msgArr[0] = CONFIG.warnPrefix + msgArr[0]
 	}
 
-	ctx.log.info(`Warning player: %s: %s`, anyID, msgArr)
+	ctx.log.info(`Warning player: %s: %s`, ids, msgArr)
 	for (let i = 0; i < repeatCount; i++) {
 		if (i !== 0) await sleep(5000)
 		for (const msg of msgArr) {
-			await ctx.rcon.execute(ctx, `AdminWarn "${anyID}" ${msg}`)
+			await ctx.rcon.execute(ctx, `AdminWarn "${SM.PlayerIds.resolvePlayerId(ids)}" ${msg}`)
 		}
 	}
 }
@@ -240,8 +242,9 @@ export const warnAllAdmins = C.spanOp(
 
 		if (playersRes.code === 'err:rcon') return
 		for (const player of playersRes.players) {
-			if (OneToMany.has(currentAdminList.admins, player.steamID, CONFIG.adminListAdminRole)) {
-				ops.push(warn(ctx, player.steamID.toString(), options))
+			if (!player.ids.steam) continue
+			if (OneToMany.has(currentAdminList.admins, player.ids.steam, CONFIG.adminListAdminRole)) {
+				ops.push(warn(ctx, player.ids, options))
 			}
 		}
 		await Promise.all(ops)
@@ -329,32 +332,6 @@ export function setFogOfWar(ctx: CS.Log & C.Rcon, mode: 'on' | 'off') {
 }
 
 export function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
-	const matchChat = decodedPacket.body.match(/\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/)
-	if (matchChat) {
-		const result = {
-			raw: decodedPacket.body,
-			chat: matchChat[1],
-			name: matchChat[3],
-			message: matchChat[4],
-			time: new Date(),
-			steamID: undefined as string | undefined,
-			eosID: undefined as string | undefined,
-			playerId: null as unknown as string,
-		}
-
-		iterateIDs(matchChat[2]).forEach((platform, id) => {
-			// @ts-expect-error not typesafe
-			result[lowerID(platform)] = id
-		})
-		result.playerId = (result.steamID || result.eosID)!
-		return SM.ChatMessageSchema.parse(result)
-	}
-
-	const matchWarn = decodedPacket.body.match(/Remote admin has warned player (.*)\. Message was "(.*)"/)
-	if (matchWarn) {
-		ctx.log.debug(`Matched warn message: %s`, decodedPacket.body)
-	}
-	return null
 }
 
 export function endMatch(ctx: CS.Log & C.Rcon) {

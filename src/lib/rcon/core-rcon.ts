@@ -264,19 +264,19 @@ export default class Rcon extends EventEmitter {
 		return buf.toString('hex').match(/../g)?.join(' ') || ''
 	}
 
-	async warn(ctx: CS.Log, steamID: string, message: string): Promise<void> {
+	async warn(ctx: CS.Log, playerId: string, message: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		ctx.log.trace(`Warned ${steamID}: ${message}`)
-		await this.execute(ctx, `AdminWarn "${steamID}" ${message}`)
+		ctx.log.trace(`Warned ${playerId}: ${message}`)
+		await this.execute(ctx, `AdminWarn "${playerId}" ${message}`)
 	}
 
-	async kick(ctx: CS.Log, steamID: string, reason: string): Promise<void> {
+	async kick(ctx: CS.Log, playerId: string, reason: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		await this.execute(ctx, `AdminKick "${steamID}" ${reason}`)
+		await this.execute(ctx, `AdminKick "${playerId}" ${reason}`)
 	}
 
-	async forceTeamChange(ctx: CS.Log, steamID: string): Promise<void> {
+	async forceTeamChange(ctx: CS.Log, playerId: string): Promise<void> {
 		ctx = this.addLogProps(ctx)
-		await this.execute(ctx, `AdminForceTeamChange "${steamID}"`)
+		await this.execute(ctx, `AdminForceTeamChange "${playerId}"`)
 	}
 }
