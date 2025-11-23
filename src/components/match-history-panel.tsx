@@ -56,8 +56,7 @@ function MatchHistoryRow({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
-	const layerItemId = LQY.toSerial({ type: 'match-history-entry', itemId: entry.historyEntryId, layerId: entry.layerId })
-	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(layerItemId)
+	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(entry.historyEntryId)
 
 	// Get trigger info for this entry
 	const triggerLevel = BAL.getHighestPriorityTriggerEvent(balanceTriggerEvents)?.level
@@ -84,7 +83,7 @@ function MatchHistoryRow({
 			queriedConstraints={statusData.queriedConstraints}
 			matchingConstraintIds={statusData.matchingConstraintIds}
 			padEmpty={true}
-			layerItemId={layerItemId}
+			itemId={entry.historyEntryId}
 		/>
 	)
 

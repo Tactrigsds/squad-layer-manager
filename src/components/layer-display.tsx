@@ -21,13 +21,12 @@ export default function LayerDisplay(
 		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
-	const layerItemId = LQY.toSerial(props.item)
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
 		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),
 	) ?? 0
 
-	const statusData = LQYClient.useLayerItemStatusDataForItem(layerItemId)
+	const statusData = LQYClient.useLayerItemStatusDataForItem(props.item)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {
@@ -36,7 +35,7 @@ export default function LayerDisplay(
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
 				matchingConstraintIds={statusData.matchingConstraintIds}
-				layerItemId={layerItemId}
+				itemId={LQY.resolveId(props.item)}
 			/>,
 		)
 	}

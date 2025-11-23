@@ -34,7 +34,7 @@ export type Store = {
 	extraQueryFilters: LQY.ExtraQueryFiltersState['extraFilters']
 	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['extraFilters']>) => void): void
 	hoveredConstraintItemId: string | null
-	setHoveredConstraintItemId(id: string | null): void
+	setHoveredConstraintItemId(id: LQY.ItemId | null): void
 }
 
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
