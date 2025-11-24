@@ -19,7 +19,7 @@ export type ConstraintMatchesIndicator = {
 	matchingConstraintIds: string[]
 	padEmpty?: boolean
 	className?: string
-	layerItemId?: string
+	itemId?: LQY.ItemId
 	side?: TooltipContentProps['side']
 	height?: number
 }
@@ -30,11 +30,11 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	const iconSize = height * 0.75
 
 	const onMouseOver = () => {
-		LQYClient.Store.getState().setHoveredConstraintItemId(props.layerItemId ?? null)
+		LQYClient.Store.getState().setHoveredConstraintItemId(props.itemId ?? null)
 	}
 	const onMouseOut = () => {
 		const state = LQYClient.Store.getState()
-		if (state.hoveredConstraintItemId !== props.layerItemId) return
+		if (state.hoveredConstraintItemId !== props.itemId) return
 		state.setHoveredConstraintItemId(null)
 	}
 
@@ -57,13 +57,13 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 			}
 			let emoji: string | undefined | null
 			let alertMessage: string | undefined | null
-			if (constraint.invert || !matched) {
+			if (matched) {
+				emoji = filter.emoji
+				alertMessage = filter.alertMessage
+			} else {
 				if (!filter.invertedEmoji || !filter.invertedAlertMessage) continue
 				emoji = filter.invertedEmoji
 				alertMessage = filter.invertedAlertMessage
-			} else {
-				emoji = filter.emoji
-				alertMessage = filter.alertMessage
 			}
 			if (emoji) {
 				indicatorIcons.push(
@@ -115,8 +115,8 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 			<TooltipTrigger
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
-				onMouseOver={props.layerItemId ? onMouseOver : undefined}
-				onMouseOut={props.layerItemId ? onMouseOut : undefined}
+				onMouseOver={props.itemId ? onMouseOver : undefined}
+				onMouseOut={props.itemId ? onMouseOut : undefined}
 			>
 				{indicatorIcons}
 			</TooltipTrigger>

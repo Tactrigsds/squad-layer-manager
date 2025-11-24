@@ -40,6 +40,7 @@ import * as UsersClient from '@/systems.client/users.client'
 import * as VotesClient from '@/systems.client/votes.client'
 import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
+
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -169,12 +170,13 @@ function LoadedSelectLayersView({
 		frameState.setCursor(positionCursors[newPosition])
 	}, [entry.data.selectLayersFrame, positionCursors])
 
-	const selectPositionToAddLayers = React.useCallback((s: SelectLayersFrame.Types['state']) => {
-		if (s.cursor?.type === 'item-relative' && s.cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) return 'after' as const
-		return 'next' as const
-	}, [])
-
-	const addLayersAtPosition = useFrameStore(entry.data.selectLayersFrame, selectPositionToAddLayers)
+	const addLayersAtPosition = useFrameStore(
+		entry.data.selectLayersFrame,
+		React.useCallback((s: SelectLayersFrame.Types['state']) => {
+			if (s.cursor?.type === 'item-relative' && s.cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) return 'after' as const
+			return 'next' as const
+		}, []),
+	)
 
 	const activity = entry.key
 	const data = entry.data
@@ -182,8 +184,16 @@ function LoadedSelectLayersView({
 	const onAddItems = React.useCallback((items: LL.NewLayerListItem[]) => {
 		if (activity.id !== 'ADDING_ITEM') return
 		const state = store.getState()
-		const cursor = activity.opts.cursor
-		const index = LL.resolveCursorIndex(state.layerList, cursor)
+		let index: LL.ItemIndex
+		const cursor = getFrameState(entry.data.selectLayersFrame).cursor
+		if (cursor?.type === 'item-relative' && cursor.itemId === LQY.SpecialItemId.LAST_LIST_ITEM) {
+			index = { outerIndex: state.layerList.length, innerIndex: null }
+		} else if (cursor?.type === 'item-relative' && cursor.itemId === LQY.SpecialItemId.FIRST_LIST_ITEM) {
+			index = { outerIndex: 0, innerIndex: null }
+		} else {
+			return
+		}
+		console.log({ cursor, index })
 		if (!index) return
 
 		void state.dispatch({
@@ -191,7 +201,7 @@ function LoadedSelectLayersView({
 			items,
 			index,
 		})
-	}, [activity.id, activity.opts, store])
+	}, [activity.id, store, entry.data.selectLayersFrame])
 
 	const onEditedLayer = React.useCallback((layerId: L.LayerId) => {
 		if (activity.id !== 'EDITING_ITEM') return

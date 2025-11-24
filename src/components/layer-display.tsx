@@ -8,7 +8,7 @@ import * as LQYClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { ConstraintMatchesIndicator } from './constraint-display.tsx'
+import { ConstraintMatchesIndicator } from './constraint-matches-indicator.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
 export default function LayerDisplay(
@@ -21,13 +21,12 @@ export default function LayerDisplay(
 		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
-	const layerItemId = LQY.toSerial(props.item)
 	const teamParity = ReactRxHelpers.useStateObservableSelection(
 		QD.layerItemsState$,
 		React.useCallback((context) => LQY.getParityForLayerItem(context, props.item), [props.item]),
 	) ?? 0
 
-	const statusData = LQYClient.useLayerItemStatusDataForItem(layerItemId)
+	const statusData = LQYClient.useLayerItemStatusData(props.item)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {
@@ -36,7 +35,7 @@ export default function LayerDisplay(
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
 				matchingConstraintIds={statusData.matchingConstraintIds}
-				layerItemId={layerItemId}
+				itemId={LQY.resolveId(props.item)}
 			/>,
 		)
 	}

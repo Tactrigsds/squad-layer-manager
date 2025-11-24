@@ -131,19 +131,20 @@ export class FrameManager {
 			instance.refCount--
 			return
 		}
-		this.frameInstances.delete(directKey)
-		instance?.sub.unsubscribe()
 		instance.update$.complete()
+		instance.sub.unsubscribe()
+		this.frameInstances.delete(directKey)
 	}
+
 	teardown(key: RawInstanceKey) {
 		this.keys.delete(key)
 		this.registry.unregister(key)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
 		if (!entry) return
 		const [directKey, instance] = entry
-		this.frameInstances.delete(directKey)
-		instance?.sub.unsubscribe()
 		instance.update$.complete()
+		instance?.sub.unsubscribe()
+		this.frameInstances.delete(directKey)
 	}
 
 	createFrame<Types extends FrameTypes>(

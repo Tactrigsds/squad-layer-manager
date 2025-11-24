@@ -32,7 +32,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-rea
 import React from 'react'
 import { flushSync } from 'react-dom'
 import * as Zus from 'zustand'
-import { ConstraintMatchesIndicator } from './constraint-display'
+import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { TablePagination } from './table-pagination'

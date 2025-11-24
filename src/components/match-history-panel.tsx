@@ -7,7 +7,7 @@ import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { assertNever } from '@/lib/type-guards'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
-import * as LQY from '@/models/layer-queries.models'
+
 import type * as MH from '@/models/match-history.models'
 import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
@@ -20,7 +20,7 @@ import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
-import { ConstraintMatchesIndicator } from './constraint-display'
+import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
@@ -56,8 +56,7 @@ function MatchHistoryRow({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
-	const layerItemId = LQY.toSerial({ type: 'match-history-entry', itemId: entry.historyEntryId, layerId: entry.layerId })
-	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(layerItemId)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId)
 
 	// Get trigger info for this entry
 	const triggerLevel = BAL.getHighestPriorityTriggerEvent(balanceTriggerEvents)?.level
@@ -84,7 +83,7 @@ function MatchHistoryRow({
 			queriedConstraints={statusData.queriedConstraints}
 			matchingConstraintIds={statusData.matchingConstraintIds}
 			padEmpty={true}
-			layerItemId={layerItemId}
+			itemId={entry.historyEntryId}
 		/>
 	)
 
