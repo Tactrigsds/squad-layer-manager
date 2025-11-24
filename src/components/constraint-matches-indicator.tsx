@@ -57,13 +57,13 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 			}
 			let emoji: string | undefined | null
 			let alertMessage: string | undefined | null
-			if (constraint.invert || !matched) {
+			if (matched) {
+				emoji = filter.emoji
+				alertMessage = filter.alertMessage
+			} else {
 				if (!filter.invertedEmoji || !filter.invertedAlertMessage) continue
 				emoji = filter.invertedEmoji
 				alertMessage = filter.invertedAlertMessage
-			} else {
-				emoji = filter.emoji
-				alertMessage = filter.alertMessage
 			}
 			if (emoji) {
 				indicatorIcons.push(

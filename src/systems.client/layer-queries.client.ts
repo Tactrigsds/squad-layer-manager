@@ -319,7 +319,7 @@ function filterAndReportInvalidDescriptors(
 	return validDescriptors.length > 0 ? validDescriptors : undefined
 }
 
-export function useLayerItemStatusDataForItem(
+export function useLayerItemStatusData(
 	layerItem: LQY.LayerItem | LQY.ItemId,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {

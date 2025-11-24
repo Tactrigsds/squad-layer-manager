@@ -20,7 +20,7 @@ import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
-import { ConstraintMatchesIndicator } from './constraint-display'
+import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
@@ -56,7 +56,7 @@ function MatchHistoryRow({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
-	const statusData = LayerQueriesClient.useLayerItemStatusDataForItem(entry.historyEntryId)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId)
 
 	// Get trigger info for this entry
 	const triggerLevel = BAL.getHighestPriorityTriggerEvent(balanceTriggerEvents)?.level
