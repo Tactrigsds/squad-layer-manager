@@ -187,7 +187,7 @@ export const filtersRouter = {
 			return denyRes
 		}
 
-		for (const serverId of SquadServer.state.slices.keys()) {
+		for (const serverId of SquadServer.globalState.slices.keys()) {
 			const serverCtx = SquadServer.resolveSliceCtx(ctx, serverId)
 			const serverState = await LayerQueue.getServerState(serverCtx)
 			// TODO: right now we are not handling sub-filters here. we should do the following:

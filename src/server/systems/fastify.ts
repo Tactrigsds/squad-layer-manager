@@ -342,8 +342,10 @@ export async function authorizeRequest<
 		expiresAt: validSessionRes.expiresAt,
 	}
 
-	if (authedCtx.span) {
-		authedCtx.span.setAttributes({
+	const span = Otel.trace.getActiveSpan()
+
+	if (span) {
+		span.setAttributes({
 			username: authedCtx.user.username,
 			user_id: authedCtx.user.discordId.toString(),
 			sessionid_prefix: authedCtx.sessionId.slice(0, 8),
@@ -365,7 +367,7 @@ export function createOrpcBase(
 
 	// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
 	const defaultServerId = ctx.cookies['default-server-id']!
-	SquadServer.state.selectedServers.set(wsClientId, defaultServerId)
+	SquadServer.globalState.selectedServers.set(wsClientId, defaultServerId)
 	const wsCtx: C.OrpcBase = C.initLocks({
 		wsClientId,
 		...ctx,
@@ -393,8 +395,7 @@ function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 
 function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	const route = AR.resolveRoute(request.url) ?? undefined
-	const span = Otel.trace.getActiveSpan()
-	const ctx: C.AttachedFastify = DB.addPooledDb({ log: instance.log as CS.Logger, route, span })
+	const ctx: C.AttachedFastify = DB.addPooledDb(C.includeActiveSpanAsUpstreamLink({ log: instance.log as CS.Logger, route }))
 	request.log = ctx.log.child({ module: 'fastify' })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
@@ -402,6 +403,5 @@ function monkeyPatchContextAndLogs(request: FastifyRequest) {
 
 function getPatchedCtx(req: FastifyRequest): C.AttachedFastify {
 	const ctx = (req as any).ctx as C.AttachedFastify
-	const span = Otel.trace.getActiveSpan() ?? ctx.span
-	return { ...ctx, span }
+	return ctx
 }

@@ -1,6 +1,6 @@
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResourceInvocationOpts } from '@/lib/async.ts'
-import { toCold } from '@/lib/async.ts'
+import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
@@ -20,14 +20,19 @@ import type Pino from 'pino'
 import * as Rx from 'rxjs'
 import type * as ws from 'ws'
 import type * as DB from './db.ts'
+
 import { baseLogger } from './logger.ts'
 
 export type OtelCtx = {
-	otelCtx: Otel.Context
+	upstreamLinks: Otel.Link[]
 }
 
-export type OtelSpan = {
-	span?: Otel.Span
+export function includeActiveSpanAsUpstreamLink<T extends object>(ctx: T): T & OtelCtx {
+	const activeSpan = Otel.trace.getActiveSpan()
+	return {
+		...ctx,
+		upstreamLinks: activeSpan ? [{ context: activeSpan.spanContext(), attributes: { ['slm.link-source']: 'upstream' } }] : [],
+	}
 }
 
 export function includeLogProperties<T extends CS.Log>(ctx: T, fields: Record<string, any>): T {
@@ -46,7 +51,6 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	name: string,
 	opts: {
 		tracer: Otel.Tracer
-		parentSpan?: Otel.Span
 		links?: Otel.Link[]
 		eventLogLevel?: Pino.Level
 		root?: boolean
@@ -55,32 +59,37 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	cb: Cb,
 ): Cb {
 	// @ts-expect-error idk
-	return async (...args) => {
-		const activeSpanContext = Otel.context.active()
-		let context: Otel.Context
-		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then use its span context if it has one
-		if (args[0]?.span?.spanContext) {
-			context = Otel.trace.setSpan(activeSpanContext, args[0].span)
-		} else if (args[0]?.[0]?.span?.spanContext) {
-			context = Otel.trace.setSpan(activeSpanContext, args[0]?.[0]?.span)
-		} else if (opts.parentSpan) {
-			context = Otel.trace.setSpan(activeSpanContext, opts.parentSpan)
-		} else {
-			context = activeSpanContext
+	return async (..._args) => {
+		let args = _args
+		let links = opts.links ?? []
+		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then include any links attached to the context
+		if (args[0]?.upstreamLinks) links = [...links, ...(args[0]?.upstreamLinks ?? [])]
+		else if (args[0]?.[0]?.upstreamLinks) {
+			links = [...links, ...(args[0]?.[0]?.upstreamLinks ?? [])]
 		}
 
 		return opts.tracer.startActiveSpan(
 			name,
-			{ root: opts.root ?? !Otel.trace.getActiveSpan(), links: opts.links },
-			context,
+			{ root: opts.root, links },
+			Otel.context.active(),
 			async (span) => {
+				let ctx: any
+				const links: Otel.Link[] = [{ context: span.spanContext(), attributes: { ['slm.link-source']: 'upstream' } }]
+				if (args[0]?.otelCtx) {
+					ctx = args[0]
+					args = [{ ...ctx, upstreamLinks: links }, ...args.slice(1)]
+				} else if (args[0]?.[0]?.otelCtx) {
+					ctx = args[0][0]
+					args = [[{ ...ctx, upstreamLinks: links }, ...args[0].slice(1)], ...args.slice(1)]
+				}
+
 				// try to extract current serverId from context
-				const serverId = args[0]?.serverId ?? args[0]?.[0]?.serverId
+				const serverId = ctx?.serverId
 				if (serverId) {
 					setSpanOpAttrs({ server_id: serverId })
 				}
 
-				const username = args[0]?.user?.username ?? args[0]?.[0]?.user?.username
+				const username = ctx?.user?.username
 				if (username) {
 					setSpanOpAttrs({ username: username })
 				}
@@ -136,7 +145,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 export function setSpanOpAttrs(attrs: Record<string, any>) {
 	const namespaced: Record<string, any> = {}
 	for (const [key, value] of Object.entries(attrs)) {
-		namespaced[`op.${key}`] = value
+		namespaced[`slm.op.${key}`] = value
 	}
 	Otel.default.trace.getActiveSpan()?.setAttributes(namespaced)
 }
@@ -148,19 +157,12 @@ export function setSpanStatus(status: Otel.SpanStatusCode, message?: string) {
 	activeSpan.setStatus({ code: status, message })
 }
 
-export function pushOtelCtx<Ctx extends object>(ctx: Ctx) {
-	return {
-		...ctx,
-		otelCtx: Otel.default.context.active(),
-	}
-}
-
 export function getSpan() {
-	return Otel.default.trace.getActiveSpan()
+	return Otel.trace.getActiveSpan()
 }
 
 export function recordGenericError(error: unknown, setStatus = true) {
-	const span = Otel.default.trace.getActiveSpan()
+	const span = Otel.trace.getActiveSpan()
 	if (!span) return
 	if (error instanceof Error || typeof error === 'string') {
 		span.recordException(error)
@@ -249,7 +251,7 @@ export type WSSession = {
 
 export type AuthedUser = User & AuthSession
 
-export type AttachedFastify = CS.Log & Db & OtelSpan & Partial<ResolvedRoute>
+export type AttachedFastify = CS.Log & Db & OtelCtx & Partial<ResolvedRoute>
 export type Websocket = { ws: ws.WebSocket }
 export type OrpcBase =
 	& User
@@ -313,7 +315,6 @@ export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHis
  * - Creates spans for tracing execution
  * - Handles errors by logging them and recording in traces
  * - Automatically retries failed operations with configurable delay and retry count
- * - Executes callbacks strictly in sequence (using concatMap)
  */
 export function durableSub<T, O>(
 	name: string,
@@ -323,8 +324,8 @@ export function durableSub<T, O>(
 		eventLogLevel?: Pino.Level
 		numTaskRetries?: number
 		retryTaskOnValueError?: boolean
-		numDownstreamFailureBeforeErrorPropagation?: number
-		downstreamRetryTimeoutMs?: number
+		numOfUpstreamErrorsBeforePropagation?: number
+		retryTimeoutMs?: number
 		taskScheduling?: 'switch' | 'parallel' | 'sequential' | 'exhaust'
 		root?: boolean
 		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
@@ -332,23 +333,24 @@ export function durableSub<T, O>(
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
 	return (o) => {
-		const numDownstreamFailureBeforeErrorPropagation = opts.numDownstreamFailureBeforeErrorPropagation ?? 10
-		const numRetries = opts.numTaskRetries ?? 0
+		const numDownstreamFailureBeforeErrorPropagation = opts.numOfUpstreamErrorsBeforePropagation ?? 10
+		const numRetries = Math.max(opts.numTaskRetries ?? 0, 0)
 		const retryOnValueError = opts.retryTaskOnValueError ?? false
-		const taskScheduling = opts.taskScheduling || 'sequential' as const
+		const taskScheduling = opts.taskScheduling ?? 'sequential' as const
 
 		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
-		const link: Otel.Link = {
+		const initializerLink: Otel.Link = {
 			context: subSpan.spanContext(),
-			attributes: { 'link.reason': 'async-processing' },
+			attributes: { 'slm.link-source': 'sub-initializer' },
 		}
+		const taskOp = spanOp(name, { tracer: opts.tracer, links: [initializerLink], root: opts.root ?? true, attrs: opts.attrs }, cb)
 
 		const getTask = (arg: T): Rx.Observable<O> => {
 			const task = async () => {
 				let attemptsLeft = numRetries + 1
 				while (true) {
 					try {
-						const res = await spanOp(name, { tracer: opts.tracer, links: [link], root: opts.root, attrs: opts.attrs }, cb)(arg)
+						const res = await taskOp(arg)
 						if (retryOnValueError && (res as any).code !== 'ok') {
 							attemptsLeft--
 							if (attemptsLeft === 0) return res
@@ -359,20 +361,20 @@ export function durableSub<T, O>(
 					} catch (error) {
 						attemptsLeft--
 						if (attemptsLeft === 0) throw error
-						opts.ctx.log.warn(`retrying ${name}`)
+						opts.ctx.log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
+						await sleep(opts.retryTimeoutMs ?? 0)
 					}
 				}
 			}
 
-			// ensure that we only start the task on subscription. combined with concatMap this means that the tasks will only be executed one at a time
+			// ensure that we only start the task on subscription.
 			return toCold(task)
 		}
 
 		return o.pipe(
 			Rx.tap({
 				error: error => {
-					const activeSpan = Otel.default.trace.getActiveSpan()
-					activeSpan?.addLink(link)
+					const activeSpan = Otel.trace.getActiveSpan()
 					activeSpan?.setStatus({ code: Otel.SpanStatusCode.ERROR })
 
 					const span = activeSpan ?? subSpan
@@ -386,7 +388,7 @@ export function durableSub<T, O>(
 				'switch': Rx.switchMap(getTask),
 				'exhaust': Rx.exhaustMap(getTask),
 			})[taskScheduling],
-			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.downstreamRetryTimeoutMs ?? 250 }),
+			Rx.retry({ resetOnSuccess: true, count: numDownstreamFailureBeforeErrorPropagation, delay: opts.retryTimeoutMs ?? 250 }),
 			Rx.tap({ subscribe: () => subSpan.addEvent('subscribed'), complete: () => subSpan.end() }),
 		)
 	}

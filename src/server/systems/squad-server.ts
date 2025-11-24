@@ -8,8 +8,7 @@ import * as Obj from '@/lib/object'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
-import { SftpTail, type SftpTailOptions } from '@/lib/sftp-tail'
-import { SquadEventEmitter } from '@/lib/squad-log-parser/squad-event-emitter.ts'
+import { SftpTail } from '@/lib/sftp-tail'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
@@ -52,7 +51,7 @@ type State = {
 	debug__ticketOutcome?: SM.Events.DebugTicketOutcome
 }
 
-export let state!: State
+export let globalState!: State
 export type SquadServer = {
 	layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
 
@@ -72,13 +71,15 @@ export type SquadServer = {
 			winner: string | null
 			layer: string
 		} | null
+
+		// chainID -> playerids
+		joinRequests: Map<number, SM.PlayerIds.Type>
+
+		// server version of chat state which can be replicated to users
+		chat: CHAT.ChatState
 	}
-	eventBuffer: SM.Events.Event[]
-	event$: Rx.Subject<SM.Events.Event>
-	// chat: {
-	// 	// users: Map<string, UserStatus>
-	// 	buffer: CHAT.Event[]
-	// }
+	event$: Rx.Subject<[CS.Log & C.ServerSlice, SM.Events.Event]>
+	chatSync$: Rx.Subject<[C.Log, CHAT.SyncEvent]>
 } & SquadRcon.SquadRconContext
 
 export type MatchHistoryState = {
@@ -91,7 +92,7 @@ export type MatchHistoryState = {
 export async function setup() {
 	const ctx = getBaseCtx()
 
-	state = {
+	globalState = {
 		slices: new Map(),
 		selectedServers: new Map(),
 		selectedServerUpdate$: new Rx.Subject(),
@@ -138,14 +139,14 @@ export async function setup() {
 			})
 
 			if (!serverState) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
-			await instantiateServer(ctx, serverState)
+			await initServer(ctx, serverState)
 		})())
 	}
 
 	await Promise.all(ops)
 }
 
-async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.ServerState) {
+async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.ServerState) {
 	const layersStatus: SquadServer['layersStatus'] = new AsyncResource('serverStatus', (ctx) => SquadRcon.getLayerStatus(ctx), {
 		defaultTTL: 5000,
 	})
@@ -220,14 +221,31 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 		serverRolling$: new Rx.BehaviorSubject<boolean>(false),
 
 		sftpReader,
-		eventBuffer: [],
 		event$: new Rx.Subject(),
+		chatSync$: new Rx.Subject<[CS.Log, CHAT.SyncEvent]>(),
+		state: {
+			roundEndState: null,
+			roundLoser: null,
+			roundWinner: null,
+			joinRequests: new Map(),
+			chat: {
+				players: [],
+				squads: [],
+
+				connectedPlayers: [],
+				disconnectedPlayers: [],
+				createdSquads: new Set(),
+
+				// TODO fill event buffer on server start
+				eventBuffer: [],
+			},
+		},
 	}
 
 	server.sftpReader.on(
 		'line',
-		C.spanOp('squad-log-event-emitter:on-line-parsed', { tracer, eventLogLevel: 'trace', root: true }, async (line: string) => {
-			const ctx = C.pushOtelCtx(C.initLocks(resolveSliceCtx(getBaseCtx(), serverId)))
+		C.spanOp('squad-server:on-log-event', { tracer, eventLogLevel: 'trace', root: true }, async (line: string) => {
+			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			for (const matcher of SM.LogEvents.EventMatchers) {
 				try {
 					const [matched, error] = matchLog(line, matcher)
@@ -251,6 +269,141 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 		}),
 	)
 
+	// -------- Forward rcon events --------
+	sub.add(
+		server.rconEvent$.pipe(
+			C.durableSub('squad-server:on-rcon-event', { tracer, eventLogLevel: 'trace', ctx }, async ([_ctx, event]) => {
+				const ctx = resolveSliceCtx(_ctx, serverId)
+				ctx.log.info(event, 'Received RCON Event: %s', event.type)
+				if (event.type === 'PLAYER_BANNED' || event.type === 'PLAYER_KICKED') {
+					const ids = event.player
+					void (async () => {
+						const res = await server.playerList.get(ctx)
+						if (res.code !== 'ok') return
+						const players = res.players
+						if (SM.PlayerIds.find(players, p => p.ids, ids)) {
+							server.playerList.invalidate(ctx)
+						}
+					})()
+				}
+
+				ctx.server.event$.next([ctx, event])
+				return { code: 'ok' as const }
+			}),
+		).subscribe(),
+	)
+
+	// -------- Handle commands/votes --------
+	sub.add(
+		server.event$.pipe(
+			C.durableSub(
+				'squad-server:handle-rcon-event',
+				{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
+				async ([_ctx, event]) => {
+					const ctx = DB.addPooledDb(C.initLocks(_ctx))
+					if (event.type === 'CHAT_MESSAGE' && event.message.startsWith(CONFIG.commandPrefix)) {
+						await Commands.handleCommand(ctx, event)
+					} else if (event.type === 'CHAT_MESSAGE' && event.message.trim().match(/^\d+$/)) {
+						LayerQueue.handleVote(ctx, event)
+					}
+				},
+			),
+		).subscribe(),
+	)
+
+	// -------- Handle ROUND_ENDED --------
+	sub.add(
+		server.event$.pipe(
+			C.durableSub(
+				'squad-server:handle-round-ended',
+				{ tracer, ctx, eventLogLevel: 'info' },
+				async ([_ctx, event]) => {
+					if (event.type !== 'ROUND_ENDED') return
+					const ctx = DB.addPooledDb(C.initLocks(_ctx))
+
+					const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
+					if (statusRes.code !== 'ok') return
+					// -------- use debug ticketOutcome if one was set --------
+					if (globalState.debug__ticketOutcome) {
+						let winner: SM.TeamId | null
+						let loser: SM.TeamId | null
+						if (globalState.debug__ticketOutcome.team1 === globalState.debug__ticketOutcome.team2) {
+							winner = null
+							loser = null
+						} else {
+							winner = globalState.debug__ticketOutcome.team1 - globalState.debug__ticketOutcome.team2 > 0 ? 1 : 2
+							loser = globalState.debug__ticketOutcome.team1 - globalState.debug__ticketOutcome.team2 < 0 ? 1 : 2
+						}
+						const partial = L.toLayer(statusRes.data.currentLayer)
+						const teams: SM.SquadOutcomeTeam[] = [
+							{
+								faction: partial.Faction_1!,
+								unit: partial.Unit_1!,
+								team: 1,
+								tickets: globalState.debug__ticketOutcome.team1,
+							},
+							{
+								faction: partial.Faction_2!,
+								unit: partial.Unit_2!,
+								team: 2,
+								tickets: globalState.debug__ticketOutcome.team2,
+							},
+						]
+						const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
+						const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
+						event = {
+							...event,
+							loser: loserTeam,
+							winner: winnerTeam,
+						}
+						delete globalState.debug__ticketOutcome
+					}
+					const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
+					return res
+				},
+			),
+		).subscribe(),
+	)
+
+	sub.add(
+		server.playerList.observe({ ...ctx, rcon })
+			.pipe(Rx.pairwise())
+			.subscribe(([resPrev, res]) => {
+				if (res.code !== 'ok') return
+				const upserted = res.players
+				const removed: SM.PlayerIds.Type[] = []
+				if (resPrev.code === 'ok') {
+					for (const prevPlayer of resPrev.players) {
+						const existingIndex = SM.PlayerIds.indexOf(upserted, p => p.ids, prevPlayer.ids)
+						if (existingIndex === -1) {
+							removed.push(prevPlayer.ids)
+							upserted.splice(existingIndex, 1)
+							continue
+						}
+						if (!Obj.deepEqual(prevPlayer, upserted[existingIndex])) {
+							upserted.splice(existingIndex, 1)
+						}
+					}
+				}
+				server.chatSync$.next([ctx, { type: 'PLAYERS_UPDATE', upserted, removed }])
+			}),
+	)
+	
+	sub.add(
+    server.squadList.observe({ ...ctx, rcon })
+      .pipe(Rx.pairwise())
+      .subscribe(([resPrev, res]) => {
+        if (res.code !== 'ok') return 
+        const upserted = res.squads
+      })
+	)
+
+	sub.add(
+		server.event$.subscribe(([ctx, event]) => {
+			CHAT.handleEvent(server.state.chat, event)
+		}),
+	)
+
 	const slice: C.ServerSlice = {
 		serverId,
 
@@ -269,102 +422,14 @@ async function instantiateServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS
 
 			update$: new Rx.Subject<V.VoteStateUpdate>(),
 		},
-		serverSliceSub: sub,
 		sharedList: SharedLayerList.getDefaultState(serverState),
+
+		serverSliceSub: sub,
 	}
 
 	rcon.ensureConnected(ctx)
 
-	state.slices.set(serverId, slice)
-
-	sub.add(
-		slice.matchHistory.update$.pipe(Rx.startWith(0)).subscribe(() => {
-			const ctx = { ...getBaseCtx(), ...slice }
-			const currentMatch = MatchHistory.getCurrentMatch(ctx)
-			if (!currentMatch) return
-			ctx.log.info('active match id: %s, status: %s', currentMatch.historyEntryId, currentMatch.status)
-		}),
-	)
-
-	sub.add(
-		rconEvent$.pipe(
-			C.durableSub(
-				'squad-server:handle-rcon-event',
-				{ tracer, ctx, eventLogLevel: 'trace', taskScheduling: 'parallel', root: true },
-				async (event) => {
-					const ctx = C.initLocks(resolveSliceCtx(getBaseCtx(), serverId))
-					if (event.type === 'CHAT_MESSAGE' && event.message.startsWith(CONFIG.commandPrefix)) {
-						await Commands.handleCommand(ctx, event)
-					} else if (event.type === 'CHAT_MESSAGE' && event.message.trim().match(/^\d+$/)) {
-						LayerQueue.handleVote(ctx, event)
-					}
-				},
-			),
-		).subscribe(),
-	)
-
-	sub.add(
-		slice.server.logEmitter.event$.pipe(
-			Rx.filter(([_, e]) => ['NEW_GAME', 'ROUND_ENDED'].includes(e.type)),
-			C.durableSub(
-				'squad-server:handle-squad-game-event',
-				{ tracer, ctx, eventLogLevel: 'info' },
-				async ([_ctx, event]) => {
-					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-					switch (event.type) {
-						case 'NEW_GAME': {
-							// we don't do anything in here right now -- that's all handled separately in some more complicated logic
-							break
-						}
-						case 'ROUND_ENDED': {
-							const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 0 })
-							if (statusRes.code !== 'ok') return statusRes
-							// -------- use debug ticketOutcome if one was set --------
-							if (state.debug__ticketOutcome) {
-								let winner: SM.TeamId | null
-								let loser: SM.TeamId | null
-								if (state.debug__ticketOutcome.team1 === state.debug__ticketOutcome.team2) {
-									winner = null
-									loser = null
-								} else {
-									winner = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 > 0 ? 1 : 2
-									loser = state.debug__ticketOutcome.team1 - state.debug__ticketOutcome.team2 < 0 ? 1 : 2
-								}
-								const partial = L.toLayer(statusRes.data.currentLayer)
-								const teams: SM.SquadOutcomeTeam[] = [
-									{
-										faction: partial.Faction_1!,
-										unit: partial.Unit_1!,
-										team: 1,
-										tickets: state.debug__ticketOutcome.team1,
-									},
-									{
-										faction: partial.Faction_2!,
-										unit: partial.Unit_2!,
-										team: 2,
-										tickets: state.debug__ticketOutcome.team2,
-									},
-								]
-								const winnerTeam = teams.find(t => t?.team && t.team === winner) ?? null
-								const loserTeam = teams.find(t => t?.team && t.team === loser) ?? null
-								event = {
-									...event,
-									loser: loserTeam,
-									winner: winnerTeam,
-								}
-								delete state.debug__ticketOutcome
-							}
-							const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, event)
-							return res
-						}
-
-							// default:
-							// 	assertNever(event)
-					}
-				},
-			),
-		).subscribe(),
-	)
+	globalState.slices.set(serverId, slice)
 
 	await MatchHistory.loadState({ ...ctx, ...slice })
 	await LayerQueue.init({ ...ctx, ...slice })
@@ -386,7 +451,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 		)
 
 	// if we have to handle multiple effects from NEW_GAME we may want to ensure the order in which those effects are processed instead of just reading straight from event$
-	const newGame$ = ctx.server.logEmitter.event$.pipe(
+	const newGame$ = ctx.server.event$.pipe(
 		Rx.concatMap(([_, event]) => event.type === 'NEW_GAME' ? Rx.of(event) : Rx.EMPTY),
 	)
 	let triggerWait$ = Rx.merge(
@@ -491,13 +556,14 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 
 export function destroyServer(ctx: C.ServerSlice & CS.Log) {
 	ctx.serverSliceSub.unsubscribe()
-	void ctx.server.logEmitter.disconnect()
+	void ctx.server.sftpReader.disconnect()
+	ctx.server.event$.complete()
 	ctx.rcon.disconnect(ctx)
 	ctx.matchHistory.update$.complete()
 
-	state.slices.delete(ctx.serverId)
-	for (const [wsClientId, serverId] of Array.from(state.selectedServers.entries())) {
-		if (ctx.serverId === serverId) state.selectedServers.delete(wsClientId)
+	globalState.slices.delete(ctx.serverId)
+	for (const [wsClientId, serverId] of Array.from(globalState.selectedServers.entries())) {
+		if (ctx.serverId === serverId) globalState.selectedServers.delete(wsClientId)
 	}
 }
 
@@ -513,7 +579,7 @@ function getLayersStatusExt$(
 	serverId: string,
 ) {
 	return new Rx.Observable<SM.LayersStatusResExt>(s => {
-		const ctx = { ...getBaseCtx(), ...state.slices.get(serverId)! }
+		const ctx = { ...getBaseCtx(), ...globalState.slices.get(serverId)! }
 		const sub = new Rx.Subscription()
 		sub.add(
 			ctx.server.layersStatus.observe(ctx).subscribe({
@@ -559,7 +625,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	} else if (defaultServerId) {
 		serverId = defaultServerId
 	} else {
-		serverId = (state.slices.keys().next().value)!
+		serverId = (globalState.slices.keys().next().value)!
 	}
 
 	if (defaultServerId && serverId === defaultServerId) return ctx
@@ -571,10 +637,10 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 }
 
 export function resolveWsClientSliceCtx(ctx: C.OrpcBase) {
-	let serverId = state.selectedServers.get(ctx.wsClientId)
+	let serverId = globalState.selectedServers.get(ctx.wsClientId)
 	serverId ??= CONFIG.servers[0].id
 	if (!serverId) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'No server selected' })
-	const slice = state.slices.get(serverId)
+	const slice = globalState.slices.get(serverId)
 	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found' })
 	return {
 		...ctx,
@@ -583,7 +649,7 @@ export function resolveWsClientSliceCtx(ctx: C.OrpcBase) {
 }
 
 export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
-	const slice = state.slices.get(serverId)
+	const slice = globalState.slices.get(serverId)
 	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found' })
 	return {
 		...ctx,
@@ -596,18 +662,15 @@ function getBaseCtx() {
 }
 
 export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
-	return state.selectedServerUpdate$.pipe(
+	return globalState.selectedServerUpdate$.pipe(
 		Rx.concatMap(s => s.wsClientId === ctx.wsClientId ? Rx.of(s.serverId) : Rx.EMPTY),
-		Rx.startWith(state.selectedServers.get(ctx.wsClientId)!),
+		Rx.startWith(globalState.selectedServers.get(ctx.wsClientId)!),
 		Rx.map(serverId => resolveSliceCtx(ctx, serverId)),
 	)
 }
 
 /**
  * Performs state tracking and event consolidation for squad log events.
- * @param ctx The context of the log event.
- * @param logEvt The log event to process.
- * @returns an event if one should be emitted
  */
 function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents.Event): SM.Events.Event | undefined {
 	const server = ctx.server
@@ -623,7 +686,6 @@ function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents
 			break
 		}
 
-		// TODO: might be able to remove that case and backing code
 		case 'ROUND_TEAM_OUTCOME': {
 			server.state.roundEndState = {
 				// ported from existing behavior from squadjs -- unsure why it exists though https://github.com/Tactrigsds/SquadJS/blob/psg/squad-server/log-parser/round-winner.js
@@ -650,23 +712,62 @@ function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents
 			return logEvt satisfies SM.LogEvents.NewGame
 		}
 
+		case 'PLAYER_CONNECTED': {
+			server.state.joinRequests.set(logEvt.chainID, logEvt.player)
+			return
+		}
+
+		case 'PLAYER_JOIN_SUCCEEDED': {
+			const joinedPlayerIds = server.state.joinRequests.get(logEvt.chainID)
+			if (!joinedPlayerIds) return
+			server.state.joinRequests.delete(logEvt.chainID)
+			void (async () => {
+				const res = await server.playerList.fetchedValue
+				if (res?.code !== 'ok') return
+				const players = res.players
+
+				if (!SM.PlayerIds.find(players, p => p.ids, joinedPlayerIds)) {
+					server.playerList.invalidate(ctx)
+				}
+			})()
+			return {
+				type: 'PLAYER_CONNECTED',
+				time: logEvt.time,
+				player: joinedPlayerIds,
+			}
+		}
+
+		case 'PLAYER_DISCONNECTED': {
+			void (async () => {
+				const res = await server.playerList.fetchedValue
+				if (res?.code !== 'ok') return
+				const players = res.players
+
+				if (SM.PlayerIds.find(players, p => p.ids, logEvt.player)) {
+					server.playerList.invalidate(ctx)
+				}
+			})()
+
+			return {
+				type: 'PLAYER_DISCONNECTED',
+				time: logEvt.time,
+				player: logEvt.player,
+			}
+		}
+
 		default:
 			assertNever(logEvt)
 	}
-}
-
-export function processServerRconEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.RconEvents.Event) {
-	const server = ctx.server
 }
 
 export const orpcRouter = {
 	setSelectedServer: orpcBase
 		.input(z.string())
 		.handler(async ({ context, input: serverId }) => {
-			const slice = state.slices.get(serverId)
+			const slice = globalState.slices.get(serverId)
 			if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server not found' })
-			state.selectedServers.set(context.wsClientId, serverId)
-			state.selectedServerUpdate$.next({ wsClientId: context.wsClientId, serverId })
+			globalState.selectedServers.set(context.wsClientId, serverId)
+			globalState.selectedServerUpdate$.next({ wsClientId: context.wsClientId, serverId })
 			return { code: 'ok' as const }
 		}),
 

@@ -18,6 +18,6 @@ w.SquadServer = SquadServer
 w.superjson = superjson
 
 w.debug__setTicketOutcome = (team1: number, team2: number) => {
-	SquadServer.state.debug__ticketOutcome = { team1, team2 }
+	SquadServer.globalState.debug__ticketOutcome = { team1, team2 }
 }
 console.log('-------- DEVELOPER CONSOLE LOADED --------')

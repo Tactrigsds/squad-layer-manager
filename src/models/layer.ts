@@ -701,3 +701,11 @@ export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(laye
 	}
 	return updated
 }
+
+export function applyBackwardsCompatMapping(
+	field: 'factions' | 'units' | 'gamemodes' | 'maps',
+	value: string,
+	components = StaticLayerComponents,
+) {
+	return components.backwardsCompat[field][value] ?? value
+}

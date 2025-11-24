@@ -16,7 +16,7 @@ export function registerClient(ctx: C.OrpcBase) {
 	ctx.ws.on('close', () => {
 		disconnect$.next(ctx)
 		wsSessions.delete(ctx.wsClientId)
-		SquadServer.state.selectedServers.delete(ctx.wsClientId)
+		SquadServer.globalState.selectedServers.delete(ctx.wsClientId)
 	})
 	connect$.next(ctx)
 }

@@ -328,7 +328,7 @@ export function setup() {
 		Rx.map(() => getBaseCtx()),
 		C.durableSub('shared-layer-list:clean-presence', { tracer, ctx }, async (ctx) => {
 			let numCleaned = 0
-			for (const slice of SquadServer.state.slices.values()) {
+			for (const slice of SquadServer.globalState.slices.values()) {
 				const presenceState = slice.sharedList.presence
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator

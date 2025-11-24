@@ -27,7 +27,7 @@ export function ensureLoggerSetup() {
 			if (!otelLogger) {
 				return method.apply(this, _inputArgs)
 			}
-			const span = Otel.default.trace.getActiveSpan()
+			const span = Otel.trace.getActiveSpan()
 			let attrs = {} as Record<string, unknown>
 			let msg = null
 			for (let i = 0; i < inputArgs.length; i++) {

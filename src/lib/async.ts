@@ -121,15 +121,6 @@ export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in
 	}
 }
 
-export function withActiveSpan<T>(name: string, opts: { root: boolean; tracer: Otel.Tracer }) {
-	return (o: Rx.Observable<T>) => {
-		return new Rx.Observable<T>(s => {
-			const sub = o.subscribe(value => opts.tracer.startActiveSpan(name, { root: opts.root }, () => s.next(value)))
-			return () => sub.unsubscribe()
-		})
-	}
-}
-
 type AsyncResourceOpts = {
 	maxLockTime: number
 	defaultTTL: number
@@ -178,6 +169,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 			throw err
 		}
 	}
+
 	async get(_ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
@@ -242,7 +234,6 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		return Rx.concat(
 			this.fetchedValue ?? Rx.EMPTY,
 			this.valueSubject.pipe(
-				withActiveSpan(`asyncResourceObserve::${this.name}`, { root: true, tracer: this.opts.tracer }),
 				traceTag(`asyncResourceObserve__${this.name}`),
 				Rx.observeOn(Rx.asapScheduler),
 				Rx.tap({

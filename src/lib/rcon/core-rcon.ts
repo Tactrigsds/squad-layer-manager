@@ -16,8 +16,14 @@ export type DecodedPacket = {
 }
 
 const tracer = Otel.trace.getTracer('core-rcon')
+type Events = {
+	server: [CS.Log & C.OtelCtx, DecodedPacket]
+	auth: []
+	[key: `response${string}`]: [string]
+	RCON_ERROR: [Error]
+}
 
-export default class Rcon extends EventEmitter {
+export default class Rcon extends EventEmitter<Events> {
 	serverId: string
 	private settings: SS.ServerConnection['rcon']
 	private client: net.Socket | null
@@ -55,19 +61,11 @@ export default class Rcon extends EventEmitter {
 		this.responseString = { id: 0, body: '' }
 	}
 
-	processChatPacket(_decodedPacket: any): void {}
-
-	private addLogProps(ctx: CS.Log & { module?: string }): CS.Log {
-		if (ctx.module !== 'rcon') return C.includeLogProperties(ctx, { module: 'rcon', serverId: this.serverId })
-		return ctx
-	}
-
 	ensureConnectedSub?: Rx.Subscription
-	ensureConnected(ctx: CS.Log & { module?: string }) {
+	ensureConnected(ctx: CS.Log) {
 		if (this.ensureConnectedSub) return
 		const connect = () => {
 		}
-		ctx = this.addLogProps(ctx)
 		const sub = new Rx.Subscription()
 		this.ensureConnectedSub = sub
 		sub.add(
@@ -104,7 +102,6 @@ export default class Rcon extends EventEmitter {
 	}
 
 	disconnect(ctx: CS.Log) {
-		ctx = this.addLogProps(ctx)
 		ctx.log.info('Disconnecting from: %s', `${this.settings.host}:${this.settings.port}`)
 		this.removeAllListeners()
 		this.ensureConnectedSub?.unsubscribe()
@@ -117,8 +114,7 @@ export default class Rcon extends EventEmitter {
 	execute = C.spanOp(
 		'rcon:execute',
 		{ tracer, eventLogLevel: 'trace' },
-		async (_ctx: CS.Log, body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
-			const ctx = this.addLogProps(_ctx)
+		async (ctx: CS.Log, body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			ctx.log.trace(`Executing %s `, body)
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
@@ -151,7 +147,6 @@ export default class Rcon extends EventEmitter {
 	)
 
 	#sendAuth(ctx: CS.Log): void {
-		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
 		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
 		this.client?.write(this.#encode(this.type.auth, 2147483647, this.settings.password).toString('binary'), 'binary')
@@ -163,7 +158,6 @@ export default class Rcon extends EventEmitter {
 	}
 
 	#write(ctx: CS.Log, type: number, id: number, body?: string): void {
-		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
 		this.client?.write(this.#encode(type, id, body).toString('binary'), 'binary')
 	}
@@ -179,8 +173,8 @@ export default class Rcon extends EventEmitter {
 		return buffer
 	}
 
-	#onData(ctx: CS.Log, data: Buffer): void {
-		ctx = this.addLogProps(ctx)
+	#onData = C.spanOp('core-rcon:onData', { tracer, eventLogLevel: 'trace' }, (_ctx: CS.Log, data: Buffer): void => {
+		const ctx = C.includeActiveSpanAsUpstreamLink(_ctx)
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode(ctx)
@@ -189,13 +183,12 @@ export default class Rcon extends EventEmitter {
 				ctx.log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
 			}
 			if (packet.type === this.type.response) this.#onResponse(ctx, packet)
-			else if (packet.type === this.type.server) this.emit('server', packet)
+			else if (packet.type === this.type.server) this.emit('server', ctx, packet)
 			else if (packet.type === this.type.command) this.emit('auth')
 		}
-	}
+	})
 
 	#decode(ctx: CS.Log): { size: number; id: number; type: number; body: string } | null {
-		ctx = this.addLogProps(ctx)
 		if (
 			this.stream[0] === 0
 			&& this.stream[1] === 1
@@ -229,7 +222,6 @@ export default class Rcon extends EventEmitter {
 	}
 
 	#onResponse(ctx: CS.Log, packet: { size: number; id: number; type: number; body: string }): void {
-		ctx = this.addLogProps(ctx)
 		if (packet.body === '') {
 			this.emit(`response${this.responseString.id - 2}`, this.responseString.body)
 			this.responseString.body = ''
@@ -240,7 +232,6 @@ export default class Rcon extends EventEmitter {
 	}
 
 	#badPacket(ctx: CS.Log): null {
-		ctx = this.addLogProps(ctx)
 		ctx.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${JSON.stringify(this.responseString)}`)
 		this.stream = Buffer.alloc(0)
 		this.responseString = { id: 0, body: '' }
@@ -248,13 +239,11 @@ export default class Rcon extends EventEmitter {
 	}
 
 	#onClose(ctx: CS.Log): void {
-		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Socket closed.`)
 		if (this.connected$.value) this.connected$.next(false)
 	}
 
 	#onNetError(ctx: CS.Log, error: Error): void {
-		ctx = this.addLogProps(ctx)
 		ctx.log.error(error, `node:net error`)
 		this.emit('RCON_ERROR', error)
 		if (this.connected$.value) this.connected$.next(false)
@@ -265,18 +254,15 @@ export default class Rcon extends EventEmitter {
 	}
 
 	async warn(ctx: CS.Log, playerId: string, message: string): Promise<void> {
-		ctx = this.addLogProps(ctx)
 		ctx.log.trace(`Warned ${playerId}: ${message}`)
 		await this.execute(ctx, `AdminWarn "${playerId}" ${message}`)
 	}
 
 	async kick(ctx: CS.Log, playerId: string, reason: string): Promise<void> {
-		ctx = this.addLogProps(ctx)
 		await this.execute(ctx, `AdminKick "${playerId}" ${reason}`)
 	}
 
 	async forceTeamChange(ctx: CS.Log, playerId: string): Promise<void> {
-		ctx = this.addLogProps(ctx)
 		await this.execute(ctx, `AdminForceTeamChange "${playerId}"`)
 	}
 }

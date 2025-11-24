@@ -17,7 +17,7 @@ export type SftpTailOptions = {
 	reconnectInterval: number
 }
 
-// TODO kind of awkward, could simplify the "options" type here
+// TODO kind of awkward, could simplify the "options" type here. also we should thread context in through method params like we do elsewhere, and include context with events
 type FullSftpTailOptions = {
 	ftp: {
 		encoding: 'utf-8'

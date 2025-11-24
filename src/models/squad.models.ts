@@ -1,5 +1,5 @@
-import { createLogMatcher } from '@/lib/log-parsing'
-import * as zUtils from '@/lib/zod'
+import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
+import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
@@ -9,20 +9,20 @@ import type { OneToManyMap } from '../lib/one-to-many-map'
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string(),
 	MaxPlayers: z.number().int().nonnegative(),
-	PlayerCount_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueue_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueueLimit_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PlayerCount_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueue_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MapName_s: z.string(),
 	GameMode_s: z.string(),
 	GameVersion_s: z.string(),
 	LICENSEDSERVER_b: z.boolean(),
-	PLAYTIME_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	Flags_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	PLAYTIME_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	Flags_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	MATCHHOPPER_s: z.string(),
 	MatchTimeout_d: z.number().int().nonnegative(),
 	SESSIONTEMPLATENAME_s: z.string(),
 	Password_b: z.boolean(),
-	CurrentModLoadedCount_I: zUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	CurrentModLoadedCount_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
 	AllModsWhitelisted_b: z.boolean(),
 	Region_s: z.string(),
 	NextLayer_s: z.string().optional(),
@@ -57,13 +57,13 @@ export type TeamId = z.infer<typeof TeamIdSchema>
 
 export namespace PlayerIds {
 	export const Schema = z.object({
-		username: z.string(),
+		username: z.string().optional(),
 		steam: z.bigint().optional(),
 		eos: z.string().optional(),
 		playerController: z.string().optional(),
 	})
 		.refine(data => data.steam || data.eos, {
-			message: 'Either steam or eos must be provided',
+			message: 'At least one of  (steam, eos) must be provided',
 		})
 
 	// in order of lookup preference
@@ -75,15 +75,16 @@ export namespace PlayerIds {
 	export type Type = z.infer<typeof Schema>
 	export type IdQuery = Partial<Type>
 
-	export function parsePlayerIds(username: string, idsStr?: string): Type {
-		if (!idsStr) {
-			return Schema.parse({ username })
-		}
+	// old signature
+	// export function parsePlayerIds(username: string, idsStr?: string): Type {
+	export function parsePlayerIds(opts: { playerController?: string; username?: string; idsStr?: string }): Type {
 		const ids: any = {}
-		for (const { key, value } of matchAllIds(idsStr)) {
-			ids[key] = value
+		if (opts.idsStr) {
+			for (const { key, value } of matchAllIds(opts.idsStr)) {
+				ids[key] = value
+			}
 		}
-		return Schema.parse({ ...ids, username })
+		return Schema.parse({ ...ids, username: opts.username, playerController: opts.playerController })
 	}
 
 	export function find(idList: Type[], id: IdQuery): Type | undefined
@@ -122,6 +123,45 @@ export namespace PlayerIds {
 				if (item[prop] === searchId[prop]) return item
 			}
 		}
+	}
+
+	export function indexOf(idList: Type[], id: IdQuery): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQuery): number
+	export function indexOf<T>(
+		elts: T[] | Type[],
+		cbOrId?: ((item: T) => Type) | Partial<Type>,
+		id?: Partial<Type>,
+	): number {
+		if (typeof cbOrId === 'function') {
+			// Overload: indexOf<T>(idList: T[], cb: (item: T) => Type, id: Partial<Type>): number
+			const cb = cbOrId
+			const searchId = id!
+			for (const prop of LOOKUP_PROPS) {
+				if (!searchId[prop]) continue
+				for (let i = 0; i < (elts as T[]).length; i++) {
+					if (cb((elts as T[])[i])[prop] === searchId[prop]) return i
+				}
+			}
+			return -1
+		}
+
+		// Original overload: indexOf(idList: Type[], id: Partial<Type>): number
+		const searchId = cbOrId as Partial<Type> | string
+		if (typeof searchId === 'string') {
+			for (let i = 0; i < (elts as Type[]).length; i++) {
+				for (const prop of UNIQUE_PROPS) {
+					if ((elts as Type[])[i][prop]?.toString() === searchId) return i
+				}
+			}
+			return -1
+		}
+		for (const prop of LOOKUP_PROPS) {
+			if (!searchId[prop]) continue
+			for (let i = 0; i < (elts as Type[]).length; i++) {
+				if ((elts as Type[])[i][prop] === searchId[prop]) return i
+			}
+		}
+		return -1
 	}
 
 	export function upsert(idList: Type[], id: Type): Type
@@ -175,6 +215,54 @@ export namespace PlayerIds {
 		return newId
 	}
 
+	export function remove(idList: Type[], id: IdQuery): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQuery): boolean
+	export function remove<T>(
+		elts: T[] | Type[],
+		cbOrId?: ((item: T) => Type) | Partial<Type>,
+		id?: Partial<Type>,
+	): boolean {
+		if (typeof cbOrId === 'function') {
+			// Overload: delete_<T>(idList: T[], cb: (item: T) => Type, id: Partial<Type>): boolean
+			const cb = cbOrId
+			const searchId = id!
+			for (const prop of LOOKUP_PROPS) {
+				if (!searchId[prop]) continue
+				for (let i = 0; i < (elts as T[]).length; i++) {
+					if (cb((elts as T[])[i])[prop] === searchId[prop]) {
+						;(elts as T[]).splice(i, 1)
+						return true
+					}
+				}
+			}
+			return false
+		}
+
+		// Original overload: delete_(idList: Type[], id: Partial<Type>): boolean
+		const searchId = cbOrId as Partial<Type> | string
+		if (typeof searchId === 'string') {
+			for (let i = 0; i < (elts as Type[]).length; i++) {
+				for (const prop of UNIQUE_PROPS) {
+					if ((elts as Type[])[i][prop]?.toString() === searchId) {
+						;(elts as Type[]).splice(i, 1)
+						return true
+					}
+				}
+			}
+			return false
+		}
+		for (const prop of LOOKUP_PROPS) {
+			if (!searchId[prop]) continue
+			for (let i = 0; i < (elts as Type[]).length; i++) {
+				if ((elts as Type[])[i][prop] === searchId[prop]) {
+					;(elts as Type[]).splice(i, 1)
+					return true
+				}
+			}
+		}
+		return false
+	}
+
 	const ID_MATCHER = /\s*(?<name>[^\s:]+)\s*:\s*(?<id>[^\s]+)/g
 
 	function* matchAllIds(idsStr: string) {
@@ -188,6 +276,8 @@ export namespace PlayerIds {
 		return (ids.steam?.toString() ?? ids.steam?.toString())!
 	}
 }
+
+export const ChainIdSchema = ZodUtils.ParsedIntSchema
 
 export const PlayerSchema = z.object({
 	ids: PlayerIds.Schema,
@@ -218,8 +308,6 @@ export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export const CHAT_CHANNEL = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
 
-export const COMMANDS = ['vote', 'rtv', 'setpool'] as const
-
 export const AdminListSourceSchema = z.object({
 	type: z.enum(['remote', 'local', 'ftp']),
 	source: z.string(),
@@ -233,7 +321,7 @@ export const RCON_MAX_BUF_LEN = 4152
 
 export const SquadOutcomeTeamSchema = z.object({
 	faction: z.string(),
-	unit: zUtils.StrOrNullIfEmptyOrWhitespace,
+	unit: ZodUtils.StrOrNullIfEmptyOrWhitespace,
 	team: TeamIdSchema,
 	tickets: z.number().positive(),
 })
@@ -275,10 +363,24 @@ export namespace Events {
 		loser: SquadOutcomeTeam | null
 	}
 
+	export type PlayerConnected = {
+		type: 'PLAYER_CONNECTED'
+		time: Date
+		player: PlayerIds.Type
+	}
+
+	export type PlayerDisconnected = {
+		type: 'PLAYER_DISCONNECTED'
+		time: Date
+		player: PlayerIds.Type
+	}
+
 	export type Event =
 		// from logs
 		| NewGame
 		| RoundEnded
+		| PlayerConnected
+		| PlayerDisconnected
 		// from rcon
 		| RconEvents.ChatMessage
 		| RconEvents.PossessedAdminCamera
@@ -301,7 +403,7 @@ export namespace RconEvents {
 	})
 	export type ChatMessage = z.infer<typeof ChatMessageSchema>
 
-	export const ChatMessageMatcher = createLogMatcher<ChatMessage>({
+	export const ChatMessageMatcher = createLogMatcher({
 		schema: ChatMessageSchema,
 		regex: /\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/,
 		onMatch: (match) => {
@@ -310,7 +412,7 @@ export namespace RconEvents {
 				time: new Date(),
 				chat: match[1] as ChatChannel,
 				message: match[4],
-				playerIds: PlayerIds.parsePlayerIds(match[3], match[2]),
+				playerIds: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -331,7 +433,7 @@ export namespace RconEvents {
 				type: 'PLAYER_WARNED' as const,
 				time: new Date(),
 				reason: match[2],
-				player: PlayerIds.parsePlayerIds(match[1]),
+				player: PlayerIds.parsePlayerIds({ username: match[1] }),
 			}
 		},
 	})
@@ -350,7 +452,7 @@ export namespace RconEvents {
 			return {
 				type: 'POSSESSED_ADMIN_CAMERA' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds(match[2], match[1]),
+				player: PlayerIds.parsePlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
@@ -369,7 +471,7 @@ export namespace RconEvents {
 			return {
 				type: 'UNPOSSESSED_ADMIN_CAMERA' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds(match[2], match[1]),
+				player: PlayerIds.parsePlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
@@ -388,7 +490,7 @@ export namespace RconEvents {
 			return {
 				type: 'PLAYER_KICKED' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds(match[3], match[2]),
+				player: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -396,7 +498,7 @@ export namespace RconEvents {
 	const SquadCreatedSchema = z.object({
 		type: z.literal('SQUAD_CREATED'),
 		time: z.date(),
-		squadID: z.string(),
+		squadID: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
 		player: PlayerIds.Schema,
@@ -413,7 +515,7 @@ export namespace RconEvents {
 				squadID: match.groups!.squadID,
 				squadName: match.groups!.squadName,
 				teamName: match.groups!.teamName,
-				player: PlayerIds.parsePlayerIds(match.groups!.playerName, match[2]),
+				player: PlayerIds.parsePlayerIds({ username: match.groups!.playerName, idsStr: match[2] }),
 			}
 		},
 	})
@@ -436,7 +538,7 @@ export namespace RconEvents {
 				time: new Date(),
 				playerID: match[1],
 				interval: match[4],
-				player: PlayerIds.parsePlayerIds(match[3], match[2]),
+				player: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -460,16 +562,15 @@ export namespace LogEvents {
 	const BaseEventProperties = {
 		raw: z.string().trim(),
 		time: z.date(),
-		chainID: z.string(),
+		chainID: ChainIdSchema,
 	}
 
 	export type SquadLogEvent = {
 		type: string
 	}
 
-	const NewGameSchema = z.object({
+	const NewGameSchema = eventSchema('NEW_GAME', {
 		...BaseEventProperties,
-		type: z.literal('NEW_GAME'),
 		mapClassname: z.string().trim(),
 		layerClassname: z.string().trim(),
 	})
@@ -480,7 +581,6 @@ export namespace LogEvents {
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogWorld: Bringing World \/([A-z]+)\/(?:Maps\/)?([A-z0-9-]+)\/(?:.+\/)?([A-z0-9-]+)(?:\.[A-z0-9-]+)/,
 		schema: NewGameSchema,
 		onMatch: (args) => ({
-			type: 'NEW_GAME' as const,
 			raw: args[0],
 			time: parseTimestamp(args[1]),
 			chainID: args[2],
@@ -489,9 +589,8 @@ export namespace LogEvents {
 		}),
 	})
 
-	const RoundWinnerSchema = z.object({
+	const RoundWinnerSchema = eventSchema('ROUND_TEAM_OUTCOME', {
 		...BaseEventProperties,
-		type: z.literal('ROUND_TEAM_OUTCOME'),
 		winner: z.string(),
 		layer: z.string(),
 	})
@@ -502,7 +601,6 @@ export namespace LogEvents {
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGame: Winner: (.+) \(Layer: (.+)\)/,
 		schema: RoundWinnerSchema,
 		onMatch: (args) => ({
-			type: 'ROUND_TEAM_OUTCOME' as const,
 			raw: args[0],
 			time: parseTimestamp(args[1]),
 			chainID: args[2],
@@ -511,9 +609,8 @@ export namespace LogEvents {
 		}),
 	})
 
-	export const RoundDecidedSchema = z.object({
+	export const RoundDecidedSchema = eventSchema('ROUND_DECIDED', {
 		...BaseEventProperties,
-		type: z.literal('ROUND_DECIDED'),
 		team: TeamIdSchema,
 		unit: z.string(),
 		faction: z.string(),
@@ -531,7 +628,6 @@ export namespace LogEvents {
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadGameEvents: Display: Team ([0-9]+), (.*) \( ?(.*?) ?\) has (won|lost) the match with ([0-9]+) Tickets on layer (.*) \(level (.*)\)!/,
 		onMatch: (args) => {
 			return {
-				type: 'ROUND_DECIDED' as const,
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
@@ -546,9 +642,8 @@ export namespace LogEvents {
 		},
 	})
 
-	export const RoundEndedSchema = z.object({
+	export const RoundEndedSchema = eventSchema('ROUND_ENDED', {
 		...BaseEventProperties,
-		type: z.literal('ROUND_ENDED'),
 	})
 
 	export type RoundEnded = z.infer<typeof RoundEndedSchema>
@@ -558,7 +653,6 @@ export namespace LogEvents {
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGameState: Match State Changed from InProgress to WaitingPostMatch/,
 		onMatch: (args) => {
 			return {
-				type: 'ROUND_ENDED' as const,
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
@@ -566,22 +660,65 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerConnectedSchema = z.object({
-		type: z.literal('PLAYER_CONNECTED'),
-		time: z.date(),
-		chainID: z.string(),
+	export const PlayerConnectedSchema = eventSchema('PLAYER_CONNECTED', {
+		...BaseEventProperties,
 		player: PlayerIds.Schema,
+		ip: z.string().ip(),
 	})
+	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema>
 	export const PlayerConnectedMatcher = createLogMatcher({
 		schema: PlayerConnectedSchema,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGameState: Player Connected/,
+		regex:
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
 		onMatch: (args) => {
 			return {
-				type: 'PLAYER_CONNECTED' as const,
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				player: PlayerIds.parsePlayerIds(args[3]),
+				player: PlayerIds.parsePlayerIds({ idsStr: args[5], playerController: args[3] }),
+				ip: args[4],
+			}
+		},
+	})
+
+	export const PlayerDisconnectedSchema = eventSchema('PLAYER_DISCONNECTED', {
+		...BaseEventProperties,
+		player: PlayerIds.Schema,
+		ip: z.string().ip(),
+	})
+	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema>
+	export const PlayerDisconnectedMatcher = createLogMatcher({
+		schema: PlayerDisconnectedSchema,
+		regex:
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: EOSIpNetConnection_[0-9]+, Driver: GameNetDriver EOSNetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+PlayerController_C_[0-9]+), Owner: [^ ]+PlayerController_C_[0-9]+, UniqueId: RedpointEOS:([\d\w]+)/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				ip: args[3],
+				player: {
+					playerController: args[4],
+					eosID: args[5],
+				},
+			}
+		},
+	})
+
+	export const PlayerJoinSuccededSchema = eventSchema('PLAYER_JOIN_SUCCEEDED', {
+		...BaseEventProperties,
+		player: PlayerIds.Schema,
+	})
+
+	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema>
+	export const PlayerJoinSuccededMatcher = createLogMatcher({
+		schema: PlayerJoinSuccededSchema,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: Join succeeded: (.+)/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
 			}
 		},
 	})
@@ -590,8 +727,17 @@ export namespace LogEvents {
 		[e in E['type']]: (evt: Extract<E, { type: e }>) => void
 	}
 
-	export const EventMatchers = [NewGameEventMatcher, RoundWinnerEventMatcher, RoundDecidedMatcher, RoundEndedMatcher] as const
-	export type Event = RoundDecided | RoundEnded | RoundTeamOutcome | NewGame
+	export const EventMatchers = [
+		NewGameEventMatcher,
+		RoundWinnerEventMatcher,
+		RoundDecidedMatcher,
+		RoundEndedMatcher,
+		PlayerConnectedMatcher,
+		PlayerDisconnectedMatcher,
+		PlayerJoinSuccededMatcher,
+	] as const
+
+	export type Event = RoundDecided | RoundEnded | RoundTeamOutcome | NewGame | PlayerConnected | PlayerDisconnected | PlayerJoinSucceeded
 
 	function parseTimestamp(raw: string) {
 		const date = dateFns.parse(

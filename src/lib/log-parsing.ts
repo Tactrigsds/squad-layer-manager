@@ -1,13 +1,13 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 import { withThrown } from './error'
 
-export type LogMatcher<O extends object = object> = {
+export type LogMatcher<S extends z.ZodTypeAny = z.ZodTypeAny> = {
 	regex: RegExp
-	schema: z.ZodType<O>
-	onMatch: (args: RegExpMatchArray) => O
+	schema: S
+	onMatch: (args: RegExpMatchArray) => any
 }
 
-export function createLogMatcher<O extends object>(matcher: LogMatcher<O>) {
+export function createLogMatcher<O extends z.ZodTypeAny>(matcher: LogMatcher<O>) {
 	return matcher
 }
 
@@ -19,4 +19,8 @@ export function matchLog<LM extends LogMatcher>(log: string, matcher: LM) {
 	const schemaRes = matcher.schema.safeParse(matchRes)
 	if (!schemaRes.success) return [null, schemaRes.error] as const
 	return [schemaRes.data as z.infer<LM['schema']>, null]
+}
+
+export function eventSchema<T extends string, P extends { [key: string]: z.ZodTypeAny }>(type: T, props: P) {
+	return z.object(props).transform((data) => ({ type, ...data }))
 }

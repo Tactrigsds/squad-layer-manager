@@ -12,11 +12,12 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
+import { baseLogger } from '../logger'
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 
 export type SquadRconContext = {
-	rconEvent$: Rx.Observable<SM.RconEvents.Event>
+	rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]>
 	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
 
 	serverInfo: AsyncResource<SM.ServerInfoRes, CS.Log & C.Rcon>
@@ -40,8 +41,9 @@ export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnec
 	})
 	const squadList: SquadRconContext['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
 
-	const chatEvent$: Rx.Observable<SM.RconEvents.Event> = Rx.fromEvent(rcon, 'server').pipe(
-		Rx.concatMap((_pkt): Rx.Observable<SM.RconEvents.Event> => {
+	const coreRconEvent$ = Rx.fromEvent(rcon, 'server') as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
+	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = coreRconEvent$.pipe(
+		Rx.concatMap(([ctx, _pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
 			const pkt = _pkt as DecodedPacket
 			for (const matcher of SM.RCON_EVENT_MATCHERS) {
 				const [event, err] = matchLog(pkt.body, matcher)
@@ -49,7 +51,7 @@ export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnec
 					console.warn({ packet: pkt.body, err }, `Chat packet parsing failed`)
 					return Rx.EMPTY
 				}
-				return Rx.of(event as SM.RconEvents.Event)
+				return Rx.of([ctx, event as SM.RconEvents.Event])
 			}
 			return Rx.EMPTY
 		}),
@@ -69,7 +71,7 @@ export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnec
 		serverInfo,
 		playerList,
 		squadList,
-		rconEvent$: chatEvent$,
+		rconEvent$,
 	}
 }
 
@@ -114,7 +116,7 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon) {
 		data.isLeader = data.isLeader === 'True'
 		data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
 		data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
-		data.player = SM.PlayerIds.parsePlayerIds(match.groups!.name, match[2])
+		data.player = SM.PlayerIds.parsePlayerIds({ username: match.groups!.name, idsStr: match[2] })
 		const parsedData = SM.PlayerSchema.parse(data)
 		players.push(parsedData)
 	}
@@ -148,7 +150,7 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 			...match.groups,
 			teamID: teamID,
 			teamName: teamName,
-			creator: SM.PlayerIds.parsePlayerIds(match[6], match[5]),
+			creator: SM.PlayerIds.parsePlayerIds({ username: match[6], idsStr: match[5] }),
 		}
 
 		const parsed = SM.SquadSchema.parse(squad)
