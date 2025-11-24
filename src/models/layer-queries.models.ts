@@ -385,6 +385,7 @@ export function splice(list: LayerItem[], index: ItemIndex, deleteCount: number,
 		list.splice(index.outerIndex, deleteCount, ...items)
 	}
 }
+
 export function resolveCursorIndex(
 	orderedItemsState: LayerItemsState,
 	cursor: Cursor,
