@@ -1042,7 +1042,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 						Delete
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
-				{!LL.isVoteItem(item) && (
+				{
+					/*{!LL.isVoteItem(item) && (
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
@@ -1054,7 +1055,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 					>
 						Create Vote
 					</StartActivityInteraction>
-				)}
+				)}*/
+				}
 
 				<DropdownMenuSeparator />
 
