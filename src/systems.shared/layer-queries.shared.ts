@@ -445,19 +445,9 @@ export async function getLayerItemStatuses(args: {
 	const filterConditionResults: Map<string, SQL<unknown>> = new Map()
 	const matchedState: Map<LQY.ItemId, string> = new Map()
 	const layerItems = ctx.layerItemsState.layerItems ?? []
-	let lookbackLeft = input.numHistoryEntriesToResolve ?? 15
-	let maxLookbackIndex = 0
-	for (let i = layerItems.length - 1; i >= 0; i--) {
-		const item = layerItems[i]
-		if (LQY.isVoteListitem(item)) continue
-		if (item.type !== 'match-history-entry') continue
-		if (lookbackLeft <= 0) break
-		lookbackLeft--
-		maxLookbackIndex = i
-	}
 
 	const selectExpr: any = { _id: LC.viewCol('id', ctx) }
-	for (let i = maxLookbackIndex; i < layerItems.length; i++) {
+	for (let i = 0; i < layerItems.length; i++) {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const itemMatchDescriptors: LQY.MatchDescriptor[] = []
 			for (const constraint of constraints) {
@@ -498,13 +488,13 @@ export async function getLayerItemStatuses(args: {
 		.layerDb()
 		.select(selectExpr)
 		.from(LC.layersView(ctx))
-		.where(E.inArray(LC.viewCol('id', ctx), LC.packValidLayers(LQY.getAllLayerIds(layerItems.slice(maxLookbackIndex)))))
+		.where(E.inArray(LC.viewCol('id', ctx), LC.packValidLayers(LQY.getAllLayerIds(layerItems))))
 
 	const present = new Set<L.LayerId>()
 	for (const row of rows) {
 		const layerId = LC.fromDbValue('id', row._id, ctx) as L.LayerId
 		present.add(layerId)
-		for (const { item } of LQY.iterItems(layerItems.slice(maxLookbackIndex))) {
+		for (const { item } of LQY.iterItems(layerItems)) {
 			if (item.layerId !== layerId) continue
 			for (const [constraintId, isMatched] of Object.entries(row)) {
 				if (constraintId === '_id') continue

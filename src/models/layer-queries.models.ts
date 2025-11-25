@@ -95,7 +95,7 @@ export type SearchIdsInput = {
 	constraints?: Constraint[]
 }
 
-export type LayerItemStatusesInput = BaseQueryInput & { numHistoryEntriesToResolve?: number }
+export type LayerItemStatusesInput = BaseQueryInput
 
 export type LayerItemStatuses = {
 	present: Set<L.LayerId>
@@ -322,14 +322,6 @@ export function findItemById(items: LayerItem[], itemId: ItemId | SpecialItemId)
 // }
 
 export type SerialLayerItem = string
-export function toSerial(item: LayerItem | SerialLayerItem) {
-	if (typeof item === 'string') {
-		return item
-	}
-	const json = JSON.stringify(item)
-	return btoa(json)
-}
-
 export function fromSerial(id: SerialLayerItem | LayerItem): LayerItem {
 	if (typeof id === 'string') {
 		const json = atob(id)
@@ -461,13 +453,11 @@ export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerI
 	}
 }
 
-export function getParityForLayerItem(state: LayerItemsState, _item: LayerItem | SerialLayerItem) {
-	const item = typeof _item === 'string' ? fromSerial(_item) : _item
-
+export function getParityForLayerItem(state: LayerItemsState, item: LayerItem) {
 	if (!state.layerItems) return 0
 	const { index } = Obj.destrNullable(LL.findItemById(state.layerItems, item.itemId))
 	if (isNullOrUndef(index)) {
-		console.error('Item not found when getting parity, setting 0 instead', _item)
+		console.warn('Item not found when getting parity, setting 0 instead', item)
 		return 0
 	}
 	const parity = index.outerIndex + (state.firstLayerItemParity ?? 0)

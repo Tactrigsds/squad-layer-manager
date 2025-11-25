@@ -375,7 +375,7 @@ export function useLayerItemStatuses(
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
 ) {
 	options ??= {}
-	const input: LQY.LayerItemStatusesInput = { constraints, numHistoryEntriesToResolve: 10 }
+	const input: LQY.LayerItemStatusesInput = { constraints }
 	return useQuery({
 		...options,
 		queryKey: [
