@@ -394,7 +394,12 @@ export function resolveCursorIndex(
 
 	if (cursor.type === 'item-relative') {
 		const { index } = Obj.destrNullable(findItemById(orderedItems, cursor.itemId))
-		if (!index) return null
+		if (!index) {
+			if (cursor.itemId === SpecialItemId.FIRST_LIST_ITEM || cursor.itemId === SpecialItemId.LAST_LIST_ITEM) {
+				return { outerIndex: orderedItems.length, innerIndex: null }
+			}
+			return null
+		}
 		if (cursor.position === 'after') return LL.shiftIndex(index, 1)
 		return index
 	}

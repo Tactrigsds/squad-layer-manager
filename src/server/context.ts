@@ -55,6 +55,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 		eventLogLevel?: Pino.Level
 		root?: boolean
 		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
+		extraText?: (...args: Parameters<Cb>) => string
 	},
 	cb: Cb,
 ): Cb {
@@ -107,6 +108,8 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 				}
 				const id = createId(6)
 				setSpanOpAttrs({ op_id: id })
+
+				const extraText = opts.extraText ? `${opts.extraText(...args as Parameters<Cb>)} ` : ''
 				try {
 					const result = await cb(...args)
 					let statusString: string
@@ -115,9 +118,9 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 						if (result.code === 'ok') {
 							setSpanStatus(Otel.SpanStatusCode.OK)
 						} else if (result.code.includes('err')) {
-							const msg = result.msg ? `${result.code}: ${result.msg}` : result.code
-							logger?.[opts.eventLogLevel ?? 'debug'](`Error running ${name}: ${msg}`)
-							setSpanStatus(Otel.SpanStatusCode.ERROR, msg)
+							const message = result.msg ? `${result.code}: ${result.msg}` : result.code
+							logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) ${extraText}: value-error : ${message}`)
+							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 						}
 					}
 					let spanStatus = spanStatusMap.get(span.spanContext().spanId)
@@ -127,11 +130,11 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 					}
 					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? 'warn' : (opts.eventLogLevel ?? 'debug')
 					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? (spanStatus?.message ?? 'error') : 'ok'
-					logger?.[logLevel](`${name}(${id}) : ${statusString}`)
+					logger?.[logLevel](`${name}(${id}) ${extraText}: ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
-					logger?.warn(`${name}(${id}) : error : ${message}`)
+					logger?.warn(`${name}(${id}) ${extraText}: error: ${message}`)
 					throw error
 				} finally {
 					spanStatusMap.delete(span.spanContext().spanId)

@@ -73,13 +73,13 @@ export type SquadServer = {
 		} | null
 
 		// chainID -> playerids
-		joinRequests: Map<number, SM.PlayerIds.Type>
+		joinRequests: Map<number, SM.PlayerIds.IdQuery>
 
 		// server version of chat state which can be replicated to users
 		chat: CHAT.ChatState
 	}
 	event$: Rx.Subject<[CS.Log & C.ServerSlice, SM.Events.Event]>
-	chatSync$: Rx.Subject<[C.Log, CHAT.SyncEvent]>
+	chatSync$: Rx.Subject<[CS.Log, CHAT.SyncEvent]>
 } & SquadRcon.SquadRconContext
 
 export type MatchHistoryState = {
@@ -100,7 +100,7 @@ export async function setup() {
 	const ops: Promise<void>[] = []
 
 	for (const serverConfig of CONFIG.servers) {
-		ops.push((async function initServer() {
+		ops.push((async function loadServerConfig() {
 			const serverState = await DB.runTransaction(ctx, async () => {
 				let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
 				server = unsuperjsonify(Schema.servers, server) as typeof server
@@ -163,17 +163,17 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 	const sub = new Rx.Subscription()
 
-	const rconEvent$: Rx.Observable<SM.RconEvents.Event> = Rx.fromEvent(rcon, 'server').pipe(
-		Rx.concatMap((_pkt): Rx.Observable<SM.RconEvents.Event> => {
-			const pkt = _pkt as DecodedPacket
-			const ctx = getBaseCtx()
+	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
+
+	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
+		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
 			for (const matcher of SM.RCON_EVENT_MATCHERS) {
 				const [event, err] = matchLog(pkt.body, matcher)
 				if (err) {
 					ctx.log.error(err, `Error matching event, `, (err as any)?.message)
 					return Rx.EMPTY
 				}
-				if (event) return Rx.of(event)
+				if (event) return Rx.of([ctx, event])
 			}
 			return Rx.EMPTY
 		}),
@@ -221,6 +221,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		serverRolling$: new Rx.BehaviorSubject<boolean>(false),
 
 		sftpReader,
+		rconEvent$,
 		event$: new Rx.Subject(),
 		chatSync$: new Rx.Subject<[CS.Log, CHAT.SyncEvent]>(),
 		state: {
@@ -256,7 +257,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 							error,
 						}
 					}
-					const event = processServerLogEvent(ctx, matched)
+					const event = await processServerLogEvent(ctx, matched)
 					if (event) {
 						ctx.log.info(event, 'Emitting Squad Event: %s', event.type)
 						ctx.server.event$.next([ctx, event])
@@ -275,16 +276,11 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			C.durableSub('squad-server:on-rcon-event', { tracer, eventLogLevel: 'trace', ctx }, async ([_ctx, event]) => {
 				const ctx = resolveSliceCtx(_ctx, serverId)
 				ctx.log.info(event, 'Received RCON Event: %s', event.type)
-				if (event.type === 'PLAYER_BANNED' || event.type === 'PLAYER_KICKED') {
-					const ids = event.player
-					void (async () => {
-						const res = await server.playerList.get(ctx)
-						if (res.code !== 'ok') return
-						const players = res.players
-						if (SM.PlayerIds.find(players, p => p.ids, ids)) {
-							server.playerList.invalidate(ctx)
-						}
-					})()
+				if (['PLAYER_KICKED', 'PLAYER_BANNED', 'SQUAD_CREATED'].includes(event.type)) {
+					void server.squadList.get(ctx, { ttl: CONFIG.squadServer.sftpPollInterval / 4 })
+				}
+				if (['SQUAD_CREATED'].includes(event.type)) {
+					void server.squadList.get(ctx, { ttl: CONFIG.squadServer.sftpPollInterval / 4 })
 				}
 
 				ctx.server.event$.next([ctx, event])
@@ -365,6 +361,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		).subscribe(),
 	)
 
+	// -------- watch for player updates --------
 	sub.add(
 		server.playerList.observe({ ...ctx, rcon })
 			.pipe(Rx.pairwise())
@@ -388,18 +385,33 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 				server.chatSync$.next([ctx, { type: 'PLAYERS_UPDATE', upserted, removed }])
 			}),
 	)
-	
+
+	// -------- watch for squad updates --------
 	sub.add(
-    server.squadList.observe({ ...ctx, rcon })
-      .pipe(Rx.pairwise())
-      .subscribe(([resPrev, res]) => {
-        if (res.code !== 'ok') return 
-        const upserted = res.squads
-      })
+		server.squadList.observe({ ...ctx, rcon })
+			.pipe(Rx.pairwise())
+			.subscribe(([resPrev, res]) => {
+				if (res.code !== 'ok') return
+				const upserted = res.squads
+				const removed: SM.SquadId[] = []
+				if (resPrev.code === 'ok') {
+					for (const prevSquad of resPrev.squads) {
+						const existingIndex = upserted.findIndex(s => s.squadID === prevSquad.squadID)
+						if (existingIndex === -1) {
+							removed.push(prevSquad.squadID)
+							continue
+						}
+						if (!Obj.deepEqual(prevSquad, upserted[existingIndex])) {
+							upserted.splice(existingIndex, 1)
+						}
+					}
+				}
+				server.chatSync$.next([ctx, { type: 'SQUADS_UPDATE', upserted, removed }])
+			}),
 	)
 
 	sub.add(
-		server.event$.subscribe(([ctx, event]) => {
+		server.event$.subscribe(([_, event]) => {
 			CHAT.handleEvent(server.state.chat, event)
 		}),
 	)
@@ -672,7 +684,7 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
 /**
  * Performs state tracking and event consolidation for squad log events.
  */
-function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents.Event): SM.Events.Event | undefined {
+async function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents.Event): Promise<SM.Events.Event | undefined> {
 	const server = ctx.server
 	switch (logEvt.type) {
 		case 'ROUND_DECIDED': {
@@ -718,22 +730,28 @@ function processServerLogEvent(ctx: CS.Log & C.SquadServer, logEvt: SM.LogEvents
 		}
 
 		case 'PLAYER_JOIN_SUCCEEDED': {
-			const joinedPlayerIds = server.state.joinRequests.get(logEvt.chainID)
-			if (!joinedPlayerIds) return
+			const joinedPlayerIdQuery = server.state.joinRequests.get(logEvt.chainID)
+			if (!joinedPlayerIdQuery) return
 			server.state.joinRequests.delete(logEvt.chainID)
-			void (async () => {
-				const res = await server.playerList.fetchedValue
+			const playerIds = await (async () => {
+				let res = await server.playerList.get(ctx, { ttl: CONFIG.squadServer.sftpPollInterval / 4 })
 				if (res?.code !== 'ok') return
-				const players = res.players
+				let players = res.players
 
-				if (!SM.PlayerIds.find(players, p => p.ids, joinedPlayerIds)) {
-					server.playerList.invalidate(ctx)
+				let player = SM.PlayerIds.find(players, p => p.ids, joinedPlayerIdQuery)
+				if (!player) {
+					const res = await server.playerList.get(ctx, { ttl: 0 })
+					if (res?.code !== 'ok') return
+					const refetchedPlayers = res.players
+					player = SM.PlayerIds.find(refetchedPlayers, p => p.ids, joinedPlayerIdQuery)
 				}
+				return player?.ids
 			})()
+			if (!playerIds) return
 			return {
 				type: 'PLAYER_CONNECTED',
 				time: logEvt.time,
-				player: joinedPlayerIds,
+				player: playerIds,
 			}
 		}
 
@@ -813,6 +831,26 @@ export const orpcRouter = {
 		SquadRcon.endMatch(ctx)
 		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
 		return { code: 'ok' as const }
+	}),
+
+	watchChatEvents: orpcBase.handler(async function*({ context, signal }) {
+		const obs: Rx.Observable<CHAT.Event | CHAT.SyncEvent> = selectedServerCtx$(context)
+			.pipe(
+				Rx.switchMap(ctx => {
+					const init: CHAT.SyncEvent = {
+						type: 'INIT',
+						time: new Date(),
+						state: ctx.server.state.chat,
+					}
+					return Rx.merge(
+						Rx.of(init),
+						ctx.server.event$.pipe(Rx.map(([_, event]) => event)),
+						ctx.server.chatSync$.pipe(Rx.map(([_, event]) => event)),
+					)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
 	}),
 
 	toggleFogOfWar: orpcBase

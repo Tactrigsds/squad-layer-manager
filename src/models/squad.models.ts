@@ -56,15 +56,20 @@ export const TeamIdSchema = z.union([z.literal(1), z.literal(2)])
 export type TeamId = z.infer<typeof TeamIdSchema>
 
 export namespace PlayerIds {
-	export const Schema = z.object({
-		username: z.string().optional(),
+	const SchemaBase = z.object({
+		username: z.string(),
 		steam: z.bigint().optional(),
 		eos: z.string().optional(),
 		playerController: z.string().optional(),
 	})
-		.refine(data => data.steam || data.eos, {
-			message: 'At least one of  (steam, eos) must be provided',
-		})
+
+	export const Schema = SchemaBase.refine(data => data.steam || data.eos, {
+		message: 'At least one of  (steam, eos) must be provided',
+	})
+	export type Type = z.infer<typeof Schema>
+
+	export const IdQuerySchema = SchemaBase.partial()
+	export type IdQuery = z.infer<typeof IdQuerySchema>
 
 	// in order of lookup preference
 	const LOOKUP_PROPS = ['steam', 'eos', 'playerController', 'username'] as const
@@ -72,12 +77,19 @@ export namespace PlayerIds {
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
 	const UNIQUE_PROPS = ['steam', 'eos'] as const
 
-	export type Type = z.infer<typeof Schema>
-	export type IdQuery = Partial<Type>
-
 	// old signature
 	// export function parsePlayerIds(username: string, idsStr?: string): Type {
-	export function parsePlayerIds(opts: { playerController?: string; username?: string; idsStr?: string }): Type {
+	export function parsePlayerIdQuery(opts: { playerController?: string; username?: string; idsStr?: string }) {
+		const ids: any = {}
+		if (opts.idsStr) {
+			for (const { key, value } of matchAllIds(opts.idsStr)) {
+				ids[key] = value
+			}
+		}
+		return IdQuerySchema.parse({ ...ids, username: opts.username, playerController: opts.playerController })
+	}
+
+	export function parsePlayerIds(opts: { playerController?: string; username: string; idsStr?: string }): Type {
 		const ids: any = {}
 		if (opts.idsStr) {
 			for (const { key, value } of matchAllIds(opts.idsStr)) {
@@ -662,7 +674,7 @@ export namespace LogEvents {
 
 	export const PlayerConnectedSchema = eventSchema('PLAYER_CONNECTED', {
 		...BaseEventProperties,
-		player: PlayerIds.Schema,
+		player: PlayerIds.IdQuerySchema,
 		ip: z.string().ip(),
 	})
 	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema>
@@ -675,7 +687,7 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
-				player: PlayerIds.parsePlayerIds({ idsStr: args[5], playerController: args[3] }),
+				player: PlayerIds.parsePlayerIdQuery({ idsStr: args[5], playerController: args[3] }),
 				ip: args[4],
 			}
 		},

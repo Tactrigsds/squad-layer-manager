@@ -412,8 +412,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
-	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ type: 'item-relative', itemId: item.itemId, position: 'on' }]))
-
 	return (
 		<>
 			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
@@ -436,12 +434,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							</span>
 							<GripElt className="col-start-1 row-start-1" />
 						</span>
-						<span
-							ref={dropOnAttrs.ref}
-							data-over={canEdit && dropOnAttrs.isDropTarget}
-							className="data-[over=true]:bg-secondary rounded flex space-y-1 w-full flex-col"
-						>
+						<span className="rounded flex space-y-1 w-full flex-col">
 							<LayerDisplay
+								droppable={true}
 								item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
 							/>
@@ -941,15 +936,14 @@ type ItemDropdownProps = {
 type SubDropdownState = 'add-before' | 'add-after' | 'edit' | 'create-vote'
 
 function ItemDropdown(props: ItemDropdownProps) {
-	const [item, index, _lastLocalIndex, layerList] = Zus.useStore(
+	const [item, index, lastLocalIndex] = Zus.useStore(
 		props.listStore,
 		ZusUtils.useDeep((llStore) => {
 			const itemState = QD.selectLLItemState(llStore, props.itemId)
 			return [
 				itemState.item,
 				itemState.index,
-				LL.getLastLocalIndexForItem(itemState.item.itemId, llStore.layerList) ?? llStore.layerList.length,
-				llStore.layerList,
+				LL.getLastLocalIndexForItem(itemState.item.itemId, llStore.layerList),
 			] as const
 		}),
 	)
@@ -1042,7 +1036,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 						Delete
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
-				{!LL.isVoteItem(item) && (
+				{
+					/*{!LL.isVoteItem(item) && (
 					<StartActivityInteraction
 						loaderName="selectLayers"
 						createActivity={SLL.createEditActivityVariant(activities['create-vote'])}
@@ -1054,7 +1049,8 @@ function ItemDropdown(props: ItemDropdownProps) {
 					>
 						Create Vote
 					</StartActivityInteraction>
-				)}
+				)}*/
+				}
 
 				<DropdownMenuSeparator />
 
@@ -1090,7 +1086,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						Send to Front
 					</DropdownMenuItem>
 					<DropdownMenuItem
-						disabled={(index.innerIndex ?? index.outerIndex) === layerList.length - 1 || isLocked}
+						disabled={lastLocalIndex && LL.indexesEqual(index, lastLocalIndex) || isLocked}
 						onClick={sendToBack}
 					>
 						Send to Back

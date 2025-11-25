@@ -38,9 +38,6 @@ export type SyncEvent = {
 	type: 'INIT'
 	time: Date
 	state: ChatState
-	players: SM.Player[]
-	squads: SM.Squad[]
-	buffer: Event[]
 } | {
 	type: 'PLAYERS_UPDATE'
 	upserted: SM.Player[]
@@ -64,12 +61,20 @@ export type ChatState = {
 
 	eventBuffer: Event[]
 }
+export const INITIAL_CHAT_STATE: ChatState = {
+	players: [],
+	squads: [],
+
+	connectedPlayers: [],
+	disconnectedPlayers: [],
+	createdSquads: new Set(),
+
+	eventBuffer: [],
+}
 
 export function handleEvent(state: ChatState, event: Event | SyncEvent) {
 	if (event.type === 'INIT') {
-		state.players = event.players
-		state.squads = event.squads
-		state.eventBuffer = event.buffer
+		Object.assign(state, event.state)
 		return
 	}
 

@@ -22,7 +22,7 @@ import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
-import { z } from 'zod'
+
 import { useShallow } from 'zustand/react/shallow'
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -85,7 +85,15 @@ export function FilterEdit(
 
 				case 'ok':
 					toast({ title: 'Filter saved' })
-					formApi.reset()
+					frameState().reset(res.filter.filter)
+					formApi.reset({
+						name: res.filter.name,
+						description: res.filter.description,
+						emoji: res.filter.emoji,
+						alertMessage: res.filter.alertMessage,
+						invertedEmoji: res.filter.invertedEmoji,
+						invertedAlertMessage: res.filter.invertedAlertMessage,
+					})
 					setEditingDetails(false)
 
 					break
@@ -299,7 +307,7 @@ export function FilterEdit(
 															<EmojiPickerPopover
 																value={field.state.value ?? undefined}
 																onSelect={(id) => {
-																	field.handleChange(id ?? null)
+																	field.handleChange(id?.trim() ?? null)
 																}}
 																disabled={false}
 															/>
@@ -315,7 +323,7 @@ export function FilterEdit(
 											</form.Field>
 											<form.Field
 												name="alertMessage"
-												validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+												validators={{ onChange: F.AlertMessageSchema.nullable() }}
 											>
 												{(field) => {
 													const label = 'Alert Message'
@@ -327,7 +335,7 @@ export function FilterEdit(
 																placeholder={label}
 																defaultValue={field.state.value ?? ''}
 																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value)}
+																onChange={(e) => field.setValue(e.target.value.trim() ?? null)}
 																rows={3}
 															/>
 															{field.state.meta.errors.length > 0 && (
@@ -372,7 +380,7 @@ export function FilterEdit(
 											</form.Field>
 											<form.Field
 												name="invertedAlertMessage"
-												validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
+												validators={{ onChange: F.AlertMessageSchema.nullable() }}
 											>
 												{(field) => {
 													const label = 'Alert Message'
@@ -384,7 +392,7 @@ export function FilterEdit(
 																placeholder={label}
 																defaultValue={field.state.value ?? ''}
 																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value)}
+																onChange={(e) => field.setValue(e.target.value.trim() ?? null)}
 																rows={3}
 															/>
 															{field.state.meta.errors.length > 0 && (

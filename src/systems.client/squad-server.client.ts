@@ -1,11 +1,14 @@
 import * as AR from '@/app-routes'
 import { distinctDeepEquals } from '@/lib/async'
+import * as Obj from '@/lib/object'
+import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems.client/app-routes.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
+import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -34,6 +37,15 @@ export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | n
 	),
 	null,
 )
+
+export const [useChatEvents, chatEvent$] = ReactRx.bind(RPC.observe(() => RPC.orpc.squadServer.watchChatEvents.call()))
+export let chatState = Obj.deepClone(CHAT.INITIAL_CHAT_STATE)
+export const [useChatState, chatState$] = ReactRx.bind(chatEvent$.pipe(Rx.map(event => {
+	chatState = Im.produce(chatState, draft => {
+		CHAT.handleEvent(draft, event)
+	})
+	return chatState
+})))
 
 export function useEndMatch() {
 	return useMutation({
@@ -65,6 +77,10 @@ export function setup() {
 	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
+	chatEvent$.subscribe()
+	chatState$.subscribe((state) => {
+		console.log(state)
+	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
 	const cookieServerId = Cookies.getCookie('default-server-id')

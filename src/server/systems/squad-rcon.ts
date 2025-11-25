@@ -137,7 +137,7 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 		const match = line.match(
 			/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
 		)
-		if (!match) throw new Error(`Invalid squad data: ${line}`)
+		if (!match) continue
 		const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
 		if (matchSide) {
 			teamID = +matchSide[1]

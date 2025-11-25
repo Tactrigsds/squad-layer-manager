@@ -563,13 +563,16 @@ export function setCorrectChosenLayerIdInPlace(item: Item) {
 	return item
 }
 
-// if layers are placed before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
+// if layers are placed/edited before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
 export function changeGeneratedLayerAttributionInPlace(layerList: List, mutations: ItemMut.Mutations, userId: bigint) {
 	let afterModified = false
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
 	for (const { item } of iterItems(...layerList)) {
 		if (item.source.type === 'generated') {
-			if (afterModified) item.source = { type: 'manual', userId }
+			if (afterModified) {
+				item.source = { type: 'manual', userId }
+				ItemMut.tryApplyMutation('edited', item.itemId, mutations)
+			}
 		} else if (!afterModified && allModifiedItems.has(item.itemId)) {
 			afterModified = true
 		}
@@ -661,10 +664,9 @@ export function indexesEqual(a: ItemIndex, b: ItemIndex) {
 export function getLastLocalIndexForItem<T extends SparseItem>(itemId: ItemId, layerList: T[]): ItemIndex | undefined {
 	const { index } = Obj.destrNullable(findItemById(layerList, itemId))
 	if (!index) return undefined
-	if (index.innerIndex === null) {
-		const parentItem = layerList[index.outerIndex]
-		if (!isVoteItem(parentItem)) return undefined
-		return { outerIndex: index.outerIndex, innerIndex: parentItem.choices.length - 1 }
+	const outerItem = layerList[index.outerIndex]
+	if (index.innerIndex !== null && isVoteItem(outerItem)) {
+		return { outerIndex: index.outerIndex, innerIndex: outerItem.choices.length - 1 }
 	}
 	return { outerIndex: layerList.length - 1, innerIndex: null }
 }

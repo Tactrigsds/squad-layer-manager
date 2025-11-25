@@ -3,7 +3,9 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as ReactRxHelpers from '@/lib/react-rxjs-helpers.ts'
 import { cn } from '@/lib/utils.ts'
 import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as DndKit from '@/systems.client/dndkit.ts'
 import * as LQYClient from '@/systems.client/layer-queries.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as Icons from 'lucide-react'
@@ -17,6 +19,7 @@ export default function LayerDisplay(
 		badges?: React.ReactNode[]
 		backfillLayerId?: L.LayerId
 		allowShowInfo?: boolean
+		droppable?: boolean
 		className?: string
 		ref?: React.Ref<HTMLDivElement>
 	},
@@ -39,6 +42,13 @@ export default function LayerDisplay(
 			/>,
 		)
 	}
+
+	const dropItemCursors: LL.ItemRelativeCursor[] = []
+	if (props.droppable && ['single-list-item', 'vote-list-item'].includes(props.item.type)) {
+		dropItemCursors.push({ type: 'item-relative', itemId: props.item.itemId as string, position: 'on' })
+	}
+
+	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem(dropItemCursors))
 
 	if (props.badges) badges.push(...props.badges)
 
@@ -71,8 +81,13 @@ export default function LayerDisplay(
 
 	return (
 		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
-			<span className="flex-1 text-nowrap">
+			<span
+				data-over={props.droppable && dropOnAttrs.isDropTarget || undefined}
+				className="flex-1 text-nowrap"
+			>
 				<ShortLayerName
+					ref={props.droppable && dropOnAttrs.ref || undefined}
+					className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
 					layerId={props.item.layerId}
 					teamParity={teamParity}
 					backfillLayerId={props.backfillLayerId}
