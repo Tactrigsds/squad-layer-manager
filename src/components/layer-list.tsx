@@ -11,7 +11,6 @@ import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
-
 import * as DH from '@/lib/display-helpers.ts'
 import { getDisplayedMutation } from '@/lib/item-mutations.ts'
 import * as Obj from '@/lib/object'
@@ -400,7 +399,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 		)
 	}
 
-	const GripElt = (props: { className?: string }) => (
+  const GripElt = (props: { className?: string; }) => (
 		<Button
 			ref={dragProps.handleRef}
 			variant="ghost"
@@ -417,7 +416,7 @@ function SingleLayerListItem(props: LayerListItemProps) {
 
 	return (
 		<>
-			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
+			{(LL.isLocallyFirstIndex(index)) && item.source.type !== 'generated' && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<li
 				ref={dragProps.ref}
 				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 px-1 py-0 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline"
