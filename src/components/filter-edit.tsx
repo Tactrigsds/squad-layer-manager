@@ -22,7 +22,7 @@ import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
-import { z } from 'zod'
+
 import { useShallow } from 'zustand/react/shallow'
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -307,7 +307,7 @@ export function FilterEdit(
 															<EmojiPickerPopover
 																value={field.state.value ?? undefined}
 																onSelect={(id) => {
-																	field.handleChange(id.trim() ?? null)
+																	field.handleChange(id?.trim() ?? null)
 																}}
 																disabled={false}
 															/>
