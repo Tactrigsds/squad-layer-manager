@@ -1,6 +1,7 @@
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
@@ -80,11 +81,12 @@ export default function LayerQueueDashboard() {
 					{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
 					<PostGameBalanceTriggerAlert />
 					<Card>
-						<CardHeader className="flex flex-row items-center justify-between">
-							<span className="flex items-center space-x-1">
-								<CardTitle>Up Next</CardTitle>
-								{
-									/*<Toggle
+						<CardHeader className="flex flex-row items-center justify-between pb-1">
+							<span className="flex flex-col gap-0.5">
+								<span className="flex items-center space-x-1">
+									<CardTitle>Up Next</CardTitle>
+									{
+										/*<Toggle
 									pressed={isEditing}
 									onPressedChange={setEditing}
 									aria-label="Toggle bookmark"
@@ -104,23 +106,40 @@ export default function LayerQueueDashboard() {
 											</>
 										)}
 								</Toggle>*/
-								}
-								{isModified && (
-									<CardDescription
-										data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-										className=" pl-1 data-[limitreached=true]:text-destructive"
-									>
-										{queueLength} / {maxQueueSize}
-									</CardDescription>
-								)}
+									}
+									{isModified && (
+										<CardDescription
+											data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+											className=" pl-1 data-[limitreached=true]:text-destructive flex gap-1 items-center"
+										>
+											<span>
+												{queueLength} / {maxQueueSize}
+											</span>
+										</CardDescription>
+									)}
+								</span>
+								<span className="flex gap-1">
+									{[
+										{ variant: 'added', size: queueMutations.added.size, label: 'added' },
+										{ variant: 'edited', size: queueMutations.edited.size, label: 'edited' },
+										{ variant: 'moved', size: queueMutations.moved.size, label: 'moved' },
+										{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed' },
+									]
+										.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
+										.map((item) => (
+											<Badge
+												key={item.label}
+												variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
+												data-visible={item.size > 0}
+												className="data-[visible=false]:invisible font-mono font-semibold tracking-tight"
+											>
+												{item.size} {item.label}
+											</Badge>
+										))}
+								</span>
 							</span>
 							<QueueControlPanel />
 						</CardHeader>
-						{queueMutations.removed.size > 0 && (
-							<Alert variant="destructive">
-								{queueMutations.removed.size} item{queueMutations.removed.size === 1 ? '' : 's'} removed
-							</Alert>
-						)}
 						<CardContent className="p-0 px-1">
 							<LayerList store={SLLClient.Store} />
 						</CardContent>

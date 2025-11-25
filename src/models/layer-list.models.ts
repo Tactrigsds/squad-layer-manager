@@ -569,7 +569,10 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
 	for (const { item } of iterItems(...layerList)) {
 		if (item.source.type === 'generated') {
-			if (afterModified) item.source = { type: 'manual', userId }
+			if (afterModified) {
+				item.source = { type: 'manual', userId }
+				ItemMut.tryApplyMutation('edited', item.itemId, mutations)
+			}
 		} else if (!afterModified && allModifiedItems.has(item.itemId)) {
 			afterModified = true
 		}
