@@ -276,6 +276,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			}
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
+			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}
 		case 'move': {
@@ -283,24 +284,31 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			if (modified) {
 				if (merged) {
 					const { item } = Obj.destrNullable(LL.findItemById(list, merged))
-					if (!item) break
-					if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
-					ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
-					ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
-					ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
+					if (item) {
+						if (!LL.isParentVoteItem(item)) throw new Error('Expected parent vote item')
+						ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
+						ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
+						ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
+					}
 				} else {
 					ItemMut.tryApplyMutation('moved', [newOp.itemId], mutations)
 				}
+
+				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			}
 			break
 		}
 
 		case 'swap-factions': {
 			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
-			if (!index || !item) return
+			if (!index || !item) break
 			const swapped = LL.swapFactions(item, source)
+
+			// maybe mirror matchups will be a thing at some point who knows
+			if (swapped.layerId === item.layerId) break
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			LL.splice(list, index, 1, swapped)
+			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}
 
@@ -310,6 +318,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			const afterEdit = LL.findItemById(list, newOp.itemId)?.item.layerId
 			if (beforeEdit && afterEdit && beforeEdit !== afterEdit) {
 				ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
+				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			}
 			break
 		}
@@ -328,6 +337,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			if (index) {
 				LL.deleteItem(list, newOp.itemId)
 				ItemMut.tryApplyMutation('removed', [newOp.itemId], mutations)
+				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			}
 
 			break
@@ -347,6 +357,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			const { item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (item && LL.isVoteItem(item)) {
 				ItemMut.tryApplyMutation('added', item.choices.map(choice => choice.itemId), mutations)
+				if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			}
 			break
 		}
