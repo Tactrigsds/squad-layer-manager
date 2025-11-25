@@ -2,6 +2,7 @@ import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as Obj from '@/lib/object'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'
+import { cn } from '@/lib/utils.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
@@ -13,12 +14,14 @@ import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
 
 export default function ShortLayerName(
-	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo }: {
+	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo, ref, className }: {
 		layerId: L.LayerId
 		teamParity?: number
 		backfillLayerId?: L.LayerId
 		matchDescriptors?: LQY.MatchDescriptor[]
 		allowShowInfo?: boolean
+		className?: string
+		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
 	const _allowShowInfo = allowShowInfo ?? true
@@ -82,7 +85,7 @@ export default function ShortLayerName(
 		)
 	}
 	const content = (
-		<div className="flex items-center">
+		<div className={cn('flex items-center', className)} ref={ref}>
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>

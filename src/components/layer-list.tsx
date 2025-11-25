@@ -412,8 +412,6 @@ function SingleLayerListItem(props: LayerListItemProps) {
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
-	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem([{ type: 'item-relative', itemId: item.itemId, position: 'on' }]))
-
 	return (
 		<>
 			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
@@ -436,12 +434,9 @@ function SingleLayerListItem(props: LayerListItemProps) {
 							</span>
 							<GripElt className="col-start-1 row-start-1" />
 						</span>
-						<span
-							ref={dropOnAttrs.ref}
-							data-over={canEdit && dropOnAttrs.isDropTarget}
-							className="data-[over=true]:bg-secondary rounded flex space-y-1 w-full flex-col"
-						>
+						<span className="rounded flex space-y-1 w-full flex-col">
 							<LayerDisplay
+								droppable={true}
 								item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 								badges={badges}
 							/>
