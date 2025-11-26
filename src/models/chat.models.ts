@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 
 export type PlayerRef = string
@@ -155,5 +156,25 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 				player: Obj.deepClone(player),
 			}
 		}
+
+		case 'ADMIN_BROADCAST': {
+			if (event.from === 'RCON' || event.from === 'unknown') {
+				return { ...event, player: undefined } as SM.Events.AdminBroadcast & { player: undefined }
+			}
+			const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
+			if (!player) {
+				console.warn(
+					`Player ${SM.PlayerIds.prettyPrint(event.from)} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+				return
+			}
+			return {
+				...event,
+				player: Obj.deepClone(player),
+			} as SM.Events.AdminBroadcast & { player: SM.Player }
+		}
+
+		default:
+			assertNever(event)
 	}
 }

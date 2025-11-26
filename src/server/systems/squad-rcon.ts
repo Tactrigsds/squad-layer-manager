@@ -48,7 +48,7 @@ export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, sub: Rx.Subscr
 			for (const matcher of SM.RCON_EVENT_MATCHERS) {
 				const [event, err] = matchLog(pkt.body, matcher)
 				if (err) {
-					ctx.log.error(err, `Error matching event, `, (err as any)?.message)
+					ctx.log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)
 					return Rx.EMPTY
 				}
 				if (event) return Rx.of([ctx, event])

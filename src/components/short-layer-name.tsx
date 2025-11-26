@@ -14,7 +14,7 @@ import MapLayerDisplay from './map-layer-display.tsx'
 import { Button } from './ui/button.tsx'
 
 export default function ShortLayerName(
-	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo, ref, className }: {
+	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo: _allowShowInfo, ref, className }: {
 		layerId: L.LayerId
 		teamParity?: number
 		backfillLayerId?: L.LayerId
@@ -24,7 +24,7 @@ export default function ShortLayerName(
 		ref?: React.Ref<HTMLDivElement>
 	},
 ) {
-	const _allowShowInfo = allowShowInfo ?? true
+	const allowShowInfo = _allowShowInfo ?? true
 	const backfilledStyle = 'text-gray-500'
 
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
@@ -97,7 +97,7 @@ export default function ShortLayerName(
 			)}
 		</div>
 	)
-	if (!_allowShowInfo || !L.isKnownLayer(layerId)) return content
+	if (!allowShowInfo || !L.isKnownLayer(layerId)) return content
 	return (
 		<LayerInfoDialog layerId={layerId}>
 			<Button className="px-0 py-1" variant="link">{content}</Button>

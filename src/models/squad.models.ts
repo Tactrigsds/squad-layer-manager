@@ -428,6 +428,12 @@ export namespace Events {
 		channel: ChatChannel
 	} & Base
 
+	export type AdminBroadcast = {
+		type: 'ADMIN_BROADCAST'
+		message: string
+		from: LogEvents.AdminBroadcast['from']
+	} & Base
+
 	export type Event =
 		| NewGame
 		| RoundEnded
@@ -435,6 +441,7 @@ export namespace Events {
 		| PlayerDisconnected
 		| SquadCreated
 		| ChatMessage
+		| AdminBroadcast
 		// from rcon
 		| RconEvents.PossessedAdminCamera & Base
 		| RconEvents.UnpossessedAdminCamera & Base
@@ -761,6 +768,39 @@ export namespace LogEvents {
 		},
 	})
 
+	export const AdminBroadcastSchema = eventSchema('ADMIN_BROADCAST', {
+		...BaseEventProperties,
+		message: z.string(),
+		from: z.union([z.literal('RCON'), z.literal('unknown'), PlayerIds.Schema]),
+	})
+
+	export type AdminBroadcast = z.infer<typeof AdminBroadcastSchema>
+	export const AdminBroadcastMatcher = createLogMatcher({
+		schema: AdminBroadcastSchema,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <(.+)> from (.+)/,
+		// TODO multiline broadcasts will be truncated. eventually we could set up sftp-tail to handle special cases like this, or maybe use multiple matchers and a flag to reconstruct the full broadcast
+		onMatch: (args) => {
+			let from: AdminBroadcast['from']
+			if (args[4] === 'RCON') {
+				from = 'RCON'
+			} else {
+				const match = args[4].trim().match(/player \d+\. \[Online IDs= ([^\]]+)\]  (.+)/)
+				if (match) {
+					from = PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] })
+				} else {
+					from = 'unknown'
+				}
+			}
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				message: args[3],
+				from,
+			}
+		},
+	})
+
 	export type ToEventMap<E extends SquadLogEvent> = {
 		[e in E['type']]: (evt: Extract<E, { type: e }>) => void
 	}
@@ -773,9 +813,18 @@ export namespace LogEvents {
 		PlayerConnectedMatcher,
 		PlayerDisconnectedMatcher,
 		PlayerJoinSuccededMatcher,
+		AdminBroadcastMatcher,
 	] as const
 
-	export type Event = RoundDecided | RoundEnded | RoundTeamOutcome | NewGame | PlayerConnected | PlayerDisconnected | PlayerJoinSucceeded
+	export type Event =
+		| RoundDecided
+		| RoundEnded
+		| RoundTeamOutcome
+		| NewGame
+		| PlayerConnected
+		| PlayerDisconnected
+		| PlayerJoinSucceeded
+		| AdminBroadcast
 
 	function parseTimestamp(raw: string) {
 		const date = dateFns.parse(

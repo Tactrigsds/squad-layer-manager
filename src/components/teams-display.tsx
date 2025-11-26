@@ -7,7 +7,7 @@ import * as DH from '../lib/display-helpers'
 import { cn } from '../lib/utils'
 
 export function TeamIndicator(props: { team: keyof typeof DH.TEAM_COLORS }) {
-	return <span className="font-mono text-sm" style={{ color: DH.TEAM_COLORS[props.team] }}>({props.team[props.team.length - 1]})</span>
+	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[props.team] }}>({props.team[props.team.length - 1]})</span>
 }
 
 export function getTeamsDisplay(
@@ -47,7 +47,7 @@ export function getTeamsDisplay(
 				: ''}
 			<span
 				title={`Team ${displayLayersNormalized ? '1' : _teamParity % 2 === 1 ? 'B' : 'A'}`}
-				className="font-mono text-sm"
+				className="font-mono "
 				style={{ color: team1Color }}
 			>
 				{displayLayersNormalized ? '(1)' : _teamParity % 2 === 1 ? '(B)' : '(A)'}
@@ -64,7 +64,7 @@ export function getTeamsDisplay(
 				: ''}
 			<span
 				title={`Team ${displayLayersNormalized ? '2' : _teamParity % 2 === 1 ? 'A' : 'B'}`}
-				className="font-mono text-sm"
+				className="font-mono"
 				style={{ color: team2Color }}
 			>
 				{displayLayersNormalized ? '(2)' : _teamParity % 2 === 1 ? '(A)' : '(B)'}
@@ -137,5 +137,5 @@ export function TeamFactionDisplay(
 export function MatchTeamDisplay(props: { matchId: number; teamId: SM.TeamId }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === props.matchId)
 	if (!match) return null
-	return <TeamFactionDisplay includeUnits={true} parity={match.historyEntryId} team={props.teamId} layer={match.layerId} />
+	return <TeamFactionDisplay parity={match.historyEntryId} team={props.teamId} layer={match.layerId} />
 }

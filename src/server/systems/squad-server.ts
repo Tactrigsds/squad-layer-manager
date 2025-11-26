@@ -767,6 +767,18 @@ async function processServerLogEvent(
 			}
 		}
 
+		case 'ADMIN_BROADCAST': {
+			return {
+				code: 'ok' as const,
+				event: {
+					type: 'ADMIN_BROADCAST',
+					message: logEvent.message,
+					from: logEvent.from,
+					...base,
+				} satisfies SM.Events.AdminBroadcast,
+			}
+		}
+
 		default:
 			assertNever(logEvent)
 	}
