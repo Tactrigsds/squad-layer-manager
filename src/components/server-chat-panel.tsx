@@ -1,57 +1,52 @@
+import { EventTime } from '@/components/event-time'
+import { PlayerDisplay } from '@/components/player-display'
+import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type * as CHAT from '@/models/chat.models'
 import type * as SM from '@/models/squad.models'
+import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
-import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 
-function formatTime(date: Date): string {
-	return dateFns.format(date, 'HH:mm:ss')
-}
-
-function formatPlayer(player: SM.Player): string {
-	return player.ids.username
-}
+const CHANNEL_STYLES = {
+	ChatAll: { border: 'border-r-white', text: 'text-white', gradient: 'from-white/10' },
+	ChatTeam: { border: 'border-r-blue-500', text: 'text-blue-500', gradient: 'from-blue-500/10' },
+	ChatSquad: { border: 'border-r-green-500', text: 'text-green-500', gradient: 'from-green-500/10' },
+	ChatAdmin: { border: 'border-r-blue-300', text: 'text-blue-300', gradient: 'from-blue-300/10' },
+} as const
 
 function ChatMessageEvent({ event }: { event: CHAT.Event & { type: 'CHAT_MESSAGE' } }) {
-	const channelColor = (() => {
-		switch (event.channel.type) {
-			case 'ChatAll':
-				return 'bg-blue-500'
-			case 'ChatTeam':
-				return 'bg-green-500'
-			case 'ChatSquad':
-				return 'bg-yellow-500'
-			case 'ChatAdmin':
-				return 'bg-red-500'
-		}
-	})()
+	const channelStyle = CHANNEL_STYLES[event.channel.type]
 
 	const channelLabel = (() => {
 		switch (event.channel.type) {
 			case 'ChatAll':
-				return 'ALL'
+				return 'all'
 			case 'ChatTeam':
-				return `TEAM ${event.channel.teamId}`
+				return `T${event.channel.teamId} chat`
 			case 'ChatSquad':
-				return `SQUAD ${event.channel.squadId}`
+				return `squad ${event.channel.teamId}-${event.channel.squadId}`
 			case 'ChatAdmin':
-				return 'ADMIN'
+				return 'admin'
 		}
 	})()
 
 	return (
-		<div className="flex gap-2 py-1">
-			<span className="text-muted-foreground text-xs">{formatTime(event.time)}</span>
-			<Badge className={`${channelColor} text-xs px-1`} variant="default">
-				{channelLabel}
-			</Badge>
-			<span className="font-semibold">{formatPlayer(event.player)}:</span>
-			<span>{event.message}</span>
+		<div
+			className={`flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent ${channelStyle.border} ${channelStyle.gradient}`}
+		>
+			<EventTime time={event.time} />
+			<div className="flex flex-wrap flex-grow items-start gap-x-2 min-w-0">
+				<span className={channelStyle.text} title={`this message was sent in ${channelLabel} chat`}>
+					({channelLabel})
+				</span>
+				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam />:
+				<span className="break-words min-w-0 flex-shrink-0">{event.message}</span>
+			</div>
 		</div>
 	)
 }
@@ -59,10 +54,17 @@ function ChatMessageEvent({ event }: { event: CHAT.Event & { type: 'CHAT_MESSAGE
 function PlayerConnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_CONNECTED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.UserPlus className="h-4 w-4 text-green-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> connected
+			<span className="text-xs flex items-center gap-1 ">
+				<span>
+					<PlayerDisplay player={event.player} matchId={event.matchId} /> connected,
+				</span>
+				{event.player.teamID && (
+					<>
+						joining <MatchTeamDisplay teamId={event.player.teamID} matchId={event.matchId} />
+					</>
+				)}
 			</span>
 		</div>
 	)
@@ -71,10 +73,10 @@ function PlayerConnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_C
 function PlayerDisconnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_DISCONNECTED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.UserMinus className="h-4 w-4 text-red-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> disconnected
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> disconnected
 			</span>
 		</div>
 	)
@@ -83,10 +85,10 @@ function PlayerDisconnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYE
 function PossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'POSSESSED_ADMIN_CAMERA' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.Camera className="h-4 w-4 text-purple-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> entered admin camera
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> entered admin camera
 			</span>
 		</div>
 	)
@@ -95,10 +97,10 @@ function PossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'POS
 function UnpossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'UNPOSSESSED_ADMIN_CAMERA' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.CameraOff className="h-4 w-4 text-purple-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> exited admin camera
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> exited admin camera
 			</span>
 		</div>
 	)
@@ -107,24 +109,25 @@ function UnpossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'U
 function PlayerKickedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_KICKED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.UserX className="h-4 w-4 text-orange-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> was kicked
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> was kicked
 			</span>
 		</div>
 	)
 }
 
 function SquadCreatedEvent({ event }: { event: CHAT.Event & { type: 'SQUAD_CREATED' } }) {
-	const teamName = event.squad.teamId ? `Team ${event.squad.teamId}` : 'Unknown Team'
+	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.Users className="h-4 w-4 text-blue-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.creator)}</span> created squad{' '}
-				<span className="font-semibold">"{event.squad.squadName}"</span> on {teamName}
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created
+				<span className="font-semibold">"{event.squad.squadName}"</span> on{' '}
+				<MatchTeamDisplay matchId={event.matchId} teamId={event.squad.teamId} />
 			</span>
 		</div>
 	)
@@ -133,10 +136,10 @@ function SquadCreatedEvent({ event }: { event: CHAT.Event & { type: 'SQUAD_CREAT
 function PlayerBannedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_BANNED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.Ban className="h-4 w-4 text-red-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> was banned. reason: "{event.interval}"
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned. reason: "{event.interval}"
 			</span>
 		</div>
 	)
@@ -145,10 +148,10 @@ function PlayerBannedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_BANN
 function PlayerWarnedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_WARNED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500" />
-			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> was warned: "{event.reason}"
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> was warned: "{event.reason}"
 			</span>
 		</div>
 	)
@@ -157,9 +160,9 @@ function PlayerWarnedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_WARN
 function NewGameEvent({ event }: { event: CHAT.Event & { type: 'NEW_GAME' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.Play className="h-4 w-4 text-green-500" />
-			<span className="text-sm">New game started</span>
+			<span className="text-xs">New game started</span>
 		</div>
 	)
 }
@@ -167,9 +170,9 @@ function NewGameEvent({ event }: { event: CHAT.Event & { type: 'NEW_GAME' } }) {
 function RoundEndedEvent({ event }: { event: CHAT.Event & { type: 'ROUND_ENDED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
-			<span className="text-xs">{formatTime(event.time)}</span>
+			<EventTime time={event.time} variant="small" />
 			<Icons.Flag className="h-4 w-4 text-blue-500" />
-			<span className="text-sm">Round ended</span>
+			<span className="text-xs">Round ended</span>
 		</div>
 	)
 }
@@ -225,7 +228,7 @@ export default function ServerChatPanel() {
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden">
 				<ScrollArea className="h-[600px]" ref={scrollRef}>
-					<div className="flex flex-col gap-0.5 pr-4">
+					<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[500px]">
 						{eventBuffer.length === 0
 							? (
 								<div className="text-muted-foreground text-sm text-center py-8">

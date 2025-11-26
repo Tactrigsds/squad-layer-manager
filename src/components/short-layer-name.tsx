@@ -1,4 +1,4 @@
-import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
+import { getTeamsDisplay } from '@/components/teams-display.tsx'
 import * as Obj from '@/lib/object'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography.ts'

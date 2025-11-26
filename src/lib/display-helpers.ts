@@ -252,3 +252,10 @@ export function getAllExtraStyles(
 	}
 	return extraStyles
 }
+
+export const TEAM_COLORS = {
+	teamA: '#9932CC',
+	teamB: '#00BFFF',
+	team1: 'teal',
+	team2: 'coral',
+}

@@ -1,9 +1,9 @@
+import { getTeamsDisplay } from '@/components/teams-display'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
-import { getTeamsDisplay } from '@/lib/display-helpers-teams'
 import { assertNever } from '@/lib/type-guards'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
@@ -16,7 +16,6 @@ import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
-import { useState } from 'react'
 import React from 'react'
 import * as Zus from 'zustand'
 import BalanceTriggerAlert from './balance-trigger-alert'
@@ -33,9 +32,28 @@ export default function MatchHistoryPanel() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
 	const historyState = MatchHistoryClient.useMatchHistoryState()
+	const [showFullDay, setShowFullDay] = React.useState(false)
 	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
 		const allEntries = [...(history ?? [])].reverse()
 		const matchesByDate = new Map<string, typeof allEntries>()
+
+		const earliestStartTime = allEntries.map(entry => entry.startTime).filter(v => !!v).sort((a, b) => a.getTime() - b.getTime())[0]
+		const earliestStartDate = earliestStartTime ? dateFns.format(earliestStartTime, 'yyyy-MM-dd') : null
+
+		// Fill in all dates from earliest to today
+		if (earliestStartDate) {
+			let currentDate = new Date(earliestStartDate + 'T00:00:00')
+			const today = new Date()
+			today.setHours(0, 0, 0, 0)
+
+			while (currentDate <= today) {
+				const dateStr = dateFns.format(currentDate, 'yyyy-MM-dd')
+				if (!matchesByDate.has(dateStr)) {
+					matchesByDate.set(dateStr, [])
+				}
+				currentDate = dateFns.addDays(currentDate, 1)
+			}
+		}
 
 		// Add matches with startTime grouped by date
 		for (const entry of allEntries) {
@@ -55,11 +73,13 @@ export default function MatchHistoryPanel() {
 	}, [history])
 
 	// -------- Date-based pagination --------
-	const [currentPage, setCurrentPage] = useState(1)
+	const [currentPage, setCurrentPage] = React.useState(1)
 
 	const totalPages = Math.max(availableDates.length, 1)
 	const currentDate = availableDates[currentPage - 1]
-	const currentEntries = [...currentDate ? matchesByDate.get(currentDate) || [] : []].reverse()
+	let currentEntries = [...currentDate ? matchesByDate.get(currentDate) || [] : []]
+	if (!showFullDay) currentEntries = currentEntries.slice(0, 5)
+	currentEntries.reverse()
 
 	// Reset to page 1 if current page is beyond available dates
 	React.useEffect(() => {
@@ -84,7 +104,7 @@ export default function MatchHistoryPanel() {
 		<Card>
 			<CardHeader className="flex flex-row justify-between items-start">
 				<CardTitle>Match History</CardTitle>
-				{availableDates.length > 1 && (
+				{availableDates.length > 1 && showFullDay && (
 					<div className="flex items-center justify-center space-x-2 mt-4">
 						<Button
 							variant="outline"
@@ -96,11 +116,6 @@ export default function MatchHistoryPanel() {
 						</Button>
 						<span className="text-sm font-mono">
 							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
-							{availableDates.length > 1 && (
-								<span className="text-muted-foreground ml-1">
-									({currentPage} of {availableDates.length})
-								</span>
-							)}
 						</span>
 						<Button
 							variant="outline"

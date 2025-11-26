@@ -333,7 +333,7 @@ export const SquadSchema = z.object({
 	size: z.number(),
 	locked: z.boolean(),
 	creatorIds: PlayerIds.Schema,
-	teamId: TeamIdSchema.nullable(),
+	teamId: TeamIdSchema,
 })
 
 export type Squad = z.infer<typeof SquadSchema>

@@ -1,3 +1,4 @@
+import { getTeamsDisplay } from '@/components/teams-display.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge.tsx'
@@ -8,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
-import { getTeamsDisplay } from '@/lib/display-helpers-teams.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
