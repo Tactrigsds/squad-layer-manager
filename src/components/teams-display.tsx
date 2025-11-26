@@ -123,12 +123,12 @@ export function TeamFactionDisplay(
 			</span>
 			{
 				/*<span
-				title={attrs[1].title}
-				className="font-mono text-sm"
-				style={{ color: attrs[1].color }}
-			>
-				{attrs[1].label}
-			</span>*/
+			 	title={attrs[1].title}
+			 	className="font-mono text-sm"
+			 	style={{ color: attrs[1].color }}
+			 >
+			 	{attrs[1].label}
+			// </span>*/
 			}
 		</span>
 	)

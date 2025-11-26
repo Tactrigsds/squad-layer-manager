@@ -321,6 +321,7 @@ export const PlayerSchema = z.object({
 	teamID: TeamIdSchema.nullable(),
 	squadID: z.number().nullable(),
 	isLeader: z.boolean(),
+	isAdmin: z.boolean(),
 	role: z.string(),
 })
 

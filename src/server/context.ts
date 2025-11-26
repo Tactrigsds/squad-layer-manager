@@ -1,5 +1,5 @@
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResourceInvocationOpts } from '@/lib/async.ts'
+import type { AsyncResource, AsyncResourceInvocationOpts } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
@@ -290,6 +290,10 @@ export type ServerId = {
 	serverId: string
 }
 
+export type AdminList = {
+	adminList: AsyncResource<SM.AdminList, CS.Log>
+}
+
 export type SquadRcon = { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 
 export type LayerQueue = {
@@ -312,7 +316,7 @@ export type SharedLayerList = SharedLayerListSys.SharedLayerListContext & Server
 export type ServerSliceSub = {
 	serverSliceSub: Rx.Subscription
 }
-export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceSub
+export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceSub & AdminList
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

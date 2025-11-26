@@ -18,11 +18,11 @@ export type SquadRcon = {
 
 	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
 	serverInfo: AsyncResource<SM.ServerInfoRes, CS.Log & C.Rcon>
-	playerList: AsyncResource<SM.PlayerListRes, CS.Log & C.Rcon>
+	playerList: AsyncResource<SM.PlayerListRes, CS.Log & C.Rcon & C.AdminList>
 	squadList: AsyncResource<SM.SquadListRes, CS.Log & C.Rcon>
 }
 
-export function initSquadRcon(ctx: CS.Log & C.Rcon, sub: Rx.Subscription): SquadRcon {
+export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, sub: Rx.Subscription): SquadRcon {
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
 		defaultTTL: 5000,
@@ -97,7 +97,7 @@ export async function getNextLayer(ctx: CS.Log & C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-export async function getListPlayers(ctx: CS.Log & C.Rcon) {
+export async function getListPlayers(ctx: CS.Log & C.Rcon & C.AdminList) {
 	const res = await ctx.rcon.execute(ctx, 'ListPlayers')
 	if (res.code !== 'ok') return res
 
@@ -117,6 +117,13 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon) {
 		data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
 		data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
 		data.ids = SM.PlayerIds.extractPlayerIds({ username: match.groups!.name, idsStr: match[2] })
+
+		data.isAdmin = false
+
+		if (data.ids.steam) {
+			const adminList = await ctx.adminList.get(ctx, { ttl: Infinity })
+			data.isAdmin = OneToMany.has(adminList.admins, data.ids.steam, CONFIG.adminListAdminRole)
+		}
 		// console.log('---- DATA ----')
 		// console.log(superjson.stringify(data))
 		const parsedData = SM.PlayerSchema.parse(data)
@@ -192,7 +199,7 @@ export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | stri
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
-export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
+export async function getPlayer(ctx: CS.Log & C.SquadRcon & C.AdminList, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.server.playerList.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
@@ -205,7 +212,7 @@ export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.I
  * Get a player which may not exist yet
  */
 export async function getPlayerDeferred(
-	ctx: CS.Log & C.SquadRcon,
+	ctx: CS.Log & C.SquadRcon & C.AdminList,
 	query: SM.PlayerIds.IdQuery | ((player: SM.Player) => boolean),
 	opts?: { ttl?: number; timeout?: number },
 ) {
@@ -269,7 +276,7 @@ export async function getSquadDeferred(
 		).pipe(Rx.endWith(null)),
 	)
 }
-export async function warn(ctx: CS.Log & C.SquadRcon, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
+export async function warn(ctx: CS.Log & C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
 	let opts: WarnOptionsBase
 	if (typeof _opts === 'function') {
 		const playerRes = await getPlayer(ctx, ids)
@@ -307,9 +314,9 @@ export async function warn(ctx: CS.Log & C.SquadRcon, ids: SM.PlayerIds.Type, _o
 export const warnAllAdmins = C.spanOp(
 	'squad-server:warn-all-admins',
 	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.SquadServer, options: WarnOptions) => {
+	async (ctx: CS.Log & C.SquadRcon & C.AdminList, options: WarnOptions) => {
 		const [currentAdminList, playersRes] = await Promise.all([
-			ctx.server.adminList.get(ctx),
+			ctx.adminList.get(ctx),
 			ctx.server.playerList.get(ctx),
 		])
 		const ops: Promise<unknown>[] = []

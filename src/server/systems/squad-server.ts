@@ -54,8 +54,6 @@ export let globalState!: State
 export type SquadServer = {
 	layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
 
-	adminList: AsyncResource<SM.AdminList, CS.Log & C.Rcon>
-
 	postRollEventsSub: Rx.Subscription | null
 
 	historyConflictsResolved$: Promise<unknown>
@@ -179,7 +177,6 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	const server: SquadServer = {
 		layersStatusExt$,
 
-		adminList,
 		postRollEventsSub: null,
 
 		historyConflictsResolved$: undefined!,
@@ -198,7 +195,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			chat: null,
 		},
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanupSub),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList }, cleanupSub),
 	}
 
 	registerCleanup(() => {
@@ -378,6 +375,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		},
 		sharedList: SharedLayerList.getDefaultState(serverState),
 
+		adminList,
 		serverSliceSub: cleanupSub,
 	}
 
@@ -632,7 +630,7 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
  * Performs state tracking and event consolidation for squad log events.
  */
 async function processServerLogEvent(
-	ctx: CS.Log & C.SquadServer & C.MatchHistory & C.Db & C.Mutexes,
+	ctx: CS.Log & C.SquadServer & C.AdminList & C.MatchHistory & C.Db & C.Mutexes,
 	logEvent: SM.LogEvents.Event,
 ) {
 	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved

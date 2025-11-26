@@ -355,7 +355,7 @@ export const startVote = C.spanOp(
 	'layer-queue:vote:start',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
 	async (
-		_ctx: CS.Log & C.Db & Partial<C.User> & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
+		_ctx: CS.Log & C.Db & Partial<C.User> & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (_ctx.user !== undefined) {
@@ -460,7 +460,7 @@ export const startVote = C.spanOp(
 export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 	tracer,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue, msg: SM.RconEvents.ChatMessage) => {
+}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	const voteState = ctx.vote.state
@@ -519,7 +519,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
-	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue, opts: { aborter: USR.GuiOrChatUserId }) => {
+	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, opts: { aborter: USR.GuiOrChatUserId }) => {
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const voteState = ctx.vote.state
 		return await DB.runTransaction(ctx, async (ctx) => {
@@ -657,7 +657,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 const handleVoteTimeout = C.spanOp(
 	'layer-queue:vote:handle-timeout',
 	{ tracer, eventLogLevel: 'info' },
-	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory) => {
+	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -723,7 +723,7 @@ const handleVoteTimeout = C.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: CS.Log & C.SquadServer & C.Vote,
+	ctx: CS.Log & C.SquadServer & C.Vote & C.AdminList,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
 ) {
@@ -882,7 +882,7 @@ export async function updateServerState(
 }
 
 export async function warnShowNext(
-	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue,
+	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue & C.AdminList,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {
@@ -960,7 +960,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 }
 
 export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: { ctx: CS.Log & C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue; input: { disabled: boolean } },
+	{ ctx, input }: { ctx: CS.Log & C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList; input: { disabled: boolean } },
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
@@ -984,7 +984,7 @@ export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer &
 }
 
 export async function requestFeedback(
-	ctx: CS.Log & C.Db & C.SquadServer & C.LayerQueue,
+	ctx: CS.Log & C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
