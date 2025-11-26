@@ -1,6 +1,5 @@
 import * as Obj from '@/lib/object'
 import * as SM from '@/models/squad.models'
-import { mutateMergeDeep } from '@tanstack/react-form'
 
 export type PlayerRef = string
 
@@ -142,7 +141,7 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA':
 		case 'CHAT_MESSAGE': {
-			const player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
 			if (!player) {
 				console.warn(
 					`Player ${

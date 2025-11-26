@@ -38,9 +38,9 @@ import UserPresencePanel from './user-presence-panel.tsx'
 export default function LayerQueueDashboard() {
 	return (
 		<div className="mx-auto grid place-items-center">
-			<div className="grid grid-cols-[auto,auto]">
+			<div className="grid grid-cols-[auto,auto] gap-2">
 				{/* Desktop: Show only NormTeamsSwitch */}
-				<div className="col-span-2 justify-between pb-2 hidden dash-2col:flex">
+				<div className="col-span-2 justify-between flex">
 					<NormTeamsSwitch />
 					<UserPresencePanel />
 				</div>
@@ -52,7 +52,7 @@ export default function LayerQueueDashboard() {
 				</div>
 				{/* right column */}
 				<div className="flex flex-col gap-2">
-					<ServerStatsPanel />
+					{/*<ServerStatsPanel />*/}
 					<ServerChatPanel />
 				</div>
 			</div>

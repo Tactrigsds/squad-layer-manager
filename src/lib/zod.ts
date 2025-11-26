@@ -29,23 +29,27 @@ export const HumanTime = z.string().regex(/^[0-9._]+(s|m|h|d|w|ms)$/).transform(
 
 export const ParsedIntSchema = z
 	.string()
+	.trim()
 	.regex(/^-?\d+$/)
 	.transform((val) => parseInt(val, 10))
 	.pipe(z.number().int().finite())
 
 export const ParsedFloatSchema = z
 	.string()
+	.trim()
 	.regex(/^(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[Nn][Aa][Nn])$/)
 	.transform((val) => parseFloat(val))
 	.pipe(z.union([z.nan(), z.number()]))
 
 export const ParsedBigIntSchema = z
 	.string()
+	.trim()
 	.regex(/^-?\d+$/)
 	.transform((val) => BigInt(val))
 
 export const StrFlag = z
 	.string()
+	.trim()
 	.toLowerCase()
 	.pipe(z.union([z.literal('true'), z.literal('false')]))
 	.transform((val) => val === 'true')

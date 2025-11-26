@@ -204,13 +204,21 @@ export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.I
 /**
  * Get a player which may not exist yet
  */
-export async function getPlayerDeferred(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number; timeout?: number }) {
+export async function getPlayerDeferred(
+	ctx: CS.Log & C.SquadRcon,
+	query: SM.PlayerIds.IdQuery | ((player: SM.Player) => boolean),
+	opts?: { ttl?: number; timeout?: number },
+) {
 	const timeout = opts?.timeout ?? 3000
 	const o = ctx.server.playerList.observe(ctx, opts)
 		.pipe(Rx.concatMap(res => {
 			if (res.code !== 'ok') return Rx.EMPTY
 			const players = res.players
-			const player = SM.PlayerIds.find(players, p => p.ids, query)
+			const player = players.find(p =>
+				typeof query === 'function'
+					? query(p)
+					: SM.PlayerIds.find([p], pid => pid.ids, query)
+			)
 			if (!player) return Rx.EMPTY
 			return Rx.of(player)
 		}))
@@ -237,7 +245,7 @@ export async function getSquad(ctx: CS.Log & C.SquadRcon, query: { squadId: numb
  */
 export async function getSquadDeferred(
 	ctx: CS.Log & C.SquadRcon,
-	query: { squadId: number; teamId: SM.TeamId },
+	query: { squadId: number; teamId: SM.TeamId } | ((squad: SM.Squad) => boolean),
 	opts?: { ttl?: number; timeout?: number },
 ) {
 	const timeout = opts?.timeout ?? 3000
@@ -245,7 +253,11 @@ export async function getSquadDeferred(
 		.pipe(Rx.concatMap(res => {
 			if (res.code !== 'ok') return Rx.EMPTY
 			const squads = res.squads
-			const squad = squads.find(s => s.teamId === query.teamId && s.squadId === query.squadId)
+			const squad = squads.find(s =>
+				typeof query === 'function'
+					? query(s)
+					: s.teamId === query.teamId && s.squadId === query.squadId
+			)
 			if (!squad) return Rx.EMPTY
 			return Rx.of(squad)
 		}))

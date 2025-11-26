@@ -53,6 +53,11 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 		tracer: Otel.Tracer
 		links?: Otel.Link[]
 		eventLogLevel?: Pino.Level
+		levels?: {
+			event?: Pino.Level
+			error?: Pino.Level
+			valueError?: Pino.Level
+		}
 		root?: boolean
 		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
 		extraText?: (...args: Parameters<Cb>) => string
@@ -119,7 +124,14 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 							setSpanStatus(Otel.SpanStatusCode.OK)
 						} else if (result.code.includes('err')) {
 							const message = result.msg ? `${result.code}: ${result.msg}` : result.code
-							logger?.[opts.eventLogLevel ?? 'debug'](`${name}(${id}) ${extraText}: value-error : ${message}`)
+							const logArgs = [
+								`${name}(${id}) ${extraText}: value-error : ${message}`,
+							]
+							if (result.error || result.err) {
+								logArgs.unshift(result.error || result.err)
+							}
+							// @ts-expect-error idgaf
+							logger?.[opts.levels?.valueError ?? 'warn'](...logArgs)
 							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 						}
 					}
@@ -128,7 +140,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 						spanStatus = { code: Otel.SpanStatusCode.OK }
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
-					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? 'warn' : (opts.eventLogLevel ?? 'debug')
+					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? (opts.levels?.error ?? 'warn') : (opts.eventLogLevel ?? 'debug')
 					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? (spanStatus?.message ?? 'error') : 'ok'
 					logger?.[logLevel](`${name}(${id}) ${extraText}: ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>

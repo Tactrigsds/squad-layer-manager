@@ -251,7 +251,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		'line',
 		C.spanOp(
 			'squad-server:on-log-event',
-			{ tracer, eventLogLevel: 'debug', extraText: (line) => line },
+			{ tracer, eventLogLevel: 'debug' },
 			async (line: string) => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				for (const matcher of SM.LogEvents.EventMatchers) {
@@ -354,6 +354,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			ctx.log.error('Chat state not initialized')
 			return
 		}
+		ctx.log.info(event, 'emitted event: %s', event.type)
 		CHAT.handleEvent(server.state.chat, event)
 	})
 
@@ -737,10 +738,13 @@ async function processServerLogEvent(
 				return { code: 'err:player-not-found' as const, message: `Player ${SM.PlayerIds.prettyPrint(joinedPlayerIdQuery)} not found` }
 			}
 			return {
-				type: 'PLAYER_CONNECTED',
-				player,
-				...base,
-			} satisfies SM.Events.PlayerConnected
+				code: 'ok' as const,
+				event: {
+					type: 'PLAYER_CONNECTED',
+					player,
+					...base,
+				} satisfies SM.Events.PlayerConnected,
+			}
 		}
 
 		case 'PLAYER_DISCONNECTED': {
@@ -756,9 +760,12 @@ async function processServerLogEvent(
 			})()
 
 			return {
-				type: 'PLAYER_DISCONNECTED',
-				time: logEvent.time,
-				player: logEvent.player,
+				code: 'ok' as const,
+				event: {
+					type: 'PLAYER_DISCONNECTED',
+					playerIds: logEvent.player,
+					...base,
+				} satisfies SM.Events.PlayerDisconnected,
 			}
 		}
 
@@ -857,11 +864,23 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				}
 			}
 
-			const squad = await SquadRcon.getSquadDeferred(ctx, { teamId, squadId: event.squadID }, deferOpts)
+			const squad = await SquadRcon.getSquadDeferred(ctx, s => s.teamId === teamId && s.squadId === event.squadID, deferOpts)
 			if (!squad) {
 				return {
 					code: 'err:unable-to-resolve-squad' as const,
 					message: `unable to resolve squad for team id ${teamId} and squad id ${event.squadID}`,
+				}
+			}
+			const creator = await SquadRcon.getPlayerDeferred(
+				ctx,
+				p => SM.PlayerIds.matches(p.ids, event.creatorIds) && p.isLeader && p.squadID !== null,
+				deferOpts,
+			)
+
+			if (!creator) {
+				return {
+					code: 'err:unable-to-resolve-creator' as const,
+					message: `unable to resolve creator for squad id ${event.squadID}`,
 				}
 			}
 
@@ -872,6 +891,7 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				event: {
 					type: 'SQUAD_CREATED',
 					squad,
+					creator,
 					...base,
 				} satisfies SM.Events.SquadCreated,
 			}

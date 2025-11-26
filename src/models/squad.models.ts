@@ -211,11 +211,11 @@ export namespace PlayerIds {
 				}
 				Object.assign(existingIds, searchId)
 				Object.assign(existing, newItem)
-				return
+				return existing
 			}
 			Object.assign(cb(newItem), searchId)
 			;(elts as T[]).push(newItem)
-			return
+			return newItem
 		}
 
 		// Original overload: upsert(idList: Type[], id: Type): Type
@@ -284,11 +284,18 @@ export namespace PlayerIds {
 		return false
 	}
 
+	export function matches(a: IdQuery, b: IdQuery): boolean {
+		for (const prop of LOOKUP_PROPS) {
+			if (a[prop] && b[prop] && a[prop] === b[prop]) return true
+		}
+		return false
+	}
+
 	const ID_MATCHER = /\s*(?<name>[^\s:]+)\s*:\s*(?<id>[^\s]+)/g
 
 	function* matchAllIds(idsStr: string) {
 		for (const match of idsStr.matchAll(ID_MATCHER)) {
-			yield { key: match.groups!.name, value: match.groups!.id }
+			yield { key: match.groups!.name.toLowerCase(), value: match.groups!.id }
 		}
 	}
 
@@ -404,12 +411,13 @@ export namespace Events {
 
 	export type PlayerDisconnected = {
 		type: 'PLAYER_DISCONNECTED'
-		playerIds: PlayerIds.Type
+		playerIds: PlayerIds.IdQuery
 	} & Base
 
 	export type SquadCreated = {
 		type: 'SQUAD_CREATED'
 		squad: Squad
+		creator: Player
 	} & Base
 
 	export type ChatMessage = {

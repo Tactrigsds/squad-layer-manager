@@ -1,8 +1,8 @@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import * as CM from '@/models/chat.models'
-import * as SM from '@/models/squad.models'
+import type * as CHAT from '@/models/chat.models'
+import type * as SM from '@/models/squad.models'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
@@ -17,7 +17,7 @@ function formatPlayer(player: SM.Player): string {
 	return player.ids.username
 }
 
-function ChatMessageEvent({ event }: { event: CM.Event & { type: 'CHAT_MESSAGE' } }) {
+function ChatMessageEvent({ event }: { event: CHAT.Event & { type: 'CHAT_MESSAGE' } }) {
 	const channelColor = (() => {
 		switch (event.channel.type) {
 			case 'ChatAll':
@@ -56,7 +56,7 @@ function ChatMessageEvent({ event }: { event: CM.Event & { type: 'CHAT_MESSAGE' 
 	)
 }
 
-function PlayerConnectedEvent({ event }: { event: CM.Event & { type: 'PLAYER_CONNECTED' } }) {
+function PlayerConnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_CONNECTED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -68,7 +68,7 @@ function PlayerConnectedEvent({ event }: { event: CM.Event & { type: 'PLAYER_CON
 	)
 }
 
-function PlayerDisconnectedEvent({ event }: { event: CM.Event & { type: 'PLAYER_DISCONNECTED' } }) {
+function PlayerDisconnectedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_DISCONNECTED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -80,7 +80,7 @@ function PlayerDisconnectedEvent({ event }: { event: CM.Event & { type: 'PLAYER_
 	)
 }
 
-function PossessedAdminCameraEvent({ event }: { event: CM.Event & { type: 'POSSESSED_ADMIN_CAMERA' } }) {
+function PossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'POSSESSED_ADMIN_CAMERA' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -92,7 +92,7 @@ function PossessedAdminCameraEvent({ event }: { event: CM.Event & { type: 'POSSE
 	)
 }
 
-function UnpossessedAdminCameraEvent({ event }: { event: CM.Event & { type: 'UNPOSSESSED_ADMIN_CAMERA' } }) {
+function UnpossessedAdminCameraEvent({ event }: { event: CHAT.Event & { type: 'UNPOSSESSED_ADMIN_CAMERA' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -104,7 +104,7 @@ function UnpossessedAdminCameraEvent({ event }: { event: CM.Event & { type: 'UNP
 	)
 }
 
-function PlayerKickedEvent({ event }: { event: CM.Event & { type: 'PLAYER_KICKED' } }) {
+function PlayerKickedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_KICKED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -116,7 +116,7 @@ function PlayerKickedEvent({ event }: { event: CM.Event & { type: 'PLAYER_KICKED
 	)
 }
 
-function SquadCreatedEvent({ event }: { event: CM.Event & { type: 'SQUAD_CREATED' } }) {
+function SquadCreatedEvent({ event }: { event: CHAT.Event & { type: 'SQUAD_CREATED' } }) {
 	const teamName = event.squad.teamId ? `Team ${event.squad.teamId}` : 'Unknown Team'
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
@@ -130,19 +130,19 @@ function SquadCreatedEvent({ event }: { event: CM.Event & { type: 'SQUAD_CREATED
 	)
 }
 
-function PlayerBannedEvent({ event }: { event: CM.Event & { type: 'PLAYER_BANNED' } }) {
+function PlayerBannedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_BANNED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
 			<Icons.Ban className="h-4 w-4 text-red-500" />
 			<span className="text-sm">
-				<span className="font-semibold">{formatPlayer(event.player)}</span> was banned for {event.interval}
+				<span className="font-semibold">{formatPlayer(event.player)}</span> was banned. reason: "{event.interval}"
 			</span>
 		</div>
 	)
 }
 
-function PlayerWarnedEvent({ event }: { event: CM.Event & { type: 'PLAYER_WARNED' } }) {
+function PlayerWarnedEvent({ event }: { event: CHAT.Event & { type: 'PLAYER_WARNED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -154,7 +154,7 @@ function PlayerWarnedEvent({ event }: { event: CM.Event & { type: 'PLAYER_WARNED
 	)
 }
 
-function NewGameEvent({ event }: { event: CM.Event & { type: 'NEW_GAME' } }) {
+function NewGameEvent({ event }: { event: CHAT.Event & { type: 'NEW_GAME' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -164,7 +164,7 @@ function NewGameEvent({ event }: { event: CM.Event & { type: 'NEW_GAME' } }) {
 	)
 }
 
-function RoundEndedEvent({ event }: { event: CM.Event & { type: 'ROUND_ENDED' } }) {
+function RoundEndedEvent({ event }: { event: CHAT.Event & { type: 'ROUND_ENDED' } }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<span className="text-xs">{formatTime(event.time)}</span>
@@ -174,7 +174,7 @@ function RoundEndedEvent({ event }: { event: CM.Event & { type: 'ROUND_ENDED' } 
 	)
 }
 
-function EventItem({ event }: { event: CM.Event }) {
+function EventItem({ event }: { event: CHAT.Event }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 			return <ChatMessageEvent event={event} />
@@ -216,7 +216,7 @@ export default function ServerChatPanel() {
 	}, [eventBuffer.length])
 
 	return (
-		<Card className="flex flex-col h-full">
+		<Card className="flex flex-col h-full min-w-[500px]">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<Icons.MessageSquare className="h-5 w-5" />
