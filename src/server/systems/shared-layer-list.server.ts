@@ -60,7 +60,7 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 	void sendUpdate(ctx, { code: 'init', session: editSession, presence, sessionSeqId: 1 })
 	ctx.serverSliceSub.add(ctx.layerQueue.update$.subscribe(async ([update, _ctx]) => {
 		const sliceCtx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
-		using ctx = await acquireReentrant(C.initLocks(sliceCtx), sliceCtx.sharedList.mtx)
+		using ctx = await acquireReentrant(C.initMutexStore(sliceCtx), sliceCtx.sharedList.mtx)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
 
 		const session = ctx.sharedList.session
@@ -298,7 +298,7 @@ export async function sendUpdate(ctx: C.SharedLayerList & C.Mutexes, update: SLL
 }
 
 function getBaseCtx() {
-	return C.initLocks({ log: baseLogger })
+	return C.initMutexStore({ log: baseLogger })
 }
 
 function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession & C.Mutexes, action: PresenceActions.Action) {

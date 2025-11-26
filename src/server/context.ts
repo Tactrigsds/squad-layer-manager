@@ -207,7 +207,7 @@ export type Mutexes = {
 		releaseTasks: ReleaseTask[]
 	}
 }
-export function initLocks<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
+export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
 	return { ...(ctx ?? {} as Ctx), mutexes: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
@@ -278,7 +278,7 @@ export type ServerId = {
 	serverId: string
 }
 
-export type SquadRcon = { server: SquadRconSys.SquadRconContext } & Rcon & ServerId
+export type SquadRcon = { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 
 export type LayerQueue = {
 	layerQueue: LayerQueueSys.LayerQueueContext

@@ -11,8 +11,8 @@ export function createLogMatcher<O extends z.ZodTypeAny>(matcher: LogMatcher<O>)
 	return matcher
 }
 
-export function matchLog<LM extends LogMatcher>(log: string, matcher: LM) {
-	const match = log.match(matcher.regex)
+export function matchLog<LM extends LogMatcher>(line: string, matcher: LM) {
+	const match = line.match(matcher.regex)
 	if (!match) return [null, null] as const
 	const [matchRes, err] = withThrown(() => matcher.onMatch(match))
 	if (err) return [null, err] as const

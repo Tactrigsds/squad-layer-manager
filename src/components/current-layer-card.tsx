@@ -34,7 +34,7 @@ export default function CurrentLayerCard() {
 	const loggedInUser = useLoggedInUser()
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
-	const serverRolling = SquadServerClient.useServerRolling()
+	const serverRolling = !!SquadServerClient.useServerRolling()
 
 	const [canEndMatch, hasDisableUpdatesPerm, canDisableFogOfWar] = React.useMemo(() => [
 		!loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')),

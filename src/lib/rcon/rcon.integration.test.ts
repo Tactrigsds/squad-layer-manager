@@ -8,6 +8,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon.ts'
 import { Mutex } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from 'vitest'
+import { registerCleanup } from '../async.ts'
 import Rcon from './core-rcon.ts'
 
 let rcon!: Rcon
@@ -31,19 +32,18 @@ beforeAll(async () => {
 			password: ENV.TEST_RCON_PASSWORD,
 		},
 	})
-	await rcon.connect(baseCtx)
 	const ctx = DB.addPooledDb({
-		log: baseLogger,
 		rcon,
+		log: baseLogger,
 	})
+	registerCleanup(() => rcon.disconnect(ctx), sub)
+
+	await rcon.connect(ctx)
 
 	baseCtx = {
 		...ctx,
-		server: SquadRcon.initSquadRcon(ctx, 'test-server', {
-			host: ENV.TEST_RCON_HOST,
-			port: ENV.TEST_RCON_PORT,
-			password: ENV.TEST_RCON_PASSWORD,
-		}, sub),
+		rcon,
+		server: SquadRcon.initSquadRcon({ ...ctx, rcon }, sub),
 		serverId: 'test-server',
 	}
 })

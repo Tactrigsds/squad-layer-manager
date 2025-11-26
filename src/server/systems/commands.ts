@@ -11,7 +11,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Users from '@/server/systems/users.ts'
 
 export async function handleCommand(ctx: CS.Log & C.Db & C.Mutexes & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
-	if (!SM.CHAT_CHANNEL.safeParse(msg.chat)) {
+	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType)) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
 			msg: 'Invalid chat channel',
@@ -37,8 +37,8 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.Mutexes & C.ServerSli
 	ctx.log.info('Command received: %s', cmd)
 
 	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
-	if (!CMD.chatInScope(cmdConfig.scopes, msg.chat)) {
-		const scopes = CMD.getScopesForChat(msg.chat)
+	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
+		const scopes = CMD.getScopesForChat(msg.channelType)
 		const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
 		await SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.commands.wrongChat(correctChats))
 		return

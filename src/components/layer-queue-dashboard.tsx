@@ -70,7 +70,7 @@ function QueuePanel() {
 	return (
 		<Card>
 			<CardHeader className="flex flex-row items-center justify-between">
-				<span className="flex items-center space-x-1">
+				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">
 							<CardTitle>Up Next</CardTitle>
@@ -130,11 +130,6 @@ function QueuePanel() {
 					<QueueControlPanel />
 				</span>
 			</CardHeader>
-			{queueMutations.removed.size > 0 && (
-				<Alert variant="destructive">
-					{queueMutations.removed.size} item{queueMutations.removed.size === 1 ? '' : 's'} removed
-				</Alert>
-			)}
 			<CardContent className="p-0 px-1">
 				<LayerList store={SLLClient.Store} />
 			</CardContent>
@@ -208,78 +203,76 @@ function QueueControlPanel() {
 	}
 
 	return (
-		<div className="flex justify-between items-center">
-			<div className="flex items-center space-x-1 flex-grow">
-				{isModified && (
-					<>
-						<div className="space-x-1 flex items-center">
-							<Icons.LoaderCircle
-								className="animate-spin data-[pending=false]:invisible"
-								data-pending={saving}
-							/>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										onClick={saveLqState}
-										disabled={saving}
-									>
-										<Icons.Save />
-										<span>Save</span>
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent>
-									<p>Save</p>
-								</TooltipContent>
-							</Tooltip>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
-										<Icons.Undo />
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent>
-									<p>Reset</p>
-								</TooltipContent>
-							</Tooltip>
-						</div>
-						<Separator orientation="vertical" />
-					</>
-				)}
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							variant="outline"
-							size="icon"
-							onClick={() => clear()}
-						>
-							<Icons.Trash />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>
-						<p>Clear Queue</p>
-					</TooltipContent>
-				</Tooltip>
-				<StartActivityInteraction
-					loaderName="selectLayers"
-					createActivity={SLL.createEditActivityVariant({
-						_tag: 'leaf',
-						id: 'ADDING_ITEM',
-						opts: { cursor: { type: 'start' }, variant: 'toggle-position' },
-					})}
-					matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
-					preload="render"
-					render={Button}
-					className="flex w-min items-center space-x-0"
-				>
-					<Icons.PlusIcon />
-					<span>Add Layers</span>
-				</StartActivityInteraction>
-				<PoolConfigurationPopover>
-					<Button size="icon" variant="ghost" title="Pool Configuration">
-						<Icons.Settings />
+		<div className="flex items-center space-x-1 flex-grow justify-end">
+			{isModified && (
+				<>
+					<div className="space-x-1 flex items-center">
+						<Icons.LoaderCircle
+							className="animate-spin data-[pending=false]:invisible"
+							data-pending={saving}
+						/>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={saveLqState}
+									disabled={saving}
+								>
+									<Icons.Save />
+									<span>Save</span>
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Save</p>
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button size="icon" disabled={saving} onClick={() => SLLClient.Store.getState().reset()} variant="secondary">
+									<Icons.Undo />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Reset</p>
+							</TooltipContent>
+						</Tooltip>
+					</div>
+					<Separator orientation="vertical" />
+				</>
+			)}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => clear()}
+					>
+						<Icons.Trash />
 					</Button>
-				</PoolConfigurationPopover>
-			</div>
+				</TooltipTrigger>
+				<TooltipContent>
+					<p>Clear Queue</p>
+				</TooltipContent>
+			</Tooltip>
+			<StartActivityInteraction
+				loaderName="selectLayers"
+				createActivity={SLL.createEditActivityVariant({
+					_tag: 'leaf',
+					id: 'ADDING_ITEM',
+					opts: { cursor: { type: 'start' }, variant: 'toggle-position' },
+				})}
+				matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
+				preload="render"
+				render={Button}
+				className="flex w-min items-center space-x-0"
+			>
+				<Icons.PlusIcon />
+				<span>Add Layers</span>
+			</StartActivityInteraction>
+			<PoolConfigurationPopover>
+				<Button size="icon" variant="ghost" title="Pool Configuration">
+					<Icons.Settings />
+				</Button>
+			</PoolConfigurationPopover>
 		</div>
 	)
 }

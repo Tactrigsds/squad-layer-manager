@@ -108,7 +108,7 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 	const cmd = matchCommandText(configs, cmdText)
 	if (!cmd) {
 		const allCommandStrings = Obj.objValues(configs)
-			.filter((c) => chatInScope(c.scopes, msg.chat))
+			.filter((c) => chatInScope(c.scopes, msg.channelType))
 			.flatMap((c) => c.strings)
 			.map((s) => commandPrefix + s)
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch(words[0], allCommandStrings)
@@ -149,7 +149,7 @@ function matchCommandText(configs: CommandConfigs, cmdText: string) {
 	return null
 }
 
-export function chatInScope(scopes: CommandScope[], msgChat: SM.ChatChannel) {
+export function chatInScope(scopes: CommandScope[], msgChat: SM.ChatChannelType) {
 	for (const scope of scopes) {
 		if (CHAT_SCOPE_MAPPINGS[scope].includes(msgChat)) {
 			return true
@@ -158,7 +158,7 @@ export function chatInScope(scopes: CommandScope[], msgChat: SM.ChatChannel) {
 	return false
 }
 
-export function getScopesForChat(chat: SM.ChatChannel): CommandScope[] {
+export function getScopesForChat(chat: SM.ChatChannelType): CommandScope[] {
 	const matches: CommandScope[] = []
 	for (const [scope, chats] of Object.entries(CHAT_SCOPE_MAPPINGS)) {
 		if (chats.includes(chat)) {

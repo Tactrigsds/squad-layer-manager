@@ -1,4 +1,5 @@
 import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
+import * as Obj from '@/lib/object'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -7,27 +8,27 @@ import { z } from 'zod'
 import type { OneToManyMap } from '../lib/one-to-many-map'
 
 export const ServerRawInfoSchema = z.object({
-	ServerName_s: z.string(),
-	MaxPlayers: z.number().int().nonnegative(),
-	PlayerCount_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueue_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	MapName_s: z.string(),
-	GameMode_s: z.string(),
-	GameVersion_s: z.string(),
-	LICENSEDSERVER_b: z.boolean(),
-	PLAYTIME_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	Flags_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	MATCHHOPPER_s: z.string(),
-	MatchTimeout_d: z.number().int().nonnegative(),
-	SESSIONTEMPLATENAME_s: z.string(),
-	Password_b: z.boolean(),
-	CurrentModLoadedCount_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
-	AllModsWhitelisted_b: z.boolean(),
-	Region_s: z.string(),
-	NextLayer_s: z.string().optional(),
-	TeamOne_s: z.string().optional(),
-	TeamTwo_s: z.string().optional(),
+	ServerName_s: z.string().default('Unknown'),
+	MaxPlayers: z.number().int().nonnegative().default(0),
+	PlayerCount_I: ZodUtils.ParsedIntSchema.default('0').pipe(z.number().int().nonnegative()),
+	PublicQueue_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative().optional()).optional(),
+	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()).optional(),
+	// MapName_s: z.string(),
+	// GameMode_s: z.string(),
+	// GameVersion_s: z.string(),
+	// LICENSEDSERVER_b: z.boolean(),
+	// PLAYTIME_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	// Flags_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	// MATCHHOPPER_s: z.string(),
+	// MatchTimeout_d: z.number().int().nonnegative(),
+	// SESSIONTEMPLATENAME_s: z.string(),
+	// Password_b: z.boolean(),
+	// CurrentModLoadedCount_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()),
+	// AllModsWhitelisted_b: z.boolean(),
+	// Region_s: z.string(),
+	// NextLayer_s: z.string().optional(),
+	// TeamOne_s: z.string().optional(),
+	// TeamTwo_s: z.string().optional(),
 })
 
 export type LayersStatus = {
@@ -39,8 +40,8 @@ export type ServerInfo = {
 	name: string
 	maxPlayerCount: number
 	playerCount: number
-	queueLength: number
-	maxQueueLength: number
+	queueLength?: number
+	maxQueueLength?: number
 }
 
 export type LayersStatusExt = LayersStatus & {
@@ -83,20 +84,29 @@ export namespace PlayerIds {
 		const ids: any = {}
 		if (opts.idsStr) {
 			for (const { key, value } of matchAllIds(opts.idsStr)) {
-				ids[key] = value
+				if (value === undefined) continue
+				if (key === 'steam') {
+					ids[key] = BigInt(value)
+				} else {
+					ids[key] = value
+				}
 			}
 		}
-		return IdQuerySchema.parse({ ...ids, username: opts.username, playerController: opts.playerController })
+		return { ...ids, username: opts.username?.trim(), playerController: opts.playerController }
 	}
 
-	export function parsePlayerIds(opts: { playerController?: string; username: string; idsStr?: string }): Type {
+	export function extractPlayerIds(opts: { playerController?: string; username: string; idsStr?: string }): Type {
 		const ids: any = {}
 		if (opts.idsStr) {
 			for (const { key, value } of matchAllIds(opts.idsStr)) {
-				ids[key] = value
+				if (key === 'steam') {
+					ids[key] = BigInt(value)
+				} else {
+					ids[key] = value
+				}
 			}
 		}
-		return Schema.parse({ ...ids, username: opts.username, playerController: opts.playerController })
+		return { ...ids, username: opts.username.trim(), playerController: opts.playerController }
 	}
 
 	export function find(idList: Type[], id: IdQuery): Type | undefined
@@ -176,13 +186,14 @@ export namespace PlayerIds {
 		return -1
 	}
 
+	// returns a version of the element with merged ids
 	export function upsert(idList: Type[], id: Type): Type
 	export function upsert<T>(idList: T[], cb: (item: T) => Type, newItem: T): T
 	export function upsert<T>(
 		elts: T[] | Type[],
 		cbOrId: ((item: T) => Type) | Type,
 		itemOrId?: T | Type,
-	): T | Type {
+	) {
 		if (typeof cbOrId === 'function') {
 			// Overload: upsert<T>(idList: T[], cb: (item: T) => Type, newItem: T): T
 			const cb = cbOrId
@@ -195,17 +206,16 @@ export namespace PlayerIds {
 					if (!searchId[prop]) continue
 					if (existingIds[prop] !== searchId[prop]) {
 						console.error(`ID conflict: ${prop}=${searchId[prop]} vs ${existingIds[prop]}. keeping ${existingIds[prop]}`)
-						return existing
+						return
 					}
 				}
 				Object.assign(existingIds, searchId)
 				Object.assign(existing, newItem)
-				return existing
+				return
 			}
-			const parsedIds = Schema.parse(searchId)
-			Object.assign(cb(newItem), parsedIds)
+			Object.assign(cb(newItem), searchId)
 			;(elts as T[]).push(newItem)
-			return newItem
+			return
 		}
 
 		// Original overload: upsert(idList: Type[], id: Type): Type
@@ -222,9 +232,8 @@ export namespace PlayerIds {
 			Object.assign(existing, searchId)
 			return existing
 		}
-		const newId = Schema.parse(searchId)
-		;(elts as Type[]).push(newId)
-		return newId
+		;(elts as Type[]).push(searchId)
+		return searchId
 	}
 
 	export function remove(idList: Type[], id: IdQuery): boolean
@@ -284,8 +293,17 @@ export namespace PlayerIds {
 	}
 
 	// gets generic id for use in commands(ex warns)
-	export function resolvePlayerId(ids: PlayerIds.Type): string {
+	export function resolvePlayerId(ids: Type): string {
 		return (ids.steam?.toString() ?? ids.steam?.toString())!
+	}
+
+	export function prettyPrint(type: IdQuery) {
+		const parts: string[] = []
+		if (type.username) parts.push(type.username)
+		if (type.steam) parts.push(`steam:${type.steam}`)
+		if (type.eos) parts.push(`eos:${type.eos}`)
+		if (type.playerController) parts.push(`pc:${type.playerController}`)
+		return parts.join(' | ')
 	}
 }
 
@@ -303,13 +321,12 @@ export type Player = z.infer<typeof PlayerSchema>
 
 export type SquadId = number
 export const SquadSchema = z.object({
-	squadID: z.number(),
+	squadId: z.number(),
 	squadName: z.string().min(1),
 	size: z.number(),
 	locked: z.boolean(),
-	creatorName: z.string().min(1),
-	creator: PlayerIds.Schema,
-	teamID: TeamIdSchema.nullable(),
+	creatorIds: PlayerIds.Schema,
+	teamId: TeamIdSchema.nullable(),
 })
 
 export type Squad = z.infer<typeof SquadSchema>
@@ -317,8 +334,14 @@ export type Squad = z.infer<typeof SquadSchema>
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 
-export const CHAT_CHANNEL = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
-export type ChatChannel = z.infer<typeof CHAT_CHANNEL>
+export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
+export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
+
+export type ChatChannel =
+	| { type: 'ChatAll' }
+	| { type: 'ChatAdmin' }
+	| { type: 'ChatTeam'; teamId: TeamId }
+	| { type: 'ChatSquad'; teamId: TeamId; squadId: SquadId }
 
 export const AdminListSourceSchema = z.object({
 	type: z.enum(['remote', 'local', 'ftp']),
@@ -361,55 +384,60 @@ export type LayerSyncState =
 export type PlayerRef = string
 
 export namespace Events {
+	type Base = {
+		time: Date
+		// we're incling matchId in all Events here to simplify the lookup process where convenient, and to make it possible to sync the current server id set for the client with the displayed events. Could also omnibus events across multiple servers in the future if we wanted to
+		matchId: number
+	}
 	export type NewGame = {
 		type: 'NEW_GAME'
-		time: Date
-		mapClassname: string
-		layerClassname: string
-	}
+	} & Base
 
 	export type RoundEnded = {
 		type: 'ROUND_ENDED'
-		time: Date
-		winner: SquadOutcomeTeam | null
-		loser: SquadOutcomeTeam | null
-	}
+	} & Base
 
 	export type PlayerConnected = {
 		type: 'PLAYER_CONNECTED'
-		time: Date
-		player: PlayerIds.Type
-	}
+		player: Player
+	} & Base
 
 	export type PlayerDisconnected = {
 		type: 'PLAYER_DISCONNECTED'
-		time: Date
-		player: PlayerIds.Type
-	}
+		playerIds: PlayerIds.Type
+	} & Base
+
+	export type SquadCreated = {
+		type: 'SQUAD_CREATED'
+		squad: Squad
+	} & Base
+
+	export type ChatMessage = {
+		type: 'CHAT_MESSAGE'
+		playerIds: PlayerIds.Type
+		message: string
+		channel: ChatChannel
+	} & Base
 
 	export type Event =
-		// from logs
 		| NewGame
 		| RoundEnded
 		| PlayerConnected
 		| PlayerDisconnected
+		| SquadCreated
+		| ChatMessage
 		// from rcon
-		| RconEvents.ChatMessage
-		| RconEvents.PossessedAdminCamera
-		| RconEvents.UnpossessedAdminCamera
-		| RconEvents.PlayerKicked
-		| RconEvents.SquadCreated
-		| RconEvents.PlayerBanned
-		| RconEvents.PlayerWarned
-
-	export type DebugTicketOutcome = { team1: number; team2: number }
+		| RconEvents.PossessedAdminCamera & Base
+		| RconEvents.UnpossessedAdminCamera & Base
+		| RconEvents.PlayerKicked & Base
+		| RconEvents.PlayerBanned & Base
+		| RconEvents.PlayerWarned & Base
 }
 
 export namespace RconEvents {
-	const ChatMessageSchema = z.object({
-		type: z.literal('CHAT_MESSAGE'),
+	const ChatMessageSchema = eventSchema('CHAT_MESSAGE', {
 		time: z.date(),
-		chat: CHAT_CHANNEL,
+		channelType: CHAT_CHANNEL_TYPE,
 		message: z.string(),
 		playerIds: PlayerIds.Schema,
 	})
@@ -420,20 +448,18 @@ export namespace RconEvents {
 		regex: /\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/,
 		onMatch: (match) => {
 			return {
-				type: 'CHAT_MESSAGE' as const,
 				time: new Date(),
-				chat: match[1] as ChatChannel,
+				channelType: match[1] as ChatChannelType,
 				message: match[4],
-				playerIds: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
 
-	const PlayerWarnedSchema = z.object({
-		type: z.literal('PLAYER_WARNED'),
+	const PlayerWarnedSchema = eventSchema('PLAYER_WARNED', {
 		time: z.date(),
 		reason: z.string(),
-		player: PlayerIds.Schema,
+		playerIds: PlayerIds.Schema,
 	})
 	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
 
@@ -442,18 +468,16 @@ export namespace RconEvents {
 		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/,
 		onMatch: (match) => {
 			return {
-				type: 'PLAYER_WARNED' as const,
 				time: new Date(),
 				reason: match[2],
-				player: PlayerIds.parsePlayerIds({ username: match[1] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[1] }),
 			}
 		},
 	})
 
-	const PossessedAdminCameraSchema = z.object({
-		type: z.literal('POSSESSED_ADMIN_CAMERA'),
+	const PossessedAdminCameraSchema = eventSchema('POSSESSED_ADMIN_CAMERA', {
 		time: z.date(),
-		player: PlayerIds.Schema,
+		playerIds: PlayerIds.Schema,
 	})
 	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraSchema>
 
@@ -464,15 +488,14 @@ export namespace RconEvents {
 			return {
 				type: 'POSSESSED_ADMIN_CAMERA' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds({ username: match[2], idsStr: match[1] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
 
-	const UnpossessedAdminCameraSchema = z.object({
-		type: z.literal('UNPOSSESSED_ADMIN_CAMERA'),
+	const UnpossessedAdminCameraSchema = eventSchema('UNPOSSESSED_ADMIN_CAMERA', {
 		time: z.date(),
-		player: PlayerIds.Schema,
+		playerIds: PlayerIds.Schema,
 	})
 	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraSchema>
 
@@ -481,17 +504,15 @@ export namespace RconEvents {
 		regex: /\[Online IDs:([^\]]+)\] (.+) has unpossessed admin camera\./,
 		onMatch: (match) => {
 			return {
-				type: 'UNPOSSESSED_ADMIN_CAMERA' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds({ username: match[2], idsStr: match[1] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
 
-	const PlayerKickedSchema = z.object({
-		type: z.literal('PLAYER_KICKED'),
+	const PlayerKickedSchema = eventSchema('PLAYER_KICKED', {
 		time: z.date(),
-		player: PlayerIds.Schema,
+		playerIds: PlayerIds.Schema,
 	})
 	export type PlayerKicked = z.infer<typeof PlayerKickedSchema>
 
@@ -500,20 +521,18 @@ export namespace RconEvents {
 		regex: /Kicked player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*)/,
 		onMatch: (match) => {
 			return {
-				type: 'PLAYER_KICKED' as const,
 				time: new Date(),
-				player: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
 
-	const SquadCreatedSchema = z.object({
-		type: z.literal('SQUAD_CREATED'),
+	const SquadCreatedSchema = eventSchema('SQUAD_CREATED', {
 		time: z.date(),
 		squadID: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
-		player: PlayerIds.Schema,
+		creatorIds: PlayerIds.Schema,
 	})
 	export type SquadCreated = z.infer<typeof SquadCreatedSchema>
 
@@ -522,22 +541,20 @@ export namespace RconEvents {
 		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadID>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
 		onMatch: (match) => {
 			return {
-				type: 'SQUAD_CREATED' as const,
 				time: new Date(),
 				squadID: match.groups!.squadID,
 				squadName: match.groups!.squadName,
 				teamName: match.groups!.teamName,
-				player: PlayerIds.parsePlayerIds({ username: match.groups!.playerName, idsStr: match[2] }),
+				creatorIds: PlayerIds.extractPlayerIds({ username: match.groups!.playerName, idsStr: match[2] }),
 			}
 		},
 	})
 
-	const PlayerBannedSchema = z.object({
-		type: z.literal('PLAYER_BANNED'),
+	const PlayerBannedSchema = eventSchema('PLAYER_BANNED', {
 		time: z.date(),
 		playerID: z.string(),
 		interval: z.string(),
-		player: PlayerIds.Schema,
+		playerIds: PlayerIds.Schema,
 	})
 	export type PlayerBanned = z.infer<typeof PlayerBannedSchema>
 
@@ -546,11 +563,10 @@ export namespace RconEvents {
 		regex: /Banned player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*) for interval (.*)/,
 		onMatch: (match) => {
 			return {
-				type: 'PLAYER_BANNED' as const,
 				time: new Date(),
 				playerID: match[1],
 				interval: match[4],
-				player: PlayerIds.parsePlayerIds({ username: match[3], idsStr: match[2] }),
+				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
@@ -681,7 +697,7 @@ export namespace LogEvents {
 	export const PlayerConnectedMatcher = createLogMatcher({
 		schema: PlayerConnectedSchema,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController_\w+_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],
@@ -695,14 +711,14 @@ export namespace LogEvents {
 
 	export const PlayerDisconnectedSchema = eventSchema('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
-		player: PlayerIds.Schema,
+		player: PlayerIds.IdQuerySchema,
 		ip: z.string().ip(),
 	})
 	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema>
 	export const PlayerDisconnectedMatcher = createLogMatcher({
 		schema: PlayerDisconnectedSchema,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: EOSIpNetConnection_[0-9]+, Driver: GameNetDriver EOSNetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+PlayerController_C_[0-9]+), Owner: [^ ]+PlayerController_C_[0-9]+, UniqueId: RedpointEOS:([\d\w]+)/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: \w+EOSIpNetConnection_[0-9]+, Driver: .*?NetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+), Owner: [^ ]+, UniqueId: RedpointEOS:([\d\w]+)/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],
@@ -710,8 +726,8 @@ export namespace LogEvents {
 				chainID: args[2],
 				ip: args[3],
 				player: {
-					playerController: args[4],
-					eosID: args[5],
+					playerController: args[4].trim(),
+					eos: args[5].trim(),
 				},
 			}
 		},
@@ -719,7 +735,7 @@ export namespace LogEvents {
 
 	export const PlayerJoinSuccededSchema = eventSchema('PLAYER_JOIN_SUCCEEDED', {
 		...BaseEventProperties,
-		player: PlayerIds.Schema,
+		player: PlayerIds.IdQuerySchema,
 	})
 
 	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema>
@@ -731,6 +747,7 @@ export namespace LogEvents {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
+				player: { username: args[3].trim() },
 			}
 		},
 	})

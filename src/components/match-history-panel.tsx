@@ -29,13 +29,158 @@ import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
 
-// Wrapper components for consistent styling
-function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
-	return <ShadcnTableHead className={`${STD_PADDING} ${className}`} {...props} />
-}
+export default function MatchHistoryPanel() {
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const history = MatchHistoryClient.useRecentMatchHistory()
+	const historyState = MatchHistoryClient.useMatchHistoryState()
+	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
+		const allEntries = [...(history ?? [])].reverse()
+		const matchesByDate = new Map<string, typeof allEntries>()
 
-function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
-	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
+		// Add matches with startTime grouped by date
+		for (const entry of allEntries) {
+			if (entry.startTime) {
+				const dateStr = dateFns.format(entry.startTime, 'yyyy-MM-dd')
+				if (!matchesByDate.has(dateStr)) {
+					matchesByDate.set(dateStr, [])
+				}
+				matchesByDate.get(dateStr)!.push(entry)
+			} else {
+				continue
+			}
+		}
+
+		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
+		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
+	}, [history])
+
+	// -------- Date-based pagination --------
+	const [currentPage, setCurrentPage] = useState(1)
+
+	const totalPages = Math.max(availableDates.length, 1)
+	const currentDate = availableDates[currentPage - 1]
+	const currentEntries = [...currentDate ? matchesByDate.get(currentDate) || [] : []].reverse()
+
+	// Reset to page 1 if current page is beyond available dates
+	React.useEffect(() => {
+		if (currentPage > totalPages && totalPages > 0) {
+			setCurrentPage(1)
+		}
+	}, [currentPage, totalPages])
+
+	// -------- Page navigation --------
+	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
+	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
+
+	// -------- Date display helpers --------
+	const getDateDisplayText = (dateStr: string) => {
+		const today = new Date()
+		const date = new Date(dateStr + 'T00:00:00')
+
+		return date.toLocaleDateString() + (dateFns.isSameDay(date, today) ? ' (Today)' : '')
+	}
+
+	return (
+		<Card>
+			<CardHeader className="flex flex-row justify-between items-start">
+				<CardTitle>Match History</CardTitle>
+				{availableDates.length > 1 && (
+					<div className="flex items-center justify-center space-x-2 mt-4">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToPrevPage}
+							disabled={currentPage === 1}
+						>
+							<Icons.ChevronLeft className="h-4 w-4" />
+						</Button>
+						<span className="text-sm font-mono">
+							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
+							{availableDates.length > 1 && (
+								<span className="text-muted-foreground ml-1">
+									({currentPage} of {availableDates.length})
+								</span>
+							)}
+						</span>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToNextPage}
+							disabled={currentPage === availableDates.length}
+						>
+							<Icons.ChevronRight className="h-4 w-4" />
+						</Button>
+					</div>
+				)}
+			</CardHeader>
+			<CardContent>
+				<Table>
+					<TableHeader>
+						<TableRow className="font-medium">
+							<TableHead></TableHead>
+							{/*<TableHead className="hidden min-[820px]:table-cell">Time</TableHead>*/}
+							<TableHead>Layer</TableHead>
+							<TableHead>
+								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
+								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamA' && (
+									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								)}
+							</TableHead>
+							<TableHead className="text-center">Outcome</TableHead>
+							<TableHead>
+								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
+								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamB' && (
+									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								)}
+							</TableHead>
+							{
+								/*<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
+							<TableHead className="text-center"></TableHead>*/
+							}
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{currentEntries.length === 0
+							? (
+								<TableRow>
+									<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell">
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+									<TableCell
+										colSpan={7}
+										className="text-center text-muted-foreground py-8 hidden min-[820px]:table-cell min-[900px]:hidden"
+									>
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+									<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden">
+										{availableDates.length === 0
+											? 'No matches found'
+											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+									</TableCell>
+								</TableRow>
+							)
+							: currentEntries.map((entry, index) => {
+								const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
+									event => event.matchTriggeredId === entry.historyEntryId,
+								)
+								return (
+									<MatchHistoryRow
+										key={entry.historyEntryId}
+										entry={entry}
+										index={currentEntries.length - index - 1}
+										balanceTriggerEvents={balanceTriggerEvents}
+									/>
+								)
+							})}
+					</TableBody>
+				</Table>
+			</CardContent>
+		</Card>
+	)
 }
 
 interface MatchHistoryRowProps {
@@ -170,11 +315,13 @@ function MatchHistoryRow({
 							{visibleIndex.toString().padStart(2, '0')}
 						</div>
 					</TableCell>
-					<TableCell className="text-xs hidden min-[820px]:table-cell">
+					{
+						/*<TableCell className="text-xs hidden min-[820px]:table-cell">
 						{entry.startTime
 							? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
 							: <Badge variant="secondary">incomplete</Badge>}
-					</TableCell>
+					</TableCell>*/
+					}
 					<TableCell>
 						<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 					</TableCell>
@@ -185,7 +332,8 @@ function MatchHistoryRow({
 					<TableCell>
 						{rightTeam}
 					</TableCell>
-					<TableCell>
+					{
+						/*<TableCell>
 						<span className="w-full flex justify-center">
 							<LayerSourceDisplay source={entry.layerSource} />
 						</span>
@@ -211,7 +359,8 @@ function MatchHistoryRow({
 							</Tooltip>
 						)}
 						{violationDisplayElt}
-					</TableCell>
+					</TableCell>*/
+					}
 				</TableRow>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
@@ -221,156 +370,12 @@ function MatchHistoryRow({
 	)
 }
 
-export default function MatchHistoryPanel() {
-	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const history = MatchHistoryClient.useRecentMatchHistory()
-	const historyState = MatchHistoryClient.useMatchHistoryState()
-	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
-		const allEntries = [...(history ?? [])].reverse()
-		const matchesByDate = new Map<string, typeof allEntries>()
+function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
+	return <ShadcnTableHead className={`${STD_PADDING} ${className}`} {...props} />
+}
 
-		// Add matches with startTime grouped by date
-		for (const entry of allEntries) {
-			if (entry.startTime) {
-				const dateStr = dateFns.format(entry.startTime, 'yyyy-MM-dd')
-				if (!matchesByDate.has(dateStr)) {
-					matchesByDate.set(dateStr, [])
-				}
-				matchesByDate.get(dateStr)!.push(entry)
-			} else {
-				continue
-			}
-		}
-
-		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
-		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
-	}, [history])
-
-	// -------- Date-based pagination --------
-	const [currentPage, setCurrentPage] = useState(1)
-
-	const totalPages = Math.max(availableDates.length, 1)
-	const currentDate = availableDates[currentPage - 1]
-	const currentEntries = currentDate ? matchesByDate.get(currentDate) || [] : []
-
-	// Reset to page 1 if current page is beyond available dates
-	React.useEffect(() => {
-		if (currentPage > totalPages && totalPages > 0) {
-			setCurrentPage(1)
-		}
-	}, [currentPage, totalPages])
-
-	// -------- Page navigation --------
-	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
-	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
-
-	// -------- Date display helpers --------
-	const getDateDisplayText = (dateStr: string) => {
-		const today = new Date()
-		const date = new Date(dateStr + 'T00:00:00')
-
-		return date.toLocaleDateString() + (dateFns.isSameDay(date, today) ? ' (Today)' : '')
-	}
-
-	return (
-		<Card>
-			<CardHeader className="flex flex-row justify-between items-start">
-				<CardTitle>Match History</CardTitle>
-				{availableDates.length > 1 && (
-					<div className="flex items-center justify-center space-x-2 mt-4">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToPrevPage}
-							disabled={currentPage === 1}
-						>
-							<Icons.ChevronLeft className="h-4 w-4" />
-						</Button>
-						<span className="text-sm font-mono">
-							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
-							{availableDates.length > 1 && (
-								<span className="text-muted-foreground ml-1">
-									({currentPage} of {availableDates.length})
-								</span>
-							)}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToNextPage}
-							disabled={currentPage === availableDates.length}
-						>
-							<Icons.ChevronRight className="h-4 w-4" />
-						</Button>
-					</div>
-				)}
-			</CardHeader>
-			<CardContent>
-				<Table>
-					<TableHeader>
-						<TableRow className="font-medium">
-							<TableHead></TableHead>
-							<TableHead className="hidden min-[820px]:table-cell">Time</TableHead>
-							<TableHead>Layer</TableHead>
-							<TableHead>
-								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
-								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamA' && (
-									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
-								)}
-							</TableHead>
-							<TableHead className="text-center">Outcome</TableHead>
-							<TableHead>
-								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
-								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamB' && (
-									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
-								)}
-							</TableHead>
-							<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
-							<TableHead className="text-center"></TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{currentEntries.length === 0
-							? (
-								<TableRow>
-									<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell">
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
-									</TableCell>
-									<TableCell
-										colSpan={7}
-										className="text-center text-muted-foreground py-8 hidden min-[820px]:table-cell min-[900px]:hidden"
-									>
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
-									</TableCell>
-									<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden">
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
-									</TableCell>
-								</TableRow>
-							)
-							: currentEntries.map((entry, index) => {
-								const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
-									event => event.matchTriggeredId === entry.historyEntryId,
-								)
-								return (
-									<MatchHistoryRow
-										key={entry.historyEntryId}
-										entry={entry}
-										index={index}
-										balanceTriggerEvents={balanceTriggerEvents}
-									/>
-								)
-							})}
-					</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
-	)
+function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
+	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
 }
 
 function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {

@@ -26,7 +26,7 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 	null,
 )
 
-export const [useServerRolling, serverRolling$] = ReactRx.bind<boolean>(
+export const [useServerRolling, serverRolling$] = ReactRx.bind<Date | null>(
 	RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call()),
 )
 
@@ -39,13 +39,24 @@ export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | n
 )
 
 export const [useChatEvents, chatEvent$] = ReactRx.bind(RPC.observe(() => RPC.orpc.squadServer.watchChatEvents.call()))
-export let chatState = Obj.deepClone(CHAT.INITIAL_CHAT_STATE)
-export const [useChatState, chatState$] = ReactRx.bind(chatEvent$.pipe(Rx.map(event => {
-	chatState = Im.produce(chatState, draft => {
-		CHAT.handleEvent(draft, event)
-	})
-	return chatState
-})))
+
+type ChatStore = {
+	chatState: CHAT.ChatState
+	handleChatEvent(event: SM.Events.Event | CHAT.SyncEvent): void
+}
+
+export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
+	return {
+		chatState: CHAT.INITIAL_CHAT_STATE,
+		handleChatEvent(event) {
+			set(state => ({
+				chatState: Im.produce(state.chatState, draft => {
+					CHAT.handleEvent(draft, event)
+				}),
+			}))
+		},
+	}
+})
 
 export function useEndMatch() {
 	return useMutation({
@@ -77,9 +88,9 @@ export function setup() {
 	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
-	chatEvent$.subscribe()
-	chatState$.subscribe((state) => {
-		console.log(state)
+	chatEvent$.subscribe(event => {
+		console.log('event ', event.type, event)
+		ChatStore.getState().handleChatEvent(event)
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called

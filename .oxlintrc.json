@@ -87,7 +87,8 @@
 		"eslint/no-void": "off",
 		"eslint/no-param-reassign": "off",
 
-		"promise/catch-or-return": "off"
+		"promise/catch-or-return": "off",
+		"promise/always-return": "off"
 	},
 	"overrides": [
 		{

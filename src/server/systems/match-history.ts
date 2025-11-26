@@ -154,10 +154,20 @@ export const addNewCurrentMatch = C.spanOp(
 	},
 )
 
-export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', { tracer, eventLogLevel: 'info' }, async (
+export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', {
+	tracer,
+	eventLogLevel: 'info',
+	extraText: (ctx) => `id: ${getCurrentMatch(ctx)}`,
+	attrs: (ctx, currentLayerId) => ({
+		currentLayerId,
+		currentMatchId: getCurrentMatch(ctx).historyEntryId,
+	}),
+}, async (
 	ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes,
 	currentLayerId: string,
-	event: SM.Events.RoundEnded,
+	winner: SM.SquadOutcomeTeam | null,
+	loser: SM.SquadOutcomeTeam | null,
+	time: Date,
 ) => {
 	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const res = await DB.runTransaction(ctx, async ctx => {
@@ -172,12 +182,12 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 			return { code: 'err:layer-id-mismatch' as const, message: 'Layer id mismatch' }
 		}
 
-		const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [event.winner, event.loser]
+		const teams: [SM.SquadOutcomeTeam | null, SM.SquadOutcomeTeam | null] = [winner, loser]
 		if (teams[0]) teams.sort((a, b) => a!.team - b!.team)
-		const outcome = event.winner === null ? 'draw' as const : event.winner.team === 1 ? 'team1' as const : 'team2' as const
+		const outcome = winner === null ? 'draw' as const : winner.team === 1 ? 'team1' as const : 'team2' as const
 
 		const update = {
-			endTime: event.time,
+			endTime: time,
 			outcome: outcome,
 			team1Tickets: teams[0]?.tickets,
 			team2Tickets: teams[1]?.tickets,

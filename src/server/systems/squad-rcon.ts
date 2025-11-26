@@ -1,70 +1,70 @@
 import { sleep } from '@/lib/async'
-import { AsyncResource } from '@/lib/async'
+import { AsyncResource, registerCleanup } from '@/lib/async'
 import { matchLog } from '@/lib/log-parsing'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
-import Rcon from '@/lib/rcon/core-rcon'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
-import { baseLogger } from '../logger'
 
 const tracer = Otel.trace.getTracer('squad-rcon')
 
-export type SquadRconContext = {
+export type SquadRcon = {
 	rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]>
-	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
 
+	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
 	serverInfo: AsyncResource<SM.ServerInfoRes, CS.Log & C.Rcon>
 	playerList: AsyncResource<SM.PlayerListRes, CS.Log & C.Rcon>
 	squadList: AsyncResource<SM.SquadListRes, CS.Log & C.Rcon>
 }
 
-export function initSquadRcon(ctx: CS.Log, id: string, settings: SS.ServerConnection['rcon'], sub: Rx.Subscription): SquadRconContext {
-	const layersStatus: SquadRconContext['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
+export function initSquadRcon(ctx: CS.Log & C.Rcon, sub: Rx.Subscription): SquadRcon {
+	const rcon = ctx.rcon
+	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
 		defaultTTL: 5000,
 	})
+	registerCleanup(() => layersStatus.dispose(), sub)
 
-	const rcon = new Rcon({ serverId: id, settings })
-	rcon.ensureConnected(ctx)
-
-	const serverInfo: SquadRconContext['serverInfo'] = new AsyncResource('serverInfo', (ctx) => getServerInfo(ctx), {
+	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource('serverInfo', (ctx) => getServerInfo(ctx), {
 		defaultTTL: 10_000,
 	})
-	const playerList: SquadRconContext['playerList'] = new AsyncResource('playerList', (ctx) => getListPlayers(ctx), {
+	registerCleanup(() => serverInfo.dispose(), sub)
+
+	const playerList: SquadRcon['playerList'] = new AsyncResource('playerList', (ctx) => getListPlayers(ctx), {
 		defaultTTL: 5000,
 	})
-	const squadList: SquadRconContext['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
+	registerCleanup(() => playerList.dispose(), sub)
 
-	const coreRconEvent$ = Rx.fromEvent(rcon, 'server') as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
-	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = coreRconEvent$.pipe(
-		Rx.concatMap(([ctx, _pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
-			const pkt = _pkt as DecodedPacket
+	const squadList: SquadRcon['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
+	registerCleanup(() => squadList.dispose(), sub)
+
+	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
+	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
+		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
 			for (const matcher of SM.RCON_EVENT_MATCHERS) {
 				const [event, err] = matchLog(pkt.body, matcher)
 				if (err) {
-					console.warn({ packet: pkt.body, err }, `Chat packet parsing failed`)
+					ctx.log.error(err, `Error matching event, `, (err as any)?.message)
 					return Rx.EMPTY
 				}
-				return Rx.of([ctx, event as SM.RconEvents.Event])
+				if (event) return Rx.of([ctx, event])
 			}
 			return Rx.EMPTY
 		}),
 		Rx.share(),
 	)
 
-	sub.add(rcon.connected$.subscribe(() => {
+	rcon.connected$.subscribe(() => {
 		const rconCtx = { ...ctx, rcon }
 		layersStatus.invalidate(rconCtx)
 		playerList.invalidate(rconCtx)
 		squadList.invalidate(rconCtx)
 		serverInfo.invalidate(rconCtx)
-	}))
+	})
 
 	return {
 		layersStatus,
@@ -116,7 +116,9 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon) {
 		data.isLeader = data.isLeader === 'True'
 		data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
 		data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
-		data.player = SM.PlayerIds.parsePlayerIds({ username: match.groups!.name, idsStr: match[2] })
+		data.ids = SM.PlayerIds.extractPlayerIds({ username: match.groups!.name, idsStr: match[2] })
+		// console.log('---- DATA ----')
+		// console.log(superjson.stringify(data))
 		const parsedData = SM.PlayerSchema.parse(data)
 		players.push(parsedData)
 	}
@@ -128,8 +130,8 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 	if (resSquad.code !== 'ok') return resSquad
 
 	const squads: SM.Squad[] = []
-	let teamName
-	let teamID
+	let teamName: string | undefined
+	let teamId: number | undefined
 
 	if (!resSquad.data || resSquad.data.length === 0) return { code: 'ok' as const, squads }
 
@@ -137,20 +139,22 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 		const match = line.match(
 			/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
 		)
-		if (!match) continue
 		const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
 		if (matchSide) {
-			teamID = +matchSide[1]
+			teamId = +matchSide[1]
 			teamName = matchSide[2]
 		}
 		if (!match) continue
 		const ids = match.groups as any
 		ids.squadID = +match.groups!.squadID
 		const squad: any = {
-			...match.groups,
-			teamID: teamID,
+			squadId: +match.groups!.squadID,
+			teamId: teamId ?? null,
 			teamName: teamName,
-			creator: SM.PlayerIds.parsePlayerIds({ username: match[6], idsStr: match[5] }),
+			squadName: match.groups!.squadName,
+			locked: match.groups?.locked === 'True',
+			size: parseInt(match.groups!.size),
+			creatorIds: SM.PlayerIds.extractPlayerIds({ username: match.groups!.creatorName, idsStr: match[6] }),
 		}
 
 		const parsed = SM.SquadSchema.parse(squad)
@@ -188,8 +192,8 @@ export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | stri
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
-export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery) {
-	const playersRes = await ctx.server.playerList.get(ctx)
+export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
+	const playersRes = await ctx.server.playerList.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
 	const player = SM.PlayerIds.find(players, p => p.ids, query)
@@ -197,6 +201,62 @@ export async function getPlayer(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.I
 	return { code: 'ok' as const, player }
 }
 
+/**
+ * Get a player which may not exist yet
+ */
+export async function getPlayerDeferred(ctx: CS.Log & C.SquadRcon, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number; timeout?: number }) {
+	const timeout = opts?.timeout ?? 3000
+	const o = ctx.server.playerList.observe(ctx, opts)
+		.pipe(Rx.concatMap(res => {
+			if (res.code !== 'ok') return Rx.EMPTY
+			const players = res.players
+			const player = SM.PlayerIds.find(players, p => p.ids, query)
+			if (!player) return Rx.EMPTY
+			return Rx.of(player)
+		}))
+
+	return await Rx.firstValueFrom(
+		Rx.race(
+			o,
+			Rx.timer(timeout).pipe(Rx.map(() => null)),
+		).pipe(Rx.endWith(null)),
+	)
+}
+
+export async function getSquad(ctx: CS.Log & C.SquadRcon, query: { squadId: number; teamId: SM.TeamId }, opts?: { ttl?: number }) {
+	const squadsRes = await ctx.server.squadList.get(ctx, opts)
+	if (squadsRes.code !== 'ok') return squadsRes
+	const squads = squadsRes.squads
+	const squad = squads.find(s => s.teamId === query.teamId && s.squadId === query.squadId)
+	if (!squad) return { code: 'err:squad-not-found' as const }
+	return { code: 'ok' as const, squad }
+}
+
+/**
+ * Get a squad which may not exist yet
+ */
+export async function getSquadDeferred(
+	ctx: CS.Log & C.SquadRcon,
+	query: { squadId: number; teamId: SM.TeamId },
+	opts?: { ttl?: number; timeout?: number },
+) {
+	const timeout = opts?.timeout ?? 3000
+	const o = ctx.server.squadList.observe(ctx, opts)
+		.pipe(Rx.concatMap(res => {
+			if (res.code !== 'ok') return Rx.EMPTY
+			const squads = res.squads
+			const squad = squads.find(s => s.teamId === query.teamId && s.squadId === query.squadId)
+			if (!squad) return Rx.EMPTY
+			return Rx.of(squad)
+		}))
+
+	return await Rx.firstValueFrom(
+		Rx.race(
+			o,
+			Rx.timer(timeout).pipe(Rx.map(() => null)),
+		).pipe(Rx.endWith(null)),
+	)
+}
 export async function warn(ctx: CS.Log & C.SquadRcon, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
 	let opts: WarnOptionsBase
 	if (typeof _opts === 'function') {

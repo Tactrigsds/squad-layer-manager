@@ -524,6 +524,7 @@ export function* walkNodes(
 	}
 }
 
+// TODO this data structure should be phased out in favour of just using sparse-tree. It's pretty dumb.
 export type FilterNodeTree = {
 	nodes: Map<string, ShallowEditableFilterNode>
 	paths: Map<string, Sparse.NodePath>

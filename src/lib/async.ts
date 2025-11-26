@@ -80,6 +80,10 @@ export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }
 
+export function registerCleanup(cb: () => void, sub: Rx.Subscription) {
+	sub.add(Rx.NEVER.pipe(Rx.finalize(cb)).subscribe())
+}
+
 /**
  * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
  * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
@@ -133,7 +137,7 @@ export type AsyncResourceInvocationOpts = {
 
 // TODO add retries
 /**
- *  Provides cached and lockable access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be.
+ *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
  */
 export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	static tracer = Otel.trace.getTracer('async-resource')

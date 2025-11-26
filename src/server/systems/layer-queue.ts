@@ -178,7 +178,7 @@ export const init = C.spanOp(
 export async function handleNewGame(
 	_ctx: C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 	newLayer: L.UnvalidatedLayer,
-	newGameEvent?: SM.Events.NewGame,
+	newGameEvent?: SM.LogEvents.NewGame,
 ) {
 	if (newGameEvent && newGameEvent?.layerClassname !== newLayer.Layer) {
 		_ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
@@ -203,7 +203,7 @@ export async function handleNewGame(
 		}
 		const newLayerId = currentMatchLqItem?.layerId ?? newLayer.id
 
-		await MatchHistory.addNewCurrentMatch(
+		const { match } = await MatchHistory.addNewCurrentMatch(
 			ctx,
 			MH.getNewMatchHistoryEntry({
 				layerId: newLayerId,
@@ -215,7 +215,7 @@ export async function handleNewGame(
 		await syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
 		await syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
 		await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
-		return { code: 'ok' as const, newServerState, currentMatchLqItem }
+		return { code: 'ok' as const, newServerState, currentMatchLqItem, match }
 	})
 
 	if (res.code !== 'ok') return res
@@ -277,6 +277,8 @@ export async function handleNewGame(
 
 		ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
 	}
+
+	return res
 }
 
 // -------- voting --------
@@ -340,7 +342,7 @@ async function syncVoteStateWithQueueStateInPlace(
 			ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 			vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 				() => {
-					void startVote(SquadServer.resolveSliceCtx(C.initLocks(getBaseCtx()), serverId), { initiator: 'autostart' })
+					void startVote(SquadServer.resolveSliceCtx(C.initMutexStore(getBaseCtx()), serverId), { initiator: 'autostart' })
 				},
 			)
 		}
@@ -467,13 +469,13 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 		return
 	}
 	if (voteState.voterType === 'public') {
-		if (msg.chat !== 'ChatAll') {
+		if (msg.channelType !== 'ChatAll') {
 			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AllChat'))
 			return
 		}
 	}
 	if (voteState.voterType === 'internal') {
-		if (msg.chat !== 'ChatAdmin') {
+		if (msg.channelType !== 'ChatAdmin') {
 			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
 			return
 		}
@@ -642,7 +644,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 	ctx.vote.voteEndTask.add(
 		Rx.timer(Math.max(ctx.vote.state.deadline - currentTime, 0)).subscribe({
 			next: async () => {
-				await handleVoteTimeout(SquadServer.resolveSliceCtx(C.initLocks(getBaseCtx()), serverId))
+				await handleVoteTimeout(SquadServer.resolveSliceCtx(C.initMutexStore(getBaseCtx()), serverId))
 			},
 			complete: () => {
 				ctx.log.info('vote deadline reached')
@@ -998,7 +1000,7 @@ export async function requestFeedback(
 }
 
 function getBaseCtx() {
-	return C.initLocks(DB.addPooledDb({ log: baseLogger }))
+	return C.initMutexStore(DB.addPooledDb({ log: baseLogger }))
 }
 
 // -------- setup router --------

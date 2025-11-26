@@ -546,6 +546,20 @@ export function subfacFullNameToAbbr(fullName: string, components = StaticLayerC
 	return Obj.revLookup(components.subfactionFullNames, fullName)!
 }
 
+export function getFactionIdForFactionNameInexact(name: string, factionUnitConfigs = StaticFactionunitConfigs) {
+	const normedName = normalize(name)
+	for (const fac of Object.values(factionUnitConfigs)) {
+		if (normalize(fac.factionName) === normedName) {
+			return fac.factionID
+		}
+	}
+	return
+
+	function normalize(name: string) {
+		return name.toLowerCase().replace(/\s+/g, '')
+	}
+}
+
 export type ParsedFaction = {
 	faction: string
 	unit: string | null
