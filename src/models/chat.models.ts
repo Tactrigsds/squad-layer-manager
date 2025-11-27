@@ -53,7 +53,7 @@ export function handleEvent(state: ChatState, event: Event | SyncEvent) {
 	let savepointIndex: number = 0
 	for (let i = rawBuffer.length - 1; i >= 0; i--) {
 		const current = rawBuffer[i]
-		if (mutatedIndex === null && current.time < event.time) {
+		if (mutatedIndex === null && current.time <= event.time) {
 			mutatedIndex = i + 1
 		}
 		if (event.type === 'RESET') {
@@ -151,7 +151,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			const updatedPlayer: SM.Player = {
 				...player,
 				squadId: null,
-				teamId: player.squadId === 1 ? 2 : 1,
+				teamId: player.teamId === 1 ? 2 : 1,
 			}
 			state.players.splice(index, 1, updatedPlayer)
 			return {
@@ -238,6 +238,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			return {
 				...event,
 				player: updatedPlayer,
+				wasLeader: player.isLeader,
 			}
 		}
 

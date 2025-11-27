@@ -1,5 +1,6 @@
 import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
+import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -47,7 +48,12 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 				{event.channel.type === 'ChatSquad'
 					? (
 						<span className={channelStyle.text}>
-							(squad {event.channel.squadId})
+							(<SquadDisplay
+								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId }}
+								matchId={event.matchId}
+								showName={false}
+								showTeam={true}
+							/>)
 						</span>
 					)
 					: (
@@ -135,8 +141,8 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 			<EventTime time={event.time} variant="small" />
 			<Icons.Users className="h-4 w-4 text-blue-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created
-				<span className="font-semibold">"{event.squad.squadName}"</span> on{' '}
+				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created{' '}
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} /> on{' '}
 				<MatchTeamDisplay matchId={event.matchId} teamId={event.squad.teamId} />
 			</span>
 		</div>
@@ -251,7 +257,14 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 			<EventTime time={event.time} variant="small" />
 			<Icons.LogOut className="h-4 w-4 text-orange-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> left their squad
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> left{' '}
+				<SquadDisplay
+					squad={{ squadId: event.squadId, squadName: '', teamId: event.teamId }}
+					matchId={event.matchId}
+					showName={false}
+					showTeam={true}
+				/>{' '}
+				{event.wasLeader ? '(was leader)' : ''}
 			</span>
 		</div>
 	)
@@ -263,8 +276,7 @@ function SquadDisbandedEvent({ event }: { event: Extract<CHAT.EventEnriched, { t
 			<EventTime time={event.time} variant="small" />
 			<Icons.UsersRound className="h-4 w-4 text-red-400" />
 			<span className="text-xs flex items-center gap-1">
-				Squad <span className="font-semibold">"{event.squad.squadName}"</span> was disbanded on{' '}
-				<MatchTeamDisplay teamId={event.squad.teamId} matchId={event.matchId} />
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} /> was disbanded
 			</span>
 		</div>
 	)
@@ -276,7 +288,13 @@ function PlayerJoinedSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, 
 			<EventTime time={event.time} variant="small" />
 			<Icons.LogIn className="h-4 w-4 text-green-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> joined squad {event.squadId}
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> joined{' '}
+				<SquadDisplay
+					squad={{ squadId: event.squadId, squadName: '', teamId: event.teamId }}
+					matchId={event.matchId}
+					showName={false}
+					showTeam={true}
+				/>
 			</span>
 		</div>
 	)

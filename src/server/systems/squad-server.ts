@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
-import { AsyncResource, distinctDeepEquals, registerCleanup, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, registerCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { matchLog } from '@/lib/log-parsing'
@@ -202,7 +202,6 @@ export async function setup() {
 		ops.push((async function loadServerConfig() {
 			const serverState = await DB.runTransaction(ctx, async () => {
 				let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
-				server = unsuperjsonify(Schema.servers, server) as typeof server
 				if (!server) {
 					ctx.log.info(`Server ${serverConfig.id} not found, creating new`)
 					server = {
@@ -215,6 +214,7 @@ export async function setup() {
 					}
 					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, server))
 				} else {
+					server = unsuperjsonify(Schema.servers, server) as typeof server
 					ctx.log.info(`Server ${serverConfig.id} found, ensuring settings are up-to-date`)
 
 					let update = false
@@ -305,6 +305,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	}, cleanupSub)
 
 	server.historyConflictsResolved$ = Rx.firstValueFrom(rcon.connected$.pipe(
+		traceTag('resolvingHistoryConflicts'),
 		Rx.tap({
 			subscribe: () => {
 				ctx.log.info('trying to resolve potential current match conflict, waiting for rcon connection...')
@@ -389,7 +390,6 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		}),
 	).subscribe()
 
-	// TODO make use of this for more events (PLAYER_LEFT_SQUAD, SQUAD_DISBANDED, etc)
 	// -------- watch for player updatesfor events --------
 	// creates synthetic events based on state changes on the server
 	server.playerList.observe({ ...ctx, rcon, adminList })
@@ -1020,11 +1020,11 @@ function* generateSyntheticEvents(
 
 	for (const player of players) {
 		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		const playerConnected = !!SM.PlayerIds.find(ctx.server.state.connected, player.ids)
 		if (!prev) continue
 
-		// the event from the logs (PLAYER_JOIN_SUCCEEDED) has not come through yet, so we need to send it here instead.
+		const playerConnected = !!SM.PlayerIds.find(ctx.server.state.connected, player.ids)
 		if (!playerConnected) {
+			// the event from the logs (PLAYER_JOIN_SUCCEEDED) has not come through yet, so we need to send it here instead.
 			ctx.server.state.connected.push(player.ids)
 			yield {
 				type: 'PLAYER_CONNECTED',
@@ -1052,14 +1052,6 @@ function* generateSyntheticEvents(
 				newLeaderIds: player.ids,
 				...base,
 			} satisfies SM.Events.PlayerPromotedToLeader
-		}
-
-		if (player.teamId !== prev.teamId) {
-			yield {
-				type: 'PLAYER_CHANGED_TEAM',
-				playerIds: player.ids,
-				...base,
-			} satisfies SM.Events.PlayerChangedTeam
 		}
 
 		if (
@@ -1098,5 +1090,18 @@ function* generateSyntheticEvents(
 			teamId: prevSquad.teamId,
 			...base,
 		} satisfies SM.Events.SquadDisbanded
+	}
+
+	for (const player of players) {
+		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
+		if (!prev) continue
+
+		if (player.teamId !== prev.teamId) {
+			yield {
+				type: 'PLAYER_CHANGED_TEAM',
+				playerIds: player.ids,
+				...base,
+			} satisfies SM.Events.PlayerChangedTeam
+		}
 	}
 }

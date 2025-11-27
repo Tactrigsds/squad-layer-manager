@@ -1,3 +1,4 @@
+import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -49,9 +50,13 @@ function SquadSection({ squad, players, matchId }: SquadSectionProps) {
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1 px-2 hover:bg-accent/30 rounded">
 				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
 				<Icons.Users className="h-3 w-3 text-muted-foreground" />
-				<span className="text-xs font-semibold">
-					{squad ? squad.squadName : 'Unassigned'}
-				</span>
+				{squad
+					? (
+						<span className="text-xs font-semibold">
+							<SquadDisplay squad={squad} matchId={matchId} showName={true} showTeam={false} />
+						</span>
+					)
+					: <span className="text-xs font-semibold">Unassigned</span>}
 				<span className="text-xs text-muted-foreground">({players.length})</span>
 				{squad?.locked && (
 					<span title="Squad is locked">
@@ -85,10 +90,10 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
 				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
-				<span className="text-xs font-semibold">
-					<MatchTeamDisplay matchId={matchId} teamId={teamId} />
+				<span className="text-xs font-bold flex items-center flex-nowrap gap-1">
+					Team {teamId} <MatchTeamDisplay matchId={matchId} teamId={teamId} />
 				</span>
-				<span className="text-xs text-muted-foreground">({teamPlayers.length})</span>
+				<span className="text-xs text-muted-foreground">({teamSquads.length} squads, {teamPlayers.length} players)</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="pt-2">
 				{teamSquads.map((squad) => {

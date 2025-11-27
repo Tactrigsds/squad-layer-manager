@@ -67,7 +67,7 @@ export const loadState = C.spanOp(
 		const state = ctx.matchHistory
 		const recentMatchesCte = ctx.db().select().from(Schema.matchHistory).where(
 			E.and(
-				opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gt(Schema.matchHistory.ordinal, 0),
+				opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gte(Schema.matchHistory.ordinal, 0),
 				E.eq(Schema.matchHistory.serverId, ctx.serverId),
 			),
 		).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(100).as(
@@ -79,6 +79,7 @@ export const loadState = C.spanOp(
 			// keep in mind that there may be multiple balance trigger events for this history entry id, and therefore multiple rows for a single match history entry
 			.leftJoin(Schema.balanceTriggerEvents, E.eq(recentMatchesCte.id, Schema.balanceTriggerEvents.matchTriggeredId))
 
+		ctx.log.info('found %d rows', rows.length)
 		for (const row of rows.reverse()) {
 			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches))
