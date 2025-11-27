@@ -22,7 +22,7 @@ const CHANNEL_STYLES = {
 	ChatAdmin: { border: 'border-r-blue-300', text: 'text-blue-300', gradient: 'from-blue-300/10' },
 } as const
 
-function ChatMessageEvent({ event }: { event: Extract<CHAT.Event, { type: 'CHAT_MESSAGE' }> }) {
+function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' }> }) {
 	const channelStyle = CHANNEL_STYLES[event.channel.type]
 
 	const channelLabel = (() => {
@@ -32,7 +32,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.Event, { type: 'CHAT_
 			case 'ChatTeam':
 				return `T${event.channel.teamId} chat`
 			case 'ChatSquad':
-				return `squad ${event.channel.teamId}-${event.channel.squadId}`
+				return null // Will be rendered as JSX
 			case 'ChatAdmin':
 				return 'admin'
 		}
@@ -44,17 +44,25 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.Event, { type: 'CHAT_
 		>
 			<EventTime time={event.time} />
 			<div className="flex flex-wrap flex-grow items-start gap-x-2 min-w-0">
-				<span className={channelStyle.text} title={`this message was sent in ${channelLabel} chat`}>
-					({channelLabel})
-				</span>
-				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam />:
+				{event.channel.type === 'ChatSquad'
+					? (
+						<span className={channelStyle.text}>
+							(squad {event.channel.squadId})
+						</span>
+					)
+					: (
+						<span className={channelStyle.text} title={channelLabel ? `this message was sent in ${channelLabel} chat` : undefined}>
+							({channelLabel})
+						</span>
+					)}
+				<PlayerDisplay player={event.player} matchId={event.matchId} />:
 				<span className="break-words min-w-0 flex-shrink-0">{event.message}</span>
 			</div>
 		</div>
 	)
 }
 
-function PlayerConnectedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAYER_CONNECTED' }> }) {
+function PlayerConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CONNECTED' }> }) {
 	return (
 		<div className="flex items-start gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -63,9 +71,9 @@ function PlayerConnectedEvent({ event }: { event: Extract<CHAT.Event, { type: 'P
 				<span>
 					<PlayerDisplay player={event.player} matchId={event.matchId} /> connected,
 				</span>
-				{event.player.teamID && (
+				{event.player.teamId && (
 					<>
-						joining <MatchTeamDisplay teamId={event.player.teamID} matchId={event.matchId} />
+						joining <MatchTeamDisplay teamId={event.player.teamId} matchId={event.matchId} />
 					</>
 				)}
 			</span>
@@ -73,7 +81,7 @@ function PlayerConnectedEvent({ event }: { event: Extract<CHAT.Event, { type: 'P
 	)
 }
 
-function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAYER_DISCONNECTED' }> }) {
+function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DISCONNECTED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -85,7 +93,7 @@ function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.Event, { type:
 	)
 }
 
-function PossessedAdminCameraEvent({ event }: { event: Extract<CHAT.Event, { type: 'POSSESSED_ADMIN_CAMERA' }> }) {
+function PossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'POSSESSED_ADMIN_CAMERA' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -97,7 +105,7 @@ function PossessedAdminCameraEvent({ event }: { event: Extract<CHAT.Event, { typ
 	)
 }
 
-function UnpossessedAdminCameraEvent({ event }: { event: Extract<CHAT.Event, { type: 'UNPOSSESSED_ADMIN_CAMERA' }> }) {
+function UnpossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'UNPOSSESSED_ADMIN_CAMERA' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -109,7 +117,7 @@ function UnpossessedAdminCameraEvent({ event }: { event: Extract<CHAT.Event, { t
 	)
 }
 
-function PlayerKickedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAYER_KICKED' }> }) {
+function PlayerKickedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_KICKED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -121,7 +129,7 @@ function PlayerKickedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAY
 	)
 }
 
-function SquadCreatedEvent({ event }: { event: Extract<CHAT.Event, { type: 'SQUAD_CREATED' }> }) {
+function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_CREATED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -135,7 +143,7 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.Event, { type: 'SQUA
 	)
 }
 
-function PlayerBannedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAYER_BANNED' }> }) {
+function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_BANNED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -147,7 +155,7 @@ function PlayerBannedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAY
 	)
 }
 
-function PlayerWarnedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAYER_WARNED' }> }) {
+function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -159,7 +167,7 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.Event, { type: 'PLAY
 	)
 }
 
-function NewGameEvent({ event }: { event: Extract<CHAT.Event, { type: 'NEW_GAME' }> }) {
+function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
@@ -175,7 +183,7 @@ function NewGameEvent({ event }: { event: Extract<CHAT.Event, { type: 'NEW_GAME'
 	)
 }
 
-function RoundEndedEvent({ event }: { event: Extract<CHAT.Event, { type: 'ROUND_ENDED' }> }) {
+function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ROUND_ENDED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -185,7 +193,7 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.Event, { type: 'ROUND_
 	)
 }
 
-function AdminBroadcastEvent({ event }: { event: Extract<CHAT.Event, { type: 'ADMIN_BROADCAST' }> }) {
+function AdminBroadcastEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ADMIN_BROADCAST' }> }) {
 	const fromDisplay = (() => {
 		if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} />
 		if (event.from === 'RCON') {
@@ -210,7 +218,83 @@ function AdminBroadcastEvent({ event }: { event: Extract<CHAT.Event, { type: 'AD
 	)
 }
 
-function EventItem({ event }: { event: CHAT.Event }) {
+function ResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RESET' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.RotateCcw className="h-4 w-4 text-cyan-500" />
+			<span className="text-xs">State reset</span>
+		</div>
+	)
+}
+
+function PlayerDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DETAILS_CHANGED' }> }) {
+	return null
+}
+
+function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CHANGED_TEAM' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Repeat className="h-4 w-4 text-purple-400" />
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> changed to{' '}
+				<MatchTeamDisplay teamId={event.player.teamId!} matchId={event.matchId} />
+			</span>
+		</div>
+	)
+}
+
+function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.LogOut className="h-4 w-4 text-orange-400" />
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> left their squad
+			</span>
+		</div>
+	)
+}
+
+function SquadDisbandedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DISBANDED' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.UsersRound className="h-4 w-4 text-red-400" />
+			<span className="text-xs flex items-center gap-1">
+				Squad <span className="font-semibold">"{event.squad.squadName}"</span> was disbanded on{' '}
+				<MatchTeamDisplay teamId={event.squad.teamId} matchId={event.matchId} />
+			</span>
+		</div>
+	)
+}
+
+function PlayerJoinedSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_JOINED_SQUAD' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.LogIn className="h-4 w-4 text-green-400" />
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> joined squad {event.squadId}
+			</span>
+		</div>
+	)
+}
+
+function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_PROMOTED_TO_LEADER' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Crown className="h-4 w-4 text-yellow-400" />
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.player} matchId={event.matchId} /> promoted to squad leader
+			</span>
+		</div>
+	)
+}
+
+function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 			return <ChatMessageEvent event={event} />
@@ -236,6 +320,20 @@ function EventItem({ event }: { event: CHAT.Event }) {
 			return <RoundEndedEvent event={event} />
 		case 'ADMIN_BROADCAST':
 			return <AdminBroadcastEvent event={event} />
+		case 'RESET':
+			return <ResetEvent event={event} />
+		case 'PLAYER_DETAILS_CHANGED':
+			return <PlayerDetailsChangedEvent event={event} />
+		case 'PLAYER_CHANGED_TEAM':
+			return <PlayerChangedTeamEvent event={event} />
+		case 'PLAYER_LEFT_SQUAD':
+			return <PlayerLeftSquadEvent event={event} />
+		case 'SQUAD_DISBANDED':
+			return <SquadDisbandedEvent event={event} />
+		case 'PLAYER_JOINED_SQUAD':
+			return <PlayerJoinedSquadEvent event={event} />
+		case 'PLAYER_PROMOTED_TO_LEADER':
+			return <PlayerPromotedToLeaderEvent event={event} />
 		default:
 			assertNever(event)
 	}

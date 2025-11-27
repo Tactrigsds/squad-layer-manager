@@ -24,14 +24,14 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				)}
 				<span className="font-semibold">{player.ids.username}</span>
 			</span>
-			{showTeam && player.teamID && (
+			{showTeam && player.teamId && (
 				<span className="flex flex-nowrap items-center gap-0">
-					(<MatchTeamDisplay matchId={matchId} teamId={player.teamID} />)
+					(<MatchTeamDisplay matchId={matchId} teamId={player.teamId} />)
 				</span>
 			)}
-			{showSquad && player.squadID !== null && (
+			{showSquad && player.squadId !== null && (
 				<span className="text-muted-foreground text-xs">
-					{player.squadID}
+					{player.squadId}
 				</span>
 			)}
 			{showRole && player.role && (

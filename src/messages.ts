@@ -130,7 +130,7 @@ export const WARNS = {
 				repeat: opts?.repeat ?? 1,
 			})
 
-			const playerNextTeamId = isNullOrUndef(ctx.player.teamID) ? undefined : ctx.player.teamID === 1 ? 2 : 1
+			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
 
 			if (LL.isVoteItem(item)) {
 				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {

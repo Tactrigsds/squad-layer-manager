@@ -47,7 +47,7 @@ export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
 // LRU map in case of leaks
 const spanStatusMap = new LRUMap<string, { code: Otel.SpanStatusCode; message?: string }>(500)
 
-export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
+export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {
 		tracer: Otel.Tracer
@@ -65,7 +65,7 @@ export function spanOp<Cb extends (...args: any[]) => Promise<any> | void>(
 	cb: Cb,
 ): Cb {
 	// @ts-expect-error idk
-	return async (..._args) => {
+	return (..._args) => {
 		let args = _args
 		let links = opts.links ?? []
 		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then include any links attached to the context

@@ -72,15 +72,19 @@ export type SquadServer = {
 		// chainID -> playerids
 		joinRequests: Map<number, SM.PlayerIds.IdQuery>
 
+		// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
+		connected: SM.PlayerIds.Type[]
+
 		// server version of chat state which can be replicated to users
-		chat: CHAT.ChatState | null
+		chat: CHAT.ChatState
 	}
 
 	// intermediate event so that initNewGameHandling's behaviour is downstream from event$
-	beforeNewGame$: Rx.Subject<[CS.Log, SM.LogEvents.NewGame]>
+	beforeNewGame$: Rx.Subject<[CS.Log & C.Db & C.Mutexes & C.ServerSlice, SM.LogEvents.NewGame]>
 
-	event$: Rx.Subject<[CS.Log & C.ServerSlice, SM.Events.Event]>
-	chatSync$: Rx.Subject<[CS.Log, CHAT.SyncEvent]>
+	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
+	event$: Rx.Subject<[CS.Log & C.Db & C.Mutexes & C.ServerSlice, SM.Events.Event]>
+	chatReset$: Rx.Subject<[CS.Log, CHAT.ResetEvent]>
 } & SquadRcon.SquadRcon
 
 export type MatchHistoryState = {
@@ -89,6 +93,100 @@ export type MatchHistoryState = {
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
+
+export const orpcRouter = {
+	setSelectedServer: orpcBase
+		.input(z.string())
+		.handler(async ({ context, input: serverId }) => {
+			const slice = globalState.slices.get(serverId)
+			if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server not found' })
+			globalState.selectedServers.set(context.wsClientId, serverId)
+			globalState.selectedServerUpdate$.next({ wsClientId: context.wsClientId, serverId })
+			return { code: 'ok' as const }
+		}),
+
+	watchLayersStatus: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	watchServerRolling: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return ctx.server.serverRolling$
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	watchServerInfo: orpcBase.handler(async function*({ context, signal }) {
+		const obs = selectedServerCtx$(context)
+			.pipe(
+				Rx.switchMap(ctx => {
+					return ctx.server.serverInfo.observe(ctx).pipe(
+						distinctDeepEquals(),
+					)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	endMatch: orpcBase.handler(async ({ context: _ctx }) => {
+		const ctx = resolveWsClientSliceCtx(_ctx)
+		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
+		if (deniedRes) return deniedRes
+		SquadRcon.endMatch(ctx)
+		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
+		return { code: 'ok' as const }
+	}),
+
+	watchChatEvents: orpcBase.handler(async function*({ context, signal }) {
+		const obs: Rx.Observable<CHAT.Event | CHAT.SyncEvent> = selectedServerCtx$(context)
+			.pipe(
+				Rx.switchMap(ctx => {
+					const init: CHAT.SyncEvent = {
+						type: 'FLASH',
+						state: ctx.server.state.chat!,
+					}
+					return Rx.concat(
+						Rx.of(init),
+						Rx.merge(
+							ctx.server.event$.pipe(Rx.map(([_, event]) => event)),
+							ctx.server.chatReset$.pipe(Rx.map(([_, event]) => event)),
+						),
+					).pipe(
+						Rx.observeOn(Rx.asyncScheduler),
+					)
+				}),
+				withAbortSignal(signal!),
+			)
+		yield* toAsyncGenerator(obs)
+	}),
+
+	toggleFogOfWar: orpcBase
+		.input(z.object({ disabled: z.boolean() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctx = resolveWsClientSliceCtx(_ctx)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
+			if (denyRes) return denyRes
+			const serverStatusRes = await ctx.server.layersStatus.get(ctx)
+			if (serverStatusRes.code !== 'ok') return serverStatusRes
+			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+			if (input.disabled) {
+				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+			}
+			return { code: 'ok' as const }
+		}),
+}
 
 export async function setup() {
 	const ctx = getBaseCtx()
@@ -186,13 +284,14 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		sftpReader,
 		beforeNewGame$: new Rx.Subject(),
 		event$: new Rx.Subject(),
-		chatSync$: new Rx.Subject(),
+		chatReset$: new Rx.Subject(),
 		state: {
 			roundEndState: null,
 			roundLoser: null,
 			roundWinner: null,
 			joinRequests: new Map(),
-			chat: null,
+			connected: [],
+			chat: Obj.deepClone(CHAT.INITIAL_CHAT_STATE),
 		},
 
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList }, cleanupSub),
@@ -202,7 +301,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 		server.serverRolling$.complete()
 		server.beforeNewGame$.complete()
 		server.event$.complete()
-		server.chatSync$.complete()
+		server.chatReset$.complete()
 	}, cleanupSub)
 
 	server.historyConflictsResolved$ = Rx.firstValueFrom(rcon.connected$.pipe(
@@ -223,19 +322,18 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			// set up chat state
 			const [playersRes, squadsRes] = await Promise.all([server.playerList.get({ ...ctx, rcon }), server.squadList.get({ ...ctx, rcon })])
 			if (playersRes.code === 'ok' && squadsRes.code === 'ok') {
-				ctx.server.state.chat = {
-					eventBuffer: [],
-					initialState: {
+				for (const player of playersRes.players) {
+					server.state.connected.push(player.ids)
+				}
+				ctx.server.chatReset$.next([ctx, {
+					type: 'RESET',
+					time: new Date(),
+					matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
+					state: {
 						players: playersRes.players,
 						squads: squadsRes.squads,
 					},
-					interpolatedState: Obj.deepClone({
-						players: playersRes.players,
-						squads: squadsRes.squads,
-					}),
-					rawEventBuffer: [],
-				}
-				ctx.server.chatSync$.next([ctx, { type: 'INIT', state: ctx.server.state.chat }])
+				}])
 			}
 
 			return Rx.of(1)
@@ -292,65 +390,52 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	).subscribe()
 
 	// TODO make use of this for more events (PLAYER_LEFT_SQUAD, SQUAD_DISBANDED, etc)
-	// -------- watch for player updates --------
-	// server.playerList.observe({ ...ctx, rcon })
-	// 	.pipe(
-	// 		Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
-	// 		Rx.pairwise(),
-	// 	)
-	// 	.subscribe(([prevPlayers, players]) => {
-	// 		const upserted: SM.Player[] = []
-	// 		const removed: SM.PlayerIds.Type[] = []
-	// 		for (const player of players) {
-	// 			const existing = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-	// 			if (!existing) {
-	// 				upserted.push(player)
-	// 				continue
-	// 			}
+	// -------- watch for player updatesfor events --------
+	// creates synthetic events based on state changes on the server
+	server.playerList.observe({ ...ctx, rcon, adminList })
+		.pipe(
+			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
+			// distinctDeepEquals(),
+			Rx.pairwise(),
+			// capture event time before potential buffering
+			Rx.map(p => [...p, new Date()] as const),
+			// TODO this may not be correct to do, revisit
+			// buffer events while server is rolling
+			// Rx.bufferWhen(() => server.serverRolling$.pipe(Rx.takeWhile(v => v !== null))),
+			// Rx.concatAll(),
+			Rx.map(
+				// C.spanOp(
+				// 	'squad-server:gen-synthetic-events',
+				// 	{ tracer },
+				([prev, next, time]) => {
+					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					ctx.log.info('Generating synthetic events')
+					return [...generateSyntheticEvents(ctx, prev, next, time)]
+				},
+				// ),
+			),
+		).subscribe({
+			error: err => {
+				ctx.log.error(err, 'Player list subscription error')
+			},
+			complete: () => {
+				ctx.log.warn('Player list subscription completed')
+			},
+			next: events => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				if (events.length === 0) {
+					ctx.log.info('No synthetic events generated')
+					return
+				}
+				for (const event of events) {
+					server.event$.next([ctx, event])
+				}
+				ctx.log.info('done generating synthetic events')
+			},
+		})
 
-	// 			if (!Obj.deepEqual(existing, player)) {
-	// 				upserted.push(player)
-	// 			}
-	// 		}
-	// 	})
-
-	// -------- watch for squad updates --------
-	// cleanupSub.add(
-	// 	server.squadList.observe({ ...ctx, rcon })
-	// 		.pipe(
-	// 			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.squads) : Rx.EMPTY),
-	// 			Rx.pairwise(),
-	// 		)
-	// 		.subscribe(([prevSquads, squads]) => {
-	// 			const upserted: SM.Squad[] = []
-	// 			const removed: SM.SquadId[] = []
-	// 			for (const squad of squads) {
-	// 				const existing = prevSquads.find(s => s.squadId === squad.squadId)
-	// 				if (!existing) {
-	// 					upserted.push(squad)
-	// 					continue
-	// 				}
-
-	// 				if (!Obj.deepEqual(existing, squad)) {
-	// 					upserted.push(squad)
-	// 				}
-	// 			}
-
-	// 			// for (const prevSquad of prevSquads) {
-	// 			// 	if (!squads.find(s => s.squadID === prevSquad.squadID)) {
-	// 			// 		removed.push(prevSquad.squadID)
-	// 			// 	}
-	// 			// }
-	// 			if (upserted.length === 0 && removed.length === 0) return
-	// 			server.chatSync$.next([ctx, { type: 'SQUADS_UPDATE', upserted, removed }])
-	// 		}),
-	// )
-
-	server.event$.subscribe(([ctx, event]) => {
-		if (!server.state.chat) {
-			ctx.log.error('Chat state not initialized')
-			return
-		}
+	// -------- keep chat state up-to-date --------
+	Rx.merge(server.event$, server.chatReset$).subscribe(([ctx, event]) => {
 		ctx.log.info(event, 'emitted event: %s', event.type)
 		CHAT.handleEvent(server.state.chat, event)
 	})
@@ -405,113 +490,110 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 	// if we have to handle multiple effects from NEW_GAME we may want to ensure the order in which those effects are processed instead of just reading straight from event$
 
 	let triggerWait$ = Rx.merge(
-		currentLayerChanged$.pipe(Rx.map((layer) => ['new-layer' as const, layer] as const)),
-		ctx.server.beforeNewGame$.pipe(Rx.map(([_, event]) => ['new-game' as const, event] as const)),
+		currentLayerChanged$.pipe(Rx.map((layer) => [resolveSliceCtx(getBaseCtx(), serverId), 'new-layer' as const, layer] as const)),
+		ctx.server.beforeNewGame$.pipe(Rx.map(([ctx, event]) => [ctx, 'new-game' as const, event] as const)),
 	)
 
-	// @ts-expect-error wait for the startup history reconiliation to complete before listening for new games
+	// @ts-expect-error wait for the startup history reconciliation to complete before listening for new games
 	triggerWait$ = Rx.concat(
 		Rx.from(ctx.server.historyConflictsResolved$).pipe(Rx.filter(() => false)),
 		triggerWait$,
 	)
 
 	// pair off detected new layers via RCON with NEW_GAME events from the logs (which we may receive in any order and within a fairly wide window), and handle them in a reasonably durable way
-	ctx.serverSliceSub.add(
-		triggerWait$
-			.pipe(
-				Rx.map(args => [resolveSliceCtx(getBaseCtx(), serverId), ...args] as const),
-				C.durableSub('squad-server:handle-new-layer', {
-					// exhaustMap means we ignore subsequent emissions until the current one is processed
-					taskScheduling: 'exhaust',
-					ctx,
-					tracer,
-				}, async ([ctx, triggerType, payload]) => {
-					if (ctx.server.serverRolling$.value) {
-						ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
-						return Rx.EMPTY
-					}
-					try {
-						const rollTime = triggerType === 'new-game' ? payload.time : new Date()
-						ctx.server.serverRolling$.next(rollTime)
+	triggerWait$
+		.pipe(
+			C.durableSub('squad-server:handle-new-layer', {
+				// exhaustMap means we ignore subsequent emissions until the current one is processed
+				taskScheduling: 'exhaust',
+				ctx,
+				tracer,
+			}, async ([ctx, triggerType, payload]) => {
+				if (ctx.server.serverRolling$.value) {
+					ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
+					return Rx.EMPTY
+				}
+				try {
+					const rollTime = triggerType === 'new-game' ? payload.time : new Date()
+					ctx.server.serverRolling$.next(rollTime)
 
-						let newGameEvent: SM.LogEvents.NewGame | undefined
-						let newLayer: L.UnvalidatedLayer
+					let newGameEvent: SM.LogEvents.NewGame | undefined
+					let newLayer: L.UnvalidatedLayer
 
-						ctx.log.info('Handling new game trigger: %s', triggerType)
+					ctx.log.info('Handling new game trigger: %s', triggerType)
 
-						// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
-						const timeoutThreshold = 40_000
+					// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
+					const timeoutThreshold = 40_000
 
-						const timeout$ = Rx.timer(timeoutThreshold).pipe(
-							Rx.map(() => 'timeout' as const),
-						)
-						// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
-						const doubleEvent$ = triggerWait$.pipe(
-							Rx.concatMap(([e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
-						)
-						if (triggerType === 'new-game') {
-							newGameEvent = payload
-							ctx.log.debug('Received NEW_GAME event, waiting for layer change')
+					const timeout$ = Rx.timer(timeoutThreshold).pipe(
+						Rx.map(() => 'timeout' as const),
+					)
+					// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
+					const doubleEvent$ = triggerWait$.pipe(
+						Rx.concatMap(([_, e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
+					)
+					if (triggerType === 'new-game') {
+						newGameEvent = payload
+						ctx.log.debug('Received NEW_GAME event, waiting for layer change')
 
-							const out = await Rx.firstValueFrom(Rx.race(
-								currentLayerChanged$,
-								doubleEvent$,
-								timeout$,
-							))
+						const out = await Rx.firstValueFrom(Rx.race(
+							currentLayerChanged$,
+							doubleEvent$,
+							timeout$,
+						))
 
-							if (out === 'double-event') {
-								ctx.log.error('Double event detected: %s', triggerType)
+						if (out === 'double-event') {
+							ctx.log.error('Double event detected: %s', triggerType)
+							return
+						} else if (out === 'timeout') {
+							ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
+							const statusRes = await ctx.server.layersStatus.get(ctx)
+							if (statusRes.code === 'err:rcon') {
+								ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
 								return
-							} else if (out === 'timeout') {
-								ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
-								const statusRes = await ctx.server.layersStatus.get(ctx)
-								if (statusRes.code === 'err:rcon') {
-									ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
-									return
-								}
-								ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
-								newLayer = statusRes.data.currentLayer
-							} else {
-								ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
-								newLayer = out
 							}
+							ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
+							newLayer = statusRes.data.currentLayer
 						} else {
-							newLayer = payload
-							ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
-							const out = await Rx.firstValueFrom(Rx.race(
-								ctx.server.beforeNewGame$.pipe(Rx.map(([_, event]) => event)),
-								doubleEvent$,
-								timeout$,
-							))
-
-							if (out === 'double-event') {
-								ctx.log.error('Double event detected: %s', triggerType)
-								return
-							} else if (out === 'timeout') {
-								ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
-							} else {
-								ctx.log.debug('Received NEW_GAME event')
-								newGameEvent = out
-							}
+							ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
+							newLayer = out
 						}
+					} else {
+						newLayer = payload
+						ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
+						const out = await Rx.firstValueFrom(Rx.race(
+							ctx.server.beforeNewGame$.pipe(Rx.map(([_, event]) => event)),
+							doubleEvent$,
+							timeout$,
+						))
 
-						ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
-
-						// could inline handleNewGame here
-						const res = await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
-						if (res.code !== 'ok') return
-
-						ctx.server.event$.next([ctx, {
-							type: 'NEW_GAME',
-							time: newGameEvent?.time ?? new Date(),
-							matchId: res.match.historyEntryId,
-						}])
-					} finally {
-						ctx.server.serverRolling$.next(null)
+						if (out === 'double-event') {
+							ctx.log.error('Double event detected: %s', triggerType)
+							return
+						} else if (out === 'timeout') {
+							ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
+						} else {
+							ctx.log.debug('Received NEW_GAME event')
+							newGameEvent = out
+						}
 					}
-				}),
-			).subscribe(),
-	)
+
+					ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
+
+					// could inline handleNewGame here
+					const res = await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
+					if (res.code !== 'ok') return
+
+					ctx.server.event$.next([ctx, {
+						type: 'NEW_GAME',
+						time: newGameEvent?.time ?? new Date(),
+						matchId: res.match.historyEntryId,
+					}])
+				} finally {
+					ctx.server.serverRolling$.next(null)
+				}
+			}),
+		).subscribe()
 }
 
 export function destroyServer(ctx: C.ServerSlice & CS.Log) {
@@ -630,7 +712,7 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
  * Performs state tracking and event consolidation for squad log events.
  */
 async function processServerLogEvent(
-	ctx: CS.Log & C.SquadServer & C.AdminList & C.MatchHistory & C.Db & C.Mutexes,
+	ctx: CS.Log & C.Db & C.Mutexes & C.ServerSlice,
 	logEvent: SM.LogEvents.Event,
 ) {
 	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
@@ -727,6 +809,7 @@ async function processServerLogEvent(
 			return
 		}
 
+		// TODO PLAYER_JOIN_FAILED?
 		case 'PLAYER_JOIN_SUCCEEDED': {
 			const joinedPlayerIdQuery = server.state.joinRequests.get(logEvent.chainID)
 			if (!joinedPlayerIdQuery) return
@@ -735,6 +818,12 @@ async function processServerLogEvent(
 			if (!player) {
 				return { code: 'err:player-not-found' as const, message: `Player ${SM.PlayerIds.prettyPrint(joinedPlayerIdQuery)} not found` }
 			}
+			const isAlreadyConnected = SM.PlayerIds.find(server.state.connected, player.ids)
+			if (isAlreadyConnected) {
+				ctx.log.debug(`Player ${SM.PlayerIds.prettyPrint(player.ids)} is already connected. this is expected.`)
+				return
+			}
+			SM.PlayerIds.upsert(server.state.connected, player.ids)
 			return {
 				code: 'ok' as const,
 				event: {
@@ -746,22 +835,18 @@ async function processServerLogEvent(
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			// if (server.state.joinRequests)
-			void (async () => {
-				const res = await server.playerList.fetchedValue
-				if (res?.code !== 'ok') return
-				const players = res.players
+			if (!SM.PlayerIds.find(server.state.connected, logEvent.playerIds)) return
 
-				if (SM.PlayerIds.find(players, p => p.ids, logEvent.player)) {
-					server.playerList.invalidate(ctx)
-				}
-			})()
+			SM.PlayerIds.remove(server.state.connected, logEvent.playerIds)
+
+			// invalidate playerList and wait for the result so that generateSyntheticEvents is able to run first
+			await server.playerList.get(ctx, { ttl: 0 })
 
 			return {
 				code: 'ok' as const,
 				event: {
 					type: 'PLAYER_DISCONNECTED',
-					playerIds: logEvent.player,
+					playerIds: logEvent.playerIds,
 					...base,
 				} satisfies SM.Events.PlayerDisconnected,
 			}
@@ -818,7 +903,7 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				const res = await SquadRcon.getPlayer(ctx, event.playerIds)
 				if (res.code !== 'ok') return res
 				const player = res.player
-				if (player.teamID === null) {
+				if (player.teamId === null) {
 					return {
 						code: 'err:chatting-player-not-in-team' as const,
 						message: `player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a team`,
@@ -826,15 +911,15 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				}
 
 				if (event.channelType === 'ChatTeam') {
-					channel = { type: event.channelType, teamId: player.teamID }
+					channel = { type: event.channelType, teamId: player.teamId }
 				} else {
-					if (player.squadID === null) {
+					if (player.squadId === null) {
 						return {
 							code: 'err:chatting-player-not-in-squad' as const,
 							message: `player ${SM.PlayerIds.prettyPrint(player.ids)} is not in a squad`,
 						}
 					}
-					channel = { type: event.channelType, teamId: player.teamID, squadId: player.squadID }
+					channel = { type: event.channelType, teamId: player.teamId, squadId: player.squadId }
 				}
 			} else {
 				assertNever(event.channelType)
@@ -874,23 +959,23 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				}
 			}
 
-			const squad = await SquadRcon.getSquadDeferred(ctx, s => s.teamId === teamId && s.squadId === event.squadID, deferOpts)
+			const squad = await SquadRcon.getSquadDeferred(ctx, s => s.teamId === teamId && s.squadId === event.squadId, deferOpts)
 			if (!squad) {
 				return {
 					code: 'err:unable-to-resolve-squad' as const,
-					message: `unable to resolve squad for team id ${teamId} and squad id ${event.squadID}`,
+					message: `unable to resolve squad for team id ${teamId} and squad id ${event.squadId}`,
 				}
 			}
 			const creator = await SquadRcon.getPlayerDeferred(
 				ctx,
-				p => SM.PlayerIds.matches(p.ids, event.creatorIds) && p.isLeader && p.squadID !== null,
+				p => SM.PlayerIds.match(p.ids, event.creatorIds) && p.isLeader && p.squadId !== null,
 				deferOpts,
 			)
 
 			if (!creator) {
 				return {
 					code: 'err:unable-to-resolve-creator' as const,
-					message: `unable to resolve creator for squad id ${event.squadID}`,
+					message: `unable to resolve creator for squad id ${event.squadId}`,
 				}
 			}
 
@@ -922,92 +1007,96 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 	}
 }
 
-export const orpcRouter = {
-	setSelectedServer: orpcBase
-		.input(z.string())
-		.handler(async ({ context, input: serverId }) => {
-			const slice = globalState.slices.get(serverId)
-			if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server not found' })
-			globalState.selectedServers.set(context.wsClientId, serverId)
-			globalState.selectedServerUpdate$.next({ wsClientId: context.wsClientId, serverId })
-			return { code: 'ok' as const }
-		}),
+function* generateSyntheticEvents(
+	ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes,
+	prevPlayers: SM.Player[],
+	players: SM.Player[],
+	time: Date,
+): Generator<SM.Events.Event> {
+	const base = { time, matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId }
 
-	watchLayersStatus: orpcBase.handler(async function*({ context, signal }) {
-		const obs = selectedServerCtx$(context)
-			.pipe(
-				Rx.switchMap(ctx => {
-					return Rx.concat(fetchLayersStatusExt(ctx), ctx.server.layersStatusExt$)
-				}),
-				withAbortSignal(signal!),
-			)
-		yield* toAsyncGenerator(obs)
-	}),
+	const squads = SM.Players.groupIntoSquads(players)
+	const prevSquads = SM.Players.groupIntoSquads(prevPlayers)
 
-	watchServerRolling: orpcBase.handler(async function*({ context, signal }) {
-		const obs = selectedServerCtx$(context)
-			.pipe(
-				Rx.switchMap(ctx => {
-					return ctx.server.serverRolling$
-				}),
-				withAbortSignal(signal!),
-			)
-		yield* toAsyncGenerator(obs)
-	}),
+	for (const player of players) {
+		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
+		const playerConnected = !!SM.PlayerIds.find(ctx.server.state.connected, player.ids)
+		if (!prev) continue
 
-	watchServerInfo: orpcBase.handler(async function*({ context, signal }) {
-		const obs = selectedServerCtx$(context)
-			.pipe(
-				Rx.switchMap(ctx => {
-					return ctx.server.serverInfo.observe(ctx).pipe(
-						distinctDeepEquals(),
-					)
-				}),
-				withAbortSignal(signal!),
-			)
-		yield* toAsyncGenerator(obs)
-	}),
+		// the event from the logs (PLAYER_JOIN_SUCCEEDED) has not come through yet, so we need to send it here instead.
+		if (!playerConnected) {
+			ctx.server.state.connected.push(player.ids)
+			yield {
+				type: 'PLAYER_CONNECTED',
+				player,
+				...base,
+			} satisfies SM.Events.PlayerConnected
+			continue
+		}
 
-	endMatch: orpcBase.handler(async ({ context: _ctx }) => {
-		const ctx = resolveWsClientSliceCtx(_ctx)
-		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
-		if (deniedRes) return deniedRes
-		SquadRcon.endMatch(ctx)
-		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
-		return { code: 'ok' as const }
-	}),
+		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null) {
+			yield {
+				type: 'PLAYER_LEFT_SQUAD',
+				playerIds: player.ids,
+				teamId: prev.teamId,
+				squadId: prev.squadId,
+				...base,
+			} satisfies SM.Events.PlayerLeftSquad
+		}
 
-	watchChatEvents: orpcBase.handler(async function*({ context, signal }) {
-		const obs: Rx.Observable<SM.Events.Event | CHAT.SyncEvent> = selectedServerCtx$(context)
-			.pipe(
-				Rx.switchMap(ctx => {
-					const init: CHAT.SyncEvent = {
-						type: 'INIT',
-						state: ctx.server.state.chat!,
-					}
-					return Rx.merge(
-						Rx.of(init),
-						ctx.server.event$.pipe(Rx.map(([_, event]) => event)),
-						ctx.server.chatSync$.pipe(Rx.map(([_, event]) => event)),
-					)
-				}),
-				withAbortSignal(signal!),
-			)
-		yield* toAsyncGenerator(obs)
-	}),
+		if (player.squadId !== null && player.squadId === prev.squadId && player.isLeader && !prev.isLeader) {
+			yield {
+				type: 'PLAYER_PROMOTED_TO_LEADER',
+				squadId: player.squadId,
+				teamId: player.teamId,
+				newLeaderIds: player.ids,
+				...base,
+			} satisfies SM.Events.PlayerPromotedToLeader
+		}
 
-	toggleFogOfWar: orpcBase
-		.input(z.object({ disabled: z.boolean() }))
-		.handler(async ({ context: _ctx, input }) => {
-			const ctx = resolveWsClientSliceCtx(_ctx)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off'))
-			if (denyRes) return denyRes
-			const serverStatusRes = await ctx.server.layersStatus.get(ctx)
-			if (serverStatusRes.code !== 'ok') return serverStatusRes
-			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
-			if (input.disabled) {
-				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+		if (player.teamId !== prev.teamId) {
+			yield {
+				type: 'PLAYER_CHANGED_TEAM',
+				playerIds: player.ids,
+				...base,
+			} satisfies SM.Events.PlayerChangedTeam
+		}
+
+		if (
+			player.squadId !== null && !SM.Squads.idsEqual(player, prev) && !prevSquads.find(s => SM.Squads.idsEqual(s, player))
+		) {
+			// we're assuming here that if the player *just* joined a squad and is the leader, then they created the squad. this isn't *technically* safe but the edgecase should be pretty benign. if this becomes an issue we will have pull in data from the squadsList (.creator) to deal with it
+			if (player.isLeader) continue
+			yield {
+				type: 'PLAYER_JOINED_SQUAD',
+				playerIds: player.ids,
+				teamId: player.teamId,
+				squadId: player.squadId,
+				...base,
+			} satisfies SM.Events.PlayerJoinedSquad
+		}
+
+		{
+			const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
+			const prevDetails = Obj.selectProps(prev, SM.PLAYER_DETAILS)
+			if (!Obj.deepEqual(details, prevDetails)) {
+				yield {
+					type: 'PLAYER_DETAILS_CHANGED',
+					playerIds: player.ids,
+					details,
+					...base,
+				} satisfies SM.Events.PlayerDetailsChanged
 			}
-			return { code: 'ok' as const }
-		}),
+		}
+	}
+
+	for (const prevSquad of prevSquads) {
+		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
+		yield {
+			type: 'SQUAD_DISBANDED',
+			squadId: prevSquad.squadId,
+			teamId: prevSquad.teamId,
+			...base,
+		} satisfies SM.Events.SquadDisbanded
+	}
 }

@@ -1,5 +1,6 @@
 import MatchHistoryPanel from '@/components/match-history-panel.tsx'
 import ServerChatPanel from '@/components/server-chat-panel.tsx'
+import ServerStatePanel from '@/components/server-state-panel.tsx'
 import ServerStatsPanel from '@/components/server-stats-panel.tsx'
 import { TeamIndicator } from '@/components/teams-display.tsx'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -51,9 +52,9 @@ export default function LayerQueueDashboard() {
 					<QueuePanel />
 				</div>
 				{/* right column */}
-				<div className="flex flex-col gap-2">
-					{/*<ServerStatsPanel />*/}
+				<div className="flex gap-2">
 					<ServerChatPanel />
+					<ServerStatePanel />
 				</div>
 			</div>
 		</div>

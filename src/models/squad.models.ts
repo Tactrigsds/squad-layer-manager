@@ -284,7 +284,7 @@ export namespace PlayerIds {
 		return false
 	}
 
-	export function matches(a: IdQuery, b: IdQuery): boolean {
+	export function match(a: IdQuery, b: IdQuery): boolean {
 		for (const prop of LOOKUP_PROPS) {
 			if (a[prop] && b[prop] && a[prop] === b[prop]) return true
 		}
@@ -316,16 +316,33 @@ export namespace PlayerIds {
 
 export const ChainIdSchema = ZodUtils.ParsedIntSchema
 
+export const PLAYER_DETAILS = ['role', 'isAdmin'] as const
 export const PlayerSchema = z.object({
 	ids: PlayerIds.Schema,
-	teamID: TeamIdSchema.nullable(),
-	squadID: z.number().nullable(),
+	teamId: TeamIdSchema,
+	squadId: z.number().nullable(),
 	isLeader: z.boolean(),
 	isAdmin: z.boolean(),
 	role: z.string(),
 })
 
 export type Player = z.infer<typeof PlayerSchema>
+
+export namespace Players {
+	export function groupIntoSquads(players: Player[]) {
+		const squads: { squadId: SquadId; teamId: TeamId; players: Player[] }[] = []
+		for (const player of players) {
+			if (player.squadId === null) continue
+			let squad = squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
+			if (!squad) {
+				squad = { squadId: player.squadId, teamId: player.teamId, players: [] }
+				squads.push(squad)
+			}
+			squad.players.push(player)
+		}
+		return squads
+	}
+}
 
 export type SquadId = number
 export const SquadSchema = z.object({
@@ -341,6 +358,26 @@ export type Squad = z.infer<typeof SquadSchema>
 
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
+
+export namespace Squads {
+	// identifies a squad across teams
+	export type Key = { squadId: SquadId; teamId: TeamId }
+	export type PartialKey = { squadId: SquadId | null; teamId: TeamId | null }
+
+	// returns false if any missing properties
+	export function idsEqual(a: PartialKey, b: PartialKey) {
+		if (a.squadId === null || b.squadId === null || a.teamId === null || b.teamId === null) {
+			return false
+		}
+		return a.squadId === b.squadId && a.teamId === b.teamId
+	}
+	export function printKey(key: Key) {
+		return `${key.teamId}-${key.squadId}`
+	}
+}
+
+export function findSquadLeader(players: Player[]) {
+}
 
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
@@ -434,6 +471,50 @@ export namespace Events {
 		from: LogEvents.AdminBroadcast['from']
 	} & Base
 
+	// synthetic events from player state
+	export type PlayerDetailsChanged = {
+		type: 'PLAYER_DETAILS_CHANGED'
+		playerIds: PlayerIds.Type
+		details: Pick<Player, (typeof PLAYER_DETAILS)[number]>
+	} & Base
+
+	export type PlayerChangedTeam = {
+		type: 'PLAYER_CHANGED_TEAM'
+		playerIds: PlayerIds.Type
+	} & Base
+
+	// can originate if the player manually leaves the squad, or is removed for some other reason
+	export type PlayerLeftSquad = {
+		type: 'PLAYER_LEFT_SQUAD'
+		playerIds: PlayerIds.Type
+		squadId: SquadId
+		teamId: TeamId
+	} & Base
+
+	// this event is redundant in terms of state transfer, as it could be inferred as the last player leaving a particular squad
+	export type SquadDisbanded = {
+		type: 'SQUAD_DISBANDED'
+		squadId: SquadId
+		teamId: TeamId
+	} & Base
+
+	/**
+	 * Player joined pre-existing squad
+	 */
+	export type PlayerJoinedSquad = {
+		type: 'PLAYER_JOINED_SQUAD'
+		playerIds: PlayerIds.Type
+		squadId: SquadId
+		teamId: TeamId
+	} & Base
+
+	export type PlayerPromotedToLeader = {
+		type: 'PLAYER_PROMOTED_TO_LEADER'
+		squadId: SquadId
+		teamId: TeamId
+		newLeaderIds: PlayerIds.Type
+	} & Base
+
 	export type Event =
 		| NewGame
 		| RoundEnded
@@ -448,6 +529,13 @@ export namespace Events {
 		| RconEvents.PlayerKicked & Base
 		| RconEvents.PlayerBanned & Base
 		| RconEvents.PlayerWarned & Base
+		// synthetic
+		| PlayerDetailsChanged
+		| PlayerChangedTeam
+		| PlayerLeftSquad
+		| SquadDisbanded
+		| PlayerJoinedSquad
+		| PlayerPromotedToLeader
 }
 
 export namespace RconEvents {
@@ -475,7 +563,7 @@ export namespace RconEvents {
 	const PlayerWarnedSchema = eventSchema('PLAYER_WARNED', {
 		time: z.date(),
 		reason: z.string(),
-		playerIds: PlayerIds.Schema,
+		playerIds: PlayerIds.IdQuerySchema,
 	})
 	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
 
@@ -545,7 +633,7 @@ export namespace RconEvents {
 
 	const SquadCreatedSchema = eventSchema('SQUAD_CREATED', {
 		time: z.date(),
-		squadID: ZodUtils.ParsedIntSchema,
+		squadId: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
 		creatorIds: PlayerIds.Schema,
@@ -554,11 +642,11 @@ export namespace RconEvents {
 
 	export const SquadCreatedMatcher = createLogMatcher({
 		schema: SquadCreatedSchema,
-		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadID>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
+		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadId>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
 		onMatch: (match) => {
 			return {
 				time: new Date(),
-				squadID: match.groups!.squadID,
+				squadId: match.groups!.squadId,
 				squadName: match.groups!.squadName,
 				teamName: match.groups!.teamName,
 				creatorIds: PlayerIds.extractPlayerIds({ username: match.groups!.playerName, idsStr: match[2] }),
@@ -727,7 +815,7 @@ export namespace LogEvents {
 
 	export const PlayerDisconnectedSchema = eventSchema('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
-		player: PlayerIds.IdQuerySchema,
+		playerIds: PlayerIds.IdQuerySchema,
 		ip: z.string().ip(),
 	})
 	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema>
@@ -741,7 +829,7 @@ export namespace LogEvents {
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				ip: args[3],
-				player: {
+				playerIds: {
 					playerController: args[4].trim(),
 					eos: args[5].trim(),
 				},

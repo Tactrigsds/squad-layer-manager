@@ -157,12 +157,12 @@
       "properties": {
         "sftpPollInterval": {
           "$ref": "#/properties/postRollAnnouncementsTimeout",
-          "default": "5s",
+          "default": "1s",
           "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
         },
         "sftpReconnectInterval": {
           "$ref": "#/properties/postRollAnnouncementsTimeout",
-          "default": "10s",
+          "default": "5s",
           "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
         }
       },

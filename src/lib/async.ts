@@ -42,9 +42,12 @@ function defer<T>(): Deferred<T> {
 }
 
 const DeferredEmpty = Symbol('DeferredEmpty')
-export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
+// orpc subscriptions only work with asyncScheduler set here
+export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>, scheduler = Rx.asyncScheduler) {
 	let nextData = defer<T>() as Deferred<T | symbol> | null
-	const sub = observable.pipe(Rx.observeOn(Rx.asapScheduler)).subscribe({
+	const sub = observable.pipe(
+		Rx.observeOn(scheduler),
+	).subscribe({
 		next(data) {
 			const n = nextData
 			nextData = defer()
@@ -174,6 +177,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		}
 	}
 
+	// note: any observers are guaranteed to be notified before get() resolves
 	async get(_ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
@@ -211,6 +215,8 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	refetchSub: Rx.Subscription | null = null
 
 	// listen to all updates to this resource, refreshing at a minumum when the ttl expires
+	// note: any observers are guaranteed to be notified before getters (in order of subscription)
+	// TODO should probably include context in emissions
 	observe(ctx: Ctx, opts?: { ttl?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
@@ -239,7 +245,6 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 			this.fetchedValue ?? Rx.EMPTY,
 			this.valueSubject.pipe(
 				traceTag(`asyncResourceObserve__${this.name}`),
-				Rx.observeOn(Rx.asapScheduler),
 				Rx.tap({
 					subscribe: () => {
 						this.observingTTLs.push([refId, opts.ttl!])

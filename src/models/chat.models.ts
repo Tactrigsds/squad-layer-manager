@@ -6,22 +6,8 @@ export type PlayerRef = string
 
 export type Channel = SM.ChatChannelType
 
-export namespace Events {
-	// identical to upstream events, but no ip information
-	export type PlayerConnected = {
-		type: 'PLAYER_CONNECTED'
-		time: Date
-		player: SM.PlayerIds.Type
-	}
-	export type PlayerDisconnected = {
-		type: 'PLAYER_DISCONNECTED'
-		time: Date
-		player: SM.PlayerIds.Type
-	}
-}
-
 export type SyncEvent = {
-	type: 'INIT'
+	type: 'FLASH'
 	state: ChatState
 }
 
@@ -30,22 +16,24 @@ export type InterpolableState = {
 	squads: SM.Squad[]
 }
 
-// event with snapshot of relevant data
-export type Event = NonNullable<ReturnType<typeof interpolateEvent>>
+// event enriched with relevant data
+export type EventEnriched = NonNullable<ReturnType<typeof interpolateEvent>>
+export type Event = SM.Events.Event | ResetEvent
+
+export type ResetEvent = {
+	type: 'RESET'
+	state: InterpolableState
+	time: Date
+	matchId: number
+}
 
 export type ChatState = {
-	initialState: InterpolableState
-	rawEventBuffer: SM.Events.Event[]
+	rawEventBuffer: Event[]
 
 	interpolatedState: InterpolableState
-	eventBuffer: Event[]
+	eventBuffer: EventEnriched[]
 }
 export const INITIAL_CHAT_STATE: ChatState = {
-	initialState: {
-		players: [],
-		squads: [],
-	},
-
 	rawEventBuffer: [],
 	interpolatedState: {
 		players: [],
@@ -54,27 +42,35 @@ export const INITIAL_CHAT_STATE: ChatState = {
 	eventBuffer: [],
 }
 
-export function handleEvent(state: ChatState, event: SM.Events.Event | SyncEvent) {
-	if (event.type === 'INIT') {
+export function handleEvent(state: ChatState, event: Event | SyncEvent) {
+	if (event.type === 'FLASH') {
 		Object.assign(state, event.state)
 		return
 	}
 
 	const rawBuffer = state.rawEventBuffer
-	let i = rawBuffer.length - 1
-	for (; i >= 0; i--) {
+	let mutatedIndex: number | null = null
+	let savepointIndex: number = 0
+	for (let i = rawBuffer.length - 1; i >= 0; i--) {
 		const current = rawBuffer[i]
-		if (current.time < event.time) {
+		if (mutatedIndex === null && current.time < event.time) {
+			mutatedIndex = i + 1
+		}
+		if (event.type === 'RESET') {
+			savepointIndex = i + 1
+			break
+		} else if (mutatedIndex !== null && current.type === 'RESET') {
+			savepointIndex = i
 			break
 		}
 	}
-	const mutatedIndex = i + 1
+	if (mutatedIndex === null) mutatedIndex = rawBuffer.length
 	rawBuffer.splice(mutatedIndex, 0, event)
 	if (mutatedIndex < state.eventBuffer.length) {
-		// we need to re-interpolate from starting conditions because we received an out-of-order event. could maybe store periodic savepoints to handle really massive buffers efficiently
-		let newState = Obj.deepClone(state.initialState)
-		state.eventBuffer = []
-		for (const event of rawBuffer.slice(0, mutatedIndex)) {
+		// we need to re-interpolate from the last RESET because we received an out-of-order event.
+		let newState: InterpolableState = { players: [], squads: [] }
+		state.eventBuffer = state.eventBuffer.slice(0, savepointIndex)
+		for (const event of rawBuffer.slice(savepointIndex, mutatedIndex)) {
 			const interpolated = interpolateEvent(newState, event)
 			if (!interpolated) continue
 			state.eventBuffer.push(interpolated)
@@ -90,9 +86,15 @@ export function handleEvent(state: ChatState, event: SM.Events.Event | SyncEvent
 }
 
 // TODO pass in logger
-export function interpolateEvent(state: InterpolableState, event: SM.Events.Event) {
-	// NOTE: assume that state is deeply mutable. clone data we want to include with events. for now just clone anything that's a mutable data-structure
+export function interpolateEvent(state: InterpolableState, event: Event) {
+	console.log('Handling ', event.type, event)
+	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
+		case 'RESET': {
+			const { state: resetState, ...rest } = event
+			Object.assign(state, resetState)
+			return rest
+		}
 		case 'NEW_GAME':
 		case 'ROUND_ENDED':
 			return event
@@ -106,7 +108,7 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 			const player = SM.PlayerIds.upsert(state.players, p => p.ids, event.player)
 			return {
 				...event,
-				player: Obj.deepClone(player),
+				player: player,
 			}
 		}
 
@@ -119,20 +121,156 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 			const [player] = state.players.splice(index, 1)
 			return {
 				...event,
-				player: Obj.deepClone(player),
+				player: player,
+			}
+		}
+
+		case 'PLAYER_DETAILS_CHANGED': {
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			if (index === -1) {
+				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
+				return
+			}
+			const player = state.players[index]
+			const updated = { ...player, ...event.details }
+			state.players.splice(index, 1, updated)
+			return {
+				...event,
+				player: updated,
+			}
+		}
+
+		case 'PLAYER_CHANGED_TEAM': {
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			if (index === -1) {
+				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
+				return
+			}
+
+			const player = state.players[index]
+			const updatedPlayer: SM.Player = {
+				...player,
+				squadId: null,
+				teamId: player.squadId === 1 ? 2 : 1,
+			}
+			state.players.splice(index, 1, updatedPlayer)
+			return {
+				...event,
+				player: updatedPlayer,
+			}
+		}
+
+		case 'PLAYER_JOINED_SQUAD': {
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			if (index === -1) {
+				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
+				return
+			}
+
+			const player = state.players[index]
+			const updatedPlayer: SM.Player = {
+				...player,
+				squadId: event.squadId,
+				isLeader: false,
+			}
+			state.players.splice(index, 1, updatedPlayer)
+			return {
+				...event,
+				player: updatedPlayer,
+			}
+		}
+
+		case 'PLAYER_PROMOTED_TO_LEADER': {
+			let newLeaderIdx = -1
+			for (let i = 0; i < state.players.length; i++) {
+				const player = state.players[i]
+				if (!SM.Squads.idsEqual(player, event)) continue
+				const isNewLeader = SM.PlayerIds.match(player.ids, event.newLeaderIds)
+				if (isNewLeader) {
+					newLeaderIdx = i
+				}
+				if (!isNewLeader && !player.isLeader) continue
+				const updatedPlayer: SM.Player = {
+					...player,
+					isLeader: isNewLeader,
+				}
+				state.players.splice(i, 1, updatedPlayer)
+			}
+
+			if (newLeaderIdx === -1) {
+				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.newLeaderIds)} promoted to leader but was not found in the player list`)
+				return
+			}
+
+			return {
+				...event,
+				player: state.players[newLeaderIdx],
+			}
+		}
+
+		case 'SQUAD_DISBANDED': {
+			const squadIndex = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			if (squadIndex === -1) {
+				console.warn(`Squad ${event.squadId} disbanded but was not found in the squad list`)
+				return
+			}
+			const [squad] = state.squads.splice(squadIndex, 1)
+			return {
+				...event,
+				squad: squad,
+			}
+		}
+
+		case 'PLAYER_LEFT_SQUAD': {
+			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
+			if (index === -1) {
+				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the player list`)
+				return
+			}
+
+			const player = state.players[index]
+			const updatedPlayer: SM.Player = {
+				...player,
+				squadId: null,
+				isLeader: false,
+			}
+			state.players.splice(index, 1, updatedPlayer)
+			return {
+				...event,
+				player: updatedPlayer,
 			}
 		}
 
 		case 'SQUAD_CREATED': {
-			state.squads.push(event.squad)
-			const creator = SM.PlayerIds.find(state.players, p => p.ids, event.squad.creatorIds)
-			if (!creator) {
+			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event.squad))
+			if (existingSquad) {
+				console.warn(`Squad ${event.squad.squadId} already exists`, existingSquad)
+				return
+			}
+			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creatorIds)
+			if (creatorIndex === -1) {
 				console.warn(`Squad ${event.squad.squadId} created by unknown player ${SM.PlayerIds.prettyPrint(event.squad.creatorIds)}`)
 				return
 			}
+			const creator = state.players[creatorIndex]
+			if (creator.teamId !== creator.teamId) {
+				console.warn(
+					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${
+						SM.Squads.printKey(event.squad)
+					}`,
+				)
+			}
+			state.squads.push(event.squad)
+			const updatedCreator: SM.Player = {
+				...creator,
+				isLeader: true,
+				squadId: event.squad.squadId,
+			}
+			state.players.splice(creatorIndex, 1, updatedCreator)
+
 			return {
 				...event,
-				creator: Obj.deepClone(creator),
+				creator: updatedCreator,
 			}
 		}
 
@@ -153,7 +291,7 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 			}
 			return {
 				...event,
-				player: Obj.deepClone(player),
+				player: player,
 			}
 		}
 
@@ -170,7 +308,7 @@ export function interpolateEvent(state: InterpolableState, event: SM.Events.Even
 			}
 			return {
 				...event,
-				player: Obj.deepClone(player),
+				player: player,
 			} as SM.Events.AdminBroadcast & { player: SM.Player }
 		}
 

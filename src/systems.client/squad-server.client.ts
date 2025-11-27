@@ -42,7 +42,7 @@ export const [useChatEvents, chatEvent$] = ReactRx.bind(RPC.observe(() => RPC.or
 
 type ChatStore = {
 	chatState: CHAT.ChatState
-	handleChatEvent(event: SM.Events.Event | CHAT.SyncEvent): void
+	handleChatEvent(event: CHAT.Event | CHAT.SyncEvent): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {

@@ -59,8 +59,8 @@ export const ConfigSchema = z.object({
 		maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
 	}),
 	squadServer: z.object({
-		sftpPollInterval: HumanTime.default('5s'),
-		sftpReconnectInterval: HumanTime.default('10s'),
+		sftpPollInterval: HumanTime.default('1s'),
+		sftpReconnectInterval: HumanTime.default('5s'),
 	}),
 	steamLinkCodeExpiry: HumanTime.default('15m').describe('Duration of a steam account link code'),
 	// we have to ues .optional instead of .default here to avoid circular type definitions

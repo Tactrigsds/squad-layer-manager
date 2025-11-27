@@ -34,8 +34,8 @@ export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, sub: Rx.Subscr
 	})
 	registerCleanup(() => serverInfo.dispose(), sub)
 
-	const playerList: SquadRcon['playerList'] = new AsyncResource('playerList', (ctx) => getListPlayers(ctx), {
-		defaultTTL: 5000,
+	const playerList: SquadRcon['playerList'] = new AsyncResource('playerList', (ctx) => getPlayers(ctx), {
+		defaultTTL: 2000,
 	})
 	registerCleanup(() => playerList.dispose(), sub)
 
@@ -97,7 +97,7 @@ export async function getNextLayer(ctx: CS.Log & C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-export async function getListPlayers(ctx: CS.Log & C.Rcon & C.AdminList) {
+export const getPlayers = C.spanOp('squad-rcon:get-players', { tracer }, async (ctx: CS.Log & C.Rcon & C.AdminList) => {
 	const res = await ctx.rcon.execute(ctx, 'ListPlayers')
 	if (res.code !== 'ok') return res
 
@@ -107,15 +107,15 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon & C.AdminList) {
 
 	for (const line of res.data.split('\n')) {
 		const match = line.match(
-			/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamID>\d|N\/A) \| Squad ID: (?<squadID>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/,
+			/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamId>\d|N\/A) \| Squad ID: (?<squadId>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/,
 		)
 		if (!match) continue
 
 		const data: any = match.groups!
 		data.playerID = +data.playerID
 		data.isLeader = data.isLeader === 'True'
-		data.teamID = data.teamID !== 'N/A' ? +data.teamID : null
-		data.squadID = data.squadID !== 'N/A' && data.squadID !== null ? +data.squadID : null
+		data.teamId = data.teamId !== 'N/A' ? +data.teamId : null
+		data.squadId = data.squadId !== 'N/A' && data.squadId !== null ? +data.squadId : null
 		data.ids = SM.PlayerIds.extractPlayerIds({ username: match.groups!.name, idsStr: match[2] })
 
 		data.isAdmin = false
@@ -130,9 +130,9 @@ export async function getListPlayers(ctx: CS.Log & C.Rcon & C.AdminList) {
 		players.push(parsedData)
 	}
 	return { code: 'ok' as const, players }
-}
+})
 
-export async function getSquads(ctx: CS.Log & C.Rcon) {
+export const getSquads = C.spanOp('squad-rcon:get-squads', { tracer }, async (ctx: CS.Log & C.Rcon) => {
 	const resSquad = await ctx.rcon.execute(ctx, 'ListSquads')
 	if (resSquad.code !== 'ok') return resSquad
 
@@ -144,7 +144,7 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 
 	for (const line of resSquad.data.split('\n')) {
 		const match = line.match(
-			/ID: (?<squadID>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
+			/ID: (?<squadId>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
 		)
 		const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
 		if (matchSide) {
@@ -153,9 +153,9 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 		}
 		if (!match) continue
 		const ids = match.groups as any
-		ids.squadID = +match.groups!.squadID
+		ids.squadId = +match.groups!.squadId
 		const squad: any = {
-			squadId: +match.groups!.squadID,
+			squadId: +match.groups!.squadId,
 			teamId: teamId ?? null,
 			teamName: teamName,
 			squadName: match.groups!.squadName,
@@ -171,7 +171,7 @@ export async function getSquads(ctx: CS.Log & C.Rcon) {
 		code: 'ok' as const,
 		squads,
 	}
-}
+})
 
 export async function broadcast(ctx: CS.Log & C.Rcon, message: string) {
 	let messages = [message]
