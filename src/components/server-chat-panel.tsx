@@ -3,6 +3,7 @@ import { PlayerDisplay } from '@/components/player-display'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as DH from '@/lib/display-helpers'
@@ -395,17 +396,57 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 
 export default function ServerChatPanel() {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
-	const scrollRef = React.useRef<HTMLDivElement>(null)
+	const bottomRef = React.useRef<HTMLDivElement>(null)
+	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
 	const prevEventCount = React.useRef(0)
+	const [showScrollButton, setShowScrollButton] = React.useState(false)
+	const [newMessageCount, setNewMessageCount] = React.useState(0)
 
+	const scrollToBottom = () => {
+		bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
+		setNewMessageCount(0)
+	}
+
+	const checkIfAtBottom = () => {
+		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+		if (!scrollElement) return false
+
+		const threshold = 50 // pixels from bottom to consider "at bottom"
+		const isAtBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < threshold
+		return isAtBottom
+	}
+
+	// Auto-scroll when new events arrive if already at bottom
 	React.useEffect(() => {
 		if (eventBuffer.length > prevEventCount.current) {
+			const newCount = eventBuffer.length - prevEventCount.current
 			prevEventCount.current = eventBuffer.length
-			setTimeout(() => {
-				scrollRef.current?.scrollIntoView()
-			}, 0)
+			if (checkIfAtBottom()) {
+				setTimeout(() => scrollToBottom(), 0)
+			} else {
+				setNewMessageCount(prev => prev + newCount)
+			}
 		}
 	}, [eventBuffer])
+
+	// Listen to scroll events to show/hide button
+	React.useEffect(() => {
+		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+		if (!scrollElement) return
+
+		const handleScroll = () => {
+			const atBottom = checkIfAtBottom()
+			setShowScrollButton(!atBottom)
+			if (atBottom) {
+				setNewMessageCount(0)
+			}
+		}
+
+		scrollElement.addEventListener('scroll', handleScroll)
+		handleScroll() // Initial check
+
+		return () => scrollElement.removeEventListener('scroll', handleScroll)
+	}, [])
 
 	return (
 		<Card className="flex flex-col h-full min-w-[500px]">
@@ -415,8 +456,8 @@ export default function ServerChatPanel() {
 					Server Events
 				</CardTitle>
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden">
-				<ScrollArea className="h-[600px]" ref={scrollRef}>
+			<CardContent className="flex-1 overflow-hidden relative">
+				<ScrollArea className="h-[600px]" ref={scrollAreaRef}>
 					<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[500px]">
 						{eventBuffer.length === 0
 							? (
@@ -427,8 +468,22 @@ export default function ServerChatPanel() {
 							: (
 								eventBuffer.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
 							)}
+						<div ref={bottomRef} />
 					</div>
 				</ScrollArea>
+				{showScrollButton && (
+					<Button
+						onClick={() => scrollToBottom()}
+						variant="secondary"
+						className="absolute bottom-2 left-4 right-4 h-8 shadow-lg flex items-center justify-center gap-2"
+						title="Scroll to bottom"
+					>
+						<Icons.ChevronDown className="h-4 w-4" />
+						<span className="text-xs">
+							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+						</span>
+					</Button>
+				)}
 			</CardContent>
 		</Card>
 	)
