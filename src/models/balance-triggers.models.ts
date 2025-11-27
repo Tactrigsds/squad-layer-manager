@@ -11,7 +11,7 @@ type BaseBalanceTriggerInput = {
 	history: MH.MatchDetails[]
 }
 
-export const TRIGGER_LEVEL = SchemaModels.TRIGGER_LEVEL
+export const TRIGGER_LEVEL = SchemaModels.BALANCE_TRIGGER_LEVEL
 export type TriggerWarnLevel = z.infer<typeof TRIGGER_LEVEL>
 export type BalanceTriggerEvent = SchemaModels.BalanceTriggerEvent
 export type EvaluationResultBase<Input> = {

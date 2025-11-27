@@ -1,6 +1,8 @@
 import * as Typo from '@/lib/typography'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
+import * as MH from '@/models/match-history.models'
+import * as SM from '@/models/squad.models'
 import { z } from 'zod'
 
 export function toShortUnit(unit: string | null) {
@@ -258,4 +260,12 @@ export const TEAM_COLORS = {
 	teamB: '#00BFFF',
 	team1: 'teal',
 	team2: 'coral',
+}
+
+export function getTeamColor(teamId: SM.TeamId, parity: number, normalize: boolean) {
+	if (!normalize) {
+		return TEAM_COLORS[`team${teamId}`]
+	}
+	const normedId = MH.getNormedTeamId(teamId, parity)
+	return TEAM_COLORS[`team${normedId}`]
 }

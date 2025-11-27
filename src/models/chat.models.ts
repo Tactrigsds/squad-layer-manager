@@ -1,6 +1,8 @@
+import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
+import { type z } from 'zod'
 
 export type PlayerRef = string
 
@@ -19,6 +21,12 @@ export type InterpolableState = {
 // event enriched with relevant data
 export type EventEnriched = NonNullable<ReturnType<typeof interpolateEvent>>
 export type Event = SM.Events.Event | ResetEvent
+
+{
+	// type assertions
+	const _: Event['type'] = null! satisfies SchemaModels.ServerEventType
+	const _1: SchemaModels.ServerEventType = null! satisfies Event['type']
+}
 
 export type ResetEvent = {
 	type: 'RESET'

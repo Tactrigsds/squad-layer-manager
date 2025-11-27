@@ -79,6 +79,18 @@ export function toCold<T>(task: () => Rx.ObservableInput<T>) {
 	})
 }
 
+// crude version of bufferTime which retains a reference to a shared buffer
+export function externBufferTime<T>(time: number, buffer: T[]) {
+	return (o: Rx.Observable<T>) =>
+		o.pipe(
+			Rx.map((v) => {
+				buffer.push(v)
+				return buffer
+			}),
+			Rx.sample(Rx.interval(time)),
+		)
+}
+
 export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }

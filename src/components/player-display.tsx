@@ -24,7 +24,7 @@ export function PlayerDisplay({ player, showTeam, showSquad, showRole, className
 				)}
 				<span className="font-semibold">{player.ids.username}</span>
 			</span>
-			{showTeam && player.teamId && (
+			{showTeam && (
 				<span className="flex flex-nowrap items-center gap-0">
 					(<MatchTeamDisplay matchId={matchId} teamId={player.teamId} />)
 				</span>

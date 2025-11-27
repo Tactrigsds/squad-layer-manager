@@ -1,6 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models'
+import * as SM from '@/models/squad.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -249,6 +250,11 @@ export function getTeamNormalizedUnitProp(offset: number, team: 'A' | 'B' | 'tea
 export function getTeamNormalizedAllianceProp(offset: number, team: 'A' | 'B' | 'teamA' | 'teamB') {
 	const props = ['Alliance_1', 'Alliance_2'] as const
 	return props[(offset + Number(team === 'B')) % 2]
+}
+
+export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
+	const normIds = ['A', 'B'] as const
+	return normIds[(parity + teamId - 1) % 2]
 }
 
 export function getActiveTriggerEvents(state: PublicMatchHistoryState) {

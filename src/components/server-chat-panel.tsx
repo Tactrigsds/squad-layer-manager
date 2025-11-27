@@ -5,6 +5,7 @@ import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
@@ -17,14 +18,37 @@ import * as Zus from 'zustand'
 import ShortLayerName from './short-layer-name'
 
 const CHANNEL_STYLES = {
-	ChatAll: { border: 'border-r-white', text: 'text-white', gradient: 'from-white/10' },
-	ChatTeam: { border: 'border-r-blue-500', text: 'text-blue-500', gradient: 'from-blue-500/10' },
-	ChatSquad: { border: 'border-r-green-500', text: 'text-green-500', gradient: 'from-green-500/10' },
-	ChatAdmin: { border: 'border-r-blue-300', text: 'text-blue-300', gradient: 'from-blue-300/10' },
+	ChatAll: { color: 'white', gradientColor: 'rgba(255, 255, 255, 0.1)' },
+	ChatTeam: { color: 'rgb(59, 130, 246)', gradientColor: 'rgba(59, 130, 246, 0.1)' },
+	ChatSquad: { color: 'rgb(34, 197, 94)', gradientColor: 'rgba(34, 197, 94, 0.1)' },
+	ChatAdmin: { color: 'rgb(147, 197, 253)', gradientColor: 'rgba(147, 197, 253, 0.1)' },
 } as const
 
 function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' }> }) {
-	const channelStyle = CHANNEL_STYLES[event.channel.type]
+	// Get team-specific color for team chats
+	const getChannelStyle = () => {
+		const baseStyle = CHANNEL_STYLES[event.channel.type]
+
+		if (event.channel.type === 'ChatTeam') {
+			const teamId = event.channel.teamId
+			const teamColor = DH.getTeamColor(teamId, event.matchId, false)
+			// Convert hex color to rgba for gradient
+			const hexToRgba = (hex: string, alpha: number) => {
+				const r = parseInt(hex.slice(1, 3), 16)
+				const g = parseInt(hex.slice(3, 5), 16)
+				const b = parseInt(hex.slice(5, 7), 16)
+				return `rgba(${r}, ${g}, ${b}, ${alpha})`
+			}
+			return {
+				color: teamColor,
+				gradientColor: hexToRgba(teamColor, 0.1),
+			}
+		}
+
+		return baseStyle
+	}
+
+	const channelStyle = getChannelStyle()
 
 	const channelLabel = (() => {
 		switch (event.channel.type) {
@@ -41,13 +65,23 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 
 	return (
 		<div
-			className={`flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent ${channelStyle.border} ${channelStyle.gradient}`}
+			style={{
+				display: 'flex',
+				gap: '0.5rem',
+				paddingTop: '0.25rem',
+				paddingBottom: '0.25rem',
+				fontSize: '0.75rem',
+				width: '100%',
+				minWidth: 0,
+				borderRight: `2px solid ${channelStyle.color}`,
+				backgroundImage: `linear-gradient(to left, transparent, ${channelStyle.gradientColor})`,
+			}}
 		>
 			<EventTime time={event.time} />
-			<div className="flex flex-wrap flex-grow items-start gap-x-2 min-w-0">
+			<div style={{ display: 'flex', flexWrap: 'wrap', flexGrow: 1, alignItems: 'flex-start', gap: '0.5rem', minWidth: 0 }}>
 				{event.channel.type === 'ChatSquad'
 					? (
-						<span className={channelStyle.text}>
+						<span style={{ color: channelStyle.color }}>
 							(<SquadDisplay
 								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId }}
 								matchId={event.matchId}
@@ -57,17 +91,19 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 						</span>
 					)
 					: (
-						<span className={channelStyle.text} title={channelLabel ? `this message was sent in ${channelLabel} chat` : undefined}>
+						<span
+							style={{ color: channelStyle.color }}
+							title={channelLabel ? `this message was sent in ${channelLabel} chat` : undefined}
+						>
 							({channelLabel})
 						</span>
 					)}
-				<PlayerDisplay player={event.player} matchId={event.matchId} />:
-				<span className="break-words min-w-0 flex-shrink-0">{event.message}</span>
+				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam={['ChatAll', 'ChatAdmin'].includes(event.channel.type)} />:
+				<span style={{ wordBreak: 'break-word', minWidth: 0, flexShrink: 0 }}>{event.message}</span>
 			</div>
 		</div>
 	)
 }
-
 function PlayerConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CONNECTED' }> }) {
 	return (
 		<div className="flex items-start gap-2 py-1 text-muted-foreground">
@@ -363,11 +399,13 @@ export default function ServerChatPanel() {
 	const prevEventCount = React.useRef(0)
 
 	React.useEffect(() => {
-		if (eventBuffer.length > prevEventCount.current && scrollRef.current) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+		if (eventBuffer.length > prevEventCount.current) {
+			prevEventCount.current = eventBuffer.length
+			setTimeout(() => {
+				scrollRef.current?.scrollIntoView()
+			}, 0)
 		}
-		prevEventCount.current = eventBuffer.length
-	}, [eventBuffer.length])
+	}, [eventBuffer])
 
 	return (
 		<Card className="flex flex-col h-full min-w-[500px]">

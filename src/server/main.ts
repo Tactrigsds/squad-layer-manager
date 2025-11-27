@@ -8,6 +8,7 @@ import * as C from './context.ts'
 import * as DB from './db'
 import * as Env from './env.ts'
 import { baseLogger, ensureLoggerSetup } from './logger.ts'
+import * as CleanupSys from './systems/cleanup'
 import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
 import * as Fastify from './systems/fastify.ts'
@@ -25,6 +26,7 @@ await C.spanOp('main', { tracer }, async () => {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
+	CleanupSys.setup()
 	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	Rbac.setup()

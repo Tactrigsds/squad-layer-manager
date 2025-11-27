@@ -1,5 +1,6 @@
 import { bigint, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
+import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_TYPE } from './enums'
 
 export const matchHistory = mysqlTable(
 	'matchHistory',
@@ -37,7 +38,6 @@ export const matchHistory = mysqlTable(
 	}),
 )
 
-export const TRIGGER_LEVEL = ['info', 'warn', 'violation'] as const
 export const balanceTriggerEvents = mysqlTable(
 	'balanceTriggerEvents',
 	{
@@ -47,8 +47,21 @@ export const balanceTriggerEvents = mysqlTable(
 		matchTriggeredId: int('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		// the generic form of the message
 		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
-		level: mysqlEnum(TRIGGER_LEVEL).notNull(),
+		level: mysqlEnum(BALANCE_TRIGGER_LEVEL.options).notNull(),
 		evaluationResult: json('evaluationResult').notNull(),
+	},
+)
+
+export const serverEvents = mysqlTable(
+	'serverEvents',
+	{
+		id: int('id').primaryKey().autoincrement(),
+		type: mysqlEnum('type', SERVER_EVENT_TYPE.options).notNull(),
+		time: timestamp('time').notNull(),
+		matchId: int('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
+		// TODO right now code just assumes one version, this is here for forwards compatibility
+		version: int('version').default(1),
+		data: json('data').notNull(),
 	},
 )
 

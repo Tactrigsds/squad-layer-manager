@@ -16,7 +16,7 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 
 	return (
 		<span className={cn('inline-flex flex-nowrap items-center gap-1', className)}>
-			<span className="text-muted-foreground text-xs">
+			<span className="text-xs">
 				Squad {squad.squadId}
 			</span>
 			{shouldShowName && <span className="font-semibold">"{squad.squadName}"</span>}
