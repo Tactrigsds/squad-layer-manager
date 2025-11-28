@@ -1152,10 +1152,9 @@ function* generateSyntheticEvents(
 
 		if (
 			player.squadId !== null && player.teamId !== null && !SM.Squads.idsEqual(player, prev)
-			&& !prevSquads.find(s => SM.Squads.idsEqual(s, player))
 		) {
-			// we're assuming here that if the player *just* joined a squad and is the leader, then they created the squad. this isn't *technically* safe but the edgecase should be pretty benign. if this becomes an issue we will have pull in data from the squadsList (.creator) to deal with it
-			if (player.isLeader) continue
+			// we're assuming here that if the player *just* joined a new squad and is the leader, then they created the squad. this isn't *technically* safe but the edgecase should be pretty benign. if this becomes an issue we will have pull in data from the squadsList (.creator) to deal with it
+			if (!prevSquads.find(s => SM.Squads.idsEqual(s, player)) && player.isLeader) continue
 			yield {
 				type: 'PLAYER_JOINED_SQUAD',
 				playerIds: player.ids,
