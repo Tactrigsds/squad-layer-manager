@@ -148,9 +148,13 @@ export function MatchHistoryPanelContent() {
 									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
 								)}
 							</TableHead>
-							<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
 							<TableHead className="text-center px-0.5 flex flex-row justify-end items-center" title="Layer Indicators">
 								<Icons.Flag />
+							</TableHead>
+							<TableHead className="hidden min-[900px]:table-cell pr-0.5">
+								<span title="Set By">
+									<Icons.User />
+								</span>
 							</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -376,11 +380,6 @@ function MatchHistoryRow({
 						{rightTeam}
 					</TableCell>
 
-					<TableCell>
-						<span className="w-full flex justify-center">
-							<LayerSourceDisplay source={entry.layerSource} />
-						</span>
-					</TableCell>
 					<TableCell className="text-center">
 						{TriggerIcon && entryTriggerAlerts.length > 0 && (
 							<Tooltip delayDuration={0}>
@@ -402,6 +401,12 @@ function MatchHistoryRow({
 							</Tooltip>
 						)}
 						{violationDisplayElt}
+					</TableCell>
+
+					<TableCell>
+						<span className="w-full flex justify-center">
+							<LayerSourceDisplay source={entry.layerSource} />
+						</span>
 					</TableCell>
 				</TableRow>
 			</ContextMenuTrigger>
