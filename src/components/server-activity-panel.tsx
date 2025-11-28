@@ -571,9 +571,10 @@ function ServerCounts() {
 	)
 }
 
+const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
+const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
+
 export default function ServerActivityPanel() {
-	const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
-	const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const cardRef = React.useRef<HTMLDivElement>(null)
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
