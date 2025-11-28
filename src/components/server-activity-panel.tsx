@@ -272,14 +272,13 @@ function AdminBroadcastEvent({ event }: { event: Extract<CHAT.EventEnriched, { t
 	})()
 
 	return (
-		<div className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent border-r-yellow-500 from-yellow-500/10">
+		<div className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline border-r-yellow-500 from-yellow-500/10">
 			<EventTime time={event.time} />
-			<div className="flex flex-wrap flex-grow items-start gap-x-2 min-w-0">
+			<div className="flex-grow min-w-0">
 				<span className="text-yellow-500" title="admin broadcast message">
 					(broadcast)
 				</span>
-				{fromDisplay}:
-				<span className="break-words min-w-0 flex-shrink-0 whitespace-pre-wrap">{event.message}</span>
+				{fromDisplay}: <span className="break-words">{event.message}</span>
 			</div>
 		</div>
 	)
