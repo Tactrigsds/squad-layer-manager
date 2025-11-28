@@ -1,5 +1,5 @@
-import * as SchemaModels from '$root/drizzle/schema.models.ts'
-import * as Schema from '$root/drizzle/schema.ts'
+import type * as SchemaModels from '$root/drizzle/schema.models.ts'
+
 import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
@@ -944,10 +944,6 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 	const matchId = match.historyEntryId
 
 	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
-	const deferOpts = {
-		ttl: CONFIG.squadServer.sftpPollInterval / 4,
-		timeout: CONFIG.squadServer.sftpPollInterval * 2,
-	}
 
 	const base = {
 		matchId,

@@ -3,8 +3,8 @@ import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
 import ServerPlayerList from '@/components/server-state-panel'
 import { SquadDisplay } from '@/components/squad-display'
-import { getTeamsDisplay, MatchTeamDisplay } from '@/components/teams-display'
-import { Badge } from '@/components/ui/badge'
+import { MatchTeamDisplay } from '@/components/teams-display'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,8 +12,8 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
-import * as MH from '@/models/match-history.models'
-import type * as SM from '@/models/squad.models'
+
+
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
@@ -601,7 +601,7 @@ export default function ServerChatPanel() {
 
 			const currentWidth = window.innerWidth
 			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
-			const wasBelowThreshold = !hasBeenAboveThresholdRef.current
+			
 
 			// If we've crossed above the threshold, mark it
 			if (isAboveThreshold) {

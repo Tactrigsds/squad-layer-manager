@@ -1,5 +1,5 @@
-import * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object'
+import type * as SchemaModels from '$root/drizzle/schema.models'
+
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'

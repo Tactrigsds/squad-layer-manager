@@ -1,5 +1,5 @@
 import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
-import * as Obj from '@/lib/object'
+
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'

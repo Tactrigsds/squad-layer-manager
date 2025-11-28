@@ -1,13 +1,12 @@
 import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models'
+
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as SLLClient from '@/systems.client/shared-layer-list.client'
+
 import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
-import { cn } from '../lib/utils'
 
 export function TeamIndicator(props: { team: 'A' | 'B' | SM.TeamId }) {
 	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>({props.team})</span>
@@ -24,7 +23,7 @@ export function getTeamsDisplay(
 
 	const teams = [
 		<TeamFactionDisplay
-			key={'1'}
+			key="1"
 			parity={teamParity ?? 0}
 			includeUnits={includeUnits}
 			layer={_partialLayer}
@@ -32,7 +31,7 @@ export function getTeamsDisplay(
 			showAltTeamIndicator={true}
 		/>,
 		<TeamFactionDisplay
-			key={'2'}
+			key="2"
 			parity={teamParity ?? 0}
 			includeUnits={includeUnits}
 			layer={_partialLayer}

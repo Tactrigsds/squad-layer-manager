@@ -1,31 +1,28 @@
 import CombinedDashboardPanel from '@/components/combined-dashboard-panel.tsx'
 import ServerChatPanel from '@/components/server-chat-panel.tsx'
-import ServerStatsPanel from '@/components/server-stats-panel.tsx'
+
 import { TeamIndicator } from '@/components/teams-display.tsx'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import * as DH from '@/lib/display-helpers.ts'
+
 import * as ST from '@/lib/state-tree.ts'
-import * as BAL from '@/models/balance-triggers.models'
+
 import * as SLL from '@/models/shared-layer-list'
-import * as RBAC from '@/rbac.models'
+
 import * as ConfigClient from '@/systems.client/config.client.ts'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
-import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
+
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
-import { useLoggedInUser } from '@/systems.client/users.client'
+
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import BalanceTriggerAlert from './balance-trigger-alert.tsx'
+
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
@@ -177,14 +174,6 @@ export function QueuePanelContent() {
 				<LayerList store={SLLClient.Store} />
 			</CardContent>
 		</>
-	)
-}
-
-function QueuePanel() {
-	return (
-		<Card>
-			<QueuePanelContent />
-		</Card>
 	)
 }
 

@@ -2,7 +2,7 @@ import * as Typo from '@/lib/typography'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 import { z } from 'zod'
 
 export function toShortUnit(unit: string | null) {

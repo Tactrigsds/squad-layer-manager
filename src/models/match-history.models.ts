@@ -1,7 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
 import * as LL from '@/models/layer-list.models'
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'

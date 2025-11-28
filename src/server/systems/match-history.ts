@@ -157,7 +157,7 @@ export const addNewCurrentMatch = C.spanOp(
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', {
 	tracer,
 	eventLogLevel: 'info',
-	extraText: (ctx) => `id: ${getCurrentMatch(ctx)}`,
+	extraText: (ctx) => `id: ${getCurrentMatch(ctx).historyEntryId}`,
 	attrs: (ctx, currentLayerId) => ({
 		currentLayerId,
 		currentMatchId: getCurrentMatch(ctx).historyEntryId,

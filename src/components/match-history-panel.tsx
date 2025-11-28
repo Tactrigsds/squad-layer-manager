@@ -23,7 +23,7 @@ import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
-import { Badge } from './ui/badge'
+
 import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
@@ -330,9 +330,7 @@ function MatchHistoryRow({
 			</span>
 		)
 	}
-	const gameRuntime = (entry.startTime && entry.status === 'post-game')
-		? entry.endTime.getTime() - entry.startTime.getTime()
-		: undefined
+
 	const visibleIndex = index + 1
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(
@@ -441,32 +439,4 @@ function TableHead({ className = '', ...props }: React.ComponentProps<typeof Sha
 
 function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
 	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
-}
-
-function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
-	// Format the start time as HH:mm:ss (24-hour format)
-	const formattedStartTime = dateFns.format(startTime, 'HH:mm')
-
-	// Calculate time difference from now
-	const difference = dateFns.differenceInHours(new Date(), startTime)
-	let timeDifferenceText = ''
-	if (difference === 0) {
-		timeDifferenceText = `${Math.floor(dateFns.differenceInMinutes(new Date(), startTime))} minutes ago`
-	} else {
-		timeDifferenceText = `${Math.floor(difference)} hours ago`
-	}
-
-	// Calculate match length in minutes if runtime is available
-	if (gameRuntime) {
-		// Convert milliseconds to minutes and round to nearest whole number
-		const matchLengthMinutes = Math.round(gameRuntime / (1000 * 60))
-		return (
-			<span title={timeDifferenceText}>
-				{formattedStartTime}
-				<span className="text-muted-foreground">({matchLengthMinutes}m)</span>
-			</span>
-		)
-	}
-
-	return <span title={timeDifferenceText}>{formattedStartTime}</span>
 }
