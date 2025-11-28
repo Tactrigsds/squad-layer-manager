@@ -152,11 +152,7 @@ function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps)
 	)
 }
 
-interface ServerPlayerListProps {
-	onClose: () => void
-}
-
-export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
+export default function ServerPlayerList() {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
@@ -191,15 +187,6 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 
 	return (
 		<div className="flex h-full relative">
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={onClose}
-				className="h-8 w-6 p-0 absolute -left-6 top-0 z-10"
-				title="Hide server state"
-			>
-				<Icons.ChevronRight className="h-3 w-3" />
-			</Button>
 			<div className="flex-1 overflow-hidden border-l pl-4">
 				<ScrollArea className="h-full">
 					<div className="flex flex-col pr-4">

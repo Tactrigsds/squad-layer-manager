@@ -8,6 +8,8 @@ import * as L from './layer'
 
 export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 
+export const MAX_RECENT_MATCHES = 100
+
 type MatchDetailsCommon = {
 	layerSource: LL.Source
 	ordinal: number

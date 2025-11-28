@@ -28,6 +28,8 @@ import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
 
+const MAX_PAGES = 5
+
 export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
@@ -37,24 +39,6 @@ export function MatchHistoryPanelContent() {
 		const allEntries = [...(history ?? [])].reverse()
 		const matchesByDate = new Map<string, typeof allEntries>()
 
-		const earliestStartTime = allEntries.map(entry => entry.startTime).filter(v => !!v).sort((a, b) => a.getTime() - b.getTime())[0]
-		const earliestStartDate = earliestStartTime ? dateFns.format(earliestStartTime, 'yyyy-MM-dd') : null
-
-		// Fill in all dates from earliest to today
-		if (earliestStartDate) {
-			let currentDate = new Date(earliestStartDate + 'T00:00:00')
-			const today = new Date()
-			today.setHours(0, 0, 0, 0)
-
-			while (currentDate <= today) {
-				const dateStr = dateFns.format(currentDate, 'yyyy-MM-dd')
-				if (!matchesByDate.has(dateStr)) {
-					matchesByDate.set(dateStr, [])
-				}
-				currentDate = dateFns.addDays(currentDate, 1)
-			}
-		}
-
 		// Add matches with startTime grouped by date
 		for (const entry of allEntries) {
 			if (entry.startTime) {
@@ -63,8 +47,6 @@ export function MatchHistoryPanelContent() {
 					matchesByDate.set(dateStr, [])
 				}
 				matchesByDate.get(dateStr)!.push(entry)
-			} else {
-				continue
 			}
 		}
 
@@ -72,61 +54,99 @@ export function MatchHistoryPanelContent() {
 		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
 	}, [history])
 
-	// -------- Date-based pagination --------
+	// -------- Page-based navigation --------
 	const [currentPage, setCurrentPage] = React.useState(1)
 
-	const totalPages = Math.max(availableDates.length, 1)
+	const totalPages = Math.min(availableDates.length, MAX_PAGES)
 	const currentDate = availableDates[currentPage - 1]
-	let currentEntries = [...currentDate ? matchesByDate.get(currentDate) || [] : []]
+	let currentEntries = currentDate ? [...matchesByDate.get(currentDate) || []] : []
 	if (!showFullDay) currentEntries = currentEntries.slice(0, 5)
 	currentEntries.reverse()
 
-	// Reset to page 1 if current page is beyond available dates
-	React.useEffect(() => {
-		if (currentPage > totalPages && totalPages > 0) {
-			setCurrentPage(1)
-		}
-	}, [currentPage, totalPages])
-
 	// -------- Page navigation --------
-	const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages))
-	const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1))
+	const goToFirstPage = () => {
+		setCurrentPage(1)
+		setShowFullDay(true)
+	}
+	const goToPrevPage = () => {
+		setCurrentPage(prev => Math.max(prev - 1, 1))
+		setShowFullDay(true)
+	}
+	const goToNextPage = () => {
+		setCurrentPage(prev => Math.min(prev + 1, totalPages))
+		setShowFullDay(true)
+	}
+	const goToLastPage = () => {
+		setCurrentPage(totalPages)
+		setShowFullDay(true)
+	}
 
 	// -------- Date display helpers --------
-	const getDateDisplayText = (dateStr: string) => {
-		const today = new Date()
-		const date = new Date(dateStr + 'T00:00:00')
+	const getDateDisplayText = () => {
+		if (!currentDate) return 'No matches'
 
-		return date.toLocaleDateString() + (dateFns.isSameDay(date, today) ? ' (Today)' : '')
+		const date = new Date(currentDate + 'T00:00:00')
+		const today = new Date()
+		today.setHours(0, 0, 0, 0)
+
+		if (dateFns.isSameDay(date, today)) {
+			return 'Today'
+		} else if (dateFns.isSameDay(date, dateFns.subDays(today, 1))) {
+			return 'Yesterday'
+		} else {
+			return dateFns.format(date, 'MMM d, yyyy')
+		}
 	}
 
 	return (
 		<>
 			<CardHeader className="flex flex-row justify-between items-start">
 				<CardTitle>Match History</CardTitle>
-				{availableDates.length > 1 && showFullDay && (
-					<div className="flex items-center justify-center space-x-2 mt-4">
+				<div className="flex items-center gap-1">
+					<div className="flex items-center">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToFirstPage}
+							disabled={currentPage === 1}
+							className="rounded-r-none px-2"
+						>
+							<Icons.ChevronsLeft className="h-4 w-4" />
+						</Button>
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={goToPrevPage}
 							disabled={currentPage === 1}
+							className="rounded-l-none border-l-0 px-2"
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
-						<span className="text-sm font-mono">
-							<span>{currentDate ? getDateDisplayText(currentDate) : 'No matches'}</span>
-						</span>
+					</div>
+					<span className="text-sm font-mono min-w-[100px] text-center px-2">
+						{getDateDisplayText()}
+					</span>
+					<div className="flex items-center">
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={goToNextPage}
-							disabled={currentPage === availableDates.length}
+							disabled={currentPage === totalPages}
+							className="rounded-r-none px-2"
 						>
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={goToLastPage}
+							disabled={currentPage === totalPages}
+							className="rounded-l-none border-l-0 px-2"
+						>
+							<Icons.ChevronsRight className="h-4 w-4" />
+						</Button>
 					</div>
-				)}
+				</div>
 			</CardHeader>
 			<CardContent className="px-1">
 				<Table>
@@ -159,26 +179,44 @@ export function MatchHistoryPanelContent() {
 						</TableRow>
 					</TableHeader>
 					<TableBody>
+						{currentDate && matchesByDate.get(currentDate) && matchesByDate.get(currentDate)!.length > 5 && (
+							<TableRow>
+								<TableCell colSpan={100} className="p-0">
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => setShowFullDay(!showFullDay)}
+										className="w-full h-7 rounded-none"
+									>
+										{showFullDay
+											? (
+												<>
+													<Icons.ChevronsDownUp className="h-4 w-4 mr-1" />Show Less
+												</>
+											)
+											: (
+												<>
+													<Icons.ChevronsUpDown className="h-4 w-4 mr-1" />Show full day
+												</>
+											)}
+									</Button>
+								</TableCell>
+							</TableRow>
+						)}
 						{currentEntries.length === 0
 							? (
 								<TableRow>
 									<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell">
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+										No matches found
 									</TableCell>
 									<TableCell
 										colSpan={7}
 										className="text-center text-muted-foreground py-8 hidden min-[820px]:table-cell min-[900px]:hidden"
 									>
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+										No matches found
 									</TableCell>
 									<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden">
-										{availableDates.length === 0
-											? 'No matches found'
-											: `No matches for ${currentDate ? getDateDisplayText(currentDate) : 'this date'}`}
+										No matches found
 									</TableCell>
 								</TableRow>
 							)
@@ -197,26 +235,6 @@ export function MatchHistoryPanelContent() {
 							})}
 					</TableBody>
 				</Table>
-				{currentDate && matchesByDate.get(currentDate) && matchesByDate.get(currentDate)!.length > 5 && (
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => setShowFullDay(!showFullDay)}
-						className="w-full h-8 mt-2"
-					>
-						{showFullDay
-							? (
-								<>
-									Show Less<Icons.ChevronUp className="h-4 w-4" />
-								</>
-							)
-							: (
-								<>
-									Show full day<Icons.ChevronDown className="h-4 w-4" />
-								</>
-							)}
-					</Button>
-				)}
 			</CardContent>
 		</>
 	)

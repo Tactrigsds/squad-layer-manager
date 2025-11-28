@@ -35,23 +35,70 @@ import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayerQueueDashboard() {
+	const [activeTab, setActiveTab] = React.useState<'dashboard' | 'chat'>('dashboard')
+	const [isDesktop, setIsDesktop] = React.useState(false)
+
+	React.useEffect(() => {
+		const mediaQuery = window.matchMedia('(min-width: 1280px)')
+		setIsDesktop(mediaQuery.matches)
+
+		const handleChange = (e: MediaQueryListEvent) => {
+			setIsDesktop(e.matches)
+		}
+
+		mediaQuery.addEventListener('change', handleChange)
+		return () => mediaQuery.removeEventListener('change', handleChange)
+	}, [])
+
 	return (
 		<div className="mx-auto grid place-items-center">
-			<div className="grid grid-cols-[auto,auto] gap-2">
-				{/* Desktop: Show only NormTeamsSwitch */}
-				<div className="col-span-2 justify-between flex">
-					<NormTeamsSwitch />
-					<UserPresencePanel />
-				</div>
-				{/* left column */}
+			{!isDesktop && (
+				/* Mobile/tablet: Single column with tabs */
 				<div className="flex flex-col gap-2">
-					<CombinedDashboardPanel />
+					{/* Top line - always visible */}
+					<div className="justify-between flex items-center">
+						<div className="flex items-center gap-2">
+							<TabsList
+								options={[
+									{ value: 'dashboard', label: 'Dashboard' },
+									{ value: 'chat', label: 'Chat' },
+								]}
+								active={activeTab}
+								setActive={setActiveTab}
+							/>
+							<NormTeamsSwitch />
+						</div>
+						<UserPresencePanel />
+					</div>
+
+					{/* Content based on active tab */}
+					<div className={activeTab === 'dashboard' ? 'flex flex-col gap-2' : 'hidden'}>
+						<CombinedDashboardPanel />
+					</div>
+					<div className={activeTab === 'chat' ? 'flex gap-2' : 'hidden'}>
+						<ServerChatPanel />
+					</div>
 				</div>
-				{/* right column */}
-				<div className="flex gap-2">
-					<ServerChatPanel />
+			)}
+
+			{isDesktop && (
+				/* Desktop: Two column layout */
+				<div className="grid grid-cols-[auto,auto] gap-2">
+					{/* Top line */}
+					<div className="col-span-2 justify-between flex">
+						<NormTeamsSwitch />
+						<UserPresencePanel />
+					</div>
+					{/* left column */}
+					<div className="flex flex-col gap-2">
+						<CombinedDashboardPanel />
+					</div>
+					{/* right column */}
+					<div className="flex gap-2">
+						<ServerChatPanel />
+					</div>
 				</div>
-			</div>
+			)}
 		</div>
 	)
 }

@@ -423,7 +423,7 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	}
 }
 
-function ServerChatEvents(props: { className?: string }) {
+function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -457,7 +457,10 @@ function ServerChatEvents(props: { className?: string }) {
 	}, [eventBuffer, eventFilterState])
 
 	const scrollToBottom = () => {
-		bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
+		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+		if (scrollElement) {
+			scrollElement.scrollTop = scrollElement.scrollHeight
+		}
 		setNewMessageCount(0)
 	}
 
@@ -512,33 +515,46 @@ function ServerChatEvents(props: { className?: string }) {
 	}, [])
 
 	return (
-		<ScrollArea className={props.className} ref={scrollAreaRef}>
-			<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[600px] relative">
-				{filteredEvents.length === 0
-					? (
-						<div className="text-muted-foreground text-sm text-center py-8">
-							No events yet
-						</div>
-					)
-					: (
-						filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
+		<div className="relative h-full">
+			{props.onToggleStatePanel && (
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={props.onToggleStatePanel}
+					className="h-8 w-6 p-0 absolute top-0 right-0 z-20"
+					title={`${props.isStatePanelOpen ? 'Hide' : 'Show'} player list`}
+				>
+					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
+				</Button>
+			)}
+			<ScrollArea className={props.className} ref={scrollAreaRef}>
+				<div className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+					{filteredEvents.length === 0
+						? (
+							<div className="text-muted-foreground text-sm text-center py-8">
+								No events yet
+							</div>
+						)
+						: (
+							filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
+						)}
+					<div ref={bottomRef} />
+					{showScrollButton && (
+						<Button
+							onClick={() => scrollToBottom()}
+							variant="secondary"
+							className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+							title="Scroll to bottom"
+						>
+							<Icons.ChevronDown className="h-4 w-4" />
+							<span className="text-xs">
+								{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+							</span>
+						</Button>
 					)}
-				<div ref={bottomRef} />
-				{showScrollButton && (
-					<Button
-						onClick={() => scrollToBottom()}
-						variant="secondary"
-						className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
-						title="Scroll to bottom"
-					>
-						<Icons.ChevronDown className="h-4 w-4" />
-						<span className="text-xs">
-							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
-						</span>
-					</Button>
-				)}
-			</div>
-		</ScrollArea>
+				</div>
+			</ScrollArea>
+		</div>
 	)
 }
 
@@ -557,11 +573,15 @@ function ServerCounts() {
 }
 
 export default function ServerChatPanel() {
-	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(true)
+	const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
+	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const cardRef = React.useRef<HTMLDivElement>(null)
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const setEventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
+
+	// Track viewport width state for auto-closing the panel
+	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 
 	React.useEffect(() => {
 		const calculateMaxHeight = () => {
@@ -576,12 +596,36 @@ export default function ServerChatPanel() {
 			setMaxHeight(availableHeight)
 		}
 
+		const handleResize = () => {
+			calculateMaxHeight()
+
+			const currentWidth = window.innerWidth
+			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
+			const wasBelowThreshold = !hasBeenAboveThresholdRef.current
+
+			// If we've crossed above the threshold, mark it
+			if (isAboveThreshold) {
+				hasBeenAboveThresholdRef.current = true
+			}
+
+			// Only auto-close if:
+			// 1. We're below the threshold
+			// 2. We've been above the threshold at some point (this prevents auto-close if user manually opened while below)
+			// 3. The panel is currently open
+			if (!isAboveThreshold && hasBeenAboveThresholdRef.current && isStatePanelOpen) {
+				setIsStatePanelOpen(false)
+				// Reset the flag so if user manually opens, we won't auto-close again until they resize above threshold
+				hasBeenAboveThresholdRef.current = false
+			}
+		}
+
 		// Calculate on mount and window resize
 		calculateMaxHeight()
-		window.addEventListener('resize', calculateMaxHeight)
+		handleResize()
+		window.addEventListener('resize', handleResize)
 
-		return () => window.removeEventListener('resize', calculateMaxHeight)
-	}, [])
+		return () => window.removeEventListener('resize', handleResize)
+	}, [isStatePanelOpen])
 
 	return (
 		<Card
@@ -601,22 +645,15 @@ export default function ServerChatPanel() {
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-[10em]">
 				<div className="flex gap-4 h-full">
-					<ServerChatEvents className="flex-1 overflow-hidden relative" />
+					<ServerChatEvents
+						className="flex-1 h-full"
+						onToggleStatePanel={() => setIsStatePanelOpen(!isStatePanelOpen)}
+						isStatePanelOpen={isStatePanelOpen}
+					/>
 					{isStatePanelOpen && (
 						<div className="w-[240px] flex-shrink-0">
-							<ServerPlayerList onClose={() => setIsStatePanelOpen(false)} />
+							<ServerPlayerList />
 						</div>
-					)}
-					{!isStatePanelOpen && (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => setIsStatePanelOpen(true)}
-							className="h-8 px-2 flex-shrink-0"
-							title={`${isStatePanelOpen ? 'Hide' : 'Show'} player list`}
-						>
-							<Icons.ChevronLeft className="h-4 w-4" />
-						</Button>
 					)}
 				</div>
 			</CardContent>

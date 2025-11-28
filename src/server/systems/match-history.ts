@@ -22,7 +22,6 @@ import { CONFIG } from '../config'
 import orpcBase from '../orpc-base'
 import * as UsersClient from './users'
 
-export const MAX_RECENT_MATCHES = 100
 const tracer = Otel.trace.getTracer('match-history')
 
 export type MatchHistoryContext = {
@@ -92,8 +91,8 @@ export const loadState = C.spanOp(
 				Arr.upsertOn(state.parts.users, user, 'discordId')
 			}
 		}
-		if (state.recentMatches.length > MAX_RECENT_MATCHES) {
-			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MAX_RECENT_MATCHES, state.recentMatches.length)
+		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
+			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
 	},
 )
