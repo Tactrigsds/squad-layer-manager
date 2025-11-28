@@ -87,11 +87,6 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	const teamPlayers = players.filter(p => p.teamId === teamId)
 	const teamSquads = squads.filter(s => s.teamId === teamId)
 
-	if (teamPlayers.length === 0) {
-		console.log('No players found for team', teamId)
-		return null
-	}
-
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
@@ -102,22 +97,32 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 				<span className="text-xs text-muted-foreground whitespace-nowrap">({teamPlayers.length})</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="pt-2">
-				{teamSquads.map((squad) => {
-					const squadPlayers = teamPlayers.filter(p => p.squadId === squad.squadId)
-					return (
-						<SquadSection
-							key={squad.squadId}
-							squad={squad}
-							players={squadPlayers}
-							matchId={matchId}
-						/>
+				{teamPlayers.length === 0
+					? (
+						<div className="text-muted-foreground text-xs text-center py-2 px-2">
+							No players on this team
+						</div>
 					)
-				})}
-				<SquadSection
-					squad={null}
-					players={teamPlayers.filter(p => p.squadId === null)}
-					matchId={matchId}
-				/>
+					: (
+						<>
+							{teamSquads.map((squad) => {
+								const squadPlayers = teamPlayers.filter(p => p.squadId === squad.squadId)
+								return (
+									<SquadSection
+										key={squad.squadId}
+										squad={squad}
+										players={squadPlayers}
+										matchId={matchId}
+									/>
+								)
+							})}
+							<SquadSection
+								squad={null}
+								players={teamPlayers.filter(p => p.squadId === null)}
+								matchId={matchId}
+							/>
+						</>
+					)}
 			</CollapsibleContent>
 		</Collapsible>
 	)
