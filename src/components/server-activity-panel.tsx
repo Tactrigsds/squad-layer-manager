@@ -13,6 +13,7 @@ import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 
+import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
@@ -31,13 +32,15 @@ const CHANNEL_STYLES = {
 
 function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
+
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {
 		const baseStyle = CHANNEL_STYLES[event.channel.type]
 
 		if (event.channel.type === 'ChatTeam' && match) {
 			const teamId = event.channel.teamId
-			const teamColor = DH.getTeamColor(teamId, match.ordinal, false)
+			const teamColor = DH.getTeamColor(teamId, match.ordinal, displayTeamsNormalized)
 			// Convert hex color to rgba for gradient
 			const hexToRgba = (hex: string, alpha: number) => {
 				const r = parseInt(hex.slice(1, 3), 16)
@@ -54,18 +57,59 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		return baseStyle
 	}
 
+	if (!event.player.teamId === null) return null
 	const channelStyle = getChannelStyle()
 
 	const channelLabel = (() => {
 		switch (event.channel.type) {
 			case 'ChatAll':
-				return 'all'
+				return (
+					<span
+						style={{ color: channelStyle.color }}
+						title="this message was sent in all chat"
+					>
+						(all)
+					</span>
+				)
 			case 'ChatTeam':
-				return `T${event.channel.teamId} chat`
+				return (
+					<span className="inline-flex gap-0">
+						(
+						<span
+							style={{ color: channelStyle.color }}
+							className="flex items-baseline flex-nowrap whitespace-nowrap gap-1"
+						>
+							<MatchTeamDisplay matchId={event.matchId} teamId={event.player.teamId!} />
+						</span>
+						)
+					</span>
+				)
 			case 'ChatSquad':
-				return null // Will be rendered as JSX
+				return (
+					<span className="inline-flex gap-0">
+						(<span
+							className="flex items-baseline flex-nowrap whitespace-nowrap gap-1"
+							style={{ color: channelStyle.color }}
+						>
+							<SquadDisplay
+								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId }}
+								matchId={event.matchId}
+								showName={false}
+								showTeam={false}
+							/>
+							<MatchTeamDisplay matchId={event.matchId} teamId={event.player.teamId!} />
+						</span>)
+					</span>
+				)
 			case 'ChatAdmin':
-				return 'admin'
+				return (
+					<span
+						style={{ color: channelStyle.color }}
+						title="this message was sent in admin chat"
+					>
+						(admin)
+					</span>
+				)
 		}
 	})()
 
@@ -79,25 +123,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		>
 			<EventTime time={event.time} />
 			<div className="flex-grow min-w-0">
-				{event.channel.type === 'ChatSquad'
-					? (
-						<span style={{ color: channelStyle.color }}>
-							(<SquadDisplay
-								squad={{ squadId: event.channel.squadId, squadName: '', teamId: event.channel.teamId }}
-								matchId={event.matchId}
-								showName={false}
-								showTeam={true}
-							/>)
-						</span>
-					)
-					: (
-						<span
-							style={{ color: channelStyle.color }}
-							title={channelLabel ? `this message was sent in ${channelLabel} chat` : undefined}
-						>
-							({channelLabel})
-						</span>
-					)}
+				{channelLabel}
 				<PlayerDisplay className="inline-block" player={event.player} matchId={event.matchId} showTeam={false} />
 				: <span className="break-words">{event.message}</span>
 			</div>
