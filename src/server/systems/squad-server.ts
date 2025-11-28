@@ -468,7 +468,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			next: events => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				if (events.length === 0) {
-					ctx.log.info('No synthetic events generated')
+					ctx.log.debug('No synthetic events generated')
 					return
 				}
 				for (const event of events) {
