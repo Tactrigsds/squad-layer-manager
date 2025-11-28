@@ -514,7 +514,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	}, [])
 
 	return (
-		<div className="relative h-full">
+		<div className="h-full w-full relative">
 			{props.onToggleStatePanel && (
 				<Button
 					variant="ghost"
@@ -641,10 +641,10 @@ export default function ServerActivityPanel() {
 				</div>
 				<ServerCounts />
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden min-h-[10em]">
+			<CardContent className="flex-1 overflow-hidden w-full min-h-[10em]">
 				<div className="flex gap-4 h-full">
 					<ServerChatEvents
-						className="flex-1 h-full min-w-[350px]"
+						className="flex-1 min-w-[350px] h-full"
 						onToggleStatePanel={() => setIsStatePanelOpen(!isStatePanelOpen)}
 						isStatePanelOpen={isStatePanelOpen}
 					/>
