@@ -80,6 +80,8 @@ export type SquadServer = {
 		// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
 		connected: SM.PlayerIds.Type[]
 
+		createdSquads: (SM.Squads.Key & { creatorIds: SM.PlayerIds.Type })[]
+
 		// server version of chat state which can be replicated to users
 		chat: CHAT.ChatState
 	}
@@ -313,6 +315,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			roundWinner: null,
 			joinRequests: new Map(),
 			connected: [],
+			createdSquads: [],
 			chat: Obj.deepClone(CHAT.INITIAL_CHAT_STATE),
 		},
 
@@ -379,6 +382,9 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			if (playersRes.code === 'ok' && squadsRes.code === 'ok') {
 				for (const player of playersRes.players) {
 					server.state.connected.push(player.ids)
+				}
+				for (const squad of squadsRes.squads) {
+					server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
 				}
 				ctx.server.chatReset$.next([ctx, {
 					type: 'RESET',
@@ -1066,7 +1072,7 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 			const squad = squadRes.squad
 			const creator = creatorRes.player
 
-			// const res = await
+			ctx.server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
 
 			return {
 				code: 'ok' as const,
@@ -1153,8 +1159,13 @@ function* generateSyntheticEvents(
 		if (
 			player.squadId !== null && player.teamId !== null && !SM.Squads.idsEqual(player, prev)
 		) {
-			// we're assuming here that if the player *just* joined a new squad and is the leader, then they created the squad. this isn't *technically* safe but the edgecase should be pretty benign. if this becomes an issue we will have pull in data from the squadsList (.creator) to deal with it
-			if (!prevSquads.find(s => SM.Squads.idsEqual(s, player)) && player.isLeader) continue
+			const playerCreatedSquad = ctx.server.state.createdSquads.find(s =>
+				SM.Squads.idsEqual(s, player) && SM.PlayerIds.match(player.ids, s.creatorIds)
+			)
+			const isNewSquad = !prevSquads.find(s => SM.Squads.idsEqual(s, player))
+			// if we violently thrash squad creations/leaves then we can maybe break this but that's unlikely
+			if (isNewSquad && playerCreatedSquad) continue
+
 			yield {
 				type: 'PLAYER_JOINED_SQUAD',
 				playerIds: player.ids,
@@ -1180,6 +1191,7 @@ function* generateSyntheticEvents(
 
 	for (const prevSquad of prevSquads) {
 		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
+		ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !SM.Squads.idsEqual(s, prevSquad))
 		yield {
 			type: 'SQUAD_DISBANDED',
 			squadId: prevSquad.squadId,
