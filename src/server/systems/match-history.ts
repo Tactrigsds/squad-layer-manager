@@ -246,7 +246,11 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 		await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
-			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) return
+			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
+				await loadState(ctx)
+				ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
+				return
+			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
 				serverId: ctx.serverId,
@@ -254,7 +258,7 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 				ordinal,
 				setByType: 'unknown',
 			}))
-			await loadState(ctx, { startAtOrdinal: ordinal })
+			await loadState(ctx)
 			ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
 		})
 	},

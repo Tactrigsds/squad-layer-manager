@@ -351,7 +351,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			const firstConnection = !previouslyConnected
 			previouslyConnected = true
 			await MatchHistory.resolvePotentialCurrentLayerConflict(ctx, statusRes.data.currentLayer)
-			ctx.log.info('rcon connection established, current layer synced with match history')
+			ctx.log.info('rcon connection established, match history is synced')
 
 			// set up chat state
 			const [playersRes, squadsRes] = await Promise.all([
@@ -533,11 +533,11 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	}
 
 	globalState.slices.set(serverId, slice)
-
-	await MatchHistory.loadState({ ...ctx, ...slice })
+	await server.historyConflictsResolved$
 	await LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
 	initNewGameHandling({ ...ctx, ...slice })
+	ctx.log.info('Initialized server %s', serverId)
 }
 
 // -------- Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
