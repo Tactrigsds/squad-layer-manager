@@ -644,7 +644,7 @@ export default function ServerActivityPanel() {
 			<CardContent className="flex-1 overflow-hidden min-h-[10em]">
 				<div className="flex gap-4 h-full">
 					<ServerChatEvents
-						className="flex-1 h-full"
+						className="flex-1 h-full min-w-[350px]"
 						onToggleStatePanel={() => setIsStatePanelOpen(!isStatePanelOpen)}
 						isStatePanelOpen={isStatePanelOpen}
 					/>
