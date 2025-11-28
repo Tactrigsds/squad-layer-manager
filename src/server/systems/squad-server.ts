@@ -540,7 +540,10 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	ctx.log.info('Initialized server %s', serverId)
 }
 
-// -------- Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
+/**
+ * Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
+ * TODO we could probably simplify this massively by just listening for the set layer evens in the logs lol
+ */
 function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 	const serverId = ctx.serverId
 	const currentLayerChanged$ = ctx.server.layersStatus.observe(ctx)
