@@ -15,14 +15,14 @@ export interface PlayerDisplayProps {
 
 export function PlayerDisplay({ player, showTeam, showSquad, showRole, className, matchId }: PlayerDisplayProps) {
 	return (
-		<span className={cn('inline-flex items-center gap-1', className)}>
-			<span className="flex items-center gap-0.5">
-				{player.isAdmin && (
-					<span title="This player is an Admin">
-						<Icons.ShieldCheckIcon className="w-4 h-4 text-background fill-blue-300" />
-					</span>
-				)}
-				<span className="font-semibold">{player.ids.username}</span>
+		<span className={cn('text-nowrap inline-flex items-baseline gap-0.5', className)}>
+			{player.isAdmin && (
+				<span title="This player is an Admin" className="inline-flex items-baseline">
+					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-blue-300" />
+				</span>
+			)}
+			<span className="font-bold">
+				{player.ids.username}
 			</span>
 			{showTeam && player.teamId !== null && (
 				<span className="flex flex-nowrap items-center gap-0">

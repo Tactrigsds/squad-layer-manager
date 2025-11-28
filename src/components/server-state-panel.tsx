@@ -6,6 +6,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type * as SM from '@/models/squad.models'
+import { GlobalSettingsStore } from '@/systems.client/global-settings'
+import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -92,7 +94,7 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
 				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
 				<span className="text-xs font-bold flex items-center flex-nowrap gap-1 whitespace-nowrap">
-					Team {teamId} <MatchTeamDisplay matchId={matchId} teamId={teamId} />
+					<MatchTeamDisplay matchId={matchId} teamId={teamId} showAltTeamIndicator={true} />
 				</span>
 				<span className="text-xs text-muted-foreground whitespace-nowrap">({teamPlayers.length})</span>
 			</CollapsibleTrigger>
@@ -125,13 +127,22 @@ interface ServerPlayerListProps {
 export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	// Get the most recent matchId from the event buffer
-	const currentMatchId = React.useMemo(() => {
-		if (eventBuffer.length === 0) return 0
-		return eventBuffer[eventBuffer.length - 1].matchId
-	}, [eventBuffer])
+	const currentMatchId = eventBuffer.length === 0 ? 0 : eventBuffer[eventBuffer.length - 1].matchId
 
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const match = recentMatches.find(m => m.historyEntryId === currentMatchId)
+	if (!match) {
+		console.warn('No match found for current match ID', currentMatchId)
+		return null
+	}
+
+	const firstTeamId = (+displayTeamsNormalized + match.ordinal + 1) % 2 as SM.TeamId
+	const secondTeamId = (+displayTeamsNormalized + match.ordinal + 0) % 2 as SM.TeamId
+
+	console.log({ firstTeamId, secondTeamId, match })
 	const { players, squads } = interpolatedState
 
 	const unassignedPlayers = players.filter(p => p.teamId === null)
@@ -159,13 +170,13 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 							: (
 								<>
 									<TeamSection
-										teamId={1}
+										teamId={firstTeamId}
 										squads={squads}
 										players={players}
 										matchId={currentMatchId}
 									/>
 									<TeamSection
-										teamId={2}
+										teamId={secondTeamId}
 										squads={squads}
 										players={players}
 										matchId={currentMatchId}

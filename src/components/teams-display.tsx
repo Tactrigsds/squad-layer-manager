@@ -1,87 +1,52 @@
 import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
+import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
+import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
 import { cn } from '../lib/utils'
 
-export function TeamIndicator(props: { team: keyof typeof DH.TEAM_COLORS }) {
-	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[props.team] }}>({props.team[props.team.length - 1]})</span>
+export function TeamIndicator(props: { team: 'A' | 'B' | SM.TeamId }) {
+	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>({props.team})</span>
 }
 
 export function getTeamsDisplay(
-	_partialLayer: Partial<L.KnownLayer> | L.LayerId,
-	teamParity: number | undefined,
-	_displayLayersNormalized: boolean,
+	_partialLayer: L.UnvalidatedLayer | L.LayerId,
+	_teamParity: number | undefined,
+	displayLayersNormalized: boolean,
 	withBackfilledStyles?: Record<keyof L.KnownLayer, string | undefined>,
 	includeUnits: boolean = true,
 ) {
-	const partialLayer = typeof _partialLayer === 'string' ? L.toLayer(_partialLayer) : _partialLayer
-	let team1Color: string | undefined = undefined
-	let team2Color: string | undefined = undefined
-	const displayLayersNormalized = teamParity !== undefined && _displayLayersNormalized
-	let _teamParity = teamParity ?? 0
-	if (!displayLayersNormalized) {
-		const colors = [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB]
-		team1Color = colors[_teamParity % 2]
-		team2Color = colors[(_teamParity + 1) % 2]
-	} else if (displayLayersNormalized) {
-		// Colors specifically for (1) and (2) normalized team labels
-		team2Color = DH.TEAM_COLORS.team2
-		team1Color = DH.TEAM_COLORS.team1
-	}
+	const teamParity = _teamParity ?? 0
 
-	const subfaction1 = includeUnits && partialLayer.Unit_1 !== undefined ? DH.toShortUnit(partialLayer.Unit_1) : undefined
-	const subFaction2 = includeUnits && partialLayer.Unit_2 !== undefined ? DH.toShortUnit(partialLayer.Unit_2) : undefined
-
-	const teamElts = [
-		<span key="team1">
-			<span className={cn(withBackfilledStyles?.Faction_1, withBackfilledStyles?.Alliance_1)}>{partialLayer.Faction_1}</span>
-			{subfaction1
-				? (
-					<span className={cn(withBackfilledStyles?.Unit_1, withBackfilledStyles?.Alliance_1)}>
-						{` ${subfaction1}`}
-					</span>
-				)
-				: ''}
-			<span
-				title={`Team ${displayLayersNormalized ? '1' : _teamParity % 2 === 1 ? 'B' : 'A'}`}
-				className="font-mono "
-				style={{ color: team1Color }}
-			>
-				{displayLayersNormalized ? '(1)' : _teamParity % 2 === 1 ? '(B)' : '(A)'}
-			</span>
-		</span>,
-		<span key="team2">
-			<span className={cn(withBackfilledStyles?.Faction_2, withBackfilledStyles?.Alliance_2)}>{partialLayer.Faction_2}</span>
-			{subFaction2
-				? (
-					<span className={cn(withBackfilledStyles?.Unit_2, withBackfilledStyles?.Alliance_2)}>
-						{` ${subFaction2}`}
-					</span>
-				)
-				: ''}
-			<span
-				title={`Team ${displayLayersNormalized ? '2' : _teamParity % 2 === 1 ? 'A' : 'B'}`}
-				className="font-mono"
-				style={{ color: team2Color }}
-			>
-				{displayLayersNormalized ? '(2)' : _teamParity % 2 === 1 ? '(A)' : '(B)'}
-			</span>
-		</span>,
+	const teams = [
+		<TeamFactionDisplay
+			key={'1'}
+			parity={teamParity ?? 0}
+			includeUnits={includeUnits}
+			layer={_partialLayer}
+			team={1}
+			showAltTeamIndicator={true}
+		/>,
+		<TeamFactionDisplay
+			key={'2'}
+			parity={teamParity ?? 0}
+			includeUnits={includeUnits}
+			layer={_partialLayer}
+			team={2}
+			showAltTeamIndicator={true}
+		/>,
 	]
 
-	const swapTeamOffset = Number(displayLayersNormalized && _teamParity % 2 === 1)
-
-	return [
-		teamElts[swapTeamOffset],
-		teamElts[(swapTeamOffset + 1) % 2],
-	]
+	if (teamParity % 2 === 1 && displayLayersNormalized) teams.reverse()
+	return teams
 }
 
 export function TeamFactionDisplay(
-	props: { parity: number; layer: L.UnvalidatedLayer | L.LayerId; team: SM.TeamId; includeUnits?: boolean },
+	props: { parity: number; layer: L.UnvalidatedLayer | L.LayerId; team: SM.TeamId; includeUnits?: boolean; showAltTeamIndicator?: boolean },
 ) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 	const partialLayer = typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer
@@ -101,13 +66,15 @@ export function TeamFactionDisplay(
 			color: [DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2][props.team - 1],
 			label: ['(1)', '(2)'][props.team - 1],
 			title: ['Team 1', 'Team 2'][props.team - 1],
+			id: props.team,
 		},
 		{
 			color: [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB][(props.parity + props.team - 1) % 2],
 			label: ['(A)', '(B)'][(props.parity + props.team - 1) % 2],
 			title: ['Team A', 'Team B'][(props.parity + props.team - 1) % 2],
+			id: MH.getNormedTeamId(props.team, props.parity),
 		},
-	] as const satisfies { label: string; color: string; title: string }[]
+	] as const satisfies { label: string; color: string; title: string; id: 'A' | 'B' | SM.TeamId }[]
 
 	if (displayTeamsNormalized) attrs.reverse()
 
@@ -120,6 +87,7 @@ export function TeamFactionDisplay(
 						{` ${shortUnit}`}
 					</span>
 				)}
+				{props.showAltTeamIndicator && <TeamIndicator team={attrs[1].id} />}
 			</span>
 			{
 				/*<span
@@ -134,8 +102,16 @@ export function TeamFactionDisplay(
 	)
 }
 
-export function MatchTeamDisplay(props: { matchId: number; teamId: SM.TeamId }) {
+export function MatchTeamDisplay(props: { matchId: number; teamId: SM.TeamId; includeUnits?: boolean; showAltTeamIndicator?: boolean }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === props.matchId)
 	if (!match) return null
-	return <TeamFactionDisplay parity={match.historyEntryId} team={props.teamId} layer={match.layerId} />
+	return (
+		<TeamFactionDisplay
+			parity={match.ordinal}
+			team={props.teamId}
+			layer={match.layerId}
+			includeUnits={props.includeUnits}
+			showAltTeamIndicator={props.showAltTeamIndicator}
+		/>
+	)
 }

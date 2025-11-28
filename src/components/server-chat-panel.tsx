@@ -27,13 +27,14 @@ const CHANNEL_STYLES = {
 } as const
 
 function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' }> }) {
+	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {
 		const baseStyle = CHANNEL_STYLES[event.channel.type]
 
-		if (event.channel.type === 'ChatTeam') {
+		if (event.channel.type === 'ChatTeam' && match) {
 			const teamId = event.channel.teamId
-			const teamColor = DH.getTeamColor(teamId, event.matchId, false)
+			const teamColor = DH.getTeamColor(teamId, match.ordinal, false)
 			// Convert hex color to rgba for gradient
 			const hexToRgba = (hex: string, alpha: number) => {
 				const r = parseInt(hex.slice(1, 3), 16)
@@ -67,22 +68,14 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 
 	return (
 		<div
+			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline"
 			style={{
-				display: 'flex',
-				gap: '0.5rem',
-				paddingTop: '0.25rem',
-				paddingBottom: '0.25rem',
-				fontSize: '0.75rem',
-				width: '100%',
-				minWidth: 0,
-				borderRight: `2px solid ${channelStyle.color}`,
+				borderRightColor: channelStyle.color,
 				backgroundImage: `linear-gradient(to left, transparent, ${channelStyle.gradientColor})`,
 			}}
 		>
 			<EventTime time={event.time} />
-			<div
-				style={{ flexGrow: 1, minWidth: 0 }}
-			>
+			<div className="flex-grow min-w-0">
 				{event.channel.type === 'ChatSquad'
 					? (
 						<span style={{ color: channelStyle.color }}>
@@ -101,9 +94,9 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 						>
 							({channelLabel})
 						</span>
-					)}{' '}
-				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam={['ChatAll', 'ChatAdmin'].includes(event.channel.type)} />
-				: <span style={{ wordBreak: 'break-word' }}>{event.message}</span>
+					)}
+				<PlayerDisplay className="inline-block" player={event.player} matchId={event.matchId} showTeam={false} />
+				: <span className="break-words">{event.message}</span>
 			</div>
 		</div>
 	)
@@ -223,7 +216,7 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 				<span>
 					New game started
 				</span>
-				{match && <ShortLayerName layerId={match.layerId} teamParity={match.historyEntryId % 2} className="text-xs" />}
+				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 			</span>
 		</div>
 	)

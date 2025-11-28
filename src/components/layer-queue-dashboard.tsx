@@ -156,12 +156,12 @@ function NormTeamsSwitch() {
 				Normalize Teams {globalSettings.displayTeamsNormalized
 					? (
 						<span>
-							(left: <TeamIndicator team="teamA" /> right: <TeamIndicator team="teamB" />)
+							(left: <TeamIndicator team="A" /> right: <TeamIndicator team="B" />)
 						</span>
 					)
 					: (
 						<span>
-							(left: <TeamIndicator team="team1" /> right: <TeamIndicator team="team2" />)
+							(left: <TeamIndicator team={1} /> right: <TeamIndicator team={2} />)
 						</span>
 					)}
 			</Label>
