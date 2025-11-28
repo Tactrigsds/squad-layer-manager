@@ -36,6 +36,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
 import { Mutex } from 'async-mutex'
+import * as datefns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -309,11 +310,15 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 	// -------- load saved events --------
 	const savedEventsLoaded$ = (async function loadSavedEvents() {
+		const threeDaysAgo = datefns.subDays(new Date(), 3)
 		const rowsRaw = await ctx.db().select({ data: Schema.serverEvents.data }).from(Schema.serverEvents).innerJoin(
 			Schema.matchHistory,
 			E.eq(Schema.matchHistory.id, Schema.serverEvents.matchId),
 		)
-			.where(E.eq(Schema.matchHistory.serverId, serverId))
+			.where(E.and(
+				E.eq(Schema.matchHistory.serverId, serverId),
+				E.gte(Schema.serverEvents.time, threeDaysAgo),
+			))
 
 		const events = rowsRaw.map(row => superjson.deserialize(row.data as any) as CHAT.Event)
 		let foundFirstReset = false
