@@ -1,6 +1,6 @@
 import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
-import ServerStatePanel from '@/components/server-state-panel'
+import ServerPlayerList from '@/components/server-state-panel'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
@@ -483,6 +483,8 @@ function ServerChatEvents() {
 }
 
 export default function ServerChatPanel() {
+	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(true)
+
 	return (
 		<Card className="flex flex-col h-full">
 			<CardHeader>
@@ -496,9 +498,22 @@ export default function ServerChatPanel() {
 					<div className="flex-1 overflow-hidden relative">
 						<ServerChatEvents />
 					</div>
-					<div className="w-[240px] flex-shrink-0">
-						<ServerStatePanel />
-					</div>
+					{isStatePanelOpen && (
+						<div className="w-[240px] flex-shrink-0">
+							<ServerPlayerList onClose={() => setIsStatePanelOpen(false)} />
+						</div>
+					)}
+					{!isStatePanelOpen && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => setIsStatePanelOpen(true)}
+							className="h-8 px-2 flex-shrink-0"
+							title="Show server state"
+						>
+							<Icons.ChevronLeft className="h-4 w-4" />
+						</Button>
+					)}
 				</div>
 			</CardContent>
 		</Card>

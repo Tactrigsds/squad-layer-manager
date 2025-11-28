@@ -1,5 +1,6 @@
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -117,10 +118,13 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	)
 }
 
-export default function ServerStatePanel() {
+interface ServerPlayerListProps {
+	onClose: () => void
+}
+
+export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
-	const [isOpen, setIsOpen] = React.useState(true)
 
 	// Get the most recent matchId from the event buffer
 	const currentMatchId = React.useMemo(() => {
@@ -133,17 +137,17 @@ export default function ServerStatePanel() {
 	const unassignedPlayers = players.filter(p => p.teamId === null)
 
 	return (
-		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="flex flex-col h-full border-l pl-4">
-			<CollapsibleTrigger className="flex items-center gap-1.5 py-2 hover:bg-accent/20 rounded -ml-4 pl-4">
-				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
-				<span className="text-sm font-semibold whitespace-nowrap">
-					Server State
-				</span>
-				<span className="text-xs text-muted-foreground whitespace-nowrap">
-					({players.length})
-				</span>
-			</CollapsibleTrigger>
-			<CollapsibleContent className="flex-1 overflow-hidden">
+		<div className="flex h-full relative">
+			<Button
+				variant="ghost"
+				size="sm"
+				onClick={onClose}
+				className="h-8 w-6 p-0 absolute -left-6 top-0 z-10"
+				title="Hide server state"
+			>
+				<Icons.ChevronRight className="h-3 w-3" />
+			</Button>
+			<div className="flex-1 overflow-hidden border-l pl-4">
 				<ScrollArea className="h-full">
 					<div className="flex flex-col pr-4">
 						{players.length === 0
@@ -178,7 +182,7 @@ export default function ServerStatePanel() {
 							)}
 					</div>
 				</ScrollArea>
-			</CollapsibleContent>
-		</Collapsible>
+			</div>
+		</div>
 	)
 }
