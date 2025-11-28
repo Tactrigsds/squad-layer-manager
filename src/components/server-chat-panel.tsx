@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
+import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
@@ -17,6 +18,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import MapLayerDisplay from './map-layer-display.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
 import ShortLayerName from './short-layer-name'
 
@@ -238,11 +240,15 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 	const loserId = winnerId === 1 ? 2 : 1
 
 	return (
-		<div className="flex flex-row gap-2 py-1 text-muted-foreground items-baseline flex-nowrap w-full text-xs">
+		<div className="flex flex-row gap-2 py-1 text-muted-foreground items-center flex-nowrap w-full text-xs">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Flag className="h-4 w-4 text-blue-500" />
 			<span>Round ended</span>
-			{winnerId === null && <span className="text-yellow-400">- Draw</span>}
+			<span>
+				(<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />)
+			</span>
+			<Icons.Dot className="text-center" width={20} height={20} />
+			{winnerId === null && <span className="text-yellow-400">Draw</span>}
 			{winnerId !== null && (
 				<>
 					{' '}- <MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won ({winnerTickets} to {loserTickets}) against{' '}
