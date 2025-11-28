@@ -126,7 +126,7 @@ function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched,
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserMinus className="h-4 w-4 text-red-500" />
-			<span className="text-xs flex items-center gap-1">
+			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
 				<PlayerDisplay player={event.player} matchId={event.matchId} /> disconnected
 			</span>
 		</div>
@@ -210,13 +210,11 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-1 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Play className="h-4 w-4 text-green-500" />
-			<span className="text-xs flex flex-col text-nowrap">
-				<span>
-					New game started
-				</span>
+			<span className="text-xs flex flex-wrap items-center gap-1">
+				<span>New game started:</span>
 				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 			</span>
 		</div>
@@ -225,30 +223,30 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 
 function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ROUND_ENDED' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
-	const [team1Elt, team2Elt] = match ? getTeamsDisplay(match.layerId, match.ordinal, false) : [null, null]
+	if (match?.status !== 'post-game') return null
+	const winnerTickets = match.outcome.type === 'team1'
+		? match.outcome.team1Tickets
+		: match?.outcome.type === 'team2'
+		? match.outcome.team2Tickets
+		: 0
+	const loserTickets = match?.outcome.type === 'team1'
+		? match.outcome.team2Tickets
+		: match?.outcome.type === 'team2'
+		? match.outcome.team1Tickets
+		: 0
+	const winnerId = match?.outcome.type === 'team1' ? 1 : match?.outcome.type === 'team2' ? 2 : null
+	const loserId = winnerId === 1 ? 2 : 1
 
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground items-center">
+		<div className="flex flex-row gap-2 py-1 text-muted-foreground items-baseline flex-nowrap w-full text-xs">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Flag className="h-4 w-4 text-blue-500" />
-			<span className="text-xs">Round ended</span>
-			{match && match.status === 'post-game' && (
+			<span>Round ended</span>
+			{winnerId === null && <span className="text-yellow-400">- Draw</span>}
+			{winnerId !== null && (
 				<>
-					{match.outcome.type === 'draw' && (
-						<Badge variant="outline" className="h-5 text-xs">
-							Draw
-						</Badge>
-					)}
-					{match.outcome.type === 'team1' && (
-						<Badge variant="outline" className="h-5 text-xs">
-							{team1Elt} won ({match.outcome.team1Tickets} to {match.outcome.team2Tickets})
-						</Badge>
-					)}
-					{match.outcome.type === 'team2' && (
-						<Badge variant="outline" className="h-5 text-xs">
-							{team2Elt} won ({match.outcome.team2Tickets} to {match.outcome.team1Tickets})
-						</Badge>
-					)}
+					{' '}- <MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won ({winnerTickets} to {loserTickets}) against{' '}
+					<MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
 				</>
 			)}
 		</div>
