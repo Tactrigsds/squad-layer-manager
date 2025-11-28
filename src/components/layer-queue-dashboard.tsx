@@ -1,5 +1,5 @@
 import CombinedDashboardPanel from '@/components/combined-dashboard-panel.tsx'
-import ServerChatPanel from '@/components/server-chat-panel.tsx'
+import ServerActivityPanel from '@/components/server-activity-panel.tsx'
 
 import { TeamIndicator } from '@/components/teams-display.tsx'
 import { Badge } from '@/components/ui/badge'
@@ -73,7 +73,7 @@ export default function LayerQueueDashboard() {
 						<CombinedDashboardPanel />
 					</div>
 					<div className={activeTab === 'chat' ? 'flex gap-2' : 'hidden'}>
-						<ServerChatPanel />
+						<ServerActivityPanel />
 					</div>
 				</div>
 			)}
@@ -92,7 +92,7 @@ export default function LayerQueueDashboard() {
 					</div>
 					{/* right column */}
 					<div className="flex gap-2">
-						<ServerChatPanel />
+						<ServerActivityPanel />
 					</div>
 				</div>
 			)}

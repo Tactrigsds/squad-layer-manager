@@ -1,5 +1,6 @@
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 
+import * as Schema from '$root/drizzle/schema'
 import * as AR from '@/app-routes'
 import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
