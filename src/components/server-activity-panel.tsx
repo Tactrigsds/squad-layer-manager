@@ -1,7 +1,7 @@
 import EventFilterSelect from '@/components/event-filter-select'
 import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
-import ServerPlayerList from '@/components/server-state-panel'
+import ServerPlayerList from '@/components/server-player-list.tsx'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 
@@ -13,7 +13,6 @@ import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 
-
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
@@ -21,7 +20,7 @@ import React from 'react'
 import * as Zus from 'zustand'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
-import ShortLayerName from './short-layer-name'
+import ShortLayerName from './short-layer-name.tsx'
 
 const CHANNEL_STYLES = {
 	ChatAll: { color: 'white', gradientColor: 'rgba(255, 255, 255, 0.1)' },
@@ -572,7 +571,7 @@ function ServerCounts() {
 	)
 }
 
-export default function ServerChatPanel() {
+export default function ServerActivityPanel() {
 	const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const cardRef = React.useRef<HTMLDivElement>(null)
@@ -601,7 +600,6 @@ export default function ServerChatPanel() {
 
 			const currentWidth = window.innerWidth
 			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
-			
 
 			// If we've crossed above the threshold, mark it
 			if (isAboveThreshold) {

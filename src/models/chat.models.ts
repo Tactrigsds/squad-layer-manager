@@ -97,7 +97,6 @@ export function handleEvent(state: ChatState, event: Event | SyncEvent) {
 
 // TODO pass in logger
 export function interpolateEvent(state: InterpolableState, event: Event) {
-	console.log('Handling ', event.type, event)
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
 		case 'RESET': {
