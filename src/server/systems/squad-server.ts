@@ -439,14 +439,14 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	server.playerList.observe({ ...ctx, rcon, adminList })
 		.pipe(
 			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
-			distinctDeepEquals(),
+			// distinctDeepEquals(),
 			Rx.pairwise(),
 			// capture event time before potential buffering
 			Rx.map(p => [...p, new Date()] as const),
 			// TODO this may not be correct to do, revisit
 			// buffer events while server is rolling
-			Rx.bufferWhen(() => server.serverRolling$.pipe(Rx.takeWhile(v => v !== null))),
-			Rx.concatAll(),
+			// Rx.bufferWhen(() => server.serverRolling$.pipe(Rx.takeWhile(v => v !== null))),
+			// Rx.concatAll(),
 			Rx.map(
 				// C.spanOp(
 				// 	'squad-server:gen-synthetic-events',
