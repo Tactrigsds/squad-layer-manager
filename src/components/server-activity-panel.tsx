@@ -28,14 +28,20 @@ const CHANNEL_STYLES = {
 	ChatTeam: { color: 'rgb(59, 130, 246)', gradientColor: 'rgba(59, 130, 246, 0.1)' },
 	ChatSquad: { color: 'rgb(34, 197, 94)', gradientColor: 'rgba(34, 197, 94, 0.1)' },
 	ChatAdmin: { color: 'rgb(147, 197, 253)', gradientColor: 'rgba(147, 197, 253, 0.1)' },
+	Broadcast: { color: 'rgb(234, 179, 8)', gradientColor: 'rgba(234, 179, 8, 0.1)' }, // yellow-500
 } as const
 
-function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' }> }) {
+function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	// Get team-specific color for team chats
 	const getChannelStyle = () => {
+		// Admin broadcast gets yellow styling
+		if (event.type === 'ADMIN_BROADCAST') {
+			return CHANNEL_STYLES.Broadcast
+		}
+
 		const baseStyle = CHANNEL_STYLES[event.channel.type]
 
 		if (event.channel.type === 'ChatTeam' && match) {
@@ -57,10 +63,21 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		return baseStyle
 	}
 
-	if (event.player.teamId === null) return null
+	if (event.type === 'CHAT_MESSAGE' && event.player.teamId === null) return null
 	const channelStyle = getChannelStyle()
 
 	const channelLabel = (() => {
+		if (event.type === 'ADMIN_BROADCAST') {
+			return (
+				<span
+					style={{ color: channelStyle.color }}
+					title="admin broadcast message"
+				>
+					(broadcast)
+				</span>
+			)
+		}
+
 		switch (event.channel.type) {
 			case 'ChatAll':
 				return (
@@ -113,6 +130,26 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		}
 	})()
 
+	const fromDisplay = (() => {
+		if (event.type === 'ADMIN_BROADCAST') {
+			if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} />
+			if (event.from === 'RCON') {
+				return <span className="text-red-400">RCON</span>
+			}
+			if (event.from === 'unknown') {
+				return <span className="text-yellow-400/60">unknown</span>
+			}
+			return null
+		}
+		return (
+			<PlayerDisplay
+				player={event.player}
+				matchId={event.matchId}
+				showTeam={event.type === 'CHAT_MESSAGE' && ['ChatAdmin', 'ChatAll'].includes(event.channel.type)}
+			/>
+		)
+	})()
+
 	return (
 		<div
 			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline"
@@ -123,8 +160,10 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		>
 			<EventTime time={event.time} />
 			<div className="flex-grow min-w-0">
-				{channelLabel}
-				<PlayerDisplay className="inline-block" player={event.player} matchId={event.matchId} showTeam={false} />
+				<span className="inline-block whitespace-nowrap">
+					{channelLabel}
+					{fromDisplay}
+				</span>
 				: <span className="break-words">{event.message}</span>
 			</div>
 		</div>
@@ -286,30 +325,6 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 	)
 }
 
-function AdminBroadcastEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ADMIN_BROADCAST' }> }) {
-	const fromDisplay = (() => {
-		if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} />
-		if (event.from === 'RCON') {
-			return <span className="text-yellow-400">RCON</span>
-		}
-		if (event.from === 'unknown') {
-			return <span className="text-yellow-400/60">unknown</span>
-		}
-	})()
-
-	return (
-		<div className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline border-r-yellow-500 from-yellow-500/10">
-			<EventTime time={event.time} />
-			<div className="flex-grow min-w-0">
-				<span className="text-yellow-500" title="admin broadcast message">
-					(broadcast)
-				</span>
-				{fromDisplay}: <span className="break-words">{event.message}</span>
-			</div>
-		</div>
-	)
-}
-
 function ResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RESET' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
@@ -405,6 +420,7 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
+		case 'ADMIN_BROADCAST':
 			return <ChatMessageEvent event={event} />
 		case 'PLAYER_CONNECTED':
 			return <PlayerConnectedEvent event={event} />
@@ -426,8 +442,6 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <NewGameEvent event={event} />
 		case 'ROUND_ENDED':
 			return <RoundEndedEvent event={event} />
-		case 'ADMIN_BROADCAST':
-			return <AdminBroadcastEvent event={event} />
 		case 'RESET':
 			return <ResetEvent event={event} />
 		case 'PLAYER_DETAILS_CHANGED':
