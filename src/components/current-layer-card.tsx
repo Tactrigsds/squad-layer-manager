@@ -122,10 +122,6 @@ export default function CurrentLayerCard() {
 				</CardHeader>
 				<CardContent className="flex justify-between">
 					<div className="flex items-center space-x-2">
-						<div className="flex space-x-2 items-center">
-							<div>{serverInfo.playerCount} / {serverInfo.maxPlayerCount} online</div>
-							<div>{serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue</div>
-						</div>
 						<div className="w-max">
 							{isEmpty && (
 								<Badge variant="outline" className="flex items-center">

@@ -28,11 +28,13 @@ export type Event = SM.Events.Event | ResetEvent
 	const _1: SchemaModels.ServerEventType = null! satisfies Event['type']
 }
 
+export type ResetReason = 'slm-started' | 'rcon-reconnected'
 export type ResetEvent = {
 	type: 'RESET'
 	state: InterpolableState
 	time: Date
 	matchId: number
+	reason: ResetReason
 }
 
 export type ChatState = {
@@ -164,6 +166,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			return {
 				...event,
 				player: updatedPlayer,
+				prevTeamId: player.teamId,
 			}
 		}
 

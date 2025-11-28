@@ -2,7 +2,7 @@ import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
 import ServerPlayerList from '@/components/server-state-panel'
 import { SquadDisplay } from '@/components/squad-display'
-import { MatchTeamDisplay } from '@/components/teams-display'
+import { getTeamsDisplay, MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +17,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
+import { ServerUnreachable } from './server-offline-display.tsx'
 import ShortLayerName from './short-layer-name'
 
 const CHANNEL_STYLES = {
@@ -223,11 +224,33 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 }
 
 function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'ROUND_ENDED' }> }) {
+	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
+	const [team1Elt, team2Elt] = match ? getTeamsDisplay(match.layerId, match.ordinal, false) : [null, null]
+
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-1 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Flag className="h-4 w-4 text-blue-500" />
 			<span className="text-xs">Round ended</span>
+			{match && match.status === 'post-game' && (
+				<>
+					{match.outcome.type === 'draw' && (
+						<Badge variant="outline" className="h-5 text-xs">
+							Draw
+						</Badge>
+					)}
+					{match.outcome.type === 'team1' && (
+						<Badge variant="outline" className="h-5 text-xs">
+							{team1Elt} won ({match.outcome.team1Tickets} to {match.outcome.team2Tickets})
+						</Badge>
+					)}
+					{match.outcome.type === 'team2' && (
+						<Badge variant="outline" className="h-5 text-xs">
+							{team2Elt} won ({match.outcome.team2Tickets} to {match.outcome.team1Tickets})
+						</Badge>
+					)}
+				</>
+			)}
 		</div>
 	)
 }
@@ -262,7 +285,7 @@ function ResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RES
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.RotateCcw className="h-4 w-4 text-cyan-500" />
-			<span className="text-xs">State reset</span>
+			<span className="text-xs">{event.reason === 'slm-started' ? 'Application start' : 'RCON Reconnected'}</span>
 		</div>
 	)
 }
@@ -272,6 +295,8 @@ function PlayerDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriche
 }
 
 function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CHANGED_TEAM' }> }) {
+	// don't render unassigned, and if the player was previously unassigned that means we're swapping teams after the match, so no need to render
+	if (event.newTeamId === null || event.prevTeamId === null) return
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -285,6 +310,8 @@ function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, 
 }
 
 function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD' }> }) {
+	// server is rolling
+	if (event.teamId === null) return null
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -390,11 +417,12 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	}
 }
 
-function ServerChatEvents() {
+function ServerChatEvents(props: { className?: string }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
 	const prevEventCount = React.useRef(0)
+	const hasScrolledInitially = React.useRef(false)
 	const [showScrollButton, setShowScrollButton] = React.useState(false)
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
 
@@ -412,18 +440,27 @@ function ServerChatEvents() {
 		return isAtBottom
 	}
 
-	// Auto-scroll when new events arrive if already at bottom
+	// Scroll to bottom on initial render and when new events arrive if already at bottom
 	React.useEffect(() => {
+		// Initial scroll when events first load
+		if (eventBuffer.length > 0 && !hasScrolledInitially.current) {
+			hasScrolledInitially.current = true
+			prevEventCount.current = eventBuffer.length
+			setTimeout(() => scrollToBottom(), 0)
+			return
+		}
+
+		// Auto-scroll when new events arrive if already at bottom
 		if (eventBuffer.length > prevEventCount.current) {
 			const newCount = eventBuffer.length - prevEventCount.current
 			prevEventCount.current = eventBuffer.length
-			if (checkIfAtBottom() && prevEventCount.current !== 0) {
+			if (checkIfAtBottom()) {
 				setTimeout(() => scrollToBottom(), 0)
 			} else {
 				setNewMessageCount(prev => prev + newCount)
 			}
 		}
-	}, [eventBuffer])
+	}, [eventBuffer.length])
 
 	// Listen to scroll events to show/hide button
 	React.useEffect(() => {
@@ -445,7 +482,7 @@ function ServerChatEvents() {
 	}, [])
 
 	return (
-		<ScrollArea className="h-[600px]" ref={scrollAreaRef}>
+		<ScrollArea className={props.className} ref={scrollAreaRef}>
 			<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[600px] relative">
 				{eventBuffer.length === 0
 					? (
@@ -461,7 +498,7 @@ function ServerChatEvents() {
 					<Button
 						onClick={() => scrollToBottom()}
 						variant="secondary"
-						className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10"
+						className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
 						title="Scroll to bottom"
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
@@ -475,22 +512,61 @@ function ServerChatEvents() {
 	)
 }
 
-export default function ServerChatPanel() {
-	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(true)
+function ServerCounts() {
+	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
+
+	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
+
+	const serverInfo = serverInfoStatusRes.data
 
 	return (
-		<Card className="flex flex-col h-full">
-			<CardHeader>
+		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
+			{serverInfo.playerCount} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+		</div>
+	)
+}
+
+export default function ServerChatPanel() {
+	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(true)
+	const cardRef = React.useRef<HTMLDivElement>(null)
+	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
+
+	React.useEffect(() => {
+		const calculateMaxHeight = () => {
+			if (!cardRef.current) return
+
+			const rect = cardRef.current.getBoundingClientRect()
+			const viewportHeight = window.innerHeight
+			const topOffset = rect.top
+			const bottomPadding = 16 // Some breathing room at the bottom
+
+			const availableHeight = viewportHeight - topOffset - bottomPadding
+			setMaxHeight(availableHeight)
+		}
+
+		// Calculate on mount and window resize
+		calculateMaxHeight()
+		window.addEventListener('resize', calculateMaxHeight)
+
+		return () => window.removeEventListener('resize', calculateMaxHeight)
+	}, [])
+
+	return (
+		<Card
+			ref={cardRef}
+			className="flex flex-col"
+			style={{ height: maxHeight ? `${maxHeight}px` : 'auto' }}
+		>
+			<CardHeader className=" flex flex-row justify-between flex-shrink-0">
 				<CardTitle className="flex items-center gap-2">
 					<Icons.Server className="h-5 w-5" />
 					Server Activity
 				</CardTitle>
+				<ServerCounts />
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden">
-				<div className="flex gap-4 h-[600px]">
-					<div className="flex-1 overflow-hidden relative">
-						<ServerChatEvents />
-					</div>
+			<CardContent className="flex-1 overflow-hidden min-h-[10em]">
+				<div className="flex gap-4 h-full">
+					<ServerChatEvents className="flex-1 overflow-hidden relative" />
 					{isStatePanelOpen && (
 						<div className="w-[240px] flex-shrink-0">
 							<ServerPlayerList onClose={() => setIsStatePanelOpen(false)} />
@@ -502,7 +578,7 @@ export default function ServerChatPanel() {
 							size="sm"
 							onClick={() => setIsStatePanelOpen(true)}
 							className="h-8 px-2 flex-shrink-0"
-							title="Show server state"
+							title={`${isStatePanelOpen ? 'Hide' : 'Show'} player list`}
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>

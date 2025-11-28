@@ -87,7 +87,10 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	const teamPlayers = players.filter(p => p.teamId === teamId)
 	const teamSquads = squads.filter(s => s.teamId === teamId)
 
-	if (teamPlayers.length === 0) return null
+	if (teamPlayers.length === 0) {
+		console.log('No players found for team', teamId)
+		return null
+	}
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
@@ -120,6 +123,30 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	)
 }
 
+interface TeamUnassignedSectionProps {
+	players: SM.Player[]
+	matchId: number
+}
+
+function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps) {
+	const [isOpen, setIsOpen] = React.useState(true)
+
+	if (players.length === 0) return null
+
+	return (
+		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
+			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
+				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
+				<span className="text-xs font-bold text-muted-foreground">Unassigned</span>
+				<span className="text-xs text-muted-foreground whitespace-nowrap">({players.length})</span>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="pt-2">
+				{players.map((player) => <PlayerItem key={player.ids.username} player={player} matchId={matchId} />)}
+			</CollapsibleContent>
+		</Collapsible>
+	)
+}
+
 interface ServerPlayerListProps {
 	onClose: () => void
 }
@@ -139,10 +166,11 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 		return null
 	}
 
-	const firstTeamId = (+displayTeamsNormalized + match.ordinal + 1) % 2 as SM.TeamId
-	const secondTeamId = (+displayTeamsNormalized + match.ordinal + 0) % 2 as SM.TeamId
+	let firstTeamIndex = (+displayTeamsNormalized + match.ordinal + 1) % 2
+	let secondTeamIndex = (+displayTeamsNormalized + match.ordinal + 0) % 2
+	const firstTeamId = firstTeamIndex + 1 as SM.TeamId
+	const secondTeamId = secondTeamIndex + 1 as SM.TeamId
 
-	console.log({ firstTeamId, secondTeamId, match })
 	const { players, squads } = interpolatedState
 
 	const unassignedPlayers = players.filter(p => p.teamId === null)
@@ -181,14 +209,7 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 										players={players}
 										matchId={currentMatchId}
 									/>
-									{unassignedPlayers.length > 0 && (
-										<div className="border-t pt-3 mt-2">
-											<div className="text-xs font-semibold text-muted-foreground mb-2 px-2">
-												Unassigned ({unassignedPlayers.length})
-											</div>
-											{unassignedPlayers.map((player) => <PlayerItem key={player.ids.username} player={player} matchId={currentMatchId} />)}
-										</div>
-									)}
+									<TeamUnassignedSection players={unassignedPlayers} matchId={currentMatchId} />
 								</>
 							)}
 					</div>
