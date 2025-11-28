@@ -159,6 +159,7 @@ interface ServerPlayerListProps {
 export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
 
 	// Get the most recent matchId from the event buffer
@@ -178,7 +179,15 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 
 	const { players, squads } = interpolatedState
 
-	const unassignedPlayers = players.filter(p => p.teamId === null)
+	// Filter players based on eventFilterState
+	const filteredPlayers = React.useMemo(() => {
+		if (eventFilterState === 'ADMIN') {
+			return players.filter(p => p.isAdmin)
+		}
+		return players
+	}, [players, eventFilterState])
+
+	const unassignedPlayers = filteredPlayers.filter(p => p.teamId === null)
 
 	return (
 		<div className="flex h-full relative">
@@ -194,7 +203,7 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 			<div className="flex-1 overflow-hidden border-l pl-4">
 				<ScrollArea className="h-full">
 					<div className="flex flex-col pr-4">
-						{players.length === 0
+						{filteredPlayers.length === 0
 							? (
 								<div className="text-muted-foreground text-xs text-center py-8">
 									No players connected
@@ -205,13 +214,13 @@ export default function ServerPlayerList({ onClose }: ServerPlayerListProps) {
 									<TeamSection
 										teamId={firstTeamId}
 										squads={squads}
-										players={players}
+										players={filteredPlayers}
 										matchId={currentMatchId}
 									/>
 									<TeamSection
 										teamId={secondTeamId}
 										squads={squads}
-										players={players}
+										players={filteredPlayers}
 										matchId={currentMatchId}
 									/>
 									<TeamUnassignedSection players={unassignedPlayers} matchId={currentMatchId} />

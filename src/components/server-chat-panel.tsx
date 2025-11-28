@@ -1,3 +1,4 @@
+import EventFilterSelect from '@/components/event-filter-select'
 import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
 import ServerPlayerList from '@/components/server-state-panel'
@@ -74,7 +75,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 			className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-gradient-to-l to-transparent items-baseline"
 			style={{
 				borderRightColor: channelStyle.color,
-				backgroundImage: `linear-gradient(to left, transparent, ${channelStyle.gradientColor})`,
+				backgroundImage: `linear-gradient(to left, ${channelStyle.gradientColor}, transparent)`,
 			}}
 		>
 			<EventTime time={event.time} />
@@ -251,7 +252,8 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 			{winnerId === null && <span className="text-yellow-400">Draw</span>}
 			{winnerId !== null && (
 				<>
-					{' '}- <MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won ({winnerTickets} to {loserTickets}) against{' '}
+					{' '}- <MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won{' '}
+					<span className="font-semibold">{winnerTickets} to {loserTickets}</span> against{' '}
 					<MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
 				</>
 			)}
@@ -423,12 +425,36 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 
 function ServerChatEvents(props: { className?: string }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
 	const prevEventCount = React.useRef(0)
 	const hasScrolledInitially = React.useRef(false)
 	const [showScrollButton, setShowScrollButton] = React.useState(false)
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
+
+	// Filter events based on the selected filter
+	const filteredEvents = React.useMemo(() => {
+		if (eventFilterState === 'ALL') {
+			return eventBuffer
+		}
+
+		if (eventFilterState === 'CHAT') {
+			// Show only chat messages and broadcasts
+			return eventBuffer.filter(event => event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST')
+		}
+
+		if (eventFilterState === 'ADMIN') {
+			// Show only admin chat messages and broadcasts
+			return eventBuffer.filter(event => {
+				if (event.type === 'ADMIN_BROADCAST') return true
+				if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') return true
+				return false
+			})
+		}
+
+		return eventBuffer
+	}, [eventBuffer, eventFilterState])
 
 	const scrollToBottom = () => {
 		bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
@@ -447,24 +473,24 @@ function ServerChatEvents(props: { className?: string }) {
 	// Scroll to bottom on initial render and when new events arrive if already at bottom
 	React.useEffect(() => {
 		// Initial scroll when events first load
-		if (eventBuffer.length > 0 && !hasScrolledInitially.current) {
+		if (filteredEvents.length > 0 && !hasScrolledInitially.current) {
 			hasScrolledInitially.current = true
-			prevEventCount.current = eventBuffer.length
+			prevEventCount.current = filteredEvents.length
 			setTimeout(() => scrollToBottom(), 0)
 			return
 		}
 
 		// Auto-scroll when new events arrive if already at bottom
-		if (eventBuffer.length > prevEventCount.current) {
-			const newCount = eventBuffer.length - prevEventCount.current
-			prevEventCount.current = eventBuffer.length
+		if (filteredEvents.length > prevEventCount.current) {
+			const newCount = filteredEvents.length - prevEventCount.current
+			prevEventCount.current = filteredEvents.length
 			if (checkIfAtBottom()) {
 				setTimeout(() => scrollToBottom(), 0)
 			} else {
 				setNewMessageCount(prev => prev + newCount)
 			}
 		}
-	}, [eventBuffer.length])
+	}, [filteredEvents.length])
 
 	// Listen to scroll events to show/hide button
 	React.useEffect(() => {
@@ -488,14 +514,14 @@ function ServerChatEvents(props: { className?: string }) {
 	return (
 		<ScrollArea className={props.className} ref={scrollAreaRef}>
 			<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[600px] relative">
-				{eventBuffer.length === 0
+				{filteredEvents.length === 0
 					? (
 						<div className="text-muted-foreground text-sm text-center py-8">
 							No events yet
 						</div>
 					)
 					: (
-						eventBuffer.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
+						filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
 					)}
 				<div ref={bottomRef} />
 				{showScrollButton && (
@@ -534,6 +560,8 @@ export default function ServerChatPanel() {
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(true)
 	const cardRef = React.useRef<HTMLDivElement>(null)
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
+	const setEventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
 
 	React.useEffect(() => {
 		const calculateMaxHeight = () => {
@@ -561,11 +589,14 @@ export default function ServerChatPanel() {
 			className="flex flex-col"
 			style={{ height: maxHeight ? `${maxHeight}px` : 'auto' }}
 		>
-			<CardHeader className=" flex flex-row justify-between flex-shrink-0">
-				<CardTitle className="flex items-center gap-2">
-					<Icons.Server className="h-5 w-5" />
-					Server Activity
-				</CardTitle>
+			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
+				<div className="flex items-center gap-4">
+					<CardTitle className="flex items-center gap-2">
+						<Icons.Server className="h-5 w-5" />
+						Server Activity
+					</CardTitle>
+					<EventFilterSelect value={eventFilterState} onValueChange={setEventFilterState} />
+				</div>
 				<ServerCounts />
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-[10em]">

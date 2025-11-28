@@ -28,7 +28,7 @@ import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
 
-export default function MatchHistoryPanel() {
+export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const history = MatchHistoryClient.useRecentMatchHistory()
 	const historyState = MatchHistoryClient.useMatchHistoryState()
@@ -101,7 +101,7 @@ export default function MatchHistoryPanel() {
 	}
 
 	return (
-		<Card>
+		<>
 			<CardHeader className="flex flex-row justify-between items-start">
 				<CardTitle>Match History</CardTitle>
 				{availableDates.length > 1 && showFullDay && (
@@ -128,7 +128,7 @@ export default function MatchHistoryPanel() {
 					</div>
 				)}
 			</CardHeader>
-			<CardContent>
+			<CardContent className="px-1">
 				<Table>
 					<TableHeader>
 						<TableRow className="font-medium">
@@ -148,10 +148,10 @@ export default function MatchHistoryPanel() {
 									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
 								)}
 							</TableHead>
-							{
-								/*<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
-							<TableHead className="text-center"></TableHead>*/
-							}
+							<TableHead className="hidden min-[900px]:table-cell">Set By</TableHead>
+							<TableHead className="text-center px-0.5 flex flex-row justify-end items-center" title="Layer Indicators">
+								<Icons.Flag />
+							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -193,7 +193,35 @@ export default function MatchHistoryPanel() {
 							})}
 					</TableBody>
 				</Table>
+				{currentDate && matchesByDate.get(currentDate) && matchesByDate.get(currentDate)!.length > 5 && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => setShowFullDay(!showFullDay)}
+						className="w-full h-8 mt-2"
+					>
+						{showFullDay
+							? (
+								<>
+									Show Less<Icons.ChevronUp className="h-4 w-4" />
+								</>
+							)
+							: (
+								<>
+									Show full day<Icons.ChevronDown className="h-4 w-4" />
+								</>
+							)}
+					</Button>
+				)}
 			</CardContent>
+		</>
+	)
+}
+
+export default function MatchHistoryPanel() {
+	return (
+		<Card>
+			<MatchHistoryPanelContent />
 		</Card>
 	)
 }
@@ -323,11 +351,11 @@ function MatchHistoryRow({
 					className="whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded"
 				>
 					<TableCell className="font-mono text-xs relative">
-						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center">
+						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center p-0">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-hover:opacity-0">
-							{visibleIndex.toString().padStart(2, '0')}
+						<div className="group-hover:opacity-0 ">
+							{visibleIndex.toString()}.
 						</div>
 					</TableCell>
 					{
@@ -347,8 +375,8 @@ function MatchHistoryRow({
 					<TableCell>
 						{rightTeam}
 					</TableCell>
-					{
-						/*<TableCell>
+
+					<TableCell>
 						<span className="w-full flex justify-center">
 							<LayerSourceDisplay source={entry.layerSource} />
 						</span>
@@ -374,8 +402,7 @@ function MatchHistoryRow({
 							</Tooltip>
 						)}
 						{violationDisplayElt}
-					</TableCell>*/
-					}
+					</TableCell>
 				</TableRow>
 			</ContextMenuTrigger>
 			<ContextMenuContent>

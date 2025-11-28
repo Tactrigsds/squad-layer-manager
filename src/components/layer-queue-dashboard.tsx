@@ -1,4 +1,4 @@
-import MatchHistoryPanel from '@/components/match-history-panel.tsx'
+import CombinedDashboardPanel from '@/components/combined-dashboard-panel.tsx'
 import ServerChatPanel from '@/components/server-chat-panel.tsx'
 import ServerStatsPanel from '@/components/server-stats-panel.tsx'
 import { TeamIndicator } from '@/components/teams-display.tsx'
@@ -26,7 +26,6 @@ import React from 'react'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import BalanceTriggerAlert from './balance-trigger-alert.tsx'
-import CurrentLayerCard from './current-layer-card.tsx'
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
@@ -46,9 +45,7 @@ export default function LayerQueueDashboard() {
 				</div>
 				{/* left column */}
 				<div className="flex flex-col gap-2">
-					<MatchHistoryPanel />
-					<CurrentLayerCard />
-					<QueuePanel />
+					<CombinedDashboardPanel />
 				</div>
 				{/* right column */}
 				<div className="flex gap-2">
@@ -59,7 +56,7 @@ export default function LayerQueueDashboard() {
 	)
 }
 
-function QueuePanel() {
+export function QueuePanelContent() {
 	const isModified = Zus.useStore(SLLClient.Store, s => s.isModified)
 
 	const queueLength = Zus.useStore(QD.LQStore, (s) => s.layerList.length)
@@ -67,7 +64,7 @@ function QueuePanel() {
 	const queueMutations = Zus.useStore(QD.LQStore, (s) => s.session.mutations)
 
 	return (
-		<Card>
+		<>
 			<CardHeader className="flex flex-row items-center justify-between">
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
@@ -132,6 +129,14 @@ function QueuePanel() {
 			<CardContent className="p-0 px-1">
 				<LayerList store={SLLClient.Store} />
 			</CardContent>
+		</>
+	)
+}
+
+function QueuePanel() {
+	return (
+		<Card>
+			<QueuePanelContent />
 		</Card>
 	)
 }

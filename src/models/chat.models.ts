@@ -2,7 +2,7 @@ import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
-import { type z } from 'zod'
+import { z } from 'zod'
 
 export type PlayerRef = string
 
@@ -327,3 +327,6 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			assertNever(event)
 	}
 }
+
+export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
+export type EventFilterState = z.infer<typeof EVENT_FILTER_STATE>

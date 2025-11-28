@@ -30,7 +30,7 @@ import { ServerUnreachable } from './server-offline-display.tsx'
 import { Timer } from './timer.tsx'
 import { DropdownMenuItem } from './ui/dropdown-menu.tsx'
 
-export default function CurrentLayerCard() {
+export function CurrentLayerCardContent() {
 	const loggedInUser = useLoggedInUser()
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
@@ -77,28 +77,24 @@ export default function CurrentLayerCard() {
 	if (!isEmpty && currentMatch?.status === 'post-game') {
 		postGameElt = (
 			<div className="flex space-x-2">
-				<Badge variant="outline" className="flex items-center">
+				<Badge variant="outline" className="flex items-center p-1 rounded-md">
 					<span className="pr-1">Post-Game</span>
 					<Timer zeros start={currentMatch.endTime.getTime()} className="font-mono" />
 				</Badge>
 				{currentMatch.outcome.type === 'draw' && (
-					<Badge variant="outline" className="flex items-center">
+					<Badge variant="outline" className="flex items-center p-1 rounded-md">
 						<span className="pr-1">Draw</span>
 					</Badge>
 				)}
 				{currentMatch.outcome.type === 'team1' && (
-					<Badge variant="outline" className="flex items-center">
-						<span className="pr-1">
-							{team1Elt} has won ({currentMatch.outcome.team1Tickets} to {currentMatch.outcome.team2Tickets})
-						</span>
-					</Badge>
+					<span className="flex items-center flex-nowrap text-sm gap 1">
+						{team1Elt} has won {currentMatch.outcome.team1Tickets} to {currentMatch.outcome.team2Tickets}
+					</span>
 				)}
 				{currentMatch.outcome.type === 'team2' && (
-					<Badge variant="outline" className="flex items-center">
-						<span className="pr-1">
-							{team2Elt} has won ({currentMatch.outcome.team2Tickets} to {currentMatch.outcome.team1Tickets})
-						</span>
-					</Badge>
+					<span className="flex items-center flex-nowrap text-sm gap-1">
+						{team2Elt} has won {currentMatch.outcome.team2Tickets} to {currentMatch.outcome.team1Tickets}
+					</span>
 				)}
 			</div>
 		)
@@ -106,84 +102,90 @@ export default function CurrentLayerCard() {
 
 	return (
 		<>
-			<Card>
-				<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
-					<span className="flex space-x-2 items-center whitespace-nowrap">
-						<CardTitle>
-							Current Layer:
-						</CardTitle>
-						<div>
-							{currentMatch
-								? <LayerDisplay item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
-								: (DH.displayLayer(layersStatus.currentLayer))}
-						</div>
-					</span>
-					{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}
-				</CardHeader>
-				<CardContent className="flex justify-between">
-					<div className="flex items-center space-x-2">
-						<div className="w-max">
-							{isEmpty && (
-								<Badge variant="outline" className="flex items-center">
-									<span>Server empty</span>
-								</Badge>
-							)}
-							{!serverRolling && !isEmpty && currentMatch?.status === 'in-progress' && (
-								<Badge variant="secondary" className="flex items-center">
-									<span className="pr-1">In progress:</span>
-									{currentMatch.startTime && <Timer zeros start={currentMatch.startTime.getTime()} className="font-mono" />}
-								</Badge>
-							)}
-							{serverRolling && (
-								<Badge variant="info" className="flex items-center">
-									<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
-									<span>Switching to New Layer...</span>
-								</Badge>
-							)}
-							{postGameElt}
-						</div>
-						<div>
-						</div>
+			<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
+				<span className="flex space-x-2 items-center whitespace-nowrap">
+					<CardTitle>
+						Current Layer:
+					</CardTitle>
+					<div>
+						{currentMatch
+							? <LayerDisplay item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
+							: (DH.displayLayer(layersStatus.currentLayer))}
 					</div>
-					<EndMatchDialog>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="secondary" size="sm">
-									Server Actions
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent>
-								<DialogTrigger asChild>
-									<DropdownMenuItem disabled={!canEndMatch} className="bg-destructive text-destructive-foreground focus:bg-red-600">
-										End Match
-									</DropdownMenuItem>
-								</DialogTrigger>
-								{updatesToSquadServerDisabled
-									? <DropdownMenuItem disabled={!hasDisableUpdatesPerm} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
-									: (
-										<DropdownMenuItem
-											title="Prevents SLM from setting layers on the Squad Server"
-											disabled={!hasDisableUpdatesPerm}
-											onClick={disableUpdates}
-										>
-											Disable SLM Updates
-										</DropdownMenuItem>
-									)}
-								<DropdownMenuItem
-									title="Disables Fog Of War for the current match"
-									disabled={!canDisableFogOfWar}
-									onClick={disableFogOfWar}
-								>
-									Disable Fog Of War
+				</span>
+				{currentMatch && <LayerSourceDisplay source={currentMatch.layerSource} />}
+			</CardHeader>
+			<CardContent className="flex justify-between">
+				<div className="flex items-center space-x-2">
+					<div className="w-max">
+						{isEmpty && (
+							<Badge variant="outline" className="flex items-center">
+								<span>Server empty</span>
+							</Badge>
+						)}
+						{!serverRolling && !isEmpty && currentMatch?.status === 'in-progress' && (
+							<Badge variant="secondary" className="flex items-center pointer-events-none p-1 rounded-md">
+								<span className="pr-1">In progress:</span>
+								{currentMatch.startTime && <Timer zeros start={currentMatch.startTime.getTime()} className="font-mono" />}
+							</Badge>
+						)}
+						{serverRolling && (
+							<Badge variant="info" className="flex items-center">
+								<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
+								<span>Switching to New Layer...</span>
+							</Badge>
+						)}
+						{postGameElt}
+					</div>
+					<div>
+					</div>
+				</div>
+				<EndMatchDialog>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant="secondary" size="sm">
+								Server Actions
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent>
+							<DialogTrigger asChild>
+								<DropdownMenuItem disabled={!canEndMatch} className="bg-destructive text-destructive-foreground focus:bg-red-600">
+									End Match
 								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</EndMatchDialog>
-				</CardContent>
-			</Card>
+							</DialogTrigger>
+							{updatesToSquadServerDisabled
+								? <DropdownMenuItem disabled={!hasDisableUpdatesPerm} onClick={enableUpdates}>Re-enable SLM Updates</DropdownMenuItem>
+								: (
+									<DropdownMenuItem
+										title="Prevents SLM from setting layers on the Squad Server"
+										disabled={!hasDisableUpdatesPerm}
+										onClick={disableUpdates}
+									>
+										Disable SLM Updates
+									</DropdownMenuItem>
+								)}
+							<DropdownMenuItem
+								title="Disables Fog Of War for the current match"
+								disabled={!canDisableFogOfWar}
+								onClick={disableFogOfWar}
+							>
+								Disable Fog Of War
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</EndMatchDialog>
+			</CardContent>
 			<PostGameBalanceTriggerAlert />
 			{updatesToSquadServerDisabled && <SyncToSquadServerDisabledAlert />}
 		</>
+	)
+}
+
+export default function CurrentLayerCard() {
+	return (
+		<Card>
+			<CurrentLayerCardContent />
+		</Card>
 	)
 }
 

@@ -325,7 +325,11 @@ function buildColDefs(
 
 	// Always include constraints column
 	const constraintsCol = columnHelper.accessor('constraints', {
-		header: '',
+		header: () => (
+			<span title="Layer Indicators">
+				<Icons.Flag />
+			</span>
+		),
 		enableHiding: false,
 		size: 80,
 		cell: ({ row }) => {

@@ -42,12 +42,18 @@ export const [useChatEvents, chatEvent$] = ReactRx.bind(RPC.observe(() => RPC.or
 
 type ChatStore = {
 	chatState: CHAT.ChatState
+	eventFilterState: CHAT.EventFilterState
+	setEventFilterState(state: CHAT.EventFilterState): void
 	handleChatEvent(event: CHAT.Event | CHAT.SyncEvent): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.INITIAL_CHAT_STATE,
+		eventFilterState: 'ALL',
+		setEventFilterState(state) {
+			set({ eventFilterState: state })
+		},
 		handleChatEvent(event) {
 			set(state => ({
 				chatState: Im.produce(state.chatState, draft => {
