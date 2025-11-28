@@ -89,11 +89,11 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-4">
 			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1.5 px-2 hover:bg-accent/20 rounded border-b">
-				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
-				<span className="text-xs font-bold flex items-center flex-nowrap gap-1">
+				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
+				<span className="text-xs font-bold flex items-center flex-nowrap gap-1 whitespace-nowrap">
 					Team {teamId} <MatchTeamDisplay matchId={matchId} teamId={teamId} />
 				</span>
-				<span className="text-xs text-muted-foreground">({teamSquads.length} squads, {teamPlayers.length} players)</span>
+				<span className="text-xs text-muted-foreground whitespace-nowrap">({teamPlayers.length})</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="pt-2">
 				{teamSquads.map((squad) => {
@@ -120,6 +120,7 @@ function TeamSection({ teamId, squads, players, matchId }: TeamSectionProps) {
 export default function ServerStatePanel() {
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
+	const [isOpen, setIsOpen] = React.useState(true)
 
 	// Get the most recent matchId from the event buffer
 	const currentMatchId = React.useMemo(() => {
@@ -132,18 +133,18 @@ export default function ServerStatePanel() {
 	const unassignedPlayers = players.filter(p => p.teamId === null)
 
 	return (
-		<Card className="flex flex-col h-full min-w-[350px]">
-			<CardHeader className="pb-3">
-				<CardTitle className="flex items-center gap-2 text-sm">
-					<Icons.Users className="h-4 w-4" />
+		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="flex flex-col h-full border-l pl-4">
+			<CollapsibleTrigger className="flex items-center gap-1.5 py-2 hover:bg-accent/20 rounded -ml-4 pl-4">
+				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform flex-shrink-0', isOpen && 'rotate-90')} />
+				<span className="text-sm font-semibold whitespace-nowrap">
 					Server State
-					<span className="text-xs text-muted-foreground font-normal">
-						({players.length} players)
-					</span>
-				</CardTitle>
-			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden pt-0">
-				<ScrollArea className="h-[600px]">
+				</span>
+				<span className="text-xs text-muted-foreground whitespace-nowrap">
+					({players.length})
+				</span>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="flex-1 overflow-hidden">
+				<ScrollArea className="h-full">
 					<div className="flex flex-col pr-4">
 						{players.length === 0
 							? (
@@ -177,7 +178,7 @@ export default function ServerStatePanel() {
 							)}
 					</div>
 				</ScrollArea>
-			</CardContent>
-		</Card>
+			</CollapsibleContent>
+		</Collapsible>
 	)
 }

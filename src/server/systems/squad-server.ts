@@ -1094,7 +1094,7 @@ function* generateSyntheticEvents(
 			continue
 		}
 
-		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null) {
+		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null && prev.teamId !== null) {
 			yield {
 				type: 'PLAYER_LEFT_SQUAD',
 				playerIds: player.ids,
@@ -1104,7 +1104,16 @@ function* generateSyntheticEvents(
 			} satisfies SM.Events.PlayerLeftSquad
 		}
 
-		if (player.squadId !== null && player.squadId === prev.squadId && player.isLeader && !prev.isLeader) {
+		if (player.teamId !== prev.teamId) {
+			yield {
+				type: 'PLAYER_CHANGED_TEAM',
+				newTeamId: player.teamId,
+				playerIds: player.ids,
+				...base,
+			} satisfies SM.Events.PlayerChangedTeam
+		}
+
+		if (player.squadId !== null && player.teamId !== null && player.squadId === prev.squadId && player.isLeader && !prev.isLeader) {
 			yield {
 				type: 'PLAYER_PROMOTED_TO_LEADER',
 				squadId: player.squadId,
@@ -1115,7 +1124,8 @@ function* generateSyntheticEvents(
 		}
 
 		if (
-			player.squadId !== null && !SM.Squads.idsEqual(player, prev) && !prevSquads.find(s => SM.Squads.idsEqual(s, player))
+			player.squadId !== null && player.teamId !== null && !SM.Squads.idsEqual(player, prev)
+			&& !prevSquads.find(s => SM.Squads.idsEqual(s, player))
 		) {
 			// we're assuming here that if the player *just* joined a squad and is the leader, then they created the squad. this isn't *technically* safe but the edgecase should be pretty benign. if this becomes an issue we will have pull in data from the squadsList (.creator) to deal with it
 			if (player.isLeader) continue
@@ -1150,19 +1160,6 @@ function* generateSyntheticEvents(
 			teamId: prevSquad.teamId,
 			...base,
 		} satisfies SM.Events.SquadDisbanded
-	}
-
-	for (const player of players) {
-		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
-		if (!prev) continue
-
-		if (player.teamId !== prev.teamId) {
-			yield {
-				type: 'PLAYER_CHANGED_TEAM',
-				playerIds: player.ids,
-				...base,
-			} satisfies SM.Events.PlayerChangedTeam
-		}
 	}
 }
 

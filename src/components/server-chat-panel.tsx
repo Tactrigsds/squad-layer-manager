@@ -1,5 +1,6 @@
 import { EventTime } from '@/components/event-time'
 import { PlayerDisplay } from '@/components/player-display'
+import ServerStatePanel from '@/components/server-state-panel'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Badge } from '@/components/ui/badge'
@@ -79,7 +80,9 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 			}}
 		>
 			<EventTime time={event.time} />
-			<div style={{ display: 'flex', flexWrap: 'wrap', flexGrow: 1, alignItems: 'flex-start', gap: '0.5rem', minWidth: 0 }}>
+			<div
+				style={{ flexGrow: 1, minWidth: 0 }}
+			>
 				{event.channel.type === 'ChatSquad'
 					? (
 						<span style={{ color: channelStyle.color }}>
@@ -98,9 +101,9 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 						>
 							({channelLabel})
 						</span>
-					)}
-				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam={['ChatAll', 'ChatAdmin'].includes(event.channel.type)} />:
-				<span style={{ wordBreak: 'break-word', minWidth: 0, flexShrink: 0 }}>{event.message}</span>
+					)}{' '}
+				<PlayerDisplay player={event.player} matchId={event.matchId} showTeam={['ChatAll', 'ChatAdmin'].includes(event.channel.type)} />
+				: <span style={{ wordBreak: 'break-word' }}>{event.message}</span>
 			</div>
 		</div>
 	)
@@ -394,7 +397,7 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	}
 }
 
-export default function ServerChatPanel() {
+function ServerChatEvents() {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
@@ -421,7 +424,7 @@ export default function ServerChatPanel() {
 		if (eventBuffer.length > prevEventCount.current) {
 			const newCount = eventBuffer.length - prevEventCount.current
 			prevEventCount.current = eventBuffer.length
-			if (checkIfAtBottom()) {
+			if (checkIfAtBottom() && prevEventCount.current !== 0) {
 				setTimeout(() => scrollToBottom(), 0)
 			} else {
 				setNewMessageCount(prev => prev + newCount)
@@ -449,33 +452,23 @@ export default function ServerChatPanel() {
 	}, [])
 
 	return (
-		<Card className="flex flex-col h-full min-w-[500px]">
-			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					<Icons.MessageSquare className="h-5 w-5" />
-					Server Events
-				</CardTitle>
-			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden relative">
-				<ScrollArea className="h-[600px]" ref={scrollAreaRef}>
-					<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[500px]">
-						{eventBuffer.length === 0
-							? (
-								<div className="text-muted-foreground text-sm text-center py-8">
-									No events yet
-								</div>
-							)
-							: (
-								eventBuffer.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
-							)}
-						<div ref={bottomRef} />
-					</div>
-				</ScrollArea>
+		<ScrollArea className="h-[600px]" ref={scrollAreaRef}>
+			<div className="flex flex-col gap-0.5 pr-4 w-full max-w-[600px] relative">
+				{eventBuffer.length === 0
+					? (
+						<div className="text-muted-foreground text-sm text-center py-8">
+							No events yet
+						</div>
+					)
+					: (
+						eventBuffer.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
+					)}
+				<div ref={bottomRef} />
 				{showScrollButton && (
 					<Button
 						onClick={() => scrollToBottom()}
 						variant="secondary"
-						className="absolute bottom-2 left-4 right-4 h-8 shadow-lg flex items-center justify-center gap-2"
+						className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10"
 						title="Scroll to bottom"
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
@@ -484,6 +477,29 @@ export default function ServerChatPanel() {
 						</span>
 					</Button>
 				)}
+			</div>
+		</ScrollArea>
+	)
+}
+
+export default function ServerChatPanel() {
+	return (
+		<Card className="flex flex-col h-full">
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<Icons.Server className="h-5 w-5" />
+					Server Activity
+				</CardTitle>
+			</CardHeader>
+			<CardContent className="flex-1 overflow-hidden">
+				<div className="flex gap-4 h-[600px]">
+					<div className="flex-1 overflow-hidden relative">
+						<ServerChatEvents />
+					</div>
+					<div className="w-[240px] flex-shrink-0">
+						<ServerStatePanel />
+					</div>
+				</div>
 			</CardContent>
 		</Card>
 	)

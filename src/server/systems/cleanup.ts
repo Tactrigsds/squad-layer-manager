@@ -1,3 +1,5 @@
+import { baseLogger } from '../logger'
+
 const tasks: (CleanupTaskCb | null)[] = []
 export type CleanupTaskCb = () => void | Promise<void>
 
@@ -16,11 +18,14 @@ export function unregister(idx: number) {
 }
 
 export function setup() {
+	const ctx = { log: baseLogger }
 	process.on('SIGTERM', async () => {
 		try {
 			await Promise.all(tasks.map(task => task?.()))
-		} finally {
-			process.exit(0)
+			ctx.log.info('Cleanup complete')
+		} catch (error) {
+			ctx.log.error(error, 'Error during cleanup: %s', (error as any)?.message ?? error)
 		}
+		process.exit(0)
 	})
 }

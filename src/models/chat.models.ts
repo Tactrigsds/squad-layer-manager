@@ -158,10 +158,9 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			const player = state.players[index]
 			const updatedPlayer: SM.Player = {
 				...player,
-				squadId: null,
-				teamId: player.teamId === 1 ? 2 : 1,
+				teamId: event.newTeamId,
 			}
-			state.players.splice(index, 1, updatedPlayer)
+			state.players[index] = updatedPlayer
 			return {
 				...event,
 				player: updatedPlayer,

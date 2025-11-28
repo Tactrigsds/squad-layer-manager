@@ -319,7 +319,7 @@ export const ChainIdSchema = ZodUtils.ParsedIntSchema
 export const PLAYER_DETAILS = ['role', 'isAdmin'] as const
 export const PlayerSchema = z.object({
 	ids: PlayerIds.Schema,
-	teamId: TeamIdSchema,
+	teamId: TeamIdSchema.nullable(),
 	squadId: z.number().nullable(),
 	isLeader: z.boolean(),
 	isAdmin: z.boolean(),
@@ -332,7 +332,7 @@ export namespace Players {
 	export function groupIntoSquads(players: Player[]) {
 		const squads: { squadId: SquadId; teamId: TeamId; players: Player[] }[] = []
 		for (const player of players) {
-			if (player.squadId === null) continue
+			if (player.squadId === null || player.teamId === null) continue
 			let squad = squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
 			if (!squad) {
 				squad = { squadId: player.squadId, teamId: player.teamId, players: [] }
@@ -481,6 +481,7 @@ export namespace Events {
 	export type PlayerChangedTeam = {
 		type: 'PLAYER_CHANGED_TEAM'
 		playerIds: PlayerIds.Type
+		newTeamId: TeamId | null
 	} & Base
 
 	// can originate if the player manually leaves the squad, or is removed for some other reason
