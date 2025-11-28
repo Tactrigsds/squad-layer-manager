@@ -573,14 +573,16 @@ function ServerCounts() {
 
 export default function ServerActivityPanel() {
 	const AUTO_CLOSE_WIDTH_THRESHOLD = 1350 // pixels
+	const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above threshold (1620 pixels)
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const cardRef = React.useRef<HTMLDivElement>(null)
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const setEventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
 
-	// Track viewport width state for auto-closing the panel
+	// Track viewport width state for auto-closing/opening the panel
 	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
+	const userManuallyClosed = React.useRef(false)
 
 	React.useEffect(() => {
 		const calculateMaxHeight = () => {
@@ -600,6 +602,14 @@ export default function ServerActivityPanel() {
 
 			const currentWidth = window.innerWidth
 			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
+			const isAboveAutoOpenThreshold = currentWidth >= AUTO_OPEN_WIDTH_THRESHOLD
+
+			// Auto-open if we're 20% above the threshold, panel is closed, and user hasn't manually closed it
+			if (isAboveAutoOpenThreshold && !isStatePanelOpen && !userManuallyClosed.current) {
+				setIsStatePanelOpen(true)
+				hasBeenAboveThresholdRef.current = true
+				return
+			}
 
 			// If we've crossed above the threshold, mark it
 			if (isAboveThreshold) {
@@ -614,6 +624,8 @@ export default function ServerActivityPanel() {
 				setIsStatePanelOpen(false)
 				// Reset the flag so if user manually opens, we won't auto-close again until they resize above threshold
 				hasBeenAboveThresholdRef.current = false
+				// Reset manual close flag when we auto-close
+				userManuallyClosed.current = false
 			}
 		}
 
@@ -642,10 +654,20 @@ export default function ServerActivityPanel() {
 				<ServerCounts />
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden w-full min-h-[10em]">
-				<div className="flex gap-4 h-full">
+				<div className="flex gap-0.5 h-full">
 					<ServerChatEvents
 						className="flex-1 min-w-[350px] h-full"
-						onToggleStatePanel={() => setIsStatePanelOpen(!isStatePanelOpen)}
+						onToggleStatePanel={() => {
+							const newState = !isStatePanelOpen
+							setIsStatePanelOpen(newState)
+							// Track if user manually closed the panel while above auto-open threshold
+							if (!newState && window.innerWidth >= AUTO_OPEN_WIDTH_THRESHOLD) {
+								userManuallyClosed.current = true
+							} else if (newState) {
+								// User manually opened it, reset the flag
+								userManuallyClosed.current = false
+							}
+						}}
 						isStatePanelOpen={isStatePanelOpen}
 					/>
 					{isStatePanelOpen && (
