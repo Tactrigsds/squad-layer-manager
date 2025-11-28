@@ -167,8 +167,8 @@ export default function ServerPlayerList() {
 		return null
 	}
 
-	let firstTeamIndex = (+displayTeamsNormalized + match.ordinal + 1) % 2
-	let secondTeamIndex = (+displayTeamsNormalized + match.ordinal + 0) % 2
+	let firstTeamIndex = (+displayTeamsNormalized + match.ordinal + 0) % 2
+	let secondTeamIndex = (+displayTeamsNormalized + match.ordinal + 1) % 2
 	const firstTeamId = firstTeamIndex + 1 as SM.TeamId
 	const secondTeamId = secondTeamIndex + 1 as SM.TeamId
 
