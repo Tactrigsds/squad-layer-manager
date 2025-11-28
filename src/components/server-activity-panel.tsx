@@ -57,7 +57,7 @@ function ChatMessageEvent({ event }: { event: Extract<CHAT.EventEnriched, { type
 		return baseStyle
 	}
 
-	if (!event.player.teamId === null) return null
+	if (event.player.teamId === null) return null
 	const channelStyle = getChannelStyle()
 
 	const channelLabel = (() => {

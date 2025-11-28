@@ -1,4 +1,5 @@
 import * as Paths from '$root/paths'
+import * as Arr from '@/lib/array'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
@@ -29,6 +30,12 @@ export const ConfigSchema = z.object({
 		z.object({
 			id: z.string().describe('ID of the server'),
 			displayName: z.string().describe('Display name of the server'),
+			adminListSources: z.array(z.string()).optional().describe(
+				'specify which sources to include from adminListSources. by default will include all sources',
+			),
+			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).default(['canseeadminchat']).describe(
+				"what ingame permissions identify an admin for SLM's purposes",
+			),
 			enabled: z.boolean().default(true).describe('Whether the server is enabled'),
 			connections: SS.ServerConnectionSchema,
 			remindersAndAnnouncementsEnabled: z.boolean().default(true).describe('Whether reminders/annoucements for admins are enabled'),
@@ -66,9 +73,7 @@ export const ConfigSchema = z.object({
 	// we have to ues .optional instead of .default here to avoid circular type definitions
 	commandPrefix: BasicStrNoWhitespace,
 	commands: CMD.AllCommandConfigSchema,
-
-	adminListSources: z.array(SM.AdminListSourceSchema),
-	adminListAdminRole: z.string().describe("The role in the adminlist which identifies an admin for SLM's purposes"),
+	adminListSources: z.record(z.string(), SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
 	globalRolePermissions: z
 		.record(z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
@@ -131,6 +136,20 @@ export async function ensureSetup() {
 				throw new Error(`Error while parsing configuration: Duplicate command string "${str}" found in command "${cmdName}"`)
 			}
 			allStrings.add(str)
+		}
+	}
+
+	// -------- make sure admin sources are referenced correctly, and set defaults --------
+	const sourceKeys = Object.keys(CONFIG.adminListSources)
+	for (const server of CONFIG.servers) {
+		if (!server.adminListSources) {
+			server.adminListSources = sourceKeys
+		}
+		const missingKeys = Arr.missing(server.adminListSources, sourceKeys)
+		if (missingKeys.length > 0) {
+			throw new Error(
+				`Error while parsing configuration: Server "${server.id}" references unknown admin sources: ${missingKeys.join(', ')}`,
+			)
 		}
 	}
 }

@@ -292,7 +292,7 @@ export type ServerId = {
 
 export type AdminList = {
 	adminList: AsyncResource<SM.AdminList, CS.Log>
-}
+} & ServerId
 
 export type SquadRcon = { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 

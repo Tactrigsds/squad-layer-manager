@@ -3,6 +3,7 @@ import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { z } from 'zod'
 
@@ -75,6 +76,8 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.filters.push({ applyAs: DEFAULT_POOL_FILT
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema,
+	adminListSources: z.array(z.string()),
+	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM),
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>

@@ -204,6 +204,11 @@ export async function setup() {
 	const ops: Promise<void>[] = []
 
 	for (const serverConfig of CONFIG.servers) {
+		const settingsFromConfig = {
+			connections: serverConfig.connections,
+			adminListSources: serverConfig.adminListSources!,
+			adminIdentifyingPermissions: serverConfig.adminIdentifyingPermissions,
+		}
 		ops.push((async function loadServerConfig() {
 			const serverState = await DB.runTransaction(ctx, async () => {
 				let [server] = await ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, serverConfig.id)).for('update')
@@ -212,7 +217,7 @@ export async function setup() {
 					server = {
 						id: serverConfig.id,
 						displayName: serverConfig.displayName,
-						settings: SS.ServerSettingsSchema.parse({ connections: serverConfig.connections }),
+						settings: SS.ServerSettingsSchema.parse(settingsFromConfig),
 						layerQueue: [],
 						layerQueueSeqId: 0,
 						lastRoll: null,
@@ -228,7 +233,10 @@ export async function setup() {
 						server.displayName = serverConfig.displayName
 					}
 					const oldSettings = server.settings
-					server.settings = SS.ServerSettingsSchema.parse({ ...(oldSettings as object), connections: serverConfig.connections })
+					server.settings = SS.ServerSettingsSchema.parse({
+						...(oldSettings as object),
+						...settingsFromConfig,
+					})
 
 					if (!Obj.deepEqual(server.settings, oldSettings)) update = true
 					if (update) {
@@ -261,8 +269,17 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
-	const adminListTTL = HumanTime.parse('1h')
-	const adminList = new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, CONFIG.adminListSources), { defaultTTL: adminListTTL })
+	const adminList = (() => {
+		const adminListTTL = HumanTime.parse('1h')
+		let serverSources: SM.AdminListSource[] = []
+		for (const key of serverState.settings.adminListSources) {
+			serverSources.push(CONFIG.adminListSources[key])
+		}
+		// we are duplicating fetches here if two servers have the same source, but shouldn't matter
+		return new AsyncResource('adminLists', (ctx) => fetchAdminLists(ctx, serverSources, settings.adminIdentifyingPermissions), {
+			defaultTTL: adminListTTL,
+		})
+	})()
 	registerCleanupSub(() => adminList.dispose(), cleanupSub)
 
 	const sftpReader = new SftpTail(ctx, {
@@ -299,7 +316,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			chat: Obj.deepClone(CHAT.INITIAL_CHAT_STATE),
 		},
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList }, cleanupSub),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanupSub),
 	}
 
 	registerCleanupSub(() => {
@@ -436,7 +453,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	).subscribe()
 
 	// -------- create synthetic events based on state changes on the server --------
-	server.playerList.observe({ ...ctx, rcon, adminList })
+	server.playerList.observe({ ...ctx, rcon, adminList, serverId })
 		.pipe(
 			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
 			// distinctDeepEquals(),
@@ -537,6 +554,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 	await LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
 	initNewGameHandling({ ...ctx, ...slice })
+	void adminList.get({ ...ctx, ...slice })
 	ctx.log.info('Initialized server %s', serverId)
 }
 

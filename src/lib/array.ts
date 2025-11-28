@@ -78,3 +78,7 @@ export function destrNullable<T>(arr: T[] | undefined) {
 	if (arr) return arr
 	return [] as T[] | undefined[]
 }
+
+export function missing<T>(arr: T[], target: T[]): T[] {
+	return arr.filter(item => !target.includes(item))
+}

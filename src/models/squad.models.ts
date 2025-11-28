@@ -1,11 +1,12 @@
 import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
 
+import type { OneToManyMap } from '@/lib/one-to-many-map'
+
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
 import { z } from 'zod'
-import type { OneToManyMap } from '../lib/one-to-many-map'
 
 export const ServerRawInfoSchema = z.object({
 	ServerName_s: z.string().default('Unknown'),
@@ -379,6 +380,42 @@ export namespace Squads {
 export function findSquadLeader(players: Player[]) {
 }
 
+// https://squad.fandom.com/wiki/Server_Configuration#Admins.cfg
+export const PLAYER_PERM = z.enum([
+	'startvote', // not used
+	'changemap', // switch to another map
+	'pause', // Pause server gameplay
+	'cheat', // Use server cheat commands
+	'private', // Password protect server
+	'balance', // Group Ignores server team balance
+	'kick', // kick a player
+	'ban', // ban a player
+	'config', // Change server config
+	'cameraman', // Admin spectate mode
+	'immune', // Cannot be kicked / banned
+	'manageserver', // Shutdown server
+	'featuretest', // Any features added for testing by dev team
+	'reserve', // Reserve slot
+	'demos', // Record Demos ("demos" appears to only work when added together with "demo,ClientDemos" access levels aswell. Keep in mind that admins with these permissions have to be on the server for the files to be saved on their PC. They can be AFK but have to have "ENABLE AUTO RECORD MULTIPLAYER GAMES" setting in their "REPLAY" settings enabled for it to work without manual saving). Player names still cannot be viewed for some reason though.
+	'demo', // Record Demos (see demos)
+	'ClientDemos', // Record Demos (see demos)
+	'debug', // show admin stats command and other debugging info
+	'teamchange', // No timer limits on team change
+	'forceteamchange', // Can issue the ForceTeamChange command
+	'canseeadminchat', // This group can see the admin chat and teamkill/admin-join notifications
+])
+export type PlayerPerm = z.infer<typeof PLAYER_PERM>
+export const AdminListSourceSchema = z.object({
+	type: z.enum(['remote', 'local', 'ftp']),
+	source: z.string(),
+})
+export type AdminListSource = z.infer<typeof AdminListSourceSchema>
+// steamId -> groups
+export type SquadAdmins = OneToManyMap<bigint, string>
+// group -> permissions
+export type SquadGroups = OneToManyMap<string, string>
+export type AdminList = { players: SquadAdmins; groups: SquadGroups; admins: Set<bigint> }
+
 export const CHAT_CHANNEL_TYPE = z.enum(['ChatAdmin', 'ChatTeam', 'ChatSquad', 'ChatAll'])
 export type ChatChannelType = z.infer<typeof CHAT_CHANNEL_TYPE>
 
@@ -387,15 +424,6 @@ export type ChatChannel =
 	| { type: 'ChatAdmin' }
 	| { type: 'ChatTeam'; teamId: TeamId }
 	| { type: 'ChatSquad'; teamId: TeamId; squadId: SquadId }
-
-export const AdminListSourceSchema = z.object({
-	type: z.enum(['remote', 'local', 'ftp']),
-	source: z.string(),
-})
-export type AdminListSource = z.infer<typeof AdminListSourceSchema>
-export type SquadAdmins = OneToManyMap<bigint, string>
-export type SquadGroups = OneToManyMap<string, string>
-export type AdminList = { admins: SquadAdmins; groups: SquadGroups }
 
 export const RCON_MAX_BUF_LEN = 4152
 

@@ -88,6 +88,11 @@ export function externBufferTime<T>(time: number, buffer: T[]) {
 				return buffer
 			}),
 			Rx.sample(Rx.interval(time)),
+			Rx.map((b) => {
+				const result = [...b]
+				b.length = 0
+				return result
+			}),
 		)
 }
 

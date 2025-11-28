@@ -62,3 +62,22 @@ export function fromJsonCompatible(json: Record<string, string[]>): OneToManyMap
 	}
 	return map
 }
+
+export function* iter<K, V>(map: OneToManyMap<K, V>, ...filterKeys: K[]): Generator<[K, V], void, undefined> {
+	if (filterKeys.length > 0) {
+		for (const filterKey of new Set(filterKeys)) {
+			const values = map.get(filterKey)
+			if (values) {
+				for (const value of values) {
+					yield [filterKey, value]
+				}
+			}
+		}
+	} else {
+		for (const [key, values] of map.entries()) {
+			for (const value of values) {
+				yield [key, value]
+			}
+		}
+	}
+}

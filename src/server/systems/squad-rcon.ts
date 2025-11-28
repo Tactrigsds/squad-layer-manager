@@ -1,7 +1,7 @@
 import { sleep } from '@/lib/async'
 import { AsyncResource, registerCleanup } from '@/lib/async'
 import { matchLog } from '@/lib/log-parsing'
-import * as OneToMany from '@/lib/one-to-many-map'
+
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -120,10 +120,9 @@ export const getPlayers = C.spanOp('squad-rcon:get-players', { tracer }, async (
 		data.ids = SM.PlayerIds.extractPlayerIds({ username: match.groups!.name, idsStr: match[2] })
 
 		data.isAdmin = false
-
 		if (data.ids.steam) {
 			const adminList = await ctx.adminList.get(ctx, { ttl: Infinity })
-			data.isAdmin = OneToMany.has(adminList.admins, data.ids.steam, CONFIG.adminListAdminRole)
+			data.isAdmin = adminList.admins.has(data.ids.steam)
 		}
 		// console.log('---- DATA ----')
 		// console.log(superjson.stringify(data))
@@ -325,7 +324,7 @@ export const warnAllAdmins = C.spanOp(
 		if (playersRes.code === 'err:rcon') return
 		for (const player of playersRes.players) {
 			if (!player.ids.steam) continue
-			if (OneToMany.has(currentAdminList.admins, player.ids.steam, CONFIG.adminListAdminRole)) {
+			if (currentAdminList.admins.has(player.ids.steam)) {
 				ops.push(warn(ctx, player.ids, options))
 			}
 		}

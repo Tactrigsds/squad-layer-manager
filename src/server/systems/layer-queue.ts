@@ -519,7 +519,10 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
 	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
-	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, opts: { aborter: USR.GuiOrChatUserId }) => {
+	async (
+		_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
+		opts: { aborter: USR.GuiOrChatUserId },
+	) => {
 		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const voteState = ctx.vote.state
 		return await DB.runTransaction(ctx, async (ctx) => {
