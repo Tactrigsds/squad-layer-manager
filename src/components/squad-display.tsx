@@ -21,7 +21,7 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 						Squad {squad.squadId}
 					</span>
 				)
-				: <span className="font-semibold">Squad {squad.squadId} "{squad.squadName}"</span>}
+				: <span className="font-semibold">Squad {squad.squadId} {showName && `"${squad.squadName}"`}</span>}
 			{showTeam && (
 				<span className="inline-flex flex-nowrap">
 					(
