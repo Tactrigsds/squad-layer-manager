@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, toCold, traceTag, withAbortSignal } from '@/lib/async'
+import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { matchLog } from '@/lib/log-parsing'
@@ -15,7 +15,7 @@ import type { Parts } from '@/lib/types'
 import { HumanTime } from '@/lib/zod'
 import * as Messages from '@/messages.ts'
 import type * as BAL from '@/models/balance-triggers.models'
-import * as CHAT from '@/models/chat.models.ts'
+import type * as CHAT from '@/models/chat.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -352,7 +352,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			))
 
 		const events = rowsRaw.map(row => superjson.deserialize(row.data as any) as CHAT.Event)
-		let foundFirstReset = false
+
 		const firstResetIdx = events.findIndex(event => event.type === 'RESET')
 		server.state.chatEventBuffer = events.slice(firstResetIdx)
 	})()

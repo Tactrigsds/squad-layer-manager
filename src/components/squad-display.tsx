@@ -12,7 +12,6 @@ interface SquadDisplayProps {
 
 export function SquadDisplay({ squad, matchId, className, showName = true, showTeam = false }: SquadDisplayProps) {
 	const isDefaultName = squad.squadName === `Squad ${squad.squadId}`
-	const shouldShowName = showName && squad.squadName && !isDefaultName
 
 	return (
 		<span className={cn('inline-flex flex-nowrap items-center gap-1', className)}>
