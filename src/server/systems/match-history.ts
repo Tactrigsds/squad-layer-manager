@@ -1,8 +1,9 @@
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { acquireReentrant, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { registerCleanup, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { pushReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
@@ -29,16 +30,25 @@ export type MatchHistoryContext = {
 	update$: Rx.Subject<void>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
+	cleanupSub: Rx.Subscription
 } & Parts<USR.UserPart>
 
-export function initMatchHistoryContext(): MatchHistoryContext {
-	return {
+export function initMatchHistoryContext(cleanupSub: Rx.Subscription): MatchHistoryContext {
+	const ctx: MatchHistoryContext = {
 		mtx: new Mutex(),
 		update$: new Rx.Subject(),
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
+		cleanupSub,
 	}
+
+	registerCleanup(() => {
+		ctx.update$.complete()
+		ctx.mtx.release()
+	}, cleanupSub)
+
+	return ctx
 }
 
 export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
@@ -48,15 +58,6 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 		recentBalanceTriggerEvents: state.recentBalanceTriggerEvents,
 		parts: state.parts,
 	}
-}
-
-export async function getRecentMatchHistory(ctx: C.MatchHistory & C.Mutexes) {
-	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
-	const state = ctx.matchHistory
-	if (state.recentMatches[state.recentMatches.length - 1]?.status === 'in-progress') {
-		return state.recentMatches.slice(0, state.recentMatches.length - 1)
-	}
-	return state.recentMatches
 }
 
 export const loadState = C.spanOp(
@@ -137,9 +138,8 @@ export const matchHistoryRouter = {
 
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
-		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
+	async (ctx: CS.Log & C.Db & C.MatchHistory, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
@@ -148,7 +148,7 @@ export const addNewCurrentMatch = C.spanOp(
 			await loadState(ctx, { startAtOrdinal: ordinal })
 		})
 
-		ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
+		pushReleaseTask(() => ctx.matchHistory.update$.next())
 
 		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
@@ -157,19 +157,19 @@ export const addNewCurrentMatch = C.spanOp(
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', {
 	tracer,
 	eventLogLevel: 'info',
+	mutexes: (ctx) => ctx.matchHistory.mtx,
 	extraText: (ctx) => `id: ${getCurrentMatch(ctx).historyEntryId}`,
 	attrs: (ctx, currentLayerId) => ({
 		currentLayerId,
 		currentMatchId: getCurrentMatch(ctx).historyEntryId,
 	}),
 }, async (
-	ctx: CS.Log & C.Db & C.MatchHistory & C.Mutexes,
+	ctx: CS.Log & C.Db & C.MatchHistory,
 	currentLayerId: string,
 	winner: SM.SquadOutcomeTeam | null,
 	loser: SM.SquadOutcomeTeam | null,
 	time: Date,
 ) => {
-	using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
 	const res = await DB.runTransaction(ctx, async ctx => {
 		const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 		if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
@@ -232,24 +232,26 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
+	pushReleaseTask(() => {
+		return ctx.matchHistory.update$.next()
+	})
 	return { ...res }
 })
 
 /**
  * Runs when rcon is connected to ensure that the match history is up-to-date. If the current layer is unexpected then we insert a new history entry for the current match.
+ * Also always loads the match history state.
  */
-export const resolvePotentialCurrentLayerConflict = C.spanOp(
-	'match-history:resolve-potential-current-layer-conflict',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: C.Db & C.MatchHistory & C.SquadServer & C.Mutexes, currentLayerOnServer: L.UnvalidatedLayer) => {
-		using _lock = await acquireReentrant(ctx, ctx.matchHistory.mtx)
-		await DB.runTransaction(ctx, async ctx => {
+export const syncWithCurrentLayer = C.spanOp(
+	'match-history:sync-with-current-layer',
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
+	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
+		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
 				await loadState(ctx)
-				ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
-				return
+				pushReleaseTask(() => ctx.matchHistory.update$.next())
+				return { pushedNewGame: false }
 			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
@@ -259,7 +261,8 @@ export const resolvePotentialCurrentLayerConflict = C.spanOp(
 				setByType: 'unknown',
 			}))
 			await loadState(ctx)
-			ctx.mutexes.releaseTasks.push(() => ctx.matchHistory.update$.next())
+			pushReleaseTask(() => ctx.matchHistory.update$.next())
+			return { pushedNewGame: true }
 		})
 	},
 )

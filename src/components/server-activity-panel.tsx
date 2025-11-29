@@ -4,15 +4,14 @@ import { PlayerDisplay } from '@/components/player-display'
 import ServerPlayerList from '@/components/server-player-list.tsx'
 import { SquadDisplay } from '@/components/squad-display'
 import { MatchTeamDisplay } from '@/components/teams-display'
-
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as DH from '@/lib/display-helpers'
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
-
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -422,7 +421,7 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 		</div>
 	)
 }
-const EventItem = React.memo(function EventItem({ event }: { event: CHAT.EventEnriched }) {
+function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 		case 'ADMIN_BROADCAST':
@@ -466,7 +465,8 @@ const EventItem = React.memo(function EventItem({ event }: { event: CHAT.EventEn
 		default:
 			assertNever(event)
 	}
-})
+}
+
 function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced ? s.chatState.eventBuffer : null)
 	const synced = eventBuffer !== null
@@ -496,7 +496,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		if (eventFilterState === 'ADMIN') {
 			// Show only admin chat messages and broadcasts
 			return eventBuffer.filter(event => {
-				if (event.type === 'ADMIN_BROADCAST') return true
+				if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') return true
 				if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') return true
 				return false
 			})
@@ -564,6 +564,11 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 		return () => scrollElement.removeEventListener('scroll', handleScroll)
 	}, [])
+
+	React.useEffect(() => {
+		if (!eventBuffer) return
+		console.log('last event rendered', eventBuffer[eventBuffer.length - 1], Obj.deepClone(eventBuffer))
+	}, [eventBuffer])
 
 	return (
 		<div className="h-full w-full relative">

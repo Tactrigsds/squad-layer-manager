@@ -60,6 +60,13 @@ export const groups = {
 		SPREADSHEET_MAP_LAYERS_GID: z.number().default(1212962563),
 		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers.csv')),
 	},
+
+	battlemetrics: {
+		BM_HOST: z.string().url().default('https://api.battlemetrics.com'),
+		// BM_ORG_ID: z.string(),
+		BM_PAT: z.string(),
+		BM_ORG_ID: z.string(),
+	},
 } satisfies { [key: string]: Record<string, z.ZodTypeAny> }
 
 let rawEnv!: Record<string, string | undefined>

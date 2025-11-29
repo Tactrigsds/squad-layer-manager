@@ -1,7 +1,5 @@
 import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
-
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
@@ -349,7 +347,6 @@ export type SquadId = number
 export const SquadSchema = z.object({
 	squadId: z.number(),
 	squadName: z.string().min(1),
-	size: z.number(),
 	locked: z.boolean(),
 	creatorIds: PlayerIds.Schema,
 	teamId: TeamIdSchema,
@@ -458,12 +455,27 @@ export type PlayerRef = string
 
 export namespace Events {
 	type Base = {
+		id: bigint
 		time: Date
 		// we're incling matchId in all Events here to simplify the lookup process where convenient, and to make it possible to sync the current server id set for the client with the displayed events. Could also omnibus events across multiple servers in the future if we wanted to
 		matchId: number
 	}
 	export type NewGame = {
 		type: 'NEW_GAME'
+		source: 'slm-started' | 'rcon-reconnected' | 'change-detection' | 'log-event'
+		state: {
+			players: Player[]
+			squads: Squad[]
+		}
+	} & Base
+
+	export type Reset = {
+		type: 'RESET'
+		reason: 'slm-started' | 'rcon-reconnected'
+		state: {
+			players: Player[]
+			squads: Squad[]
+		}
 	} & Base
 
 	export type RoundEnded = {
@@ -482,7 +494,10 @@ export namespace Events {
 
 	export type SquadCreated = {
 		type: 'SQUAD_CREATED'
-		squad: Squad
+		teamId: TeamId
+		squadId: SquadId
+		squadName: string
+		creatorIds: PlayerIds.Type
 	} & Base
 
 	export type ChatMessage = {
@@ -545,6 +560,7 @@ export namespace Events {
 
 	export type Event =
 		| NewGame
+		| Reset
 		| RoundEnded
 		| PlayerConnected
 		| PlayerDisconnected

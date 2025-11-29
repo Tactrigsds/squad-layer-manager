@@ -368,12 +368,12 @@ export function createOrpcBase(
 	// we always expect a default server id to be set and in-line with the current route when the ws connection is established to be set when the ws connection is established.
 	const defaultServerId = ctx.cookies['default-server-id']!
 	SquadServer.globalState.selectedServers.set(wsClientId, defaultServerId)
-	const wsCtx: C.OrpcBase = C.initMutexStore({
+	const wsCtx: C.OrpcBase = {
 		wsClientId,
 		...ctx,
 		ws: websocket,
 		log: ctx.log.child({ wsClientId }),
-	})
+	}
 	WsSessionSys.registerClient(wsCtx)
 	return wsCtx
 }

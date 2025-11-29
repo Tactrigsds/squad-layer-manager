@@ -1,5 +1,5 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object'
+
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -30,21 +30,12 @@ export namespace InterpolableState {
 
 // event enriched with relevant data
 export type EventEnriched = NonNullable<ReturnType<typeof interpolateEvent>>
-export type Event = SM.Events.Event | ResetEvent
+export type Event = SM.Events.Event
 
 {
 	// type assertions
 	const _: Event['type'] = null! satisfies SchemaModels.ServerEventType
 	const _1: SchemaModels.ServerEventType = null! satisfies Event['type']
-}
-
-export type ResetReason = 'slm-started' | 'rcon-reconnected'
-export type ResetEvent = {
-	type: 'RESET'
-	state: InterpolableState
-	time: Date
-	matchId: number
-	reason: ResetReason
 }
 
 export type ChatState = {
@@ -70,11 +61,10 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent) {
 		return
 	}
 
-	const rawBuffer = state.rawEventBuffer
 	let mutatedIndex: number | null = null
 	let savepointIndex: number = 0
-	for (let i = rawBuffer.length - 1; i >= 0; i--) {
-		const current = rawBuffer[i]
+	for (let i = state.rawEventBuffer.length - 1; i >= 0; i--) {
+		const current = state.rawEventBuffer[i]
 		if (mutatedIndex === null && current.time <= event.time) {
 			mutatedIndex = i + 1
 		}
@@ -86,14 +76,14 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent) {
 			break
 		}
 	}
-	if (mutatedIndex === null) mutatedIndex = rawBuffer.length
-	rawBuffer.splice(mutatedIndex, 0, event)
+	if (mutatedIndex === null) mutatedIndex = state.rawEventBuffer.length
+	state.rawEventBuffer.splice(mutatedIndex, 0, event)
 	if (mutatedIndex < state.eventBuffer.length) {
 		// we need to re-interpolate from the last RESET because we received an out-of-order event.
 		state.eventBuffer = state.eventBuffer.slice(0, savepointIndex)
 
 		let newState: InterpolableState = { players: [], squads: [] }
-		for (const event of rawBuffer.slice(savepointIndex)) {
+		for (const event of state.rawEventBuffer.slice(savepointIndex)) {
 			const interpolated = interpolateEvent(newState, event)
 			state.eventBuffer.push(interpolated)
 		}
@@ -123,9 +113,15 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			return rest
 		}
 
-		case 'NEW_GAME':
+		case 'NEW_GAME': {
+			const { state: initialState, ...rest } = event
+			Object.assign(state, InterpolableState.clone(initialState))
+			if (['change-detection', 'log-event'].includes(rest.source)) return noop('dont show synthetic NEW_GAME')
+			return rest
+		}
+
 		case 'ROUND_ENDED':
-			return event
+			return { ...event }
 
 		case 'PLAYER_CONNECTED': {
 			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
@@ -282,33 +278,41 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event.squad))
+			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event))
 			if (existingSquad) {
-				return noop(`Squad ${event.squad.squadId} already exists`)
+				return noop(`Squad ${SM.Squads.printKey(event)} already exists`)
 			}
-			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creatorIds)
+			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.creatorIds)
 			if (creatorIndex === -1) {
-				return noop(`Squad ${event.squad.squadId} created by unknown player ${SM.PlayerIds.prettyPrint(event.squad.creatorIds)}`)
+				return noop(
+					`Squad ${SM.Squads.printKey(event)} "${event.squadName}" created by unknown player ${SM.PlayerIds.prettyPrint(event.creatorIds)}`,
+				)
 			}
 			const creator = state.players[creatorIndex]
 			if (creator.teamId !== creator.teamId) {
 				return noop(
-					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${
-						SM.Squads.printKey(event.squad)
-					}`,
+					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(event)}`,
 				)
 			}
-			state.squads.push(event.squad)
+			const squad: SM.Squad = {
+				creatorIds: event.creatorIds,
+				locked: false,
+				squadName: event.squadName,
+				teamId: event.teamId,
+				squadId: event.squadId,
+			}
+			state.squads.push(squad)
 			const updatedCreator: SM.Player = {
 				...creator,
 				isLeader: true,
-				squadId: event.squad.squadId,
+				squadId: event.squadId,
 			}
 			state.players[creatorIndex] = updatedCreator
 
 			return {
 				...event,
 				creator: updatedCreator,
+				squad,
 			}
 		}
 

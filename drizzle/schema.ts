@@ -55,7 +55,7 @@ export const balanceTriggerEvents = mysqlTable(
 export const serverEvents = mysqlTable(
 	'serverEvents',
 	{
-		id: int('id').primaryKey().autoincrement(),
+		id: bigint('id', { mode: 'bigint', unsigned: true }).primaryKey(),
 		type: mysqlEnum('type', SERVER_EVENT_TYPE.options).notNull(),
 		time: timestamp('time').notNull(),
 		matchId: int('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),

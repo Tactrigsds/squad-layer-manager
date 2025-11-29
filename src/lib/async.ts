@@ -114,7 +114,7 @@ export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
 		return (o: Rx.Observable<T>) => o
 	}
-	// eslint-disable-next-line no-implied-eval
+	// oxlint-disable-next-line typescript-eslint/no-implied-eval
 	const fn = new Function(
 		'observable',
 		'observableConstructor',
@@ -315,42 +315,6 @@ export async function acquireInBlock(mutex: Mutex, opts?: { lock?: boolean }) {
 			release?.()
 		},
 		mutex,
-	}
-}
-
-// WARNING: if you use this function you cannot pass the context out of the lifetime of the calling function or weird things might happen
-export async function acquireReentrant<Ctx extends C.Mutexes>(_ctx: Ctx, ...mutexes: Mutex[]) {
-	const ctx: Ctx = { ..._ctx, mutexes: { locked: new Set(_ctx.mutexes.locked), releaseTasks: [] } }
-
-	const mutexesToAcquire = mutexes.filter(mutex => !ctx.mutexes.locked.has(mutex))
-
-	for (const mutex of mutexesToAcquire) {
-		ctx.mutexes.locked.add(mutex)
-	}
-
-	// Acquire all locks in parallel
-	const acquired = await Promise.all(
-		mutexesToAcquire.map(mutex => mutex.acquire()),
-	)
-
-	// wait for referenced mutexes to be released and then process releaseTasks. There is no execution ordering guarantee
-	const allReleased = Promise.all(mutexes.map(mutex => mutex.waitForUnlock()))
-	void allReleased.then(async () => {
-		for (const task of ctx.mutexes.releaseTasks) {
-			void task()
-		}
-		return undefined
-	}).catch(() => {
-		// silently ignore errors
-	})
-
-	return {
-		...ctx,
-		[Symbol.dispose]() {
-			for (const release of acquired) {
-				release()
-			}
-		},
 	}
 }
 

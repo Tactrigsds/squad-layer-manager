@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { acquireReentrant, sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object'
@@ -31,6 +31,7 @@ import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
 
+import { pushReleaseTask, withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import type { Mutex } from 'async-mutex'
 import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
@@ -62,11 +63,10 @@ export function initLayerQueueContext(): LayerQueueContext {
 const tracer = Otel.trace.getTracer('layer-queue')
 export const init = C.spanOp(
 	'layer-queue:init',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.ServerSlice & C.Mutexes) => {
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
+	async (ctx: CS.Log & C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
-		await DB.runTransaction(ctx, async (_ctx) => {
-			using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
+		await DB.runTransaction(ctx, async (ctx) => {
 			const s = ctx.layerQueue
 
 			const initialServerState = await SquadServer.getFullServerState(ctx)
@@ -74,7 +74,7 @@ export const init = C.spanOp(
 			// -------- initialize vote state --------
 			await syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
-			ctx.tx.unlockTasks.push(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
+			pushReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
 
 			ctx.log.info('vote state initialized')
 		})
@@ -175,17 +175,15 @@ export const init = C.spanOp(
 	},
 )
 
-export async function handleNewGame(
-	_ctx: C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
+export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHistory.mtx], async (
+	ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 	newLayer: L.UnvalidatedLayer,
 	newGameEvent?: SM.LogEvents.NewGame,
-) {
+) => {
 	if (newGameEvent && newGameEvent?.layerClassname !== newLayer.Layer) {
-		_ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
+		ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
 		newGameEvent = undefined
 	}
-
-	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx, _ctx.matchHistory.mtx)
 
 	const eventTime = newGameEvent?.time ?? new Date()
 
@@ -279,94 +277,96 @@ export async function handleNewGame(
 	}
 
 	return res
-}
+})
 
 // -------- voting --------
 //
-async function syncVoteStateWithQueueStateInPlace(
-	_ctx: CS.Log & C.Mutexes & C.SquadServer & C.Vote & C.MatchHistory,
-	oldQueue: LL.List,
-	newQueue: LL.List,
-) {
-	if (Obj.deepEqual(oldQueue, newQueue)) return
-	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
-	const serverId = ctx.serverId
-	let newVoteState: V.VoteState | undefined | null
+export const syncVoteStateWithQueueStateInPlace = C.spanOp(
+	'layer-queue:sync-vote-state-with-queue-state',
+	{ tracer, mutexes: (ctx) => ctx.vote.mtx },
+	async (
+		ctx: CS.Log & C.SquadServer & C.Vote & C.MatchHistory,
+		oldQueue: LL.List,
+		newQueue: LL.List,
+	) => {
+		if (Obj.deepEqual(oldQueue, newQueue)) return
+		const serverId = ctx.serverId
+		let newVoteState: V.VoteState | undefined | null
 
-	const oldQueueItem = oldQueue[0] as LL.Item | undefined
-	const newQueueItem = newQueue[0]
+		const oldQueueItem = oldQueue[0] as LL.Item | undefined
+		const newQueueItem = newQueue[0]
 
-	// check if we need to set 'ready'. we only want to do this if there's been a meaningul state change that means we have to initialize it or restart the autostart time. Also if we already have a .endingVoteState we don't want to overwrite that here
-	const currentMatch = MatchHistory.getCurrentMatch(ctx)
+		// check if we need to set 'ready'. we only want to do this if there's been a meaningul state change that means we have to initialize it or restart the autostart time. Also if we already have a .endingVoteState we don't want to overwrite that here
+		const currentMatch = MatchHistory.getCurrentMatch(ctx)
 
-	const vote = ctx.vote
+		const vote = ctx.vote
 
-	if (vote.state?.code === 'in-progress') {
-		if (newQueue.some(item => item.itemId === vote.state!.itemId)) return
+		if (vote.state?.code === 'in-progress') {
+			if (newQueue.some(item => item.itemId === vote.state!.itemId)) return
 
-		// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
-		newVoteState = null
-	} else if (
-		newQueueItem && LL.isVoteItem(newQueueItem) && !newQueueItem.endingVoteState
-		&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isVoteItem(oldQueueItem))
-		&& currentMatch.status !== 'post-game'
-	) {
-		let autostartTime: Date | undefined
-		if (currentMatch.startTime && CONFIG.vote.autoStartVoteDelay) {
-			const startTime = dateFns.addMilliseconds(currentMatch.startTime, CONFIG.vote.autoStartVoteDelay)
-			if (dateFns.isFuture(startTime)) autostartTime = startTime
-			else autostartTime = dateFns.addMinutes(new Date(), 5)
-		}
-		newVoteState = {
-			code: 'ready',
-			choices: newQueueItem.choices.map(choice => choice.layerId),
-			itemId: newQueueItem.itemId,
-			voterType: vote.state?.voterType ?? 'public',
-			autostartTime,
-		}
-	} else if (!newQueueItem || !LL.isVoteItem(newQueueItem)) {
-		newVoteState = null
-	}
-
-	if (newVoteState || newVoteState === null) {
-		const update: V.VoteStateUpdate = {
-			state: newVoteState,
-			source: { type: 'system', event: 'queue-change' },
+			// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
+			newVoteState = null
+		} else if (
+			newQueueItem && LL.isVoteItem(newQueueItem) && !newQueueItem.endingVoteState
+			&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isVoteItem(oldQueueItem))
+			&& currentMatch.status !== 'post-game'
+		) {
+			let autostartTime: Date | undefined
+			if (currentMatch.startTime && CONFIG.vote.autoStartVoteDelay) {
+				const startTime = dateFns.addMilliseconds(currentMatch.startTime, CONFIG.vote.autoStartVoteDelay)
+				if (dateFns.isFuture(startTime)) autostartTime = startTime
+				else autostartTime = dateFns.addMinutes(new Date(), 5)
+			}
+			newVoteState = {
+				code: 'ready',
+				choices: newQueueItem.choices.map(choice => choice.layerId),
+				itemId: newQueueItem.itemId,
+				voterType: vote.state?.voterType ?? 'public',
+				autostartTime,
+			}
+		} else if (!newQueueItem || !LL.isVoteItem(newQueueItem)) {
+			newVoteState = null
 		}
 
-		vote.voteEndTask?.unsubscribe()
-		vote.voteEndTask = null
-		vote.autostartVoteSub?.unsubscribe()
-		vote.autostartVoteSub = null
-		if (newVoteState?.code === 'ready' && newVoteState.autostartTime && CONFIG.vote.autoStartVoteDelay) {
-			ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
-			vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
-				() => {
-					void startVote(SquadServer.resolveSliceCtx(C.initMutexStore(getBaseCtx()), serverId), { initiator: 'autostart' })
-				},
-			)
+		if (newVoteState || newVoteState === null) {
+			const update: V.VoteStateUpdate = {
+				state: newVoteState,
+				source: { type: 'system', event: 'queue-change' },
+			}
+
+			vote.voteEndTask?.unsubscribe()
+			vote.voteEndTask = null
+			vote.autostartVoteSub?.unsubscribe()
+			vote.autostartVoteSub = null
+			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && CONFIG.vote.autoStartVoteDelay) {
+				ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
+				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
+					() => {
+						void startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' })
+					},
+				)
+			}
+			vote.state = newVoteState
+			pushReleaseTask(() => vote.update$.next(update))
 		}
-		vote.state = newVoteState
-		ctx.mutexes.releaseTasks.push(() => vote.update$.next(update))
-	}
-}
+	},
+)
 
 export const startVote = C.spanOp(
 	'layer-queue:vote:start',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
+	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		_ctx: CS.Log & C.Db & Partial<C.User> & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
+		ctx: CS.Log & C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
-		if (_ctx.user !== undefined) {
+		if (ctx.user !== undefined) {
 			// @ts-expect-error cringe
-			const denyRes = await Rbac.tryDenyPermissionsForUser(_ctx, RBAC.perm('vote:manage'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
 			if (denyRes) {
 				return denyRes
 			}
 		}
 
-		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
 			return statusRes
@@ -439,7 +439,7 @@ export const startVote = C.spanOp(
 			ctx.vote.autostartVoteSub = null
 
 			ctx.vote.state = updatedVoteState
-			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
+			pushReleaseTask(() => ctx.vote.update$.next(update))
 			registerVoteDeadlineAndReminder$(ctx)
 			void broadcastVoteUpdate(
 				ctx,
@@ -518,12 +518,11 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts },
+	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
-		_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
+		ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
-		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
 		const voteState = ctx.vote.state
 		return await DB.runTransaction(ctx, async (ctx) => {
 			if (!voteState || voteState?.code !== 'in-progress') {
@@ -549,7 +548,7 @@ export const abortVote = C.spanOp(
 			}
 			await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.aborted)
 			ctx.vote.state = null
-			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
+			pushReleaseTask(() => ctx.vote.update$.next(update))
 			ctx.vote.voteEndTask?.unsubscribe()
 			ctx.vote.voteEndTask = null
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
@@ -564,28 +563,31 @@ export const abortVote = C.spanOp(
 	},
 )
 
-export async function cancelVoteAutostart(_ctx: C.Mutexes & C.Vote, opts: { user: USR.GuiOrChatUserId }) {
-	using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
-	if (ctx.vote.state?.autostartCancelled) {
-		return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
-	}
-	if (!ctx.vote.state || ctx.vote.state.code !== 'ready' || !ctx.vote.state.autostartTime) {
-		return { code: 'err:vote-not-queued' as const, msg: 'No vote is currently scheduled' }
-	}
+export const cancelVoteAutostart = C.spanOp(
+	'layer-queue:vote:cancel-autostart',
+	{ tracer, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
+	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
+		if (ctx.vote.state?.autostartCancelled) {
+			return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
+		}
+		if (!ctx.vote.state || ctx.vote.state.code !== 'ready' || !ctx.vote.state.autostartTime) {
+			return { code: 'err:vote-not-queued' as const, msg: 'No vote is currently scheduled' }
+		}
 
-	const newVoteState = Obj.deepClone(ctx.vote.state)
-	newVoteState.autostartCancelled = true
-	delete newVoteState.autostartTime
-	ctx.vote.state = newVoteState
+		const newVoteState = Obj.deepClone(ctx.vote.state)
+		newVoteState.autostartCancelled = true
+		delete newVoteState.autostartTime
+		ctx.vote.state = newVoteState
 
-	ctx.mutexes.releaseTasks.push(() => {
-		ctx.vote.update$.next({
-			source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
-			state: ctx.vote.state,
+		pushReleaseTask(() => {
+			ctx.vote.update$.next({
+				source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
+				state: ctx.vote.state,
+			})
 		})
-	})
-	return { code: 'ok' as const }
-}
+		return { code: 'ok' as const }
+	},
+)
 
 function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C.Vote) {
 	const serverId = ctx.serverId
@@ -647,7 +649,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 	ctx.vote.voteEndTask.add(
 		Rx.timer(Math.max(ctx.vote.state.deadline - currentTime, 0)).subscribe({
 			next: async () => {
-				await handleVoteTimeout(SquadServer.resolveSliceCtx(C.initMutexStore(getBaseCtx()), serverId))
+				await handleVoteTimeout(SquadServer.resolveSliceCtx(getBaseCtx(), serverId))
 			},
 			complete: () => {
 				ctx.log.info('vote deadline reached')
@@ -659,9 +661,8 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 
 const handleVoteTimeout = C.spanOp(
 	'layer-queue:vote:handle-timeout',
-	{ tracer, eventLogLevel: 'info' },
-	async (_ctx: CS.Log & C.Db & C.Mutexes & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
-		using ctx = await acquireReentrant(_ctx, _ctx.vote.mtx)
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
+	async (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
 				return {
@@ -715,7 +716,7 @@ const handleVoteTimeout = C.spanOp(
 				state: null,
 				source: { type: 'system', event: 'vote-timeout' },
 			}
-			ctx.mutexes.releaseTasks.push(() => ctx.vote.update$.next(update))
+			pushReleaseTask(() => ctx.vote.update$.next(update))
 
 			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 			await updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })

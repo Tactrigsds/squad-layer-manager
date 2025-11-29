@@ -160,7 +160,6 @@ export const getSquads = C.spanOp('squad-rcon:get-squads', { tracer }, async (ct
 			teamName: teamName,
 			squadName: match.groups!.squadName,
 			locked: match.groups?.locked === 'True',
-			size: parseInt(match.groups!.size),
 			creatorIds: SM.PlayerIds.extractPlayerIds({ username: match.groups!.creatorName, idsStr: match[6] }),
 		}
 

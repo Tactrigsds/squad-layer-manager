@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
+import { pushReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
@@ -140,7 +141,7 @@ export async function completeSteamAccountLink(ctx: CS.Log & C.Db, code: string,
 		;[user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, linked.discordId)).for('update')
 		if (!user) return { code: 'err:discord-user-not-found' as const, msg: 'The Discord account that initiated this link was not found.' }
 		await ctx.db().update(Schema.users).set({ steam64Id }).where(E.eq(Schema.users.discordId, linked.discordId))
-		ctx.tx.unlockTasks.push(() => steamAccountLinkComplete$.next({ discordId: linked.discordId, steam64Id }))
+		pushReleaseTask(() => steamAccountLinkComplete$.next({ discordId: linked.discordId, steam64Id }))
 		return { code: 'ok' as const, linkedUsername: user.username }
 	})
 }

@@ -59,10 +59,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 			set(state => {
 				let chatState = state.chatState
 				chatState = {
-					interpolatedState: {
-						players: [...chatState.interpolatedState.players],
-						squads: [...chatState.interpolatedState.squads],
-					},
+					interpolatedState: CHAT.InterpolableState.clone(chatState.interpolatedState),
 					eventBuffer: [...chatState.eventBuffer],
 					rawEventBuffer: [...chatState.rawEventBuffer],
 					synced: chatState.synced,

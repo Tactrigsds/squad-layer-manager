@@ -3,6 +3,7 @@ import type { AsyncResource, AsyncResourceInvocationOpts } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
+import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
 import type * as CS from '@/models/context-shared.ts'
 import type * as SM from '@/models/squad.models.ts'
@@ -61,6 +62,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		root?: boolean
 		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
 		extraText?: (...args: Parameters<Cb>) => string
+		mutexes?: (...args: Parameters<Cb>) => Mutex[] | Mutex
 	},
 	cb: Cb,
 ): Cb {
@@ -116,7 +118,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 				const extraText = opts.extraText ? `${opts.extraText(...args as Parameters<Cb>)} ` : ''
 				try {
-					const result = await cb(...args)
+					const result = await withAcquired(opts.mutexes ?? (() => []), cb as Cb)(...(args as Parameters<Cb>))
 					let statusString: string
 					if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
 						statusString = result.code
@@ -219,7 +221,7 @@ export type Mutexes = {
 		releaseTasks: ReleaseTask[]
 	}
 }
-export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx & Mutexes {
+export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx {
 	return { ...(ctx ?? {} as Ctx), mutexes: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
@@ -276,7 +278,6 @@ export type OrpcBase =
 	& FastifyRequest
 	& Db
 	& CS.Log
-	& Mutexes
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
@@ -348,6 +349,7 @@ export function durableSub<T, O>(
 		taskScheduling?: 'switch' | 'parallel' | 'sequential' | 'exhaust'
 		root?: boolean
 		attrs?: Record<string, any> | ((arg: T) => Record<string, any>)
+		mutexes?: (args: T) => Mutex[] | Mutex
 	},
 	cb: (value: T) => Promise<O>,
 ): (o: Rx.Observable<T>) => Rx.Observable<O> {
