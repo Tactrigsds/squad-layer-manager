@@ -468,8 +468,8 @@ const EventItem = React.memo(function EventItem({ event }: { event: CHAT.EventEn
 	}
 })
 function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
-	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
-	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
+	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced ? s.chatState.eventBuffer : null)
+	const synced = eventBuffer !== null
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
@@ -635,6 +635,7 @@ export default function ServerActivityPanel() {
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const setEventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
+	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 
 	// Track viewport width state for auto-closing/opening the panel
 	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
@@ -726,7 +727,7 @@ export default function ServerActivityPanel() {
 						}}
 						isStatePanelOpen={isStatePanelOpen}
 					/>
-					{isStatePanelOpen && (
+					{isStatePanelOpen && synced && (
 						<div className="w-[240px] flex-shrink-0">
 							<ServerPlayerList />
 						</div>
