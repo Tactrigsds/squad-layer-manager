@@ -1,5 +1,5 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
-
+import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -18,6 +18,14 @@ export type SyncedEvent = {
 export type InterpolableState = {
 	players: SM.Player[]
 	squads: SM.Squad[]
+}
+export namespace InterpolableState {
+	export function clone(state: InterpolableState): InterpolableState {
+		return {
+			players: [...state.players],
+			squads: [...state.squads],
+		}
+	}
 }
 
 // event enriched with relevant data
@@ -89,12 +97,13 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent) {
 			const interpolated = interpolateEvent(newState, event)
 			state.eventBuffer.push(interpolated)
 		}
+		state.interpolatedState = newState
 
 		const numInterpolated = state.eventBuffer.length - savepointIndex
 		return {
 			code: 'ok:rollback' as const,
 			interpolated: state.eventBuffer.slice(savepointIndex),
-			message: `Rollback: re-interpolated ${numInterpolated} events (slice ${mutatedIndex}:${state.eventBuffer.length})`,
+			message: `Rollback: re-interpolated ${numInterpolated} events (slice ${savepointIndex}:${state.eventBuffer.length})`,
 		}
 	} else {
 		// just append the event
@@ -110,7 +119,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 	switch (event.type) {
 		case 'RESET': {
 			const { state: resetState, ...rest } = event
-			Object.assign(state, resetState)
+			Object.assign(state, InterpolableState.clone(resetState))
 			return rest
 		}
 
@@ -283,7 +292,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			}
 			const creator = state.players[creatorIndex]
 			if (creator.teamId !== creator.teamId) {
-				console.warn(
+				return noop(
 					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${
 						SM.Squads.printKey(event.squad)
 					}`,
@@ -295,7 +304,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 				isLeader: true,
 				squadId: event.squad.squadId,
 			}
-			state.players.splice(creatorIndex, 1, updatedCreator)
+			state.players[creatorIndex] = updatedCreator
 
 			return {
 				...event,

@@ -68,16 +68,17 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 					synced: chatState.synced,
 				}
 				for (const event of events) {
-					if (chatState.synced || event.type === 'SYNCED') console.debug('event ', event.type, event)
+					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
 					const res = CHAT.handleEvent(chatState, event)
 					if (!chatState.synced) continue
-					if (res?.code === 'ok:rollback') {
-						console.log(res.message)
-					}
 					if (res?.code) {
+						if (res.code === 'ok:rollback') console.warn('ROLLBACK at ', event.type)
+						if (res.message) console.info(res.message)
 						for (const interped of res.interpolated) {
 							if (interped.type === 'NOOP') {
-								console.debug(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
+								console.info(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
+							} else {
+								console.info(`handled ${interped.type}`, interped)
 							}
 						}
 					}

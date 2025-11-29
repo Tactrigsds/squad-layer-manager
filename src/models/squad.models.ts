@@ -483,7 +483,6 @@ export namespace Events {
 	export type SquadCreated = {
 		type: 'SQUAD_CREATED'
 		squad: Squad
-		creator: Player
 	} & Base
 
 	export type ChatMessage = {

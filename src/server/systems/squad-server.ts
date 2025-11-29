@@ -1092,8 +1092,19 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 					reason: creatorRes.code,
 				}
 			}
+
 			const squad = squadRes.squad
 			const creator = creatorRes.player
+			if (!SM.Squads.idsEqual(creator, squad)) {
+				return {
+					code: 'err:invalid-squad-creator' as const,
+					message: `creator ${
+						SM.PlayerIds.prettyPrint(creator.ids)
+					} (team ${creator.teamId}, squad ${creator.squadId}) does not match squad creator ${
+						SM.PlayerIds.prettyPrint(squad.creatorIds)
+					} (team ${squad.teamId}, squad ${squad.squadId})`,
+				}
+			}
 
 			ctx.server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
 
@@ -1102,7 +1113,6 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db & C.Mu
 				event: {
 					type: 'SQUAD_CREATED',
 					squad,
-					creator,
 					...base,
 				} satisfies SM.Events.SquadCreated,
 			}
