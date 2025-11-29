@@ -1,8 +1,8 @@
-import type * as SchemaModels from '$root/drizzle/schema.models.ts'
-
 import * as Schema from '$root/drizzle/schema'
+import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
-import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import * as Arr from '@/lib/array'
+import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, toCold, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { matchLog } from '@/lib/log-parsing'
@@ -82,15 +82,14 @@ export type SquadServer = {
 
 		createdSquads: (SM.Squads.Key & { creatorIds: SM.PlayerIds.Type })[]
 
-		// server version of chat state which can be replicated to users
-		chat: CHAT.ChatState
+		chatEventBuffer: CHAT.Event[]
 	}
 
 	// intermediate event so that initNewGameHandling's behaviour is downstream from event$
 	beforeNewGame$: Rx.Subject<[CS.Log & C.Db & C.Mutexes & C.ServerSlice, SM.LogEvents.NewGame]>
 
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
-	event$: Rx.Subject<[CS.Log & C.Db & C.Mutexes & C.ServerSlice, SM.Events.Event]>
+	event$: Rx.Subject<[CS.Log & C.Db & C.Mutexes & C.ServerSlice, SM.Events.Event[]]>
 	chatReset$: Rx.Subject<[CS.Log, CHAT.ResetEvent]>
 } & SquadRcon.SquadRcon
 
@@ -157,20 +156,31 @@ export const orpcRouter = {
 	}),
 
 	watchChatEvents: orpcBase.handler(async function*({ context, signal }) {
-		const obs: Rx.Observable<CHAT.Event | CHAT.SyncEvent> = selectedServerCtx$(context)
+		const obs: Rx.Observable<(CHAT.Event | CHAT.SyncedEvent)[]> = selectedServerCtx$(context)
 			.pipe(
 				Rx.switchMap(ctx => {
-					const init: CHAT.SyncEvent = {
-						type: 'FLASH',
-						state: ctx.server.state.chat!,
+					function getInitialEvents() {
+						// page so we don't block too long on serialization/deserialization
+						const paged: Array<Array<CHAT.Event | CHAT.SyncedEvent>> = Arr.paged(ctx.server.state.chatEventBuffer, 512)
+						if (paged.length === 0) return []
+						const sync: CHAT.SyncedEvent = {
+							type: 'SYNCED' as const,
+							time: new Date(),
+							matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
+						}
+						paged[paged.length - 1].push(sync)
+						return paged
 					}
-					return Rx.concat(
-						Rx.of(init),
-						Rx.merge(
-							ctx.server.event$.pipe(Rx.map(([_, event]) => event)),
-							ctx.server.chatReset$.pipe(Rx.map(([_, event]) => event)),
-						),
-					).pipe(
+					const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
+						.pipe(Rx.concatMap(getInitialEvents))
+
+					const upcoming$ = Rx.merge(
+						ctx.server.event$.pipe(Rx.map(([_, events]): (CHAT.Event | CHAT.SyncedEvent)[] => events)),
+						ctx.server.chatReset$.pipe(Rx.map(([_, event]): (CHAT.Event | CHAT.SyncedEvent)[] => [event])),
+					)
+
+					return Rx.concat(initial$, upcoming$).pipe(
+						// orpc will break without this
 						Rx.observeOn(Rx.asyncScheduler),
 					)
 				}),
@@ -316,7 +326,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			joinRequests: new Map(),
 			connected: [],
 			createdSquads: [],
-			chat: Obj.deepClone(CHAT.INITIAL_CHAT_STATE),
+			chatEventBuffer: [],
 		},
 
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanupSub),
@@ -343,14 +353,8 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 		const events = rowsRaw.map(row => superjson.deserialize(row.data as any) as CHAT.Event)
 		let foundFirstReset = false
-		for (const event of events) {
-			if (event.type === 'RESET') {
-				foundFirstReset = true
-			} else if (!foundFirstReset) {
-				continue
-			}
-			CHAT.handleEvent(server.state.chat, event)
-		}
+		const firstResetIdx = events.findIndex(event => event.type === 'RESET')
+		server.state.chatEventBuffer = events.slice(firstResetIdx)
 	})()
 
 	let previouslyConnected = false
@@ -434,7 +438,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 						if (res.code !== 'ok') return res
 						const event = res.event
 						ctx.log.info(event, 'Emitting Squad Event: %s', event.type)
-						ctx.server.event$.next([ctx, event])
+						ctx.server.event$.next([ctx, [event]])
 						return { code: 'ok' as const }
 					} catch (error) {
 						ctx.log.error(error, 'Error processing log event')
@@ -453,7 +457,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 			const res = await processRconEvent(ctx, event)
 			if (res.code !== 'ok') return res
 
-			ctx.server.event$.next([ctx, res.event])
+			ctx.server.event$.next([ctx, [res.event]])
 			return { code: 'ok' as const }
 		}),
 	).subscribe()
@@ -494,26 +498,27 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 					ctx.log.debug('No synthetic events generated')
 					return
 				}
-				for (const event of events) {
-					server.event$.next([ctx, event])
-				}
+				server.event$.next([ctx, events])
 				ctx.log.info('done generating synthetic events')
 			},
 		})
 
-	// -------- keep chat state up-to-date --------
-	Rx.merge(server.event$, server.chatReset$).subscribe(([ctx, event]) => {
-		ctx.log.info(event, 'emitted event: %s', event.type)
-		CHAT.handleEvent(server.state.chat, event)
+	// -------- keep chat buffer state up-to-date --------
+	Rx.merge(server.event$, server.chatReset$).subscribe(([ctx, events]) => {
+		for (const event of Array.isArray(events) ? events : [events]) {
+			ctx.log.info(event, 'emitted event: %s', event.type)
+			server.state.chatEventBuffer.push(event)
+		}
 	})
 
 	{
 		// -------- periodically save events  --------
 		let eventBuffer: CHAT.Event[] = []
 		const saveEventSub = Rx.merge(server.event$, server.chatReset$).pipe(
-			Rx.map(([_, e]) => e),
+			Rx.concatMap(([_, e]) => Array.isArray(e) ? e : [e]),
 			externBufferTime(5_000, eventBuffer),
 			Rx.mergeMap((events) => {
+				if (events.length === 0) return Rx.EMPTY
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				return saveEvents(ctx, events)
 			}),
@@ -522,6 +527,7 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 		// -------- save remaining events on shutdown  --------
 		const cleanupId = CleanupSys.register(async () => {
+			if (eventBuffer.length === 0) return
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			saveEventSub.unsubscribe()
 			await saveEvents(ctx, eventBuffer)
@@ -679,11 +685,11 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db & C.Mutexes) {
 					const res = await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
 					if (res.code !== 'ok') return
 
-					ctx.server.event$.next([ctx, {
+					ctx.server.event$.next([ctx, [{
 						type: 'NEW_GAME',
 						time: newGameEvent?.time ?? new Date(),
 						matchId: res.match.historyEntryId,
-					}])
+					}]])
 				} finally {
 					ctx.server.serverRolling$.next(null)
 				}
@@ -1205,6 +1211,7 @@ const saveEvents = C.spanOp(
 	'squad-server:save-events',
 	{ tracer },
 	async (ctx: C.ServerSlice & CS.Log & C.Db, events: CHAT.Event[]) => {
+		if (events.length === 0) return
 		const rows: SchemaModels.NewServerEvent[] = events.map(e => ({
 			type: e.type,
 			time: e.time,

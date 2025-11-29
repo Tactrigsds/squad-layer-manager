@@ -8,9 +8,11 @@ export type PlayerRef = string
 
 export type Channel = SM.ChatChannelType
 
-export type SyncEvent = {
-	type: 'FLASH'
-	state: ChatState
+export type SyncedEvent = {
+	// for the client this means that we're up-to-date with the server and we can start displaying the events
+	type: 'SYNCED'
+	time: Date
+	matchId: number
 }
 
 export type InterpolableState = {
@@ -39,9 +41,9 @@ export type ResetEvent = {
 
 export type ChatState = {
 	rawEventBuffer: Event[]
-
 	interpolatedState: InterpolableState
 	eventBuffer: EventEnriched[]
+	synced: boolean
 }
 export const INITIAL_CHAT_STATE: ChatState = {
 	rawEventBuffer: [],
@@ -50,11 +52,13 @@ export const INITIAL_CHAT_STATE: ChatState = {
 		squads: [],
 	},
 	eventBuffer: [],
+	// indicates where this chat is now up-to-date with all events
+	synced: false,
 }
 
-export function handleEvent(state: ChatState, event: Event | SyncEvent) {
-	if (event.type === 'FLASH') {
-		Object.assign(state, event.state)
+export function handleEvent(state: ChatState, event: Event | SyncedEvent) {
+	if (event.type === 'SYNCED') {
+		state.synced = true
 		return
 	}
 
@@ -78,20 +82,25 @@ export function handleEvent(state: ChatState, event: Event | SyncEvent) {
 	rawBuffer.splice(mutatedIndex, 0, event)
 	if (mutatedIndex < state.eventBuffer.length) {
 		// we need to re-interpolate from the last RESET because we received an out-of-order event.
-		let newState: InterpolableState = { players: [], squads: [] }
 		state.eventBuffer = state.eventBuffer.slice(0, savepointIndex)
-		for (const event of rawBuffer.slice(savepointIndex, mutatedIndex)) {
+
+		let newState: InterpolableState = { players: [], squads: [] }
+		for (const event of rawBuffer.slice(savepointIndex)) {
 			const interpolated = interpolateEvent(newState, event)
-			if (!interpolated) continue
 			state.eventBuffer.push(interpolated)
 		}
-	}
 
-	// in most cases we'll just have the added event to process here
-	for (const event of rawBuffer.slice(mutatedIndex)) {
+		const numInterpolated = state.eventBuffer.length - savepointIndex
+		return {
+			code: 'ok:rollback' as const,
+			interpolated: state.eventBuffer.slice(savepointIndex),
+			message: `Rollback: re-interpolated ${numInterpolated} events (slice ${mutatedIndex}:${state.eventBuffer.length})`,
+		}
+	} else {
+		// just append the event
 		const interpolated = interpolateEvent(state.interpolatedState, event)
-		if (!interpolated) continue
 		state.eventBuffer.push(interpolated)
+		return { code: 'ok:appended' as const, interpolated: [interpolated] }
 	}
 }
 
@@ -104,14 +113,14 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			Object.assign(state, resetState)
 			return rest
 		}
+
 		case 'NEW_GAME':
 		case 'ROUND_ENDED':
 			return event
 
 		case 'PLAYER_CONNECTED': {
 			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
 			// this upsert merges ids in state.players, so we want to pass the one with the full set of ids. probably not useful but good for continuity
 			const player = SM.PlayerIds.upsert(state.players, p => p.ids, event.player)
@@ -124,8 +133,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'PLAYER_DISCONNECTED': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
 			}
 			const [player] = state.players.splice(index, 1)
 			return {
@@ -137,8 +145,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'PLAYER_DETAILS_CHANGED': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
 			const updated = { ...player, ...event.details }
@@ -152,8 +159,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'PLAYER_CHANGED_TEAM': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
@@ -172,11 +178,14 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'PLAYER_JOINED_SQUAD': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
+			const squad = state.squads.find(s => SM.Squads.idsEqual(s, event))
+			if (!squad) {
+				return noop(`Squad ${SM.Squads.printKey(event)} not found`)
+			}
 			const updatedPlayer: SM.Player = {
 				...player,
 				squadId: event.squadId,
@@ -186,6 +195,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			return {
 				...event,
 				player: updatedPlayer,
+				squad,
 			}
 		}
 
@@ -207,8 +217,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			}
 
 			if (newLeaderIdx === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.newLeaderIds)} promoted to leader but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.newLeaderIds)} promoted to leader but was not found in the player list`)
 			}
 
 			return {
@@ -220,8 +229,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'SQUAD_DISBANDED': {
 			const squadIndex = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
 			if (squadIndex === -1) {
-				console.warn(`Squad ${event.squadId} disbanded but was not found in the squad list`)
-				return
+				return noop(`Squad ${event.squadId} disbanded but was not found in the squad list`)
 			}
 			const [squad] = state.squads.splice(squadIndex, 1)
 			return {
@@ -233,8 +241,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'PLAYER_LEFT_SQUAD': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				console.warn(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the player list`)
-				return
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the player list`)
 			}
 
 			const player = state.players[index]
@@ -254,13 +261,11 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'SQUAD_CREATED': {
 			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event.squad))
 			if (existingSquad) {
-				console.warn(`Squad ${event.squad.squadId} already exists`, existingSquad)
-				return
+				return noop(`Squad ${event.squad.squadId} already exists`)
 			}
 			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creatorIds)
 			if (creatorIndex === -1) {
-				console.warn(`Squad ${event.squad.squadId} created by unknown player ${SM.PlayerIds.prettyPrint(event.squad.creatorIds)}`)
-				return
+				return noop(`Squad ${event.squad.squadId} created by unknown player ${SM.PlayerIds.prettyPrint(event.squad.creatorIds)}`)
 			}
 			const creator = state.players[creatorIndex]
 			if (creator.teamId !== creator.teamId) {
@@ -292,12 +297,11 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 		case 'CHAT_MESSAGE': {
 			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
 			if (!player) {
-				console.warn(
+				return noop(
 					`Player ${
 						SM.PlayerIds.prettyPrint(event.playerIds)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
-				return
 			}
 			return {
 				...event,
@@ -311,10 +315,9 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			}
 			const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
 			if (!player) {
-				console.warn(
+				return noop(
 					`Player ${SM.PlayerIds.prettyPrint(event.from)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
-				return
 			}
 			return {
 				...event,
@@ -324,6 +327,15 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 
 		default:
 			assertNever(event)
+	}
+	function noop(reason: string) {
+		return {
+			type: 'NOOP' as const,
+			reason,
+			time: event.time,
+			matchId: event.matchId,
+			originalEvent: event,
+		}
 	}
 }
 

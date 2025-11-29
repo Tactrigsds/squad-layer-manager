@@ -252,24 +252,30 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 
 function PlayerBannedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_BANNED' }> }) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.Ban className="h-4 w-4 text-red-500" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned. reason: "{event.interval}"
-			</span>
+			<Icons.Ban className="h-4 w-4 text-red-500 flex-shrink-0" />
+			<div className="flex-grow min-w-0">
+				<span className="inline-block whitespace-nowrap">
+					<PlayerDisplay player={event.player} matchId={event.matchId} /> was banned
+				</span>
+				reason: "<span className="break-words">{event.interval}</span>"
+			</div>
 		</div>
 	)
 }
 
 function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED' }> }) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
 			<EventTime time={event.time} variant="small" />
-			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> was warned: "{event.reason}"
-			</span>
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+			<div className="flex-grow min-w-0">
+				<span className="inline-block whitespace-nowrap">
+					<PlayerDisplay player={event.player} matchId={event.matchId} /> was warned
+				</span>
+				: "<span className="break-words">{event.reason}</span>"
+			</div>
 		</div>
 	)
 }
@@ -395,9 +401,8 @@ function PlayerJoinedSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, 
 			<span className="text-xs flex items-center gap-1">
 				<PlayerDisplay player={event.player} matchId={event.matchId} /> joined{' '}
 				<SquadDisplay
-					squad={{ squadId: event.squadId, squadName: '', teamId: event.teamId }}
+					squad={event.squad}
 					matchId={event.matchId}
-					showName={false}
 					showTeam={true}
 				/>
 			</span>
@@ -416,8 +421,7 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 		</div>
 	)
 }
-
-function EventItem({ event }: { event: CHAT.EventEnriched }) {
+const EventItem = React.memo(function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 		case 'ADMIN_BROADCAST':
@@ -456,13 +460,15 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerJoinedSquadEvent event={event} />
 		case 'PLAYER_PROMOTED_TO_LEADER':
 			return <PlayerPromotedToLeaderEvent event={event} />
+		case 'NOOP':
+			return null
 		default:
 			assertNever(event)
 	}
-}
-
+})
 function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
+	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
@@ -554,6 +560,11 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 	return (
 		<div className="h-full w-full relative">
+			{!synced && (
+				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			)}
 			{props.onToggleStatePanel && (
 				<Button
 					variant="ghost"
@@ -567,15 +578,12 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			)}
 			<ScrollArea className={props.className} ref={scrollAreaRef}>
 				<div className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{filteredEvents.length === 0
-						? (
-							<div className="text-muted-foreground text-sm text-center py-8">
-								No events yet
-							</div>
-						)
-						: (
-							filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)
-						)}
+					{filteredEvents.length === 0 && (
+						<div className="text-muted-foreground text-sm text-center py-8 data-[synced]:hidden">
+							No events yet
+						</div>
+					)}
+					{filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)}
 					<div ref={bottomRef} />
 					{showScrollButton && (
 						<Button

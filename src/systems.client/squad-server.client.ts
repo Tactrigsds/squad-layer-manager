@@ -44,7 +44,7 @@ type ChatStore = {
 	chatState: CHAT.ChatState
 	eventFilterState: CHAT.EventFilterState
 	setEventFilterState(state: CHAT.EventFilterState): void
-	handleChatEvent(event: CHAT.Event | CHAT.SyncEvent): void
+	handleChatEvent(event: (CHAT.Event | CHAT.SyncedEvent)[]): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
@@ -54,11 +54,23 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		setEventFilterState(state) {
 			set({ eventFilterState: state })
 		},
-		handleChatEvent(event) {
-			set(state => ({
-				chatState: Im.produce(state.chatState, draft => {
-					CHAT.handleEvent(draft, event)
-				}),
+		handleChatEvent(_events) {
+			let events = Array.isArray(_events) ? _events : [_events]
+			set(Im.produce<ChatStore>(draft => {
+				for (const event of events) {
+					if (draft.chatState.synced || event.type === 'SYNCED') console.log('event ', event.type, event)
+					const res = CHAT.handleEvent(draft.chatState, event)
+					if (!draft.chatState.synced) continue
+					if (res?.code === 'ok:rollback') {
+						console.log(res.message)
+					}
+					if (res?.code) {
+						for (const interped of res.interpolated) {
+							if (interped.type !== 'NOOP') continue
+							console.warn(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
+						}
+					}
+				}
 			}))
 		},
 	}
@@ -95,7 +107,6 @@ export function setup() {
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
 	chatEvent$.subscribe(event => {
-		console.log('event ', event.type, event)
 		ChatStore.getState().handleChatEvent(event)
 	})
 

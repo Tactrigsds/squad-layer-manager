@@ -82,3 +82,11 @@ export function destrNullable<T>(arr: T[] | undefined) {
 export function missing<T>(arr: T[], target: T[]): T[] {
 	return arr.filter(item => !target.includes(item))
 }
+
+export function paged<T>(arr: T[], pageSize: number): T[][] {
+	const result: T[][] = []
+	for (let i = 0; i < arr.length; i += pageSize) {
+		result.push(arr.slice(i, i + pageSize))
+	}
+	return result
+}

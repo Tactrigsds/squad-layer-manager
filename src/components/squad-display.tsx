@@ -16,15 +16,18 @@ export function SquadDisplay({ squad, matchId, className, showName = true, showT
 
 	return (
 		<span className={cn('inline-flex flex-nowrap items-center gap-1', className)}>
-			<span className="text-xs">
-				Squad {squad.squadId}
-			</span>
-			{shouldShowName && <span className="font-semibold">"{squad.squadName}"</span>}
+			{isDefaultName
+				? (
+					<span className="text-xs">
+						Squad {squad.squadId}
+					</span>
+				)
+				: <span className="font-semibold">Squad {squad.squadId} "{squad.squadName}"</span>}
 			{showTeam && (
-				<>
-					on
-					<MatchTeamDisplay teamId={squad.teamId} matchId={matchId} />
-				</>
+				<span className="inline-flex flex-nowrap">
+					(
+					<MatchTeamDisplay teamId={squad.teamId} matchId={matchId} />)
+				</span>
 			)}
 		</span>
 	)

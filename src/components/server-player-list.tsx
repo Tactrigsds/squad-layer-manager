@@ -49,16 +49,21 @@ function SquadSection({ squad, players, matchId }: SquadSectionProps) {
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-3">
-			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1 px-2 hover:bg-accent/30 rounded">
-				<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
-				<Icons.Users className="h-3 w-3 text-muted-foreground" />
+			<CollapsibleTrigger className="flex items-center gap-1.5 w-full py-1 text-xs px-2 hover:bg-accent/30 rounded">
 				{squad
 					? (
-						<span className="text-xs font-semibold">
-							<SquadDisplay squad={squad} matchId={matchId} showName={true} showTeam={false} />
-						</span>
+						<>
+							<b>{squad.squadId}</b>
+							<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
+							<span className="font-semibold">{squad.squadName}</span>
+						</>
 					)
-					: <span className="text-xs font-semibold">Unassigned</span>}
+					: (
+						<>
+							<Icons.ChevronRight className={cn('h-3 w-3 transition-transform', isOpen && 'rotate-90')} />
+							<span className="text-xs font-semibold">Unassigned</span>
+						</>
+					)}
 				<span className="text-xs text-muted-foreground">({players.length})</span>
 				{squad?.locked && (
 					<span title="Squad is locked">
