@@ -86,7 +86,7 @@ export default function ShortLayerName(
 		)
 	}
 	const content = (
-		<div className={cn('flex items-center', className)} ref={ref}>
+		<div className={cn('inline-flex items-center', className)} ref={ref}>
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>

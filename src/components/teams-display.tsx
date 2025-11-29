@@ -78,7 +78,7 @@ export function TeamFactionDisplay(
 	if (displayTeamsNormalized) attrs.reverse()
 
 	return (
-		<span className="flex flex-nowrap items-center">
+		<span className="inline-block whitespace-nowrap-nowrap">
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
 				{faction}
 				{props.includeUnits && shortUnit && (

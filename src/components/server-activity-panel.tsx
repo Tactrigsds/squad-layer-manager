@@ -286,7 +286,7 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 		<div className="flex gap-2 py-1 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Play className="h-4 w-4 text-green-500" />
-			<span className="text-xs flex flex-wrap items-center gap-1">
+			<span className="text-xs inline-flex flex-wrap items-center gap-1">
 				<span>New game started:</span>
 				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 			</span>
@@ -311,22 +311,23 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 	const loserId = winnerId === 1 ? 2 : 1
 
 	return (
-		<div className="flex flex-row gap-2 py-1 text-muted-foreground items-center flex-nowrap w-full text-xs">
+		<div className="flex gap-2 py-1 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Flag className="h-4 w-4 text-blue-500" />
-			<span>Round ended</span>
-			<span>
-				(<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />)
+			<span className="text-xs inline-flex flex-wrap items-center gap-1">
+				<span>Round ended</span>
+				<span>
+					(<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />)
+				</span>
+				{winnerId === null && <span className="text-yellow-400">Draw</span>}
+				{winnerId !== null && (
+					<>
+						<MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won
+						<span className="font-semibold">{winnerTickets} to {loserTickets}</span>
+						against <MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
+					</>
+				)}
 			</span>
-			<Icons.Dot className="text-center" width={20} height={20} />
-			{winnerId === null && <span className="text-yellow-400">Draw</span>}
-			{winnerId !== null && (
-				<>
-					{' '}- <MatchTeamDisplay matchId={event.matchId} teamId={winnerId} /> won{' '}
-					<span className="font-semibold">{winnerTickets} to {loserTickets}</span> against{' '}
-					<MatchTeamDisplay matchId={event.matchId} teamId={loserId} />
-				</>
-			)}
 		</div>
 	)
 }
@@ -370,7 +371,7 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 			<span className="text-xs flex items-center gap-1">
 				<PlayerDisplay player={event.player} matchId={event.matchId} /> left{' '}
 				<SquadDisplay
-					squad={{ squadId: event.squadId, squadName: '', teamId: event.teamId }}
+					squad={event.squad}
 					matchId={event.matchId}
 					showName={false}
 					showTeam={true}
@@ -479,6 +480,10 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 	// Filter events based on the selected filter
 	const filteredEvents = React.useMemo(() => {
+		if (!synced) {
+			return null
+		}
+
 		if (eventFilterState === 'ALL') {
 			return eventBuffer
 		}
@@ -498,7 +503,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		}
 
 		return eventBuffer
-	}, [eventBuffer, eventFilterState])
+	}, [eventBuffer, eventFilterState, synced])
 
 	const scrollToBottom = () => {
 		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
@@ -519,6 +524,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 	// Scroll to bottom on initial render and when new events arrive if already at bottom
 	React.useEffect(() => {
+		if (!filteredEvents) return
+
 		// Initial scroll when events first load
 		if (filteredEvents.length > 0 && !hasScrolledInitially.current) {
 			hasScrolledInitially.current = true
@@ -537,7 +544,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 				setNewMessageCount(prev => prev + newCount)
 			}
 		}
-	}, [filteredEvents.length])
+	}, [filteredEvents])
 
 	// Listen to scroll events to show/hide button
 	React.useEffect(() => {
@@ -578,12 +585,13 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			)}
 			<ScrollArea className={props.className} ref={scrollAreaRef}>
 				<div className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{filteredEvents.length === 0 && (
-						<div className="text-muted-foreground text-sm text-center py-8 data-[synced]:hidden">
+					{filteredEvents && filteredEvents.length === 0 && (
+						<div className="text-muted-foreground text-sm text-center py-8">
 							No events yet
 						</div>
 					)}
-					{synced && filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)}
+					{filteredEvents
+						&& filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)}
 					<div ref={bottomRef} />
 					{showScrollButton && (
 						<Button

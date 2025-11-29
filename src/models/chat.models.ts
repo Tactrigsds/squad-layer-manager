@@ -254,6 +254,10 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			}
 
 			const player = state.players[index]
+			const squad = state.squads.find(s => SM.Squads.idsEqual(s, player))
+			if (!squad) {
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} left squad but was not found in the squad list`)
+			}
 			const updatedPlayer: SM.Player = {
 				...player,
 				squadId: null,
@@ -264,6 +268,7 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 				...event,
 				player: updatedPlayer,
 				wasLeader: player.isLeader,
+				squad: squad,
 			}
 		}
 
