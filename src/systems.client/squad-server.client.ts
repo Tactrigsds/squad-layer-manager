@@ -56,26 +56,37 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		},
 		handleChatEvent(_events) {
 			let events = Array.isArray(_events) ? _events : [_events]
-			set(Im.produce<ChatStore>(draft => {
+			set(state => {
+				let chatState = state.chatState
+				chatState = {
+					interpolatedState: {
+						players: [...chatState.interpolatedState.players],
+						squads: [...chatState.interpolatedState.squads],
+					},
+					eventBuffer: [...chatState.eventBuffer],
+					rawEventBuffer: [...chatState.rawEventBuffer],
+					synced: chatState.synced,
+				}
 				for (const event of events) {
-					if (draft.chatState.synced || event.type === 'SYNCED') console.log('event ', event.type, event)
-					const res = CHAT.handleEvent(draft.chatState, event)
-					if (!draft.chatState.synced) continue
+					if (chatState.synced || event.type === 'SYNCED') console.debug('event ', event.type, event)
+					const res = CHAT.handleEvent(chatState, event)
+					if (!chatState.synced) continue
 					if (res?.code === 'ok:rollback') {
 						console.log(res.message)
 					}
 					if (res?.code) {
 						for (const interped of res.interpolated) {
-							if (interped.type !== 'NOOP') continue
-							console.warn(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
+							if (interped.type === 'NOOP') {
+								console.debug(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
+							}
 						}
 					}
 				}
-			}))
+				return { chatState }
+			})
 		},
 	}
 })
-
 export function useEndMatch() {
 	return useMutation({
 		mutationFn: async () => {

@@ -583,7 +583,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 							No events yet
 						</div>
 					)}
-					{filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)}
+					{synced && filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time.getTime()}-${idx}`} event={event} />)}
 					<div ref={bottomRef} />
 					{showScrollButton && (
 						<Button
