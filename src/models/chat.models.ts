@@ -186,6 +186,15 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			if (!squad) {
 				return noop(`Squad ${SM.Squads.printKey(event)} not found`)
 			}
+
+			if (SM.Squads.idsEqual(player, squad)) {
+				return noop(
+					`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} joined squad but was already in it ${
+						SM.PlayerIds.match(player.ids, squad.creatorIds) ? '(is creator)' : ''
+					}`,
+				)
+			}
+
 			const updatedPlayer: SM.Player = {
 				...player,
 				squadId: event.squadId,
