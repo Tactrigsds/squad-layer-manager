@@ -160,15 +160,32 @@ export const orpcRouter = {
 			.pipe(
 				Rx.switchMap(ctx => {
 					function getInitialEvents() {
-						// page so we don't block too long on serialization/deserialization
-						const paged: Array<Array<CHAT.Event | CHAT.SyncedEvent>> = Arr.paged(ctx.server.state.chatEventBuffer, 512)
-						if (paged.length === 0) return []
 						const sync: CHAT.SyncedEvent = {
 							type: 'SYNCED' as const,
 							time: new Date(),
 							matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
 						}
-						paged[paged.length - 1].push(sync)
+
+						let events: Array<CHAT.Event | CHAT.SyncedEvent> = ctx.server.state.chatEventBuffer
+
+						// Only get the last 4096 events
+						if (events.length > 4096) {
+							events = events.slice(-4096)
+						}
+
+						// Find the first RESET event
+						const firstResetIndex = events.findIndex(e => e.type === 'RESET')
+						if (firstResetIndex === -1) {
+							console.warn('No RESET event found in chat event buffer, returning only SYNC event')
+							return [[sync]]
+						}
+
+						// Start from the first RESET event
+						events = events.slice(firstResetIndex)
+						events.push(sync)
+
+						// page so we don't block too long on serialization/deserialization
+						const paged: Array<Array<CHAT.Event | CHAT.SyncedEvent>> = Arr.paged(events, 512)
 						return paged
 					}
 					const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
@@ -341,14 +358,14 @@ async function initServer(ctx: CS.Log & C.Db & C.Mutexes, serverState: SS.Server
 
 	// -------- load saved events --------
 	const savedEventsLoaded$ = (async function loadSavedEvents() {
-		const threeDaysAgo = datefns.subDays(new Date(), 3)
+		const sixHoursAgo = datefns.subHours(new Date(), 6)
 		const rowsRaw = await ctx.db().select({ data: Schema.serverEvents.data }).from(Schema.serverEvents).innerJoin(
 			Schema.matchHistory,
 			E.eq(Schema.matchHistory.id, Schema.serverEvents.matchId),
 		)
 			.where(E.and(
 				E.eq(Schema.matchHistory.serverId, serverId),
-				E.gte(Schema.serverEvents.time, threeDaysAgo),
+				E.gte(Schema.serverEvents.time, sixHoursAgo),
 			))
 
 		const events = rowsRaw.map(row => superjson.deserialize(row.data as any) as CHAT.Event)
