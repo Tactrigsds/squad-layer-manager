@@ -1,6 +1,5 @@
 import * as AR from '@/app-routes'
 import { distinctDeepEquals } from '@/lib/async'
-
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -8,7 +7,6 @@ import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems.client/app-routes.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
-
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 
@@ -68,18 +66,11 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 				}
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
-					const res = CHAT.handleEvent(chatState, event)
+					const res = CHAT.handleEvent(chatState, event, import.meta.env.DEV)
 					if (!chatState.synced) continue
 					if (res?.code) {
-						if (res.code === 'ok:rollback') console.warn('ROLLBACK at ', event.type)
+						if (res.code === 'ok:rollback') console.warn('ROLLBACK occured at ', event.type === 'SYNCED' ? 'SYNCED' : event.id)
 						if (res.message) console.info(res.message)
-						for (const interped of res.interpolated) {
-							if (interped.type === 'NOOP') {
-								console.info(`handled ${interped.originalEvent.type} as noop: ${interped.reason}`, event)
-							} else {
-								console.info(`handled ${interped.type}`, interped)
-							}
-						}
 					}
 				}
 				return { chatState }

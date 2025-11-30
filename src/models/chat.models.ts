@@ -84,14 +84,16 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 			break
 		}
 	}
-	if (mutatedIndex === null && state.eventBuffer.length === 0) mutatedIndex = 0
+	if (mutatedIndex === null && state.rawEventBuffer.length === 0) mutatedIndex = 0
 
-	if (devMode && MAX_OUT_OF_ORDER_TIMESPAN_MS) {
+	if (mutatedIndex === null) {
+		throw new Error(`Event ${event.id} is too far out-of-order to be reconciled`)
+	}
+
+	if (devMode && MAX_OUT_OF_ORDER_TIMESPAN_MS < event.time.getTime() - state.rawEventBuffer[0].time.getTime()) {
 		throw new Error('Max out-of-order timespan exceeded for ' + event.id)
 	}
-	if (mutatedIndex === null) {
-		throw new Error(`Event ${event.id} is to far out-of-order to be reconciled`)
-	}
+
 	if (event.type === 'RESET' || event.type === 'NEW_GAME') {
 		state.savepoints.push({ savedAtEventId: event.id, state: event.state })
 	}
