@@ -1266,7 +1266,7 @@ function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 		type: row.type,
 		time: row.time,
 		matchId: row.matchId,
-		...(superjson.deserialize(row.data as any) as any),
+		...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
 	}
 }
 

@@ -51,7 +51,7 @@ export function unsuperjsonify<C extends TableConfig>(schema: MySqlTableWithColu
 			throw new Error(`Column ${name} not found in table ${config.baseName}`)
 		}
 		if (column.dataType === 'json' && obj[name] !== null && obj[name]) {
-			out[name] = superjson.deserialize(obj[name])
+			out[name] = superjson.deserialize(obj[name], { inPlace: true })
 		} else {
 			out[name] = obj[name]
 		}
