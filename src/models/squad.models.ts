@@ -456,7 +456,7 @@ export type PlayerRef = string
 export namespace Events {
 	type Base = {
 		id: bigint
-		time: Date
+		time: number
 		// we're incling matchId in all Events here to simplify the lookup process where convenient, and to make it possible to sync the current server id set for the client with the displayed events. Could also omnibus events across multiple servers in the future if we wanted to
 		matchId: number
 	}
@@ -584,7 +584,7 @@ export namespace Events {
 
 export namespace RconEvents {
 	const ChatMessageSchema = eventSchema('CHAT_MESSAGE', {
-		time: z.date(),
+		time: z.number(),
 		channelType: CHAT_CHANNEL_TYPE,
 		message: z.string(),
 		playerIds: PlayerIds.Schema,
@@ -596,7 +596,7 @@ export namespace RconEvents {
 		regex: /\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				channelType: match[1] as ChatChannelType,
 				message: match[4],
 				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
@@ -605,7 +605,7 @@ export namespace RconEvents {
 	})
 
 	const PlayerWarnedSchema = eventSchema('PLAYER_WARNED', {
-		time: z.date(),
+		time: z.number(),
 		reason: z.string(),
 		playerIds: PlayerIds.IdQuerySchema,
 	})
@@ -616,7 +616,7 @@ export namespace RconEvents {
 		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				reason: match[2],
 				playerIds: PlayerIds.extractPlayerIds({ username: match[1] }),
 			}
@@ -624,7 +624,7 @@ export namespace RconEvents {
 	})
 
 	const PossessedAdminCameraSchema = eventSchema('POSSESSED_ADMIN_CAMERA', {
-		time: z.date(),
+		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
 	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraSchema>
@@ -635,14 +635,14 @@ export namespace RconEvents {
 		onMatch: (match) => {
 			return {
 				type: 'POSSESSED_ADMIN_CAMERA' as const,
-				time: new Date(),
+				time: Date.now(),
 				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
 
 	const UnpossessedAdminCameraSchema = eventSchema('UNPOSSESSED_ADMIN_CAMERA', {
-		time: z.date(),
+		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
 	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraSchema>
@@ -652,14 +652,14 @@ export namespace RconEvents {
 		regex: /\[Online IDs:([^\]]+)\] (.+) has unpossessed admin camera\./,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				playerIds: PlayerIds.extractPlayerIds({ username: match[2], idsStr: match[1] }),
 			}
 		},
 	})
 
 	const PlayerKickedSchema = eventSchema('PLAYER_KICKED', {
-		time: z.date(),
+		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
 	export type PlayerKicked = z.infer<typeof PlayerKickedSchema>
@@ -669,14 +669,14 @@ export namespace RconEvents {
 		regex: /Kicked player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*)/,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
 			}
 		},
 	})
 
 	const SquadCreatedSchema = eventSchema('SQUAD_CREATED', {
-		time: z.date(),
+		time: z.number(),
 		squadId: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
@@ -689,7 +689,7 @@ export namespace RconEvents {
 		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadId>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				squadId: match.groups!.squadId,
 				squadName: match.groups!.squadName,
 				teamName: match.groups!.teamName,
@@ -699,7 +699,7 @@ export namespace RconEvents {
 	})
 
 	const PlayerBannedSchema = eventSchema('PLAYER_BANNED', {
-		time: z.date(),
+		time: z.number(),
 		playerID: z.string(),
 		interval: z.string(),
 		playerIds: PlayerIds.Schema,
@@ -711,7 +711,7 @@ export namespace RconEvents {
 		regex: /Banned player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*) for interval (.*)/,
 		onMatch: (match) => {
 			return {
-				time: new Date(),
+				time: Date.now(),
 				playerID: match[1],
 				interval: match[4],
 				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
@@ -737,7 +737,7 @@ export const RCON_EVENT_MATCHERS = RconEvents.matchers
 export namespace LogEvents {
 	const BaseEventProperties = {
 		raw: z.string().trim(),
-		time: z.date(),
+		time: z.number(),
 		chainID: ChainIdSchema,
 	}
 
@@ -964,6 +964,6 @@ export namespace LogEvents {
 			'yyyy.MM.dd-HH.mm.ss:SSSX',
 			new Date(),
 		)
-		return date
+		return date.getTime()
 	}
 }

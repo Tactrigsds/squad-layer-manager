@@ -24,7 +24,7 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 	null,
 )
 
-export const [useServerRolling, serverRolling$] = ReactRx.bind<Date | null>(
+export const [useServerRolling, serverRolling$] = ReactRx.bind<number | null>(
 	RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call()),
 )
 

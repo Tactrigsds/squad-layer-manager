@@ -11,7 +11,7 @@ export type Channel = SM.ChatChannelType
 export type SyncedEvent = {
 	// for the client this means that we're up-to-date with the server and we can start displaying the events
 	type: 'SYNCED'
-	time: Date
+	time: number
 	matchId: number
 }
 
@@ -445,7 +445,7 @@ function checkForSavepoint(state: Pick<ChatState, 'savepoints' | 'rawEventBuffer
 		const lastSaveEvent = lastSavepoint && Arr.revFind(rawEventBuffer, e => e.id === lastSavepoint.savedAtEventId)
 		if (!lastSaveEvent) return
 		// if it's been more than MIN_SAVEPOINT_INTERVAL milliseconds since the last savepoint, then write a new savepoint
-		if ((event.time.getTime() - lastSaveEvent.time.getTime()) >= AUTO_SAVEPOINT_INTERVAL_MS) {
+		if ((event.time - lastSaveEvent.time) >= AUTO_SAVEPOINT_INTERVAL_MS) {
 			toAdd = {
 				savedAtEventId: event.id,
 				state: InterpolableState.clone(interpolatedState),
@@ -460,14 +460,14 @@ function checkForSavepoint(state: Pick<ChatState, 'savepoints' | 'rawEventBuffer
 function truncateRawEventBufferAndSavepoints(state: ChatState) {
 	// note: this system is probably overcomplicated. we could come up with some simpler rules for how to keep around savepoints
 	if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS_BEFORE_TRUNCATION) return
-	const lastEventTime = state.rawEventBuffer[state.rawEventBuffer.length - 1].time.getTime()
+	const lastEventTime = state.rawEventBuffer[state.rawEventBuffer.length - 1].time
 
 	// We need to keep around any savepoints that are within MAX_OUT_OF_ORDER_TIMESPAN_MS of the last event, but let's always keep around the most recent one even if it's old
 	let newFirstSavepointIndex = state.savepoints.length - 1
 	for (let i = 0; i < state.savepoints.length - 1; i++) {
 		const savepoint = state.savepoints[i]
 		const event = state.rawEventBuffer.find(e => e.id === savepoint.savedAtEventId)!
-		if (lastEventTime - event.time.getTime() <= MAX_OUT_OF_ORDER_TIMESPAN_MS) {
+		if (lastEventTime - event.time <= MAX_OUT_OF_ORDER_TIMESPAN_MS) {
 			newFirstSavepointIndex = i
 			break
 		}

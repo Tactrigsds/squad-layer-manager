@@ -66,7 +66,7 @@ export type SquadServer = {
 
 	historyConflictsResolved$: Promise<unknown>
 
-	serverRolling$: Rx.BehaviorSubject<Date | null>
+	serverRolling$: Rx.BehaviorSubject<number | null>
 
 	sftpReader: SftpTail
 	state: {
@@ -164,7 +164,7 @@ export const orpcRouter = {
 					function getInitialEvents() {
 						const sync: CHAT.SyncedEvent = {
 							type: 'SYNCED' as const,
-							time: new Date(),
+							time: Date.now(),
 							matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
 						}
 
@@ -349,7 +349,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 		historyConflictsResolved$: undefined!,
 
-		serverRolling$: new Rx.BehaviorSubject(null as Date | null),
+		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 
 		sftpReader,
 		beforeNewGame$: new Rx.Subject(),
@@ -421,7 +421,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 				let event: SM.Events.Event
 				const base = {
-					time: new Date(),
+					time: Date.now(),
 					matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
 					state: {
 						players: playersRes.players,
@@ -514,7 +514,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			// distinctDeepEquals(),
 			Rx.pairwise(),
 			// capture event time before potential buffering
-			Rx.map(p => [...p, new Date()] as const),
+			Rx.map(p => [...p, Date.now()] as const),
 			// TODO this may not be correct to do, revisit
 			// buffer events while server is rolling
 			// Rx.bufferWhen(() => server.serverRolling$.pipe(Rx.takeWhile(v => v !== null))),
@@ -662,7 +662,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 					return Rx.EMPTY
 				}
 				try {
-					const rollTime = triggerType === 'new-game' ? payload.time : new Date()
+					const rollTime = triggerType === 'new-game' ? payload.time : Date.now()
 					ctx.server.serverRolling$.next(rollTime)
 
 					let newGameEvent: SM.LogEvents.NewGame | undefined
@@ -742,7 +742,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 					ctx.server.event$.next([ctx, [{
 						type: 'NEW_GAME',
 						id: eventId(),
-						time: newGameEvent?.time ?? new Date(),
+						time: newGameEvent?.time ?? Date.now(),
 						state: { squads, players },
 						matchId: res.match.historyEntryId,
 						source: triggerType === 'new-game' ? 'log-event' : 'change-detection',
@@ -947,7 +947,7 @@ async function processServerLogEvent(
 			}
 			server.state.roundWinner = null
 			server.state.roundLoser = null
-			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, winner, loser, logEvent.time)
+			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, winner, loser, new Date(logEvent.time))
 			if (res.code !== 'ok') return res
 			const event: SM.Events.RoundEnded = {
 				type: 'ROUND_ENDED',
@@ -1155,7 +1155,7 @@ function* generateSyntheticEvents(
 	ctx: C.ServerSlice & CS.Log & C.Db,
 	prevPlayers: SM.Player[],
 	players: SM.Player[],
-	time: Date,
+	time: number,
 ): Generator<SM.Events.Event> {
 	const base = { time, matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId }
 
@@ -1264,7 +1264,7 @@ function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 	return {
 		id: row.id,
 		type: row.type,
-		time: row.time,
+		time: row.time.getTime(),
 		matchId: row.matchId,
 		...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
 	}
@@ -1280,7 +1280,7 @@ const saveEvents = C.spanOp(
 			return ({
 				id: e.id,
 				type: e.type,
-				time: e.time,
+				time: new Date(e.time),
 				matchId: e.matchId,
 				data: superjson.serialize(rest),
 			})

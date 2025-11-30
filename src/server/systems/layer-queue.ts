@@ -185,7 +185,7 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 		newGameEvent = undefined
 	}
 
-	const eventTime = newGameEvent?.time ?? new Date()
+	const eventTime = newGameEvent?.time ?? Date.now()
 
 	const serverId = ctx.serverId
 
@@ -206,7 +206,7 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 			MH.getNewMatchHistoryEntry({
 				layerId: newLayerId,
 				serverId: ctx.serverId,
-				startTime: eventTime,
+				startTime: new Date(eventTime),
 				lqItem: currentMatchLqItem,
 			}),
 		)

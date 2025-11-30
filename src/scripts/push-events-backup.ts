@@ -36,7 +36,7 @@ async function saveEvents(ctx: CS.Log & C.Db, events: CHAT.Event[]) {
 	const rows: SchemaModels.NewServerEvent[] = events.map(e => ({
 		id: e.id,
 		type: e.type,
-		time: e.time,
+		time: new Date(e.time),
 		matchId: e.matchId,
 		data: superjson.serialize(e),
 	}))

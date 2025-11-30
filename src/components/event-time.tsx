@@ -1,7 +1,7 @@
 import * as dateFns from 'date-fns'
 
 interface EventTimeProps {
-	time: Date
+	time: number
 	variant?: 'default' | 'small'
 }
 
