@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -564,11 +563,6 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 		return () => scrollElement.removeEventListener('scroll', handleScroll)
 	}, [])
-
-	React.useEffect(() => {
-		if (!eventBuffer) return
-		console.log('last event rendered', eventBuffer[eventBuffer.length - 1], Obj.deepClone(eventBuffer))
-	}, [eventBuffer])
 
 	return (
 		<div className="h-full w-full relative">

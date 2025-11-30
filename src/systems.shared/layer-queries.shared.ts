@@ -14,18 +14,6 @@ import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
 import seedrandom from 'seedrandom'
 
-// Simple FNV-1a hash function for creating cache keys
-// Works in both Node.js and browsers, collisions are acceptable for this use case
-function simpleHash(str: string): string {
-	let hash = 2166136261 // FNV offset basis
-	for (let i = 0; i < str.length; i++) {
-		hash ^= str.charCodeAt(i)
-		hash = Math.imul(hash, 16777619) // FNV prime
-	}
-	// Convert to positive number and base36 for compact representation
-	return (hash >>> 0).toString(36)
-}
-
 // Cache for randomized layer query results
 // Two-tier structure: Map<queryHash, Map<pageIndex, layerIds[]>>
 const randomLayerCache = new Map<string, Map<number, number[]>>()
@@ -1014,4 +1002,16 @@ async function getRangeForExtraCol({ input, ctx }: { input: { colDef: LC.Combine
 
 	const [{ min, max }] = result
 	return { min, max }
+}
+
+// Simple FNV-1a hash function for creating cache keys
+// Works in both Node.js and browsers, collisions are acceptable for this use case
+function simpleHash(str: string): string {
+	let hash = 2166136261 // FNV offset basis
+	for (let i = 0; i < str.length; i++) {
+		hash ^= str.charCodeAt(i)
+		hash = Math.imul(hash, 16777619) // FNV prime
+	}
+	// Convert to positive number and base36 for compact representation
+	return (hash >>> 0).toString(36)
 }

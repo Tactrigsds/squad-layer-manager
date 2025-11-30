@@ -99,3 +99,12 @@ export function revFind<T>(arr: T[], predicate: (item: T) => boolean): T | undef
 	}
 	return undefined
 }
+
+export function revIndexOf<T>(arr: T[], item: T): number {
+	for (let i = arr.length - 1; i >= 0; i--) {
+		if (arr[i] === item) {
+			return i
+		}
+	}
+	return -1
+}

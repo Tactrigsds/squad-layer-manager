@@ -44,7 +44,7 @@ type ChatStore = {
 	chatState: CHAT.ChatState
 	eventFilterState: CHAT.EventFilterState
 	setEventFilterState(state: CHAT.EventFilterState): void
-	handleChatEvent(event: (CHAT.Event | CHAT.SyncedEvent)[]): void
+	handleChatEvents(event: (CHAT.Event | CHAT.SyncedEvent)[]): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
@@ -54,15 +54,17 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		setEventFilterState(state) {
 			set({ eventFilterState: state })
 		},
-		handleChatEvent(_events) {
+		handleChatEvents(_events) {
 			let events = Array.isArray(_events) ? _events : [_events]
 			set(state => {
 				let chatState = state.chatState
 				chatState = {
 					interpolatedState: CHAT.InterpolableState.clone(chatState.interpolatedState),
+					synced: chatState.synced,
+
+					savepoints: [...chatState.savepoints],
 					eventBuffer: [...chatState.eventBuffer],
 					rawEventBuffer: [...chatState.rawEventBuffer],
-					synced: chatState.synced,
 				}
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
@@ -116,7 +118,7 @@ export function setup() {
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
 	chatEvent$.subscribe(event => {
-		ChatStore.getState().handleChatEvent(event)
+		ChatStore.getState().handleChatEvents(event)
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
