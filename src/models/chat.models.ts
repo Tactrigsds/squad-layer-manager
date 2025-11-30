@@ -40,17 +40,22 @@ export type Event = SM.Events.Event
 
 export type ChatState = {
 	rawEventBuffer: Event[]
-	interpolatedState: InterpolableState
+
 	eventBuffer: EventEnriched[]
+
+	// the state of the chat as of the last event
+	interpolatedState: InterpolableState
+
+	// snapshots we can revert to in case of an out-of-order event
 	savepoints: Savepoint[]
 	synced: boolean
 }
 
-const MIN_SAVEPOINT_INTERVAL = 5000
-const NUM_SAVEPOINTS = 3
+const AUTO_SAVEPOINT_INTERVAL_MS = 10_000
 
+const NUMBER_OF_SAVEPOINTS_BEFORE_TRUNCATION = 2
 // events that are out-of-sync by more this may cause an error to be thrown.
-const MAX_OUT_OF_ORDER_TIMESPAN_MS = MIN_SAVEPOINT_INTERVAL * NUM_SAVEPOINTS
+const MAX_OUT_OF_ORDER_TIMESPAN_MS = AUTO_SAVEPOINT_INTERVAL_MS * NUMBER_OF_SAVEPOINTS_BEFORE_TRUNCATION
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
@@ -70,6 +75,10 @@ export const INITIAL_CHAT_STATE: ChatState = {
 	synced: false,
 }
 
+/**
+ * Process events into ChatState, with roll-back behavior in the case of out-of-order events
+ * Given a stream of events this lets us annot
+ */
 export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMode = false) {
 	if (event.type === 'SYNCED') {
 		state.synced = true
@@ -90,13 +99,11 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 		throw new Error(`Event ${event.id} is too far out-of-order to be reconciled`)
 	}
 
-	if (devMode && MAX_OUT_OF_ORDER_TIMESPAN_MS < event.time.getTime() - state.rawEventBuffer[0].time.getTime()) {
-		throw new Error('Max out-of-order timespan exceeded for ' + event.id)
-	}
-
 	if (event.type === 'RESET' || event.type === 'NEW_GAME') {
+		// we've got an event  that can directly serve as a savepoint
 		state.savepoints.push({ savedAtEventId: event.id, state: event.state })
 	}
+
 	state.rawEventBuffer.splice(mutatedIndex, 0, event)
 	if (mutatedIndex < state.rawEventBuffer.length && state.rawEventBuffer.length > 0) {
 		// we need to re-interpolate from the last savepoint because we received an out-of-order event.
@@ -141,7 +148,7 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 
 		const numInterpolated = state.eventBuffer.length - savepointEventIndex
 		const latestEvent = state.rawEventBuffer[state.rawEventBuffer.length - 1]
-		truncateRawEventBuffer(state)
+		truncateRawEventBufferAndSavepoints(state)
 		return {
 			code: 'ok:rollback' as const,
 			interpolated: state.eventBuffer.slice(savepointEventIndex),
@@ -152,7 +159,7 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 		const interpolated = interpolateEvent(state.interpolatedState, event)
 		state.eventBuffer.push(interpolated)
 		checkForSavepoint(state, event)
-		truncateRawEventBuffer(state)
+		truncateRawEventBufferAndSavepoints(state)
 		return { code: 'ok:appended' as const, interpolated: [interpolated] }
 	}
 }
@@ -438,7 +445,7 @@ function checkForSavepoint(state: Pick<ChatState, 'savepoints' | 'rawEventBuffer
 		const lastSaveEvent = lastSavepoint && Arr.revFind(rawEventBuffer, e => e.id === lastSavepoint.savedAtEventId)
 		if (!lastSaveEvent) return
 		// if it's been more than MIN_SAVEPOINT_INTERVAL milliseconds since the last savepoint, then write a new savepoint
-		if ((event.time.getTime() - lastSaveEvent.time.getTime()) >= MIN_SAVEPOINT_INTERVAL) {
+		if ((event.time.getTime() - lastSaveEvent.time.getTime()) >= AUTO_SAVEPOINT_INTERVAL_MS) {
 			toAdd = {
 				savedAtEventId: event.id,
 				state: InterpolableState.clone(interpolatedState),
@@ -450,11 +457,26 @@ function checkForSavepoint(state: Pick<ChatState, 'savepoints' | 'rawEventBuffer
 	savepoints.push(toAdd)
 }
 
-function truncateRawEventBuffer(state: ChatState) {
-	if (state.savepoints.length <= NUM_SAVEPOINTS) return
-	state.savepoints.shift()
-	const earliestEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[0].savedAtEventId)
-	state.rawEventBuffer = state.rawEventBuffer.slice(earliestEventIndex)
+function truncateRawEventBufferAndSavepoints(state: ChatState) {
+	// note: this system is probably overcomplicated. we could come up with some simpler rules for how to keep around savepoints
+	if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS_BEFORE_TRUNCATION) return
+	const lastEventTime = state.rawEventBuffer[state.rawEventBuffer.length - 1].time.getTime()
+
+	// We need to keep around any savepoints that are within MAX_OUT_OF_ORDER_TIMESPAN_MS of the last event, but let's always keep around the most recent one even if it's old
+	let newFirstSavepointIndex = state.savepoints.length - 1
+	for (let i = 0; i < state.savepoints.length - 1; i++) {
+		const savepoint = state.savepoints[i]
+		const event = state.rawEventBuffer.find(e => e.id === savepoint.savedAtEventId)!
+		if (lastEventTime - event.time.getTime() <= MAX_OUT_OF_ORDER_TIMESPAN_MS) {
+			newFirstSavepointIndex = i
+			break
+		}
+	}
+
+	const newFirstEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[newFirstSavepointIndex].savedAtEventId)
+	if (newFirstEventIndex === -1) throw new Error('Could not find event for savepoint')
+	state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
+	state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
 }
 
 export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
