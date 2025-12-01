@@ -175,8 +175,7 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
-		warnSuppressionPatterns: CONFIG.serverEvents.warnSuppressionPatterns,
-		broadcastSuppressionPatterns: CONFIG.serverEvents.broadcastSuppressionPatterns,
+		serverEvents: CONFIG.serverEvents,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
 		servers: CONFIG.servers.map((server): ServerEntry => ({

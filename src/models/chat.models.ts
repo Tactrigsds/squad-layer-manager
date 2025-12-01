@@ -50,8 +50,8 @@ export type ChatState = {
 	synced: boolean
 }
 
-const NUMBER_OF_SAVEPOINTS = 2
-const SAVEPOINT_INTERVAL = 50
+const NUMBER_OF_SAVEPOINTS = 3
+const SAVEPOINT_INTERVAL = 100
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
@@ -59,12 +59,14 @@ export type Savepoint = {
 	state: InterpolableState
 }
 
+export const INITIAL_INTERPOLATED_STATE: InterpolableState = {
+	players: [],
+	squads: [],
+}
+
 export const INITIAL_CHAT_STATE: ChatState = {
 	rawEventBuffer: [],
-	interpolatedState: {
-		players: [],
-		squads: [],
-	},
+	interpolatedState: INITIAL_INTERPOLATED_STATE,
 	savepoints: [],
 	eventBuffer: [],
 	// indicates where this chat is now up-to-date with all events
@@ -78,7 +80,7 @@ export const INITIAL_CHAT_STATE: ChatState = {
 export function handleEvent(
 	state: ChatState,
 	event: Event | SyncedEvent,
-	opts?: { warnSuppressionPatterns?: string[]; broadcastSuppressionPatterns?: string[] },
+	opts?: InterpolationOptions,
 ) {
 	if (event.type === 'SYNCED') {
 		state.synced = true
@@ -120,7 +122,7 @@ export function handleEvent(
 		state.rawEventBuffer = state.rawEventBuffer.slice(0, lastSaveEventIndex + 1)
 		let savepoint = state.savepoints[state.savepoints.length - 1]
 		if (!savepoint) {
-			state.interpolatedState = { players: [], squads: [] }
+			state.interpolatedState = InterpolableState.clone(INITIAL_INTERPOLATED_STATE)
 		} else {
 			state.interpolatedState = InterpolableState.clone(savepoint.state)
 		}
@@ -150,14 +152,20 @@ export function handleEvent(
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 
-function getCompiledPatterns(patterns: string[]) {
-	if (patterns.length === 0) return []
+function testPatterns(patterns: string[], text: string): boolean {
+	if (patterns.length === 0) return false
 	let compiled = compiledPatternMap.get(patterns)
 	if (!compiled) {
 		compiled = patterns.map(p => new RegExp(p))
 		compiledPatternMap.set(patterns, compiled)
 	}
-	return compiled
+	return compiled.some(pattern => pattern.test(text))
+}
+
+type InterpolationOptions = {
+	warnSuppressionPatterns?: string[]
+	broadcastSuppressionPatterns?: string[]
+	suppressAdminPings?: boolean
 }
 
 /**
@@ -166,17 +174,14 @@ function getCompiledPatterns(patterns: string[]) {
 export function interpolateEvent(
 	state: InterpolableState,
 	event: Event,
-	opts?: { warnSuppressionPatterns?: string[]; broadcastSuppressionPatterns?: string[] },
+	opts?: InterpolationOptions,
 ) {
-	const warnSuppressionPatterns = getCompiledPatterns(opts?.warnSuppressionPatterns ?? [])
-	const broadcastSuppressionPatterns = getCompiledPatterns(opts?.broadcastSuppressionPatterns ?? [])
-
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
 		case 'NEW_GAME':
 		case 'RESET': {
 			const { state: newState, ...rest } = event
-			Object.assign(state, InterpolableState.clone(newState))
+			Object.assign(state, InterpolableState.clone({ ...newState }))
 			return rest
 		}
 
@@ -376,11 +381,28 @@ export function interpolateEvent(
 			}
 		}
 		case 'PLAYER_WARNED': {
-			for (const pattern of warnSuppressionPatterns) {
-				if (pattern.test(event.reason)) {
-					return noop(`Warn reason ${event.reason} matches warn suppression pattern ${pattern.toString()}`)
-				}
+			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
+				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
 			}
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			if (!player) {
+				return noop(
+					`Player ${
+						SM.PlayerIds.prettyPrint(event.playerIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+
+			return {
+				...event,
+				player: player,
+			}
+		}
+
+		case 'PLAYER_BANNED':
+		case 'PLAYER_KICKED':
+		case 'POSSESSED_ADMIN_CAMERA':
+		case 'UNPOSSESSED_ADMIN_CAMERA': {
 			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
 			if (!player) {
 				return noop(
@@ -394,11 +416,6 @@ export function interpolateEvent(
 				player: player,
 			}
 		}
-
-		case 'PLAYER_BANNED':
-		case 'PLAYER_KICKED':
-		case 'POSSESSED_ADMIN_CAMERA':
-		case 'UNPOSSESSED_ADMIN_CAMERA':
 		case 'CHAT_MESSAGE': {
 			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
 			if (!player) {
@@ -416,10 +433,8 @@ export function interpolateEvent(
 
 		case 'ADMIN_BROADCAST': {
 			if (event.from === 'RCON' || event.from === 'unknown') {
-				for (const pattern of broadcastSuppressionPatterns) {
-					if (pattern.test(event.message)) {
-						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern ${pattern.toString()}`)
-					}
+				if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
+					return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
 				}
 				return { ...event, player: undefined } as SM.Events.AdminBroadcast & { player: undefined }
 			}
