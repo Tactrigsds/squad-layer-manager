@@ -111,6 +111,18 @@
         "additionalProperties": false
       }
     },
+    "serverEvents": {
+      "type": "object",
+      "properties": {
+        "warnSuppressionPatterns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
     "layerQueue": {
       "type": "object",
       "properties": {

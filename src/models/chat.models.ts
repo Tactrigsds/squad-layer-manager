@@ -75,7 +75,7 @@ export const INITIAL_CHAT_STATE: ChatState = {
  * Process events into ChatState, with roll-back behavior in the case of out-of-order events
  * Given a stream of events this lets us annot
  */
-export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMode = false) {
+export function handleEvent(state: ChatState, event: Event | SyncedEvent, opts?: { warnSuppressionPatterns?: string[] }) {
 	if (event.type === 'SYNCED') {
 		state.synced = true
 		return
@@ -126,7 +126,7 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 
 	for (const event of eventsToProcess) {
 		state.rawEventBuffer.push(event)
-		const interpolated = interpolateEvent(state.interpolatedState, event)
+		const interpolated = interpolateEvent(state.interpolatedState, event, opts)
 		state.eventBuffer.push(interpolated)
 	}
 
@@ -144,10 +144,23 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 	}
 }
 
+const compiledPatternMap = new WeakMap<string[], RegExp[]>()
+
 /**
  * Apply state changes from events, output enriched versions of the event
  */
-export function interpolateEvent(state: InterpolableState, event: Event) {
+export function interpolateEvent(state: InterpolableState, event: Event, opts?: { warnSuppressionPatterns?: string[] }) {
+	let warnSuppressionPatterns = (() => {
+		const patterns = opts?.warnSuppressionPatterns
+		if (!patterns || patterns.length === 0) return []
+		let compiled = compiledPatternMap.get(patterns)
+		if (!compiled) {
+			compiled = patterns.map(p => new RegExp(p))
+			compiledPatternMap.set(patterns, compiled)
+		}
+		return compiled
+	})()
+
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
 		case 'NEW_GAME':
@@ -352,10 +365,28 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 				squad,
 			}
 		}
+		case 'PLAYER_WARNED': {
+			for (const pattern of warnSuppressionPatterns) {
+				if (pattern.test(event.reason)) {
+					return noop(`Warn reason ${event.reason} matches warn suppression pattern ${pattern.toString()}`)
+				}
+			}
+			let player = SM.PlayerIds.find(state.players, p => p.ids, event.playerIds)
+			if (!player) {
+				return noop(
+					`Player ${
+						SM.PlayerIds.prettyPrint(event.playerIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+			return {
+				...event,
+				player: player,
+			}
+		}
 
 		case 'PLAYER_BANNED':
 		case 'PLAYER_KICKED':
-		case 'PLAYER_WARNED':
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA':
 		case 'CHAT_MESSAGE': {

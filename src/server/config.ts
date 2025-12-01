@@ -41,6 +41,9 @@ export const ConfigSchema = z.object({
 			remindersAndAnnouncementsEnabled: z.boolean().default(true).describe('Whether reminders/annoucements for admins are enabled'),
 		}),
 	).transform(servers => servers.filter(server => server.enabled)),
+	serverEvents: z.object({
+		warnSuppressionPatterns: z.array(z.string()).default([]),
+	}).default({}),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
@@ -169,6 +172,7 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
+		warnSuppressionPatterns: CONFIG.serverEvents.warnSuppressionPatterns,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
 		servers: CONFIG.servers.map((server): ServerEntry => ({

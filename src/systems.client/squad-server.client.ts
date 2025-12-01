@@ -5,6 +5,7 @@ import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems.client/app-routes.client'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
@@ -54,6 +55,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		},
 		handleChatEvents(_events) {
 			let events = Array.isArray(_events) ? _events : [_events]
+			const config = ConfigClient.getConfig()
 			set(state => {
 				let chatState = state.chatState
 				chatState = {
@@ -66,7 +68,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 				}
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
-					CHAT.handleEvent(chatState, event, import.meta.env.DEV)
+					CHAT.handleEvent(chatState, event, { warnSuppressionPatterns: config?.warnSuppressionPatterns })
 				}
 				return { chatState }
 			})
