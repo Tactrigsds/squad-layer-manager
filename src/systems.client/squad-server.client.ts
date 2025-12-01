@@ -68,7 +68,10 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 				}
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
-					CHAT.handleEvent(chatState, event, { warnSuppressionPatterns: config?.warnSuppressionPatterns })
+					CHAT.handleEvent(chatState, event, {
+						warnSuppressionPatterns: config?.warnSuppressionPatterns,
+						broadcastSuppressionPatterns: config?.broadcastSuppressionPatterns,
+					})
 				}
 				return { chatState }
 			})

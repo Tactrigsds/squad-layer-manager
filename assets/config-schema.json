@@ -117,7 +117,14 @@
         "warnSuppressionPatterns": {
           "type": "array",
           "items": {"type": "string"},
-          "default": []
+          "default": [],
+          "description": "Regex patterns to suppress warning messages"
+        },
+        "broadcastSuppressionPatterns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command."
         }
       },
       "additionalProperties": false,

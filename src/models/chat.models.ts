@@ -75,7 +75,11 @@ export const INITIAL_CHAT_STATE: ChatState = {
  * Process events into ChatState, with roll-back behavior in the case of out-of-order events
  * Given a stream of events this lets us annot
  */
-export function handleEvent(state: ChatState, event: Event | SyncedEvent, opts?: { warnSuppressionPatterns?: string[] }) {
+export function handleEvent(
+	state: ChatState,
+	event: Event | SyncedEvent,
+	opts?: { warnSuppressionPatterns?: string[]; broadcastSuppressionPatterns?: string[] },
+) {
 	if (event.type === 'SYNCED') {
 		state.synced = true
 		return
@@ -146,20 +150,26 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, opts?:
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 
+function getCompiledPatterns(patterns: string[]) {
+	if (patterns.length === 0) return []
+	let compiled = compiledPatternMap.get(patterns)
+	if (!compiled) {
+		compiled = patterns.map(p => new RegExp(p))
+		compiledPatternMap.set(patterns, compiled)
+	}
+	return compiled
+}
+
 /**
  * Apply state changes from events, output enriched versions of the event
  */
-export function interpolateEvent(state: InterpolableState, event: Event, opts?: { warnSuppressionPatterns?: string[] }) {
-	let warnSuppressionPatterns = (() => {
-		const patterns = opts?.warnSuppressionPatterns
-		if (!patterns || patterns.length === 0) return []
-		let compiled = compiledPatternMap.get(patterns)
-		if (!compiled) {
-			compiled = patterns.map(p => new RegExp(p))
-			compiledPatternMap.set(patterns, compiled)
-		}
-		return compiled
-	})()
+export function interpolateEvent(
+	state: InterpolableState,
+	event: Event,
+	opts?: { warnSuppressionPatterns?: string[]; broadcastSuppressionPatterns?: string[] },
+) {
+	const warnSuppressionPatterns = getCompiledPatterns(opts?.warnSuppressionPatterns ?? [])
+	const broadcastSuppressionPatterns = getCompiledPatterns(opts?.broadcastSuppressionPatterns ?? [])
 
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
@@ -406,6 +416,11 @@ export function interpolateEvent(state: InterpolableState, event: Event, opts?: 
 
 		case 'ADMIN_BROADCAST': {
 			if (event.from === 'RCON' || event.from === 'unknown') {
+				for (const pattern of broadcastSuppressionPatterns) {
+					if (pattern.test(event.message)) {
+						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern ${pattern.toString()}`)
+					}
+				}
 				return { ...event, player: undefined } as SM.Events.AdminBroadcast & { player: undefined }
 			}
 			const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)

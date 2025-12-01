@@ -42,7 +42,10 @@ export const ConfigSchema = z.object({
 		}),
 	).transform(servers => servers.filter(server => server.enabled)),
 	serverEvents: z.object({
-		warnSuppressionPatterns: z.array(z.string()).default([]),
+		warnSuppressionPatterns: z.array(z.string()).default([]).describe('Regex patterns to suppress warning messages'),
+		broadcastSuppressionPatterns: z.array(z.string()).default([]).describe(
+			'Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.',
+		),
 	}).default({}),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
@@ -173,6 +176,7 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 		warnSuppressionPatterns: CONFIG.serverEvents.warnSuppressionPatterns,
+		broadcastSuppressionPatterns: CONFIG.serverEvents.broadcastSuppressionPatterns,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
 		servers: CONFIG.servers.map((server): ServerEntry => ({
