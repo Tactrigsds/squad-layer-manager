@@ -1,7 +1,7 @@
 import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import type { PublicConfig } from '@/server/config'
-import type { OrpcAppRouter } from '@/server/router'
+import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems.client/config.client'
 import { createORPCClient, onError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'

@@ -1,6 +1,6 @@
 import { onError } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/ws'
-import { orpcAppRouter } from './router.ts'
+import { orpcAppRouter } from './orpc-app-router.ts'
 
 export const orpcHandler = new RPCHandler(orpcAppRouter, {
 	interceptors: [
