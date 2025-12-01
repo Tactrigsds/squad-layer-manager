@@ -29,21 +29,17 @@ export function useCombinedStores<States extends unknown[], Selector extends (st
 	stores: StoresTuple<States>,
 	selector: Selector,
 ) {
-	const [values, setValues] = React.useState(() => stores.map(s => s.getState()) as States)
+	const [value, setValue] = React.useState(() => selector(stores.map(s => s.getState()) as States))
 
 	React.useEffect(() => {
 		const updateValues = () => {
-			setValues(stores.map(s => s.getState()) as States)
+			setValue(selector(stores.map(s => s.getState()) as States))
 		}
 		const subscriptions = stores.map(s => s.subscribe(updateValues))
 		return () => subscriptions.forEach(unsub => unsub())
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [...stores, setValues])
-
-	return React.useMemo(() => {
-		return selector(values)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [selector, ...values]) as ReturnType<Selector>
+	}, [...stores, setValue, selector])
+	return value
 }
 
 export function storeFromObservable<T>(o: StateObservable<T>, initialValue: T, opts: { sub: Rx.Subscription }) {

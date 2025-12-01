@@ -35,44 +35,51 @@ export default function ShortLayerName(
 		backfillLayer = L.toLayer(backfillLayerId)
 	}
 
-	let violatedFields: Map<LQY.ItemId, LQY.MatchDescriptor> = new Map()
-	if (matchDescriptors && !isNullOrUndef(teamParity)) {
-		violatedFields = LQY.resolveRepeatedLayerProperties(matchDescriptors, teamParity)
-	}
+	const extraStyles = React.useMemo(() => {
+		let violatedFields: Map<LQY.ItemId, LQY.MatchDescriptor> = new Map()
+		if (matchDescriptors && !isNullOrUndef(teamParity)) {
+			violatedFields = LQY.resolveRepeatedLayerProperties(matchDescriptors, teamParity)
+		}
+		const combineStyles = (field: keyof typeof partialLayer) => {
+			const styles: string[] = []
 
-	const combineStyles = (field: keyof typeof partialLayer) => {
-		const styles: string[] = []
+			// Add backfilled style if applicable
+			if (!partialLayer[field] && !!backfillLayer?.[field]) {
+				styles.push(backfilledStyle)
+			}
 
-		// Add backfilled style if applicable
-		if (!partialLayer[field] && !!backfillLayer?.[field]) {
-			styles.push(backfilledStyle)
+			// Add violation style if applicable
+			if (violatedFields.has(field)) {
+				styles.push(Typo.ConstraintViolationDescriptor)
+			}
+
+			return styles.length > 0 ? styles.join(' ') : undefined
 		}
 
-		// Add violation style if applicable
-		if (violatedFields.has(field)) {
-			styles.push(Typo.ConstraintViolationDescriptor)
+		const extraStyles: Record<keyof L.KnownLayer, string | undefined> = {
+			id: undefined,
+			Layer: combineStyles('Layer'),
+			Size: combineStyles('Size'),
+			Map: combineStyles('Map'),
+			Gamemode: combineStyles('Gamemode'),
+			LayerVersion: combineStyles('LayerVersion'),
+			Faction_1: combineStyles('Faction_1'),
+			Unit_1: combineStyles('Unit_1'),
+			Alliance_1: combineStyles('Alliance_1'),
+			Faction_2: combineStyles('Faction_2'),
+			Unit_2: combineStyles('Unit_2'),
+			Alliance_2: combineStyles('Alliance_2'),
 		}
-
-		return styles.length > 0 ? styles.join(' ') : undefined
-	}
-
-	const extraStyles: Record<keyof L.KnownLayer, string | undefined> = {
-		id: undefined,
-		Layer: combineStyles('Layer'),
-		Size: combineStyles('Size'),
-		Map: combineStyles('Map'),
-		Gamemode: combineStyles('Gamemode'),
-		LayerVersion: combineStyles('LayerVersion'),
-		Faction_1: combineStyles('Faction_1'),
-		Unit_1: combineStyles('Unit_1'),
-		Alliance_1: combineStyles('Alliance_1'),
-		Faction_2: combineStyles('Faction_2'),
-		Unit_2: combineStyles('Unit_2'),
-		Alliance_2: combineStyles('Alliance_2'),
-	}
+		return extraStyles
+	}, [
+		partialLayer,
+		backfillLayer,
+		matchDescriptors,
+		teamParity,
+	])
 
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)
-	partialLayer = { ...(backfillLayer ?? {}), ...partialLayer }
+	partialLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
 
 	let leftTeamElt: React.ReactNode | undefined
 	let rightTeamElt: React.ReactNode | undefined

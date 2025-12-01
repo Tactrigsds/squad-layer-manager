@@ -297,12 +297,14 @@ function MatchHistoryRow({
 		/>
 	)
 
-	const extraLayerStyles = DH.getAllExtraStyles(
-		entry.layerId,
-		entry.ordinal,
-		globalSettings.displayTeamsNormalized,
-		statusData?.highlightedMatchDescriptors,
-	)
+	const extraLayerStyles = React.useMemo(() => {
+		return DH.getAllExtraStyles(
+			entry.layerId,
+			entry.ordinal,
+			globalSettings.displayTeamsNormalized,
+			statusData?.highlightedMatchDescriptors,
+		)
+	}, [entry.layerId, entry.ordinal, globalSettings.displayTeamsNormalized, statusData?.highlightedMatchDescriptors])
 
 	const layer = L.toLayer(entry.layerId)
 	let outcomeDisp: React.ReactNode

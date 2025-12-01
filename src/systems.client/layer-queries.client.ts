@@ -14,6 +14,7 @@ import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import type * as WorkerTypes from '@/systems.client/layer-queries.worker'
+import * as React from 'react'
 
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems.client/layer-queries.worker?worker'
@@ -318,55 +319,81 @@ function filterAndReportInvalidDescriptors(
 	}
 	return validDescriptors.length > 0 ? validDescriptors : undefined
 }
+export type LayerItemStatusData = {
+	present: Set<LQY.ItemId>
+	queriedConstraints: LQY.Constraint[]
+	matchingConstraintIds: string[]
+	matchingDescriptors: LQY.MatchDescriptor[]
+	highlightedMatchDescriptors?: LQY.MatchDescriptor[]
+}
 
 export function useLayerItemStatusData(
 	layerItem: LQY.LayerItem | LQY.ItemId,
 	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
-) {
+): LayerItemStatusData | null {
 	const queriedConstraints = useLayerItemStatusConstraints()
-	layerItem = typeof layerItem === 'string' ? LQY.fromSerial(layerItem) : layerItem
-	const hoveredConstraintItemId = Zus.useStore(Store, s => s.hoveredConstraintItemId ?? undefined)
 	const queryRes = useLayerItemStatuses(queriedConstraints, options)
-	if (!queryRes.data) return null
 	const itemId = LQY.resolveId(layerItem)
 
-	const allMatchDescriptors = queryRes.data.matchDescriptors
+	const allMatchDescriptors = queryRes.data?.matchDescriptors
+	const presentLayers = queryRes.data?.present
 
-	const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
-			&& filterAndReportInvalidDescriptors(
-				queriedConstraints,
-				allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
-			)
-		|| undefined
+	const highlightedMatchDescriptors = Zus.useStore(
+		Store,
+		ZusUtils.useDeep(React.useCallback((store) => {
+			if (!allMatchDescriptors) return
+			const hoveredConstraintItemId = store.hoveredConstraintItemId ?? undefined
+			const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
+					&& filterAndReportInvalidDescriptors(
+						queriedConstraints,
+						allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.itemId === itemId),
+					)
+				|| undefined
 
-	const localMatchDescriptors = hoveredConstraintItemId === itemId
-			&& filterAndReportInvalidDescriptors(
-				queriedConstraints,
-				allMatchDescriptors.get(itemId),
-			)
-		|| undefined
+			const localMatchDescriptors = hoveredConstraintItemId === itemId
+					&& filterAndReportInvalidDescriptors(
+						queriedConstraints,
+						allMatchDescriptors.get(itemId),
+					)
+				|| undefined
 
-	const matchingDescriptors = filterAndReportInvalidDescriptors(
+			// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item
+			return localMatchDescriptors ?? hoveredMatchDescriptors
+		}, [
+			allMatchDescriptors,
+			itemId,
+			queriedConstraints,
+		])),
+	)
+
+	return React.useMemo(() => {
+		if (!allMatchDescriptors || !presentLayers) return null
+		const matchingDescriptors = filterAndReportInvalidDescriptors(
+			queriedConstraints,
+			allMatchDescriptors.get(itemId),
+		) ?? []
+
+		// we're much more confident that hovered descriptors are present
+
+		const matchingConstraintIds = queriedConstraints.flatMap(c => {
+			if (!matchingDescriptors.some(d => d.constraintId === c.id)) return []
+			return c.id
+		})
+
+		return {
+			present: presentLayers,
+			queriedConstraints,
+			matchingConstraintIds,
+			matchingDescriptors,
+			highlightedMatchDescriptors,
+		}
+	}, [
+		highlightedMatchDescriptors,
+		allMatchDescriptors,
+		itemId,
+		presentLayers,
 		queriedConstraints,
-		allMatchDescriptors.get(itemId),
-	) ?? []
-
-	// we're much more confident that hovered descriptors are present
-
-	const matchingConstraintIds = queriedConstraints.flatMap(c => {
-		if (!matchingDescriptors.some(d => d.constraintId === c.id)) return []
-		return c.id
-	})
-
-	return {
-		present: queryRes.data.present,
-		queriedConstraints,
-		matchingConstraintIds,
-		matchingDescriptors,
-
-		// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item
-		highlightedMatchDescriptors: localMatchDescriptors ?? hoveredMatchDescriptors,
-	}
+	])
 }
 
 // TODO prefetching
