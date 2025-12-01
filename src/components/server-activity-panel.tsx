@@ -553,6 +553,14 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		return () => resizeObserver.disconnect()
 	}, [])
 
+	React.useEffect(() => {
+		if (synced) {
+			requestAnimationFrame(() => {
+				scrollToBottom()
+			})
+		}
+	}, [synced])
+
 	// Listen to scroll events to show/hide button
 	React.useEffect(() => {
 		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')

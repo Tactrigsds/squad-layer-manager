@@ -17,6 +17,10 @@ export function resToOptional<R extends { code: string }>(res: R) {
 	return res as Extract<R, { code: 'ok' }>
 }
 
+export function orUndef(value: any) {
+	return value ? value : undefined
+}
+
 export type MapTuple<T extends readonly unknown[], U> = {
 	[K in keyof T]: U
 }

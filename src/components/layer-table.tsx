@@ -43,6 +43,7 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
+import { orUndef } from '@/lib/types'
 import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
@@ -258,33 +259,12 @@ function buildColDefs(
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const [isDisabled, isSelected] = useTableFrame(ZusUtils.useShallow(table => {
-					const rowId = row.original.id
-					const isSelected = table.selected.includes(rowId)
-					const isRowDisabled = row.original.isRowDisabled
-
-					// If row is already disabled, it's disabled
-					if (isRowDisabled) return [true, isSelected] as const
-
-					// Check if unchecking would violate minSelected
-					if (isSelected) {
-						const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
-						if (wouldBeUnderMin) return [true, isSelected] as const
-					}
-
-					// Check if checking would violate maxSelected
-					if (!isSelected) {
-						const wouldBeOverMax = (table.maxSelected ?? Infinity) < (table.selected.length + 1)
-						if (wouldBeOverMax) return [true, isSelected] as const
-					}
-
-					return [false, isSelected] as const
-				}))
+				const [isUnselectable, isSelected] = useTableFrame(ZusUtils.useShallow(LayerTablePrt.selectRowSelectionStatus(row.id)))
 
 				return (
 					<Checkbox
 						checked={isSelected}
-						disabled={isDisabled}
+						disabled={isUnselectable}
 						// no handler here because we're already handling onClick on the row
 						className={row.original.isRowDisabled ? 'invisible' : ''}
 						aria-label="Select row"
@@ -474,8 +454,11 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 	const getStore = () => getFrameState(props.frameKey)
 	const getTableFrame = () => getFrameState(props.frameKey).layerTable
 	const canFocusLayers = useFrameStore(props.frameKey, s => !!s.onLayerFocused)
+
+	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) => useFrameStore(props.frameKey, s => selector(s.layerTable))
+	const [isUnselectable, isSelected] = useTableFrame(ZusUtils.useShallow(LayerTablePrt.selectRowSelectionStatus(row.id)))
 	function toggleRow() {
-		if (row.original.isRowDisabled) return
+		if (isUnselectable) return
 
 		getTableFrame().setSelected(selected => {
 			if (selected.includes(id)) {
@@ -512,9 +495,10 @@ const LayerTableRow = React.memo(function LayerTableRow(props: { frameKey: Layer
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none h-8 data-[disabled=true]:hover:bg-unset data-[disabled=true]:bg-grey-800"
-					data-disabled={row.original.isRowDisabled}
+					className="select-none h-8 data-[disabled]:hover:bg-unset data-[disabled]:hover:bg-unset data-[disabled]:bg-grey-800"
+					data-disabled={orUndef(isUnselectable && !isSelected)}
 					onClick={(e) => {
+						if (isUnselectable) return
 						if (e.ctrlKey && e.button === 0) {
 							getStore().onLayerFocused?.(id)
 							return

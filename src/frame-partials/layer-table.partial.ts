@@ -386,3 +386,21 @@ export function getTanstackActions(table: LayerTable) {
 export function selectEditingSingleValue(state: LayerTable) {
 	return state.maxSelected === 1 && state.minSelected === 1
 }
+
+export const selectRowSelectionStatus = (rowId: L.LayerId) => (table: LayerTable) => {
+	const row = table.pageData?.layers.find(r => r.id === rowId)
+	if (!row) return [false, false] as const
+	const isSelected = table.selected.includes(rowId)
+	const isRowDisabled = row.isRowDisabled
+
+	// If row is already disabled, it's disabled
+	if (isRowDisabled) return [true, isSelected] as const
+
+	// Check if unchecking would violate minSelected
+	if (isSelected) {
+		const wouldBeUnderMin = (table.minSelected ?? 0) > (table.selected.length - 1)
+		if (wouldBeUnderMin) return [true, isSelected] as const
+	}
+
+	return [false, isSelected] as const
+}
