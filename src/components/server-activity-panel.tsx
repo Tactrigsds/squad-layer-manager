@@ -472,8 +472,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
-	const prevEventCount = React.useRef(0)
 	const hasScrolledInitially = React.useRef(false)
+	const eventsContainerRef = React.useRef<HTMLDivElement>(null)
 	const [showScrollButton, setShowScrollButton] = React.useState(false)
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
 
@@ -517,33 +517,36 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		if (!scrollElement) return false
 
 		const threshold = 50 // pixels from bottom to consider "at bottom"
-		const isAtBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < threshold
+		const { scrollHeight, scrollTop, clientHeight } = scrollElement
+		const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+		const isAtBottom = distanceFromBottom < threshold
 		return isAtBottom
 	}
 
 	// Scroll to bottom on initial render and when new events arrive if already at bottom
+	// Scroll to bottom when scroll area content changes (via ResizeObserver)
 	React.useEffect(() => {
-		if (!filteredEvents) return
+		const scrollElement = eventsContainerRef.current
+		if (!scrollElement) return
 
-		// Initial scroll when events first load
-		if (filteredEvents.length > 0 && !hasScrolledInitially.current) {
-			hasScrolledInitially.current = true
-			prevEventCount.current = filteredEvents.length
-			setTimeout(() => scrollToBottom(), 0)
-			return
-		}
+		const resizeObserver = new ResizeObserver(() => {
+			requestAnimationFrame(() => {
+				if (hasScrolledInitially.current || checkIfAtBottom()) {
+					hasScrolledInitially.current = true
+					// Use requestAnimationFrame to ensure DOM has updated
+					scrollToBottom()
+				}
+			})
+		})
+		requestAnimationFrame(() => {
+			scrollToBottom()
+		})
 
-		// Auto-scroll when new events arrive if already at bottom
-		if (filteredEvents.length > prevEventCount.current) {
-			const newCount = filteredEvents.length - prevEventCount.current
-			prevEventCount.current = filteredEvents.length
-			if (checkIfAtBottom()) {
-				setTimeout(() => scrollToBottom(), 0)
-			} else {
-				setNewMessageCount(prev => prev + newCount)
-			}
-		}
-	}, [filteredEvents])
+		resizeObserver.observe(scrollElement)
+
+		return () => resizeObserver.disconnect()
+	}, [])
 
 	// Listen to scroll events to show/hide button
 	React.useEffect(() => {
@@ -583,7 +586,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 				</Button>
 			)}
 			<ScrollArea className={props.className} ref={scrollAreaRef}>
-				<div className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
+				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
 					{filteredEvents && filteredEvents.length === 0 && (
 						<div className="text-muted-foreground text-sm text-center py-8">
 							No events yet
@@ -591,21 +595,21 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					)}
 					{filteredEvents
 						&& filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time}-${idx}`} event={event} />)}
-					<div ref={bottomRef} />
-					{showScrollButton && (
-						<Button
-							onClick={() => scrollToBottom()}
-							variant="secondary"
-							className="sticky bottom-0 left-0 right-0 h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
-							title="Scroll to bottom"
-						>
-							<Icons.ChevronDown className="h-4 w-4" />
-							<span className="text-xs">
-								{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
-							</span>
-						</Button>
-					)}
 				</div>
+				<div ref={bottomRef} />
+				{showScrollButton && (
+					<Button
+						onClick={() => scrollToBottom()}
+						variant="secondary"
+						className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 z-10 bg-opacity-20! rounded-none backdrop-blur-sm"
+						title="Scroll to bottom"
+					>
+						<Icons.ChevronDown className="h-4 w-4" />
+						<span className="text-xs">
+							{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+						</span>
+					</Button>
+				)}
 			</ScrollArea>
 		</div>
 	)

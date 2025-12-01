@@ -66,12 +66,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 				}
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
-					const res = CHAT.handleEvent(chatState, event, import.meta.env.DEV)
-					if (!chatState.synced) continue
-					if (res?.code) {
-						if (res.code === 'ok:rollback') console.warn('ROLLBACK occured at ', event.type === 'SYNCED' ? 'SYNCED' : event.id)
-						if (res.message) console.info(res.message)
-					}
+					CHAT.handleEvent(chatState, event, import.meta.env.DEV)
 				}
 				return { chatState }
 			})

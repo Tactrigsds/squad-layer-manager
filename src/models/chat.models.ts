@@ -52,7 +52,7 @@ export type ChatState = {
 }
 
 const NUMBER_OF_SAVEPOINTS = 2
-const SAVEPOINT_INTERVAL = 50
+const SAVEPOINT_INTERVAL = 5
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
@@ -90,86 +90,58 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 			break
 		}
 	}
-	if (mutatedIndex === null && state.rawEventBuffer.length === 0) mutatedIndex = 0
-
-	if (mutatedIndex === null) {
+	if (mutatedIndex === null && state.rawEventBuffer.length >= SAVEPOINT_INTERVAL) {
 		throw new Error(`Event ${event.id} is too far out-of-order to be reconciled`)
 	}
 
+	mutatedIndex ??= 0
+
 	// remove all savepoints at or after the mutated index
+	for (let i = mutatedIndex; i < state.rawEventBuffer.length; i++) {
+		const event = state.eventBuffer[i]
+		const savepointIndex = state.savepoints.findIndex(s => s.savedAtEventId === event.id)
+		if (savepointIndex !== -1) {
+			state.savepoints = state.savepoints.slice(0, savepointIndex)
+			break
+		}
+	}
+	let lastSaveEventIndex = -1
+	if (state.savepoints.length > 0) {
+		lastSaveEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[state.savepoints.length - 1].savedAtEventId)
+	}
+	const eventsToProcess: Event[] = []
 	if (mutatedIndex < state.rawEventBuffer.length) {
-		for (let i = mutatedIndex; i < state.rawEventBuffer.length; i++) {
-			const event = state.eventBuffer[i]
-			const savepointIndex = state.savepoints.findIndex(s => s.savedAtEventId === event.id)
-			if (savepointIndex !== -1) {
-				state.savepoints = state.savepoints.slice(0, savepointIndex)
-				break
-			}
-		}
-	}
-
-	if (event.type === 'RESET' || event.type === 'NEW_GAME') {
-		// we've got an event  that can directly serve as a savepoint
-		state.savepoints.push({ savedAtEventId: event.id, state: event.state })
-	}
-
-	state.rawEventBuffer.splice(mutatedIndex, 0, event)
-	if (mutatedIndex < state.rawEventBuffer.length && state.rawEventBuffer.length > 0) {
-		// we need to re-interpolate from the last savepoint because we received an out-of-order event.
-
-		// first, let's find the savepoitn we'll be using
-		let savepoint: Savepoint | undefined
-		let savepointEventIndex = -1
-		for (let i = mutatedIndex; i >= 0; i--) {
-			const event = state.rawEventBuffer[i]
-			savepoint = state.savepoints.find(s => s.savedAtEventId === event.id)
-			savepointEventIndex = i
-			if (savepoint) {
-				break
-			}
-		}
-
+		eventsToProcess.push(...state.rawEventBuffer.slice(lastSaveEventIndex + 1, mutatedIndex))
+		eventsToProcess.push(event)
+		eventsToProcess.push(...state.rawEventBuffer.slice(mutatedIndex + 1))
+		state.rawEventBuffer = state.rawEventBuffer.slice(0, lastSaveEventIndex + 1)
+		let savepoint = state.savepoints[state.savepoints.length - 1]
 		if (!savepoint) {
-			throw new Error('No savepoint found!')
-		}
-
-		// reset the interpolated event buffer to the savepoint
-		{
-			const interpedSavepointEventIndex = state.eventBuffer.findIndex(e => e.id === state.rawEventBuffer[savepointEventIndex].id)
-			state.eventBuffer = state.eventBuffer.slice(0, interpedSavepointEventIndex)
-		}
-
-		// reset the interpolated state
-		if (
-			// this is a slight optimization we can make since the event will set the state correctly anyway in interpolateEvent
-			['RESET', 'NEW_GAME'].includes(state.rawEventBuffer[savepointEventIndex].type)
-		) {
 			state.interpolatedState = { players: [], squads: [] }
 		} else {
 			state.interpolatedState = InterpolableState.clone(savepoint.state)
 		}
-
-		for (const event of state.rawEventBuffer.slice(savepointEventIndex)) {
-			const interpolated = interpolateEvent(state.interpolatedState, event)
-			state.eventBuffer.push(interpolated)
-			checkForSavepoint(state)
-		}
-
-		const numInterpolated = state.rawEventBuffer.length - savepointEventIndex
-		const latestEvent = state.rawEventBuffer[state.rawEventBuffer.length - 1]
-		truncateRawEventBufferAndSavepoints(state)
-		return {
-			code: 'ok:rollback' as const,
-			interpolated: state.eventBuffer.slice(savepointEventIndex),
-			message: `Rollback: re-interpolated ${numInterpolated} events (slice ${savepoint.savedAtEventId}:${latestEvent.id})`,
-		}
 	} else {
-		// just append the event
+		eventsToProcess.push(event)
+	}
+
+	for (const event of eventsToProcess) {
+		state.rawEventBuffer.push(event)
 		const interpolated = interpolateEvent(state.interpolatedState, event)
 		state.eventBuffer.push(interpolated)
-		checkForSavepoint(state)
-		truncateRawEventBufferAndSavepoints(state)
-		return { code: 'ok:appended' as const, interpolated: [interpolated] }
+	}
+
+	if (SAVEPOINT_INTERVAL < state.rawEventBuffer.length - lastSaveEventIndex) {
+		state.savepoints.push({ savedAtEventId: event.id, state: InterpolableState.clone(state.interpolatedState) })
+
+		if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS) return
+		const newFirstSavepointIndex = state.savepoints.length - NUMBER_OF_SAVEPOINTS
+		const newFirstEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[newFirstSavepointIndex].savedAtEventId)
+		if (newFirstEventIndex === -1) {
+			throw new Error(`Could not find event ${state.savepoints[newFirstSavepointIndex].savedAtEventId} for savepoint`)
+		}
+		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
+		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
 	}
 }
 
@@ -179,16 +151,10 @@ export function handleEvent(state: ChatState, event: Event | SyncedEvent, devMod
 export function interpolateEvent(state: InterpolableState, event: Event) {
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
+		case 'NEW_GAME':
 		case 'RESET': {
-			const { state: resetState, ...rest } = event
-			Object.assign(state, InterpolableState.clone(resetState))
-			return rest
-		}
-
-		case 'NEW_GAME': {
-			const { state: initialState, ...rest } = event
-			Object.assign(state, InterpolableState.clone(initialState))
-			if (['change-detection', 'log-event'].includes(rest.source)) return noop('dont show synthetic NEW_GAME')
+			const { state: newState, ...rest } = event
+			Object.assign(state, InterpolableState.clone(newState))
 			return rest
 		}
 
@@ -437,42 +403,6 @@ export function interpolateEvent(state: InterpolableState, event: Event) {
 			originalEvent: event,
 		}
 	}
-}
-
-/**
- * Write a new savepoint if we need to
- */
-function checkForSavepoint(state: Pick<ChatState, 'savepoints' | 'rawEventBuffer' | 'interpolatedState'>) {
-	const { interpolatedState, rawEventBuffer, savepoints } = state
-	const lastSavepoint = savepoints[savepoints.length - 1]
-	const lastSaveEvent = lastSavepoint && Arr.revFindIndex(rawEventBuffer, e => e.id === lastSavepoint.savedAtEventId)
-	// first index must be a NEW_GAME or RESET
-	if (lastSaveEvent === undefined || state.rawEventBuffer.length === 0) return
-	const event = state.rawEventBuffer[state.rawEventBuffer.length - 1]
-	if (event.type === 'NEW_GAME' || event.type === 'RESET') {
-		// should have already been pushed
-		return
-	}
-	const lastEventIndex = state.rawEventBuffer.length - 1
-	// if it's been more than MIN_SAVEPOINT_INTERVAL milliseconds since the last savepoint, then write a new savepoint
-	if (SAVEPOINT_INTERVAL >= lastEventIndex - lastSaveEvent) {
-		savepoints.push({
-			savedAtEventId: event.id,
-			state: InterpolableState.clone(interpolatedState),
-		})
-	}
-}
-
-function truncateRawEventBufferAndSavepoints(state: ChatState) {
-	// note: this system is probably overcomplicated. we could come up with some simpler rules for how to keep around savepoints
-	if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS) return
-	const newFirstSavepointIndex = state.savepoints.length - NUMBER_OF_SAVEPOINTS
-	const newFirstEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[newFirstSavepointIndex].savedAtEventId)
-	if (newFirstEventIndex === -1) {
-		throw new Error(`Could not find event ${state.savepoints[newFirstSavepointIndex].savedAtEventId} for savepoint`)
-	}
-	state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
-	state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
 }
 
 export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
