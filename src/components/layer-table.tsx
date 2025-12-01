@@ -125,7 +125,7 @@ function buildColumn(
 		},
 		cell: function ValueColCell(info) {
 			const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
-			const violationDescriptors = info.row.original.violationDescriptors
+			const matchDescriptors = info.row.original.matchDescriptors
 			const cursor = useTableFrame(table => table.pageData?.input.cursor)
 			const teamParity = ReactRxHelpers.useStateObservableSelection(
 				QD.layerItemsState$,
@@ -140,9 +140,9 @@ function buildColumn(
 						<MapLayerDisplay
 							layer={L.toLayer(info.row.original.id).Layer}
 							extraLayerStyles={{
-								Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, violationDescriptors),
-								Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, violationDescriptors),
-								Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, violationDescriptors),
+								Map: DH.getColumnExtraStyles('Map', teamParity, displayLayersNormalized, matchDescriptors),
+								Layer: DH.getColumnExtraStyles('Layer', teamParity, displayLayersNormalized, matchDescriptors),
+								Gamemode: DH.getColumnExtraStyles('Gamemode', teamParity, displayLayersNormalized, matchDescriptors),
 							}}
 						/>
 					</div>
@@ -158,7 +158,7 @@ function buildColumn(
 				colDef.name as keyof L.KnownLayer,
 				teamParity,
 				displayLayersNormalized,
-				violationDescriptors,
+				matchDescriptors,
 			)
 			const valueElt = (value: React.ReactNode) => (
 				<div
@@ -317,7 +317,9 @@ function buildColDefs(
 				<ConstraintMatchesIndicator
 					side="right"
 					padEmpty
+					layerId={row.original.id}
 					matchingConstraintIds={row.original.constraints.matchedConstraintIds}
+					matchDescriptors={row.original.constraints.matchDescriptors}
 					queriedConstraints={row.original.constraints.queriedConstraints}
 					height={32}
 				/>

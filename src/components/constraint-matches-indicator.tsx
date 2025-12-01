@@ -1,9 +1,11 @@
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
+import * as Arr from '@/lib/array'
+
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-
-import type * as LQY from '@/models/layer-queries.models'
+import * as L from '@/models/layer'
+import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems.client/filter-entity.client'
 import * as LQYClient from '@/systems.client/layer-queries.client'
 import type { TooltipContentProps } from '@radix-ui/react-tooltip'
@@ -17,9 +19,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 export type ConstraintMatchesIndicator = {
 	queriedConstraints: LQY.Constraint[]
 	matchingConstraintIds: string[]
+	matchDescriptors?: LQY.MatchDescriptor[]
 	padEmpty?: boolean
 	className?: string
-	itemId?: LQY.ItemId
+	layerItem?: LQY.LayerItem
+	// will be inferred from layerItem if layerId missing
+	layerId?: string
+	itemParity?: number
 	side?: TooltipContentProps['side']
 	height?: number
 }
@@ -29,12 +35,13 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	const height = props.height ?? 24
 	const iconSize = height * 0.75
 
+	const itemId = props.layerItem && LQY.resolveId(props.layerItem)
 	const onMouseOver = () => {
-		LQYClient.Store.getState().setHoveredConstraintItemId(props.itemId ?? null)
+		LQYClient.Store.getState().setHoveredConstraintItemId(itemId ?? null)
 	}
 	const onMouseOut = () => {
 		const state = LQYClient.Store.getState()
-		if (state.hoveredConstraintItemId !== props.itemId) return
+		if (state.hoveredConstraintItemId !== itemId) return
 		state.setHoveredConstraintItemId(null)
 	}
 
@@ -115,8 +122,8 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 			<TooltipTrigger
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
-				onMouseOver={props.itemId ? onMouseOver : undefined}
-				onMouseOut={props.itemId ? onMouseOut : undefined}
+				onMouseOver={itemId ? onMouseOver : undefined}
+				onMouseOut={itemId ? onMouseOut : undefined}
 			>
 				{indicatorIcons}
 			</TooltipTrigger>
@@ -130,6 +137,17 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 						<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
 						<ItemGroup>
 							{renderedRepeats.map((constraint, index) => {
+								let [descriptorFieldValue, repeatOffset] = Arr.destrOptional((() => {
+									const layerId = props.layerId ?? props.layerItem?.layerId
+									if (!layerId || !props.matchDescriptors || props.itemParity === undefined) return
+									const descriptor = props.matchDescriptors.find(descriptor => descriptor.constraintId === constraint.id)
+									if (descriptor?.type !== 'repeat-rule') return
+									const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, props.itemParity)
+
+									return [L.toLayer(layerId)[property], descriptor.repeatOffset]
+								})())
+								const boldValue = (value: string | number) => <span className="font-semibold">{value}</span>
+
 								return (
 									<React.Fragment key={constraint.id}>
 										{index > 0 && <Separator key={`separator-${constraint.id}`} />}
@@ -137,10 +155,21 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 											<ItemMedia>
 												<ConstraintViolationIcon />
 											</ItemMedia>
-											<ItemContent className="flex flex-row items-center">
+											<ItemContent className="flex flex-col">
 												<ItemTitle className="leading-none">{constraint.rule.label ?? constraint.rule.field}</ItemTitle>
 												<ItemDescription className="font-light">
-													(within {constraint.rule.within})
+													{descriptorFieldValue && repeatOffset && (
+														<>
+															<span className="font-semibold">{boldValue(descriptorFieldValue)}</span> within{' '}
+															<span className="font-semibold">{boldValue(repeatOffset)}</span>, should be &gt;{' '}
+															<span className="font-semibold">{boldValue(constraint.rule.within)}</span>
+														</>
+													)}
+													{!descriptorFieldValue && (
+														<>
+															within at least <span className="font-semibold">{constraint.rule.within}</span>
+														</>
+													)}
 												</ItemDescription>
 											</ItemContent>
 										</Item>

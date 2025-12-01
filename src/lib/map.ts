@@ -24,6 +24,15 @@ export function map<K, T, U>(map: Map<K, T>, fn: (key: K, value: T) => U): Map<K
 	return newMap
 }
 
+export function mapEntries<K, T, K2, T2>(map: Map<K, T>, fn: (key: K, value: T) => [K2, T2]): Map<K2, T2> {
+	const newMap = new Map<K2, T2>()
+	for (const [key, value] of map.entries()) {
+		const [newKey, newValue] = fn(key, value)
+		newMap.set(newKey, newValue)
+	}
+	return newMap
+}
+
 export function mapToArray<K, T>(map: Map<K, T>, fn: (key: K, value: T) => [K, T]): [K, T][] {
 	const arr: [K, T][] = []
 	for (const [key, value] of map.entries()) {

@@ -234,7 +234,7 @@ export function getColumnExtraStyles(
 	descriptors?: LQY.MatchDescriptor[],
 ) {
 	if (!descriptors) return
-	const properties = LQY.resolveRepeatedLayerProperties(descriptors, teamParity ?? 0)
+	const properties = LQY.resolveRepeatedFieldToDescriptorMap(descriptors, teamParity ?? 0)
 	if (properties.has(column)) {
 		return Typo.ConstraintViolationDescriptor
 	}

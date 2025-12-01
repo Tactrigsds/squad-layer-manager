@@ -38,7 +38,9 @@ export default function LayerDisplay(
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
 				matchingConstraintIds={statusData.matchingConstraintIds}
-				itemId={LQY.resolveId(props.item)}
+				layerItem={props.item}
+				matchDescriptors={statusData.matchingDescriptors}
+				itemParity={teamParity}
 			/>,
 		)
 	}

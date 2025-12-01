@@ -530,6 +530,7 @@ function getisMatchedByRepeatRuleDirect(
 				constraintId,
 				type: 'repeat-rule',
 				field: field,
+				repeatOffset: Math.abs(cursorIndex - i),
 			})
 
 			switch (rule.field) {
@@ -876,7 +877,7 @@ function postProcessLayers(
 	return layers.map((layer) => {
 		// default to true because missing means the constraint is applied via a where condition
 		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
-		const violationDescriptors: LQY.MatchDescriptor[] = []
+		const matchDescriptors: LQY.MatchDescriptor[] = []
 		const strId = LC.unpackId(layer.id)
 		const layersConverted: Record<string, string | number | boolean> = {}
 		for (const key of Object.keys(layer)) {
@@ -901,7 +902,7 @@ function postProcessLayers(
 					)
 					if (descriptors) constraintResults[constraintIdx] = true
 					if (descriptors && descriptors.length > 0) {
-						violationDescriptors.push(...descriptors)
+						matchDescriptors.push(...descriptors)
 					}
 					break
 				}
@@ -914,7 +915,7 @@ function postProcessLayers(
 		return {
 			...layersConverted as L.KnownLayer & Record<string, number | boolean | string | null>,
 			constraints: constraintResults,
-			violationDescriptors,
+			matchDescriptors,
 		}
 	})
 }

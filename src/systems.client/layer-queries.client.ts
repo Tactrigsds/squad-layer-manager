@@ -95,7 +95,7 @@ function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constra
 
 export type ConstraintRowDetails = {
 	values: boolean[]
-	violationDescriptors: LQY.MatchDescriptor[]
+	matchDescriptors: LQY.MatchDescriptor[]
 	queriedConstraints: LQY.Constraint[]
 	matchedConstraintIds: string[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
@@ -114,19 +114,19 @@ function layerToRowData(
 		? layer.constraints
 		: layer.constraints?.values ?? []
 
-	const violationDescriptors = Array.isArray(layer.violationDescriptors)
-		? layer.violationDescriptors
-		: layer.violationDescriptors ?? []
+	const matchDescriptors = Array.isArray(layer.matchDescriptors)
+		? layer.matchDescriptors
+		: layer.matchDescriptors ?? []
 
 	const matchedConstraintIds = queriedConstraints.flatMap((c, i) => {
 		if (constraintValues[i]) return [c.id]
 		return []
 	})
-	const matchedConstraintDescriptors = violationDescriptors
+	const matchedConstraintDescriptors = matchDescriptors
 
 	const constraints: ConstraintRowDetails = {
 		values: constraintValues,
-		violationDescriptors,
+		matchDescriptors,
 		queriedConstraints,
 		matchedConstraintIds,
 		matchedConstraintDescriptors,
@@ -195,7 +195,7 @@ export function getQueryLayersOptions(
 					const newLayer: any = {
 						...L.toLayer(id),
 						constraints: Array(input.constraints?.length ?? 0).fill(false),
-						violationDescriptors: [],
+						matchDescriptors: [],
 					}
 					return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
 				})
@@ -375,10 +375,7 @@ export function useLayerItemStatusData(
 
 		// we're much more confident that hovered descriptors are present
 
-		const matchingConstraintIds = queriedConstraints.flatMap(c => {
-			if (!matchingDescriptors.some(d => d.constraintId === c.id)) return []
-			return c.id
-		})
+		const matchingConstraintIds = matchingDescriptors.map(c => c.constraintId)
 
 		return {
 			present: presentLayers,

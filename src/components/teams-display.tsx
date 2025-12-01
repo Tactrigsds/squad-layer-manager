@@ -5,6 +5,7 @@ import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 
+import { cn } from '@/lib/utils'
 import * as Zus from 'zustand'
 import * as DH from '../lib/display-helpers'
 
@@ -60,12 +61,14 @@ export function TeamFactionDisplay(
 	const partialLayer = typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer
 
 	// Determine which team we're displaying (1 or 2)
+	const allianceProp = props.team === 1 ? 'Alliance_1' : 'Alliance_2'
 	const factionProp = props.team === 1 ? 'Faction_1' : 'Faction_2'
 	const unitProp = props.team === 1 ? 'Unit_1' : 'Unit_2'
 
 	// Get faction  based on team
 	const faction = partialLayer[factionProp]
 
+	const allianceStyles = props.extraStyles?.[allianceProp]
 	const factionStyles = props.extraStyles?.[factionProp]
 	const unitStyles = props.extraStyles?.[unitProp]
 
@@ -94,7 +97,7 @@ export function TeamFactionDisplay(
 	return (
 		<span className="inline-block whitespace-nowrap-nowrap">
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
-				<span className={factionStyles}>
+				<span className={cn(allianceStyles, factionStyles)}>
 					{faction}
 				</span>
 				{props.includeUnits && shortUnit && (

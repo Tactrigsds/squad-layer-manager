@@ -74,9 +74,9 @@ export function dedupe<T>(arr: T[]): T[] {
 	return Array.from(new Set(arr))
 }
 
-export function destrNullable<T>(arr: T[] | undefined) {
+export function destrOptional<Arr extends unknown[]>(arr: Arr | undefined) {
 	if (arr) return arr
-	return [] as T[] | undefined[]
+	return [] as Arr | undefined[]
 }
 
 export function missing<T>(arr: T[], target: T[]): T[] {

@@ -7,7 +7,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
-
+import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
@@ -23,7 +23,6 @@ import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
-
 import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
@@ -292,8 +291,10 @@ function MatchHistoryRow({
 		<ConstraintMatchesIndicator
 			queriedConstraints={statusData.queriedConstraints}
 			matchingConstraintIds={statusData.matchingConstraintIds}
+			matchDescriptors={statusData.matchingDescriptors}
 			padEmpty={true}
-			itemId={entry.historyEntryId}
+			layerItem={LQY.getLayerItemForMatchHistoryEntry(entry)}
+			itemParity={entry.ordinal}
 		/>
 	)
 

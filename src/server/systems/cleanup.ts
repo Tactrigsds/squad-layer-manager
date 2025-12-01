@@ -23,6 +23,7 @@ export function unregister(idx: number) {
 export function setup() {
 	ENV = buildEnv()
 	const ctx = { log: baseLogger }
+	if (ENV.NODE_ENV === 'development') return
 	process.on('SIGTERM', async () => {
 		const res = await Promise.allSettled(tasks.map(task => task?.() ?? Promise.resolve()))
 		res.forEach((result) => {
@@ -31,13 +32,6 @@ export function setup() {
 			}
 		})
 		ctx.log.info('Cleanup complete')
-		if (ENV.NODE_ENV === 'development') {
-			// we have to be more forceful here if a debugger is attached
-			ctx.log.info('Exiting forcefully in dev')
-			// Give logs a moment to flush, then force exit
-			setTimeout(() => process.exit(1), 100).unref()
-		} else {
-			process.exit(0)
-		}
+		process.exit(0)
 	})
 }

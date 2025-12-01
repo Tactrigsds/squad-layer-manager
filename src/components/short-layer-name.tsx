@@ -36,20 +36,20 @@ export default function ShortLayerName(
 	}
 
 	const extraStyles = React.useMemo(() => {
-		let violatedFields: Map<LQY.ItemId, LQY.MatchDescriptor> = new Map()
+		let violatedFieldDescriptors: Map<keyof L.KnownLayer, LQY.MatchDescriptor> = new Map()
 		if (matchDescriptors && !isNullOrUndef(teamParity)) {
-			violatedFields = LQY.resolveRepeatedLayerProperties(matchDescriptors, teamParity)
+			violatedFieldDescriptors = LQY.resolveRepeatedFieldToDescriptorMap(matchDescriptors, teamParity)
 		}
-		const combineStyles = (field: keyof typeof partialLayer) => {
+		const combineStyles = (prop: keyof typeof partialLayer) => {
 			const styles: string[] = []
 
 			// Add backfilled style if applicable
-			if (!partialLayer[field] && !!backfillLayer?.[field]) {
+			if (!partialLayer[prop] && !!backfillLayer?.[prop]) {
 				styles.push(backfilledStyle)
 			}
 
 			// Add violation style if applicable
-			if (violatedFields.has(field)) {
+			if (violatedFieldDescriptors.has(prop)) {
 				styles.push(Typo.ConstraintViolationDescriptor)
 			}
 

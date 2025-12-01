@@ -192,7 +192,9 @@ export type RepeatMatchDescriptor = {
 		| 'Alliance_A'
 		| 'Alliance_B'
 	itemId?: ItemId
+	repeatOffset: number
 }
+
 export type FilterEntityMatchDescriptor = {
 	type: 'filter-entity'
 	constraintId: string
@@ -200,38 +202,38 @@ export type FilterEntityMatchDescriptor = {
 }
 export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor
 
-export function resolveRepeatedLayerProperties(descriptors: MatchDescriptor[], teamParity: number) {
-	const violatedFields: Map<ItemId, MatchDescriptor> = new Map()
+export function resolveRepeatedFieldToDescriptorMap(descriptors: MatchDescriptor[], teamParity: number) {
+	const violatedFields: Map<keyof L.KnownLayer, RepeatMatchDescriptor> = new Map()
 	for (const descriptor of descriptors) {
 		if (descriptor.type === 'filter-entity') continue
 		if (descriptor.type === 'repeat-rule') {
-			switch (descriptor.field) {
-				case 'Map':
-				case 'Layer':
-				case 'Size':
-				case 'Gamemode':
-					violatedFields.set(descriptor.field, descriptor)
-					break
-				case 'Faction_A':
-					violatedFields.set(MH.getTeamNormalizedFactionProp(teamParity, 'A'), descriptor)
-					break
-				case 'Faction_B':
-					violatedFields.set(MH.getTeamNormalizedFactionProp(teamParity, 'B'), descriptor)
-					break
-				case 'Alliance_A':
-					violatedFields.set(MH.getTeamNormalizedAllianceProp(teamParity, 'A'), descriptor)
-					break
-				case 'Alliance_B':
-					violatedFields.set(MH.getTeamNormalizedAllianceProp(teamParity, 'B'), descriptor)
-					break
-				default:
-					assertNever(descriptor.field)
-			}
+			violatedFields.set(resolveLayerPropertyForRepeatDescriptorField(descriptor, teamParity), descriptor)
 			continue
 		}
 		assertNever(descriptor)
 	}
 	return violatedFields
+}
+
+export function resolveLayerPropertyForRepeatDescriptorField(descriptor: RepeatMatchDescriptor, teamParity: number) {
+	switch (descriptor.field) {
+		case 'Map':
+		case 'Layer':
+		case 'Size':
+		case 'Gamemode':
+			return descriptor.field
+		case 'Faction_A':
+			return MH.getTeamNormalizedFactionProp(teamParity, 'A')
+		case 'Faction_B':
+			return MH.getTeamNormalizedFactionProp(teamParity, 'B')
+		case 'Alliance_A':
+			return MH.getTeamNormalizedAllianceProp(teamParity, 'A')
+		case 'Alliance_B':
+			return MH.getTeamNormalizedAllianceProp(teamParity, 'B')
+			break
+		default:
+			assertNever(descriptor.field)
+	}
 }
 
 export function getFactionAndUnitValue(faction: string, unit: string | null | undefined) {
