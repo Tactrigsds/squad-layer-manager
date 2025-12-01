@@ -537,7 +537,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 		const resizeObserver = new ResizeObserver(() => {
 			requestAnimationFrame(() => {
-				if (hasScrolledInitially.current || checkIfAtBottom()) {
+				if (!hasScrolledInitially.current || checkIfAtBottom()) {
 					hasScrolledInitially.current = true
 					// Use requestAnimationFrame to ensure DOM has updated
 					scrollToBottom()
