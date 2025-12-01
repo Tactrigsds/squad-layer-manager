@@ -51,7 +51,7 @@ export type ChatState = {
 }
 
 const NUMBER_OF_SAVEPOINTS = 2
-const SAVEPOINT_INTERVAL = 5
+const SAVEPOINT_INTERVAL = 50
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
