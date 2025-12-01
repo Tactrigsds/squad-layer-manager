@@ -746,7 +746,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 						time: newGameEvent?.time ?? Date.now(),
 						state: { squads, players },
 						matchId: res.match.historyEntryId,
-						source: triggerType === 'new-game' ? 'log-event' : 'change-detection',
+						source: 'new-game-detected',
 					}]])
 				} finally {
 					ctx.server.serverRolling$.next(null)

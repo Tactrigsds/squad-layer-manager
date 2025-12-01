@@ -462,7 +462,7 @@ export namespace Events {
 	}
 	export type NewGame = {
 		type: 'NEW_GAME'
-		source: 'slm-started' | 'rcon-reconnected' | 'change-detection' | 'log-event'
+		source: 'slm-started' | 'rcon-reconnected' | 'new-game-detected'
 		state: {
 			players: Player[]
 			squads: Squad[]
