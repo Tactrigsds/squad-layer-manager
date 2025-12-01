@@ -171,7 +171,7 @@ export const orpcRouter = {
 						let allEvents: Array<CHAT.Event | CHAT.SyncedEvent> = ctx.server.state.chatEventBuffer
 
 						// get the last two games
-						let cutoffIndex = 0
+						let cutoffIndex = null
 						let gameCount = 0
 						for (let i = allEvents.length - 1; i >= 0; i--) {
 							if (allEvents[i].type !== 'NEW_GAME') continue
@@ -181,13 +181,14 @@ export const orpcRouter = {
 								break
 							}
 						}
-						if (allEvents.length > 0) {
+						if (allEvents.length > 0 && cutoffIndex === null) {
 							// if there are no NEW_GAME events, we can at least include up to last 'RESET'. this is what will happen if slm is started for the first time
 							const lastReset = Arr.revFind(allEvents, (e) => e.type === 'RESET')
 							if (lastReset === undefined) {
 								throw new Error('No NEW_GAME or RESET events found in chat event buffer, something is wrong')
 							}
 						}
+						cutoffIndex ??= 0
 
 						const events = allEvents.slice(cutoffIndex)
 
@@ -671,7 +672,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 					ctx.log.info('Handling new game trigger: %s', triggerType)
 
 					// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
-					const timeoutThreshold = 40_000
+					const timeoutThreshold = 20_000
 
 					const timeout$ = Rx.timer(timeoutThreshold).pipe(
 						Rx.map(() => 'timeout' as const),

@@ -278,8 +278,24 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
-function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
+function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' | 'RESET' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
+	if (event.type === 'RESET' || event.source === 'rcon-reconnected' || event.source === 'slm-started') {
+		let reasonText: string = ''
+		if (event.type == 'RESET') {
+			reasonText = event.reason === 'slm-started' ? 'Application start' : 'RCON Reconnected'
+		}
+		if (event.type === 'NEW_GAME') {
+			reasonText = event.source === 'slm-started' ? 'Application start' : 'RCON Reconnected'
+		}
+		return (
+			<div className="flex gap-2 py-1 text-muted-foreground">
+				<EventTime time={event.time} variant="small" />
+				<Icons.RotateCcw className="h-4 w-4 text-cyan-500" />
+				<span className="text-xs">{reasonText}</span>
+			</div>
+		)
+	}
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
@@ -326,16 +342,6 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 					</>
 				)}
 			</span>
-		</div>
-	)
-}
-
-function ResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RESET' }> }) {
-	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.RotateCcw className="h-4 w-4 text-cyan-500" />
-			<span className="text-xs">{event.reason === 'slm-started' ? 'Application start' : 'RCON Reconnected'}</span>
 		</div>
 	)
 }
@@ -442,11 +448,10 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} />
 		case 'NEW_GAME':
-			return <NewGameEvent event={event} />
+		case 'RESET':
+			return <NewGameOrResetEvent event={event} />
 		case 'ROUND_ENDED':
 			return <RoundEndedEvent event={event} />
-		case 'RESET':
-			return <ResetEvent event={event} />
 		case 'PLAYER_DETAILS_CHANGED':
 			return <PlayerDetailsChangedEvent event={event} />
 		case 'PLAYER_CHANGED_TEAM':
