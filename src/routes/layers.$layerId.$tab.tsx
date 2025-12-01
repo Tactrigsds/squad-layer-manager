@@ -1,4 +1,5 @@
 import { LayerInfo } from '@/components/layer-info'
+import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import * as React from 'react'
@@ -19,14 +20,19 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 		} else {
 			throw notFound()
 		}
-		return { layerId: layer.id, tab }
+		return { layer, tab }
 	},
+	head: ({ match }) => ({
+		meta: [
+			{ title: DH.displayLayer(match.context.layer) + ' - SLM' },
+		],
+	}),
 	caseSensitive: true,
 	shouldReload: true,
 })
 
 function RouteComponent() {
-	const { layerId, tab } = Route.useRouteContext()
+	const { layer, tab } = Route.useRouteContext()
 	const navigate = Route.useNavigate()
 	const setTab = (newTab: string) => {
 		void navigate({
@@ -36,7 +42,7 @@ function RouteComponent() {
 	}
 	return (
 		<div className="w-[100vw] h-[100vh] p-4">
-			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton layerId={layerId} />
+			<LayerInfo tab={tab} setTab={setTab} hidePopoutButton layerId={layer.id} />
 		</div>
 	)
 }

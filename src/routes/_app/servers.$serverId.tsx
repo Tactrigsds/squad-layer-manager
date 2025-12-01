@@ -1,6 +1,7 @@
 import LayerQueueDashboard from '@/components/layer-queue-dashboard'
 import * as Browser from '@/lib/browser'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
+import * as ConfigClient from '@/systems.client/config.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { createFileRoute } from '@tanstack/react-router'
@@ -9,6 +10,20 @@ import * as Rx from 'rxjs'
 
 export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
+
+	loader: async ({ params }) => {
+		const config = await ConfigClient.fetchConfig()
+		const serverConfig = config.servers.find(s => s.id === params.serverId)
+		return {
+			displayName: serverConfig?.displayName ?? params.serverId,
+		}
+	},
+
+	head: ({ loaderData }) => ({
+		meta: [
+			{ title: loaderData?.displayName ? `${loaderData?.displayName} - SLM` : undefined },
+		],
+	}),
 
 	onEnter({ params }) {
 		void SquadServerClient.SelectedServerStore.getState().setSelectedServer(params.serverId)

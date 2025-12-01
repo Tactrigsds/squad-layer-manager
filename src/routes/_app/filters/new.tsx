@@ -18,6 +18,11 @@ export const Route = createFileRoute('/_app/filters/new')({
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
 		return { frameKey }
 	},
+	head: () => ({
+		meta: [
+			{ title: `New Filter - SLM` },
+		],
+	}),
 })
 
 function RouteComponent() {

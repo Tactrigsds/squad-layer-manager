@@ -15,6 +15,7 @@ import * as Rx from 'rxjs'
 
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
+
 	params: {
 		parse: (params) => {
 			return {
@@ -42,6 +43,12 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 			owner: ownerRes.user,
 		}
 	},
+
+	head: ({ loaderData }) => ({
+		meta: [
+			{ title: loaderData ? `${loaderData.entity.name} - SLM` : undefined },
+		],
+	}),
 })
 
 function RouteComponent() {
