@@ -411,6 +411,7 @@ export function useLayerItemStatuses(
 			useDepKey(input),
 		],
 		enabled: options?.enabled,
+		placeholderData: prev => prev,
 		queryFn: async () => {
 			// const counters = layerCtxVersionStore.getState().counters
 			// if the layer context changes we can't trust the parts anymore
