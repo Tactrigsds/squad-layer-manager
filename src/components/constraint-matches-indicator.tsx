@@ -1,5 +1,4 @@
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
-import * as Arr from '@/lib/array'
 
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
@@ -128,7 +127,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 				{indicatorIcons}
 			</TooltipTrigger>
 			<TooltipContent
-				className="max-w-sm p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
+				className="max-w-min p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
 				align="start"
 				side={props.side}
 			>
@@ -137,15 +136,21 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 						<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
 						<ItemGroup>
 							{renderedRepeats.map((constraint, index) => {
-								let [descriptorFieldValue, repeatOffset] = Arr.destrOptional((() => {
-									const layerId = props.layerId ?? props.layerItem?.layerId
-									if (!layerId || !props.matchDescriptors || props.itemParity === undefined) return
-									const descriptor = props.matchDescriptors.find(descriptor => descriptor.constraintId === constraint.id)
-									if (descriptor?.type !== 'repeat-rule') return
-									const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, props.itemParity)
+								const layerId = props.layerId ?? props.layerItem?.layerId
+								const descriptors = (() => {
+									if (!layerId || !props.matchDescriptors || props.itemParity === undefined) return []
+									return props.matchDescriptors
+										.filter(descriptor => descriptor.constraintId === constraint.id && descriptor.type === 'repeat-rule')
+										.flatMap(descriptor => {
+											if (descriptor.type !== 'repeat-rule') return []
+											const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, props.itemParity!)
+											return [{
+												...descriptor,
+												fieldValue: L.toLayer(layerId)[property]!,
+											}]
+										})
+								})()
 
-									return [L.toLayer(layerId)[property], descriptor.repeatOffset]
-								})())
 								const boldValue = (value: string | number) => <span className="font-semibold">{value}</span>
 
 								return (
@@ -156,20 +161,29 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 												<ConstraintViolationIcon />
 											</ItemMedia>
 											<ItemContent className="flex flex-col">
-												<ItemTitle className="leading-none">{constraint.rule.label ?? constraint.rule.field}</ItemTitle>
-												<ItemDescription className="font-light">
-													{descriptorFieldValue && repeatOffset && (
-														<>
-															<span className="font-semibold">{boldValue(descriptorFieldValue)}</span> within{' '}
-															<span className="font-semibold">{boldValue(repeatOffset)}</span>, should be &gt;{' '}
-															<span className="font-semibold">{boldValue(constraint.rule.within)}</span>
-														</>
-													)}
-													{!descriptorFieldValue && (
-														<>
-															within at least <span className="font-semibold">{constraint.rule.within}</span>
-														</>
-													)}
+												<ItemTitle className="leading-none">
+													{constraint.rule.label ?? constraint.rule.field}
+												</ItemTitle>
+												<ItemDescription className="font-light flex flex-col">
+													{descriptors.length > 0
+														? (
+															<>
+																{descriptors.map((d, i) => (
+																	<span key={d.fieldValue}>
+																		<span className="font-semibold">{boldValue(d.fieldValue)}</span> was played{' '}
+																		<span className="font-semibold">{boldValue(d.repeatOffset)}</span> matches prior
+																	</span>
+																))}
+																<span>
+																	Should be &gt; <span className="font-semibold">{boldValue(constraint.rule.within)}</span>
+																</span>
+															</>
+														)
+														: (
+															<>
+																within <span className="font-semibold">{constraint.rule.within}</span>
+															</>
+														)}
 												</ItemDescription>
 											</ItemContent>
 										</Item>

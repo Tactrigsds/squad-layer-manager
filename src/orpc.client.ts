@@ -133,12 +133,13 @@ closed$.pipe(
 export const queryClient = new QueryClient()
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
-export function observe<T>(task: () => Promise<AsyncGenerator<T>>) {
+export function observe<T>(task: () => Promise<AsyncGenerator<T>>, opts?: { onError?: (error: any, count: number) => void }) {
 	return Rx.from(toCold(task)).pipe(
 		traceTag('ORPC_OBSERVE'),
 		Rx.concatAll(),
 		Rx.retry({
 			delay: (error, count) => {
+				opts?.onError?.(error, count)
 				const backoff$ = Rx.timer(Math.pow(2, count) * 250)
 
 				// we only want to log the error if the connection is closed

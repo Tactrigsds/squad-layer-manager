@@ -1,4 +1,5 @@
 import * as AR from '@/app-routes'
+
 import { distinctDeepEquals } from '@/lib/async'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
@@ -37,13 +38,31 @@ export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | n
 	null,
 )
 
-export const [useChatEvents, chatEvent$] = ReactRx.bind(RPC.observe(() => RPC.orpc.squadServer.watchChatEvents.call()))
+const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
+let previouslyConnected = false
+export const [useChatEvents, chatEvent$] = ReactRx.bind(
+	RPC.observe(
+		() => {
+			const eventBuffer = ChatStore.getState().chatState.eventBuffer
+			return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id })
+		},
+		{
+			onError: () => {
+				chatDisconnected$.next({
+					type: 'CONNECTION_ERROR',
+					code: previouslyConnected ? 'CONNECTION_LOST' : 'RECONNECT_FAILED',
+					time: Date.now(),
+				})
+			},
+		},
+	).pipe(Rx.tap({ next: () => (previouslyConnected = true) })),
+)
 
 type ChatStore = {
 	chatState: CHAT.ChatState
 	eventFilterState: CHAT.EventFilterState
 	setEventFilterState(state: CHAT.EventFilterState): void
-	handleChatEvents(event: (CHAT.Event | CHAT.SyncedEvent)[]): void
+	handleChatEvents(event: (CHAT.Event | CHAT.SyncedEvent | CHAT.ConnectionErrorEvent)[]): void
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
@@ -53,8 +72,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		setEventFilterState(state) {
 			set({ eventFilterState: state })
 		},
-		handleChatEvents(_events) {
-			let events = Array.isArray(_events) ? _events : [_events]
+		handleChatEvents(events) {
 			const config = ConfigClient.getConfig()
 			set(state => {
 				let chatState = state.chatState
@@ -108,8 +126,8 @@ export function setup() {
 	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
-	chatEvent$.subscribe(event => {
-		ChatStore.getState().handleChatEvents(event)
+	Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
+		ChatStore.getState().handleChatEvents(events)
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called

@@ -108,3 +108,9 @@ export function revFindIndex<T>(arr: T[], predicate: (item: T) => boolean): numb
 	}
 	return -1
 }
+
+export function* revIter<T>(arr: T[]): Generator<T> {
+	for (let i = arr.length - 1; i >= 0; i--) {
+		yield arr[i]
+	}
+}

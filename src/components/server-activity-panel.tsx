@@ -473,6 +473,7 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 
 function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced ? s.chatState.eventBuffer : null)
+	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
 	const synced = eventBuffer !== null
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -608,6 +609,18 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					)}
 					{filteredEvents
 						&& filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time}-${idx}`} event={event} />)}
+					{connectionError && (
+						<div className="flex gap-2 py-1 text-destructive">
+							{connectionError.code === 'CONNECTION_LOST'
+								? <Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+								: <Icons.WifiOff className="h-4 w-4 flex-shrink-0" />}
+							<span className="text-xs">
+								{connectionError.code === 'CONNECTION_LOST'
+									? 'Connection lost - attempting to reconnect...'
+									: 'Reconnection failed - unable to reconnect to the server. Please refresh the page.'}
+							</span>
+						</div>
+					)}
 				</div>
 				<div ref={bottomRef} />
 				{showScrollButton && (

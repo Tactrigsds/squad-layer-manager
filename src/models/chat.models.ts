@@ -14,10 +14,23 @@ export type SyncedEvent = {
 	matchId: number
 }
 
+export type ConnectionErrorCode = 'CONNECTION_LOST' | 'RECONNECT_FAILED'
+export type ConnectionErrorEvent = {
+	type: 'CONNECTION_ERROR'
+	code: ConnectionErrorCode
+	time: number
+}
+
+export type ReconnectedEvent = {
+	type: 'CHAT_RECONNECTED'
+	resumedEventId: bigint
+}
+
 export type InterpolableState = {
 	players: SM.Player[]
 	squads: SM.Squad[]
 }
+
 export namespace InterpolableState {
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
@@ -31,12 +44,6 @@ export namespace InterpolableState {
 export type EventEnriched = NonNullable<ReturnType<typeof interpolateEvent>>
 export type Event = SM.Events.Event
 
-{
-	// type assertions
-	const _: Event['type'] = null! satisfies SchemaModels.ServerEventType
-	const _1: SchemaModels.ServerEventType = null! satisfies Event['type']
-}
-
 export type ChatState = {
 	rawEventBuffer: Event[]
 
@@ -44,6 +51,8 @@ export type ChatState = {
 
 	// the state of the chat as of the last event
 	interpolatedState: InterpolableState
+
+	connectionError?: ConnectionErrorEvent
 
 	// snapshots we can revert to in case of an out-of-order event
 	savepoints: Savepoint[]
@@ -69,7 +78,7 @@ export const INITIAL_CHAT_STATE: ChatState = {
 	interpolatedState: INITIAL_INTERPOLATED_STATE,
 	savepoints: [],
 	eventBuffer: [],
-	// indicates where this chat is now up-to-date with all events
+	// indicates when this chat is now caught up on initial events from the server
 	synced: false,
 }
 
@@ -79,11 +88,29 @@ export const INITIAL_CHAT_STATE: ChatState = {
  */
 export function handleEvent(
 	state: ChatState,
-	event: Event | SyncedEvent,
+	event: Event | SyncedEvent | ConnectionErrorEvent | ReconnectedEvent,
 	opts?: InterpolationOptions,
 ) {
 	if (event.type === 'SYNCED') {
 		state.synced = true
+		return
+	}
+	if (event.type === 'CONNECTION_ERROR') {
+		state.connectionError = event
+		return
+	}
+
+	if (event.type === 'CHAT_RECONNECTED') {
+		delete state.connectionError
+		const lastEvent = state.eventBuffer[state.eventBuffer.length - 1]
+		if (!lastEvent || event.resumedEventId === lastEvent.id) {
+			// we're good to go, should be receiving events soon
+			state.synced = false
+			return
+		}
+
+		// we're out of sync and we need to reset the state
+		Object.assign(state, INITIAL_CHAT_STATE)
 		return
 	}
 

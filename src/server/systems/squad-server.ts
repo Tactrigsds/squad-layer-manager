@@ -157,66 +157,78 @@ export const orpcRouter = {
 		return { code: 'ok' as const }
 	}),
 
-	watchChatEvents: orpcBase.handler(async function*({ context, signal }) {
-		const obs: Rx.Observable<(CHAT.Event | CHAT.SyncedEvent)[]> = selectedServerCtx$(context)
-			.pipe(
-				Rx.switchMap(ctx => {
-					function getInitialEvents() {
-						const sync: CHAT.SyncedEvent = {
-							type: 'SYNCED' as const,
-							time: Date.now(),
-							matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
-						}
-
-						let allEvents: Array<CHAT.Event | CHAT.SyncedEvent> = ctx.server.state.chatEventBuffer
-
-						// get the last two games
-						let cutoffIndex = null
-						let gameCount = 0
-						for (let i = allEvents.length - 1; i >= 0; i--) {
-							if (allEvents[i].type !== 'NEW_GAME') continue
-							gameCount++
-							if (gameCount === 2) {
-								cutoffIndex = i
-								break
+	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.bigint().optional() }).optional()).handler(
+		async function*({ context, signal, input }) {
+			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent)[]> = selectedServerCtx$(context)
+				.pipe(
+					Rx.switchMap(ctx => {
+						function getInitialEvents() {
+							const sync: CHAT.SyncedEvent = {
+								type: 'SYNCED' as const,
+								time: Date.now(),
+								matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
 							}
-						}
-						if (allEvents.length > 0 && cutoffIndex === null) {
-							// if there are no NEW_GAME events, we can at least include up to last 'RESET'. this is what will happen if slm is started for the first time
-							const lastReset = Arr.revFind(allEvents, (e) => e.type === 'RESET')
-							if (lastReset === undefined) {
-								throw new Error('No NEW_GAME or RESET events found in chat event buffer, something is wrong')
+
+							let allEvents: SM.Events.Event[] = ctx.server.state.chatEventBuffer
+							let events: (SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[] = []
+
+							if (input?.lastEventId === undefined) {
+								// get the last two games
+								let cutoffIndex = null
+								let gameCount = 0
+								for (let i = allEvents.length - 1; i >= 0; i--) {
+									if (allEvents[i].type !== 'NEW_GAME') continue
+									gameCount++
+									if (gameCount === 2) {
+										cutoffIndex = i
+										break
+									}
+								}
+								if (allEvents.length > 0 && cutoffIndex === null) {
+									// if there are no NEW_GAME events, we can at least include up to last 'RESET'. this is what will happen if slm is started for the first time
+									const lastReset = Arr.revFind(allEvents, (e) => e.type === 'RESET')
+									if (lastReset === undefined) {
+										throw new Error('No NEW_GAME or RESET events found in chat event buffer, something is wrong')
+									}
+								}
+								cutoffIndex ??= 0
+
+								events = allEvents.slice(cutoffIndex)
+								events.push(sync)
+							} else {
+								let lastEventIndex = allEvents.findIndex(e => e.id === input!.lastEventId!)
+
+								// we include the last event on purpose so the client knows whether they need to reset the chat
+								events.push({ type: 'CHAT_RECONNECTED', resumedEventId: input!.lastEventId! })
+								// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
+								events.push(...allEvents.slice(lastEventIndex + 1))
+								events.push(sync)
 							}
+
+							// page so we don't block too long on serialization/deserialization
+							const paged: Array<Array<SM.Events.Event | CHAT.SyncedEvent>> = Arr.paged(events, 512)
+							return paged
 						}
-						cutoffIndex ??= 0
+						const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
+							.pipe(Rx.concatMap(getInitialEvents))
 
-						const events = allEvents.slice(cutoffIndex)
+						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): (SM.Events.Event | CHAT.SyncedEvent)[] => events))
 
-						events.push(sync)
-
-						// page so we don't block too long on serialization/deserialization
-						const paged: Array<Array<CHAT.Event | CHAT.SyncedEvent>> = Arr.paged(events, 512)
-						return paged
-					}
-					const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
-						.pipe(Rx.concatMap(getInitialEvents))
-
-					const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): (CHAT.Event | CHAT.SyncedEvent)[] => events))
-
-					return Rx.concat(initial$, upcoming$).pipe(
-						// orpc will break without this
-						Rx.observeOn(Rx.asyncScheduler),
-					)
-				}),
-				Rx.tap({
-					error: (err) => {
-						context.log.error(err, 'Error in watchChatEvents')
-					},
-				}),
-				withAbortSignal(signal!),
-			)
-		yield* toAsyncGenerator(obs)
-	}),
+						return Rx.concat(initial$, upcoming$).pipe(
+							// orpc will break without this
+							Rx.observeOn(Rx.asyncScheduler),
+						)
+					}),
+					Rx.tap({
+						error: (err) => {
+							context.log.error(err, 'Error in watchChatEvents')
+						},
+					}),
+					withAbortSignal(signal!),
+				)
+			yield* toAsyncGenerator(obs)
+		},
+	),
 
 	toggleFogOfWar: orpcBase
 		.input(z.object({ disabled: z.boolean() }))
@@ -559,7 +571,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 	{
 		// -------- periodically save events  --------
-		let eventBuffer: CHAT.Event[] = []
+		let eventBuffer: SM.Events.Event[] = []
 		const saveEventSub = server.event$.pipe(
 			Rx.concatMap(([_, e]) => e),
 			externBufferTime(5_000, eventBuffer),
