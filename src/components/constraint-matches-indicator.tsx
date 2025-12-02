@@ -127,7 +127,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 				{indicatorIcons}
 			</TooltipTrigger>
 			<TooltipContent
-				className="max-w-min p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
+				className="max-w-max p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
 				align="start"
 				side={props.side}
 			>
@@ -180,9 +180,9 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 															</>
 														)
 														: (
-															<>
+															<span className="whitespace-nowrap">
 																within <span className="font-semibold">{constraint.rule.within}</span>
-															</>
+															</span>
 														)}
 												</ItemDescription>
 											</ItemContent>
@@ -195,7 +195,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 				)}
 				{renderedFilters.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground w-full text-center')}>Matching Filters</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>Matching Filters</div>
 						<ItemGroup>
 							{renderedFilters.flatMap(([constraintId, elt], index) => {
 								return (
