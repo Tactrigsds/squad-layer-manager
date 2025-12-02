@@ -120,6 +120,7 @@ export function handleEvent(
 		eventsToProcess.push(event)
 		eventsToProcess.push(...state.rawEventBuffer.slice(mutatedIndex + 1))
 		state.rawEventBuffer = state.rawEventBuffer.slice(0, lastSaveEventIndex + 1)
+		state.eventBuffer = state.eventBuffer.slice(0, lastSaveEventIndex + 1)
 		let savepoint = state.savepoints[state.savepoints.length - 1]
 		if (!savepoint) {
 			state.interpolatedState = InterpolableState.clone(INITIAL_INTERPOLATED_STATE)
