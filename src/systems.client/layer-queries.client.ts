@@ -357,7 +357,6 @@ export function useLayerItemStatusData(
 					)
 				|| undefined
 
-			// descriptors for the current hovered layer item that are relevant to this item. either we're the hovered item, or we have matching constraints against the hovered item
 			return localMatchDescriptors ?? hoveredMatchDescriptors
 		}, [
 			allMatchDescriptors,
@@ -372,8 +371,6 @@ export function useLayerItemStatusData(
 			queriedConstraints,
 			allMatchDescriptors.get(itemId),
 		) ?? []
-
-		// we're much more confident that hovered descriptors are present
 
 		const matchingConstraintIds = matchingDescriptors.map(c => c.constraintId)
 
@@ -872,16 +869,12 @@ async function setup() {
 
 	const initPromise = workerPool.initialize(dbBuffer, ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
-	const contextUpdate$ = new Rx.Subject<Partial<WorkerTypes.DynamicQueryCtx>>()
-	FilterEntityClient.filterEntities$.subscribe(filters => {
-		contextUpdate$.next({ filters })
-	})
+	const contextUpdate$ = Rx.merge(
+		FilterEntityClient.filterEntities$.pipe(Rx.map(filters => ({ filters }))),
+		QD.layerItemsState$.pipe(Rx.map(itemsState => ({ layerItemsState: itemsState }))),
+	)
 
-	QD.layerItemsState$.subscribe(itemsState => {
-		contextUpdate$.next({ layerItemsState: itemsState })
-	})
-
-	contextUpdate$.subscribe(ctx => {
+	contextUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(ctx => {
 		const msg: WorkerTypes.ContextUpdateRequest = {
 			type: 'context-update',
 			ctx,

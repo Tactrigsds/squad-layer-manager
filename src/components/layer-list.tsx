@@ -284,7 +284,7 @@ type LayerListItemProps = {
 }
 
 function LayerListItem(props: LayerListItemProps) {
-	const itemRes = ZusUtils.useStoreDeep(props.llStore, s => LL.findItemById(s.layerList, props.itemId), { dependencies: [props.itemId] })
+	const itemRes = Zus.useStore(props.llStore, ZusUtils.useDeep(s => LL.findItemById(s.layerList, props.itemId)))
 	if (!itemRes) return null
 	const { item } = itemRes
 	if (LL.isVoteItem(item)) {
@@ -294,13 +294,14 @@ function LayerListItem(props: LayerListItemProps) {
 }
 
 function SingleLayerListItem(props: LayerListItemProps) {
-	const parentItem = ZusUtils.useStoreDeep(props.llStore, s => {
-		const parentItem = LL.findParentItem(s.layerList, props.itemId)
-		if (!parentItem || !LL.isVoteItem(parentItem)) return undefined
-		return parentItem
-	}, {
-		dependencies: [props.itemId],
-	})
+	const parentItem = Zus.useStore(
+		props.llStore,
+		ZusUtils.useDeep(s => {
+			const parentItem = LL.findParentItem(s.layerList, props.itemId)
+			if (!parentItem || !LL.isVoteItem(parentItem)) return undefined
+			return parentItem
+		}),
+	)
 
 	const [item, index, isLocallyLast, displayedMutation] = Zus.useStore(
 		props.llStore,
@@ -474,12 +475,12 @@ function SingleLayerListItem(props: LayerListItemProps) {
 }
 
 function VoteLayerListItem(props: LayerListItemProps) {
-	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = ZusUtils.useStoreDeep(
+	const [item, index, displayedMutation, isLocallyLast, endingVoteState] = Zus.useStore(
 		props.llStore,
-		(llState) => {
+		ZusUtils.useDeep((llState) => {
 			const s = QD.selectLLItemState(llState, props.itemId)!
 			return [s.item as LL.ParentVoteItem, s.index, getDisplayedMutation(s.mutationState), s.isLocallyLast, s.item.endingVoteState]
-		},
+		}),
 	)
 
 	const globalVoteState = VotesClient.useVoteState()

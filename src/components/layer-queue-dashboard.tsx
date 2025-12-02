@@ -301,7 +301,7 @@ function QueueControlPanel() {
 					opts: { cursor: { type: 'start' }, variant: 'toggle-position' },
 				})}
 				matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
-				preload="render"
+				preload="intent"
 				render={Button}
 				className="flex w-min items-center space-x-0"
 			>
