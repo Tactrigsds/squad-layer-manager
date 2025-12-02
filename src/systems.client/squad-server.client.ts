@@ -96,6 +96,7 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 		},
 	}
 })
+
 export function useEndMatch() {
 	return useMutation({
 		mutationFn: async () => {
@@ -122,12 +123,19 @@ export function useSelectedServerId() {
 	return Zus.useStore(SelectedServerStore, state => state.selectedServerId)
 }
 
+export function usePlayerCount() {
+	return Zus.useStore(
+		ChatStore,
+		state => (state.chatState.synced && !state.chatState.connectionError) ? state.chatState.interpolatedState.players.length : null,
+	)
+}
+
 export function setup() {
 	serverInfoRes$.subscribe()
 	currentMatch$.subscribe()
 	serverRolling$.subscribe()
 	Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
-		ChatStore.getState().handleChatEvents(events)
+		ChatStore.getState().handleChatEvents(events as (CHAT.Event | CHAT.ConnectionErrorEvent | CHAT.SyncedEvent)[])
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called

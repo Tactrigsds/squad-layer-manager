@@ -643,6 +643,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 function ServerCounts() {
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
+	const playerCount = SquadServerClient.usePlayerCount()
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
 
@@ -650,7 +651,7 @@ function ServerCounts() {
 
 	return (
 		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm">
-			{serverInfo.playerCount} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+			{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
 		</div>
 	)
 }

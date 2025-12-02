@@ -22,6 +22,7 @@ const response = await fetch(
 		},
 	},
 )
+console.log(response.headers)
 
 if (!response.ok) {
 	throw new Error(`BattleMetrics API error: ${response.status} ${response.statusText}`)

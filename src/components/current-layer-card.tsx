@@ -13,6 +13,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
 import * as QD from '@/systems.client/queue-dashboard.ts'
@@ -20,6 +21,7 @@ import * as RbacClient from '@/systems.client/rbac.client.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client.ts'
 import { useLoggedInUser } from '@/systems.client/users.client'
+import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -35,12 +37,13 @@ export function CurrentLayerCardContent() {
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
 	const serverRolling = !!SquadServerClient.useServerRolling()
-
+	const playerCount = SquadServerClient.usePlayerCount()
+	const hasPlayers = playerCount !== null && playerCount > 0
 	const [canEndMatch, hasDisableUpdatesPerm, canDisableFogOfWar] = React.useMemo(() => [
-		!loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')),
+		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match')) && hasPlayers,
 		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:disable-slm-updates')),
 		!!loggedInUser && RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:turn-fog-off')),
-	], [loggedInUser])
+	], [loggedInUser, hasPlayers])
 
 	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = QD.useToggleSquadServerUpdates()
@@ -149,8 +152,14 @@ export function CurrentLayerCardContent() {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent>
 							<DialogTrigger asChild>
-								<DropdownMenuItem disabled={!canEndMatch} className="bg-destructive text-destructive-foreground focus:bg-red-600">
-									End Match
+								<DropdownMenuItem
+									disabled={!canEndMatch}
+									className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 flex flex-col"
+								>
+									<span>End Match</span>
+									<small>
+										(disabled: Cannot end match when server is empty.)
+									</small>
 								</DropdownMenuItem>
 							</DialogTrigger>
 							{updatesToSquadServerDisabled
@@ -193,14 +202,13 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 	const [isOpen, setIsOpen] = React.useState(false)
 
 	const loggedInUser = useLoggedInUser()
-	const endMatchMutation = SquadServerClient.useEndMatch()
+	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
 	const serverInfoRes = SquadServerClient.useServerInfoRes()
 	if (!serverInfoRes || serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
 
 	async function endMatch() {
-		setIsOpen(false)
-		const res = await endMatchMutation.mutateAsync()
+		const res = await endMatchMutation.mutateAsync(null)
 		switch (res.code) {
 			case 'ok':
 				globalToast$.next({ title: 'Match ended!' })
@@ -208,9 +216,14 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
 				break
+			case 'err:timeout':
+			case 'err:unknown':
+				globalToast$.next({ title: res.message, variant: 'destructive' })
+				break
 			default:
 				assertNever(res)
 		}
+		setIsOpen(false)
 	}
 
 	const canEndMatch = !loggedInUser || RBAC.rbacUserHasPerms(loggedInUser, RBAC.perm('squad-server:end-match'))
@@ -225,7 +238,8 @@ function EndMatchDialog(props: { children: React.ReactNode }) {
 					Are you sure you want to end the match for <b>{serverInfo?.name}</b>?
 				</DialogDescription>
 				<DialogFooter>
-					<Button disabled={!canEndMatch} onClick={endMatch} variant="destructive">
+					<Button disabled={!canEndMatch || endMatchMutation.isPending} onClick={endMatch} variant="destructive">
+						{endMatchMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						End Match
 					</Button>
 					<Button

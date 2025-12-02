@@ -152,14 +152,28 @@ export const orpcRouter = {
 		const ctx = resolveWsClientSliceCtx(_ctx)
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match'))
 		if (deniedRes) return deniedRes
+		const matchEnded$ = ctx.server.event$.pipe(Rx.concatMap(([_, e]) => e), Rx.filter(e => e.type === 'ROUND_ENDED'), Rx.endWith(null))
+		const result$ = Rx.firstValueFrom(Rx.race(matchEnded$, Rx.timer(5_000).pipe(Rx.map(() => 'timeout' as const))))
+
 		SquadRcon.endMatch(ctx)
-		await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
-		return { code: 'ok' as const }
+
+		const result = await result$
+		if (result === 'timeout') {
+			return { code: 'err:timeout' as const, message: 'Failed to end match: operation timed out' }
+		}
+		if (result === null) {
+			return { code: 'err:unknown' as const, message: 'Failed to end match: unknown error' }
+		}
+		if (result.type === 'ROUND_ENDED') {
+			await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
+			return { code: 'ok' as const, message: 'Match ended successfully' }
+		}
+		assertNever(result.type)
 	}),
 
 	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.bigint().optional() }).optional()).handler(
 		async function*({ context, signal, input }) {
-			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent)[]> = selectedServerCtx$(context)
+			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[]> = selectedServerCtx$(context)
 				.pipe(
 					Rx.switchMap(ctx => {
 						function getInitialEvents() {
@@ -198,16 +212,14 @@ export const orpcRouter = {
 							} else {
 								let lastEventIndex = allEvents.findIndex(e => e.id === input!.lastEventId!)
 
-								// we include the last event on purpose so the client knows whether they need to reset the chat
+								// let the client know that we are reconnecting from their last known event id
 								events.push({ type: 'CHAT_RECONNECTED', resumedEventId: input!.lastEventId! })
 								// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
 								events.push(...allEvents.slice(lastEventIndex + 1))
 								events.push(sync)
 							}
 
-							// page so we don't block too long on serialization/deserialization
-							const paged: Array<Array<SM.Events.Event | CHAT.SyncedEvent>> = Arr.paged(events, 512)
-							return paged
+							return Arr.paged(events, 512)
 						}
 						const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
 							.pipe(Rx.concatMap(getInitialEvents))

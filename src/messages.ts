@@ -20,6 +20,8 @@ function formatInterval(interval: number, terse = true) {
 	return txt
 }
 
+// TODO this structure is dumb, we need some way to colocate and reeuse messages between targets
+
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
 	matchEnded(user: USR.User) {
