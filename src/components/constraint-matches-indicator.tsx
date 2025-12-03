@@ -171,7 +171,8 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 																{descriptors.map((d, i) => (
 																	<span key={d.fieldValue}>
 																		<span className="font-semibold">{boldValue(d.fieldValue)}</span> was played{' '}
-																		<span className="font-semibold">{boldValue(d.repeatOffset)}</span> matches prior
+																		<span className="font-semibold">{boldValue(d.repeatOffset)}</span>{' '}
+																		match{d.repeatOffset === 1 ? '' : 'es'} prior
 																	</span>
 																))}
 																<span>
