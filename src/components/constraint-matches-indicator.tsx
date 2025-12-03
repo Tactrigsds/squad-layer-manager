@@ -86,7 +86,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 						</ItemMedia>
 						<ItemContent>
 							<ItemTitle>{filter.name}</ItemTitle>
-							{alertMessage && <ItemDescription className="whitespace-normal line-clamp-none">{alertMessage}</ItemDescription>}
+							{alertMessage && <ItemDescription className="whitespace-normal line-clamp-none text-wrap">{alertMessage}</ItemDescription>}
 						</ItemContent>
 						<ItemActions>
 							<FilterEntityLink filterId={filter.id} />
@@ -127,7 +127,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 				{indicatorIcons}
 			</TooltipTrigger>
 			<TooltipContent
-				className="max-w-max p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
+				className="max-w-md p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
 				align="start"
 				side={props.side}
 			>
