@@ -408,49 +408,6 @@ export function interpolateEvent(
 			}
 			state.players.splice(index, 1, updatedPlayer)
 
-			// Deduplicate player left squad events
-			let skipCount = 1
-			let maxDedupeDelay = 1_000
-			const wasLeader = player.isLeader
-			const playerWithLeaderStatus = { ...updatedPlayer, wasLeader }
-
-			for (let i = eventBuffer.length - 1; i >= 0; i--) {
-				const current = eventBuffer[i]
-				if ((event.time - current.time) > maxDedupeDelay) break
-				if (current.type === 'NOOP') continue
-				if (current.type === 'SQUAD_CREATED' && SM.Squads.idsEqual(squad, current.squad)) {
-					// we reached where this squaad was created, so halt
-					break
-				}
-				if (
-					current.type !== 'PLAYER_LEFT_SQUAD' && current.type !== 'PLAYER_LEFT_SQUAD_DEDUPED' || !SM.Squads.idsEqual(squad, current.squad)
-				) {
-					skipCount--
-					if (skipCount === 0) {
-						break
-					}
-					continue
-				}
-
-				let players: (SM.Player & { wasLeader: boolean })[]
-				if (current.type === 'PLAYER_LEFT_SQUAD') {
-					players = [{ ...current.player, wasLeader: current.wasLeader }, playerWithLeaderStatus]
-				} else {
-					players = [...current.players, playerWithLeaderStatus]
-				}
-
-				const newEvent: Extract<EventEnriched, { type: 'PLAYER_LEFT_SQUAD_DEDUPED' }> = {
-					type: 'PLAYER_LEFT_SQUAD_DEDUPED',
-					time: current.time,
-					players: players,
-					id: current.id,
-					matchId: current.matchId,
-					squad,
-				}
-				eventBuffer.splice(i, 1, newEvent)
-				return noop(`Deduped ${event.type} event (id: ${current.id})`)
-			}
-
 			return {
 				...event,
 				player: updatedPlayer,
@@ -508,44 +465,6 @@ export function interpolateEvent(
 						SM.PlayerIds.prettyPrint(event.playerIds)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
-			}
-			let skipCount = 4
-			let maxDedupeDelay = 2_000
-			for (let i = eventBuffer.length - 1; i >= 0; i--) {
-				const current = eventBuffer[i]
-				if ((event.time - current.time) > maxDedupeDelay) break
-				if (current.type === 'NOOP') continue
-				if (current.type !== 'PLAYER_WARNED' && current.type !== 'PLAYER_WARNED_DEDUPED' || event.reason !== current.reason) {
-					skipCount--
-					if (skipCount === 0) {
-						break
-					}
-					continue
-				}
-
-				let players: (SM.Player & { times: number })[]
-				if (current.type === 'PLAYER_WARNED') {
-					const existing = SM.PlayerIds.find([player, current.player], p => p.ids, event.playerIds)
-					players = existing ? [{ ...player, times: 2 }] : [{ ...player, times: 1 }, { ...current.player, times: 1 }]
-				} else {
-					const existing = SM.PlayerIds.find(current.players, p => p.ids, event.playerIds)
-					if (existing) {
-						players = current.players.map(p => SM.PlayerIds.match(p.ids, player.ids) ? { ...player, times: existing.times + 1 } : p)
-					} else {
-						players = [...current.players, { ...player, times: 1 }]
-					}
-				}
-
-				const newEvent: Extract<EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> = {
-					type: 'PLAYER_WARNED_DEDUPED',
-					time: current.time,
-					reason: current.reason,
-					players: players,
-					id: current.id,
-					matchId: current.matchId,
-				}
-				eventBuffer.splice(i, 1, newEvent)
-				return noop(`Deduped ${event.type} event (id: ${current.id})`)
 			}
 
 			return {
