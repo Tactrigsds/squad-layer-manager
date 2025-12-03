@@ -900,8 +900,8 @@ function postProcessLayers(
 						constraint.rule,
 						strId,
 					)
-					if (descriptors) constraintResults[constraintIdx] = true
-					if (descriptors && descriptors.length > 0) {
+					if (descriptors) {
+						constraintResults[constraintIdx] = true
 						matchDescriptors.push(...descriptors)
 					}
 					break

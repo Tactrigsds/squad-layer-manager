@@ -195,7 +195,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 				)}
 				{renderedFilters.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>Matching Filters</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>Matching Filters:</div>
 						<ItemGroup>
 							{renderedFilters.flatMap(([constraintId, elt], index) => {
 								return (

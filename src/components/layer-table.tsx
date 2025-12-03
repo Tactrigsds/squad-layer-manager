@@ -44,6 +44,7 @@ import { Switch } from './ui/switch'
 import { Textarea } from './ui/textarea'
 export type { PostProcessedLayer } from '@/systems.shared/layer-queries.shared'
 import { orUndef } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
@@ -154,12 +155,21 @@ function buildColumn(
 					<span>-</span>
 				</div>
 			)
-			const extraStyles = DH.getColumnExtraStyles(
-				colDef.name as keyof L.KnownLayer,
-				teamParity,
-				displayLayersNormalized,
-				matchDescriptors,
+
+			let columnsToInclude = [colDef.name]
+			if (colDef.name === 'Faction_1') {
+				columnsToInclude.push('Alliance_1')
+			}
+			if (colDef.name === 'Faction_2') {
+				columnsToInclude.push('Alliance_2')
+			}
+
+			let extraStyles: string | undefined = cn(
+				...columnsToInclude.map((col) =>
+					DH.getColumnExtraStyles(col as keyof L.KnownLayer, teamParity, displayLayersNormalized, matchDescriptors)
+				),
 			)
+
 			const valueElt = (value: React.ReactNode) => (
 				<div
 					className={`pl-4 ${extraStyles}`}
@@ -313,16 +323,33 @@ function buildColDefs(
 		enableHiding: false,
 		size: 80,
 		cell: ({ row }) => {
+			const cursor = useTableFrame(table => table.pageData?.input.cursor)
+			const teamParity = ReactRxHelpers.useStateObservableSelection(
+				QD.layerItemsState$,
+				React.useCallback((state) => {
+					if (!cursor) return 0
+					return LQY.resolveTeamParityForCursor(state, cursor)
+				}, [cursor]),
+			)
 			return (
-				<ConstraintMatchesIndicator
-					side="right"
-					padEmpty
-					layerId={row.original.id}
-					matchingConstraintIds={row.original.constraints.matchedConstraintIds}
-					matchDescriptors={row.original.constraints.matchDescriptors}
-					queriedConstraints={row.original.constraints.queriedConstraints}
-					height={32}
-				/>
+				<span
+					onClick={(e) => {
+						// if we're on the filter edit page and the user tries to navigate to the filter they're already editing, the click event will try to propagate and select the row
+						e.stopPropagation()
+					}}
+				>
+					<ConstraintMatchesIndicator
+						side="right"
+						padEmpty
+						layerId={row.original.id}
+						itemParity={teamParity}
+						// itemParity={}
+						matchingConstraintIds={row.original.constraints.matchedConstraintIds}
+						matchDescriptors={row.original.constraints.matchDescriptors}
+						queriedConstraints={row.original.constraints.queriedConstraints}
+						height={32}
+					/>
+				</span>
 			)
 		},
 	})
