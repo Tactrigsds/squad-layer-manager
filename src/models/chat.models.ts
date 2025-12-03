@@ -1,4 +1,3 @@
-import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -60,6 +59,7 @@ export type EventEnriched =
 	| (SM.Events.PlayerPromotedToLeader & { player: SM.Player })
 	| (SM.Events.SquadDisbanded & { squad: SM.Squad })
 	| (SM.Events.PlayerLeftSquad & { player: SM.Player; wasLeader: boolean; squad: SM.Squad })
+	| { type: 'PLAYER_LEFT_SQUAD_DEDUPED'; players: (SM.Player & { wasLeader: boolean })[]; squad: SM.Squad } & SM.Events.Base
 	| (SM.Events.SquadCreated & { creator: SM.Player; squad: SM.Squad })
 	| (SM.Events.PlayerWarned & { player: SM.Player })
 	| { type: 'PLAYER_WARNED_DEDUPED'; players: (SM.Player & { times: number })[]; reason: string } & SM.Events.Base
@@ -216,6 +216,15 @@ export function handleEvent(
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 
+const SuppressionSchema = z.string().refine(s => new RegExp(s))
+
+export const ChatConfigSchema = z.object({
+	warnSuppressionPatterns: z.array(SuppressionSchema).default([]).describe('Regex patterns to suppress warning messages'),
+	broadcastSuppressionPatterns: z.array(SuppressionSchema).default([]).describe(
+		'Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.',
+	),
+})
+
 function testPatterns(patterns: string[], text: string): boolean {
 	if (patterns.length === 0) return false
 	let compiled = compiledPatternMap.get(patterns)
@@ -229,7 +238,6 @@ function testPatterns(patterns: string[], text: string): boolean {
 type InterpolationOptions = {
 	warnSuppressionPatterns?: string[]
 	broadcastSuppressionPatterns?: string[]
-	suppressAdminPings?: boolean
 }
 
 /**
@@ -399,6 +407,50 @@ export function interpolateEvent(
 				isLeader: false,
 			}
 			state.players.splice(index, 1, updatedPlayer)
+
+			// Deduplicate player left squad events
+			let skipCount = 1
+			let maxDedupeDelay = 1_000
+			const wasLeader = player.isLeader
+			const playerWithLeaderStatus = { ...updatedPlayer, wasLeader }
+
+			for (let i = eventBuffer.length - 1; i >= 0; i--) {
+				const current = eventBuffer[i]
+				if ((event.time - current.time) > maxDedupeDelay) break
+				if (current.type === 'NOOP') continue
+				if (current.type === 'SQUAD_CREATED' && SM.Squads.idsEqual(squad, current.squad)) {
+					// we reached where this squaad was created, so halt
+					break
+				}
+				if (
+					current.type !== 'PLAYER_LEFT_SQUAD' && current.type !== 'PLAYER_LEFT_SQUAD_DEDUPED' || !SM.Squads.idsEqual(squad, current.squad)
+				) {
+					skipCount--
+					if (skipCount === 0) {
+						break
+					}
+					continue
+				}
+
+				let players: (SM.Player & { wasLeader: boolean })[]
+				if (current.type === 'PLAYER_LEFT_SQUAD') {
+					players = [{ ...current.player, wasLeader: current.wasLeader }, playerWithLeaderStatus]
+				} else {
+					players = [...current.players, playerWithLeaderStatus]
+				}
+
+				const newEvent: Extract<EventEnriched, { type: 'PLAYER_LEFT_SQUAD_DEDUPED' }> = {
+					type: 'PLAYER_LEFT_SQUAD_DEDUPED',
+					time: current.time,
+					players: players,
+					id: current.id,
+					matchId: current.matchId,
+					squad,
+				}
+				eventBuffer.splice(i, 1, newEvent)
+				return noop(`Deduped ${event.type} event (id: ${current.id})`)
+			}
+
 			return {
 				...event,
 				player: updatedPlayer,
@@ -480,8 +532,8 @@ export function interpolateEvent(
 					if (existing) {
 						players = current.players.map(p => SM.PlayerIds.match(p.ids, player.ids) ? { ...player, times: existing.times + 1 } : p)
 					} else {
+						players = [...current.players, { ...player, times: 1 }]
 					}
-					players = [{ ...player, times: 1 }]
 				}
 
 				const newEvent: Extract<EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> = {

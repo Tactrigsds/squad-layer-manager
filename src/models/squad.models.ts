@@ -585,13 +585,6 @@ export namespace Events {
 		| SquadDisbanded
 		| PlayerJoinedSquad
 		| PlayerPromotedToLeader
-		// synthetic
-		| PlayerDetailsChanged
-		| PlayerChangedTeam
-		| PlayerLeftSquad
-		| SquadDisbanded
-		| PlayerJoinedSquad
-		| PlayerPromotedToLeader
 }
 
 export namespace RconEvents {

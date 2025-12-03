@@ -4,6 +4,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object.ts'
 import { BasicStrNoWhitespace, HumanTime, ParsedBigIntSchema } from '@/lib/zod'
 import * as BAL from '@/models/balance-triggers.models.ts'
+import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as SS from '@/models/server-state.models.ts'
@@ -41,12 +42,7 @@ export const ConfigSchema = z.object({
 			remindersAndAnnouncementsEnabled: z.boolean().default(true).describe('Whether reminders/annoucements for admins are enabled'),
 		}),
 	).transform(servers => servers.filter(server => server.enabled)),
-	serverEvents: z.object({
-		warnSuppressionPatterns: z.array(z.string()).default([]).describe('Regex patterns to suppress warning messages'),
-		broadcastSuppressionPatterns: z.array(z.string()).default([]).describe(
-			'Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.',
-		),
-	}).default({}),
+	chat: CHAT.ChatConfigSchema.default({}),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
@@ -175,7 +171,7 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
-		serverEvents: CONFIG.serverEvents,
+		chat: CONFIG.chat,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
 		servers: CONFIG.servers.map((server): ServerEntry => ({

@@ -12,6 +12,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
+import * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -315,8 +316,8 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 						</TooltipTrigger>
 						<TooltipContent>
 							<div className="flex flex-col gap-1">
-								{event.players.map((player, idx) => (
-									<div key={idx} className="flex items-center gap-1">
+								{event.players.map((player) => (
+									<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
 										<PlayerDisplay player={player} matchId={event.matchId} />
 										{player.times > 1 && <span className="text-muted-foreground">({player.times}x)</span>}
 									</div>
@@ -440,6 +441,46 @@ function PlayerLeftSquadEvent({ event }: { event: Extract<CHAT.EventEnriched, { 
 	)
 }
 
+function PlayerLeftSquadDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_LEFT_SQUAD_DEDUPED' }> }) {
+	// server is rolling
+	if (event.squad.teamId === null) return null
+
+	const playerCount = event.players.length
+
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.LogOut className="h-4 w-4 text-orange-400" />
+			<span className="text-xs flex items-center gap-1">
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span className="underline decoration-dotted cursor-help">
+							{playerCount}x
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>
+						<div className="flex flex-col gap-1">
+							{event.players.map((player, idx) => (
+								<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
+									<PlayerDisplay player={player} matchId={event.matchId} />
+									{player.wasLeader && <span className="text-muted-foreground">(was leader)</span>}
+								</div>
+							))}
+						</div>
+					</TooltipContent>
+				</Tooltip>{' '}
+				players left{' '}
+				<SquadDisplay
+					squad={event.squad}
+					matchId={event.matchId}
+					showName={false}
+					showTeam={true}
+				/>
+			</span>
+		</div>
+	)
+}
+
 function SquadDisbandedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'SQUAD_DISBANDED' }> }) {
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
@@ -514,6 +555,8 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerChangedTeamEvent event={event} />
 		case 'PLAYER_LEFT_SQUAD':
 			return <PlayerLeftSquadEvent event={event} />
+		case 'PLAYER_LEFT_SQUAD_DEDUPED':
+			return <PlayerLeftSquadDedupedEvent event={event} />
 		case 'SQUAD_DISBANDED':
 			return <SquadDisbandedEvent event={event} />
 		case 'PLAYER_JOINED_SQUAD':
