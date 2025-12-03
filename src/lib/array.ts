@@ -37,8 +37,8 @@ export function includes(arr: unknown[], value: unknown): boolean {
 	return arr.includes(value)
 }
 
-export function includesId<T extends string>(arr: T[], value: string): value is T {
-	return includes(arr, value)
+export function includesId<T extends string>(arr: readonly T[], value: string): value is T {
+	return includes(arr as T[], value)
 }
 
 export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void {
@@ -98,6 +98,19 @@ export function revFind<T>(arr: T[], predicate: (item: T) => boolean): T | undef
 		}
 	}
 	return undefined
+}
+
+export function revFindMany<T>(arr: T[], predicate: (item: T) => boolean, count: number): T[] {
+	const result: T[] = []
+	for (let i = arr.length - 1; i >= 0; i--) {
+		if (predicate(arr[i])) {
+			result.push(arr[i])
+			if (result.length === count) {
+				break
+			}
+		}
+	}
+	return result
 }
 
 export function revFindIndex<T>(arr: T[], predicate: (item: T) => boolean): number {

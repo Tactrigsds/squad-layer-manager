@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -39,9 +40,44 @@ export namespace InterpolableState {
 	}
 }
 
-// event enriched with relevant data
-export type EventEnriched = NonNullable<ReturnType<typeof interpolateEvent>>
 export type Event = SM.Events.Event
+
+export type DedupedBase = {
+	eventCount: number
+}
+
+// event enriched with relevant data
+export type EventEnriched =
+	| NoopEvent
+	| Omit<SM.Events.NewGame, 'state'>
+	| Omit<SM.Events.Reset, 'state'>
+	| SM.Events.RoundEnded
+	| (SM.Events.PlayerConnected & { player: SM.Player })
+	| (SM.Events.PlayerDisconnected & { player: SM.Player })
+	| (SM.Events.PlayerDetailsChanged & { player: SM.Player })
+	| (SM.Events.PlayerChangedTeam & { player: SM.Player; prevTeamId: SM.TeamId | null })
+	| (SM.Events.PlayerJoinedSquad & { player: SM.Player; squad: SM.Squad })
+	| (SM.Events.PlayerPromotedToLeader & { player: SM.Player })
+	| (SM.Events.SquadDisbanded & { squad: SM.Squad })
+	| (SM.Events.PlayerLeftSquad & { player: SM.Player; wasLeader: boolean; squad: SM.Squad })
+	| (SM.Events.SquadCreated & { creator: SM.Player; squad: SM.Squad })
+	| (SM.Events.PlayerWarned & { player: SM.Player })
+	| { type: 'PLAYER_WARNED_DEDUPED'; players: (SM.Player & { times: number })[]; reason: string } & SM.Events.Base
+	| (SM.Events.PlayerBanned & { player: SM.Player })
+	| (SM.Events.PlayerKicked & { player: SM.Player })
+	| (SM.Events.PossessedAdminCamera & { player: SM.Player })
+	| (SM.Events.UnpossessedAdminCamera & { player: SM.Player })
+	| (SM.Events.ChatMessage & { player: SM.Player })
+	| (SM.Events.AdminBroadcast & { player: SM.Player | undefined })
+
+export type NoopEvent = {
+	type: 'NOOP'
+	reason: string
+	id: bigint
+	time: number
+	matchId: number
+	originalEvent: Event
+}
 
 export type ChatState = {
 	rawEventBuffer: Event[]
@@ -159,7 +195,8 @@ export function handleEvent(
 
 	for (const event of eventsToProcess) {
 		state.rawEventBuffer.push(event)
-		const interpolated = interpolateEvent(state.interpolatedState, event, opts)
+		// we may also modify eventBuffer in place
+		const interpolated = interpolateEvent(state.interpolatedState, state.eventBuffer, event, opts)
 		state.eventBuffer.push(interpolated)
 	}
 
@@ -200,9 +237,10 @@ type InterpolationOptions = {
  */
 export function interpolateEvent(
 	state: InterpolableState,
+	eventBuffer: EventEnriched[],
 	event: Event,
 	opts?: InterpolationOptions,
-) {
+): EventEnriched {
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
 		case 'NEW_GAME':
@@ -418,6 +456,44 @@ export function interpolateEvent(
 						SM.PlayerIds.prettyPrint(event.playerIds)
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
+			}
+			let skipCount = 4
+			let maxDedupeDelay = 2_000
+			for (let i = eventBuffer.length - 1; i >= 0; i--) {
+				const current = eventBuffer[i]
+				if ((event.time - current.time) > maxDedupeDelay) break
+				if (current.type === 'NOOP') continue
+				if (current.type !== 'PLAYER_WARNED' && current.type !== 'PLAYER_WARNED_DEDUPED' || event.reason !== current.reason) {
+					skipCount--
+					if (skipCount === 0) {
+						break
+					}
+					continue
+				}
+
+				let players: (SM.Player & { times: number })[]
+				if (current.type === 'PLAYER_WARNED') {
+					const existing = SM.PlayerIds.find([player, current.player], p => p.ids, event.playerIds)
+					players = existing ? [{ ...player, times: 2 }] : [{ ...player, times: 1 }, { ...current.player, times: 1 }]
+				} else {
+					const existing = SM.PlayerIds.find(current.players, p => p.ids, event.playerIds)
+					if (existing) {
+						players = current.players.map(p => SM.PlayerIds.match(p.ids, player.ids) ? { ...player, times: existing.times + 1 } : p)
+					} else {
+					}
+					players = [{ ...player, times: 1 }]
+				}
+
+				const newEvent: Extract<EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> = {
+					type: 'PLAYER_WARNED_DEDUPED',
+					time: current.time,
+					reason: current.reason,
+					players: players,
+					id: current.id,
+					matchId: current.matchId,
+				}
+				eventBuffer.splice(i, 1, newEvent)
+				return noop(`Deduped ${event.type} event (id: ${current.id})`)
 			}
 
 			return {

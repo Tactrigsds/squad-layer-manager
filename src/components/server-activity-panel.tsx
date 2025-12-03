@@ -7,6 +7,7 @@ import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as CHAT from '@/models/chat.models'
@@ -278,6 +279,59 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 	)
 }
 
+function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WARNED_DEDUPED' }> }) {
+	const playerCount = event.players.length
+	const totalWarnings = event.players.reduce((sum, p) => sum + p.times, 0)
+
+	// Single player warned multiple times
+	if (playerCount === 1) {
+		const player = event.players[0]
+		return (
+			<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+				<EventTime time={event.time} variant="small" />
+				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+				<div className="flex-grow min-w-0">
+					<span className="inline-block whitespace-nowrap">
+						<PlayerDisplay player={player} matchId={event.matchId} /> was warned {player.times}x
+					</span>
+					: "<span className="break-words">{event.reason}</span>"
+				</div>
+			</div>
+		)
+	}
+
+	// Multiple players warned
+	return (
+		<div className="flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline">
+			<EventTime time={event.time} variant="small" />
+			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+			<div className="flex-grow min-w-0">
+				<span className="inline-block whitespace-nowrap">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<span className="underline decoration-dotted cursor-help">
+								{totalWarnings}x
+							</span>
+						</TooltipTrigger>
+						<TooltipContent>
+							<div className="flex flex-col gap-1">
+								{event.players.map((player, idx) => (
+									<div key={idx} className="flex items-center gap-1">
+										<PlayerDisplay player={player} matchId={event.matchId} />
+										{player.times > 1 && <span className="text-muted-foreground">({player.times}x)</span>}
+									</div>
+								))}
+							</div>
+						</TooltipContent>
+					</Tooltip>{' '}
+					players were warned
+				</span>
+				: "<span className="break-words">{event.reason}</span>"
+			</div>
+		</div>
+	)
+}
+
 function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' | 'RESET' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	if (event.type === 'RESET' || event.source === 'rcon-reconnected' || event.source === 'slm-started') {
@@ -447,6 +501,8 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerBannedEvent event={event} />
 		case 'PLAYER_WARNED':
 			return <PlayerWarnedEvent event={event} />
+		case 'PLAYER_WARNED_DEDUPED':
+			return <PlayerWarnedDedupedEvent event={event} />
 		case 'NEW_GAME':
 		case 'RESET':
 			return <NewGameOrResetEvent event={event} />

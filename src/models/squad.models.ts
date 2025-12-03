@@ -454,7 +454,7 @@ export type LayerSyncState =
 export type PlayerRef = string
 
 export namespace Events {
-	type Base = {
+	export type Base = {
 		id: bigint
 		time: number
 		// we're incling matchId in all Events here to simplify the lookup process where convenient, and to make it possible to sync the current server id set for the client with the displayed events. Could also omnibus events across multiple servers in the future if we wanted to
@@ -557,6 +557,11 @@ export namespace Events {
 		teamId: TeamId
 		newLeaderIds: PlayerIds.Type
 	} & Base
+	export type PlayerKicked = RconEvents.PlayerKicked & Base
+	export type PossessedAdminCamera = RconEvents.PossessedAdminCamera & Base
+	export type UnpossessedAdminCamera = RconEvents.UnpossessedAdminCamera & Base
+	export type PlayerBanned = RconEvents.PlayerBanned & Base
+	export type PlayerWarned = RconEvents.PlayerWarned & Base
 
 	export type Event =
 		| NewGame
@@ -568,11 +573,18 @@ export namespace Events {
 		| ChatMessage
 		| AdminBroadcast
 		// from rcon
-		| RconEvents.PossessedAdminCamera & Base
-		| RconEvents.UnpossessedAdminCamera & Base
-		| RconEvents.PlayerKicked & Base
-		| RconEvents.PlayerBanned & Base
-		| RconEvents.PlayerWarned & Base
+		| PossessedAdminCamera
+		| UnpossessedAdminCamera
+		| PlayerKicked
+		| PlayerBanned
+		| PlayerWarned
+		// synthetic
+		| PlayerDetailsChanged
+		| PlayerChangedTeam
+		| PlayerLeftSquad
+		| SquadDisbanded
+		| PlayerJoinedSquad
+		| PlayerPromotedToLeader
 		// synthetic
 		| PlayerDetailsChanged
 		| PlayerChangedTeam
