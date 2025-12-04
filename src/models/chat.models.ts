@@ -611,6 +611,11 @@ export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
 export type EventFilterState = z.infer<typeof EVENT_FILTER_STATE>
 
 export function isEventFiltered(event: EventEnriched, filterState: EventFilterState): boolean {
+	// Always show new game and round ended events
+	if (event.type === 'NEW_GAME' || event.type === 'ROUND_ENDED') {
+		return false
+	}
+
 	if (filterState === 'ALL') {
 		return false
 	} else if (filterState === 'CHAT') {
