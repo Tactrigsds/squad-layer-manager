@@ -1,7 +1,7 @@
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { type CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'

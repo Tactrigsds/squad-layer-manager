@@ -1,4 +1,4 @@
-import { AsyncResource, CleanupTasks, sleep } from '@/lib/async'
+import { AsyncResource, type CleanupTasks, sleep } from '@/lib/async'
 import { matchLog } from '@/lib/log-parsing'
 
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'

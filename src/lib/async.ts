@@ -2,7 +2,7 @@ import * as Obj from '@/lib/object'
 import type * as CS from '@/models/context-shared'
 import type * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-import { Mutex, MutexInterface } from 'async-mutex'
+import { Mutex, type MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { createId } from './id'
 

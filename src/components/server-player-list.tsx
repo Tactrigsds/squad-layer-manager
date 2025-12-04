@@ -156,7 +156,6 @@ function TeamUnassignedSection({ players, matchId }: TeamUnassignedSectionProps)
 }
 
 export default function ServerPlayerList() {
-	const prevGeneration = React.useRef(-1)
 	const interpolatedState = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.interpolatedState)
 	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.eventBuffer)
 	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)

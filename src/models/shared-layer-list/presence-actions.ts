@@ -1,4 +1,3 @@
-import * as Obj from '@/lib/object'
 import * as SLL from '@/models/shared-layer-list'
 
 export type ActionInput = { hasEdits: boolean; prev?: SLL.ClientPresence }

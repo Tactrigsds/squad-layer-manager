@@ -9,14 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
-import { useStateObservableSelection } from '@/lib/react-rxjs-helpers.ts'
+
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
-import * as ConfigClient from '@/systems.client/config.client'
+
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -773,7 +773,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 function PreviousMatchEvents() {
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const recentMatches = MatchHistoryClient.useRecentMatches()
+
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const prevScrollHeightRef = React.useRef<number>(0)
 
@@ -782,7 +782,7 @@ function PreviousMatchEvents() {
 		previousOrdinal?: number
 	}
 
-	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+	const { data, fetchNextPage, hasNextPage } = useInfiniteQuery({
 		// we start at the current match but we don't actually load any events for it
 		initialPageParam: currentMatch.ordinal,
 		// when the current match changes we want to unload these
@@ -823,9 +823,9 @@ function PreviousMatchEvents() {
 
 	return (
 		<div ref={containerRef}>
-			{data?.pages.map((page, index) => (
-				<div key={index}>
-					{index === data.pages.length - 1 && (hasNextPage
+			{data?.pages.map((page) => (
+				<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
+					{page === data.pages[data.pages.length - 1] && (hasNextPage
 						? (
 							<Button
 								onClick={() => fetchNextPage()}

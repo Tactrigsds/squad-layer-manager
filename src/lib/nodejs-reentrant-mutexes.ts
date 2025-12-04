@@ -1,4 +1,4 @@
-import { E_CANCELED, MutexInterface } from 'async-mutex'
+import { E_CANCELED, type MutexInterface } from 'async-mutex'
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 type MutexContext = { locked: Set<MutexInterface>; releaseTasks: Set<() => void | Promise<void>> }
