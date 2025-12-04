@@ -156,9 +156,34 @@ export type LQStateUpdate = {
 		// TODO bring this up to date with signature of VoteStateUpdate
 		| {
 			type: 'manual'
-			event: 'edit'
-			user: USR.GuiOrChatUserId
+			event: 'edit-queue' | 'edit-settings'
+			user: USR.MiniUser
 		}
+}
+
+export function printSource(source: LQStateUpdate['source']) {
+	if (source.type === 'system') {
+		const eventLabels: Record<typeof source.event, string> = {
+			'server-roll': 'Server rolled to next layer',
+			'app-startup': 'App startup',
+			'vote-timeout': 'Vote timed out',
+			'vote-abort': 'Vote aborted',
+			'vote-cleared': 'Vote cleared',
+			'next-layer-override': 'Next layer overridden',
+			'vote-start': 'Vote started',
+			'admin-change-layer': 'Admin changed layer',
+			'filter-delete': 'Filter deleted',
+			'next-layer-generated': 'Next layer generated',
+			'updates-to-squad-server-toggled': 'Updates to Squad server toggled',
+		}
+		return eventLabels[source.event]
+	} else {
+		const eventLabels: Record<typeof source.event, string> = {
+			'edit-queue': 'saved changes to the queue',
+			'edit-settings': 'edited the queue settings',
+		}
+		return `${source.user.displayName} ${eventLabels[source.event]}`
+	}
 }
 
 export const ServerIdSchema = z.string().min(1).max(256)

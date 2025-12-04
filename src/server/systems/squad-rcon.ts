@@ -1,5 +1,4 @@
-import { sleep } from '@/lib/async'
-import { AsyncResource, registerCleanup } from '@/lib/async'
+import { AsyncResource, CleanupTasks, sleep } from '@/lib/async'
 import { matchLog } from '@/lib/log-parsing'
 
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
@@ -22,25 +21,25 @@ export type SquadRcon = {
 	squadList: AsyncResource<SM.SquadListRes, CS.Log & C.Rcon>
 }
 
-export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, sub: Rx.Subscription): SquadRcon {
+export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, cleanup: CleanupTasks): SquadRcon {
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
 		defaultTTL: 5000,
 	})
-	registerCleanup(() => layersStatus.dispose(), sub)
+	cleanup.push(() => layersStatus.dispose())
 
 	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource('serverInfo', (ctx) => getServerInfo(ctx), {
 		defaultTTL: 10_000,
 	})
-	registerCleanup(() => serverInfo.dispose(), sub)
+	cleanup.push(() => serverInfo.dispose())
 
 	const playerList: SquadRcon['playerList'] = new AsyncResource('playerList', (ctx) => getPlayers(ctx), {
 		defaultTTL: 2000,
 	})
-	registerCleanup(() => playerList.dispose(), sub)
+	cleanup.push(() => playerList.dispose())
 
 	const squadList: SquadRcon['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
-	registerCleanup(() => squadList.dispose(), sub)
+	cleanup.push(() => squadList.dispose())
 
 	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
 	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(

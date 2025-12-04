@@ -274,6 +274,20 @@
       "when": 1764447509518,
       "tag": "0038_tidy_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1764792653266,
+      "tag": "0039_minor_arachne",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1764813139440,
+      "tag": "0040_damp_vindicator",
+      "breakpoints": true
     }
   ]
 }

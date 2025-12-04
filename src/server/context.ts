@@ -1,5 +1,5 @@
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResource, AsyncResourceInvocationOpts } from '@/lib/async.ts'
+import type { AsyncResource, AsyncResourceInvocationOpts, CleanupTasks } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
@@ -15,7 +15,7 @@ import type * as SharedLayerListSys from '@/server/systems/shared-layer-list.ser
 import type * as SquadRconSys from '@/server/systems/squad-rcon.ts'
 import type * as SquadServerSys from '@/server/systems/squad-server.ts'
 import * as Otel from '@opentelemetry/api'
-import type { Mutex } from 'async-mutex'
+import type { Mutex, MutexInterface } from 'async-mutex'
 import type * as Fastify from 'fastify'
 import type Pino from 'pino'
 import * as Rx from 'rxjs'
@@ -62,7 +62,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		root?: boolean
 		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
 		extraText?: (...args: Parameters<Cb>) => string
-		mutexes?: (...args: Parameters<Cb>) => Mutex[] | Mutex
+		mutexes?: (...args: Parameters<Cb>) => MutexInterface[] | MutexInterface
 	},
 	cb: Cb,
 ): Cb {
@@ -314,10 +314,10 @@ export type SquadServer = Rcon & {
 } & ServerId
 
 export type SharedLayerList = SharedLayerListSys.SharedLayerListContext & ServerId
-export type ServerSliceSub = {
-	serverSliceSub: Rx.Subscription
+export type ServerSliceCleanup = {
+	cleanup: CleanupTasks
 }
-export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceSub & AdminList
+export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceCleanup & AdminList
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

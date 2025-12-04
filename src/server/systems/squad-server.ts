@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { AsyncResource, distinctDeepEquals, externBufferTime, registerCleanup as registerCleanupSub, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { AsyncResource, CleanupTask, CleanupTasks, distinctDeepEquals, externBufferTime, performCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
@@ -37,7 +37,7 @@ import * as SharedLayerList from '@/server/systems/shared-layer-list.server'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
-import { Mutex } from 'async-mutex'
+import { Mutex, withTimeout } from 'async-mutex'
 
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
@@ -53,7 +53,7 @@ type State = {
 	// wsClientId => server id
 	selectedServers: Map<string, string>
 	selectedServerUpdate$: Rx.Subject<{ wsClientId: string; serverId: string }>
-	serverEventIdCounter: Generator<bigint, never, unknown>
+	serverEventIdCounter: Generator<number, never, unknown>
 
 	debug__ticketOutcome?: { team1: number; team2: number }
 }
@@ -85,8 +85,17 @@ export type SquadServer = {
 
 		createdSquads: (SM.Squads.Key & { creatorIds: SM.PlayerIds.Type })[]
 
-		chatEventBuffer: CHAT.Event[]
+		// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
+		eventBuffer: SM.Events.Event[]
+		// if null, we haven't saved yet in this instantiation of the server
+		lastSavedEventId: number | null
+
+		destroyed: boolean
+
+		//
+		cleanupId: number | null
 	}
+	savingEventsMtx: Mutex
 
 	// intermediate event so that initNewGameHandling's behaviour is downstream from event$
 	beforeNewGame$: Rx.Subject<[CS.Log & C.Db & C.ServerSlice, SM.LogEvents.NewGame]>
@@ -165,13 +174,13 @@ export const orpcRouter = {
 			return { code: 'err:unknown' as const, message: 'Failed to end match: unknown error' }
 		}
 		if (result.type === 'ROUND_ENDED') {
-			await SquadRcon.warnAllAdmins(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
+			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.matchEnded(ctx.user))
 			return { code: 'ok' as const, message: 'Match ended successfully' }
 		}
 		assertNever(result.type)
 	}),
 
-	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.bigint().optional() }).optional()).handler(
+	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.number().optional() }).optional()).handler(
 		async function*({ context, signal, input }) {
 			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[]> = selectedServerCtx$(context)
 				.pipe(
@@ -183,37 +192,17 @@ export const orpcRouter = {
 								matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
 							}
 
-							let allEvents: SM.Events.Event[] = ctx.server.state.chatEventBuffer
+							let allEvents: SM.Events.Event[] = ctx.server.state.eventBuffer
 							let events: (SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[] = []
 
 							if (input?.lastEventId === undefined) {
-								// get the last two games
-								let cutoffIndex = null
-								let gameCount = 0
-								for (let i = allEvents.length - 1; i >= 0; i--) {
-									if (allEvents[i].type !== 'NEW_GAME') continue
-									gameCount++
-									if (gameCount === 2) {
-										cutoffIndex = i
-										break
-									}
-								}
-								if (allEvents.length > 0 && cutoffIndex === null) {
-									// if there are no NEW_GAME events, we can at least include up to last 'RESET'. this is what will happen if slm is started for the first time
-									const lastReset = Arr.revFind(allEvents, (e) => e.type === 'RESET')
-									if (lastReset === undefined) {
-										throw new Error('No NEW_GAME or RESET events found in chat event buffer, something is wrong')
-									}
-								}
-								cutoffIndex ??= 0
-
-								events = allEvents.slice(cutoffIndex)
+								events.push(...allEvents)
 								events.push(sync)
 							} else {
 								let lastEventIndex = allEvents.findIndex(e => e.id === input!.lastEventId!)
 
 								// let the client know that we are reconnecting from their last known event id
-								events.push({ type: 'CHAT_RECONNECTED', resumedEventId: input!.lastEventId! })
+								events.push({ type: 'CHAT_RECONNECTED', resumedEventId: lastEventIndex === -1 ? null : input!.lastEventId! })
 								// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
 								events.push(...allEvents.slice(lastEventIndex + 1))
 								events.push(sync)
@@ -273,8 +262,8 @@ export async function setup() {
 		E.desc(Schema.serverEvents.id),
 	).limit(1)
 	// driver sometimes returns strings so just to be safe
-	const nextId = lastEventRes.length > 0 ? BigInt(lastEventRes[0].id) + 1n : 0n
-	globalState.serverEventIdCounter = Gen.counterBigint(nextId)
+	const nextId = lastEventRes.length > 0 ? Number(lastEventRes[0].id) + 1 : 0
+	globalState.serverEventIdCounter = Gen.counter(nextId)
 
 	for (const serverConfig of CONFIG.servers) {
 		const settingsFromConfig = {
@@ -334,11 +323,11 @@ export async function setup() {
 async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	const serverId = serverState.id
 	const settings = serverState.settings
-	const cleanupSub = new Rx.Subscription()
+	const cleanup: CleanupTasks = []
 
 	const rcon = new Rcon({ serverId, settings: settings.connections.rcon })
 	rcon.ensureConnected(ctx)
-	registerCleanupSub(() => rcon.disconnect({ log: baseLogger }), cleanupSub)
+	cleanup.push(() => rcon.disconnect({ log: baseLogger }))
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
@@ -353,7 +342,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			defaultTTL: adminListTTL,
 		})
 	})()
-	registerCleanupSub(() => adminList.dispose(), cleanupSub)
+	cleanup.push(() => adminList.dispose())
 
 	const sftpReader = new SftpTail(ctx, {
 		filePath: settings.connections!.sftp.logFile,
@@ -364,7 +353,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		pollInterval: CONFIG.squadServer.sftpPollInterval,
 		reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
 	})
-	registerCleanupSub(() => sftpReader.disconnect(), cleanupSub)
+	cleanup.push(() => sftpReader.disconnect())
 	sftpReader.watch()
 
 	const server: SquadServer = {
@@ -386,17 +375,21 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			joinRequests: new Map(),
 			connected: [],
 			createdSquads: [],
-			chatEventBuffer: [],
+			eventBuffer: [],
+			lastSavedEventId: null,
+			destroyed: false,
+			cleanupId: null,
 		},
+		savingEventsMtx: new Mutex(),
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanupSub),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup),
 	}
 
-	registerCleanupSub(() => {
+	cleanup.push(() => {
 		server.serverRolling$.complete()
 		server.beforeNewGame$.complete()
 		server.event$.complete()
-	}, cleanupSub)
+	})
 
 	let previouslyConnected = false
 	// -------- make sure history and chat state is up to date once an rcon connection is established --------
@@ -420,14 +413,20 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 			// -------- load saved events --------
 			{
-				const matchesToLoad = ctx.matchHistory.recentMatches.slice(-2)
-				const matchIds = matchesToLoad.map(match => match.historyEntryId)
+				const match = MatchHistory.getCurrentMatch(ctx)
 				const rowsRaw = await ctx.db().select().from(Schema.serverEvents).where(
-					E.inArray(Schema.serverEvents.matchId, matchIds),
-				)
-
+					E.eq(Schema.serverEvents.matchId, match.historyEntryId),
+				).orderBy(E.asc(Schema.serverEvents.id))
 				const events = rowsRaw.map(fromEventRow)
-				server.state.chatEventBuffer = events
+
+				if (events.length > 0 && !events.some(e => e.type === 'NEW_GAME')) {
+					ctx.log.error(
+						'match %d does not have a NEW_GAME event. continuing anyway, but this should be resolved.',
+						match.historyEntryId,
+					)
+				}
+				server.state.eventBuffer = events
+				server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
 			}
 
 			// -------- set up chat state --------
@@ -520,30 +519,32 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	)
 
 	// -------- process rcon events --------
-	server.rconEvent$.pipe(
-		C.durableSub('squad-server:on-rcon-event', { tracer, eventLogLevel: 'trace', ctx }, async ([_ctx, event]) => {
-			const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
-			ctx.log.info(event, 'Received RCON Event: %s', event.type)
-			const res = await processRconEvent(ctx, event)
-			if (res.code !== 'ok') return res
+	Rx.from(server.historyConflictsResolved$)
+		.pipe(
+			Rx.concatMap(() => server.rconEvent$),
+			C.durableSub('squad-server:on-rcon-event', { tracer, eventLogLevel: 'trace', ctx }, async ([_ctx, event]) => {
+				const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
+				ctx.log.info(event, 'Received RCON Event: %s', event.type)
+				const res = await processRconEvent(ctx, event)
+				if (res.code !== 'ok') return res
 
-			ctx.server.event$.next([ctx, [res.event]])
-			return { code: 'ok' as const }
-		}),
-	).subscribe()
+				ctx.server.event$.next([ctx, [res.event]])
+				return { code: 'ok' as const }
+			}),
+		).subscribe()
 
 	// -------- create synthetic events based on state changes on the server --------
-	server.playerList.observe({ ...ctx, rcon, adminList, serverId })
+	Rx.from(server.historyConflictsResolved$)
 		.pipe(
+			traceTag('listenForSyntheticEvents'),
+			Rx.concatMap(() => server.playerList.observe({ ...ctx, rcon, adminList, serverId })),
 			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
-			// distinctDeepEquals(),
+			// pair with the previous state so we can generate synthetic events by looking for changes
 			Rx.pairwise(),
-			// capture event time before potential buffering
+			// capture event time before we're potentially waiting for server to roll
 			Rx.map(p => [...p, Date.now()] as const),
-			// TODO this may not be correct to do, revisit
-			// buffer events while server is rolling
-			// Rx.bufferWhen(() => server.serverRolling$.pipe(Rx.takeWhile(v => v !== null))),
-			// Rx.concatAll(),
+			// pause while we wait for the server to roll, accumulating player deltas
+			Rx.concatMap(v => server.serverRolling$.pipe(Rx.filter(v => v === null), Rx.map(() => v), Rx.take(1))),
 			Rx.map(
 				// C.spanOp(
 				// 	'squad-server:gen-synthetic-events',
@@ -578,35 +579,23 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		for (const event of events) {
 			ctx.log.info(event, 'emitted event: %s', event.type)
 		}
-		server.state.chatEventBuffer.push(...events)
+		server.state.eventBuffer.push(...events)
 	})
 
 	{
 		// -------- periodically save events  --------
-		let eventBuffer: SM.Events.Event[] = []
-		const saveEventSub = server.event$.pipe(
-			Rx.concatMap(([_, e]) => e),
-			externBufferTime(5_000, eventBuffer),
-			Rx.mergeMap((events) => {
-				if (events.length === 0) return Rx.EMPTY
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				return saveEvents(ctx, events)
-			}),
-			Rx.retry(),
-		).subscribe()
+		const saveEventSub = Rx.interval(10_000).pipe(Rx.exhaustMap(async () => {
+			await server.historyConflictsResolved$
+			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+			return saveEvents(ctx)
+		})).subscribe()
 
-		// -------- save remaining events on shutdown  --------
-		const cleanupId = CleanupSys.register(async () => {
-			if (eventBuffer.length === 0) return
+		// -------- save remaining events on cleanup  --------
+		cleanup.push(async () => {
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 			saveEventSub.unsubscribe()
-			const buffer = [...eventBuffer]
-			eventBuffer.length = 0
-			await saveEvents(ctx, buffer)
+			await saveEvents(ctx)
 		})
-
-		// as soon as we have good reason to we should register destroyServer() instead, but that will need us to change our cleanup mechanism a little
-		registerCleanupSub(() => CleanupSys.unregister(cleanupId), cleanupSub)
 	}
 
 	const slice: C.ServerSlice = {
@@ -615,7 +604,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		rcon,
 		server,
 
-		matchHistory: MatchHistory.initMatchHistoryContext(cleanupSub),
+		matchHistory: MatchHistory.initMatchHistoryContext(cleanup),
 
 		layerQueue: LayerQueue.initLayerQueueContext(),
 
@@ -623,14 +612,14 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			autostartVoteSub: null,
 			voteEndTask: null,
 			state: null,
-			mtx: new Mutex(),
+			mtx: withTimeout(new Mutex(), 1_000),
 
 			update$: new Rx.Subject<V.VoteStateUpdate>(),
 		},
 		sharedList: SharedLayerList.getDefaultState(serverState),
 
 		adminList,
-		serverSliceSub: cleanupSub,
+		cleanup: cleanup,
 	}
 
 	globalState.slices.set(serverId, slice)
@@ -639,6 +628,11 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	SharedLayerList.init({ ...ctx, ...slice })
 	initNewGameHandling({ ...ctx, ...slice })
 	void adminList.get({ ...ctx, ...slice })
+
+	server.state.cleanupId = CleanupSys.register(async () => {
+		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+		await destroyServer(ctx)
+	})
 	ctx.log.info('Initialized server %s', serverId)
 }
 
@@ -709,6 +703,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 						newGameEvent = payload
 						ctx.log.debug('Received NEW_GAME event, waiting for layer change')
 
+						ctx.server.layersStatus.invalidate(ctx)
 						const out = await Rx.firstValueFrom(Rx.race(
 							currentLayerChanged$,
 							doubleEvent$,
@@ -753,7 +748,7 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 
 					ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
 
-					// could inline handleNewGame here
+					// NOTE: handleNewGame does most of the interesting stuff here, probably refactoring opportuntity
 					const res = await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
 					if (res.code !== 'ok') return
 					const [squadsRes, playersRes] = await Promise.all([
@@ -779,8 +774,13 @@ function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
 		).subscribe()
 }
 
-export function destroyServer(ctx: C.ServerSlice & CS.Log) {
-	ctx.serverSliceSub.unsubscribe()
+export async function destroyServer(ctx: C.ServerSlice & CS.Log) {
+	if (ctx.server.state.destroyed) return
+	ctx.server.state.destroyed = true
+	const cleanupId = ctx.server.state.cleanupId
+	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
+	await performCleanup(ctx, ctx.cleanup)
+	// we're not dealing with mutexes yet Sadge
 	globalState.slices.delete(ctx.serverId)
 	for (const [wsClientId, serverId] of Array.from(globalState.selectedServers.entries())) {
 		if (ctx.serverId === serverId) globalState.selectedServers.delete(wsClientId)
@@ -872,7 +872,7 @@ export function resolveWsClientSliceCtx(ctx: C.OrpcBase) {
 
 export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 	const slice = globalState.slices.get(serverId)
-	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found' })
+	if (!slice) throw new Orpc.ORPCError('BAD_REQUEST', { message: 'Server slice not found: ' + serverId })
 	return {
 		...ctx,
 		...slice,
@@ -1285,28 +1285,43 @@ function* generateSyntheticEvents(
 }
 
 // TODO Zod?
-function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
+export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 	return {
+		...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
 		id: row.id,
 		type: row.type,
 		time: row.time.getTime(),
 		matchId: row.matchId,
-		...(superjson.deserialize(row.data as any, { inPlace: true }) as any),
 	}
 }
 
-const saveEvents = C.spanOp(
+export const saveEvents = C.spanOp(
 	'squad-server:save-events',
-	{ tracer },
-	async (ctx: C.ServerSlice & CS.Log & C.Db, events: SM.Events.Event[]) => {
-		if (events.length === 0) return
+	{ tracer, mutexes: (ctx) => ctx.server.savingEventsMtx },
+	async (ctx: C.SquadServer & CS.Log & C.Db) => {
+		const state = ctx.server.state
+
+		let events: SM.Events.Event[] = []
+		if (state.lastSavedEventId === null) {
+			events = state.eventBuffer.slice()
+		} else {
+			const lastSavedIndex = state.eventBuffer.findIndex(e => e.id === state.lastSavedEventId)
+			if (lastSavedIndex === -1) throw new Error(`CRITICAL: Unable to resolve last saved event ${state.lastSavedEventId}`)
+			events = state.eventBuffer.slice(lastSavedIndex + 1)
+		}
+
+		if (events.length === 0) {
+			ctx.log.info('No events to save')
+			return
+		}
+
 		const rows: SchemaModels.NewServerEvent[] = events.map(e => {
-			const { ...rest } = e
+			const { id, type, time, matchId, ...rest } = e
 			return ({
-				id: e.id,
-				type: e.type,
-				time: new Date(e.time),
-				matchId: e.matchId,
+				id,
+				type,
+				time: new Date(time),
+				matchId: matchId,
 				data: superjson.serialize(rest),
 			})
 		})
@@ -1314,8 +1329,10 @@ const saveEvents = C.spanOp(
 		try {
 			await ctx.db({ redactParams: true }).insert(Schema.serverEvents).values(rows)
 		} catch (error) {
-			console.error('Error saving events:', error)
+			ctx.log.error('Failed to save events', error)
 		}
+		ctx.log.info('saved %d events [%d:%d]', events.length, events[0].id, events[events.length - 1].id)
+		state.lastSavedEventId = events[events.length - 1].id
 	},
 )
 

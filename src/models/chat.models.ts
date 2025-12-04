@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -22,7 +23,7 @@ export type ConnectionErrorEvent = {
 
 export type ReconnectedEvent = {
 	type: 'CHAT_RECONNECTED'
-	resumedEventId: bigint
+	resumedEventId: null | number
 }
 
 export type InterpolableState = {
@@ -73,7 +74,7 @@ export type EventEnriched =
 export type NoopEvent = {
 	type: 'NOOP'
 	reason: string
-	id: bigint
+	id: number
 	time: number
 	matchId: number
 	originalEvent: Event
@@ -99,7 +100,7 @@ const SAVEPOINT_INTERVAL = 100
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
-	savedAtEventId: bigint
+	savedAtEventId: number
 	state: InterpolableState
 }
 
@@ -142,6 +143,9 @@ export function handleEvent(
 			// we're good to go, should be receiving events soon
 			state.synced = false
 			return
+		}
+		if (event.resumedEventId !== null) {
+			throw new Error(`resumed from the wrong event id!`)
 		}
 
 		// we're out of sync and we need to reset the state
@@ -211,6 +215,17 @@ export function handleEvent(
 		}
 		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
 		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
+
+		// keep all matches up to and including the first "stable" new game
+		let keptMatchIds = new Set<number>()
+		for (let i = state.eventBuffer.length - 1; i >= 0; i--) {
+			const event = state.eventBuffer[i]
+			if (event.type === 'NEW_GAME') {
+				keptMatchIds.add(event.matchId)
+				if (newFirstEventIndex > i) break
+			}
+		}
+		state.eventBuffer = state.eventBuffer.filter(e => keptMatchIds.has(e.matchId))
 	}
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE `serverEvents` MODIFY COLUMN `id` int unsigned NOT NULL;

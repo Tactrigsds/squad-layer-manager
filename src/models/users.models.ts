@@ -31,7 +31,17 @@ export type User = SchemaModels.User & {
 }
 export type MiniUser = {
 	username: string
-	discordId: string
+	displayName: string
+	discordId: bigint
+}
+
+// reduce down a type that's assignable to MiniUser
+export function toMiniUser(user: MiniUser): MiniUser {
+	return {
+		username: user.username,
+		displayName: user.displayName,
+		discordId: user.discordId,
+	}
 }
 
 export type UserPart = { users: User[] }

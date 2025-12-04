@@ -42,6 +42,13 @@ export function some<T>(iterable: Iterable<T>, predicate: (item: T) => boolean):
 	return false
 }
 
+export function* counter(count = 0): Generator<number, never> {
+	while (true) {
+		yield count
+		count++
+	}
+}
+
 export function* counterBigint(count = 0n): Generator<bigint, never> {
 	while (true) {
 		yield count

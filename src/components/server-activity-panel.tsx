@@ -9,13 +9,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
+import { useStateObservableSelection } from '@/lib/react-rxjs-helpers.ts'
 import { assertNever } from '@/lib/type-guards'
-import type * as CHAT from '@/models/chat.models'
+import * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
+import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
+import * as RPC from '@/orpc.client'
+import * as ConfigClient from '@/systems.client/config.client'
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -335,6 +340,10 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 
 function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' | 'RESET' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+
+	if (!match) return
+	const visibleMatchIndex = match.ordinal - currentMatch.ordinal
 	if (event.type === 'RESET' || event.source === 'rcon-reconnected' || event.source === 'slm-started') {
 		let reasonText: string = ''
 		if (event.type == 'RESET') {
@@ -352,13 +361,16 @@ function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { t
 		)
 	}
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground items-center">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Play className="h-4 w-4 text-green-500" />
-			<span className="text-xs inline-flex flex-wrap items-center gap-1">
-				<span>New game started:</span>
-				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
-			</span>
+		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
+			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
+				<EventTime time={event.time} variant="small" />
+				<Icons.Play className="h-4 w-4 text-green-500 flex-shrink-0" />
+				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow">
+					<span>New game started:</span>
+					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
+					({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex})
+				</span>
+			</div>
 		</div>
 	)
 }
@@ -521,6 +533,7 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 		</div>
 	)
 }
+
 function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
@@ -571,43 +584,61 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 }
 
 function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () => void; isStatePanelOpen?: boolean }) {
-	const eventBuffer = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced ? s.chatState.eventBuffer : null)
+	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 	const connectionError = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.connectionError)
-	const synced = eventBuffer !== null
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
 	const hasScrolledInitially = React.useRef(false)
 	const eventsContainerRef = React.useRef<HTMLDivElement>(null)
 	const [showScrollButton, setShowScrollButton] = React.useState(false)
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
+	const prevState = React.useRef<
+		{ eventGeneration: number; filteredEvents: CHAT.EventEnriched[]; eventFilterState: CHAT.EventFilterState; matchId: number } | null
+	>(null)
+	const filteredEvents = Zus.useStore(
+		SquadServerClient.ChatStore,
+		React.useCallback(s => {
+			if (!s.chatState.synced) return null
+			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
+			if (
+				currentMatch?.historyEntryId === prevState.current?.matchId
+				&& s.eventGeneration === prevState.current?.eventGeneration
+				&& s.eventFilterState === prevState.current.eventFilterState
+			) {
+				return prevState.current?.filteredEvents
+			}
 
-	// Filter events based on the selected filter
-	const filteredEvents = React.useMemo(() => {
-		if (!synced) {
-			return null
-		}
-
-		if (eventFilterState === 'ALL') {
-			return eventBuffer
-		}
-
-		if (eventFilterState === 'CHAT') {
-			// Show only chat messages and broadcasts
-			return eventBuffer.filter(event => event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST')
-		}
-
-		if (eventFilterState === 'ADMIN') {
-			// Show only admin chat messages and broadcasts
-			return eventBuffer.filter(event => {
-				if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') return true
-				if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') return true
-				return false
-			})
-		}
-
-		return eventBuffer
-	}, [eventBuffer, eventFilterState, synced])
+			const eventFilterState = s.eventFilterState
+			const eventBuffer = s.chatState.eventBuffer
+			const filtered: CHAT.EventEnriched[] = []
+			for (const event of eventBuffer) {
+				if (event.matchId !== currentMatch?.historyEntryId) continue
+				if (eventFilterState === 'ALL') {
+					filtered.push(event)
+				} else if (eventFilterState === 'CHAT') {
+					// Show only chat messages and broadcasts
+					if (event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST') {
+						filtered.push(event)
+					}
+				} else if (eventFilterState === 'ADMIN') {
+					// Show only admin chat messages and broadcasts
+					if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') {
+						filtered.push(event)
+					} else if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') {
+						filtered.push(event)
+					}
+				}
+			}
+			prevState.current = {
+				eventGeneration: s.eventGeneration,
+				filteredEvents: filtered,
+				eventFilterState: s.eventFilterState,
+				matchId: currentMatch?.historyEntryId,
+			}
+			return filtered
+		}, [currentMatch?.historyEntryId]),
+	)
 
 	const scrollToBottom = () => {
 		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
@@ -706,8 +737,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 							No events yet
 						</div>
 					)}
-					{filteredEvents
-						&& filteredEvents.map((event, idx) => <EventItem key={`${event.type}-${event.time}-${idx}`} event={event} />)}
+					<PreviousMatchEvents />
+					{filteredEvents && filteredEvents.map((event) => <EventItem key={event.id} event={event} />)}
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST'
@@ -736,6 +767,83 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					</Button>
 				)}
 			</ScrollArea>
+		</div>
+	)
+}
+
+function PreviousMatchEvents() {
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const containerRef = React.useRef<HTMLDivElement>(null)
+	const prevScrollHeightRef = React.useRef<number>(0)
+
+	type Page = {
+		events: CHAT.EventEnriched[]
+		previousOrdinal?: number
+	}
+
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+		// we start at the current match but we don't actually load any events for it
+		initialPageParam: currentMatch.ordinal,
+		// when the current match changes we want to unload these
+		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch.ordinal],
+		staleTime: Infinity,
+		queryFn: async ({ pageParam }): Promise<Page> => {
+			if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: currentMatch.ordinal - 1 }
+			const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
+			if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
+
+			const chatState = CHAT.INITIAL_CHAT_STATE
+			for (const event of res.events) {
+				CHAT.handleEvent(chatState, event)
+			}
+
+			return { events: chatState.eventBuffer, previousOrdinal: res.previousOrdinal }
+		},
+		getNextPageParam: (lastPage: Page) => lastPage?.previousOrdinal,
+	})
+
+	// Maintain scroll position when loading previous matches
+	React.useEffect(() => {
+		if (!containerRef.current) return
+		const scrollElement = containerRef.current.closest('[data-radix-scroll-area-viewport]')
+		if (!scrollElement) return
+
+		const currentScrollHeight = scrollElement.scrollHeight
+		const prevScrollHeight = prevScrollHeightRef.current
+
+		if (prevScrollHeight > 0 && currentScrollHeight > prevScrollHeight) {
+			// Content was added above, adjust scroll position
+			const heightDifference = currentScrollHeight - prevScrollHeight
+			scrollElement.scrollTop += heightDifference
+		}
+
+		prevScrollHeightRef.current = currentScrollHeight
+	}, [data?.pages.length])
+
+	return (
+		<div ref={containerRef}>
+			{data?.pages.map((page, index) => (
+				<div key={index}>
+					{index === data.pages.length - 1 && (hasNextPage
+						? (
+							<Button
+								onClick={() => fetchNextPage()}
+								variant="secondary"
+								className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+							>
+								<Icons.ChevronUp className="h-4 w-4" />
+								<span className="text-xs">Load Previous Match</span>
+							</Button>
+						)
+						: (
+							<div className="text-muted-foreground text-xs text-center py-2">
+								No previous matches
+							</div>
+						))}
+					{page?.events?.map((event) => <EventItem key={event.id} event={event} />)}
+				</div>
+			)).reverse()}
 		</div>
 	)
 }

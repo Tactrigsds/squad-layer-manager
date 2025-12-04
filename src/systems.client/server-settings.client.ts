@@ -9,7 +9,7 @@ import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
 import * as Zus from 'zustand'
 
-const [_useServerSettings, serverSettings$] = ReactRx.bind(RPC.observe(() => RPC.orpc.serverSettings.watchSettings.call()))
+export const [useServerSettings, serverSettings$] = ReactRx.bind(RPC.observe(() => RPC.orpc.serverSettings.watchSettings.call()))
 
 export type EditSettingsStore = {
 	ops: SS.SettingMutation[]
@@ -91,7 +91,7 @@ function createStore() {
 }
 
 export function setup() {
-	serverSettings$.subscribe((settings) => {
+	serverSettings$.subscribe(([settings]) => {
 		const updated = Obj.structuralMerge(Store.getState().saved, settings)
 		Store.setState({ saved: updated, edited: updated, ops: [] })
 	})

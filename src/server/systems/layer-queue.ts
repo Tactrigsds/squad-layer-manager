@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { addReleaseTask, withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import type { Parts } from '@/lib/types'
@@ -15,7 +16,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models.ts'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
@@ -30,9 +31,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as SquadServer from '@/server/systems/squad-server.ts'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
-
-import { pushReleaseTask, withAcquired } from '@/lib/nodejs-reentrant-mutexes'
-import type { Mutex } from 'async-mutex'
+import type { Mutex, MutexInterface } from 'async-mutex'
 import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
@@ -42,7 +41,7 @@ import * as Users from './users'
 export type VoteContext = {
 	voteEndTask: Rx.Subscription | null
 	autostartVoteSub: Rx.Subscription | null
-	mtx: Mutex
+	mtx: MutexInterface
 	state: V.VoteState | null
 	update$: Rx.Subject<V.VoteStateUpdate>
 }
@@ -74,25 +73,25 @@ export const init = C.spanOp(
 			// -------- initialize vote state --------
 			await syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
-			pushReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
+			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
 
 			ctx.log.info('vote state initialized')
 		})
 		ctx.log.info('initial update complete')
 
 		// -------- log vote state updates --------
-		ctx.serverSliceSub.add(ctx.vote.update$.subscribe((update) => {
+		ctx.cleanup.push(ctx.vote.update$.subscribe((update) => {
 			const ctx = getBaseCtx()
 			ctx.log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
 		}))
 
-		ctx.serverSliceSub.add(ctx.layerQueue.update$.subscribe(([state, ctx]) => {
+		ctx.cleanup.push(ctx.layerQueue.update$.subscribe(([state, ctx]) => {
 			ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
 		}))
 
 		// -------- schedule generic admin reminders --------
 		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
-			ctx.serverSliceSub.add(
+			ctx.cleanup.push(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
 					C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
@@ -116,7 +115,7 @@ export const init = C.spanOp(
 		}
 
 		// -------- when SLM is not able to set a layer on the server, notify admins.
-		ctx.serverSliceSub.add(
+		ctx.cleanup.push(
 			ctx.layerQueue.unexpectedNextLayerSet$
 				.pipe(
 					Rx.switchMap((unexpectedNextLayer) => {
@@ -175,7 +174,7 @@ export const init = C.spanOp(
 	},
 )
 
-export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHistory.mtx], async (
+export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHistory.mtx, ctx.server.savingEventsMtx], async (
 	ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
 	newLayer: L.UnvalidatedLayer,
 	newGameEvent?: SM.LogEvents.NewGame,
@@ -210,6 +209,7 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 				lqItem: currentMatchLqItem,
 			}),
 		)
+
 		await syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
 		await syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
 		await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
@@ -347,7 +347,7 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 				)
 			}
 			vote.state = newVoteState
-			pushReleaseTask(() => vote.update$.next(update))
+			addReleaseTask(() => vote.update$.next(update))
 		}
 	},
 )
@@ -439,7 +439,7 @@ export const startVote = C.spanOp(
 			ctx.vote.autostartVoteSub = null
 
 			ctx.vote.state = updatedVoteState
-			pushReleaseTask(() => ctx.vote.update$.next(update))
+			addReleaseTask(() => ctx.vote.update$.next(update))
 			registerVoteDeadlineAndReminder$(ctx)
 			void broadcastVoteUpdate(
 				ctx,
@@ -548,7 +548,7 @@ export const abortVote = C.spanOp(
 			}
 			await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.aborted)
 			ctx.vote.state = null
-			pushReleaseTask(() => ctx.vote.update$.next(update))
+			addReleaseTask(() => ctx.vote.update$.next(update))
 			ctx.vote.voteEndTask?.unsubscribe()
 			ctx.vote.voteEndTask = null
 			const layerQueue = Obj.deepClone(serverState.layerQueue)
@@ -579,7 +579,7 @@ export const cancelVoteAutostart = C.spanOp(
 		delete newVoteState.autostartTime
 		ctx.vote.state = newVoteState
 
-		pushReleaseTask(() => {
+		addReleaseTask(() => {
 			ctx.vote.update$.next({
 				source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
 				state: ctx.vote.state,
@@ -716,7 +716,7 @@ const handleVoteTimeout = C.spanOp(
 				state: null,
 				source: { type: 'system', event: 'vote-timeout' },
 			}
-			pushReleaseTask(() => ctx.vote.update$.next(update))
+			addReleaseTask(() => ctx.vote.update$.next(update))
 
 			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 			await updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
@@ -848,7 +848,11 @@ export async function updateQueue(
 		await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
 		await syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
 
-		const update = await updateServerState(ctx, serverState, { type: 'manual', user: { discordId: ctx.user.discordId }, event: 'edit' })
+		const update = await updateServerState(ctx, serverState, {
+			type: 'manual',
+			user: USR.toMiniUser(ctx.user),
+			event: 'edit-queue',
+		})
 
 		return { code: 'ok' as const, update }
 	})
@@ -874,7 +878,9 @@ export async function updateServerState(
 	if (changes.layerQueueSeqId && changes.layerQueueSeqId !== serverState.layerQueueSeqId) {
 		throw new Error('Invalid layer queue sequence ID')
 	}
-	newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
+	if (!Obj.deepEqual(newServerState.layerQueue, serverState.layerQueue)) {
+		newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
+	}
 	await ctx.db().update(Schema.servers)
 		.set(superjsonify(Schema.servers, { ...changes, layerQueueSeqId: newServerState.layerQueueSeqId }))
 		.where(E.eq(Schema.servers.id, ctx.serverId))

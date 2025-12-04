@@ -53,13 +53,13 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 	}
 }
 
-export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceSub) {
+export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
 	const editSession = ctx.sharedList.session
 	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId
 
 	void sendUpdate(ctx, { code: 'init', session: editSession, presence, sessionSeqId: 1 })
-	ctx.serverSliceSub.add(ctx.layerQueue.update$.subscribe(withAcquired(() => ctx.sharedList.mtx, async ([update, _ctx]) => {
+	ctx.cleanup.push(ctx.layerQueue.update$.subscribe(withAcquired(() => ctx.sharedList.mtx, async ([update, _ctx]) => {
 		const ctx = SquadServer.resolveSliceCtx(_ctx, _ctx.serverId)
 		if (update.state.layerQueueSeqId === ctx.sharedList.queueSeqId) return
 
@@ -82,7 +82,7 @@ export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.S
 	})))
 
 	// -------- take editing user out of editing slot on disconnect --------
-	ctx.serverSliceSub.add(
+	ctx.cleanup.push(
 		WSSessionSys.disconnect$.pipe(
 			// just add a flat delay for disconnects to give the user time to reconnect in a differen session
 			Rx.delay(PresenceActions.DISCONNECT_TIMEOUT),

@@ -9,7 +9,6 @@ export const pageLoaded: Action = (input) => {
 	return {
 		away: false,
 		activityState: null,
-		lastSeen: Date.now(),
 	}
 }
 
@@ -36,7 +35,6 @@ export const navigatedAway: Action = () => {
 	return {
 		away: true,
 		activityState: null,
-		lastSeen: Date.now(),
 	}
 }
 
@@ -56,18 +54,6 @@ export const updateActivity = (activity: SLL.RootActivity): Action => {
 		activityState: activity,
 		lastSeen: Date.now(),
 	})
-}
-
-export const endActivity = (activity?: SLL.RootActivity): Action => (input) => {
-	let newActivity: SLL.RootActivity | null = null
-	if (activity) {
-		newActivity = Obj.deepEqual(activity, input.prev?.activityState) ? null : input.prev!.activityState
-	}
-	return {
-		away: false,
-		activityState: newActivity,
-		lastSeen: Date.now(),
-	}
 }
 
 // the queue has been permanently written to

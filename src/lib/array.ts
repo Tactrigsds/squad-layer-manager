@@ -91,9 +91,26 @@ export function paged<T>(arr: T[], pageSize: number): T[][] {
 	return result
 }
 
-export function revFind<T>(arr: T[], predicate: (item: T) => boolean): T | undefined {
-	for (let i = arr.length - 1; i >= 0; i--) {
-		if (predicate(arr[i])) {
+export function revFind<T>(arr: T[], predicate: (item: T) => boolean): T | undefined
+export function revFind<T>(arr: T[], startIndex: number, predicate: (item: T) => boolean): T | undefined
+export function revFind<T>(
+	arr: T[],
+	predicateOrStartIndex: ((item: T) => boolean) | number,
+	predicate?: (item: T) => boolean,
+): T | undefined {
+	let actualPredicate: (item: T) => boolean
+	let startIndex: number
+
+	if (typeof predicateOrStartIndex === 'function') {
+		actualPredicate = predicateOrStartIndex
+		startIndex = arr.length - 1
+	} else {
+		actualPredicate = predicate!
+		startIndex = predicateOrStartIndex
+	}
+
+	for (let i = startIndex; i >= 0; i--) {
+		if (actualPredicate(arr[i])) {
 			return arr[i]
 		}
 	}
@@ -126,4 +143,19 @@ export function* revIter<T>(arr: T[]): Generator<T> {
 	for (let i = arr.length - 1; i >= 0; i--) {
 		yield arr[i]
 	}
+}
+
+export function partition<T, S extends T>(arr: T[], predicate: (item: T) => item is S): [S[], Exclude<T, S>[]]
+export function partition<T>(arr: T[], predicate: (item: T) => boolean): [T[], T[]]
+export function partition<T>(arr: T[], predicate: (item: T) => boolean): [T[], T[]] {
+	const truthy: T[] = []
+	const falsy: T[] = []
+	for (const item of arr) {
+		if (predicate(item)) {
+			truthy.push(item)
+		} else {
+			falsy.push(item)
+		}
+	}
+	return [truthy, falsy]
 }

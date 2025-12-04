@@ -1,6 +1,7 @@
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import * as Obj from '@/lib/object'
 import * as SS from '@/models/server-state.models'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as DB from '@/server/db.ts'
 import orpcBase from '@/server/orpc-base'
@@ -13,21 +14,21 @@ import { z } from 'zod'
 
 export const orpcRouter = {
 	watchSettings: orpcBase.handler(async function*({ context: _ctx, signal }) {
-		const obs = SquadServer.selectedServerCtx$(_ctx)
+		const obs: Rx.Observable<Readonly<[SS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>> = SquadServer.selectedServerCtx$(_ctx)
 			.pipe(
 				Rx.switchMap(async function*(ctx) {
 					const state = await LayerQueue.getServerState(ctx)
 					const settings = SS.getPublicSettings(state.settings)
-					yield settings
+					yield [settings, null] as const
 
 					const settingsDelta$ = ctx.layerQueue.update$.pipe(
-						Rx.map(([update]) => SS.getPublicSettings(update.state.settings)),
-						Rx.startWith(settings),
+						Rx.map(([update]) => [SS.getPublicSettings(update.state.settings), update.source as SS.LQStateUpdate['source']] as const),
+						Rx.startWith([settings, null] as const),
 						Rx.pairwise(),
 					)
-					for await (const [prevSettings, settings] of toAsyncGenerator(settingsDelta$)) {
+					for await (const [[prevSettings], [settings, event]] of toAsyncGenerator(settingsDelta$)) {
 						if (Obj.deepEqual(settings, prevSettings)) continue
-						yield settings
+						yield [settings, event] as const
 					}
 				}),
 				withAbortSignal(signal!),
@@ -57,8 +58,8 @@ export const orpcRouter = {
 
 				await LayerQueue.updateServerState(ctx, { settings: state.settings }, {
 					type: 'manual',
-					user: { discordId: ctx.user.discordId },
-					event: 'edit',
+					user: USR.toMiniUser(ctx.user),
+					event: 'edit-settings',
 				})
 			})
 		}),

@@ -378,7 +378,7 @@ function MatchHistoryRow({
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
 						<div className="group-hover:opacity-0 ">
-							{visibleIndex.toString()}.
+							-{visibleIndex.toString()}
 						</div>
 					</TableCell>
 					{

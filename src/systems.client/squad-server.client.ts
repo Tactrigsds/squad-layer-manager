@@ -40,35 +40,37 @@ export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | n
 
 const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
 let previouslyConnected = false
-export const [useChatEvents, chatEvent$] = ReactRx.bind(
-	RPC.observe(
-		() => {
-			const eventBuffer = ChatStore.getState().chatState.eventBuffer
-			return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id })
+
+export const chatEvent$ = RPC.observe(
+	() => {
+		const eventBuffer = ChatStore.getState().chatState.eventBuffer
+		return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id })
+	},
+	{
+		onError: () => {
+			chatDisconnected$.next({
+				type: 'CONNECTION_ERROR',
+				code: previouslyConnected ? 'CONNECTION_LOST' : 'RECONNECT_FAILED',
+				time: Date.now(),
+			})
 		},
-		{
-			onError: () => {
-				chatDisconnected$.next({
-					type: 'CONNECTION_ERROR',
-					code: previouslyConnected ? 'CONNECTION_LOST' : 'RECONNECT_FAILED',
-					time: Date.now(),
-				})
-			},
-		},
-	).pipe(Rx.tap({ next: () => (previouslyConnected = true) })),
-)
+	},
+).pipe(Rx.tap({ next: () => (previouslyConnected = true) }), Rx.share())
 
 type ChatStore = {
 	chatState: CHAT.ChatState
 	eventFilterState: CHAT.EventFilterState
 	setEventFilterState(state: CHAT.EventFilterState): void
 	handleChatEvents(event: (CHAT.Event | CHAT.SyncedEvent | CHAT.ConnectionErrorEvent)[]): void
+	// increments every time we modify the chat state
+	eventGeneration: number
 }
 
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.INITIAL_CHAT_STATE,
 		eventFilterState: 'ALL',
+		eventGeneration: 0,
 		setEventFilterState(state) {
 			set({ eventFilterState: state })
 		},
@@ -76,19 +78,13 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 			const config = ConfigClient.getConfig()
 			set(state => {
 				let chatState = state.chatState
-				chatState = {
-					interpolatedState: CHAT.InterpolableState.clone(chatState.interpolatedState),
-					synced: chatState.synced,
-
-					savepoints: [...chatState.savepoints],
-					eventBuffer: [...chatState.eventBuffer],
-					rawEventBuffer: [...chatState.rawEventBuffer],
-				}
+				// this is done to cache break the selectors
+				chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
 				for (const event of events) {
 					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
 					CHAT.handleEvent(chatState, event, config?.chat)
 				}
-				return { chatState }
+				return { chatState, eventGeneration: state.eventGeneration + 1 }
 			})
 		},
 	}

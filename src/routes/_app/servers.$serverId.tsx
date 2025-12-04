@@ -1,7 +1,10 @@
 import LayerQueueDashboard from '@/components/layer-queue-dashboard'
+import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
+import * as SS from '@/models/server-state.models'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as ConfigClient from '@/systems.client/config.client'
+import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { createFileRoute } from '@tanstack/react-router'
@@ -46,8 +49,9 @@ function RouteComponent() {
 			Rx.audit(t => t === 1 ? Rx.of(true) : Rx.of(true).pipe(Rx.delay(2000))),
 			Rx.switchMap(() => Rx.concat(Rx.of(true), timeout$)),
 		)
+		const sub = new Rx.Subscription()
 
-		const sub = interaction$.subscribe((active) => {
+		sub.add(interaction$.subscribe((active) => {
 			try {
 				const storeState = SLLClient.Store.getState()
 				if (active) {
@@ -60,7 +64,14 @@ function RouteComponent() {
 			} catch (error) {
 				console.error('Error in pushing pageInteraction$', error)
 			}
-		})
+		}))
+
+		sub.add(ServerSettingsClient.serverSettings$.subscribe(([settings, source]) => {
+			if (!source) return
+			globalToast$.next({
+				title: SS.printSource(source),
+			})
+		}))
 
 		return () => sub.unsubscribe()
 	}, [serverId])

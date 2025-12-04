@@ -2,7 +2,7 @@ import * as Obj from '@/lib/object'
 import type * as CS from '@/models/context-shared'
 import type * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-import { Mutex } from 'async-mutex'
+import { Mutex, MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { createId } from './id'
 
@@ -100,8 +100,34 @@ export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }
 
-export function registerCleanup(cb: () => void, sub: Rx.Subscription) {
-	sub.add(Rx.NEVER.pipe(Rx.finalize(cb)).subscribe())
+export function isSubscription(value: any): value is Rx.Subscription {
+	return typeof value === 'object' && 'subscribe' in value && 'unsubscribe' in value
+}
+
+export type CleanupTask = Rx.Subscription | Rx.ObservableInput<unknown> | (() => Rx.ObservableInput<unknown> | void)
+export type CleanupTasks = CleanupTask[]
+
+export function performCleanup(ctx: CS.Log, tasks: CleanupTasks) {
+	return Rx.lastValueFrom(Rx.concat(tasks.map(to$)).pipe(Rx.endWith(0)))
+
+	function to$(_task: CleanupTask) {
+		let task = typeof _task === 'function' ? _task() : _task
+		if (isSubscription(task)) {
+			task.unsubscribe()
+			return Rx.EMPTY
+		}
+		if (!task) {
+			return Rx.EMPTY
+		}
+		if (!Rx.isObservable(task)) {
+			task = Rx.from(task)
+		}
+
+		return task.pipe(Rx.catchError((e) => {
+			ctx.log.error(e, 'caught error during cleanup')
+			return Rx.EMPTY
+		}))
+	}
 }
 
 /**
@@ -304,7 +330,7 @@ export class AsyncExclusiveTaskRunner {
 	}
 }
 
-export async function acquireInBlock(mutex: Mutex, opts?: { lock?: boolean }) {
+export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean }) {
 	const lock = opts?.lock ?? true
 	let release: (() => void) | undefined
 	if (lock) {

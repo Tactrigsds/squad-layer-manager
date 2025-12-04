@@ -1,9 +1,9 @@
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { registerCleanup, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { CleanupTasks, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import { pushReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
@@ -19,6 +19,7 @@ import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
+import { z } from 'zod'
 import { CONFIG } from '../config'
 import orpcBase from '../orpc-base'
 import * as UsersClient from './users'
@@ -28,25 +29,30 @@ const tracer = Otel.trace.getTracer('match-history')
 export type MatchHistoryContext = {
 	mtx: Mutex
 	update$: Rx.Subject<void>
+	dispatchUpdate: () => void
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
-	cleanupSub: Rx.Subscription
+
+	// NOTE: does not include the current match
+	recentMatchEvents: Map<number, SM.Events.Event[]>
 } & Parts<USR.UserPart>
 
-export function initMatchHistoryContext(cleanupSub: Rx.Subscription): MatchHistoryContext {
+export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryContext {
+	const update$ = new Rx.Subject<void>()
 	const ctx: MatchHistoryContext = {
 		mtx: new Mutex(),
-		update$: new Rx.Subject(),
+		update$,
+		// we have to define this separately because we're passing it to withAcquired, which dedupes release tasks by reference equality. that means we have to define this once here and not reference update$ in a closure instead. Convoluted I know but what else is new :shrug:
+		dispatchUpdate: () => update$.next(),
 		parts: { users: [] },
 		recentMatches: [],
 		recentBalanceTriggerEvents: [],
-		cleanupSub,
+		recentMatchEvents: new Map(),
 	}
 
-	registerCleanup(() => {
+	cleanup.push(async () => {
 		ctx.update$.complete()
-		ctx.mtx.release()
-	}, cleanupSub)
+	}, cleanup)
 
 	return ctx
 }
@@ -65,33 +71,63 @@ export const loadState = C.spanOp(
 	{ tracer },
 	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
-		const recentMatchesCte = ctx.db().select().from(Schema.matchHistory).where(
-			E.and(
-				opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gte(Schema.matchHistory.ordinal, 0),
-				E.eq(Schema.matchHistory.serverId, ctx.serverId),
-			),
-		).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(100).as(
-			'recent_matches',
+		const recentMatchesCte = ctx.db().$with('recent_matches').as(
+			ctx.db().select().from(Schema.matchHistory).where(
+				E.and(
+					opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gte(Schema.matchHistory.ordinal, 0),
+					E.eq(Schema.matchHistory.serverId, ctx.serverId),
+				),
+			).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(100),
 		)
 
-		const rows = await ctx.db().select().from(recentMatchesCte)
-			.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId))
-			// keep in mind that there may be multiple balance trigger events for this history entry id, and therefore multiple rows for a single match history entry
-			.leftJoin(Schema.balanceTriggerEvents, E.eq(recentMatchesCte.id, Schema.balanceTriggerEvents.matchTriggeredId))
+		const [rows, balanceTriggerRows, eventRows] = await Promise.all([
+			ctx.db().with(recentMatchesCte).select().from(recentMatchesCte)
+				.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId)),
+			ctx.db().with(recentMatchesCte).select({
+				balanceTriggerEvents: Schema.balanceTriggerEvents,
+			}).from(Schema.balanceTriggerEvents)
+				.innerJoin(recentMatchesCte, E.eq(Schema.balanceTriggerEvents.matchTriggeredId, recentMatchesCte.id)),
+			ctx.db().with(recentMatchesCte).select({
+				serverEvents: Schema.serverEvents,
+				matchId: recentMatchesCte.id,
+			}).from(Schema.serverEvents)
+				.innerJoin(recentMatchesCte, E.eq(Schema.serverEvents.matchId, recentMatchesCte.id)),
+		])
 
-		ctx.log.info('found %d rows', rows.length)
+		ctx.log.info(
+			'found %d match history rows, %d balance trigger events, %d server events',
+			rows.length,
+			balanceTriggerRows.length,
+			eventRows.length,
+		)
+
 		for (const row of rows.reverse()) {
 			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches))
 			Arr.upsertOn(state.recentMatches, details, 'historyEntryId')
-			if (row.balanceTriggerEvents) {
-				Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
-			}
+
 			if (row.users) {
 				const user = await UsersClient.buildUser(ctx, row.users)
 				Arr.upsertOn(state.parts.users, user, 'discordId')
 			}
 		}
+
+		for (const row of balanceTriggerRows) {
+			Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
+		}
+
+		for (const row of eventRows) {
+			const event = SquadServer.fromEventRow(row.serverEvents)
+			const matchId = row.matchId
+			// discord events from current match
+			if (matchId === ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1].historyEntryId) continue
+			if (!state.recentMatchEvents.has(matchId)) {
+				state.recentMatchEvents.set(matchId, [])
+			}
+			const events = state.recentMatchEvents.get(matchId)!
+			Arr.upsertOn(events, event, 'id')
+		}
+
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
@@ -134,21 +170,49 @@ export const matchHistoryRouter = {
 
 		yield* toAsyncGenerator(state$)
 	}),
+
+	getMatchEvents: orpcBase.input(z.number()).handler(async ({ input: ordinal, context: _ctx }) => {
+		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
+		const match = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal)
+		const previousMatch = ctx.matchHistory.recentMatches.find(m => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
+		if (!match) return null
+		const events = ctx.matchHistory.recentMatchEvents.get(match.historyEntryId)
+		return {
+			events,
+			previousOrdinal: previousMatch?.ordinal,
+		}
+	}),
 }
 
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: CS.Log & C.Db & C.MatchHistory, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
+	async (
+		ctx: CS.Log & C.Db & C.MatchHistory & C.SquadServer,
+		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
+	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }))
-				.$returningId()
-			await loadState(ctx, { startAtOrdinal: ordinal })
-		})
+			const oldMatchId = currentMatch?.historyEntryId ?? null
+			await ctx.db().insert(Schema.matchHistory).values(
+				superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }),
+			)
 
-		pushReleaseTask(() => ctx.matchHistory.update$.next())
+			// write buffer since we're about to flush it
+			await SquadServer.saveEvents(ctx)
+			ctx.server.state.lastSavedEventId = null
+			// flush the events buffer
+			const eventBuffer = ctx.server.state.eventBuffer
+			ctx.server.state.eventBuffer = []
+			// we should have a complete set of the now previous match's events, so let's set them here
+			if (oldMatchId) {
+				ctx.matchHistory.recentMatchEvents.set(oldMatchId, eventBuffer.filter(e => e.matchId === oldMatchId))
+			}
+
+			await loadState(ctx, { startAtOrdinal: ordinal })
+			addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		})
 
 		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
 	},
@@ -232,9 +296,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		return { code: 'ok' as const }
 	})
 	if (res.code !== 'ok') return res
-	pushReleaseTask(() => {
-		return ctx.matchHistory.update$.next()
-	})
+	addReleaseTask(ctx.matchHistory.dispatchUpdate)
 	return { ...res }
 })
 
@@ -250,7 +312,7 @@ export const syncWithCurrentLayer = C.spanOp(
 			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
 				await loadState(ctx)
-				pushReleaseTask(() => ctx.matchHistory.update$.next())
+				addReleaseTask(ctx.matchHistory.dispatchUpdate)
 				return { pushedNewGame: false }
 			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
@@ -261,7 +323,7 @@ export const syncWithCurrentLayer = C.spanOp(
 				setByType: 'unknown',
 			}))
 			await loadState(ctx)
-			pushReleaseTask(() => ctx.matchHistory.update$.next())
+			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 			return { pushedNewGame: true }
 		})
 	},

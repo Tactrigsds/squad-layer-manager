@@ -25,7 +25,7 @@ function formatInterval(interval: number, terse = true) {
 export const BROADCASTS = {
 	fogOff: 'Fog of War is disabled. All points are visible. Check your maps.',
 	matchEnded(user: USR.User) {
-		return `${user.displayName} ended the match via squad-layer-manager`
+		return `${user.displayName} ended the match via SLM`
 	},
 	queue: {},
 	vote: {

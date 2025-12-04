@@ -154,12 +154,15 @@ export function CurrentLayerCardContent() {
 							<DialogTrigger asChild>
 								<DropdownMenuItem
 									disabled={!canEndMatch}
-									className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 flex flex-col"
+									className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600 data-[noplayers]:flex data-[noplayers]:flex-col"
+									data-noplayers={!hasPlayers || undefined}
 								>
 									<span>End Match</span>
-									<small>
-										(disabled: Cannot end match when server is empty.)
-									</small>
+									{!hasPlayers && (
+										<small>
+											(disabled: Cannot end match when server is empty.)
+										</small>
+									)}
 								</DropdownMenuItem>
 							</DialogTrigger>
 							{updatesToSquadServerDisabled

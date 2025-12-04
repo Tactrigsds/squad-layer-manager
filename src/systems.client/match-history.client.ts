@@ -1,3 +1,4 @@
+import { useStateObservableSelection } from '@/lib/react-rxjs-helpers'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems.client/parts'
@@ -17,6 +18,10 @@ export const [useRecentMatches, recentMatches$] = ReactRx.bind(
 	matchHistoryState$.pipe(Rx.map((state) => {
 		return [...state.recentMatches]
 	})),
+)
+
+export const [useCurrentMatch, currentMatch$] = ReactRx.bind(
+	() => recentMatches$.pipe(Rx.map(matches => matches[matches.length - 1])),
 )
 
 export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
@@ -52,4 +57,5 @@ export function setup() {
 	})
 	recentMatchHistory$().subscribe()
 	initializedRecentMatches$().subscribe()
+	currentMatch$().subscribe()
 }
