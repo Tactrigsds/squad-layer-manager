@@ -340,7 +340,7 @@ function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { t
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 
-	if (!match) return
+	if (!match || !currentMatch) return
 	const visibleMatchIndex = match.ordinal - currentMatch.ordinal
 	if (event.type === 'RESET' || event.source === 'rcon-reconnected' || event.source === 'slm-started') {
 		let reasonText: string = ''
@@ -662,7 +662,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	const filteredEvents = Zus.useStore(
 		SquadServerClient.ChatStore,
 		React.useCallback(s => {
-			if (!s.chatState.synced) return null
+			if (!s.chatState.synced || currentMatch?.historyEntryId === undefined) return null
 			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
 			if (
 				currentMatch?.historyEntryId === prevState.current?.matchId
@@ -844,14 +844,14 @@ function PreviousMatchEvents() {
 
 	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isError } = useInfiniteQuery({
 		// we start at the current match but we don't actually load any events for it
-		initialPageParam: (currentMatch?.ordinal) - 1,
+		initialPageParam: currentMatch?.ordinal !== undefined ? currentMatch.ordinal - 1 : 0,
 		enabled: !!currentMatch,
 		// when the current match changes we want to unload these
-		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch.ordinal],
+		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch?.ordinal],
 		staleTime: Infinity,
 		queryFn: async ({ pageParam }): Promise<Page> => {
 			try {
-				if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
+				if (pageParam === currentMatch!.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
 				const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
 				if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
 

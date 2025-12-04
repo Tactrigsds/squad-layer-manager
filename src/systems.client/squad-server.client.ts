@@ -1,8 +1,5 @@
 import * as AR from '@/app-routes'
-
-import { distinctDeepEquals } from '@/lib/async'
 import * as CHAT from '@/models/chat.models'
-import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems.client/app-routes.client'
@@ -28,14 +25,6 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind<SM.ServerInfo | null>(
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind<number | null>(
 	RPC.observe(() => RPC.orpc.squadServer.watchServerRolling.call()),
-)
-
-export const [useCurrentMatch, currentMatch$] = ReactRx.bind<MH.MatchDetails | null>(
-	layersStatus$.pipe(
-		Rx.map(res => res.code === 'ok' && res.data.currentMatch ? res.data.currentMatch : null),
-		distinctDeepEquals(),
-	),
-	null,
 )
 
 const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
@@ -125,7 +114,7 @@ export function usePlayerCount() {
 
 export function setup() {
 	serverInfoRes$.subscribe()
-	currentMatch$.subscribe()
+	layersStatus$.subscribe()
 	serverRolling$.subscribe()
 	Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
 		ChatStore.getState().handleChatEvents(events as (CHAT.Event | CHAT.ConnectionErrorEvent | CHAT.SyncedEvent)[])

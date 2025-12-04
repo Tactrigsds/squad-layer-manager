@@ -1,7 +1,7 @@
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems.client/parts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
+
 import * as ReactRx from '@react-rxjs/core'
 import { createSignal } from '@react-rxjs/utils'
 import * as Rx from 'rxjs'
@@ -20,7 +20,7 @@ export const [useRecentMatches, recentMatches$] = ReactRx.bind(
 )
 
 export const [useCurrentMatch, currentMatch$] = ReactRx.bind(
-	() => recentMatches$.pipe(Rx.map(matches => matches[matches.length - 1])),
+	() => recentMatches$.pipe(Rx.map(matches => (matches[matches.length - 1]) as MH.MatchDetails | undefined)),
 )
 
 export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
@@ -35,18 +35,6 @@ export async function resolveInitializedRecentMatches() {
 	return recentMatches
 }
 
-export const [useRecentMatchHistory, recentMatchHistory$] = ReactRx.bind(
-	() =>
-		Rx.combineLatest([recentMatches$, SquadServerClient.currentMatch$])
-			.pipe(
-				Rx.map(([matchHistory, currentMatch]) => {
-					if (currentMatch === null) return [...matchHistory]
-					return matchHistory.slice(0, matchHistory.length - 1)
-				}),
-			),
-	[],
-)
-
 export function setup() {
 	matchHistoryState$.subscribe(() => {
 		setInitialized(true)
@@ -54,7 +42,6 @@ export function setup() {
 	recentMatches$.subscribe(matches => {
 		console.log('RECENT MATCHES:', matches)
 	})
-	recentMatchHistory$().subscribe()
 	initializedRecentMatches$().subscribe()
 	currentMatch$().subscribe()
 }

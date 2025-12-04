@@ -292,7 +292,7 @@ function SyncToSquadServerDisabledAlert() {
 }
 
 function PostGameBalanceTriggerAlert() {
-	const currentMatch = SquadServerClient.useCurrentMatch()
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const allTriggerEvents = MatchHistoryClient.useMatchHistoryState().recentBalanceTriggerEvents
 	if (!currentMatch || currentMatch.status !== 'post-game') return null
 	const events = allTriggerEvents.filter(event => event.matchTriggeredId === currentMatch.historyEntryId)

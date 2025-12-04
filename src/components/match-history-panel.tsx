@@ -13,7 +13,7 @@ import * as DndKit from '@/systems.client/dndkit'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
+
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -31,8 +31,8 @@ const MAX_PAGES = 5
 
 export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const history = MatchHistoryClient.useRecentMatchHistory()
 	const historyState = MatchHistoryClient.useMatchHistoryState()
+	const history = historyState.recentMatches.slice(0, historyState.recentMatches.length - 1)
 	const [showFullDay, setShowFullDay] = React.useState(false)
 	const currentMatch = historyState.recentMatches ? historyState.recentMatches[historyState.recentMatches.length - 1] : undefined
 	const currentMatchOrdinal = currentMatch?.ordinal ?? 0
@@ -261,7 +261,7 @@ function MatchHistoryRow({
 	balanceTriggerEvents,
 }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const currentMatch = SquadServerClient.useCurrentMatch()
+	const currentMatch = MatchHistoryClient.useCurrentMatch()
 
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
