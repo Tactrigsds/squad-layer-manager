@@ -536,7 +536,7 @@ function PlayerDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
-			<Icons.Skull className="h-4 w-4 text-red-500" />
+			<Icons.Skull className="h-4 w-4 text-foreground" />
 			<span className="text-xs flex items-center gap-1">
 				<PlayerDisplay player={event.victim} matchId={event.matchId} /> killed by{' '}
 				<PlayerDisplay player={event.attacker} matchId={event.matchId} />
@@ -549,11 +549,11 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 	const getIcon = () => {
 		switch (event.variant) {
 			case 'suicide':
-				return <Icons.Frown className="h-4 w-4 text-orange-400" />
+				return <Icons.HeartPulse className="h-4 w-4 text-orange-400" />
 			case 'teamkill':
-				return <Icons.AlertTriangle className="h-4 w-4 text-yellow-500" />
+				return <Icons.HeartPulse className="h-4 w-4 text-red-500" />
 			case 'normal':
-				return <Icons.Heart className="h-4 w-4 text-red-400" />
+				return <Icons.HeartPulse className="h-4 w-4 text-foreground" />
 		}
 	}
 
