@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
+import * as Obj from '@/lib/object'
 
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT from '@/models/chat.models'
@@ -789,11 +790,11 @@ function PreviousMatchEvents() {
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch.ordinal],
 		staleTime: Infinity,
 		queryFn: async ({ pageParam }): Promise<Page> => {
-			if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: currentMatch.ordinal - 1 }
+			if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
 			const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
 			if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
 
-			const chatState = CHAT.INITIAL_CHAT_STATE
+			const chatState = Obj.deepClone(CHAT.INITIAL_CHAT_STATE)
 			for (const event of res.events) {
 				CHAT.handleEvent(chatState, event)
 			}
