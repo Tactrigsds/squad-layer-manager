@@ -69,6 +69,8 @@ export type EventEnriched =
 	| (SM.Events.UnpossessedAdminCamera & { player: SM.Player })
 	| (SM.Events.ChatMessage & { player: SM.Player })
 	| (SM.Events.AdminBroadcast & { player: SM.Player | undefined })
+	| (SM.Events.PlayerDied & { victim: SM.Player; attacker: SM.Player })
+	| (SM.Events.PlayerWounded & { victim: SM.Player; attacker: SM.Player })
 
 export type NoopEvent = {
 	type: 'NOOP'
@@ -540,6 +542,54 @@ export function interpolateEvent(
 				...event,
 				player: player,
 			} as SM.Events.AdminBroadcast & { player: SM.Player }
+		}
+
+		case 'PLAYER_DIED': {
+			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victimIds)
+			if (!victim) {
+				return noop(
+					`Victim ${
+						SM.PlayerIds.prettyPrint(event.victimIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attackerIds)
+			if (!attacker) {
+				return noop(
+					`Attacker ${
+						SM.PlayerIds.prettyPrint(event.attackerIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+			return {
+				...event,
+				victim,
+				attacker,
+			}
+		}
+
+		case 'PLAYER_WOUNDED': {
+			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victimIds)
+			if (!victim) {
+				return noop(
+					`Victim ${
+						SM.PlayerIds.prettyPrint(event.victimIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attackerIds)
+			if (!attacker) {
+				return noop(
+					`Attacker ${
+						SM.PlayerIds.prettyPrint(event.attackerIds)
+					} was involved in ${event.type} but was not found in the interpolated player list`,
+				)
+			}
+			return {
+				...event,
+				victim,
+				attacker,
+			}
 		}
 
 		default:

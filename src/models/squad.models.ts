@@ -1,4 +1,4 @@
-import { createLogMatcher, eventSchema } from '@/lib/log-parsing'
+import { createLogMatcher, eventDef } from '@/lib/log-parsing'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
@@ -563,6 +563,25 @@ export namespace Events {
 	export type PlayerBanned = RconEvents.PlayerBanned & Base
 	export type PlayerWarned = RconEvents.PlayerWarned & Base
 
+	export type PlayerDied = {
+		type: 'PLAYER_DIED'
+		victimIds: PlayerIds.Type
+		attackerIds: PlayerIds.Type
+		damage: number
+		weapon: string
+	} & Base
+
+	export type PlayerWoundedVariant = 'normal' | 'suicide' | 'teamkill'
+
+	export type PlayerWounded = {
+		type: 'PLAYER_WOUNDED'
+		victimIds: PlayerIds.Type
+		attackerIds: PlayerIds.Type
+		damage: number
+		weapon: string
+		variant: PlayerWoundedVariant
+	} & Base
+
 	export type Event =
 		| NewGame
 		| Reset
@@ -578,6 +597,8 @@ export namespace Events {
 		| PlayerKicked
 		| PlayerBanned
 		| PlayerWarned
+		| PlayerDied
+		| PlayerWounded
 		// synthetic
 		| PlayerDetailsChanged
 		| PlayerChangedTeam
@@ -588,16 +609,16 @@ export namespace Events {
 }
 
 export namespace RconEvents {
-	const ChatMessageSchema = eventSchema('CHAT_MESSAGE', {
+	const ChatMessageSchema = eventDef('CHAT_MESSAGE', {
 		time: z.number(),
 		channelType: CHAT_CHANNEL_TYPE,
 		message: z.string(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type ChatMessage = z.infer<typeof ChatMessageSchema>
+	export type ChatMessage = z.infer<typeof ChatMessageSchema['schema']>
 
 	export const ChatMessageMatcher = createLogMatcher({
-		schema: ChatMessageSchema,
+		event: ChatMessageSchema,
 		regex: /\[(ChatAll|ChatTeam|ChatSquad|ChatAdmin)] \[Online IDs:([^\]]+)\] (.+?) : (.*)/,
 		onMatch: (match) => {
 			return {
@@ -609,15 +630,15 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerWarnedSchema = eventSchema('PLAYER_WARNED', {
+	const PlayerWarnedSchema = eventDef('PLAYER_WARNED', {
 		time: z.number(),
 		reason: z.string(),
 		playerIds: PlayerIds.IdQuerySchema,
 	})
-	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
+	export type PlayerWarned = z.infer<typeof PlayerWarnedSchema['schema']>
 
 	export const PlayerWarnedMatcher = createLogMatcher({
-		schema: PlayerWarnedSchema,
+		event: PlayerWarnedSchema,
 		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/,
 		onMatch: (match) => {
 			return {
@@ -628,14 +649,14 @@ export namespace RconEvents {
 		},
 	})
 
-	const PossessedAdminCameraSchema = eventSchema('POSSESSED_ADMIN_CAMERA', {
+	const PossessedAdminCameraSchema = eventDef('POSSESSED_ADMIN_CAMERA', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraSchema>
+	export type PossessedAdminCamera = z.infer<typeof PossessedAdminCameraSchema['schema']>
 
 	export const PossessedAdminCameraMatcher = createLogMatcher({
-		schema: PossessedAdminCameraSchema,
+		event: PossessedAdminCameraSchema,
 		regex: /\[Online Ids:([^\]]+)\] (.+) has possessed admin camera\./,
 		onMatch: (match) => {
 			return {
@@ -646,14 +667,14 @@ export namespace RconEvents {
 		},
 	})
 
-	const UnpossessedAdminCameraSchema = eventSchema('UNPOSSESSED_ADMIN_CAMERA', {
+	const UnpossessedAdminCameraSchema = eventDef('UNPOSSESSED_ADMIN_CAMERA', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraSchema>
+	export type UnpossessedAdminCamera = z.infer<typeof UnpossessedAdminCameraSchema['schema']>
 
 	export const UnpossessedAdminCameraMatcher = createLogMatcher({
-		schema: UnpossessedAdminCameraSchema,
+		event: UnpossessedAdminCameraSchema,
 		regex: /\[Online IDs:([^\]]+)\] (.+) has unpossessed admin camera\./,
 		onMatch: (match) => {
 			return {
@@ -663,14 +684,14 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerKickedSchema = eventSchema('PLAYER_KICKED', {
+	const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type PlayerKicked = z.infer<typeof PlayerKickedSchema>
+	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>
 
 	export const PlayerKickedMatcher = createLogMatcher({
-		schema: PlayerKickedSchema,
+		event: PlayerKickedSchema,
 		regex: /Kicked player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*)/,
 		onMatch: (match) => {
 			return {
@@ -680,17 +701,17 @@ export namespace RconEvents {
 		},
 	})
 
-	const SquadCreatedSchema = eventSchema('SQUAD_CREATED', {
+	const SquadCreatedSchema = eventDef('SQUAD_CREATED', {
 		time: z.number(),
 		squadId: ZodUtils.ParsedIntSchema,
 		squadName: z.string(),
 		teamName: z.string(),
 		creatorIds: PlayerIds.Schema,
 	})
-	export type SquadCreated = z.infer<typeof SquadCreatedSchema>
+	export type SquadCreated = z.infer<typeof SquadCreatedSchema['schema']>
 
 	export const SquadCreatedMatcher = createLogMatcher({
-		schema: SquadCreatedSchema,
+		event: SquadCreatedSchema,
 		regex: /(?<playerName>.+) \(Online IDs:([^)]+)\) has created Squad (?<squadId>\d+) \(Squad Name: (?<squadName>.+)\) on (?<teamName>.+)/,
 		onMatch: (match) => {
 			return {
@@ -703,16 +724,16 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerBannedSchema = eventSchema('PLAYER_BANNED', {
+	const PlayerBannedSchema = eventDef('PLAYER_BANNED', {
 		time: z.number(),
 		playerID: z.string(),
 		interval: z.string(),
 		playerIds: PlayerIds.Schema,
 	})
-	export type PlayerBanned = z.infer<typeof PlayerBannedSchema>
+	export type PlayerBanned = z.infer<typeof PlayerBannedSchema['schema']>
 
 	export const PlayerBannedMatcher = createLogMatcher({
-		schema: PlayerBannedSchema,
+		event: PlayerBannedSchema,
 		regex: /Banned player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*) for interval (.*)/,
 		onMatch: (match) => {
 			return {
@@ -734,7 +755,7 @@ export namespace RconEvents {
 		PlayerBannedMatcher,
 	] as const
 
-	export type Event = z.infer<(typeof matchers)[number]['schema']>
+	export type Event = z.infer<(typeof matchers)[number]['event']['schema']>
 }
 
 export const RCON_EVENT_MATCHERS = RconEvents.matchers
@@ -750,17 +771,17 @@ export namespace LogEvents {
 		type: string
 	}
 
-	const NewGameSchema = eventSchema('NEW_GAME', {
+	const NewGameSchema = eventDef('NEW_GAME', {
 		...BaseEventProperties,
 		mapClassname: z.string().trim(),
 		layerClassname: z.string().trim(),
 	})
 
-	export type NewGame = z.infer<typeof NewGameSchema>
+	export type NewGame = z.infer<typeof NewGameSchema['schema']>
 
 	export const NewGameEventMatcher = createLogMatcher({
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogWorld: Bringing World \/([A-z]+)\/(?:Maps\/)?([A-z0-9-]+)\/(?:.+\/)?([A-z0-9-]+)(?:\.[A-z0-9-]+)/,
-		schema: NewGameSchema,
+		event: NewGameSchema,
 		onMatch: (args) => ({
 			raw: args[0],
 			time: parseTimestamp(args[1]),
@@ -770,17 +791,17 @@ export namespace LogEvents {
 		}),
 	})
 
-	const RoundWinnerSchema = eventSchema('ROUND_TEAM_OUTCOME', {
+	const RoundWinnerSchema = eventDef('ROUND_TEAM_OUTCOME', {
 		...BaseEventProperties,
 		winner: z.string(),
 		layer: z.string(),
 	})
 
-	export type RoundTeamOutcome = z.infer<typeof RoundWinnerSchema>
+	export type RoundTeamOutcome = z.infer<typeof RoundWinnerSchema['schema']>
 
 	export const RoundWinnerEventMatcher = createLogMatcher({
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGame: Winner: (.+) \(Layer: (.+)\)/,
-		schema: RoundWinnerSchema,
+		event: RoundWinnerSchema,
 		onMatch: (args) => ({
 			raw: args[0],
 			time: parseTimestamp(args[1]),
@@ -790,7 +811,7 @@ export namespace LogEvents {
 		}),
 	})
 
-	export const RoundDecidedSchema = eventSchema('ROUND_DECIDED', {
+	export const RoundDecidedSchema = eventDef('ROUND_DECIDED', {
 		...BaseEventProperties,
 		team: TeamIdSchema,
 		unit: z.string(),
@@ -801,10 +822,10 @@ export namespace LogEvents {
 		map: z.string(),
 	})
 
-	export type RoundDecided = z.infer<typeof RoundDecidedSchema>
+	export type RoundDecided = z.infer<typeof RoundDecidedSchema['schema']>
 
 	export const RoundDecidedMatcher = createLogMatcher({
-		schema: RoundDecidedSchema,
+		event: RoundDecidedSchema,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadGameEvents: Display: Team ([0-9]+), (.*) \( ?(.*?) ?\) has (won|lost) the match with ([0-9]+) Tickets on layer (.*) \(level (.*)\)!/,
 		onMatch: (args) => {
@@ -823,14 +844,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const RoundEndedSchema = eventSchema('ROUND_ENDED', {
+	export const RoundEndedSchema = eventDef('ROUND_ENDED', {
 		...BaseEventProperties,
 	})
 
-	export type RoundEnded = z.infer<typeof RoundEndedSchema>
+	export type RoundEnded = z.infer<typeof RoundEndedSchema['schema']>
 
 	export const RoundEndedMatcher = createLogMatcher({
-		schema: RoundEndedSchema,
+		event: RoundEndedSchema,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogGameState: Match State Changed from InProgress to WaitingPostMatch/,
 		onMatch: (args) => {
 			return {
@@ -841,14 +862,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerConnectedSchema = eventSchema('PLAYER_CONNECTED', {
+	export const PlayerConnectedSchema = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
 		player: PlayerIds.IdQuerySchema,
 		ip: z.string().ip(),
 	})
-	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema>
+	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema['schema']>
 	export const PlayerConnectedMatcher = createLogMatcher({
-		schema: PlayerConnectedSchema,
+		event: PlayerConnectedSchema,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController_\w+_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
 		onMatch: (args) => {
@@ -862,14 +883,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerDisconnectedSchema = eventSchema('PLAYER_DISCONNECTED', {
+	export const PlayerDisconnectedSchema = eventDef('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdQuerySchema,
 		ip: z.string().ip(),
 	})
-	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema>
+	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema['schema']>
 	export const PlayerDisconnectedMatcher = createLogMatcher({
-		schema: PlayerDisconnectedSchema,
+		event: PlayerDisconnectedSchema,
 		regex:
 			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: UChannel::Close: Sending CloseBunch\. ChIndex == [0-9]+\. Name: \[UChannel\] ChIndex: [0-9]+, Closing: [0-9]+ \[UNetConnection\] RemoteAddr: ([\d.]+):[\d]+, Name: \w+EOSIpNetConnection_[0-9]+, Driver: .*?NetDriver_[0-9]+, IsServer: YES, PC: ([^ ]+), Owner: [^ ]+, UniqueId: RedpointEOS:([\d\w]+)/,
 		onMatch: (args) => {
@@ -886,14 +907,14 @@ export namespace LogEvents {
 		},
 	})
 
-	export const PlayerJoinSuccededSchema = eventSchema('PLAYER_JOIN_SUCCEEDED', {
+	export const PlayerJoinSuccededSchema = eventDef('PLAYER_JOIN_SUCCEEDED', {
 		...BaseEventProperties,
 		player: PlayerIds.IdQuerySchema,
 	})
 
-	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema>
+	export type PlayerJoinSucceeded = z.infer<typeof PlayerJoinSuccededSchema['schema']>
 	export const PlayerJoinSuccededMatcher = createLogMatcher({
-		schema: PlayerJoinSuccededSchema,
+		event: PlayerJoinSuccededSchema,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogNet: Join succeeded: (.+)/,
 		onMatch: (args) => {
 			return {
@@ -905,15 +926,77 @@ export namespace LogEvents {
 		},
 	})
 
-	export const AdminBroadcastSchema = eventSchema('ADMIN_BROADCAST', {
+	export const PlayerDiedSchema = eventDef('PLAYER_DIED', {
+		...BaseEventProperties,
+		victimName: z.string(),
+		damage: z.number(),
+		attackerPlayerController: z.string(),
+		attackerIds: PlayerIds.IdQuerySchema,
+		weapon: z.string(),
+	})
+
+	export type PlayerDied = z.infer<typeof PlayerDiedSchema['schema']>
+	export const PlayerDiedMatcher = createLogMatcher({
+		event: PlayerDiedSchema,
+		regex:
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
+		onMatch: (args) => {
+			// Bail if invalid IDs
+			if (args[6].includes('INVALID')) return null
+
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				victimName: args[3].trim(),
+				damage: parseFloat(args[4]),
+				attackerPlayerController: args[5],
+				attackerIds: PlayerIds.parsePlayerIdQuery({ idsStr: args[6], playerController: args[7] }),
+				weapon: args[8],
+			}
+		},
+	})
+
+	export const PlayerWoundedSchema = eventDef('PLAYER_WOUNDED', {
+		...BaseEventProperties,
+		victimName: z.string(),
+		damage: z.number(),
+		attackerPlayerController: z.string(),
+		attackerIds: PlayerIds.IdQuerySchema,
+		weapon: z.string(),
+	})
+
+	export type PlayerWounded = z.infer<typeof PlayerWoundedSchema['schema']>
+	export const PlayerWoundedMatcher = createLogMatcher({
+		event: PlayerWoundedSchema,
+		regex:
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Wound\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Controller ID: ([\w\d]+)\) caused by ([A-z_0-9-]+)_C/,
+		onMatch: (args) => {
+			// Bail if invalid IDs
+			if (args[6].includes('INVALID')) return null
+
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				victimName: args[3].trim(),
+				damage: parseFloat(args[4]),
+				attackerPlayerController: args[5],
+				attackerIds: PlayerIds.parsePlayerIdQuery({ idsStr: args[6], playerController: args[7] }),
+				weapon: args[8],
+			}
+		},
+	})
+
+	export const AdminBroadcastSchema = eventDef('ADMIN_BROADCAST', {
 		...BaseEventProperties,
 		message: z.string(),
 		from: z.union([z.literal('RCON'), z.literal('unknown'), PlayerIds.Schema]),
 	})
 
-	export type AdminBroadcast = z.infer<typeof AdminBroadcastSchema>
+	export type AdminBroadcast = z.infer<typeof AdminBroadcastSchema['schema']>
 	export const AdminBroadcastMatcher = createLogMatcher({
-		schema: AdminBroadcastSchema,
+		event: AdminBroadcastSchema,
 		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Message broadcasted <(.+)> from (.+)/,
 		// TODO multiline broadcasts will be truncated. eventually we could set up sftp-tail to handle special cases like this, or maybe use multiple matchers and a flag to reconstruct the full broadcast
 		onMatch: (args) => {
@@ -950,6 +1033,8 @@ export namespace LogEvents {
 		PlayerConnectedMatcher,
 		PlayerDisconnectedMatcher,
 		PlayerJoinSuccededMatcher,
+		PlayerDiedMatcher,
+		PlayerWoundedMatcher,
 		AdminBroadcastMatcher,
 	] as const
 
@@ -961,6 +1046,8 @@ export namespace LogEvents {
 		| PlayerConnected
 		| PlayerDisconnected
 		| PlayerJoinSucceeded
+		| PlayerDied
+		| PlayerWounded
 		| AdminBroadcast
 
 	function parseTimestamp(raw: string) {

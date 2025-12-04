@@ -532,6 +532,65 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 	)
 }
 
+function PlayerDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DIED' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Skull className="h-4 w-4 text-red-500" />
+			<span className="text-xs flex items-center gap-1">
+				<PlayerDisplay player={event.victim} matchId={event.matchId} /> killed by{' '}
+				<PlayerDisplay player={event.attacker} matchId={event.matchId} />
+			</span>
+		</div>
+	)
+}
+
+function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WOUNDED' }> }) {
+	const getIcon = () => {
+		switch (event.variant) {
+			case 'suicide':
+				return <Icons.Frown className="h-4 w-4 text-orange-400" />
+			case 'teamkill':
+				return <Icons.AlertTriangle className="h-4 w-4 text-yellow-500" />
+			case 'normal':
+				return <Icons.Heart className="h-4 w-4 text-red-400" />
+		}
+	}
+
+	const getMessage = () => {
+		switch (event.variant) {
+			case 'suicide':
+				return (
+					<>
+						<PlayerDisplay player={event.victim} matchId={event.matchId} /> wounded themselves
+					</>
+				)
+			case 'teamkill':
+				return (
+					<>
+						<PlayerDisplay player={event.victim} matchId={event.matchId} /> teamkilled by{' '}
+						<PlayerDisplay player={event.attacker} matchId={event.matchId} />
+					</>
+				)
+			case 'normal':
+				return (
+					<>
+						<PlayerDisplay player={event.victim} matchId={event.matchId} /> wounded by{' '}
+						<PlayerDisplay player={event.attacker} matchId={event.matchId} />
+					</>
+				)
+		}
+	}
+
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			{getIcon()}
+			<span className="text-xs flex items-center gap-1">{getMessage()}</span>
+		</div>
+	)
+}
+
 function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
@@ -574,6 +633,10 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerJoinedSquadEvent event={event} />
 		case 'PLAYER_PROMOTED_TO_LEADER':
 			return <PlayerPromotedToLeaderEvent event={event} />
+		case 'PLAYER_DIED':
+			return <PlayerDiedEvent event={event} />
+		case 'PLAYER_WOUNDED':
+			return <PlayerWoundedEvent event={event} />
 		case 'NOOP':
 			return null
 		default:

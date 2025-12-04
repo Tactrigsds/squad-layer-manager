@@ -1051,6 +1051,75 @@ async function processServerLogEvent(
 			}
 		}
 
+		case 'PLAYER_DIED': {
+			// Look up the victim player to get their full IDs
+			const victimPlayerRes = await SquadRcon.getPlayer(ctx, { username: logEvent.victimName })
+			if (victimPlayerRes.code !== 'ok') {
+				ctx.log.debug(`Victim player ${logEvent.victimName} not found for PLAYER_DIED event`)
+				return
+			}
+
+			// Look up the attacker player to get their full IDs
+			const attackerPlayerRes = await SquadRcon.getPlayer(ctx, logEvent.attackerIds)
+			if (attackerPlayerRes.code !== 'ok') {
+				ctx.log.debug(`Attacker player ${SM.PlayerIds.prettyPrint(logEvent.attackerIds)} not found for PLAYER_DIED event`)
+				return
+			}
+
+			return {
+				code: 'ok' as const,
+				event: {
+					id: eventId(),
+					type: 'PLAYER_DIED',
+					victimIds: victimPlayerRes.player.ids,
+					attackerIds: attackerPlayerRes.player.ids,
+					damage: logEvent.damage,
+					weapon: logEvent.weapon,
+					...base,
+				} satisfies SM.Events.PlayerDied,
+			}
+		}
+
+		case 'PLAYER_WOUNDED': {
+			// Look up the victim player to get their full IDs
+			const victimPlayerRes = await SquadRcon.getPlayer(ctx, { username: logEvent.victimName })
+			if (victimPlayerRes.code !== 'ok') {
+				ctx.log.debug(`Victim player ${logEvent.victimName} not found for PLAYER_WOUNDED event`)
+				return
+			}
+
+			// Look up the attacker player to get their full IDs
+			const attackerPlayerRes = await SquadRcon.getPlayer(ctx, logEvent.attackerIds)
+			if (attackerPlayerRes.code !== 'ok') {
+				ctx.log.debug(`Attacker player ${SM.PlayerIds.prettyPrint(logEvent.attackerIds)} not found for PLAYER_WOUNDED event`)
+				return
+			}
+
+			// Determine variant based on victim and attacker relationship
+			let variant: SM.Events.PlayerWoundedVariant
+			if (SM.PlayerIds.match(victimPlayerRes.player.ids, attackerPlayerRes.player.ids)) {
+				variant = 'suicide'
+			} else if (victimPlayerRes.player.teamId !== null && victimPlayerRes.player.teamId === attackerPlayerRes.player.teamId) {
+				variant = 'teamkill'
+			} else {
+				variant = 'normal'
+			}
+
+			return {
+				code: 'ok' as const,
+				event: {
+					id: eventId(),
+					type: 'PLAYER_WOUNDED',
+					victimIds: victimPlayerRes.player.ids,
+					attackerIds: attackerPlayerRes.player.ids,
+					damage: logEvent.damage,
+					weapon: logEvent.weapon,
+					variant,
+					...base,
+				} satisfies SM.Events.PlayerWounded,
+			}
+		}
+
 		default:
 			assertNever(logEvent)
 	}
