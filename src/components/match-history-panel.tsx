@@ -34,6 +34,8 @@ export function MatchHistoryPanelContent() {
 	const history = MatchHistoryClient.useRecentMatchHistory()
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const [showFullDay, setShowFullDay] = React.useState(false)
+	const currentMatch = historyState.recentMatches ? historyState.recentMatches[historyState.recentMatches.length - 1] : undefined
+	const currentMatchOrdinal = currentMatch?.ordinal ?? 0
 	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
 		const allEntries = [...(history ?? [])].reverse()
 		const matchesByDate = new Map<string, typeof allEntries>()
@@ -219,7 +221,7 @@ export function MatchHistoryPanelContent() {
 									</TableCell>
 								</TableRow>
 							)
-							: currentEntries.map((entry, index) => {
+							: currentEntries.map((entry) => {
 								const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
 									event => event.matchTriggeredId === entry.historyEntryId,
 								)
@@ -227,7 +229,7 @@ export function MatchHistoryPanelContent() {
 									<MatchHistoryRow
 										key={entry.historyEntryId}
 										entry={entry}
-										index={currentEntries.length - index - 1}
+										currentMatchOffset={currentMatchOrdinal - entry.ordinal}
 										balanceTriggerEvents={balanceTriggerEvents}
 									/>
 								)
@@ -249,13 +251,13 @@ export default function MatchHistoryPanel() {
 
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
-	index: number
+	currentMatchOffset: number
 	balanceTriggerEvents: BAL.BalanceTriggerEvent[]
 }
 
 function MatchHistoryRow({
 	entry,
-	index,
+	currentMatchOffset,
 	balanceTriggerEvents,
 }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
@@ -334,8 +336,6 @@ function MatchHistoryRow({
 		)
 	}
 
-	const visibleIndex = index + 1
-
 	const [leftTeam, rightTeam] = getTeamsDisplay(
 		layer,
 		entry.ordinal,
@@ -378,7 +378,7 @@ function MatchHistoryRow({
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
 						<div className="group-hover:opacity-0 ">
-							-{visibleIndex.toString()}
+							-{currentMatchOffset.toString()}
 						</div>
 					</TableCell>
 					{

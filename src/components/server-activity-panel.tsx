@@ -875,7 +875,7 @@ function PreviousMatchEvents() {
 			</div>
 		)
 	} else {
-		loadElt = <span>idk</span>
+		loadElt = <span data-whelp="idk"></span>
 	}
 
 	return (
