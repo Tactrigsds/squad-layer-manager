@@ -9,15 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
-
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
-
 import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
@@ -794,7 +791,7 @@ function PreviousMatchEvents() {
 			const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
 			if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
 
-			const chatState = Obj.deepClone(CHAT.INITIAL_CHAT_STATE)
+			const chatState = CHAT.getInitialChatState()
 			for (const event of res.events) {
 				CHAT.handleEvent(chatState, event)
 			}

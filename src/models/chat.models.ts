@@ -103,18 +103,22 @@ export type Savepoint = {
 	state: InterpolableState
 }
 
-export const INITIAL_INTERPOLATED_STATE: InterpolableState = {
-	players: [],
-	squads: [],
+export function getInitialInterpolatedState(): InterpolableState {
+	return {
+		players: [],
+		squads: [],
+	}
 }
 
-export const INITIAL_CHAT_STATE: ChatState = {
-	rawEventBuffer: [],
-	interpolatedState: INITIAL_INTERPOLATED_STATE,
-	savepoints: [],
-	eventBuffer: [],
-	// indicates when this chat is now caught up on initial events from the server
-	synced: false,
+export function getInitialChatState(): ChatState {
+	return {
+		rawEventBuffer: [],
+		interpolatedState: getInitialInterpolatedState(),
+		savepoints: [],
+		eventBuffer: [],
+		// indicates when this chat is now caught up on initial events from the server
+		synced: false,
+	}
 }
 
 /**
@@ -148,7 +152,7 @@ export function handleEvent(
 		}
 
 		// we're out of sync and we need to reset the state
-		Object.assign(state, INITIAL_CHAT_STATE)
+		Object.assign(state, getInitialChatState())
 		return
 	}
 
@@ -188,7 +192,7 @@ export function handleEvent(
 		state.eventBuffer = state.eventBuffer.slice(0, lastSaveEventIndex + 1)
 		let savepoint = state.savepoints[state.savepoints.length - 1]
 		if (!savepoint) {
-			state.interpolatedState = InterpolableState.clone(INITIAL_INTERPOLATED_STATE)
+			state.interpolatedState = getInitialInterpolatedState()
 		} else {
 			state.interpolatedState = InterpolableState.clone(savepoint.state)
 		}
