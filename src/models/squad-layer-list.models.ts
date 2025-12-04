@@ -130,11 +130,13 @@ export const UnitSchema = z.object({
 export type Unit = z.infer<typeof UnitSchema>
 
 export const RootSchema = z.object({
-	Maps: z.array(z.any()).transform(maps => maps.filter(map => !map.levelName.includes('Tutorial'))).pipe(z.array(MapSchema)),
+	Maps: z.array(z.any()).transform(maps => maps.filter(map => !['Tutorial', 'Lobby', 'Fireteam'].includes(map.gamemode))).pipe(
+		z.array(MapSchema),
+	),
 	Units: z.record(z.string(), z.any()).transform((units) =>
 		Obj.filterRecord(units, (value, key) => {
 			key = key.toLowerCase()
-			return !key.includes('tutorial') && !key.includes('test') && !key.startsWith('civ')
+			return !key.includes('tutorial') && !key.includes('test') && !key.startsWith('civ') && !key.includes('lobby')
 		})
 	).pipe(z.record(UnitId, UnitSchema)),
 })

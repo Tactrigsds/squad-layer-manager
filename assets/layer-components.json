@@ -16160,6 +16160,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_FRAAS_v2": [
@@ -16750,6 +16841,97 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -24220,6 +24402,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Sanxian_FRAAS_v1": [
@@ -26244,6 +26517,97 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -74275,6 +74639,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_AAS_v2": [
@@ -74394,6 +74849,19 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_AAS_v3": [
@@ -74503,6 +74971,19 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -75299,6 +75780,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -75768,6 +76333,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -76333,6 +76970,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -76802,6 +77523,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -77401,6 +78194,97 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -78011,6 +78895,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_TC_v1": [
@@ -78120,6 +79095,19 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -78249,6 +79237,19 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_Skirmish_v1": [
@@ -78368,6 +79369,19 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Harju_Skirmish_v2": [
@@ -78477,6 +79491,19 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -113246,6 +114273,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Narva_AAS_v2": [
@@ -113836,6 +114954,97 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -114446,6 +115655,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Narva_Destruction_v1": [
@@ -115002,6 +116302,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -115471,6 +116855,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -116036,6 +117492,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -116505,6 +118045,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -117070,6 +118682,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -117539,6 +119235,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -118148,6 +119916,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Narva_Skirmish_v1": [
@@ -118257,6 +120116,19 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -118857,6 +120729,97 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
@@ -124530,6 +126493,90 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -124999,6 +127046,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -125048,6 +127167,18 @@
         }
       },
       {
+        "Faction": "AFU",
+        "Unit": "AmphibiousAssault",
+        "allowedTeams": [
+          1
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
         "Faction": "BAF",
         "Unit": "Armored",
         "allowedTeams": [
@@ -125517,6 +127648,78 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           2
@@ -126126,6 +128329,97 @@
           "boats": false,
           "noHeli": false
         }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "AirAssault",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Armored",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "LightInfantry",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Mechanized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Motorized",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "Support",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": false,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
       }
     ],
     "Skorpo_Skirmish_v1": [
@@ -126235,6 +128529,19 @@
       },
       {
         "Faction": "WPMC",
+        "Unit": "CombinedArms",
+        "allowedTeams": [
+          1,
+          2
+        ],
+        "isDefaultUnit": true,
+        "variants": {
+          "boats": false,
+          "noHeli": false
+        }
+      },
+      {
+        "Faction": "AFU",
         "Unit": "CombinedArms",
         "allowedTeams": [
           1,
