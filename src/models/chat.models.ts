@@ -174,7 +174,7 @@ export function handleEvent(
 
 	// remove all savepoints at or after the mutated index
 	for (let i = mutatedIndex; i < state.rawEventBuffer.length; i++) {
-		const event = state.eventBuffer[i]
+		const event = state.rawEventBuffer[i]
 		const savepointIndex = state.savepoints.findIndex(s => s.savedAtEventId === event.id)
 		if (savepointIndex !== -1) {
 			state.savepoints = state.savepoints.slice(0, savepointIndex)
