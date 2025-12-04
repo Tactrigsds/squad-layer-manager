@@ -780,23 +780,28 @@ function PreviousMatchEvents() {
 		previousOrdinal?: number
 	}
 
-	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, error, isError } = useInfiniteQuery({
 		// we start at the current match but we don't actually load any events for it
 		initialPageParam: currentMatch.ordinal,
 		// when the current match changes we want to unload these
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch.ordinal],
 		staleTime: Infinity,
 		queryFn: async ({ pageParam }): Promise<Page> => {
-			if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
-			const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
-			if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
+			try {
+				if (pageParam === currentMatch.ordinal) return { events: [], previousOrdinal: pageParam - 1 }
+				const res = await RPC.orpc.matchHistory.getMatchEvents.call(pageParam)
+				if (!res?.events) return { events: [] as CHAT.EventEnriched[], previousOrdinal: res?.previousOrdinal }
 
-			const chatState = CHAT.getInitialChatState()
-			for (const event of res.events) {
-				CHAT.handleEvent(chatState, event)
+				const chatState = CHAT.getInitialChatState()
+				for (const event of res.events) {
+					CHAT.handleEvent(chatState, event)
+				}
+
+				return { events: chatState.eventBuffer, previousOrdinal: res.previousOrdinal }
+			} catch (err) {
+				console.error('Failed to fetch match events for ordinal', pageParam, err)
+				throw err
 			}
-
-			return { events: chatState.eventBuffer, previousOrdinal: res.previousOrdinal }
 		},
 		getNextPageParam: (lastPage: Page) => lastPage?.previousOrdinal,
 	})
@@ -823,7 +828,18 @@ function PreviousMatchEvents() {
 		<div ref={containerRef}>
 			{data?.pages.map((page) => (
 				<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
-					{page === data.pages[data.pages.length - 1] && (hasNextPage
+					{page === data.pages[data.pages.length - 1] && (isError
+						? (
+							<Button
+								onClick={() => fetchNextPage()}
+								variant="destructive"
+								className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+							>
+								<Icons.AlertCircle className="h-4 w-4" />
+								<span className="text-xs">Failed to load - Click to retry</span>
+							</Button>
+						)
+						: hasNextPage
 						? (
 							<Button
 								onClick={() => fetchNextPage()}
