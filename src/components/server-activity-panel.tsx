@@ -774,15 +774,17 @@ function PreviousMatchEvents() {
 
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const prevScrollHeightRef = React.useRef<number>(0)
+	const [revealedPageCount, setRevealedPageCount] = React.useState(0)
 
 	type Page = {
 		events: CHAT.EventEnriched[]
 		previousOrdinal?: number
 	}
 
-	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, error, isError } = useInfiniteQuery({
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isError } = useInfiniteQuery({
 		// we start at the current match but we don't actually load any events for it
-		initialPageParam: currentMatch.ordinal,
+		initialPageParam: (currentMatch?.ordinal) - 1,
+		enabled: !!currentMatch,
 		// when the current match changes we want to unload these
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), currentMatch.ordinal],
 		staleTime: Infinity,
@@ -804,7 +806,10 @@ function PreviousMatchEvents() {
 			}
 		},
 		getNextPageParam: (lastPage: Page) => lastPage?.previousOrdinal,
+		maxPages: MH.MAX_RECENT_MATCHES - 1,
 	})
+
+	const totalPages = data?.pages.length ?? 0
 
 	// Maintain scroll position when loading previous matches
 	React.useEffect(() => {
@@ -822,51 +827,62 @@ function PreviousMatchEvents() {
 		}
 
 		prevScrollHeightRef.current = currentScrollHeight
-	}, [data?.pages.length])
+	}, [revealedPageCount])
+
+	let loadElt: React.ReactNode = null
+
+	if (revealedPageCount < totalPages) {
+		loadElt = (
+			<Button
+				onClick={() => {
+					setRevealedPageCount(prev => prev + 1)
+					void fetchNextPage()
+				}}
+				variant="secondary"
+				disabled={isFetchingNextPage}
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+			>
+				<Icons.ChevronUp className="h-4 w-4" />
+				<span className="text-xs">Load Previous Match</span>
+			</Button>
+		)
+	} else if (revealedPageCount >= totalPages && isError) {
+		loadElt = (
+			<Button
+				onClick={() => fetchNextPage()}
+				variant="destructive"
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+			>
+				<Icons.AlertCircle className="h-4 w-4" />
+				<span className="text-xs">Failed to load - Click to retry</span>
+			</Button>
+		)
+	} else if (revealedPageCount >= totalPages && isFetchingNextPage) {
+		loadElt = (
+			<Button
+				variant="secondary"
+				disabled={isFetchingNextPage}
+				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+			>
+				<Icons.Loader2 className="h-4 w-4 animate-spin" />
+				<span className="text-xs">Loading...</span>
+			</Button>
+		)
+	} else if (revealedPageCount >= totalPages && !hasNextPage) {
+		loadElt = (
+			<div className="text-muted-foreground text-xs text-center py-2">
+				No previous matches available {totalPages === MH.MAX_RECENT_MATCHES - 1 ? ' (max already loaded)' : ''}
+			</div>
+		)
+	} else {
+		loadElt = <span>idk</span>
+	}
 
 	return (
 		<div ref={containerRef}>
-			{data?.pages.map((page) => (
+			{loadElt}
+			{data?.pages.slice(0, revealedPageCount).map((page) => (
 				<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
-					{page === data.pages[data.pages.length - 1] && (isError
-						? (
-							<Button
-								onClick={() => fetchNextPage()}
-								variant="destructive"
-								className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-							>
-								<Icons.AlertCircle className="h-4 w-4" />
-								<span className="text-xs">Failed to load - Click to retry</span>
-							</Button>
-						)
-						: hasNextPage
-						? (
-							<Button
-								onClick={() => fetchNextPage()}
-								variant="secondary"
-								disabled={isFetchingNextPage}
-								className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-							>
-								{isFetchingNextPage
-									? (
-										<>
-											<Icons.Loader2 className="h-4 w-4 animate-spin" />
-											<span className="text-xs">Loading...</span>
-										</>
-									)
-									: (
-										<>
-											<Icons.ChevronUp className="h-4 w-4" />
-											<span className="text-xs">Load Previous Match</span>
-										</>
-									)}
-							</Button>
-						)
-						: (
-							<div className="text-muted-foreground text-xs text-center py-2">
-								No previous matches {data.pages.length === MH.MAX_RECENT_MATCHES ? ' (max already loaded)' : ''}
-							</div>
-						))}
 					{page?.events?.map((event) => <EventItem key={event.id} event={event} />)}
 				</div>
 			)).reverse()}
