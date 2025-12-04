@@ -626,7 +626,7 @@ export function displayLayerListItem(item: Item, index: ItemIndex) {
 
 export function getItemNumber(index: ItemIndex) {
 	const inner = index.innerIndex !== null ? `.${index.innerIndex + 1}` : ''
-	return `${index.outerIndex + 1}${inner}`
+	return `+${index.outerIndex + 1}${inner}`
 }
 
 export function resolveLayerQueueItemIndexForNumber(number: string) {

@@ -27,12 +27,13 @@ export type ConstraintMatchesIndicator = {
 	itemParity?: number
 	side?: TooltipContentProps['side']
 	height?: number
+	truncateSize?: boolean
 }
 
 export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 	const filters = FilterEntityClient.useFilterEntities()
 	const height = props.height ?? 24
-	const iconSize = height * 0.75
+	const iconSize = props.truncateSize ? height * 0.75 : height
 
 	const itemId = props.layerItem && LQY.resolveId(props.layerItem)
 	const onMouseOver = () => {

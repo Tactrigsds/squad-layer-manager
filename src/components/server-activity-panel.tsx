@@ -838,7 +838,7 @@ function PreviousMatchEvents() {
 						)
 						: (
 							<div className="text-muted-foreground text-xs text-center py-2">
-								No previous matches
+								No previous matches {data.pages.length === MH.MAX_RECENT_MATCHES ? ' (max already loaded)' : ''}
 							</div>
 						))}
 					{page?.events?.map((event) => <EventItem key={event.id} event={event} />)}

@@ -347,6 +347,7 @@ function buildColDefs(
 						matchingConstraintIds={row.original.constraints.matchedConstraintIds}
 						matchDescriptors={row.original.constraints.matchDescriptors}
 						queriedConstraints={row.original.constraints.queriedConstraints}
+						truncateSize={true}
 						height={32}
 					/>
 				</span>

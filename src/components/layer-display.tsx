@@ -97,7 +97,7 @@ export default function LayerDisplay(
 					allowShowInfo={props.allowShowInfo}
 				/>
 			</span>
-			<span className="flex items-center space-x-1">
+			<span className="flex items-center gap-1">
 				{badges}
 			</span>
 		</div>
