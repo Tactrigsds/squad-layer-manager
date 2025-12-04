@@ -811,6 +811,15 @@ function PreviousMatchEvents() {
 
 	const totalPages = data?.pages.length ?? 0
 
+	const prevCurrentMatchId = React.useRef(-1)
+	// reset  pages when a new game starts
+	React.useEffect(() => {
+		if (!currentMatch?.historyEntryId) return
+		if (prevCurrentMatchId.current === currentMatch.historyEntryId) return
+		prevCurrentMatchId.current = currentMatch.historyEntryId
+		setRevealedPageCount(0)
+	}, [currentMatch?.historyEntryId])
+
 	// Maintain scroll position when loading previous matches
 	React.useEffect(() => {
 		if (!containerRef.current) return
@@ -843,7 +852,7 @@ function PreviousMatchEvents() {
 				className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
 			>
 				<Icons.ChevronUp className="h-4 w-4" />
-				<span className="text-xs">Load Previous Match</span>
+				<span className="text-xs">Show Previous Match</span>
 			</Button>
 		)
 	} else if (revealedPageCount >= totalPages && isError) {
