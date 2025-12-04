@@ -533,6 +533,7 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 }
 
 function PlayerDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DIED' }> }) {
+	return null
 	return (
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
@@ -553,6 +554,7 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 			case 'teamkill':
 				return <Icons.HeartPulse className="h-4 w-4 text-red-500" />
 			case 'normal':
+				return null
 				return <Icons.HeartPulse className="h-4 w-4 text-foreground" />
 		}
 	}
