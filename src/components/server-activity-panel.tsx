@@ -780,7 +780,7 @@ function PreviousMatchEvents() {
 		previousOrdinal?: number
 	}
 
-	const { data, fetchNextPage, hasNextPage } = useInfiniteQuery({
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
 		// we start at the current match but we don't actually load any events for it
 		initialPageParam: currentMatch.ordinal,
 		// when the current match changes we want to unload these
@@ -828,10 +828,22 @@ function PreviousMatchEvents() {
 							<Button
 								onClick={() => fetchNextPage()}
 								variant="secondary"
+								disabled={isFetchingNextPage}
 								className="w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
 							>
-								<Icons.ChevronUp className="h-4 w-4" />
-								<span className="text-xs">Load Previous Match</span>
+								{isFetchingNextPage
+									? (
+										<>
+											<Icons.Loader2 className="h-4 w-4 animate-spin" />
+											<span className="text-xs">Loading...</span>
+										</>
+									)
+									: (
+										<>
+											<Icons.ChevronUp className="h-4 w-4" />
+											<span className="text-xs">Load Previous Match</span>
+										</>
+									)}
 							</Button>
 						)
 						: (
