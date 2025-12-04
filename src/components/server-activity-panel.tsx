@@ -675,20 +675,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			const filtered: CHAT.EventEnriched[] = []
 			for (const event of eventBuffer) {
 				if (event.matchId !== currentMatch?.historyEntryId) continue
-				if (eventFilterState === 'ALL') {
+				if (!CHAT.isEventFiltered(event, eventFilterState)) {
 					filtered.push(event)
-				} else if (eventFilterState === 'CHAT') {
-					// Show only chat messages and broadcasts
-					if (event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST') {
-						filtered.push(event)
-					}
-				} else if (eventFilterState === 'ADMIN') {
-					// Show only admin chat messages and broadcasts
-					if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') {
-						filtered.push(event)
-					} else if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') {
-						filtered.push(event)
-					}
 				}
 			}
 			prevState.current = {
@@ -793,12 +781,12 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			<ScrollArea className={props.className} ref={scrollAreaRef}>
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+					<PreviousMatchEvents />
 					{filteredEvents && filteredEvents.length === 0 && (
 						<div className="text-muted-foreground text-sm text-center py-8">
-							No events yet
+							No events yet for current match
 						</div>
 					)}
-					<PreviousMatchEvents />
 					{filteredEvents && filteredEvents.map((event) => <EventItem key={event.id} event={event} />)}
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
@@ -834,10 +822,18 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 
 function PreviousMatchEvents() {
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const recentMatches = MatchHistoryClient.useRecentMatches()
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const prevScrollHeightRef = React.useRef<number>(0)
 	const [revealedPageCount, setRevealedPageCount] = React.useState(0)
+	const revealedPageMatches: MH.MatchDetails[] = []
+	for (let i = 0; i < revealedPageCount; i++) {
+		if (!currentMatch) break
+		const currentMatchIndex = recentMatches.length - 1
+		revealedPageMatches.push(recentMatches[currentMatchIndex - i - 1])
+	}
 
 	type Page = {
 		events: CHAT.EventEnriched[]
@@ -943,7 +939,7 @@ function PreviousMatchEvents() {
 	} else if (revealedPageCount >= totalPages && !hasNextPage) {
 		loadElt = (
 			<div className="text-muted-foreground text-xs text-center py-2">
-				No previous matches available {totalPages === MH.MAX_RECENT_MATCHES - 1 ? ' (max already loaded)' : ''}
+				No previous matches available for {totalPages === MH.MAX_RECENT_MATCHES - 1 ? ' (max already loaded)' : ''}
 			</div>
 		)
 	} else {
@@ -953,11 +949,22 @@ function PreviousMatchEvents() {
 	return (
 		<div ref={containerRef}>
 			{loadElt}
-			{data?.pages.slice(0, revealedPageCount).map((page) => (
-				<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
-					{page?.events?.map((event) => <EventItem key={event.id} event={event} />)}
-				</div>
-			)).reverse()}
+			{data?.pages.slice(0, revealedPageCount).map((page, pageIndex) => {
+				const match = revealedPageMatches[pageIndex]
+				const filteredEvents = page?.events?.filter(event => !CHAT.isEventFiltered(event, eventFilterState))
+
+				return (
+					<div key={page.events[0]?.id ?? `empty-${page.previousOrdinal}`}>
+						{filteredEvents && filteredEvents.length === 0 && match && (
+							<div className="text-muted-foreground text-xs py-2">
+								No events for {DH.displayLayer(match.layerId)}
+							</div>
+						)}
+						{filteredEvents?.map((event) => <EventItem key={event.id} event={event} />)}
+						<div className="border-t border-border my-2" />
+					</div>
+				)
+			}).reverse()}
 		</div>
 	)
 }

@@ -609,3 +609,21 @@ export function interpolateEvent(
 
 export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
 export type EventFilterState = z.infer<typeof EVENT_FILTER_STATE>
+
+export function isEventFiltered(event: EventEnriched, filterState: EventFilterState): boolean {
+	if (filterState === 'ALL') {
+		return false
+	} else if (filterState === 'CHAT') {
+		// Show only chat messages and broadcasts
+		return !(event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST')
+	} else if (filterState === 'ADMIN') {
+		// Show only admin chat messages and broadcasts
+		if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') {
+			return false
+		} else if (event.type === 'CHAT_MESSAGE' && event.channel.type === 'ChatAdmin') {
+			return false
+		}
+		return true
+	}
+	return false
+}
