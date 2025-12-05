@@ -1,9 +1,8 @@
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
-import { traceTag } from '@/lib/async'
+import { toCold, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
-import { assertNever } from '@/lib/type-guards'
 import type * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
@@ -273,22 +272,20 @@ export function initLayerTable(
 				if (!store.baseQueryInput) return null
 
 				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
-				const getOptionsArgs = (store: Store & Predicates): [LQY.BaseQueryInput, LayerQueriesClient.QueryLayersInputOpts] =>
-					[store.baseQueryInput ?? {}, {
-						cfg: store.layerTable.colConfig,
-						selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
-						pageIndex: store.layerTable.pageIndex,
-						pageSize: store.layerTable.pageSize,
-						sort: store.layerTable.sort,
-					}] as const
-
-				const optionsArgs = getOptionsArgs(store)
-				if (!prev || Obj.deepEqual(getOptionsArgs(prev), optionsArgs)) return null
-
-				const options = LayerQueriesClient.getQueryLayersOptions(...optionsArgs, packet$)
+				const options = LayerQueriesClient.getQueryLayersOptions(store.baseQueryInput ?? {}, {
+					cfg: store.layerTable.colConfig,
+					selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
+					pageIndex: store.layerTable.pageIndex,
+					pageSize: store.layerTable.pageSize,
+					sort: store.layerTable.sort,
+				}, packet$)
 				const data = RPC.queryClient.getQueryData(options.queryKey)
 				if (data) return data
-				void RPC.queryClient.fetchQuery(options)
+				if (RPC.queryClient.isFetching({ queryKey: options.queryKey })) {
+					packet$.complete()
+					return toCold(() => RPC.queryClient.fetchQuery({ queryKey: options.queryKey }) as Promise<LayerQueriesClient.QueryLayersPacket[]>)
+						.pipe(Rx.concatAll())
+				}
 
 				return packet$.pipe(Rx.tap({
 					next: (packet) => {
@@ -297,6 +294,7 @@ export function initLayerTable(
 						}
 					},
 					subscribe: () => {
+						void RPC.queryClient.fetchQuery(options)
 						set({ isFetching: true })
 					},
 					complete: () => {
@@ -318,16 +316,15 @@ export function initLayerTable(
 				},
 			}),
 		).subscribe((packet) => {
-			if (packet.code === 'layers-page') {
+			if (packet.code === 'layers-page' && get().pageData !== packet) {
 				set({ pageData: packet })
 				return
 			}
 
-			if (packet.code === 'menu-item-possible-values') {
+			if (packet.code === 'menu-item-possible-values' && getStore().filterMenuItemPossibleValues !== packet.values) {
 				setStore({ filterMenuItemPossibleValues: packet.values })
 				return
 			}
-			assertNever(packet)
 		}),
 	)
 
