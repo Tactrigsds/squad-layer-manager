@@ -4,15 +4,17 @@ import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models'
 import * as Im from 'immer'
 import React from 'react'
 import * as Rx from 'rxjs'
 
+export type FilterMenuItemPossibleValues = Record<string, string[]>
+
 export type FilterMenuStore = {
 	filter?: F.FilterNode
 	menuItems: Record<string, F.EditableComparison>
-	siblingFilters: { [k in string]: F.FilterNode | undefined }
 	baseQueryInput?: LQY.BaseQueryInput
 	setMenuItems: React.Dispatch<React.SetStateAction<Record<string, F.EditableComparison>>>
 	swapTeams: () => void
@@ -20,17 +22,25 @@ export type FilterMenuStore = {
 	resetFilter: (field: string) => void
 	clearAll$: Rx.Subject<void>
 	resetAllFilters: () => void
+
+	colConfig: LC.EffectiveColumnConfig
 }
 
 export type Store = {
 	filterMenu: FilterMenuStore
 }
 
+export type Predicates = {
+	filterMenuItemPossibleValues?: FilterMenuItemPossibleValues
+}
+
 type Input = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
 	defaultFields?: Partial<L.KnownLayer>
 }
-type Args = FRM.SetupArgs<Input, Store, Store>
+type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
+
+// const
 
 export function initLayerFilterMenuStore(
 	args: Args,
@@ -38,13 +48,12 @@ export function initLayerFilterMenuStore(
 	const emptyItems = getDefaultFilterMenuItemState({}, args.input.colConfig)
 	const defaultItems = getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
 	const filter = getFilterFromComparisons(defaultItems)
-	const siblingFilters = getSiblingFiltersForMenuItems(defaultItems)
 
 	const state: FilterMenuStore = {
 		menuItems: defaultItems,
 		filter,
-		siblingFilters: siblingFilters,
 		baseQueryInput: {},
+		colConfig: args.input.colConfig,
 
 		setMenuItems: (update) => {
 			let updated: Record<string, F.EditableComparison>
@@ -56,14 +65,12 @@ export function initLayerFilterMenuStore(
 			}
 
 			const filter = getFilterFromComparisons(updated)
-			const siblingFilters = getSiblingFiltersForMenuItems(updated)
 
 			args.set(state => ({
 				filterMenu: {
 					...state.filterMenu,
 					menuItems: updated,
 					filter,
-					siblingFilters,
 				},
 			}))
 		},
@@ -189,43 +196,26 @@ function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableCo
 	return FB.and(nodes)
 }
 
-/**
- * Derive filter nodes which
- */
-function getSiblingFiltersForMenuItems(items: Record<string, F.EditableComparison>) {
-	const filtersExcludingFields: Record<string, F.FilterNode | undefined> = {}
-
-	for (const key in items) {
-		const item = items[key]
-		if (!item.column) continue
-
-		const comparisonsToApply: F.FilterNode[] = []
-		for (const candKey in items) {
-			if (key === candKey) continue
-			const cand = items[candKey as keyof L.KnownLayer]
-			if (!F.isValidComparison(cand)) continue
-
-			// don't filter out the composite columns based on the filter with a combined value, because that would be annoying
-			if (item.column === 'Layer' && ['Map', 'Gamemode', 'LayerVersion'].includes(cand.column)) continue
-			if (['Map', 'Gamemode', 'LayerVersion'].includes(item.column) && cand.column === 'Layer') continue
-			comparisonsToApply.push(FB.comp(cand))
-		}
-
-		if (filtersExcludingFields[key]) {
-			console.warn('unexpected duplicate detected when deriving sibling filters', items)
-		}
-		filtersExcludingFields[key] = comparisonsToApply.length > 0 ? FB.and(comparisonsToApply) : undefined
-	}
-
-	return filtersExcludingFields
-}
-
 export function selectFilterMenuConstraints(store: Store): LQY.Constraint[] {
-	const menu = store.filterMenu
-	if (menu.filter) {
-		return [CB.filterAnon('filter-menu', menu.filter)]
+	let items: LQY.FilterMenuItem[] = []
+	for (const [field, node] of Object.entries(store.filterMenu.menuItems)) {
+		const returnPossibleValues = LC.isEnumeratedColumn(field, { effectiveColsConfig: store.filterMenu.colConfig })
+		let excludedSiblings: string[] | undefined
+		const compositeLayerFields = ['Map', 'Gamemode', 'LayerVersion']
+		if (field === 'Layer') {
+			excludedSiblings = compositeLayerFields
+		} else if (compositeLayerFields.includes(field)) {
+			excludedSiblings = ['Faction_1']
+		}
+		items.push({
+			field,
+			node: F.isValidComparison(node) ? FB.comp(node) : undefined,
+			returnPossibleValues,
+			excludedSiblings,
+		})
 	}
-	return []
+	if (items.length === 0) return []
+	return [CB.filterMenuItems('filter-menu', items)]
 }
 
 export function selectSwapFactionsDisabled(state: Store) {
@@ -235,15 +225,4 @@ export function selectSwapFactionsDisabled(state: Store) {
 		)
 	)
 	return swapFactionsDisabled
-}
-
-// extra constraint for filter menu items
-export function selectFilterMenuItemConstraints(state: Store, field: string): LQY.Constraint[] {
-	let constraints: LQY.Constraint[] = []
-	if (state.filterMenu.siblingFilters[field]) {
-		constraints = [
-			CB.filterAnon('sibling-' + field, state.filterMenu.siblingFilters[field]!),
-		]
-	}
-	return constraints
 }

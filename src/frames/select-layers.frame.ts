@@ -69,6 +69,8 @@ type Store =
 	& LayerFilterMenuPrt.Store
 	& LayerTablePrt.Store
 	& LayerTablePrt.Predicates
+	//  setup for this is handled by the layer table partial
+	& LayerFilterMenuPrt.Predicates
 
 export type Types = {
 	name: 'selectLayers'
@@ -181,26 +183,11 @@ export function selectPreMenuFilteredQueryInput(state: Store): LQY.BaseQueryInpu
 	}
 }
 
-// "base" but it's stil after filter menu constraints have been applied
 export function selectBaseQueryInput(state: Store) {
 	const preFiltered = selectPreMenuFilteredQueryInput(state)
 	const filterMenuConstraints = LayerFilterMenuPrt.selectFilterMenuConstraints(state)
 	return LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
 }
-
-export function selectMenuItemQueryInput(state: Store, field: string) {
-	const preFiltered = selectPreMenuFilteredQueryInput(state)
-	const itemConstraints = LayerFilterMenuPrt.selectFilterMenuItemConstraints(state, field)
-	return LQY.mergeBaseInputs(preFiltered, { constraints: [...itemConstraints] })
-}
-
-// export function usePreMenuFilteredQueryInput(key: Key) {
-// 	return useFrameStore(key, ZusUtils.useDeep(selectPreMenuFilteredQueryInput))
-// }
-
-// export function useMenuItemQueryInput(key: Key, field: string) {
-// 	return useStore(key, ZusUtils.useDeep(state => selectMenuItemQueryInput(state, field)))
-// }
 
 function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {
 	let defaults: Partial<L.KnownLayer> = {}

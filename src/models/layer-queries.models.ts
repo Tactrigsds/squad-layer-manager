@@ -51,6 +51,22 @@ export type Constraint =
 		filterResults: boolean
 		id: string
 	}
+	| {
+		type: 'filter-menu-items'
+		items: FilterMenuItem[]
+		filterResults: true
+		indicateMatches: false
+		invert: false
+		id: string
+	}
+
+export type FilterMenuItem = {
+	field: string
+	node?: F.FilterNode
+	returnPossibleValues: boolean
+	// siblings that this menu item *shouldn't* be filtered by
+	excludedSiblings?: string[]
+}
 
 export type ViewableConstraint = Exclude<Constraint, { indicateMatches: false }>
 

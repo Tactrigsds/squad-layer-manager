@@ -26,10 +26,20 @@ export type QueriedLayer = {
 	totalCount: number
 }
 
-export async function queryLayers(args: {
+export type QueryLayersResponsePart = {
+	code: 'layers-page'
+	layers: PostProcessedLayer[]
+	totalCount: number
+	pageCount: number
+} | {
+	code: 'menu-item-possible-values'
+	values: Record<string, string[]>
+} | F.InvalidFilterNodeResult
+
+export async function* queryLayersStreamed(args: {
 	input: LQY.LayersQueryInput
 	ctx: CS.LayerQuery
-}) {
+}): AsyncGenerator<QueryLayersResponsePart> {
 	const ctx: CS.LayerQuery = {
 		...args.ctx,
 		log: args.ctx.log.child({ query: 'query-layers' }),
@@ -42,7 +52,7 @@ export async function queryLayers(args: {
 	ctx.log.debug({ input }, 'running queryLayers')
 
 	const conditionsRes = buildQueryInputSqlCondition(ctx, input)
-	if (conditionsRes.code !== 'ok') return conditionsRes
+	if (conditionsRes.code !== 'ok') return yield conditionsRes
 	const { conditions: whereConditions, selectProperties } = conditionsRes
 
 	if (input.sort && input.sort.type === 'random') {
@@ -56,7 +66,14 @@ export async function queryLayers(args: {
 			input.sort.seed ?? LQY.getSeed(),
 			input.pageIndex!,
 		)
-		return { code: 'ok' as const, layers, totalCount, pageCount: Math.ceil(totalCount / input.pageSize!) }
+		yield { code: 'layers-page' as const, layers, totalCount, pageCount: Math.ceil(totalCount / input.pageSize!) }
+		if (conditionsRes.filterMenuItemPossibleValueConditions) {
+			yield {
+				code: 'menu-item-possible-values',
+				values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
+			}
+		}
+		return
 	}
 
 	const includeWhere = (query: any) => {
@@ -104,11 +121,18 @@ export async function queryLayers(args: {
 	const layers = postProcessLayers(ctx, rows, input)
 	const [countResult] = await countQuery.execute()
 	const totalCount = Number(countResult.count)
-	return {
-		code: 'ok' as const,
+	yield {
+		code: 'layers-page' as const,
 		layers: layers,
 		totalCount,
 		pageCount: Math.ceil(totalCount / input.pageSize!),
+	}
+
+	if (conditionsRes.filterMenuItemPossibleValueConditions) {
+		yield {
+			code: 'menu-item-possible-values',
+			values: await queryFilterMenuPossibleValues(ctx, conditionsRes.filterMenuItemPossibleValueConditions),
+		}
 	}
 }
 
@@ -134,6 +158,19 @@ export async function layerExists({
 			exists: existsMap.has(id),
 		})),
 	}
+}
+
+async function queryFilterMenuPossibleValues(ctx: CS.LayerQuery, conditionsMap: Record<string, SQL<unknown>[]>) {
+	const values: Record<string, string[]> = {}
+	for (const [field, conditions] of Object.entries(conditionsMap)) {
+		const res = (await ctx.layerDb().selectDistinct({ [field]: LC.viewCol(field, ctx) })
+			.from(LC.layersView(ctx))
+			.where(E.and(...conditions)))
+			.map((row: any) => LC.fromDbValue(field, row[field], ctx))
+
+		values[field] = res as string[]
+	}
+	return values
 }
 
 export async function queryLayerComponent(args: {
@@ -376,7 +413,7 @@ function buildQueryInputSqlCondition(
 	ctx: CS.Log & CS.Filters & CS.LayerDb & CS.LayerItemsState,
 	input: LQY.BaseQueryInput,
 ) {
-	const conditions: SQL<unknown>[] = []
+	const baseConditions: SQL<unknown>[] = []
 	const selectProperties: any = {}
 	const constraints = [...(input.constraints ?? [])]
 
@@ -384,6 +421,7 @@ function buildQueryInputSqlCondition(
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
+		if (constraint.type === 'filter-menu-items') continue
 		let res: F.SQLConditionsResult
 		switch (constraint.type) {
 			case 'filter-anon':
@@ -412,14 +450,44 @@ function buildQueryInputSqlCondition(
 
 		if (constraint.filterResults) {
 			const condition = constraint.invert ? E.not(res.condition) : res.condition
-			conditions.push(condition)
+			baseConditions.push(condition)
 		}
 
 		if (constraint.indicateMatches) {
 			selectProperties[`constraint_${i}`] = res.condition
 		}
 	}
-	return { code: 'ok' as const, conditions, selectProperties }
+
+	const conditions: SQL<unknown>[] = [...baseConditions]
+	// the conditions to retrieve possible values for menu items
+	let filterMenuItemPossibleValueConditions: Record<string, SQL<unknown>[]> | undefined
+	// get menu item conditions
+	//
+	const itemConstraint = constraints.find(c => c.type === 'filter-menu-items')
+	if (itemConstraint) {
+		filterMenuItemPossibleValueConditions = {}
+		const itemConditions: Record<string, SQL<unknown>> = {}
+		for (const { field, node } of itemConstraint.items) {
+			if (!node) continue
+			const res = getFilterNodeSQLConditions(ctx, node, [], [])
+			if (res.code !== 'ok') {
+				return res
+			}
+			itemConditions[field] = res.condition
+		}
+		conditions.push(...Object.values(itemConditions))
+
+		for (const currentItem of itemConstraint.items) {
+			if (!currentItem.returnPossibleValues) continue
+			filterMenuItemPossibleValueConditions[currentItem.field] = [...baseConditions]
+			for (const [field, condition] of Object.entries(itemConditions)) {
+				if (currentItem.field === field || currentItem.excludedSiblings?.includes(field)) continue
+				filterMenuItemPossibleValueConditions[currentItem.field].push(condition)
+			}
+		}
+	}
+
+	return { code: 'ok' as const, conditions, selectProperties, filterMenuItemPossibleValueConditions }
 }
 
 export async function getLayerItemStatuses(args: {
@@ -439,6 +507,7 @@ export async function getLayerItemStatuses(args: {
 		for (const item of LQY.coalesceLayerItems(layerItems[i])) {
 			const itemMatchDescriptors: LQY.MatchDescriptor[] = []
 			for (const constraint of constraints) {
+				if (constraint.type === 'filter-menu-items') continue
 				if (constraint.type === 'do-not-repeat') {
 					const descriptors = getisMatchedByRepeatRuleDirect(
 						ctx,
@@ -921,7 +990,6 @@ function postProcessLayers(
 }
 
 export const queries = {
-	queryLayers,
 	layerExists,
 	queryLayerComponent: queryLayerComponent,
 	getLayerItemStatuses,

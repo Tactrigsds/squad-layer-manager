@@ -925,8 +925,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	if (!nextLayerId) {
 		const constraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
-
-		const res = await LayerQueries.queryLayers({
+		const gen = LayerQueries.queryLayersStreamed({
 			ctx: layerCtx,
 			input: {
 				constraints,
@@ -936,8 +935,17 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 				sort: { type: 'random', seed: LQY.getSeed() },
 			},
 		})
-		if (res.code !== 'ok') throw new Error(`Failed to query layers: ${JSON.stringify(res)}`)
-		const ids = res.layers.map(layer => layer.id)
+		let ids: string[] = []
+
+		for await (const packet of gen) {
+			if (packet.code === 'menu-item-possible-values') continue
+			if (packet.code === 'err:invalid-node') {
+				throw new Error(`Invalid node error when generating layer`, { cause: packet.errors })
+			}
+
+			ids = packet.layers.map(l => l.id)
+		}
+
 		;[nextLayerId] = ids
 		if (!nextLayerId) return false
 		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId }, { type: 'generated' })

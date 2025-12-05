@@ -330,11 +330,11 @@ export class AsyncExclusiveTaskRunner {
 	}
 }
 
-export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean }) {
+export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean; priority?: number }) {
 	const lock = opts?.lock ?? true
 	let release: (() => void) | undefined
 	if (lock) {
-		release = await mutex.acquire()
+		release = await mutex.acquire(opts?.priority)
 	}
 	return {
 		[Symbol.dispose]() {

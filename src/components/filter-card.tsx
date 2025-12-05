@@ -436,7 +436,7 @@ export function Comparison(props: {
 	allowedColumns?: string[]
 	allowedComparisonCodes?: F.ComparisonCode[]
 	restrictValueSize?: boolean
-	baseQueryInput?: LQY.BaseQueryInput
+	allowedEnumValues?: string[]
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
@@ -574,7 +574,6 @@ export function Comparison(props: {
 							}
 							setComp((c) => ({ ...c, value }))
 						}}
-						baseQueryInput={props.baseQueryInput}
 					/>
 				)
 			} else {
@@ -583,12 +582,12 @@ export function Comparison(props: {
 						ref={valueBoxRef}
 						lockOnSingleOption={lockOnSingleOption}
 						className={componentStyles}
+						allowedValues={props.allowedEnumValues}
 						column={comp.column as LC.GroupByColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
 							return setComp((c) => ({ ...c, value }))
 						}}
-						baseQueryInput={props.baseQueryInput}
 					/>
 				)
 			}
@@ -616,9 +615,9 @@ export function Comparison(props: {
 						className={componentStyles}
 						ref={valueBoxRef}
 						column={comp.column as LC.GroupByColumn}
+						allowedValues={props.allowedEnumValues}
 						restrictValueSize={restrictValueSize}
 						values={(comp.values ?? []) as string[]}
-						baseQueryInput={props.baseQueryInput}
 						setValues={(action) => {
 							setComp(
 								Im.produce((c) => {
@@ -736,20 +735,18 @@ function StringEqConfig<T extends string | null>(
 	props: {
 		value: T | undefined
 		column: LC.GroupByColumn
+		allowedValues?: T[]
 		setValue: (value: T | undefined) => void
-		baseQueryInput?: LQY.BaseQueryInput
 		className?: string
 		lockOnSingleOption?: boolean
 		ref?: React.ForwardedRef<ComboBoxHandle>
 	},
 ) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
-	const matchedValues = Array.isArray(valuesRes.data) ? valuesRes.data : undefined
 	const options: ComboBoxOption<string>[] = []
 	for (const value of LC.groupByColumnDefaultValues(props.column)) {
 		if (value === null) continue
-		const matched = !matchedValues || matchedValues.includes(value)
+		const matched = props.allowedValues?.includes(value as T) ?? true
 		options.push({ label: value, value, disabled: !matched })
 	}
 	return (
@@ -758,8 +755,8 @@ function StringEqConfig<T extends string | null>(
 			allowEmpty
 			className={props.className}
 			title={props.column}
-			disabled={valuesRes.isSuccess && lockOnSingleOption && options.length === 1}
-			value={(valuesRes.isSuccess && lockOnSingleOption && options.length === 1) ? options[0].value : props.value}
+			disabled={lockOnSingleOption && options.length === 1}
+			value={(lockOnSingleOption && options.length === 1) ? options[0].value : props.value}
 			options={options}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
@@ -770,19 +767,17 @@ function StringInConfig(
 	props: {
 		values: (string | null)[]
 		column: LC.GroupByColumn
+		allowedValues?: (string | null)[]
 		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		baseQueryInput?: LQY.BaseQueryInput
 		className?: string
 		ref?: React.ForwardedRef<ComboBoxHandle>
 		restrictValueSize?: boolean
 	},
 ) {
-	const valuesRes = useLayerComponent({ ...(props.baseQueryInput ?? {}), column: props.column })
-	const matchedValues = Array.isArray(valuesRes.data) ? valuesRes.data : undefined
 	const options: ComboBoxOption<string>[] = []
 	for (const value of LC.groupByColumnDefaultValues(props.column)) {
 		if (value === null) continue
-		const matched = !matchedValues || matchedValues.includes(value)
+		const matched = props.allowedValues?.includes(value) ?? true
 		options.push({ label: value, value, disabled: !matched })
 	}
 	return (

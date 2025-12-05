@@ -1,86 +1,104 @@
+import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
 import type * as CS from '@/models/context-shared'
 import type { LayerDb } from '@/models/layer-db'
+import type * as LQY from '@/models/layer-queries.models'
 import { baseLogger } from '@/server/systems/logger.client'
-import { queries } from '@/systems.shared/layer-queries.shared'
+import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems.shared/layer-queries.shared'
 import { Mutex } from 'async-mutex'
 import { drizzle } from 'drizzle-orm/sql-js'
 import initSqlJs from 'sql.js'
 
-export type QueryType = keyof typeof queries
+export type Request = RequestInner & Sequenced & Prioritized
+
+export type Response = (ResponseInner | { type: 'worker-error'; error: string }) & Sequenced
+
+export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | ContextUpdateRequest
+export type ResponseInner = OtherQueryResponse | QueryLayersResponsePacket | InitResponse | ContextUpdateResponse
+
+export type OtherQueries = typeof queries
+export type OtherQueryType = keyof OtherQueries
 
 export type DynamicQueryCtx = CS.Filters & CS.LayerItemsState
 
-export type QueryRequest<Q extends QueryType = QueryType> = Sequenced & {
-	type: Q
-	input: Parameters<typeof queries[Q]>[0]['input']
+type OtherQueryRequests = { [k in OtherQueryType]: { type: k; input: Parameters<OtherQueries[k]>[0]['input'] } }
+export type OtherQueryRequest = OtherQueryRequests[OtherQueryType]
+
+type OtherQueryResponses = { [k in OtherQueryType]: { type: k; payload: Awaited<ReturnType<OtherQueries[k]>> } }
+export type OtherQueryResponse = OtherQueryResponses[OtherQueryType]
+
+export type QueryLayersRequest = {
+	type: 'queryLayers'
+	input: LQY.LayersQueryInput
 }
 
-export type Response<Q extends { type: string }, Payload = undefined> = Sequenced & {
-	type: Q['type']
-	error?: string
-	payload?: Payload
-}
+export type QueryLayersResponsePacket = { type: 'queryLayers'; payload: QueryLayersResponsePart | { code: 'end' } }
 
-export type QueryResponse<Q extends QueryType = QueryType> = Response<{ type: Q }, Awaited<ReturnType<typeof queries[Q]>>>
-
-export type InitRequest = Sequenced & {
+export type InitRequest = {
 	type: 'init'
-	ctx: CS.EffectiveColumnConfig & DynamicQueryCtx
-	dbBuffer: SharedArrayBuffer
+	input: CS.EffectiveColumnConfig & DynamicQueryCtx
 }
 
-export type InitResponse = Response<InitRequest>
+export type InitResponse = {
+	type: 'init'
+	payload?: undefined
+}
 
-export type ContextUpdateRequest = Sequenced & {
+export type ContextUpdateRequest = {
 	type: 'context-update'
-	ctx: Partial<DynamicQueryCtx>
+	input: Partial<DynamicQueryCtx>
 }
 
-export type ContextUpdateResponse = Sequenced & { type: 'context-update'; error?: string }
+export type ContextUpdateResponse = { type: 'context-update'; payload?: undefined }
 
-export type Sequenced = { seqId: number }
+export type Sequenced = {
+	seqId: number
+}
+export type Prioritized = {
+	priority: number
+}
 
 type State = {
 	ctx: CS.LayerQuery
 }
 
-export type GenericRequest = QueryRequest | InitRequest | ContextUpdateRequest
-
-let state!: State
-
 const mutex = new Mutex()
+let state!: State
 
 onmessage = withErrorResponse(async (e) => {
 	using _lock = await acquireInBlock(mutex)
-	const msg = e.data as GenericRequest
+
+	const msg = e.data as RequestInner & Sequenced & Prioritized
+	function post(response: ResponseInner) {
+		postMessage({ ...response, seqId: msg.seqId })
+	}
 	if (msg.type === 'init') {
 		await init(msg)
-		postMessage({ type: 'init', seqId: msg.seqId } satisfies InitResponse)
+		post({ type: 'init' })
 		return
 	}
 	if (msg.type === 'context-update') {
-		const msg = e.data as ContextUpdateRequest
 		updateContext(msg)
-		postMessage({ type: 'context-update', seqId: msg.seqId } satisfies ContextUpdateResponse)
+		post({ type: 'context-update' })
 		return
 	}
 
-	// @ts-expect-error idgaf
-	const response = await queries[msg.type]({ ctx: state.ctx, input: msg.input })
-	type MsgType = typeof msg.type
-	const sequencedResponse: QueryResponse<MsgType> = {
-		type: msg.type,
-		payload: response as unknown as QueryResponse<MsgType>['payload'],
-		seqId: msg.seqId,
+	if (msg.type === 'queryLayers') {
+		for await (const packet of queryLayersStreamed({ ctx: state.ctx, input: msg.input })) {
+			post({ type: 'queryLayers', payload: packet })
+		}
+		post({ type: 'queryLayers', payload: { code: 'end' } })
+		return
 	}
-	postMessage(sequencedResponse)
+	const response = (await queries[msg.type]({ ctx: state.ctx, input: msg.input as any })) as OtherQueryResponse
+	post({ type: msg.type, payload: response } as any)
 })
 
 async function init(initRequest: InitRequest) {
 	const SQL = await initSqlJs({ locateFile: (file) => `https://sql.js.org/dist/${file}` })
 
-	const driver = new SQL.Database(new Uint8Array(initRequest.dbBuffer))
+	const buffer = await fetchDatabaseBuffer()
+	const driver = new SQL.Database(new Uint8Array(buffer))
 	const db = drizzle(driver, {
 		logger: {
 			logQuery(query, params) {
@@ -90,7 +108,7 @@ async function init(initRequest: InitRequest) {
 	}) as unknown as LayerDb
 	state = {
 		ctx: {
-			...initRequest.ctx,
+			...initRequest.input,
 			log: baseLogger,
 			layerDb: () => db,
 		},
@@ -100,7 +118,7 @@ async function init(initRequest: InitRequest) {
 function updateContext(msg: ContextUpdateRequest) {
 	state.ctx = {
 		...state.ctx,
-		...msg.ctx,
+		...msg.input,
 	}
 }
 
@@ -119,5 +137,70 @@ function withErrorResponse<Msg extends { type: string } & Sequenced>(cb: (e: { d
 			console.error(error)
 			postMessage({ type: e.data.type, error: errorMessage, seqId: e.data.seqId })
 		}
+	}
+}
+
+async function fetchDatabaseBuffer() {
+	try {
+		// Check if SharedArrayBuffer is available
+		if (typeof SharedArrayBuffer === 'undefined') {
+			throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
+		}
+
+		const opfsRoot = await navigator.storage.getDirectory()
+		const dbFileName = 'layers.sqlite3'
+		const hashFileName = 'layers.sqlite3.hash'
+
+		let dbHandle: FileSystemFileHandle
+		let hashHandle: FileSystemFileHandle
+		let storedHash: string | null = null
+
+		try {
+			const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
+				return handle
+			})
+			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
+				return handle
+			})
+			const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
+				return text
+			})
+			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
+		} catch {
+			;[dbHandle, hashHandle] = await Promise.all([
+				opfsRoot.getFileHandle(dbFileName, { create: true }),
+				opfsRoot.getFileHandle(hashFileName, { create: true }),
+			])
+		}
+
+		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
+
+		const res = await fetch(AR.link('/layers.sqlite3'), { headers })
+
+		let buffer: ArrayBuffer
+
+		if (res.status === 304) {
+			const cachedFile = await dbHandle.getFile()
+			buffer = await cachedFile.arrayBuffer()
+		} else {
+			buffer = await res.arrayBuffer()
+
+			// Store in OPFS
+			const writable = await dbHandle.createWritable()
+			await writable.write(buffer)
+			await writable.close()
+
+			// Store hash
+			const etag = res.headers.get('ETag')
+			if (etag) {
+				const hashWritable = await hashHandle.createWritable()
+				await hashWritable.write(etag)
+				await hashWritable.close()
+			}
+		}
+
+		// Convert to SharedArrayBuffer to minimize cloning overhead
+		return buffer
+	} finally {
 	}
 }

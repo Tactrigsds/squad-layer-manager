@@ -1,7 +1,9 @@
+import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
-import { toCold, traceTag } from '@/lib/async'
+import { traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
 import type * as ZusUtils from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
@@ -131,7 +133,8 @@ export type Predicates = {
 
 export type Store = {
 	layerTable: LayerTable
-}
+} & LayerFilterMenuPrt.Predicates
+
 export type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
 export function initLayerTable(
@@ -268,6 +271,8 @@ export function initLayerTable(
 			Rx.startWith([args.get(), null] as const),
 			Rx.map(([store, prev]) => {
 				if (!store.baseQueryInput) return null
+
+				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
 				const getOptionsArgs = (store: Store & Predicates): [LQY.BaseQueryInput, LayerQueriesClient.QueryLayersInputOpts] =>
 					[store.baseQueryInput ?? {}, {
 						cfg: store.layerTable.colConfig,
@@ -280,13 +285,17 @@ export function initLayerTable(
 				const optionsArgs = getOptionsArgs(store)
 				if (!prev || Obj.deepEqual(getOptionsArgs(prev), optionsArgs)) return null
 
-				const data$ = toCold(async () => {
-					const data = await RPC.queryClient.fetchQuery(LayerQueriesClient.getQueryLayersOptions(...optionsArgs))
-					if (!data || data.code !== 'ok') return null
-					return data
-				})
+				const options = LayerQueriesClient.getQueryLayersOptions(...optionsArgs, packet$)
+				const data = RPC.queryClient.getQueryData(options.queryKey)
+				if (data) return data
+				void RPC.queryClient.fetchQuery(options)
 
-				return data$.pipe(Rx.tap({
+				return packet$.pipe(Rx.tap({
+					next: (packet) => {
+						if (packet.code === 'layers-page') {
+							set({ isFetching: false })
+						}
+					},
 					subscribe: () => {
 						set({ isFetching: true })
 					},
@@ -295,6 +304,7 @@ export function initLayerTable(
 					},
 					unsubscribe: () => {
 						set({ isFetching: false })
+						packet$.complete()
 					},
 				}))
 			}),
@@ -307,9 +317,17 @@ export function initLayerTable(
 					return Rx.timer(Math.min(Math.pow(2, count) * 250, 10_000))
 				},
 			}),
-		).subscribe((data) => {
-			if (!data) return
-			set({ pageData: data })
+		).subscribe((packet) => {
+			if (packet.code === 'layers-page') {
+				set({ pageData: packet })
+				return
+			}
+
+			if (packet.code === 'menu-item-possible-values') {
+				setStore({ filterMenuItemPossibleValues: packet.values })
+				return
+			}
+			assertNever(packet)
 		}),
 	)
 

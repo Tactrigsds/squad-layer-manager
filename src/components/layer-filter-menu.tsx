@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import { getFrameState, useFrameStore } from '@/frames/frame-manager'
-import * as SelectLayersFrame from '@/frames/select-layers.frame'
+import type * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as ZusUtils from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
@@ -48,13 +48,13 @@ function LayerFilterMenuItem(
 ) {
 	const getState = () => getFrameState(props.frameKey).filterMenu
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, queryInput, comp] = useFrameStore(
+	const [swapFactionsDisabled, possibleValues, comp] = useFrameStore(
 		props.frameKey,
 		ZusUtils.useDeep(
 			state =>
 				[
 					LayerFilterMenuPrt.selectSwapFactionsDisabled(state),
-					SelectLayersFrame.selectMenuItemQueryInput(state, props.field),
+					state.filterMenuItemPossibleValues?.[props.field],
 					state.filterMenu.menuItems[props.field],
 				] as const,
 		),
@@ -91,10 +91,10 @@ function LayerFilterMenuItem(
 				columnEditable={false}
 				highlight={F.editableComparisonHasValue(comp)}
 				comp={comp}
+				allowedEnumValues={possibleValues}
 				setComp={(update) => {
 					return getState().setComparison(props.field, update)
 				}}
-				baseQueryInput={queryInput}
 				lockOnSingleOption
 			/>
 			<Button

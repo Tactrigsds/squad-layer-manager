@@ -35,3 +35,12 @@ export const repeatRule = (
 	filterResults: opts?.filterResults ?? true,
 	invert: opts?.invert ?? true,
 })
+
+export const filterMenuItems = (id: string, items: LQY.FilterMenuItem[]): Extract<LQY.Constraint, { type: 'filter-menu-items' }> => ({
+	type: 'filter-menu-items',
+	id,
+	items,
+	filterResults: true,
+	indicateMatches: false,
+	invert: false,
+})

@@ -1,5 +1,6 @@
-import * as AR from '@/app-routes'
 import { globalToast$ } from '@/hooks/use-global-toast'
+import { toAsyncGenerator } from '@/lib/async'
+import * as Gen from '@/lib/generator'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
@@ -21,7 +22,8 @@ import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
-import { useQuery } from '@tanstack/react-query'
+
+import { experimental_streamedQuery as streamedQuery, queryOptions, useQuery } from '@tanstack/react-query'
 import * as Im from 'immer'
 import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
@@ -155,83 +157,99 @@ export type QueryLayersInputOpts = {
 	pageIndex?: number
 }
 
+export type QueryLayersPacket =
+	| { code: 'layers-page' } & QueryLayersPageData
+	| { code: 'menu-item-possible-values'; values: Record<string, string[]> }
+
 export function getQueryLayersOptions(
 	baseInput: LQY.BaseQueryInput,
 	inputOpts: QueryLayersInputOpts,
+	// cringe but works for now. tanstack query makes it hard to get at the stream otherwise
+	packet$?: Rx.Subject<QueryLayersPacket>,
 	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
 	counters?: LayerCtxModifiedCounters,
 ) {
 	counters = counters ?? Store.getState().counters
 	const input = getQueryLayersInput(baseInput, inputOpts)
-	return {
-		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
-		queryFn: async () => {
-			const res = await sendQuery('queryLayers', input)
-			if (res?.code === 'err:invalid-node') {
-				console.error('queryLayers: Invalid node error:', res.errors)
-				errorStore?.setState({ errors: res.errors })
-				throw new Error('Invalid node')
-			} else {
-				errorStore?.setState({ errors: undefined })
-			}
-			if (res?.code !== 'ok') return res
+	async function* streamLayersQuery() {
+		try {
+			for await (const res of streamLayerQueriesResponse(input)) {
+				if (res.code === 'err:invalid-node') {
+					console.error('queryLayers: Invalid node error:', res.errors)
+					errorStore?.setState({ errors: res.errors })
+					throw new Error('Invalid node')
+				} else {
+					errorStore?.setState({ errors: undefined })
+				}
+				if (res.code === 'menu-item-possible-values') {
+					packet$?.next(res)
+					yield res
+					continue
+				}
 
-			const user = await UsersClient.fetchLoggedInUser()
-			const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
-			let page = {
-				...res,
-				input,
-			}
-			if (input.selectedLayers) {
-				const layerIdsForPage = input.selectedLayers.slice(
-					(input.pageIndex ?? 0) * input.pageSize,
-					((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
-				)
-				const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
-					const layer = page!.layers.find(l => l.id === id)
-					if (layer) {
-						return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
-					}
-					const newLayer: any = {
-						...L.toLayer(id),
-						constraints: Array(input.constraints?.length ?? 0).fill(false),
-						matchDescriptors: [],
-					}
-					return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
-				})
-				if (input.sort) {
-					;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
-						const sort = input.sort!
-						if (sort.type === 'random') {
-							// For random sort just shuffle the entries
-							return Math.random() - 0.5
-						} else if (sort.type === 'column') {
-							const column = sort.sortBy
-							const direction = sort.direction === 'ASC' ? 1 : -1
-
-							if (a[column] === b[column]) return 0
-							if (a[column] === null || a[column] === undefined) return direction
-							if (b[column] === null || b[column] === undefined) return -direction
-
-							return a[column] < b[column] ? -direction : direction
-						} else {
-							assertNever(sort)
+				const user = await UsersClient.fetchLoggedInUser()
+				const userCanForceSelect = RBAC.rbacUserHasPerms(user, RBAC.perm('queue:force-write'))
+				let page = {
+					...res,
+					input,
+				}
+				if (input.selectedLayers) {
+					const layerIdsForPage = input.selectedLayers.slice(
+						(input.pageIndex ?? 0) * input.pageSize,
+						((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
+					)
+					const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
+						const layer = page!.layers.find(l => l.id === id)
+						if (layer) {
+							return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
 						}
+						const newLayer: any = {
+							...L.toLayer(id),
+							constraints: Array(input.constraints?.length ?? 0).fill(false),
+							matchDescriptors: [],
+						}
+						return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
 					})
+					if (input.sort) {
+						;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
+							const sort = input.sort!
+							if (sort.type === 'random') {
+								// For random sort just shuffle the entries
+								return Math.random() - 0.5
+							} else if (sort.type === 'column') {
+								const column = sort.sortBy
+								const direction = sort.direction === 'ASC' ? 1 : -1
+
+								if (a[column] === b[column]) return 0
+								if (a[column] === null || a[column] === undefined) return direction
+								if (b[column] === null || b[column] === undefined) return -direction
+
+								return a[column] < b[column] ? -direction : direction
+							} else {
+								assertNever(sort)
+							}
+						})
+					}
+					page = { ...page, layers: selectedLayers as any }
 				}
-				page = { ...page, layers: selectedLayers as any }
-			}
-			if (page) {
-				return {
-					...page,
-					layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
+				if (page) {
+					const packet = {
+						...page,
+						layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
+					}
+					packet$?.next(packet)
+					yield packet
 				}
-			} else {
-				return undefined
 			}
-		},
-		staleTime: Infinity,
+		} finally {
+			packet$?.complete()
+		}
 	}
+	return queryOptions({
+		queryKey: ['layers', '__queryLayers__', getDepKey(input, counters)],
+		queryFn: streamedQuery({ queryFn: streamLayersQuery }),
+		staleTime: Infinity,
+	})
 }
 
 function getQueryLayersInput(baseInput: LQY.BaseQueryInput, opts: QueryLayersInputOpts): LQY.LayersQueryInput {
@@ -279,7 +297,7 @@ export function useLayerComponents(
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
 		enabled: options?.enabled,
 		queryFn: async () => {
-			const res = await sendQuery('queryLayerComponent', input)
+			const res = await sendWorkerRequest('queryLayerComponent', input)
 			if (Array.isArray(res)) return res
 			if (res?.code === 'err:invalid-node') {
 				console.error('queryLayerComponents: Invalid node error:', res.errors)
@@ -413,8 +431,7 @@ export function useLayerItemStatuses(
 			// if (!QD.QDStore.getState().isEditing && layerContextUnchanged) {
 			// 	return PartsSys.getServerLayerItemStatuses()
 			// }
-			const res = await sendQuery('getLayerItemStatuses', input)
-			if (!res) throw new Error('Unknown error')
+			const res = await sendWorkerRequest('getLayerItemStatuses', input)
 			if (res.code === 'err:invalid-node') {
 				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
 				options?.errorStore?.setState({ errors: res.errors })
@@ -436,7 +453,7 @@ export function useLayerExists(
 		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
 		queryFn: async () => {
-			return await sendQuery('layerExists', input!)
+			return await sendWorkerRequest('layerExists', input!)
 		},
 		staleTime: Infinity,
 	})
@@ -459,316 +476,102 @@ function getDepKey(input: unknown, ctxCounters: LayerCtxModifiedCounters) {
  * Static configuration for query priorities.
  * Lower numbers = higher priority (processed first).
  */
-export const QUERY_PRIORITIES = {
-	queryLayers: 1,
+export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> = {
+	'context-update': 5,
+	'init': 5,
+	getLayerItemStatuses: 4,
+	queryLayers: 3,
 	layerExists: 2,
-	queryLayerComponent: 3,
-	getLayerItemStatuses: 1,
 	getLayerInfo: 2,
+	queryLayerComponent: 1,
 } as const
 
-type PendingQuery = {
-	message: any
-	priority: number
-	resolve: (value: any) => void
-	reject: (error: Error) => void
-	seqId: number
+const seqIdCounter = Gen.counter()
+function getSeqId() {
+	return seqIdCounter.next().value
 }
 
-/**
- * Configuration for window focus management
- */
-const FOCUS_CONFIG = {
-	// Delay before terminating workers when window loses focus (in milliseconds)
-	BLUR_TERMINATION_DELAY: 5000,
-} as const
+let worker!: Worker
 
-/**
- * Determines the optimal number of workers based on browser's reported concurrency.
- * Uses navigator.hardwareConcurrency with a maximum limit of 5 workers.
- */
-function getOptimalWorkerCount(): number {
-	// TODO due to memory usage concerns we're just setting this to 2 for now -- seems to be fast enough anyway
-	return 2
-	// Get the number of logical processors available
-	const hardwareConcurrency = navigator.hardwareConcurrency || 4 // fallback to 4 if not available
+async function sendWorkerRequest<T extends WorkerTypes.Request['type']>(
+	type: T,
+	input: Extract<WorkerTypes.Request, { type: T }>['input'],
+	_priority?: number,
+): Promise<Extract<WorkerTypes.Response, { type: T }>['payload']> {
+	if (type !== 'init') await ensureFullSetup()
 
-	// Strategy: Use a conservative approach to avoid overwhelming the system
-	// - For 1-2 cores: Use 2 workers (minimum viable parallelism)
-	// - For 3-4 cores: Use 2-3 workers (conservative for typical laptops)
-	// - For 5+ cores: Use 3-5 workers (scale up for powerful machines)
-	let optimalCount: number
-
-	if (hardwareConcurrency <= 2) {
-		optimalCount = 2 // Minimum for basic parallelism
-	} else if (hardwareConcurrency <= 4) {
-		optimalCount = Math.min(3, hardwareConcurrency - 1) // Leave one core for main thread
-	} else {
-		optimalCount = Math.min(5, Math.floor(hardwareConcurrency * 0.6)) // Use 60% of cores, max 5
-	}
-
-	console.log(
-		`Hardware concurrency: ${hardwareConcurrency} cores, `
-			+ `selected ${optimalCount} workers for optimal database query performance`,
-	)
-
-	return optimalCount
-}
-
-/**
- * WorkerPool manages a pool of Web Workers for layer queries with priority queue functionality
- */
-class LayerQueryWorkerPool {
-	private workers: Worker[] = []
-	private readonly poolSize: number
-	private initialized = false
-	private initializing = false
-	private queryCount = 0
-	private workerUsageCount: number[] = []
-	private pendingQueries: PendingQuery[] = []
-	private availableWorkers: Worker[] = []
-	private activeQueries = new Map<number, PendingQuery>()
-
-	constructor(poolSize: number = getOptimalWorkerCount()) {
-		this.poolSize = poolSize
-	}
-
-	async initialize(dbBuffer: SharedArrayBuffer, ctx: WorkerTypes.InitRequest['ctx']) {
-		if (this.initialized) return
-		if (this.initializing) {
-			throw new Error('Worker pool is already initializing')
-		}
-
-		this.initializing = true
-
-		try {
-			// Create workers
-			for (let i = 0; i < this.poolSize; i++) {
-				const worker = new LQWorker()
-				worker.onmessageerror = (event) => {
-					console.error(`Worker ${i} message error:`, event)
-				}
-				worker.onmessage = (event) => {
-					this.handleWorkerMessage(event, worker)
-				}
-				worker.onerror = (error) => {
-					console.error(`Worker ${i} error:`, error)
-					globalToast$.next({
-						variant: 'destructive',
-						description: `Worker ${i} encountered an error: ${error.message}`,
-					})
-				}
-				this.workers.push(worker)
-				this.availableWorkers.push(worker)
-				this.workerUsageCount.push(0)
-			}
-
-			// Initialize all workers
-			const initPromises = this.workers.map(async (worker, index) => {
-				const msg: WorkerTypes.InitRequest = {
-					type: 'init',
-					seqId: -(index + 1), // Use negative seqIds for init to avoid conflicts
-					ctx,
-					dbBuffer,
-				}
-				worker.postMessage(msg)
-				const response = await Rx.firstValueFrom(out$.pipe(Rx.filter(m => m.seqId === -(index + 1))))
-				if (response.error) {
-					throw new Error(`Worker ${index} initialization failed: ${response.error}`)
-				}
-			})
-
-			await Promise.all(initPromises)
-			this.initialized = true
-			console.debug(`Worker pool initialized with ${this.poolSize} workers`)
-		} catch (error) {
-			void this.dispose()
-			throw error
-		} finally {
-			this.initializing = false
-		}
-	}
-
-	private handleWorkerMessage(event: MessageEvent, worker: Worker) {
-		const response = event.data as WorkerTypes.QueryResponse
-
-		// Handle query responses
-		if (this.activeQueries.has(response.seqId)) {
-			const query = this.activeQueries.get(response.seqId)!
-			this.activeQueries.delete(response.seqId)
-
-			// Make worker available again
-			this.availableWorkers.push(worker)
-
-			if (response.error) {
-				query.reject(new Error(response.error))
-			} else {
-				query.resolve(response.payload)
-			}
-
-			// Process next query in queue
-			this.processQueue()
-		} else {
-			// Forward other messages (like init responses) to the original observable
-			out$.next(response)
-		}
-	}
-
-	private processQueue() {
-		while (this.availableWorkers.length > 0 && this.pendingQueries.length > 0) {
-			// Sort by priority (lower number = higher priority)
-			this.pendingQueries.sort((a, b) => a.priority - b.priority)
-
-			const query = this.pendingQueries.shift()!
-			const worker = this.availableWorkers.shift()!
-
-			this.activeQueries.set(query.seqId, query)
-
-			// Track worker usage
-			const workerIndex = this.workers.indexOf(worker)
-			this.workerUsageCount[workerIndex]++
-			this.queryCount++
-
-			worker.postMessage(query.message)
-		}
-	}
-
-	postMessage(message: any, priority: number = 0): Promise<any> {
-		if (!this.initialized) {
-			return Promise.reject(
-				new Error('Worker pool not initialized. This may happen when the window loses focus and workers are terminated to save memory.'),
-			)
-		}
-
-		return new Promise((resolve, reject) => {
-			const query: PendingQuery = {
-				message,
-				priority,
-				resolve,
-				reject,
-				seqId: message.seqId,
-			}
-
-			this.pendingQueries.push(query)
-			this.processQueue()
-		})
-	}
-
-	updateContext(message: WorkerTypes.ContextUpdateRequest) {
-		// Send context updates to all workers
-		for (const worker of this.workers) {
-			worker.postMessage(message)
-		}
-	}
-
-	async dispose() {
-		// Wait for all active queries to complete with a timeout
-		const activeQueryPromises = Array.from(this.activeQueries.values()).map(query =>
-			new Promise<void>((resolve) => {
-				const originalResolve = query.resolve
-				const originalReject = query.reject
-
-				query.resolve = (value: any) => {
-					originalResolve(value)
-					resolve()
-				}
-				query.reject = (error: Error) => {
-					originalReject(error)
-					resolve()
-				}
-			})
-		)
-
-		// Set up timeout
-		const timeoutPromise = new Promise<void>((resolve) => {
-			setTimeout(() => {
-				console.warn('Worker pool disposal timeout reached, forcing termination')
-				resolve()
-			}, 30000) // 30 seconds
-		})
-
-		// Wait for either all queries to complete or timeout
-		if (activeQueryPromises.length > 0) {
-			console.debug(`Waiting for ${activeQueryPromises.length} active queries to complete before disposing worker pool...`)
-			await Promise.race([
-				Promise.all(activeQueryPromises),
-				timeoutPromise,
-			])
-		}
-
-		// Reject all remaining pending queries
-		for (const query of this.pendingQueries) {
-			query.reject(new Error('Worker pool terminated'))
-		}
-		// Reject any remaining active queries (in case of timeout)
-		for (const query of this.activeQueries.values()) {
-			query.reject(new Error('Worker pool terminated'))
-		}
-
-		for (const worker of this.workers) {
-			try {
-				worker.terminate()
-			} catch (error) {
-				console.warn('Error terminating worker:', error)
-			}
-		}
-
-		this.workers = []
-		this.availableWorkers = []
-		this.pendingQueries = []
-		this.activeQueries.clear()
-		this.initialized = false
-		this.initializing = false
-		this.queryCount = 0
-		this.workerUsageCount = []
-	}
-
-	isInitialized(): boolean {
-		return this.initialized
-	}
-
-	getStats() {
-		return {
-			poolSize: this.poolSize,
-			initialized: this.initialized,
-			totalQueries: this.queryCount,
-			workerUsage: this.workerUsageCount.map((count, index) => ({
-				workerId: index,
-				queriesHandled: count,
-			})),
-			averageQueriesPerWorker: this.queryCount / this.poolSize,
-			usingSharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
-		}
-	}
-}
-
-let workerPool!: LayerQueryWorkerPool
-let nextSeqId = 1
-const out$ = new Rx.Subject<WorkerTypes.QueryResponse>()
-let windowFocusCleanupFn: (() => void) | null = null
-
-export async function sendQuery<T extends WorkerTypes.QueryType>(type: T, input: WorkerTypes.QueryRequest<T>['input'], priority?: number) {
-	await ensureFullSetup()
-
-	const seqId = nextSeqId
-	nextSeqId++
-	const msg: WorkerTypes.QueryRequest<T> = { type, input, seqId: seqId }
+	const seqId = getSeqId()
 
 	// Get priority from configuration
-	priority ??= QUERY_PRIORITIES[type] ?? 0
+	const priority = _priority ?? QUERY_PRIORITIES[type] ?? 0
 
-	try {
-		const payload = await workerPool.postMessage(msg, priority)
-		return payload as WorkerTypes.QueryResponse<T>['payload']
-	} catch (error) {
-		if (error instanceof Error) {
+	const message = { type, input, seqId, priority }
+
+	worker.postMessage(message)
+
+	const response$ = Rx.fromEvent(worker, 'message').pipe(Rx.concatMap((e: any) => {
+		const response = e.data as WorkerTypes.Response
+		if (response.seqId !== seqId) {
+			return Rx.EMPTY
+		}
+
+		if (response.type === 'worker-error') {
+			const error = new Error('error from worker: ' + response.error)
 			globalToast$.next({ variant: 'destructive', description: error.message })
 			throw error
 		}
-		const errorMessage = String(error)
-		globalToast$.next({ variant: 'destructive', description: errorMessage })
-		throw new Error(errorMessage, { cause: error })
+
+		if (response.type !== type) {
+			const error = new Error(`Unexpected response type: ${response.type}`)
+			globalToast$.next({ variant: 'destructive', description: error.message })
+			throw error
+		}
+
+		return Rx.of(response.payload)
+	}))
+
+	return (await Rx.firstValueFrom(response$)) as any
+}
+
+async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
+	await ensureFullSetup()
+
+	const seqId = getSeqId()
+
+	const message: WorkerTypes.Request = {
+		type: 'queryLayers',
+		input,
+		seqId,
+		priority: QUERY_PRIORITIES.queryLayers,
 	}
+
+	worker.postMessage(message)
+
+	const response$ = Rx.fromEvent(worker, 'message').pipe(
+		Rx.concatMap((e: any) => {
+			const response = e.data as WorkerTypes.Response
+			if (response.seqId !== seqId) {
+				return Rx.EMPTY
+			}
+
+			if (response.type === 'worker-error') {
+				const error = new Error('error from worker: ' + response.error)
+				globalToast$.next({ variant: 'destructive', description: error.message })
+				throw error
+			}
+
+			if (response.type !== 'queryLayers') {
+				const error = new Error(`Unexpected response type: ${response.type}`)
+				globalToast$.next({ variant: 'destructive', description: error.message })
+				throw error
+			}
+
+			return Rx.of(response.payload)
+		}),
+		Rx.takeWhile(e => e.code !== 'end'),
+	)
+
+	yield* toAsyncGenerator(response$)
 }
 
 let setup$: Promise<void> | null = null
@@ -778,74 +581,8 @@ export async function ensureFullSetup() {
 	await setup$
 }
 
-/**
- * Sets up window focus and page visibility handlers to manage worker pool lifecycle.
- *
- * When the window loses focus or becomes hidden:
- * - Schedules worker termination after a delay to save memory
- *
- * When the window regains focus or becomes visible:
- * - Cancels scheduled termination
- * - Reinitializes workers if they were previously terminated
- * - Refetches the database buffer to ensure data freshness
- */
-function _setupWindowFocusHandlers() {
-	if (windowFocusCleanupFn) return // Already set up
-
-	let blurTimeout: number | null = null
-
-	const scheduleTermination = () => {
-		// Clear any existing timeout
-		if (blurTimeout) {
-			clearTimeout(blurTimeout)
-		}
-
-		// Delay termination to avoid flickering when switching between browser windows/tabs quickly
-		console.debug(`Window lost focus/visibility, will terminate worker pool in ${FOCUS_CONFIG.BLUR_TERMINATION_DELAY}ms to save memory`)
-		blurTimeout = window.setTimeout(() => {
-			if (workerPool && workerPool.isInitialized()) {
-				console.debug('Terminating worker pool due to window losing focus/visibility')
-				const stats = workerPool.getStats()
-				console.log('Worker pool stats before focus termination:', stats)
-				void workerPool.dispose()
-			}
-		}, FOCUS_CONFIG.BLUR_TERMINATION_DELAY)
-	}
-
-	const handleVisibilityChange = async () => {
-		if (document.hidden) {
-			scheduleTermination()
-		} else {
-			// Cancel pending termination if window regains focus quickly
-			if (blurTimeout) {
-				console.debug('Window regained focus, cancelling scheduled worker pool termination')
-				clearTimeout(blurTimeout)
-				blurTimeout = null
-			}
-		}
-	}
-
-	document.addEventListener('visibilitychange', handleVisibilityChange)
-
-	windowFocusCleanupFn = () => {
-		document.removeEventListener('visibilitychange', handleVisibilityChange)
-		if (blurTimeout) {
-			clearTimeout(blurTimeout)
-			blurTimeout = null
-		}
-		windowFocusCleanupFn = null
-	}
-
-	// Store handlers for manual triggering (useful for testing)
-	return {
-		handleVisibilityChange,
-		cleanup: windowFocusCleanupFn,
-	}
-}
-
 async function setup() {
-	workerPool = new LayerQueryWorkerPool()
-
+	worker = new LQWorker({ name: 'layer-queries-worker' })
 	FilterEntityClient.filterEntityChanged$.subscribe(() => {
 		const extraFilters = Array.from(Store.getState().extraQueryFilters).filter(f => FilterEntityClient.filterEntities.has(f)).sort()
 		const currentExtraFilters = Array.from(Store.getState().extraQueryFilters).sort()
@@ -859,15 +596,13 @@ async function setup() {
 	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
-	const dbBuffer = await fetchDatabaseBuffer()
-
-	const ctx: WorkerTypes.InitRequest['ctx'] = {
+	const ctx: WorkerTypes.InitRequest['input'] = {
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		filters,
 		layerItemsState: itemsState,
 	}
 
-	const initPromise = workerPool.initialize(dbBuffer, ctx)
+	const initPromise = sendWorkerRequest('init', ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
 	const contextUpdate$ = Rx.merge(
 		FilterEntityClient.filterEntities$.pipe(Rx.map(filters => ({ filters }))),
@@ -875,137 +610,13 @@ async function setup() {
 	)
 
 	contextUpdate$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe(ctx => {
-		const msg: WorkerTypes.ContextUpdateRequest = {
-			type: 'context-update',
-			ctx,
-			seqId: nextSeqId++,
-		}
-		workerPool.updateContext(msg)
+		void sendWorkerRequest('context-update', ctx)
 		Store.getState().increment(ctx)
 	})
 	await initPromise
 	console.log('Layers loaded')
 	// Set up window focus handlers after successful initialization
 	// const focusHandlers = setupWindowFocusHandlers()
-}
-
-/**
- * Manually trigger window blur behavior (useful for testing or manual memory management)
- */
-export function manuallyBlurWindow() {
-	const event = new Event('blur')
-	window.dispatchEvent(event)
-}
-
-/**
- * Manually trigger window focus behavior (useful for testing or manual reinitialization)
- */
-export function manuallyFocusWindow() {
-	const event = new Event('focus')
-	window.dispatchEvent(event)
-}
-
-/**
- * Get current worker pool statistics
- */
-export function getWorkerPoolStats() {
-	return workerPool?.getStats() ?? null
-}
-
-/**
- * Check if the window is currently focused and visible
- */
-export function isWindowFocused(): boolean {
-	return document.hasFocus() && !document.hidden
-}
-
-/**
- * Check if the page is currently visible (not minimized or in background tab)
- */
-export function isPageVisible(): boolean {
-	return !document.hidden
-}
-
-export async function cleanupWorkerPool() {
-	setup$ = null
-	if (workerPool) {
-		console.log('Worker pool stats before cleanup:', workerPool.getStats())
-		await workerPool.dispose()
-	}
-	if (windowFocusCleanupFn) {
-		windowFocusCleanupFn()
-	}
-}
-
-async function fetchDatabaseBuffer(): Promise<SharedArrayBuffer> {
-	useIsFetchingLayerData.setState(true)
-	try {
-		// Check if SharedArrayBuffer is available
-		if (typeof SharedArrayBuffer === 'undefined') {
-			throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
-		}
-
-		const opfsRoot = await navigator.storage.getDirectory()
-		const dbFileName = 'layers.sqlite3'
-		const hashFileName = 'layers.sqlite3.hash'
-
-		let dbHandle: FileSystemFileHandle
-		let hashHandle: FileSystemFileHandle
-		let storedHash: string | null = null
-
-		try {
-			const dbHandlePromise = opfsRoot.getFileHandle(dbFileName).then(handle => {
-				return handle
-			})
-			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
-				return handle
-			})
-			const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
-				return text
-			})
-			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
-		} catch {
-			;[dbHandle, hashHandle] = await Promise.all([
-				opfsRoot.getFileHandle(dbFileName, { create: true }),
-				opfsRoot.getFileHandle(hashFileName, { create: true }),
-			])
-		}
-
-		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
-
-		const res = await fetch(AR.link('/layers.sqlite3'), { headers })
-
-		let buffer: ArrayBuffer
-
-		if (res.status === 304) {
-			const cachedFile = await dbHandle.getFile()
-			buffer = await cachedFile.arrayBuffer()
-		} else {
-			buffer = await res.arrayBuffer()
-
-			// Store in OPFS
-			const writable = await dbHandle.createWritable()
-			await writable.write(buffer)
-			await writable.close()
-
-			// Store hash
-			const etag = res.headers.get('ETag')
-			if (etag) {
-				const hashWritable = await hashHandle.createWritable()
-				await hashWritable.write(etag)
-				await hashWritable.close()
-			}
-		}
-
-		// Convert to SharedArrayBuffer to minimize cloning overhead
-		const sharedBuffer = new SharedArrayBuffer(buffer.byteLength)
-		const sharedView = new Uint8Array(sharedBuffer)
-		const bufferView = new Uint8Array(buffer)
-		sharedView.set(bufferView)
-		return sharedBuffer
-	} finally {
-		useIsFetchingLayerData.setState(false)
-	}
 }
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
