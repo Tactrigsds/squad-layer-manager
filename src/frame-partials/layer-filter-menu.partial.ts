@@ -205,7 +205,7 @@ export function selectFilterMenuConstraints(store: Store): LQY.Constraint[] {
 		if (field === 'Layer') {
 			excludedSiblings = compositeLayerFields
 		} else if (compositeLayerFields.includes(field)) {
-			excludedSiblings = ['Faction_1']
+			excludedSiblings = ['Layer']
 		}
 		items.push({
 			field,
