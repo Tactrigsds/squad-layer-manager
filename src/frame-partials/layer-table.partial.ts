@@ -1,6 +1,6 @@
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
 import * as Arr from '@/lib/array'
-import { toCold, traceTag } from '@/lib/async'
+import { distinctDeepEquals, toCold, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import type * as ZusUtils from '@/lib/zustand'
@@ -267,18 +267,22 @@ export function initLayerTable(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
 			Rx.observeOn(Rx.asyncScheduler),
-			Rx.startWith([args.get(), null] as const),
-			Rx.map(([store, prev]) => {
-				if (!store.baseQueryInput) return null
-
-				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
-				const options = LayerQueriesClient.getQueryLayersOptions(store.baseQueryInput ?? {}, {
+			Rx.throttleTime(500, undefined, { leading: true, trailing: true }),
+			Rx.map(([store]) => {
+				const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 					cfg: store.layerTable.colConfig,
 					selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
 					pageIndex: store.layerTable.pageIndex,
 					pageSize: store.layerTable.pageSize,
 					sort: store.layerTable.sort,
-				}, packet$)
+				})
+
+				return input
+			}),
+			distinctDeepEquals(),
+			Rx.map((input) => {
+				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
+				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
 				const data = RPC.queryClient.getQueryData(options.queryKey)
 				if (data) return data
 				if (RPC.queryClient.isFetching({ queryKey: options.queryKey })) {
@@ -307,7 +311,6 @@ export function initLayerTable(
 				}))
 			}),
 			Rx.filter(o => !!o),
-			Rx.throttleTime(250, undefined, { leading: true, trailing: true }),
 			Rx.switchMap(o => o),
 			Rx.retry({
 				delay: (error, count) => {
@@ -316,6 +319,7 @@ export function initLayerTable(
 				},
 			}),
 		).subscribe((packet) => {
+			console.log('packet:', packet)
 			if (packet.code === 'layers-page' && get().pageData !== packet) {
 				set({ pageData: packet })
 				return

@@ -22,7 +22,6 @@ import LQWorker from '@/systems.client/layer-queries.worker?worker'
 import * as QD from '@/systems.client/queue-dashboard'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client'
 import * as UsersClient from '@/systems.client/users.client'
-
 import { experimental_streamedQuery as streamedQuery, queryOptions, useQuery } from '@tanstack/react-query'
 import * as Im from 'immer'
 import * as Rx from 'rxjs'
@@ -162,15 +161,13 @@ export type QueryLayersPacket =
 	| { code: 'menu-item-possible-values'; values: Record<string, string[]> }
 
 export function getQueryLayersOptions(
-	baseInput: LQY.BaseQueryInput,
-	inputOpts: QueryLayersInputOpts,
+	input: LQY.LayersQueryInput,
 	// cringe but works for now. tanstack query makes it hard to get at the stream otherwise
 	packet$?: Rx.Subject<QueryLayersPacket>,
 	errorStore?: Zus.StoreApi<F.NodeValidationErrorStore>,
 	counters?: LayerCtxModifiedCounters,
 ) {
 	counters = counters ?? Store.getState().counters
-	const input = getQueryLayersInput(baseInput, inputOpts)
 	async function* streamLayersQuery() {
 		try {
 			for await (const res of streamLayerQueriesResponse(input)) {
@@ -252,8 +249,9 @@ export function getQueryLayersOptions(
 	})
 }
 
-function getQueryLayersInput(baseInput: LQY.BaseQueryInput, opts: QueryLayersInputOpts): LQY.LayersQueryInput {
-	let sort = opts?.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
+export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: QueryLayersInputOpts): LQY.LayersQueryInput {
+	const opts: QueryLayersInputOpts = _opts ?? {}
+	let sort = opts.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
 	if (sort?.type === 'random' && !sort.seed) {
 		console.error('Random sort requires a random seed when used with react query')
 		sort = { ...sort, seed: 'SUPER_RANDOM_SEED' }
