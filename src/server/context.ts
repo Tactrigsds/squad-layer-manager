@@ -11,9 +11,10 @@ import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/server/systems/layer-queue.ts'
 import type * as MatchHistorySys from '@/server/systems/match-history.ts'
-import type * as SharedLayerListSys from '@/server/systems/shared-layer-list.server.ts'
+import type * as SharedLayerListSys from '@/server/systems/shared-layer-list.ts'
 import type * as SquadRconSys from '@/server/systems/squad-rcon.ts'
 import type * as SquadServerSys from '@/server/systems/squad-server.ts'
+import type * as VoteSys from '@/server/systems/vote.ts'
 import * as Otel from '@opentelemetry/api'
 import type { Mutex, MutexInterface } from 'async-mutex'
 import type * as Fastify from 'fastify'
@@ -39,6 +40,7 @@ export function includeActiveSpanAsUpstreamLink<T extends object>(ctx: T): T & O
 export function includeLogProperties<T extends CS.Log>(ctx: T, fields: Record<string, any>): T {
 	return { ...ctx, log: ctx.log.child(fields) }
 }
+
 export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
 	const child = ctx.log.child({})
 	child.level = level
@@ -65,10 +67,9 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		mutexes?: (...args: Parameters<Cb>) => MutexInterface[] | MutexInterface
 	},
 	cb: Cb,
-): Cb {
-	// @ts-expect-error idk
-	return (..._args) => {
-		let args = _args
+) {
+	return async (..._args: Parameters<Cb>): Promise<Awaited<ReturnType<Cb>>> => {
+		let args = _args as any[]
 		let links = opts.links ?? []
 		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then include any links attached to the context
 		if (args[0]?.upstreamLinks) links = [...links, ...(args[0]?.upstreamLinks ?? [])]
@@ -76,7 +77,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			links = [...links, ...(args[0]?.[0]?.upstreamLinks ?? [])]
 		}
 
-		return opts.tracer.startActiveSpan(
+		return await opts.tracer.startActiveSpan(
 			name,
 			{ root: opts.root, links },
 			Otel.context.active(),
@@ -297,12 +298,12 @@ export type AdminList = {
 
 export type SquadRcon = { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 
-export type LayerQueue = {
-	layerQueue: LayerQueueSys.LayerQueueContext
+export type Vote = {
+	vote: VoteSys.VoteContext
 } & ServerId
 
-export type Vote = {
-	vote: LayerQueueSys.VoteContext
+export type LayerQueue = {
+	layerQueue: LayerQueueSys.LayerQueueContext
 } & ServerId
 
 export type MatchHistory = {

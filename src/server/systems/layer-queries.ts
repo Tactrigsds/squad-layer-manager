@@ -6,19 +6,29 @@ import type * as SS from '@/models/server-state.models'
 import type * as C from '@/server/context'
 import orpcBase from '@/server/orpc-base'
 import * as FilterEntity from '@/server/systems/filter-entity'
-import * as LayerDb from '@/server/systems/layer-db.server'
+import * as LayerDb from '@/server/systems/layer-db'
+import * as MatchHistory from '@/server/systems/match-history'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared'
-
 import { z } from 'zod'
 
-export function resolveLayerQueryCtx<Ctx extends CS.Log & C.MatchHistory>(ctx: Ctx, serverState: SS.ServerState): Ctx & CS.LayerQuery {
+export const router = {
+	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
+		const lqContext = { ...ctx, ...resolveLayerDbContext() }
+		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
+	}),
+}
+
+export async function resolveLayerQueryCtx<Ctx extends CS.Log & C.MatchHistory>(
+	ctx: Ctx,
+	serverState: SS.ServerState,
+): Promise<Ctx & CS.LayerQuery> {
 	return {
 		...ctx,
 		...resolveLayerDbContext(),
 		filters: FilterEntity.state.filters,
 		layerItemsState: LQY.resolveLayerItemsState(
 			serverState.layerQueue,
-			ctx.matchHistory.recentMatches,
+			await MatchHistory.getRecentMatches(ctx),
 		),
 	}
 }
@@ -28,11 +38,4 @@ function resolveLayerDbContext(): CS.LayerDb {
 		layerDb: () => LayerDb.db,
 		effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG),
 	}
-}
-
-export const orpcRouter = {
-	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
-		const lqContext = { ...ctx, ...resolveLayerDbContext() }
-		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
-	}),
 }

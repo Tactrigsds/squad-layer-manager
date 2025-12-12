@@ -11,7 +11,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/server/systems/layer-queue'
-import * as Rbac from '@/server/systems/rbac.system'
+import * as Rbac from '@/server/systems/rbac'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as Orpc from '@orpc/server'
 import { aliasedTable } from 'drizzle-orm'
@@ -189,7 +189,7 @@ export const filtersRouter = {
 
 		for (const serverId of SquadServer.globalState.slices.keys()) {
 			const serverCtx = SquadServer.resolveSliceCtx(ctx, serverId)
-			const serverState = await LayerQueue.getServerState(serverCtx)
+			const serverState = await SquadServer.getServerState(serverCtx)
 			// TODO: right now we are not handling sub-filters here. we should do the following:
 			// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies
 			// 2. disallow any dependent filters from those applied in the filter pool from being deleted

@@ -593,6 +593,18 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 	)
 }
 
+function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Map className="h-4 w-4 text-blue-400" />
+			<span className="text-xs flex items-center gap-1">
+				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
+			</span>
+		</div>
+	)
+}
+
 function EventItem({ event }: { event: CHAT.EventEnriched }) {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
@@ -639,6 +651,8 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerDiedEvent event={event} />
 		case 'PLAYER_WOUNDED':
 			return <PlayerWoundedEvent event={event} />
+		case 'MAP_SET':
+			return <MapSetEvent event={event} />
 		case 'NOOP':
 			return null
 		default:

@@ -3,9 +3,9 @@ import * as Discord from './systems/discord.ts'
 import * as Fastify from './systems/fastify.ts'
 import * as LayerQueue from './systems/layer-queue.ts'
 import * as MatchHistory from './systems/match-history.ts'
-import * as Rbac from './systems/rbac.system.ts'
+import * as Rbac from './systems/rbac.ts'
 import * as Sessions from './systems/sessions.ts'
-import * as SquadServer from './systems/squad-server'
+import * as SquadServer from './systems/squad-server.ts'
 
 const w = global as any
 w.Discord = Discord

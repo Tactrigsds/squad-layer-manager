@@ -1,6 +1,6 @@
 import { defineConfig } from 'drizzle-kit'
 import * as Env from './src/server/env'
-import * as LayerDb from './src/server/systems/layer-db.server'
+import * as LayerDb from './src/server/systems/layer-db'
 
 Env.ensureEnvSetup()
 LayerDb.setupExtraColsConfig()

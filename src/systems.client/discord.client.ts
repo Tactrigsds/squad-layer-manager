@@ -7,6 +7,7 @@ import React from 'react'
 export const getEmojisBaseQuery = (opts?: { enabled?: boolean }) => {
 	return RPC.orpc.discord.getGuildEmojis.queryOptions({
 		input: {},
+		staleTime: Infinity,
 		...opts,
 	})
 }

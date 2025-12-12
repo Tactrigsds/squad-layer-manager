@@ -12,7 +12,7 @@ import * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
 import orpcBase from '@/server/orpc-base.ts'
 import * as Cli from '@/server/systems/cli.ts'
-import * as LayerDb from '@/server/systems/layer-db.server.ts'
+import * as LayerDb from '@/server/systems/layer-db.ts'
 import * as fsPromise from 'fs/promises'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import { parse as parseJsonc } from 'jsonc-parser'
@@ -34,6 +34,10 @@ export const ConfigSchema = z.object({
 			adminListSources: z.array(z.string()).optional().describe(
 				'specify which sources to include from adminListSources. by default will include all sources',
 			),
+			timeBetweenMatches: HumanTime.default('90s')
+				.describe(
+					"the server's configured time between matches. this is used to prevent potential issues with event ordering during server rolls",
+				),
 			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).default(['canseeadminchat']).describe(
 				"what ingame permissions identify an admin for SLM's purposes",
 			),

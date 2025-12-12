@@ -1,6 +1,6 @@
 import type * as CS from '@/models/context-shared'
 import * as LC from '@/models/layer-columns'
-import * as LayerDb from '@/server/systems/layer-db.server'
+import * as LayerDb from '@/server/systems/layer-db'
 
 export const layers = LC.layers
 

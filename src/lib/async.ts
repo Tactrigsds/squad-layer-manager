@@ -4,6 +4,7 @@ import type * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
+import { withThrown, withThrownAsync } from './error'
 import { createId } from './id'
 
 export function sleep(ms: number) {
@@ -103,30 +104,52 @@ export function filterTruthy() {
 export function isSubscription(value: any): value is Rx.Subscription {
 	return typeof value === 'object' && 'subscribe' in value && 'unsubscribe' in value
 }
+export function isMutex(value: any): value is MutexInterface {
+	const methods = ['acquire', 'runExclusive', 'waitForUnlock', 'isLocked', 'release', 'cancel']
+	return typeof value === 'object' && methods.every((method) => method in value)
+}
 
-export type CleanupTask = Rx.Subscription | Rx.ObservableInput<unknown> | (() => Rx.ObservableInput<unknown> | void)
+type CleanupTaskValue =
+	| Rx.Subscription
+	| Rx.ObservableInput<unknown>
+	| Rx.Subject<unknown>
+	| MutexInterface
+	| null
+	| undefined
+
+export type CleanupTask = (() => CleanupTaskValue | void) | CleanupTaskValue
+
 export type CleanupTasks = CleanupTask[]
 
-export function performCleanup(ctx: CS.Log, tasks: CleanupTasks) {
-	return Rx.lastValueFrom(Rx.concat(tasks.map(to$)).pipe(Rx.endWith(0)))
+// runs cleanuptasks in a FILO fashion
+export function runCleanup(ctx: CS.Log, tasks: CleanupTasks) {
+	return Rx.lastValueFrom(Rx.concat(tasks.toReversed().map(to$)).pipe(Rx.endWith(0)))
 
-	function to$(_task: CleanupTask) {
-		let task = typeof _task === 'function' ? _task() : _task
-		if (isSubscription(task)) {
-			task.unsubscribe()
-			return Rx.EMPTY
-		}
-		if (!task) {
-			return Rx.EMPTY
-		}
-		if (!Rx.isObservable(task)) {
-			task = Rx.from(task)
-		}
+	function to$(_task: CleanupTask, index: number) {
+		try {
+			let task = typeof _task === 'function' ? _task() : _task
+			if (task == null || task == undefined) {
+				return Rx.EMPTY
+			}
+			if (task instanceof Rx.Subject) {
+				task.complete()
+				return Rx.EMPTY
+			}
+			if (isMutex(task)) {
+				task.cancel()
+				return Rx.EMPTY
+			}
+			if (isSubscription(task)) {
+				task.unsubscribe()
+				return Rx.EMPTY
+			}
 
-		return task.pipe(Rx.catchError((e) => {
-			ctx.log.error(e, 'caught error during cleanup')
+			return task
+		} catch (err) {
+			const unreversedIndex = tasks.length - index - 1
+			ctx.log.error(err, 'caught error during cleanup for task at index %d', unreversedIndex)
 			return Rx.EMPTY
-		}))
+		}
 	}
 }
 
@@ -171,57 +194,80 @@ export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in
 	}
 }
 
-type AsyncResourceOpts = {
+type AsyncResourceOpts<T> = {
 	maxLockTime: number
 	defaultTTL: number
 	tracer: Otel.Tracer
+	retries: number
+	isErrorResponse: (value: T) => boolean
+	retryDelay: number
 }
 
 export type AsyncResourceInvocationOpts = {
 	ttl: number
 }
 
-// TODO add retries
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
  */
 export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	static tracer = Otel.trace.getTracer('async-resource')
-	mutex = new Mutex()
-	opts: AsyncResourceOpts
+	opts: AsyncResourceOpts<T>
 	lastResolveTime: number | null = null
 	fetchedValue: Promise<T> | null = null
 	private valueSubject = new Rx.Subject<T>()
+
 	constructor(
 		private name: string,
 		private cb: (ctx: Ctx & C.AsyncResourceInvocation) => Promise<T>,
-		opts?: Partial<AsyncResourceOpts>,
+		opts?: Partial<AsyncResourceOpts<T>>,
 	) {
 		// @ts-expect-error init
 		this.opts = opts ?? {}
 		this.opts.maxLockTime ??= 2000
 		this.opts.defaultTTL ??= 1000
 		this.opts.tracer ??= AsyncResource.tracer
+		this.opts.isErrorResponse ??= (value: T) => false
+		this.opts.retryDelay ??= 0
 	}
-	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation) {
-		try {
-			const promise = this.cb(ctx)
-			this.fetchedValue = null
-			this.fetchedValue = promise
-			const res = await promise
-			this.lastResolveTime = Date.now()
-			this.valueSubject.next(res)
-			return res
-		} catch (err) {
-			this.fetchedValue = null
-			this.lastResolveTime = null
-			ctx.log.error(err)
-			throw err
-		}
+
+	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation, opts?: { retries?: number }) {
+		this.fetchedValue = (async (): Promise<T> => {
+			let retriesLeft = opts?.retries ?? this.opts.retries
+			while (true) {
+				const [res, error] = await withThrownAsync(() => this.cb(ctx))
+				if (error !== null || this.opts.isErrorResponse(res!)) {
+					if (retriesLeft === 0) {
+						if (error) throw error
+						return res as T
+					}
+					retriesLeft--
+					continue
+				}
+				return res as T
+			}
+		})()
+
+		this.fetchedValue
+			.catch(err => {
+				this.fetchedValue = null
+				this.lastResolveTime = null
+				throw err
+			})
+			.then((res) => {
+				if (this.opts.isErrorResponse(res)) {
+					this.fetchedValue = null
+					this.lastResolveTime = null
+					return
+				}
+				this.lastResolveTime = Date.now()
+				this.valueSubject.next(res)
+			})
+		return this.fetchedValue
 	}
 
 	// note: any observers are guaranteed to be notified before get() resolves
-	async get(_ctx: Ctx, opts?: { ttl?: number }) {
+	async get(_ctx: Ctx, opts?: { ttl?: number; retries?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 		const ctx = { ..._ctx, resOpts: { ttl: opts.ttl } }
@@ -230,12 +276,12 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 			return await this.fetchedValue
 		}
 		if (this.lastResolveTime === null && this.fetchedValue === null) {
-			return await this.fetchValue(ctx)
+			return await this.fetchValue(ctx, opts)
 		}
 		if (this.fetchedValue && this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
 			return await this.fetchedValue!
 		} else {
-			return await this.fetchValue(ctx)
+			return await this.fetchValue(ctx, opts)
 		}
 	}
 

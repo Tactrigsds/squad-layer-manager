@@ -5,9 +5,8 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as DB from '@/server/db.ts'
 import orpcBase from '@/server/orpc-base'
-import * as LayerQueue from '@/server/systems/layer-queue'
-import * as Rbac from '@/server/systems/rbac.system'
-import * as SquadServer from '@/server/systems/squad-server.ts'
+import * as Rbac from '@/server/systems/rbac'
+import * as SquadServer from '@/server/systems/squad-server'
 import * as Orpc from '@orpc/server'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -17,7 +16,7 @@ export const orpcRouter = {
 		const obs: Rx.Observable<Readonly<[SS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>> = SquadServer.selectedServerCtx$(_ctx)
 			.pipe(
 				Rx.switchMap(async function*(ctx) {
-					const state = await LayerQueue.getServerState(ctx)
+					const state = await SquadServer.getServerState(ctx)
 					const settings = SS.getPublicSettings(state.settings)
 					yield [settings, null] as const
 
@@ -49,14 +48,14 @@ export const orpcRouter = {
 				}
 			}
 			return await DB.runTransaction(ctx, async (ctx) => {
-				const state = await LayerQueue.getServerState(ctx)
+				const state = await SquadServer.getServerState(ctx)
 				SS.applySettingMutations(state.settings, input)
 				const res = SS.ServerSettingsSchema.safeParse(state.settings)
 				if (!res.success) {
 					return { code: 'err:invalid-settings' as const, message: res.error.message }
 				}
 
-				await LayerQueue.updateServerState(ctx, { settings: state.settings }, {
+				await SquadServer.updateServerState(ctx, { settings: state.settings }, {
 					type: 'manual',
 					user: USR.toMiniUser(ctx.user),
 					event: 'edit-settings',

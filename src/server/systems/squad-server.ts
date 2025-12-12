@@ -2,7 +2,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { AsyncResource, type CleanupTasks, distinctDeepEquals, performCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { AsyncResource, type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
@@ -19,26 +19,26 @@ import type * as BAL from '@/models/balance-triggers.models'
 import type * as CHAT from '@/models/chat.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as MH from '@/models/match-history.models'
+import * as LL from '@/models/layer-list.models'
+import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
-import type * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import orpcBase from '@/server/orpc-base'
 import * as Commands from '@/server/systems/commands'
-import * as LayerQueue from '@/server/systems/layer-queue.ts'
+import * as LayerQueue from '@/server/systems/layer-queue'
 import * as MatchHistory from '@/server/systems/match-history.ts'
-import * as Rbac from '@/server/systems/rbac.system.ts'
-import * as SharedLayerList from '@/server/systems/shared-layer-list.server'
+import * as Rbac from '@/server/systems/rbac'
+import * as SharedLayerList from '@/server/systems/shared-layer-list'
 import * as SquadRcon from '@/server/systems/squad-rcon'
+import * as Vote from '@/server/systems/vote'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
 import { Mutex, withTimeout } from 'async-mutex'
-
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -64,11 +64,13 @@ export type SquadServer = {
 
 	postRollEventsSub: Rx.Subscription | null
 
-	historyConflictsResolved$: Promise<unknown>
+	historyConflictsResolved$: Rx.BehaviorSubject<boolean>
 
 	serverRolling$: Rx.BehaviorSubject<number | null>
 
 	sftpReader: SftpTail
+
+	// ephemeral state that isn't persisted to the database, as compared to SS.ServerState which is
 	state: {
 		roundWinner: SM.SquadOutcomeTeam | null
 		roundLoser: SM.SquadOutcomeTeam | null
@@ -92,9 +94,11 @@ export type SquadServer = {
 
 		destroyed: boolean
 
-		//
+		nextSetLayerFromLog: L.LayerId | null
+
 		cleanupId: number | null
 	}
+
 	savingEventsMtx: Mutex
 
 	// intermediate event so that initNewGameHandling's behaviour is downstream from event$
@@ -185,11 +189,11 @@ export const orpcRouter = {
 			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[]> = selectedServerCtx$(context)
 				.pipe(
 					Rx.switchMap(ctx => {
-						function getInitialEvents() {
+						async function getInitialEvents() {
 							const sync: CHAT.SyncedEvent = {
 								type: 'SYNCED' as const,
 								time: Date.now(),
-								matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
+								matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
 							}
 
 							let allEvents: SM.Events.Event[] = ctx.server.state.eventBuffer
@@ -210,8 +214,13 @@ export const orpcRouter = {
 
 							return Arr.paged(events, 512)
 						}
-						const initial$ = Rx.from(ctx.server.historyConflictsResolved$)
-							.pipe(Rx.concatMap(getInitialEvents))
+						const initial$ = ctx.server.historyConflictsResolved$
+							.pipe(
+								Rx.filter(resolved => resolved),
+								Rx.first(),
+								Rx.concatMap(getInitialEvents),
+								Rx.concatAll(),
+							)
 
 						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): (SM.Events.Event | CHAT.SyncedEvent)[] => events))
 
@@ -270,6 +279,7 @@ export async function setup() {
 			connections: serverConfig.connections,
 			adminListSources: serverConfig.adminListSources!,
 			adminIdentifyingPermissions: serverConfig.adminIdentifyingPermissions,
+			timeBetweenMatches: serverConfig.timeBetweenMatches,
 		}
 		ops.push((async function loadServerConfig() {
 			const serverState = await DB.runTransaction(ctx, async () => {
@@ -282,7 +292,6 @@ export async function setup() {
 						settings: SS.ServerSettingsSchema.parse(settingsFromConfig),
 						layerQueue: [],
 						layerQueueSeqId: 0,
-						lastRoll: null,
 					}
 					await ctx.db().insert(Schema.servers).values(superjsonify(Schema.servers, server))
 				} else {
@@ -361,7 +370,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 		postRollEventsSub: null,
 
-		historyConflictsResolved$: undefined!,
+		historyConflictsResolved$: new Rx.BehaviorSubject(true),
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 
@@ -377,6 +386,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			createdSquads: [],
 			eventBuffer: [],
 			lastSavedEventId: null,
+			nextSetLayerFromLog: null,
 			destroyed: false,
 			cleanupId: null,
 		},
@@ -385,77 +395,85 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup),
 	}
 
-	cleanup.push(() => {
-		server.serverRolling$.complete()
-		server.beforeNewGame$.complete()
-		server.event$.complete()
-	})
+	cleanup.push(
+		() => server.postRollEventsSub,
+		server.historyConflictsResolved$,
+		server.serverRolling$,
+		server.beforeNewGame$,
+		server.event$,
+		server.savingEventsMtx,
+	)
 
 	let previouslyConnected = false
 	// -------- make sure history and chat state is up to date once an rcon connection is established --------
-	server.historyConflictsResolved$ = Rx.firstValueFrom(rcon.connected$.pipe(
+	rcon.connected$.pipe(
 		traceTag('resolvingHistoryConflicts'),
 		Rx.tap({
 			subscribe: () => {
 				ctx.log.info('trying to resolve potential current match conflict, waiting for rcon connection...')
 			},
+			unsubscribe: () => {
+				ctx.log.info('unsubscribed from connected$')
+			},
+			next: (c) => {
+				ctx.log.info('next', c)
+			},
 		}),
-		Rx.concatMap(C.spanOp('squad-server:resolve-history-conflicts', { tracer }, async (connected) => {
-			if (!connected) return Rx.EMPTY
+		C.durableSub('squad-server:resolve-history-conflicts', { tracer, ctx, eventLogLevel: 'info' }, async (connected) => {
 			const ctx = { ...getBaseCtx(), ...slice }
+			if (!connected) {
+				ctx.log.info('rcon connection lost, history conflicts not resolved')
+				server.historyConflictsResolved$.next(false)
+				return
+			}
+			ctx.log.info('rcon connection established, syncing match history')
 
-			const statusRes = await server.layersStatus.get(ctx)
+			const statusRes = await server.layersStatus.get(ctx, { ttl: 500 })
 			if (statusRes.code === 'err:rcon') return Rx.EMPTY
 			const firstConnection = !previouslyConnected
 			previouslyConnected = true
-			const { pushedNewGame } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
+			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
 			ctx.log.info('rcon connection established, match history is synced')
 
 			// -------- load saved events --------
 			{
-				const match = MatchHistory.getCurrentMatch(ctx)
 				const rowsRaw = await ctx.db().select().from(Schema.serverEvents).where(
-					E.eq(Schema.serverEvents.matchId, match.historyEntryId),
+					E.eq(Schema.serverEvents.matchId, currentMatch.historyEntryId),
 				).orderBy(E.asc(Schema.serverEvents.id))
 				const events = rowsRaw.map(fromEventRow)
 
 				if (events.length > 0 && !events.some(e => e.type === 'NEW_GAME')) {
 					ctx.log.error(
 						'match %d does not have a NEW_GAME event. continuing anyway, but this should be resolved.',
-						match.historyEntryId,
+						currentMatch.historyEntryId,
 					)
 				}
-				server.state.eventBuffer = events
 				server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
+				server.state.eventBuffer.push(...events)
 			}
 
-			// -------- set up chat state --------
 			const [playersRes, squadsRes] = await Promise.all([
-				server.playerList.get({ ...ctx, rcon }),
-				server.squadList.get({ ...ctx, rcon }),
+				server.playerList.get({ ...ctx, rcon }, { ttl: 500 }),
+				server.squadList.get({ ...ctx, rcon }, { ttl: 500 }),
 			])
 
 			if (playersRes.code === 'ok' && squadsRes.code === 'ok') {
-				for (const player of playersRes.players) {
-					server.state.connected.push(player.ids)
-				}
-				for (const squad of squadsRes.squads) {
-					server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
-				}
+				resetPlayerAndSquadState(ctx, playersRes.players, squadsRes.squads)
 
 				let event: SM.Events.Event
 				const base = {
 					time: Date.now(),
-					matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId,
+					matchId: currentMatch.historyEntryId,
 					state: {
 						players: playersRes.players,
 						squads: squadsRes.squads,
 					},
 				}
-				if (pushedNewGame) {
+				if (pushedNewMatch) {
 					event = {
 						type: 'NEW_GAME',
 						id: eventId(),
+						layerId: currentMatch.layerId,
 						source: firstConnection ? 'slm-started' : 'rcon-reconnected',
 						...base,
 					}
@@ -468,20 +486,15 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 					}
 				}
 
-				ctx.server.event$.next([ctx, [event]])
+				const layersStatusRes = await server.layersStatus.get(ctx)
+				if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
+					server.state.nextSetLayerFromLog = layersStatusRes.data.nextLayer.id
+				}
+				server.event$.next([ctx, [event]])
+				server.historyConflictsResolved$.next(true)
 			}
-
-			return Rx.of(1)
-		})),
-		Rx.concatAll(),
-		Rx.retry({
-			count: 5,
-			delay: (error) => {
-				ctx.log.error(error, 'Error resolving history conflicts, retrying...')
-				return Rx.of(error)
-			},
 		}),
-	))
+	).subscribe()
 
 	// -------- process log events --------
 	server.sftpReader.on(
@@ -519,42 +532,63 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	)
 
 	// -------- process rcon events --------
-	Rx.from(server.historyConflictsResolved$)
+	server.rconEvent$
 		.pipe(
-			Rx.concatMap(() => server.rconEvent$),
 			C.durableSub('squad-server:on-rcon-event', { tracer, eventLogLevel: 'trace', ctx }, async ([_ctx, event]) => {
 				const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
+				if (!ctx.server.historyConflictsResolved$.value) {
+					ctx.log.warn('History conflicts not resolved, ignoring RCON event %s', event.type)
+					return { code: 'err:history-conflicts-not-resolved' as const }
+				}
 				ctx.log.info(event, 'Received RCON Event: %s', event.type)
 				const res = await processRconEvent(ctx, event)
 				if (res.code !== 'ok') return res
-
 				ctx.server.event$.next([ctx, [res.event]])
 				return { code: 'ok' as const }
 			}),
 		).subscribe()
 
 	// -------- create synthetic events based on state changes on the server --------
-	Rx.from(server.historyConflictsResolved$)
+	const timeBetweenMatches = settings.timeBetweenMatches
+
+	server.historyConflictsResolved$
 		.pipe(
 			traceTag('listenForSyntheticEvents'),
-			Rx.concatMap(() => server.playerList.observe({ ...ctx, rcon, adminList, serverId })),
-			Rx.concatMap(res => res.code === 'ok' ? Rx.of(res.players) : Rx.EMPTY),
+			Rx.switchMap((resolved) => resolved ? server.playerList.observe({ ...ctx, rcon, adminList, serverId }) : Rx.EMPTY),
+			// only listen while server isn't rolling
+			Rx.concatMap(async res => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				const match = await MatchHistory.getCurrentMatch(ctx)
+				return res.code === 'ok' ? Rx.of({ players: res.players, match, time: Date.now() }) : Rx.EMPTY
+			}),
+			Rx.concatAll(),
 			// pair with the previous state so we can generate synthetic events by looking for changes
 			Rx.pairwise(),
 			// capture event time before we're potentially waiting for server to roll
-			Rx.map(p => [...p, Date.now()] as const),
-			// pause while we wait for the server to roll, accumulating player deltas
-			Rx.concatMap(v => server.serverRolling$.pipe(Rx.filter(v => v === null), Rx.map(() => v), Rx.take(1))),
 			Rx.map(
-				// C.spanOp(
-				// 	'squad-server:gen-synthetic-events',
-				// 	{ tracer },
-				([prev, next, time]) => {
+				([prev, next]) => {
 					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+
+					if (prev.match.historyEntryId !== next.match.historyEntryId) {
+						return []
+					}
+
+					// const timeDiff = next.time - prev.time
+					//
+
+					if (next.match.status === 'post-game') {
+						const expectedNewGameTime = next.match.endTime.getTime() + timeBetweenMatches
+
+						// This isn't super principled but basically we  want to avoid processing synthetic events close to the new game event, because they'll be thrown away anyway and they can cause issues
+						if (expectedNewGameTime < next.time + 5_000) {
+							ctx.log.debug('Skipping generation of synthetic events due to being close to new game')
+							return
+						}
+					}
+
 					ctx.log.debug('Generating synthetic events')
-					return [...generateSyntheticEvents(ctx, prev, next, time)]
+					return [...generateSyntheticEvents(ctx, prev.players, next.players, next.time, next.match.historyEntryId)]
 				},
-				// ),
 			),
 		).subscribe({
 			error: err => {
@@ -564,6 +598,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 				ctx.log.warn('Player list subscription completed')
 			},
 			next: events => {
+				if (!events) return
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				if (events.length === 0) {
 					ctx.log.debug('No synthetic events generated')
@@ -574,19 +609,19 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			},
 		})
 
-	// -------- keep chat buffer state up-to-date --------
+	// -------- keep event buffer state up-to-date --------
 	server.event$.subscribe(([ctx, events]) => {
 		for (const event of events) {
 			ctx.log.info(event, 'emitted event: %s', event.type)
 		}
-		server.state.eventBuffer.push(...events)
+		ctx.server.state.eventBuffer.push(...events)
 	})
 
 	{
 		// -------- periodically save events  --------
 		const saveEventSub = Rx.interval(10_000).pipe(Rx.exhaustMap(async () => {
-			await server.historyConflictsResolved$
 			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+			if (!ctx.server.historyConflictsResolved$.value) return
 			return saveEvents(ctx)
 		})).subscribe()
 
@@ -606,27 +641,17 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 
 		matchHistory: MatchHistory.initMatchHistoryContext(cleanup),
 
-		layerQueue: LayerQueue.initLayerQueueContext(),
-
-		vote: {
-			autostartVoteSub: null,
-			voteEndTask: null,
-			state: null,
-			mtx: withTimeout(new Mutex(), 1_000),
-
-			update$: new Rx.Subject<V.VoteStateUpdate>(),
-		},
+		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
 		sharedList: SharedLayerList.getDefaultState(serverState),
+		vote: Vote.initVoteContext(cleanup),
 
 		adminList,
 		cleanup: cleanup,
 	}
 
 	globalState.slices.set(serverId, slice)
-	await server.historyConflictsResolved$
-	await LayerQueue.init({ ...ctx, ...slice })
+	void LayerQueue.init({ ...ctx, ...slice })
 	SharedLayerList.init({ ...ctx, ...slice })
-	initNewGameHandling({ ...ctx, ...slice })
 	void adminList.get({ ...ctx, ...slice })
 
 	server.state.cleanupId = CleanupSys.register(async () => {
@@ -636,150 +661,12 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	ctx.log.info('Initialized server %s', serverId)
 }
 
-/**
- * Init Interpretation/matching of current layer updates from the game server for the purposes of syncing it with the queue & match history --------
- * TODO we could probably simplify this massively by just listening for the set layer evens in the logs lol
- */
-function initNewGameHandling(ctx: C.ServerSlice & CS.Log & C.Db) {
-	const serverId = ctx.serverId
-	const currentLayerChanged$ = ctx.server.layersStatus.observe(ctx)
-		.pipe(
-			Rx.concatMap(statusRes => statusRes.code === 'ok' ? Rx.of(statusRes.data.currentLayer) : Rx.EMPTY),
-			Rx.pairwise(),
-			Rx.filter(([prevLayer, currentLayer]) => prevLayer.id !== currentLayer.id),
-			Rx.map(([_, currentLayer]) => currentLayer),
-			// make sure the encapsulated state of this observable is stable for the pairing process below
-			Rx.share(),
-		)
-
-	// TODO this is a complex situation for opentelemetry/span linking. revisit at some point
-
-	// if we have to handle multiple effects from NEW_GAME we may want to ensure the order in which those effects are processed instead of just reading straight from event$
-
-	let triggerWait$ = Rx.merge(
-		currentLayerChanged$.pipe(Rx.map((layer) => [resolveSliceCtx(getBaseCtx(), serverId), 'new-layer' as const, layer] as const)),
-		ctx.server.beforeNewGame$.pipe(Rx.map(([ctx, event]) => [ctx, 'new-game' as const, event] as const)),
-	)
-
-	// @ts-expect-error wait for the startup history reconciliation to complete before listening for new games
-	triggerWait$ = Rx.concat(
-		Rx.from(ctx.server.historyConflictsResolved$).pipe(Rx.filter(() => false)),
-		triggerWait$,
-	)
-
-	// pair off detected new layers via RCON with NEW_GAME events from the logs (which we may receive in any order and within a fairly wide window), and handle them in a reasonably durable way
-	triggerWait$
-		.pipe(
-			C.durableSub('squad-server:handle-new-layer', {
-				// exhaustMap means we ignore subsequent emissions until the current one is processed
-				taskScheduling: 'exhaust',
-				ctx,
-				tracer,
-			}, async ([ctx, triggerType, payload]) => {
-				if (ctx.server.serverRolling$.value) {
-					ctx.log.error('Server is rolling, skipping new game trigger. This should never happen')
-					return Rx.EMPTY
-				}
-				try {
-					const rollTime = triggerType === 'new-game' ? payload.time : Date.now()
-					ctx.server.serverRolling$.next(rollTime)
-
-					let newGameEvent: SM.LogEvents.NewGame | undefined
-					let newLayer: L.UnvalidatedLayer
-
-					ctx.log.info('Handling new game trigger: %s', triggerType)
-
-					// the timeout threshold we choose matters here -- since the UE5 upgrade squad servers have not been good at outputting RCON events during a map roll which can last a long time, which has lead to issues here in the past. The tolerences here need to be fairly loose for that reason.
-					const timeoutThreshold = 20_000
-
-					const timeout$ = Rx.timer(timeoutThreshold).pipe(
-						Rx.map(() => 'timeout' as const),
-					)
-					// if we receive two NEW_GAME events or two new layers, that's a problem and we're just going to refuse to deal with it for now.
-					const doubleEvent$ = triggerWait$.pipe(
-						Rx.concatMap(([_, e]) => e === triggerType ? Rx.of('double-event' as const) : Rx.EMPTY),
-					)
-					if (triggerType === 'new-game') {
-						newGameEvent = payload
-						ctx.log.debug('Received NEW_GAME event, waiting for layer change')
-
-						ctx.server.layersStatus.invalidate(ctx)
-						const out = await Rx.firstValueFrom(Rx.race(
-							currentLayerChanged$,
-							doubleEvent$,
-							timeout$,
-						))
-
-						if (out === 'double-event') {
-							ctx.log.error('Double event detected: %s', triggerType)
-							return
-						} else if (out === 'timeout') {
-							ctx.log.warn('Timeout reached while waiting for %s, just trying whatever layer is set currently...', 'currentLayerChanged')
-							const statusRes = await ctx.server.layersStatus.get(ctx)
-							if (statusRes.code === 'err:rcon') {
-								ctx.log.warn('RCON error while waiting for %s', 'currentLayerChanged')
-								return
-							}
-							ctx.log.info('Found current layer %s', DH.displayLayer(statusRes.data.currentLayer))
-							newLayer = statusRes.data.currentLayer
-						} else {
-							ctx.log.debug('Layer changed to %s', DH.displayLayer(out))
-							newLayer = out
-						}
-					} else {
-						newLayer = payload
-						ctx.log.debug('Detected layer change to %s, waiting for NEW_GAME event', DH.displayLayer(newLayer))
-						const out = await Rx.firstValueFrom(Rx.race(
-							ctx.server.beforeNewGame$.pipe(Rx.map(([_, event]) => event)),
-							doubleEvent$,
-							timeout$,
-						))
-
-						if (out === 'double-event') {
-							ctx.log.error('Double event detected: %s', triggerType)
-							return
-						} else if (out === 'timeout') {
-							ctx.log.warn('Timeout reached while waiting for %s', 'NEW_GAME')
-						} else {
-							ctx.log.debug('Received NEW_GAME event')
-							newGameEvent = out
-						}
-					}
-
-					ctx.log.info('Processing new game with layer %s and event: %o', DH.displayLayer(newLayer), newGameEvent)
-
-					// NOTE: handleNewGame does most of the interesting stuff here, probably refactoring opportuntity
-					const res = await LayerQueue.handleNewGame(ctx, newLayer, newGameEvent)
-					if (res.code !== 'ok') return
-					const [squadsRes, playersRes] = await Promise.all([
-						ctx.server.squadList.get(ctx, { ttl: 0 }),
-						ctx.server.playerList.get(ctx, { ttl: 0 }),
-					])
-
-					const squads = squadsRes.code === 'ok' ? squadsRes.squads : []
-					const players = playersRes.code === 'ok' ? playersRes.players : []
-
-					ctx.server.event$.next([ctx, [{
-						type: 'NEW_GAME',
-						id: eventId(),
-						time: newGameEvent?.time ?? Date.now(),
-						state: { squads, players },
-						matchId: res.match.historyEntryId,
-						source: 'new-game-detected',
-					}]])
-				} finally {
-					ctx.server.serverRolling$.next(null)
-				}
-			}),
-		).subscribe()
-}
-
 export async function destroyServer(ctx: C.ServerSlice & CS.Log) {
 	if (ctx.server.state.destroyed) return
 	ctx.server.state.destroyed = true
 	const cleanupId = ctx.server.state.cleanupId
 	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
-	await performCleanup(ctx, ctx.cleanup)
+	await runCleanup(ctx, ctx.cleanup)
 	// we're not dealing with mutexes yet Sadge
 	globalState.slices.delete(ctx.serverId)
 	for (const [wsClientId, serverId] of Array.from(globalState.selectedServers.entries())) {
@@ -826,7 +713,7 @@ function getLayersStatusExt$(
 async function fetchLayersStatusExt(ctx: CS.Log & C.SquadServer & C.MatchHistory) {
 	const statusRes = await ctx.server.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
-	return buildServerStatusRes(statusRes.data, MatchHistory.getCurrentMatch(ctx))
+	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
 }
 
 function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.MatchDetails) {
@@ -903,7 +790,7 @@ async function processServerLogEvent(
 		ttl: CONFIG.squadServer.sftpPollInterval / 4,
 		timeout: CONFIG.squadServer.sftpPollInterval * 2,
 	}
-	const match = MatchHistory.getCurrentMatch(ctx)
+	const match = await MatchHistory.getCurrentMatch(ctx)
 	const base = {
 		time: logEvent.time,
 		matchId: match.historyEntryId,
@@ -924,8 +811,7 @@ async function processServerLogEvent(
 
 		case 'ROUND_TEAM_OUTCOME': {
 			server.state.roundEndState = {
-				// ported from existing behavior from squadjs -- unsure why it exists though https://github.com/Tactrigsds/SquadJS/blob/psg/squad-server/log-parser/round-winner.js
-				winner: server.state.roundEndState ? logEvent.winner : null,
+				winner: logEvent.winner,
 				layer: logEvent.layer,
 			}
 			break
@@ -972,20 +858,104 @@ async function processServerLogEvent(
 			}
 			server.state.roundWinner = null
 			server.state.roundLoser = null
+			server.state.roundEndState = null
 			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, winner, loser, new Date(logEvent.time))
 			if (res.code !== 'ok') return res
+
 			const event: SM.Events.RoundEnded = {
 				type: 'ROUND_ENDED',
 				id: eventId(),
 				...base,
 			}
+
+			return { code: 'ok' as const, event }
+		}
+
+		case 'MAP_SET': {
+			const layer = L.parseRawLayerText(`${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`.trim())
+			if (!layer) {
+				throw new Error(`Failed to parse layer text: ${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`)
+			}
+			server.state.nextSetLayerFromLog = layer.id
+			const event: SM.Events.MapSet = {
+				type: 'MAP_SET',
+				id: eventId(),
+				...base,
+				layerId: layer.id,
+			}
 			return { code: 'ok' as const, event }
 		}
 
 		case 'NEW_GAME': {
-			if (logEvent.layerClassname === 'TransitionMap') return
-			server.beforeNewGame$.next([ctx, logEvent])
-			return
+			if (logEvent.layerClassname === 'TransitionMap') {
+				return
+			}
+			try {
+				server.serverRolling$.next(logEvent.time)
+
+				// get these ASAP
+				const squadListPromise = server.squadList.get(ctx, { ttl: 300 })
+				const playerListPromise = server.playerList.get(ctx, { ttl: 300 })
+				let newLayerId = server.state.nextSetLayerFromLog
+				if (newLayerId === null) {
+					ctx.log.error(`next layer ID was not set`)
+					return
+				}
+				ctx.log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
+
+				const { match } = await DB.runTransaction(ctx, async (ctx) => {
+					const serverState = await getServerState(ctx)
+					const nextLqItem = serverState.layerQueue[0]
+
+					let currentMatchLqItem: LL.Item | undefined
+					const newServerState = Obj.deepClone(serverState)
+					if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+						currentMatchLqItem = newServerState.layerQueue.shift()
+					}
+					const { match } = await MatchHistory.addNewCurrentMatch(
+						ctx,
+						MH.getNewMatchHistoryEntry({
+							layerId: newLayerId,
+							serverId: ctx.serverId,
+							startTime: new Date(logEvent.time),
+							lqItem: currentMatchLqItem,
+						}),
+					)
+
+					await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
+					await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
+					await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
+					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+					return { match }
+				})
+
+				const [squadsRes, playersRes] = await Promise.all([squadListPromise, playerListPromise])
+				let squads: SM.Squad[]
+				let players: SM.Player[]
+				if (squadsRes.code !== 'ok' || playersRes.code !== 'ok') {
+					ctx.log.error(`Failed to fetch squads or players: ${squadsRes.code} ${playersRes.code}`)
+					squads = []
+					players = []
+				} else {
+					squads = squadsRes.squads
+					players = playersRes.players
+				}
+
+				resetPlayerAndSquadState(ctx, players, squads)
+
+				const event: SM.Events.NewGame = {
+					type: 'NEW_GAME',
+					id: eventId(),
+					layerId: newLayerId,
+					source: 'new-game-detected',
+					state: { squads, players },
+					...base,
+					matchId: match.historyEntryId,
+				}
+				return { code: 'ok' as const, event }
+			} finally {
+				server.serverRolling$.next(null)
+			}
 		}
 
 		case 'PLAYER_CONNECTED': {
@@ -1126,10 +1096,7 @@ async function processServerLogEvent(
 }
 
 export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event: SM.RconEvents.Event) {
-	// wait for server to not be rolling if the event occurred after we started rolling. we're doing this so we're less likely to miscategorize the events as belonging to the wrong match
-	await Rx.firstValueFrom(ctx.server.serverRolling$.pipe(Rx.filter(rollTime => rollTime === null || rollTime > event.time)))
-
-	const match = MatchHistory.getCurrentMatch(ctx)
+	const match = await MatchHistory.getCurrentMatch(ctx)
 	const matchId = match.historyEntryId
 
 	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
@@ -1145,7 +1112,7 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 			if (event.message.startsWith(CONFIG.commandPrefix)) {
 				await Commands.handleCommand(ctx, event)
 			} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
-				LayerQueue.handleVote(ctx, event)
+				Vote.handleVote(ctx, event)
 			}
 
 			let channel: SM.ChatChannel
@@ -1250,8 +1217,9 @@ function* generateSyntheticEvents(
 	prevPlayers: SM.Player[],
 	players: SM.Player[],
 	time: number,
+	matchId: number,
 ): Generator<SM.Events.Event> {
-	const base = { time, matchId: MatchHistory.getCurrentMatch(ctx).historyEntryId }
+	const base = { time, matchId }
 
 	const squads = SM.Players.groupIntoSquads(players)
 	const prevSquads = SM.Players.groupIntoSquads(prevPlayers)
@@ -1353,6 +1321,36 @@ function* generateSyntheticEvents(
 	}
 }
 
+export async function getServerState(ctx: C.Db & CS.Log & C.ServerId) {
+	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
+	let serverRaw: any
+	if (ctx.tx) [serverRaw] = await query.for('update')
+	else [serverRaw] = await query
+	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
+}
+
+export async function updateServerState(
+	ctx: C.Db & C.Tx & C.LayerQueue,
+	changes: Partial<SS.ServerState>,
+	source: SS.LQStateUpdate['source'],
+) {
+	const serverState = await getServerState(ctx)
+	const newServerState = { ...serverState, ...changes }
+	if (changes.layerQueueSeqId && changes.layerQueueSeqId !== serverState.layerQueueSeqId) {
+		throw new Error('Invalid layer queue sequence ID')
+	}
+	if (!Obj.deepEqual(newServerState.layerQueue, serverState.layerQueue)) {
+		newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
+	}
+	await ctx.db().update(Schema.servers)
+		.set(superjsonify(Schema.servers, { ...changes, layerQueueSeqId: newServerState.layerQueueSeqId }))
+		.where(E.eq(Schema.servers.id, ctx.serverId))
+	const update: SS.LQStateUpdate = { state: newServerState, source }
+
+	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next([update, { ...getBaseCtx(), serverId: ctx.serverId }]))
+	return newServerState
+}
+
 // TODO Zod?
 export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 	return {
@@ -1360,7 +1358,7 @@ export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 		id: row.id,
 		type: row.type,
 		time: row.time.getTime(),
-		matchId: row.matchId,
+		matchId: row.type === 'NEW_GAME' ? row.matchId : undefined,
 	}
 }
 
@@ -1404,6 +1402,19 @@ export const saveEvents = C.spanOp(
 		state.lastSavedEventId = events[events.length - 1].id
 	},
 )
+
+function resetPlayerAndSquadState(ctx: C.SquadServer, players: SM.Player[], squads: SM.Squad[]) {
+	const server = ctx.server
+
+	server.state.connected = []
+	for (const player of players) {
+		server.state.connected.push(player.ids)
+	}
+	server.state.createdSquads = []
+	for (const squad of squads) {
+		server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
+	}
+}
 
 function eventId() {
 	return globalState.serverEventIdCounter.next().value

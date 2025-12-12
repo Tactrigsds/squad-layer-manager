@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object'
+import { HumanTime } from '@/lib/zod'
 import * as CB from '@/models/constraint-builders'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
@@ -68,7 +69,9 @@ export const PublicServerSettingsSchema = z
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.default({}).transform((obj) => Obj.deepClone(obj)),
+		timeBetweenMatches: z.number().default(90_000),
 	})
+
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
@@ -192,7 +195,6 @@ export type ServerId = z.infer<typeof ServerIdSchema>
 export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
-	lastRoll: z.date().nullable(),
 	layerQueueSeqId: z.number().int().default(0),
 	layerQueue: LL.ListSchema,
 	settings: ServerSettingsSchema,

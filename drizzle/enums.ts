@@ -5,7 +5,7 @@ import { z } from 'zod'
 export const BALANCE_TRIGGER_LEVEL = z.enum(['info', 'warn', 'violation'])
 export type BalanceTriggerLevel = z.infer<typeof BALANCE_TRIGGER_LEVEL>
 
-// this is append only to not mix up the existing enum indexes
+// this is APPEND ONLY, so that we don't mix up the existing enum indexes
 export const SERVER_EVENT_TYPE = z.enum([
 	'NEW_GAME',
 	'ROUND_ENDED',
@@ -28,6 +28,7 @@ export const SERVER_EVENT_TYPE = z.enum([
 	'RESET',
 	'PLAYER_DIED',
 	'PLAYER_WOUNDED',
+	'MAP_SET',
 ])
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>

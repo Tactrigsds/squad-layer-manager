@@ -37,7 +37,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as SLLClient from '@/systems.client/shared-layer-list.client.ts'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as UsersClient from '@/systems.client/users.client'
-import * as VotesClient from '@/systems.client/votes.client'
+import * as VotesClient from '@/systems.client/vote.client.ts'
 import * as RQ from '@tanstack/react-query'
 import * as dateFns from 'date-fns'
 
@@ -532,7 +532,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		removeActivity: SLL.toEditIdleOrNone(),
 	})
 
-	const startVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.startVote.mutationOptions())
+	const startVoteMutation = RQ.useMutation(RPC.orpc.vote.startVote.mutationOptions())
 	async function startVote() {
 		const res = await startVoteMutation.mutateAsync({ itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
 		switch (res.code) {
@@ -547,7 +547,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		}
 	}
 
-	const abortVoteMutation = RQ.useMutation(RPC.orpc.layerQueue.abortVote.mutationOptions())
+	const abortVoteMutation = RQ.useMutation(RPC.orpc.vote.abortVote.mutationOptions())
 	async function abortVote() {
 		const res = await abortVoteMutation.mutateAsync(undefined)
 		switch (res.code) {
@@ -562,7 +562,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		}
 	}
 
-	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.layerQueue.cancelVoteAutostart.mutationOptions())
+	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.vote.cancelVoteAutostart.mutationOptions())
 	async function cancelAutostart() {
 		const res = await cancelAutostartMutation.mutateAsync(undefined)
 		switch (res.code) {

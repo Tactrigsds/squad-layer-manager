@@ -14,7 +14,7 @@ import * as DB from '@/server/db'
 import { baseLogger } from '@/server/logger.ts'
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/server/systems/layer-queue'
-import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as Rbac from '@/server/systems/rbac'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as WSSessionSys from '@/server/systems/ws-session.ts'
 import * as Otel from '@opentelemetry/api'
@@ -157,7 +157,7 @@ const handleSllStateUpdate = C.spanOp(
 
 			case 'commit': {
 				void DB.runTransaction(ctx, async (ctx) => {
-					let serverState = await LayerQueue.getServerState(ctx)
+					let serverState = await SquadServer.getServerState(ctx)
 					if (serverState.layerQueueSeqId !== ctx.sharedList.queueSeqId) {
 						return {
 							code: 'err:outdated-queue-id' as const,
@@ -205,7 +205,7 @@ const handleSllStateUpdate = C.spanOp(
 			}
 
 			case 'reset': {
-				const serverState = await LayerQueue.getServerState(ctx)
+				const serverState = await SquadServer.getServerState(ctx)
 				SLL.applyListUpdate(ctx.sharedList.session, serverState.layerQueue)
 				const sessionSeqId = ctx.sharedList.sessionSeqId
 				ctx.sharedList.sessionSeqId++

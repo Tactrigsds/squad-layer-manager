@@ -15,7 +15,7 @@ import * as Rx from 'rxjs'
 import { z } from 'zod'
 import { CONFIG } from '../config'
 import * as Discord from './discord'
-import { getUserRbacPerms } from './rbac.system'
+import * as Rbac from './rbac'
 
 const state = {
 	// linking code -> discordId
@@ -26,7 +26,7 @@ const invalidateUsers$ = new Rx.Subject<void>()
 
 export const orpcRouter = {
 	getLoggedInUser: orpcBase.handler(async ({ context }) => {
-		const perms = await getUserRbacPerms(context)
+		const perms = await Rbac.getUserRbacPerms(context)
 		const user: RBAC.UserWithRbac = {
 			...context.user,
 			perms,

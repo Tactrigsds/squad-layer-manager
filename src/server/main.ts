@@ -1,7 +1,7 @@
 import { sleep } from '@/lib/async.ts'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as FilterEntity from '@/server/systems/filter-entity'
-import * as SharedLayerList from '@/server/systems/shared-layer-list.server.ts'
+import * as SharedLayerList from '@/server/systems/shared-layer-list.ts'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -12,10 +12,10 @@ import * as CleanupSys from './systems/cleanup'
 import * as Cli from './systems/cli.ts'
 import * as Discord from './systems/discord.ts'
 import * as Fastify from './systems/fastify.ts'
-import * as LayerDb from './systems/layer-db.server.ts'
-import * as Rbac from './systems/rbac.system.ts'
+import * as LayerDb from './systems/layer-db.ts'
+import * as Rbac from './systems/rbac.ts'
 import * as Sessions from './systems/sessions.ts'
-import * as SquadServer from './systems/squad-server'
+import * as SquadServer from './systems/squad-server.ts'
 
 const tracer = Otel.trace.getTracer('squad-layer-manager')
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })

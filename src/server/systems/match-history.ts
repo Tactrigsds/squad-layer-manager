@@ -50,9 +50,7 @@ export function initMatchHistoryContext(cleanup: CleanupTasks): MatchHistoryCont
 		recentMatchEvents: new Map(),
 	}
 
-	cleanup.push(async () => {
-		ctx.update$.complete()
-	}, cleanup)
+	cleanup.push(ctx.update$, ctx.mtx)
 
 	return ctx
 }
@@ -134,19 +132,31 @@ export const loadState = C.spanOp(
 	},
 )
 
-export function getCurrentMatch(ctx: C.MatchHistory) {
-	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
-}
+export const getRecentMatches = C.spanOp('match-history:get-recent-matches', {
+	tracer,
+	eventLogLevel: 'debug',
+	mutexes: (ctx) => ctx.matchHistory.mtx,
+}, async (ctx: C.MatchHistory) => {
+	return ctx.matchHistory.recentMatches
+})
 
-export const loadCurrentMatch = C.spanOp(
+export const getCurrentMatch = C.spanOp('match-history:get-previous-match', {
+	tracer,
+	eventLogLevel: 'debug',
+	mutexes: (ctx) => ctx.matchHistory.mtx,
+}, async (ctx: C.MatchHistory) => {
+	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
+})
+
+const loadCurrentMatch = C.spanOp(
 	'match-history:get-previous-match',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { lock?: boolean }) => {
+	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
+	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { forUpdate?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
 			E.desc(Schema.matchHistory.ordinal),
 		).limit(1)
 		let match: SchemaModels.MatchHistory
-		if (opts?.lock) [match] = await query.for('update')
+		if (opts?.forUpdate) [match] = await query.for('update')
 		else [match] = await query.execute()
 		if (!match) return null
 		return MH.matchHistoryEntryToMatchDetails(match)
@@ -192,14 +202,14 @@ export const addNewCurrentMatch = C.spanOp(
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
-			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
+			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			const oldMatchId = currentMatch?.historyEntryId ?? null
 			await ctx.db().insert(Schema.matchHistory).values(
 				superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }),
 			)
 
-			// write buffer since we're about to flush it
+			// write event buffer since we're about to flush it
 			await SquadServer.saveEvents(ctx)
 			ctx.server.state.lastSavedEventId = null
 			// flush the events buffer
@@ -214,7 +224,7 @@ export const addNewCurrentMatch = C.spanOp(
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 		})
 
-		return { code: 'ok' as const, match: getCurrentMatch(ctx) }
+		return { code: 'ok' as const, match: await getCurrentMatch(ctx) }
 	},
 )
 
@@ -222,10 +232,8 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 	tracer,
 	eventLogLevel: 'info',
 	mutexes: (ctx) => ctx.matchHistory.mtx,
-	extraText: (ctx) => `id: ${getCurrentMatch(ctx).historyEntryId}`,
-	attrs: (ctx, currentLayerId) => ({
+	attrs: (_, currentLayerId) => ({
 		currentLayerId,
-		currentMatchId: getCurrentMatch(ctx).historyEntryId,
 	}),
 }, async (
 	ctx: CS.Log & C.Db & C.MatchHistory,
@@ -235,7 +243,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 	time: Date,
 ) => {
 	const res = await DB.runTransaction(ctx, async ctx => {
-		const currentMatch = await loadCurrentMatch(ctx, { lock: true })
+		const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 		if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
 		if (currentMatch.status !== 'in-progress') {
 			ctx.log.warn('unable to update current history entry: not in-progress')
@@ -309,11 +317,11 @@ export const syncWithCurrentLayer = C.spanOp(
 	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
 		return await DB.runTransaction(ctx, async ctx => {
-			const currentMatch = await loadCurrentMatch(ctx, { lock: true })
+			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
 				await loadState(ctx)
 				addReleaseTask(ctx.matchHistory.dispatchUpdate)
-				return { pushedNewGame: false }
+				return { pushedNewMatch: false, currentMatch }
 			}
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx.db().insert(Schema.matchHistory).values(superjsonify(Schema.matchHistory, {
@@ -324,7 +332,7 @@ export const syncWithCurrentLayer = C.spanOp(
 			}))
 			await loadState(ctx)
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
-			return { pushedNewGame: true }
+			return { pushedNewMatch: true, currentMatch: await getCurrentMatch(ctx) }
 		})
 	},
 )

@@ -48,6 +48,7 @@ export type DedupedBase = {
 // event enriched with relevant data
 export type EventEnriched =
 	| NoopEvent
+	| SM.Events.MapSet
 	| Omit<SM.Events.NewGame, 'state'>
 	| Omit<SM.Events.Reset, 'state'>
 	| SM.Events.RoundEnded
@@ -218,19 +219,10 @@ export function handleEvent(
 		if (newFirstEventIndex === -1) {
 			throw new Error(`Could not find event ${state.savepoints[newFirstSavepointIndex].savedAtEventId} for savepoint`)
 		}
-		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
-		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
 
-		// keep all matches up to and including the first "stable" new game
-		let keptMatchIds = new Set<number>()
-		for (let i = state.eventBuffer.length - 1; i >= 0; i--) {
-			const event = state.eventBuffer[i]
-			if (event.type === 'NEW_GAME') {
-				keptMatchIds.add(event.matchId)
-				if (newFirstEventIndex > i) break
-			}
-		}
-		state.eventBuffer = state.eventBuffer.filter(e => keptMatchIds.has(e.matchId))
+		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
+		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
+		state.eventBuffer = state.eventBuffer.slice(newFirstEventIndex)
 	}
 }
 
@@ -271,6 +263,8 @@ export function interpolateEvent(
 ): EventEnriched {
 	// NOTE: mutating collections is fine, but avoid mutating entities.
 	switch (event.type) {
+		case 'MAP_SET':
+			return event
 		case 'NEW_GAME':
 		case 'RESET': {
 			const { state: newState, ...rest } = event

@@ -25,20 +25,34 @@ export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, cleanup: Clean
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
 		defaultTTL: 5000,
+		retries: 4,
+		retryDelay: 1000,
+		isErrorResponse: (res) => res.code !== 'ok',
 	})
 	cleanup.push(() => layersStatus.dispose())
 
 	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource('serverInfo', (ctx) => getServerInfo(ctx), {
 		defaultTTL: 10_000,
+		retries: 4,
+		retryDelay: 1000,
+		isErrorResponse: (res) => res.code !== 'ok',
 	})
 	cleanup.push(() => serverInfo.dispose())
 
 	const playerList: SquadRcon['playerList'] = new AsyncResource('playerList', (ctx) => getPlayers(ctx), {
 		defaultTTL: 2000,
+		retries: 4,
+		retryDelay: 1000,
+		isErrorResponse: (res) => res.code !== 'ok',
 	})
 	cleanup.push(() => playerList.dispose())
 
-	const squadList: SquadRcon['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), { defaultTTL: 5000 })
+	const squadList: SquadRcon['squadList'] = new AsyncResource('squadList', (ctx) => getSquads(ctx), {
+		defaultTTL: 5000,
+		retries: 4,
+		retryDelay: 1000,
+		isErrorResponse: (res) => res.code !== 'ok',
+	})
 	cleanup.push(() => squadList.dispose())
 
 	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>

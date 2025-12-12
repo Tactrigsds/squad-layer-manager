@@ -457,12 +457,18 @@ export namespace Events {
 	export type Base = {
 		id: number
 		time: number
-		// we're incling matchId in all Events here to simplify the lookup process where convenient, and to make it possible to sync the current server id set for the client with the displayed events. Could also omnibus events across multiple servers in the future if we wanted to
 		matchId: number
 	}
+
+	export type MapSet = {
+		type: 'MAP_SET'
+		layerId: L.LayerId
+	} & Base
+
 	export type NewGame = {
 		type: 'NEW_GAME'
 		source: 'slm-started' | 'rcon-reconnected' | 'new-game-detected'
+		layerId: L.LayerId
 		state: {
 			players: Player[]
 			squads: Squad[]
@@ -583,6 +589,7 @@ export namespace Events {
 	} & Base
 
 	export type Event =
+		| MapSet
 		| NewGame
 		| Reset
 		| RoundEnded
@@ -1021,6 +1028,27 @@ export namespace LogEvents {
 		},
 	})
 
+	export const MapSetSchema = eventDef('MAP_SET', {
+		...BaseEventProperties,
+		nextLayer: z.string().trim(),
+		nextFactions: z.string().trim().optional(),
+	})
+
+	export type MapSet = z.infer<typeof MapSetSchema['schema']>
+	export const MapSetMatcher = createLogMatcher({
+		event: MapSetSchema,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^\[]+))? from .+/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				nextLayer: args[3],
+				nextFactions: args[4]?.trim(),
+			}
+		},
+	})
+
 	export type ToEventMap<E extends SquadLogEvent> = {
 		[e in E['type']]: (evt: Extract<E, { type: e }>) => void
 	}
@@ -1036,6 +1064,7 @@ export namespace LogEvents {
 		PlayerDiedMatcher,
 		PlayerWoundedMatcher,
 		AdminBroadcastMatcher,
+		MapSetMatcher,
 	] as const
 
 	export type Event =
@@ -1049,6 +1078,7 @@ export namespace LogEvents {
 		| PlayerDied
 		| PlayerWounded
 		| AdminBroadcast
+		| MapSet
 
 	function parseTimestamp(raw: string) {
 		const date = dateFns.parse(

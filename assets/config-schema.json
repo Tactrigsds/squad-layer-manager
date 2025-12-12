@@ -36,6 +36,11 @@
             "items": {"type": "string"},
             "description": "specify which sources to include from adminListSources. by default will include all sources"
           },
+          "timeBetweenMatches": {
+            "$ref": "#/properties/postRollAnnouncementsTimeout",
+            "default": "90s",
+            "description": "the server's configured time between matches. this is used to prevent potential issues with event ordering during server rolls"
+          },
           "adminIdentifyingPermissions": {
             "type": "array",
             "items": {

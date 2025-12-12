@@ -1,6 +1,6 @@
 import * as FeatureFlags from '@/systems.client/feature-flags.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
-import * as VotesClient from '@/systems.client/votes.client.ts'
+import * as VotesClient from '@/systems.client/vote.client.ts'
 import * as TSR from '@tanstack/react-router'
 import React from 'react'
 import { createRoot } from 'react-dom/client'

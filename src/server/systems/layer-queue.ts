@@ -1,8 +1,7 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import { sleep, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
+import { CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import { addReleaseTask, withAcquired } from '@/lib/nodejs-reentrant-mutexes'
+import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards.ts'
 import type { Parts } from '@/lib/types'
@@ -24,39 +23,36 @@ import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { baseLogger } from '@/server/logger.ts'
 import orpcBase from '@/server/orpc-base'
-import * as LayerQueriesServer from '@/server/systems/layer-queries.server.ts'
+import * as LayerQueriesServer from '@/server/systems/layer-queries'
 import * as MatchHistory from '@/server/systems/match-history.ts'
-import * as Rbac from '@/server/systems/rbac.system.ts'
+import * as Rbac from '@/server/systems/rbac'
 import * as SquadRcon from '@/server/systems/squad-rcon'
-import * as SquadServer from '@/server/systems/squad-server.ts'
+import * as SquadServer from '@/server/systems/squad-server'
+import * as VoteSys from '@/server/systems/vote'
 import * as LayerQueries from '@/systems.shared/layer-queries.shared.ts'
 import * as Otel from '@opentelemetry/api'
-import type { MutexInterface } from 'async-mutex'
-import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 import * as Users from './users'
 
-export type VoteContext = {
-	voteEndTask: Rx.Subscription | null
-	autostartVoteSub: Rx.Subscription | null
-	mtx: MutexInterface
-	state: V.VoteState | null
-	update$: Rx.Subject<V.VoteStateUpdate>
-}
-
 export type LayerQueueContext = {
 	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
 
+	// TODO we should fold this into the server events
 	update$: Rx.ReplaySubject<[SS.LQStateUpdate, CS.Log & C.Db & C.ServerId]>
 }
 
-export function initLayerQueueContext(): LayerQueueContext {
-	return {
+export function initLayerQueueContext(cleanup: CleanupTasks) {
+	const ctx: LayerQueueContext = {
 		unexpectedNextLayerSet$: new Rx.BehaviorSubject<L.LayerId | null>(null),
 		update$: new Rx.ReplaySubject(1),
 	}
+	cleanup.push(
+		ctx.unexpectedNextLayerSet$,
+		ctx.update$,
+	)
+	return ctx
 }
 
 const tracer = Otel.trace.getTracer('layer-queue')
@@ -71,7 +67,7 @@ export const init = C.spanOp(
 			const initialServerState = await SquadServer.getFullServerState(ctx)
 
 			// -------- initialize vote state --------
-			await syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
+			await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, [], initialServerState.layerQueue)
 
 			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
 
@@ -85,9 +81,9 @@ export const init = C.spanOp(
 			ctx.log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
 		}))
 
-		ctx.cleanup.push(ctx.layerQueue.update$.subscribe(([state, ctx]) => {
+		ctx.layerQueue.update$.subscribe(([state, ctx]) => {
 			ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
-		}))
+		})
 
 		// -------- schedule generic admin reminders --------
 		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
@@ -95,15 +91,15 @@ export const init = C.spanOp(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
 					C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-						const serverState = await getServerState(ctx)
-						const currentMatch = MatchHistory.getCurrentMatch(ctx)
+						const serverState = await SquadServer.getServerState(ctx)
+						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 						const voteState = ctx.vote.state
 						if (ctx.server.serverRolling$.value || currentMatch.status === 'post-game') return
 						if (
 							LL.isVoteItem(serverState.layerQueue[0])
 							&& voteState?.code === 'ready'
-							&& serverState.lastRoll
-							&& serverState.lastRoll.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
+							&& currentMatch.startTime !== undefined
+							&& currentMatch.startTime.getTime() + CONFIG.vote.startVoteReminderThreshold < Date.now()
 						) {
 							await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.votePending)
 						} else if (serverState.layerQueue.length === 0) {
@@ -129,7 +125,7 @@ export const init = C.spanOp(
 					}),
 					C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async (unexpectedNextlayer) => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-						const serverState = await getServerState(ctx)
+						const serverState = await SquadServer.getServerState(ctx)
 						const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
 						if (!expectedNextLayer) return
 						const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
@@ -166,7 +162,7 @@ export const init = C.spanOp(
 				if (ctx.server.serverRolling$.value) return
 
 				await DB.runTransaction(ctx, async (ctx) => {
-					const serverState = await getServerState(ctx)
+					const serverState = await SquadServer.getServerState(ctx)
 					await syncNextLayerInPlace(ctx, serverState)
 				})
 			}),
@@ -174,67 +170,23 @@ export const init = C.spanOp(
 	},
 )
 
-export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHistory.mtx, ctx.server.savingEventsMtx], async (
-	ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory,
-	newLayer: L.UnvalidatedLayer,
-	newGameEvent?: SM.LogEvents.NewGame,
-) => {
-	if (newGameEvent && newGameEvent?.layerClassname !== newLayer.Layer) {
-		ctx.log.warn(`Layers do not match: ${newGameEvent.layerClassname} !== ${newLayer.Layer}. discarding new game event`)
-		newGameEvent = undefined
-	}
-
-	const eventTime = newGameEvent?.time ?? Date.now()
-
+export function schedulePostRollTasks(ctx: C.SquadServer & CS.Log, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
-
-	const res = await DB.runTransaction(ctx, async (ctx) => {
-		const serverState = await getServerState(ctx)
-		const nextLqItem = serverState.layerQueue[0]
-
-		let currentMatchLqItem: LL.Item | undefined
-		const newServerState = Obj.deepClone(serverState)
-		newServerState.lastRoll = new Date()
-		if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayer.id)) {
-			currentMatchLqItem = newServerState.layerQueue.shift()
-		}
-		const newLayerId = currentMatchLqItem?.layerId ?? newLayer.id
-
-		const { match } = await MatchHistory.addNewCurrentMatch(
-			ctx,
-			MH.getNewMatchHistoryEntry({
-				layerId: newLayerId,
-				serverId: ctx.serverId,
-				startTime: new Date(eventTime),
-				lqItem: currentMatchLqItem,
-			}),
-		)
-
-		await syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
-		await syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-		await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
-		return { code: 'ok' as const, newServerState, currentMatchLqItem, match }
-	})
-
-	if (res.code !== 'ok') return res
-	const currentLayerItem = res.currentMatchLqItem
 
 	// -------- schedule post-roll events --------
 	ctx.server.postRollEventsSub?.unsubscribe()
 	ctx.server.postRollEventsSub = new Rx.Subscription()
 
 	// -------- schedule FRAAS auto fog-off --------
-	if (currentLayerItem && currentLayerItem.layerId) {
-		const currentLayer = L.toLayer(currentLayerItem.layerId)
-		if (currentLayer.Gamemode === 'FRAAS') {
-			ctx.server.postRollEventsSub.add(
-				Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-					await SquadRcon.setFogOfWar(ctx, 'off')
-					void SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
-				}),
-			)
-		}
+	const currentLayer = L.toLayer(newLayerId)
+	if (currentLayer.Gamemode === 'FRAAS') {
+		ctx.server.postRollEventsSub.add(
+			Rx.timer(CONFIG.fogOffDelay).subscribe(async () => {
+				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				await SquadRcon.setFogOfWar(ctx, 'off')
+				void SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+			}),
+		)
 	}
 
 	// -------- schedule post-roll announcements --------
@@ -243,7 +195,7 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 			const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
-			const currentMatch = MatchHistory.getCurrentMatch(ctx)
+			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 			if (!currentMatch) return
 			const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
 			if (!mostRelevantEvent) return
@@ -257,7 +209,7 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 
 		announcementTasks.push(toCold(async () => {
 			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			const serverState = await getServerState(ctx)
+			const serverState = await SquadServer.getServerState(ctx)
 			if (serverState.layerQueue.length <= CONFIG.layerQueue.lowQueueWarningThreshold) {
 				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(serverState.layerQueue.length))
 			}
@@ -275,521 +227,6 @@ export const handleNewGame = withAcquired((ctx) => [ctx.vote.mtx, ctx.matchHisto
 
 		ctx.server.postRollEventsSub.add(Rx.concat(Rx.from(withWaits)).subscribe())
 	}
-
-	return res
-})
-
-// -------- voting --------
-//
-export const syncVoteStateWithQueueStateInPlace = C.spanOp(
-	'layer-queue:sync-vote-state-with-queue-state',
-	{ tracer, mutexes: (ctx) => ctx.vote.mtx },
-	async (
-		ctx: CS.Log & C.SquadServer & C.Vote & C.MatchHistory,
-		oldQueue: LL.List,
-		newQueue: LL.List,
-	) => {
-		if (Obj.deepEqual(oldQueue, newQueue)) return
-		const serverId = ctx.serverId
-		let newVoteState: V.VoteState | undefined | null
-
-		const oldQueueItem = oldQueue[0] as LL.Item | undefined
-		const newQueueItem = newQueue[0]
-
-		// check if we need to set 'ready'. we only want to do this if there's been a meaningul state change that means we have to initialize it or restart the autostart time. Also if we already have a .endingVoteState we don't want to overwrite that here
-		const currentMatch = MatchHistory.getCurrentMatch(ctx)
-
-		const vote = ctx.vote
-
-		if (vote.state?.code === 'in-progress') {
-			if (newQueue.some(item => item.itemId === vote.state!.itemId)) return
-
-			// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
-			newVoteState = null
-		} else if (
-			newQueueItem && LL.isVoteItem(newQueueItem) && !newQueueItem.endingVoteState
-			&& (!oldQueueItem || newQueueItem.itemId !== oldQueueItem.itemId || !LL.isVoteItem(oldQueueItem))
-			&& currentMatch.status !== 'post-game'
-		) {
-			let autostartTime: Date | undefined
-			if (currentMatch.startTime && CONFIG.vote.autoStartVoteDelay) {
-				const startTime = dateFns.addMilliseconds(currentMatch.startTime, CONFIG.vote.autoStartVoteDelay)
-				if (dateFns.isFuture(startTime)) autostartTime = startTime
-				else autostartTime = dateFns.addMinutes(new Date(), 5)
-			}
-			newVoteState = {
-				code: 'ready',
-				choices: newQueueItem.choices.map(choice => choice.layerId),
-				itemId: newQueueItem.itemId,
-				voterType: vote.state?.voterType ?? 'public',
-				autostartTime,
-			}
-		} else if (!newQueueItem || !LL.isVoteItem(newQueueItem)) {
-			newVoteState = null
-		}
-
-		if (newVoteState || newVoteState === null) {
-			const update: V.VoteStateUpdate = {
-				state: newVoteState,
-				source: { type: 'system', event: 'queue-change' },
-			}
-
-			vote.voteEndTask?.unsubscribe()
-			vote.voteEndTask = null
-			vote.autostartVoteSub?.unsubscribe()
-			vote.autostartVoteSub = null
-			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && CONFIG.vote.autoStartVoteDelay) {
-				ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
-				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
-					() => {
-						void startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' })
-					},
-				)
-			}
-			vote.state = newVoteState
-			addReleaseTask(() => vote.update$.next(update))
-		}
-	},
-)
-
-export const startVote = C.spanOp(
-	'layer-queue:vote:start',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
-	async (
-		ctx: CS.Log & C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
-		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
-	) => {
-		if (ctx.user !== undefined) {
-			// @ts-expect-error cringe
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
-			if (denyRes) {
-				return denyRes
-			}
-		}
-
-		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
-		if (statusRes.code !== 'ok') {
-			return statusRes
-		}
-		const currentMatch = MatchHistory.getCurrentMatch(ctx)
-		if (currentMatch.status === 'post-game') {
-			return { code: 'err:vote-not-allowed' as const, msg: Messages.WARNS.vote.start.noVoteInPostGame }
-		}
-
-		const duration = opts.duration ?? CONFIG.vote.voteDuration
-		const res = await DB.runTransaction(ctx, async (ctx) => {
-			const serverState = await getServerState(ctx)
-			const newServerState = Obj.deepClone(serverState)
-			const itemId = opts.itemId ?? newServerState.layerQueue[0]?.itemId
-			if (!itemId) {
-				return { code: 'err:item-not-found' as const, msg: Messages.WARNS.vote.start.itemNotFound }
-			}
-
-			const initiateVoteRes = V.canInitiateVote(
-				itemId,
-				newServerState.layerQueue,
-				opts.voterType ?? 'public',
-				ctx.vote.state ?? undefined,
-			)
-
-			const msgMap = {
-				'err:item-not-found': Messages.WARNS.vote.start.itemNotFound,
-				'err:invalid-item-type': Messages.WARNS.vote.start.invalidItemType,
-				'err:editing-in-progress': Messages.WARNS.vote.start.editingInProgress,
-				'err:public-vote-not-first': Messages.WARNS.vote.start.publicVoteNotFirst,
-				'err:vote-in-progress': Messages.WARNS.vote.start.voteAlreadyInProgress,
-				'ok': null,
-			} satisfies Record<typeof initiateVoteRes['code'], string | null>
-
-			if (initiateVoteRes.code !== 'ok') {
-				return {
-					code: initiateVoteRes.code,
-					msg: msgMap[initiateVoteRes.code]!,
-				}
-			}
-
-			const item = initiateVoteRes.item
-			delete item.endingVoteState
-			LL.setCorrectChosenLayerIdInPlace(item)
-			await updateServerState(ctx, newServerState, { event: 'vote-start', type: 'system' })
-
-			const updatedVoteState = {
-				code: 'in-progress',
-				deadline: Date.now() + duration,
-				votes: [],
-				initiator: opts.initiator,
-				choices: item.choices.map(choice => choice.layerId),
-				itemId: item.itemId,
-				voterType: opts.voterType ?? 'public',
-			} satisfies V.VoteState
-
-			ctx.log.info('registering vote deadline')
-			const update = {
-				state: updatedVoteState,
-				source: opts.initiator === 'autostart'
-					? { type: 'system', event: 'automatic-start-vote' }
-					: {
-						type: 'manual',
-						event: 'start-vote',
-						user: opts.initiator,
-					},
-			} satisfies V.VoteStateUpdate
-
-			ctx.vote.autostartVoteSub?.unsubscribe()
-			ctx.vote.autostartVoteSub = null
-
-			ctx.vote.state = updatedVoteState
-			addReleaseTask(() => ctx.vote.update$.next(update))
-			registerVoteDeadlineAndReminder$(ctx)
-			void broadcastVoteUpdate(
-				ctx,
-				Messages.BROADCASTS.vote.started(
-					ctx.vote.state,
-					duration,
-					item.displayProps ?? CONFIG.vote.voteDisplayProps,
-				),
-			)
-
-			return { code: 'ok' as const, voteStateUpdate: update }
-		})
-
-		return res
-	},
-)
-
-export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
-	tracer,
-	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
-	//
-	const choiceIdx = parseInt(msg.message.trim())
-	const voteState = ctx.vote.state
-	if (!voteState) {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
-		return
-	}
-	if (voteState.voterType === 'public') {
-		if (msg.channelType !== 'ChatAll') {
-			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AllChat'))
-			return
-		}
-	}
-	if (voteState.voterType === 'internal') {
-		if (msg.channelType !== 'ChatAdmin') {
-			void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat'))
-			return
-		}
-	}
-	if (choiceIdx <= 0 || choiceIdx > voteState.choices.length) {
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice)
-		return
-	}
-	if (voteState.code !== 'in-progress') {
-		void SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress)
-		C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
-		return
-	}
-
-	const choice = voteState.choices[choiceIdx - 1]
-	SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice })
-	// voteState.votes[msg.playerIds] = choice
-	const update: V.VoteStateUpdate = {
-		state: voteState,
-		source: {
-			type: 'manual',
-			event: 'vote',
-			user: { steamId: msg.playerIds?.steam?.toString() },
-		},
-	}
-
-	ctx.vote.update$.next(update)
-	void (async () => {
-		const serverState = await getServerState(ctx)
-		const voteItem = LL.resolveParentVoteItem(voteState.itemId, serverState.layerQueue)
-		void SquadRcon.warn(
-			ctx,
-			msg.playerIds,
-			Messages.WARNS.vote.voteCast(choice, voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps),
-		)
-	})()
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
-})
-
-export const abortVote = C.spanOp(
-	'layer-queue:vote:abort',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
-	async (
-		ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
-		opts: { aborter: USR.GuiOrChatUserId },
-	) => {
-		const voteState = ctx.vote.state
-		return await DB.runTransaction(ctx, async (ctx) => {
-			if (!voteState || voteState?.code !== 'in-progress') {
-				return {
-					code: 'err:no-vote-in-progress' as const,
-					msg: 'No vote in progress',
-				}
-			}
-			const serverState = await getServerState(ctx)
-			const newVoteState: V.EndingVoteState = {
-				code: 'ended:aborted',
-				...Obj.selectProps(voteState, ['choices', 'itemId', 'voterType', 'votes', 'deadline']),
-				aborter: opts.aborter,
-			}
-
-			const update: V.VoteStateUpdate = {
-				state: null,
-				source: {
-					type: 'manual',
-					user: opts.aborter,
-					event: 'abort-vote',
-				},
-			}
-			await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.aborted)
-			ctx.vote.state = null
-			addReleaseTask(() => ctx.vote.update$.next(update))
-			ctx.vote.voteEndTask?.unsubscribe()
-			ctx.vote.voteEndTask = null
-			const layerQueue = Obj.deepClone(serverState.layerQueue)
-			const { item } = Obj.destrNullable(LL.findItemById(layerQueue, newVoteState.itemId))
-			if (!item || !LL.isVoteItem(item)) throw new Error('vote item not found or is invalid')
-			item.endingVoteState = newVoteState
-			LL.setCorrectChosenLayerIdInPlace(item)
-			await updateServerState(ctx, { layerQueue }, { event: 'vote-abort', type: 'system' })
-
-			return { code: 'ok' as const }
-		})
-	},
-)
-
-export const cancelVoteAutostart = C.spanOp(
-	'layer-queue:vote:cancel-autostart',
-	{ tracer, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
-		if (ctx.vote.state?.autostartCancelled) {
-			return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
-		}
-		if (!ctx.vote.state || ctx.vote.state.code !== 'ready' || !ctx.vote.state.autostartTime) {
-			return { code: 'err:vote-not-queued' as const, msg: 'No vote is currently scheduled' }
-		}
-
-		const newVoteState = Obj.deepClone(ctx.vote.state)
-		newVoteState.autostartCancelled = true
-		delete newVoteState.autostartTime
-		ctx.vote.state = newVoteState
-
-		addReleaseTask(() => {
-			ctx.vote.update$.next({
-				source: { type: 'manual', user: opts.user, event: 'autostart-cancelled' },
-				state: ctx.vote.state,
-			})
-		})
-		return { code: 'ok' as const }
-	},
-)
-
-function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C.Vote) {
-	const serverId = ctx.serverId
-	ctx.vote.voteEndTask?.unsubscribe()
-
-	if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
-	ctx.vote.voteEndTask = new Rx.Subscription()
-
-	const currentTime = Date.now()
-	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - CONFIG.vote.finalVoteReminder - currentTime)
-	const finalReminderBuffer = finalReminderWaitTime - 5 * 1000
-	const regularReminderInterval = CONFIG.vote.voteReminderInterval
-
-	// -------- schedule regular reminders --------
-	ctx.vote.voteEndTask.add(
-		Rx.interval(regularReminderInterval)
-			.pipe(
-				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('layer-queue:regular-vote-reminders', { ctx: getBaseCtx(), tracer }, async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
-					const timeLeft = ctx.vote.state.deadline - Date.now()
-					const serverState = await getServerState(ctx)
-					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
-					const msg = Messages.BROADCASTS.vote.voteReminder(
-						ctx.vote.state,
-						timeLeft,
-						ctx.vote.state.choices,
-						voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps,
-					)
-					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true })
-				}),
-			)
-			.subscribe(),
-	)
-
-	// -------- schedule final reminder --------
-	if (finalReminderWaitTime > 0) {
-		ctx.vote.voteEndTask.add(
-			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('layer-queue:final-vote-reminder', { ctx: getBaseCtx(), tracer }, async () => {
-					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
-					const serverState = await getServerState(ctx)
-					const voteItem = LL.resolveParentVoteItem(ctx.vote.state.itemId, serverState.layerQueue)
-					const msg = Messages.BROADCASTS.vote.voteReminder(
-						ctx.vote.state,
-						CONFIG.vote.finalVoteReminder,
-						true,
-						voteItem?.displayProps ?? CONFIG.vote.voteDisplayProps,
-					)
-					await broadcastVoteUpdate(ctx, msg, { onlyNotifyNonVotingAdmins: true, repeatWarn: false })
-				}),
-			).subscribe(),
-		)
-	}
-
-	// -------- schedule timeout handling --------
-	ctx.vote.voteEndTask.add(
-		Rx.timer(Math.max(ctx.vote.state.deadline - currentTime, 0)).subscribe({
-			next: async () => {
-				await handleVoteTimeout(SquadServer.resolveSliceCtx(getBaseCtx(), serverId))
-			},
-			complete: () => {
-				ctx.log.info('vote deadline reached')
-				ctx.vote.voteEndTask = null
-			},
-		}),
-	)
-}
-
-const handleVoteTimeout = C.spanOp(
-	'layer-queue:vote:handle-timeout',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
-		const res = await DB.runTransaction(ctx, async (ctx) => {
-			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
-				return {
-					code: 'err:no-vote-in-progress' as const,
-					msg: 'No vote in progress',
-					currentVote: ctx.vote.state,
-				}
-			}
-			const serverState = Obj.deepClone(await getServerState(ctx))
-			const { item: listItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
-			if (!listItem || !LL.isVoteItem(listItem)) throw new Error('Invalid vote item')
-			let endingVoteState: V.EndingVoteState
-			let tally: V.Tally | null = null
-			if (Object.values(ctx.vote.state.votes).length === 0) {
-				endingVoteState = {
-					code: 'ended:insufficient-votes',
-					...Obj.selectProps(ctx.vote.state, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
-				}
-			} else {
-				const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 10_000 })
-				if (serverInfoRes.code !== 'ok') return serverInfoRes
-
-				const serverInfo = serverInfoRes.data
-
-				tally = V.tallyVotes(ctx.vote.state, serverInfo.playerCount)
-				C.setSpanOpAttrs({ tally })
-
-				const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
-				endingVoteState = {
-					code: 'ended:winner',
-					...Obj.selectProps(ctx.vote.state, ['choices', 'itemId', 'deadline', 'votes', 'voterType']),
-					winner,
-				}
-				listItem.layerId = winner
-			}
-			listItem.endingVoteState = endingVoteState
-			if (LL.isParentVoteItem(listItem)) LL.setCorrectChosenLayerIdInPlace(listItem)
-			const displayProps = listItem.displayProps ?? CONFIG.vote.voteDisplayProps
-			if (endingVoteState.code === 'ended:winner') {
-				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.winnerSelected(tally!, endingVoteState!.winner, displayProps), {
-					repeatWarn: false,
-				})
-			}
-			if (endingVoteState.code === 'ended:insufficient-votes') {
-				await broadcastVoteUpdate(ctx, Messages.BROADCASTS.vote.insufficientVotes(V.getDefaultChoice(endingVoteState), displayProps), {
-					repeatWarn: false,
-				})
-			}
-			ctx.vote.state = null
-			const update: V.VoteStateUpdate = {
-				state: null,
-				source: { type: 'system', event: 'vote-timeout' },
-			}
-			addReleaseTask(() => ctx.vote.update$.next(update))
-
-			await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
-			await updateServerState(ctx, serverState, { type: 'system', event: 'vote-timeout' })
-			return { code: 'ok' as const, endingVoteState, tally }
-		})
-		return res
-	},
-)
-
-async function broadcastVoteUpdate(
-	ctx: CS.Log & C.SquadServer & C.Vote & C.AdminList,
-	msg: string,
-	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
-) {
-	const repeatWarn = opts?.repeatWarn ?? true
-	if (!ctx.vote.state) return
-	switch (ctx.vote.state.voterType) {
-		case 'public':
-			await SquadRcon.broadcast(ctx, msg)
-			break
-		case 'internal':
-			{
-				for (let i = 0; i < (repeatWarn ? 3 : 1); i++) {
-					await SquadRcon.warnAllAdmins(
-						ctx,
-						({ player }) => {
-							if (!ctx.vote.state || !opts?.onlyNotifyNonVotingAdmins) return msg
-							if (!V.isVoteStateWithVoteData(ctx.vote.state)) return
-							if (SM.PlayerIds.find(ctx.vote.state.votes, ({ playerIds }) => playerIds, player.ids)) return
-							return msg
-						},
-					)
-					if (i < 2) await sleep(5000)
-				}
-			}
-			break
-		default:
-			assertNever(ctx.vote.state.voterType)
-	}
-}
-
-async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStateUpdate) {
-	let discordIds: Set<bigint> = new Set()
-	if (update.source.type === 'manual') {
-		const discordId = update.source.user.discordId
-		if (discordId) {
-			discordIds.add(discordId)
-		}
-	}
-	if (update.state) {
-		discordIds = new Set([...discordIds, ...getVoteStateDiscordIds(update.state)])
-	}
-	const discordIdsArray = Array.from(discordIds)
-	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
-	const users = await Promise.all(dbUsers.map(user => Users.buildUser(ctx, user)))
-	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
-	return withParts
-}
-
-function getVoteStateDiscordIds(state: V.VoteState) {
-	const discordIds: bigint[] = []
-	switch (state.code) {
-		case 'ready': {
-			break
-		}
-		case 'in-progress': {
-			if (typeof state.initiator === 'object' && state.initiator.discordId) discordIds.push(state.initiator.discordId)
-			break
-		}
-		default:
-			assertNever(state)
-	}
-	return discordIds
 }
 
 export async function updateQueue(
@@ -800,7 +237,7 @@ export async function updateQueue(
 ) {
 	input = Obj.deepClone(input)
 	const res = await DB.runTransaction(ctx, async (ctx) => {
-		const serverStatePrev = await getServerState(ctx)
+		const serverStatePrev = await SquadServer.getServerState(ctx)
 		const serverState = Obj.deepClone(serverStatePrev)
 		if (input.layerQueueSeqId !== serverState.layerQueueSeqId) {
 			return {
@@ -846,9 +283,9 @@ export async function updateQueue(
 		serverState.layerQueue = input.layerQueue
 
 		await syncNextLayerInPlace(ctx, serverState, { skipDbWrite: true })
-		await syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
+		await VoteSys.syncVoteStateWithQueueStateInPlace(ctx, serverStatePrev.layerQueue, serverState.layerQueue)
 
-		const update = await updateServerState(ctx, serverState, {
+		const update = await SquadServer.updateServerState(ctx, serverState, {
 			type: 'manual',
 			user: USR.toMiniUser(ctx.user),
 			event: 'edit-queue',
@@ -860,43 +297,12 @@ export async function updateQueue(
 	return res
 }
 
-export async function getServerState(ctx: C.Db & CS.Log & C.LayerQueue) {
-	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
-	let serverRaw: any
-	if (ctx.tx) [serverRaw] = await query.for('update')
-	else [serverRaw] = await query
-	return SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, serverRaw))
-}
-
-export async function updateServerState(
-	ctx: C.Db & C.Tx & C.SquadServer & C.LayerQueue,
-	changes: Partial<SS.ServerState>,
-	source: SS.LQStateUpdate['source'],
-) {
-	const serverState = await getServerState(ctx)
-	const newServerState = { ...serverState, ...changes }
-	if (changes.layerQueueSeqId && changes.layerQueueSeqId !== serverState.layerQueueSeqId) {
-		throw new Error('Invalid layer queue sequence ID')
-	}
-	if (!Obj.deepEqual(newServerState.layerQueue, serverState.layerQueue)) {
-		newServerState.layerQueueSeqId = serverState.layerQueueSeqId + 1
-	}
-	await ctx.db().update(Schema.servers)
-		.set(superjsonify(Schema.servers, { ...changes, layerQueueSeqId: newServerState.layerQueueSeqId }))
-		.where(E.eq(Schema.servers.id, ctx.serverId))
-	const update: SS.LQStateUpdate = { state: newServerState, source }
-
-	// we can't pass the transaction context to subscribers
-	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next([update, { ...getBaseCtx(), serverId: ctx.serverId }]))
-	return newServerState
-}
-
 export async function warnShowNext(
 	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue & C.AdminList,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {
-	const serverState = await getServerState(ctx)
+	const serverState = await SquadServer.getServerState(ctx)
 	const layerQueue = serverState.layerQueue
 	const parts: USR.UserPart = { users: [] }
 	const firstItem = layerQueue[0]
@@ -913,9 +319,9 @@ export async function warnShowNext(
 }
 
 /**
- * sets next layer on server, generating a new queue item if needed. modifies serverState in place.
+ * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
-async function syncNextLayerInPlace<NoDbWrite extends boolean>(
+export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	ctx: CS.Log & C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.LayerQueue & C.MatchHistory,
 	serverState: SS.ServerState,
 	opts?: { skipDbWrite: NoDbWrite },
@@ -924,7 +330,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	let wroteServerState = false
 	if (!nextLayerId) {
 		const constraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
-		const layerCtx = LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
+		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 		const gen = LayerQueries.queryLayersStreamed({
 			ctx: layerCtx,
 			input: {
@@ -951,7 +357,7 @@ async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
-			await updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {
+			await SquadServer.updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {
 				type: 'system',
 				event: 'next-layer-generated',
 			})
@@ -987,9 +393,12 @@ export async function toggleUpdatesToSquadServer(
 	}
 
 	await DB.runTransaction(ctx, async ctx => {
-		const serverState = await getServerState(ctx)
+		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
-		await updateServerState(ctx, { settings: serverState.settings }, { type: 'system', event: 'updates-to-squad-server-toggled' })
+		await SquadServer.updateServerState(ctx, { settings: serverState.settings }, {
+			type: 'system',
+			event: 'updates-to-squad-server-toggled',
+		})
 	})
 
 	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.slmUpdatesSet(!input.disabled))
@@ -997,7 +406,7 @@ export async function toggleUpdatesToSquadServer(
 }
 
 export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer & C.SquadServer & C.LayerQueue) {
-	const serverState = await getServerState(ctx)
+	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
@@ -1006,7 +415,7 @@ export async function requestFeedback(
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
-	const serverState = await getServerState(ctx)
+	const serverState = await SquadServer.getServerState(ctx)
 	let index: LL.ItemIndex | undefined
 	if (serverState.layerQueue.length === 0) return { code: 'err:empty' as const }
 	if (layerQueueNumber === undefined) index = LL.iterItems(...serverState.layerQueue).next().value
@@ -1022,32 +431,7 @@ function getBaseCtx() {
 }
 
 // -------- setup router --------
-export const orpcRouter = {
-	watchVoteStateUpdates: orpcBase.handler(async function*({ context, signal }) {
-		const obs = SquadServer.selectedServerCtx$(context).pipe(
-			Rx.switchMap(async function*(ctx) {
-				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
-				const voteState = ctx.vote.state
-				if (voteState) {
-					const ids = getVoteStateDiscordIds(voteState)
-					const users = await Users.buildUsers(
-						ctx,
-						await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
-					)
-					initialState = { ...voteState, parts: { users } }
-				}
-				yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
-				for await (const update of toAsyncGenerator(ctx.vote.update$)) {
-					const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
-					yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
-				}
-			}),
-			withAbortSignal(signal!),
-		)
-
-		yield* toAsyncGenerator(obs)
-	}),
-
+export const router = {
 	watchUnexpectedNextLayer: orpcBase.handler(async function*({ context, signal }) {
 		const obs = SquadServer.selectedServerCtx$(context).pipe(
 			Rx.switchMap(ctx => {
@@ -1056,27 +440,6 @@ export const orpcRouter = {
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
-	}),
-
-	startVote: orpcBase
-		.input(V.StartVoteInputSchema)
-		.handler(async ({ input, context: _ctx }) => {
-			const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
-		}),
-
-	abortVote: orpcBase.handler(async ({ context: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
-		if (denyRes) return denyRes
-		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
-	}),
-
-	cancelVoteAutostart: orpcBase.handler(async ({ context: _ctx }) => {
-		const ctx = SquadServer.resolveWsClientSliceCtx(_ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage'))
-		if (denyRes) return denyRes
-		return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 	}),
 
 	toggleUpdatesToSquadServer: orpcBase

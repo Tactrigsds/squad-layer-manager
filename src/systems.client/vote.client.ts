@@ -5,7 +5,7 @@ import { bind } from '@react-rxjs/core'
 import * as Rx from 'rxjs'
 import { map, share } from 'rxjs'
 
-const voteStateCold$ = RPC.observe(() => RPC.orpc.layerQueue.watchVoteStateUpdates.call()).pipe(
+const voteStateCold$ = RPC.observe(() => RPC.orpc.vote.watchUpdates.call()).pipe(
 	Rx.tap((update) => {
 		if (update.code === 'initial-state' && update.state) {
 			PartSys.stripParts(update.state)

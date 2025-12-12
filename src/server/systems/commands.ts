@@ -6,9 +6,10 @@ import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
 import type * as C from '@/server/context.ts'
-import * as LayerQueue from '@/server/systems/layer-queue.ts'
+import * as LayerQueue from '@/server/systems/layer-queue'
 import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Users from '@/server/systems/users.ts'
+import * as Vote from '@/server/systems/vote'
 
 export async function handleCommand(ctx: CS.Log & C.Db & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType)) {
@@ -60,7 +61,7 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.ServerSlice, msg: SM.
 	const user: USR.GuiOrChatUserId = { steamId: player.ids.steam.toString() }
 	switch (cmd) {
 		case 'startVote': {
-			const res = await LayerQueue.startVote(ctx, { initiator: user })
+			const res = await Vote.startVote(ctx, { initiator: user })
 			switch (res.code) {
 				case 'err:permission-denied': {
 					return await showError('permission-denied', Messages.WARNS.permissionDenied(res))
@@ -84,7 +85,7 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.ServerSlice, msg: SM.
 			}
 		}
 		case 'abortVote': {
-			const res = await LayerQueue.abortVote(ctx, { aborter: user })
+			const res = await Vote.abortVote(ctx, { aborter: user })
 			switch (res.code) {
 				case 'ok':
 					return { code: 'ok' as const }
