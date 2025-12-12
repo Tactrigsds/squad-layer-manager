@@ -4,7 +4,7 @@ import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
-import { RESTGetAPIApplicationRoleConnectionMetadataResult } from 'discord.js'
+
 import { z } from 'zod'
 
 export const ServerRawInfoSchema = z.object({
@@ -1049,7 +1049,7 @@ export namespace LogEvents {
 	export type MapSet = z.infer<typeof MapSetSchema['schema']>
 	export const MapSetMatcher = createLogMatcher({
 		event: MapSetSchema,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^\[]+))? from .+/,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Set next layer to ([^\s]+)(?: ([^[]+))? from .+/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],

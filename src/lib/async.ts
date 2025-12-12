@@ -2,9 +2,9 @@ import * as Obj from '@/lib/object'
 import type * as CS from '@/models/context-shared'
 import type * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
-import { Mutex, type MutexInterface } from 'async-mutex'
+import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
-import { withThrown, withThrownAsync } from './error'
+import { withThrownAsync } from './error'
 import { createId } from './id'
 
 export function sleep(ms: number) {
@@ -248,7 +248,7 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 			}
 		})()
 
-		this.fetchedValue
+		void this.fetchedValue
 			.catch(err => {
 				this.fetchedValue = null
 				this.lastResolveTime = null

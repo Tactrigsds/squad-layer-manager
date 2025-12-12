@@ -19,7 +19,7 @@ import type * as BAL from '@/models/balance-triggers.models'
 import type * as CHAT from '@/models/chat.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as LL from '@/models/layer-list.models'
+import type * as LL from '@/models/layer-list.models'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
@@ -38,7 +38,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Vote from '@/server/systems/vote'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
-import { Mutex, withTimeout } from 'async-mutex'
+import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -1118,7 +1118,7 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 			if (event.message.startsWith(CONFIG.commandPrefix)) {
 				await Commands.handleCommand(ctx, event)
 			} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
-				Vote.handleVote(ctx, event)
+				await Vote.handleVote(ctx, event)
 			}
 
 			let channel: SM.ChatChannel

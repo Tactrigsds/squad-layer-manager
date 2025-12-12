@@ -12,7 +12,7 @@ import React from 'react'
 import * as Zus from 'zustand'
 import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
-import { Button } from './ui/button.tsx'
+
 
 export default function ShortLayerName(
 	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo: _allowShowInfo, ref, className }: {
