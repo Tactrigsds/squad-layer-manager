@@ -53,7 +53,7 @@ export function ensureLoggerSetup() {
 				}
 			} else if (typeof inputArgs[0] === 'object' && inputArgs !== null) {
 				const obj = inputArgs[0]
-				attrs = flattenObjToAttrs(obj)
+				attrs = flattenObjToAttrs(obj, '_', 3)
 			}
 
 			if (span) {

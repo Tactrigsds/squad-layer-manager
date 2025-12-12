@@ -295,6 +295,20 @@
       "when": 1764859928637,
       "tag": "0041_zippy_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1765522943657,
+      "tag": "0042_faulty_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "5",
+      "when": 1765528527209,
+      "tag": "0043_tranquil_red_hulk",
+      "breakpoints": true
     }
   ]
 }

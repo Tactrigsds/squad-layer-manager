@@ -4,6 +4,7 @@ import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as dateFns from 'date-fns'
+import { RESTGetAPIApplicationRoleConnectionMetadataResult } from 'discord.js'
 import { z } from 'zod'
 
 export const ServerRawInfoSchema = z.object({
@@ -477,11 +478,20 @@ export namespace Events {
 
 	export type Reset = {
 		type: 'RESET'
-		reason: 'slm-started' | 'rcon-reconnected'
+		source: 'slm-started' | 'rcon-reconnected'
 		state: {
 			players: Player[]
 			squads: Squad[]
 		}
+	} & Base
+
+	export type RconConnected = {
+		type: 'RCON_CONNECTED'
+		reconnected: boolean
+	} & Base
+
+	export type RconDisconnected = {
+		type: 'RCON_DISCONNECTED'
 	} & Base
 
 	export type RoundEnded = {
@@ -592,6 +602,8 @@ export namespace Events {
 		| MapSet
 		| NewGame
 		| Reset
+		| RconConnected
+		| RconDisconnected
 		| RoundEnded
 		| PlayerConnected
 		| PlayerDisconnected

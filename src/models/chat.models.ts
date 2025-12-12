@@ -51,6 +51,8 @@ export type EventEnriched =
 	| SM.Events.MapSet
 	| Omit<SM.Events.NewGame, 'state'>
 	| Omit<SM.Events.Reset, 'state'>
+	| SM.Events.RconConnected
+	| SM.Events.RconDisconnected
 	| SM.Events.RoundEnded
 	| (SM.Events.PlayerConnected & { player: SM.Player })
 	| (SM.Events.PlayerDisconnected & { player: SM.Player })
@@ -272,6 +274,8 @@ export function interpolateEvent(
 			return rest
 		}
 
+		case 'RCON_CONNECTED':
+		case 'RCON_DISCONNECTED':
 		case 'ROUND_ENDED':
 			return { ...event }
 

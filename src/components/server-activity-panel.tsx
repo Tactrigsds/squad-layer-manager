@@ -336,35 +336,35 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 	)
 }
 
-function NewGameOrResetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' | 'RESET' }> }) {
+function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
 	const match = MatchHistoryClient.useRecentMatches().find(m => m.historyEntryId === event.matchId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 
 	if (!match || !currentMatch) return
 	const visibleMatchIndex = match.ordinal - currentMatch.ordinal
-	if (event.type === 'RESET' || event.source === 'rcon-reconnected' || event.source === 'slm-started') {
-		let reasonText: string = ''
-		if (event.type == 'RESET') {
-			reasonText = event.reason === 'slm-started' ? 'Application start' : 'RCON Reconnected'
-		}
-		if (event.type === 'NEW_GAME') {
-			reasonText = event.source === 'slm-started' ? 'Application start' : 'RCON Reconnected'
-		}
-		return (
-			<div className="flex gap-2 py-1 text-muted-foreground">
-				<EventTime time={event.time} variant="small" />
-				<Icons.RotateCcw className="h-4 w-4 text-cyan-500" />
-				<span className="text-xs">{reasonText}</span>
-			</div>
-		)
+
+	let label: string
+	switch (event.source) {
+		case 'new-game-detected':
+			label = 'New game started'
+			break
+		case 'slm-started':
+			label = 'New game detected on Application Start'
+			break
+		case 'rcon-reconnected':
+			label = 'New game detected on RCON Reconnect'
+			break
+		default:
+			assertNever(event.source)
 	}
+
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
 			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
 				<EventTime time={event.time} variant="small" />
 				<Icons.Play className="h-4 w-4 text-green-500 flex-shrink-0" />
 				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow">
-					<span>New game started:</span>
+					<span>{label}:</span>
 					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
 					({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex})
 				</span>
@@ -595,11 +595,35 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 
 function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }> }) {
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Map className="h-4 w-4 text-blue-400" />
-			<span className="text-xs flex items-center gap-1">
+			<span className="text-xs inline-flex items-center gap-1 flex-grow">
 				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
+			</span>
+		</div>
+	)
+}
+
+function RconConnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_CONNECTED' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Plug className="h-4 w-4 text-green-500" />
+			<span className="text-xs">
+				{event.reconnected ? 'RCON reconnected' : 'Application started, RCON connection established'}
+			</span>
+		</div>
+	)
+}
+
+function RconDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'RCON_DISCONNECTED' }> }) {
+	return (
+		<div className="flex gap-2 py-1 text-muted-foreground">
+			<EventTime time={event.time} variant="small" />
+			<Icons.Unplug className="h-4 w-4 text-red-500" />
+			<span className="text-xs">
+				RCON disconnected
 			</span>
 		</div>
 	)
@@ -629,8 +653,9 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 		case 'PLAYER_WARNED_DEDUPED':
 			return <PlayerWarnedDedupedEvent event={event} />
 		case 'NEW_GAME':
+			return <NewGameEvent event={event} />
 		case 'RESET':
-			return <NewGameOrResetEvent event={event} />
+			return null
 		case 'ROUND_ENDED':
 			return <RoundEndedEvent event={event} />
 		case 'PLAYER_DETAILS_CHANGED':
@@ -653,6 +678,10 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 			return <PlayerWoundedEvent event={event} />
 		case 'MAP_SET':
 			return <MapSetEvent event={event} />
+		case 'RCON_CONNECTED':
+			return <RconConnectedEvent event={event} />
+		case 'RCON_DISCONNECTED':
+			return <RconDisconnectedEvent event={event} />
 		case 'NOOP':
 			return null
 		default:
@@ -977,7 +1006,6 @@ function PreviousMatchEvents() {
 							</div>
 						)}
 						{filteredEvents?.map((event) => <EventItem key={event.id} event={event} />)}
-						<div className="border-t border-border my-2" />
 					</div>
 				)
 			}).reverse()}

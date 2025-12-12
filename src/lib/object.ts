@@ -99,21 +99,21 @@ export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof
 	return undefined as unknown as keyof T
 }
 
-export function flattenObjToAttrs(obj: any, delimiter: string = '_'): Record<string, string> {
+export function flattenObjToAttrs(obj: any, delimiter: string = '_', maxDepth?: number): Record<string, string> {
 	const output: Record<string, string> = {}
-	const stack: Array<[any, string]> = [[obj, '']]
+	const stack: Array<[any, string, number]> = [[obj, '', 0]]
 
 	while (stack.length > 0) {
-		const [current, prefix] = stack.pop()!
+		const [current, prefix, depth] = stack.pop()!
 
-		if (current && typeof current === 'object') {
+		if (current && typeof current === 'object' && (maxDepth === undefined || depth < maxDepth)) {
 			if (Array.isArray(current)) {
 				for (let i = current.length - 1; i >= 0; i--) {
-					stack.push([current[i], prefix ? `${prefix}${delimiter}${i}` : String(i)])
+					stack.push([current[i], prefix ? `${prefix}${delimiter}${i}` : String(i), depth + 1])
 				}
 			} else {
 				for (const key of Object.keys(current)) {
-					stack.push([current[key], prefix ? `${prefix}${delimiter}${key}` : key])
+					stack.push([current[key], prefix ? `${prefix}${delimiter}${key}` : key, depth + 1])
 				}
 			}
 		} else {

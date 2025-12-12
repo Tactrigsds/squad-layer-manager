@@ -93,22 +93,24 @@ export default function ShortLayerName(
 		)
 	}
 	const content = (
-		<div className={cn('inline-flex items-center', className)} ref={ref}>
+		<span className={cn('inline-flex items-baseline', className)} ref={ref}>
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
-					<Icons.Dot width={20} height={20} />
+					<Icons.Dot className="self-center" width={20} height={20} />
 					{leftTeamElt}
 					<span className="mx-1">vs</span>
 					{rightTeamElt}
 				</>
 			)}
-		</div>
+		</span>
 	)
 	if (!allowShowInfo || !L.isKnownLayer(layerId)) return content
 	return (
 		<LayerInfoDialog layerId={layerId}>
-			<Button className="px-0 py-1" variant="link">{content}</Button>
+			<button type="button" className="text-primary underline-offset-4 [&:hover>span]:underline">
+				{content}
+			</button>
 		</LayerInfoDialog>
 	)
 }

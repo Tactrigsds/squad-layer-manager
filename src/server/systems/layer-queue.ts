@@ -1,4 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as Arr from '@/lib/array'
 import { CleanupTasks, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -139,34 +140,21 @@ export const init = C.spanOp(
 		)
 
 		// -------- make sure next layer set is synced with queue --------
-		const nextSetLayer$ = ctx.server.layersStatus
-			.observe(ctx)
-			.pipe(
-				Rx.concatMap((statusRes): Rx.Observable<L.UnvalidatedLayer | null> =>
-					statusRes.code === 'ok' ? Rx.of(statusRes.data.nextLayer) : Rx.EMPTY
-				),
-				Rx.distinctUntilChanged((a, b) => a?.id === b?.id),
-			)
-
-		const nextQueuedLayer$ = ctx.layerQueue.update$.pipe(Rx.map(([update]) => LL.getNextLayerId(update.state.layerQueue)))
-
-		Rx.combineLatest([
-			nextSetLayer$,
-			nextQueuedLayer$,
-		]).pipe(
-			C.durableSub('layer-queue:sync-next-layer-status', { tracer, ctx }, async ([nextSet, nextQueued]) => {
-				if ((nextSet?.id ?? null) === nextQueued) return
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-
-				// this case will be dealt with in handleNewGame, so can ignore it here
-				if (ctx.server.serverRolling$.value) return
-
-				await DB.runTransaction(ctx, async (ctx) => {
-					const serverState = await SquadServer.getServerState(ctx)
-					await syncNextLayerInPlace(ctx, serverState)
-				})
-			}),
-		).subscribe()
+		{
+			ctx.server.event$.pipe(
+				C.durableSub('layer-queue:sync-server-map-set', { ctx, tracer }, async ([ctx, events]) => {
+					for (const event of Arr.revIter(events)) {
+						if (event.type !== 'MAP_SET') continue
+						// this case will be dealt with in handleNewGame, so can ignore it here
+						if (ctx.server.serverRolling$.value) return
+						await DB.runTransaction(ctx, async (ctx) => {
+							const serverState = await SquadServer.getServerState(ctx)
+							await syncNextLayerInPlace(ctx, serverState)
+						})
+					}
+				}),
+			).subscribe()
+		}
 	},
 )
 
@@ -326,9 +314,9 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	serverState: SS.ServerState,
 	opts?: { skipDbWrite: NoDbWrite },
 ) {
-	let nextLayerId = LL.getNextLayerId(serverState.layerQueue)
+	let nextQueuedLayerId = LL.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
-	if (!nextLayerId) {
+	if (!nextQueuedLayerId) {
 		const constraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
 		const gen = LayerQueries.queryLayersStreamed({
@@ -350,11 +338,13 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			}
 
 			ids = packet.layers.map(l => l.id)
+			if (ids.length === 0) {
+				throw new Error(`No layers returned from layer generation`)
+			}
 		}
+		nextQueuedLayerId = ids[0]
 
-		;[nextLayerId] = ids
-		if (!nextLayerId) return false
-		const nextQueueItem = LL.createLayerListItem({ layerId: nextLayerId }, { type: 'generated' })
+		const nextQueueItem = LL.createLayerListItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)
 		if (!opts?.skipDbWrite) {
 			await SquadServer.updateServerState(ctx as C.Db & C.SquadServer & C.LayerQueue & C.Tx, serverState, {
@@ -364,10 +354,15 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 		}
 		wroteServerState = true
 	}
+
+	const nextSetLayerId = ctx.server.state.nextSetLayerId
+
+	if (nextSetLayerId && L.areLayersCompatible(nextQueuedLayerId, nextSetLayerId)) return
+
 	const currentStatusRes = await ctx.server.layersStatus.get(ctx)
 	if (currentStatusRes.code !== 'ok') return currentStatusRes
 	if (!serverState.settings.updatesToSquadServerDisabled) {
-		const res = await SquadRcon.setNextLayer(ctx, nextLayerId)
+		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
 		switch (res.code) {
 			case 'err:unable-to-set-next-layer':
 				ctx.layerQueue.unexpectedNextLayerSet$.next(res.unexpectedLayerId)

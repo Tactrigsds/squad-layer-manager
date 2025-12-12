@@ -94,7 +94,7 @@ export type SquadServer = {
 
 		destroyed: boolean
 
-		nextSetLayerFromLog: L.LayerId | null
+		nextSetLayerId: L.LayerId | null
 
 		cleanupId: number | null
 	}
@@ -386,7 +386,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			createdSquads: [],
 			eventBuffer: [],
 			lastSavedEventId: null,
-			nextSetLayerFromLog: null,
+			nextSetLayerId: null,
 			destroyed: false,
 			cleanupId: null,
 		},
@@ -404,29 +404,43 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		server.savingEventsMtx,
 	)
 
+	// -------- load saved events --------
+	await (async () => {
+		const lastMatchIdQuery = ctx.db().select({ id: Schema.matchHistory.id }).from(Schema.matchHistory).orderBy(
+			E.desc(Schema.matchHistory.ordinal),
+		).limit(1).as('lastMatchId')
+
+		const rowsRaw = await ctx.db().select({ event: Schema.serverEvents }).from(Schema.serverEvents)
+			.innerJoin(
+				lastMatchIdQuery,
+				E.eq(Schema.serverEvents.matchId, lastMatchIdQuery.id),
+			).orderBy(E.asc(Schema.serverEvents.id))
+		const events = rowsRaw.map(r => fromEventRow(r.event))
+		server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
+		server.state.eventBuffer.push(...events)
+	})()
+
 	let previouslyConnected = false
 	// -------- make sure history and chat state is up to date once an rcon connection is established --------
 	rcon.connected$.pipe(
 		traceTag('resolvingHistoryConflicts'),
-		Rx.tap({
-			subscribe: () => {
-				ctx.log.info('trying to resolve potential current match conflict, waiting for rcon connection...')
-			},
-			unsubscribe: () => {
-				ctx.log.info('unsubscribed from connected$')
-			},
-			next: (c) => {
-				ctx.log.info('next', c)
-			},
-		}),
 		C.durableSub('squad-server:resolve-history-conflicts', { tracer, ctx, eventLogLevel: 'info' }, async (connected) => {
 			const ctx = { ...getBaseCtx(), ...slice }
+			const server = ctx.server
 			if (!connected) {
-				ctx.log.info('rcon connection lost, history conflicts not resolved')
-				server.historyConflictsResolved$.next(false)
+				if (server.historyConflictsResolved$.value) {
+					server.historyConflictsResolved$.next(false)
+					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+					const event: SM.Events.RconDisconnected = {
+						type: 'RCON_DISCONNECTED',
+						id: eventId(),
+						time: Date.now(),
+						matchId: currentMatch.historyEntryId,
+					}
+					ctx.server.event$.next([ctx, [event]])
+				}
 				return
 			}
-			ctx.log.info('rcon connection established, syncing match history')
 
 			const statusRes = await server.layersStatus.get(ctx, { ttl: 500 })
 			if (statusRes.code === 'err:rcon') return Rx.EMPTY
@@ -435,64 +449,56 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
 			ctx.log.info('rcon connection established, match history is synced')
 
-			// -------- load saved events --------
-			{
-				const rowsRaw = await ctx.db().select().from(Schema.serverEvents).where(
-					E.eq(Schema.serverEvents.matchId, currentMatch.historyEntryId),
-				).orderBy(E.asc(Schema.serverEvents.id))
-				const events = rowsRaw.map(fromEventRow)
-
-				if (events.length > 0 && !events.some(e => e.type === 'NEW_GAME')) {
-					ctx.log.error(
-						'match %d does not have a NEW_GAME event. continuing anyway, but this should be resolved.',
-						currentMatch.historyEntryId,
-					)
-				}
-				server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
-				server.state.eventBuffer.push(...events)
-			}
-
 			const [playersRes, squadsRes] = await Promise.all([
 				server.playerList.get({ ...ctx, rcon }, { ttl: 500 }),
 				server.squadList.get({ ...ctx, rcon }, { ttl: 500 }),
 			])
 
-			if (playersRes.code === 'ok' && squadsRes.code === 'ok') {
-				resetPlayerAndSquadState(ctx, playersRes.players, squadsRes.squads)
+			if (playersRes.code !== 'ok' || squadsRes.code !== 'ok') return
+			resetPlayerAndSquadState(ctx, playersRes.players, squadsRes.squads)
 
-				let event: SM.Events.Event
-				const base = {
-					time: Date.now(),
-					matchId: currentMatch.historyEntryId,
-					state: {
-						players: playersRes.players,
-						squads: squadsRes.squads,
-					},
-				}
-				if (pushedNewMatch) {
-					event = {
-						type: 'NEW_GAME',
-						id: eventId(),
-						layerId: currentMatch.layerId,
-						source: firstConnection ? 'slm-started' : 'rcon-reconnected',
-						...base,
-					}
-				} else {
-					event = {
-						id: eventId(),
-						type: 'RESET',
-						reason: firstConnection ? 'slm-started' : 'rcon-reconnected',
-						...base,
-					}
-				}
-
-				const layersStatusRes = await server.layersStatus.get(ctx)
-				if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
-					server.state.nextSetLayerFromLog = layersStatusRes.data.nextLayer.id
-				}
-				server.event$.next([ctx, [event]])
-				server.historyConflictsResolved$.next(true)
+			let events: SM.Events.Event[] = []
+			const base = {
+				time: Date.now(),
+				matchId: currentMatch.historyEntryId,
+				state: {
+					players: playersRes.players,
+					squads: squadsRes.squads,
+				},
 			}
+
+			events.push({
+				type: 'RCON_CONNECTED',
+				id: eventId(),
+				reconnected: !firstConnection,
+				...base,
+			})
+
+			if (pushedNewMatch) {
+				events.push({
+					type: 'NEW_GAME',
+					id: eventId(),
+					layerId: currentMatch.layerId,
+					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
+					...base,
+				})
+			} else {
+				events.push({
+					id: eventId(),
+					type: 'RESET',
+					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
+					...base,
+				})
+			}
+
+			const layersStatusRes = await server.layersStatus.get(ctx)
+			if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
+				server.state.nextSetLayerId = layersStatusRes.data.nextLayer.id
+				const serverState = await getServerState(ctx)
+				await LayerQueue.syncNextLayerInPlace(ctx, serverState)
+			}
+			server.event$.next([ctx, events])
+			server.historyConflictsResolved$.next(true)
 		}),
 	).subscribe()
 
@@ -876,7 +882,7 @@ async function processServerLogEvent(
 			if (!layer) {
 				throw new Error(`Failed to parse layer text: ${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`)
 			}
-			server.state.nextSetLayerFromLog = layer.id
+			server.state.nextSetLayerId = layer.id
 			const event: SM.Events.MapSet = {
 				type: 'MAP_SET',
 				id: eventId(),
@@ -896,7 +902,7 @@ async function processServerLogEvent(
 				// get these ASAP
 				const squadListPromise = server.squadList.get(ctx, { ttl: 300 })
 				const playerListPromise = server.playerList.get(ctx, { ttl: 300 })
-				let newLayerId = server.state.nextSetLayerFromLog
+				let newLayerId = server.state.nextSetLayerId
 				if (newLayerId === null) {
 					ctx.log.error(`next layer ID was not set`)
 					return
