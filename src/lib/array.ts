@@ -128,10 +128,10 @@ export function revFind<T>(
 	return undefined
 }
 
-export function revFindMany<T>(arr: T[], predicate: (item: T) => boolean, count: number): T[] {
+export function revFindMany<T>(arr: T[], predicate: (item: T, index: number) => boolean, count: number): T[] {
 	const result: T[] = []
 	for (let i = arr.length - 1; i >= 0; i--) {
-		if (predicate(arr[i])) {
+		if (predicate(arr[i], i)) {
 			result.push(arr[i])
 			if (result.length === count) {
 				break
@@ -141,9 +141,9 @@ export function revFindMany<T>(arr: T[], predicate: (item: T) => boolean, count:
 	return result
 }
 
-export function revFindIndex<T>(arr: T[], predicate: (item: T) => boolean): number {
+export function revFindIndex<T>(arr: T[], predicate: (item: T, index: number) => boolean): number {
 	for (let i = arr.length - 1; i >= 0; i--) {
-		if (predicate(arr[i])) {
+		if (predicate(arr[i], i)) {
 			return i
 		}
 	}

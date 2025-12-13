@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
 import * as SM from '@/models/squad.models'
 import { z } from 'zod'
@@ -217,13 +218,23 @@ export function handleEvent(
 
 		if (state.savepoints.length <= NUMBER_OF_SAVEPOINTS) return
 		const newFirstSavepointIndex = state.savepoints.length - NUMBER_OF_SAVEPOINTS
-		const newFirstEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[newFirstSavepointIndex].savedAtEventId)
-		if (newFirstEventIndex === -1) {
-			throw new Error(`Could not find event ${state.savepoints[newFirstSavepointIndex].savedAtEventId} for savepoint`)
-		}
-
 		state.savepoints = state.savepoints.slice(newFirstSavepointIndex)
+
+		const firstSavepointEventIndex = state.rawEventBuffer.findIndex(e => e.id === state.savepoints[0].savedAtEventId)
+		// get the index of the event of the last NEW_GAME which is beyond  all current savepoints
+		const newFirstEventIndex = Arr.revFindIndex(
+			state.rawEventBuffer,
+			(e, index) => e.type === 'NEW_GAME' && index <= firstSavepointEventIndex,
+		)
+		if (newFirstEventIndex === -1) {
+			console.warn(`Could not find NEW_GAME event in buffer`)
+			return
+		}
+		if (state.rawEventBuffer.length !== state.eventBuffer.length) {
+			throw new Error(`Event buffer and raw event buffer are not the same size`)
+		}
 		state.rawEventBuffer = state.rawEventBuffer.slice(newFirstEventIndex)
+		// eventBuffer and rawEventBuffer are always the same size so this is safe
 		state.eventBuffer = state.eventBuffer.slice(newFirstEventIndex)
 	}
 }
