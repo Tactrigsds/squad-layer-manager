@@ -6,6 +6,7 @@ import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { withThrownAsync } from './error'
 import { createId } from './id'
+import { assertNever } from './type-guards'
 
 export function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms))
@@ -29,45 +30,47 @@ export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25) {
 	console.trace('sleepUntil timed out')
 }
 
-type Deferred<T> = Promise<T> & {
-	resolve: (value: T | PromiseLike<T>) => void
-	reject: (reason?: any) => void
-}
+export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
+	type Elt = { code: 'next'; value: T } | { code: 'error'; error: any } | { code: 'complete' }
 
-function defer<T>(): Deferred<T> {
-	const properties = {},
-		promise = new Promise<T>((resolve, reject) => {
-			Object.assign(properties, { resolve, reject })
-		})
-	return Object.assign(promise, properties) as Deferred<T>
-}
+	// we need a queue here because we're translating push semantics into pull semantics so we would drop emissions otherwise
+	const queue: Elt[] = []
+	const signal = new Rx.Subject<void>()
+	function signalled() {
+		return Rx.firstValueFrom(signal)
+	}
+	function enqueue(elt: Elt) {
+		queue.push(elt)
+		if (queue.length === 1) signal.next()
+	}
 
-const DeferredEmpty = Symbol('DeferredEmpty')
-// orpc subscriptions only work with asyncScheduler set here
-export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>, scheduler = Rx.asyncScheduler) {
-	let nextData = defer<T>() as Deferred<T | symbol> | null
-	const sub = observable.pipe(
-		Rx.observeOn(scheduler),
-	).subscribe({
-		next(data) {
-			const n = nextData
-			nextData = defer()
-			n?.resolve(data)
+	const sub = observable.subscribe({
+		next: (value) => {
+			enqueue({ code: 'next', value })
 		},
-		error(err) {
-			const n = nextData
-			nextData = defer()
-			n?.reject(err)
+		error: (err) => {
+			enqueue({ code: 'error', error: err })
 		},
-		complete() {
-			nextData?.resolve(DeferredEmpty)
+		complete: async () => {
+			enqueue({ code: 'complete' })
 		},
 	})
+
 	try {
 		while (true) {
-			const value = await nextData
-			if (value === DeferredEmpty) break
-			yield value as T
+			if (queue.length === 0) await signalled()
+			const elt = queue.shift()!
+			if (elt.code === 'next') {
+				yield elt.value
+				continue
+			}
+			if (elt.code === 'error') {
+				throw elt.error
+			}
+			if (elt.code === 'complete') {
+				return
+			}
+			assertNever(elt)
 		}
 	} finally {
 		sub.unsubscribe()
