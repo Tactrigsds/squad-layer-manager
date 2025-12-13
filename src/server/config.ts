@@ -81,6 +81,8 @@ export const ConfigSchema = z.object({
 	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
+	repoUrl: z.string().url().optional().describe('URL of the repository'),
+	issuesUrl: z.string().url().optional().describe('URL of the issues page'),
 	globalRolePermissions: z
 		.record(z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
 		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
@@ -174,8 +176,11 @@ export function getPublicConfig(wsClientId: string) {
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
+		repoUrl: CONFIG.repoUrl,
+		issuesUrl: CONFIG.issuesUrl,
 		extraColumnsConfig: LayerDb.LAYER_DB_CONFIG,
 		chat: CONFIG.chat,
+		layersVersion: LayerDb.layersVersion,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
 		servers: CONFIG.servers.map((server): ServerEntry => ({

@@ -941,7 +941,10 @@ function MultiLayerSetDialog({
 function LayerTablePaginationControls(props: { frameKey: LayerTablePrt.Key; table: CoreTable<LayerQueriesClient.RowData> }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) => useFrameStore(props.frameKey, s => selector(s.layerTable))
 
-	const isFetchingLayerData = LayerQueriesClient.useIsFetchingLayerData()
+	const initStatus = Zus.useStore(
+		LayerQueriesClient.Store,
+		ZusUtils.useShallow(s => ({ status: s.status, errorMessage: s.errorMessage })),
+	)
 	const frameState = useTableFrame(ZusUtils.useShallow(table => ({
 		pageSize: table.pageSize,
 		pageIndex: table.pageIndex,
@@ -953,19 +956,34 @@ function LayerTablePaginationControls(props: { frameKey: LayerTablePrt.Key; tabl
 	return (
 		<div className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
-				<div className="text-sm text-muted-foreground">
-					{(frameState.totalRowCount ?? 0) > 0
-						? (
-							<>
-								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched layers
-							</>
-						)
-						: <span className="font-semibold text-foreground">No layers matched</span>}
-				</div>
-				<div data-loading={frameState.isFetching} className="flex items-center space-x-2 invisible data-[loading=true]:visible ">
+				{initStatus.status === 'ready' && (
+					<div className="text-sm text-muted-foreground">
+						{(frameState.totalRowCount ?? 0) > 0
+							? (
+								<>
+									<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched layers
+								</>
+							)
+							: <span className="font-semibold text-foreground">No layers matched</span>}
+					</div>
+				)}
+				<div
+					data-loading={frameState.isFetching || initStatus.status === 'initializing'
+						|| initStatus.status === 'downloading-layers'}
+					className="flex items-center space-x-2 invisible data-[loading=true]:visible "
+				>
 					<LoaderCircle className="h-4 w-4 animate-spin" />
-					{isFetchingLayerData && <p className={Typo.Muted}>Downloading layers from server, this may take a few minutes...</p>}
+					{initStatus.status === 'initializing' && <p className={Typo.Muted}>Initializing layer database...</p>}
+					{initStatus.status === 'downloading-layers' && (
+						<p className={Typo.Muted}>Downloading layers from server, this may take a few minutes...</p>
+					)}
 				</div>
+				{initStatus.status === 'error' && (
+					<div className="flex items-center space-x-2 text-destructive">
+						<span className="font-semibold">Error loading layers:</span>
+						<span className="text-sm">{initStatus.errorMessage ?? 'Unknown error'}</span>
+					</div>
+				)}
 			</div>
 			{(frameState?.totalPageCount ?? 0) > 0 && (
 				<TablePagination

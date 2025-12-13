@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
-import { NormedUrl, ParsedIntSchema, StrFlag } from '../lib/zod'
+import { NormedUrl, ParsedIntSchema, PathSegment, StrFlag } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {
@@ -51,14 +51,15 @@ export const groups = {
 	},
 
 	layerDb: {
+		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
 		LAYER_DB_CONFIG_PATH: z.string().default('./layer-db.json'),
-		LAYERS_DB_PATH: z.string().default('./data/layers.sqlite3'),
+		LAYERS_DB_PATH: z.string().default('./data/layers_v{{LAYERS_VERSION}}.sqlite3'),
 	},
 
 	preprocess: {
 		SPREADSHEET_ID: z.string().default('1Rv7WpDN7UutQjyK7opSOr6BodGcZDrTnuAwp_4U63J4'),
 		SPREADSHEET_MAP_LAYERS_GID: z.number().default(1212962563),
-		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers.csv')),
+		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
 	},
 
 	battlemetrics: {

@@ -41,6 +41,17 @@ export function includesId<T extends string>(arr: readonly T[], value: string): 
 	return includes(arr as T[], value)
 }
 
+export function upsert<T>(arr: T[], item: T, predicate?: (existing: T, item: T) => boolean): void {
+	for (let i = 0; i < arr.length; i++) {
+		const matches = predicate ? predicate(arr[i], item) : arr[i] === item
+		if (matches) {
+			arr[i] = item
+			return
+		}
+	}
+	arr.push(item)
+}
+
 export function upsertOn<T, K extends keyof T>(arr: T[], item: T, key: K): void {
 	for (let i = 0; i < arr.length; i++) {
 		if (arr[i][key] === item[key]) {

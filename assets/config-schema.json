@@ -543,6 +543,16 @@
       }
     },
     "homeDiscordGuildId": {"type": "string", "pattern": "^-?\\d+$"},
+    "repoUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the repository"
+    },
+    "issuesUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the issues page"
+    },
     "globalRolePermissions": {
       "type": "object",
       "additionalProperties": {

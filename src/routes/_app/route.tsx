@@ -1,4 +1,5 @@
 import * as AR from '@/app-routes.ts'
+import AboutDialog from '@/components/about-dialog'
 import CommandsHelpDialog from '@/components/commands-help-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
 import { Alert, AlertTitle } from '@/components/ui/alert'
@@ -37,7 +38,9 @@ function RouteComponent() {
 
 	const avatarUrl = user && USR.getAvatarUrl(user)
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | 'about' | null>(
+		null,
+	)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -51,6 +54,10 @@ function RouteComponent() {
 
 	const onNicknameOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'nickname' : null)
+	}
+
+	const onAboutOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'about' : null)
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
@@ -187,6 +194,12 @@ function RouteComponent() {
 										Commands
 									</DropdownMenuItem>
 								</CommandsHelpDialog>
+								<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
+									<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
+										<Icons.Info className="mr-2 h-4 w-4" />
+										About
+									</DropdownMenuItem>
+								</AboutDialog>
 								<DropdownMenuSeparator />
 								<form action={AR.route('/logout')} method="POST">
 									<DropdownMenuItem asChild>

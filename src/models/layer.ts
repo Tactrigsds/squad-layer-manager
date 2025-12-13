@@ -6,7 +6,7 @@ import * as LC from '@/models/layer-columns'
 import type * as SLL from '@/models/squad-layer-list.models'
 import * as z from 'zod'
 
-export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponentsJson
+export let StaticLayerComponents = _StaticLayerComponents as unknown as LC.LayerComponents
 
 // lock static layer components so we can verify that we're not using them while preprocessing
 export function lockStaticLayerComponents() {
@@ -20,7 +20,7 @@ export function lockStaticLayerComponents() {
 	})
 }
 
-export function setStaticLayerComponents(components: LC.LayerComponentsJson) {
+export function setStaticLayerComponents(components: LC.LayerComponents) {
 	StaticLayerComponents = components
 }
 

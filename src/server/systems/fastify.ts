@@ -147,8 +147,8 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			return res.code(304).send()
 		}
 
-		res.header('Content-Type', 'application/x-sqlite3')
-		const stream = LayerDb.readFilestream()
+		const [stream, contentType] = LayerDb.readFilestream()
+		res.header('Content-Type', contentType)
 		return res.send(stream)
 	})
 

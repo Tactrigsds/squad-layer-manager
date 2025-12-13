@@ -37,6 +37,9 @@ export type Store = {
 	setExtraQueryFilters(db: (draft: Im.WritableDraft<LQY.ExtraQueryFiltersState['extraFilters']>) => void): void
 	hoveredConstraintItemId: string | null
 	setHoveredConstraintItemId(id: LQY.ItemId | null): void
+	status: 'uninitialized' | 'initializing' | 'downloading-layers' | 'ready' | 'error'
+	errorMessage: string | null
+	setStatus: (status: 'initializing' | 'downloading-layers' | 'ready' | 'error', errorMessage?: string) => void
 }
 
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
@@ -85,10 +88,13 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 		setHoveredConstraintItemId(id: string | null) {
 			set({ hoveredConstraintItemId: id })
 		},
+		status: 'uninitialized',
+		errorMessage: null,
+		setStatus(status, errorMessage) {
+			set({ status, errorMessage: errorMessage ?? null })
+		},
 	})
 })
-
-export const useIsFetchingLayerData = Zus.create(() => false)
 
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	return !canForceSelect && layerData.constraints.values?.some((v, i) => !v && constraints[i].type !== 'do-not-repeat')
@@ -491,11 +497,11 @@ function getSeqId() {
 
 let worker!: Worker
 
-async function sendWorkerRequest<T extends WorkerTypes.Request['type']>(
+async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
 	type: T,
-	input: Extract<WorkerTypes.Request, { type: T }>['input'],
+	input: Extract<WorkerTypes.ToWorker, { type: T }>['input'],
 	_priority?: number,
-): Promise<Extract<WorkerTypes.Response, { type: T }>['payload']> {
+): Promise<Extract<WorkerTypes.FromWorker, { type: T }>['payload']> {
 	if (type !== 'init') await ensureFullSetup()
 
 	const seqId = getSeqId()
@@ -508,7 +514,7 @@ async function sendWorkerRequest<T extends WorkerTypes.Request['type']>(
 	worker.postMessage(message)
 
 	const response$ = Rx.fromEvent(worker, 'message').pipe(Rx.concatMap((e: any) => {
-		const response = e.data as WorkerTypes.Response
+		const response = e.data as WorkerTypes.FromWorker
 		if (response.seqId !== seqId) {
 			return Rx.EMPTY
 		}
@@ -536,7 +542,7 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 
 	const seqId = getSeqId()
 
-	const message: WorkerTypes.Request = {
+	const message: WorkerTypes.ToWorker = {
 		type: 'queryLayers',
 		input,
 		seqId,
@@ -547,7 +553,7 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 
 	const response$ = Rx.fromEvent(worker, 'message').pipe(
 		Rx.concatMap((e: any) => {
-			const response = e.data as WorkerTypes.Response
+			const response = e.data as WorkerTypes.FromWorker
 			if (response.seqId !== seqId) {
 				return Rx.EMPTY
 			}
@@ -575,8 +581,17 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 let setup$: Promise<void> | null = null
 export async function ensureFullSetup() {
 	if (setup$) return await setup$
-	setup$ = setup()
-	await setup$
+	try {
+		Store.getState().setStatus('initializing')
+		setup$ = setup()
+		await setup$
+		Store.getState().setStatus('ready')
+	} catch (error) {
+		console.error('Error setting up layer queries:', error)
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		Store.getState().setStatus('error', errorMessage)
+		throw error
+	}
 }
 
 async function setup() {
@@ -600,6 +615,17 @@ async function setup() {
 		layerItemsState: itemsState,
 	}
 
+	// set downloading-layers status when the worker signals that it has started a download
+	Rx.fromEvent(worker, 'message').pipe(
+		Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
+		Rx.tap((message) => {
+			if (message.type !== 'layer-download-started') return
+			const store = Store.getState()
+			if (store.status !== 'initializing') return
+			store.setStatus('downloading-layers')
+		}),
+		Rx.takeWhile(msg => msg.type !== 'init'),
+	).subscribe()
 	const initPromise = sendWorkerRequest('init', ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
 	const contextUpdate$ = Rx.merge(

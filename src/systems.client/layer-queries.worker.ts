@@ -9,9 +9,9 @@ import { Mutex } from 'async-mutex'
 import { drizzle } from 'drizzle-orm/sql-js'
 import initSqlJs from 'sql.js'
 
-export type Request = RequestInner & Sequenced & Prioritized
+export type ToWorker = RequestInner & Sequenced & Prioritized
 
-export type Response = (ResponseInner | { type: 'worker-error'; error: string }) & Sequenced
+export type FromWorker = (ResponseInner | { type: 'worker-error'; error: string } | SignalLoadingLayersStarted) & Sequenced
 
 export type RequestInner = OtherQueryRequest | QueryLayersRequest | InitRequest | ContextUpdateRequest
 export type ResponseInner = OtherQueryResponse | QueryLayersResponsePacket | InitResponse | ContextUpdateResponse
@@ -50,6 +50,10 @@ export type ContextUpdateRequest = {
 }
 
 export type ContextUpdateResponse = { type: 'context-update'; payload?: undefined }
+
+export type SignalLoadingLayersStarted = {
+	type: 'layer-download-started'
+}
 
 export type Sequenced = {
 	seqId: number
@@ -183,7 +187,16 @@ async function fetchDatabaseBuffer() {
 			const cachedFile = await dbHandle.getFile()
 			buffer = await cachedFile.arrayBuffer()
 		} else {
-			buffer = await res.arrayBuffer()
+			postMessage({ type: 'layer-download-started' })
+			const isGzipped = res.headers.get('Content-Type') === 'application/gzip'
+			// Decompress if gzipped
+			if (isGzipped && res.body) {
+				const decompressedStream = res.body.pipeThrough(new DecompressionStream('gzip'))
+				const decompressedResponse = new Response(decompressedStream)
+				buffer = await decompressedResponse.arrayBuffer()
+			} else {
+				buffer = await res.arrayBuffer()
+			}
 
 			// Store in OPFS
 			const writable = await dbHandle.createWritable()

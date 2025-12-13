@@ -28,3 +28,11 @@ export function statusCodeToTitleCase(str: string): string {
 	}
 	return result
 }
+
+export function escapeRegex(str: string) {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export namespace StrPatterns {
+	export const PATH_SEGMENT = /[^/]+/
+}

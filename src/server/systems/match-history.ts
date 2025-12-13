@@ -134,15 +134,15 @@ export const loadState = C.spanOp(
 
 export const getRecentMatches = C.spanOp('match-history:get-recent-matches', {
 	tracer,
-	eventLogLevel: 'debug',
+	eventLogLevel: 'trace',
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 }, async (ctx: C.MatchHistory) => {
 	return ctx.matchHistory.recentMatches
 })
 
-export const getCurrentMatch = C.spanOp('match-history:get-previous-match', {
+export const getCurrentMatch = C.spanOp('match-history:get-current-match', {
 	tracer,
-	eventLogLevel: 'debug',
+	eventLogLevel: 'trace',
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 }, async (ctx: C.MatchHistory) => {
 	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]

@@ -61,3 +61,14 @@ export const NormedUrl = z.string().url().transform((url) => url.replace(/\/$/, 
 export const BasicStrNoWhitespace = z.string().regex(/^\S+$/, {
 	message: 'Must not contain whitespace',
 })
+
+export const PathSegment = z
+	.string()
+	.trim()
+	.min(1, { message: 'Path segment cannot be empty' })
+	.regex(/^[^\/\\?%*:|"<>]+$/, {
+		message: 'Path segment cannot contain: / \\ ? % * : | " < >',
+	})
+	.refine((val) => val !== '.' && val !== '..', {
+		message: 'Path segment cannot be "." or ".."',
+	})

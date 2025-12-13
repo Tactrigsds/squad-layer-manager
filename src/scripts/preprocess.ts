@@ -1,5 +1,7 @@
 import * as Paths from '$root/paths'
+import * as Arr from '@/lib/array'
 import * as MapUtils from '@/lib/map'
+import * as Obj from '@/lib/object'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
@@ -12,13 +14,19 @@ import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as LayerDb from '@/server/systems/layer-db'
 import { parse } from 'csv-parse'
 import { sql } from 'drizzle-orm'
+import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
+import { glob } from 'glob'
 import childProcess from 'node:child_process'
+import { promisify } from 'node:util'
+import zlib from 'node:zlib'
 import path from 'path'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
+
+const gzip = promisify(zlib.gzip)
 
 export const ParsedNanFloatSchema = z
 	.string()
@@ -28,7 +36,7 @@ export const ParsedNanFloatSchema = z
 
 const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units'])
+const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-and-units', 'compress-db'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
 let ENV!: ReturnType<typeof envBuilder>
@@ -36,7 +44,7 @@ let ENV!: ReturnType<typeof envBuilder>
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
 	if (args.length === 0) {
-		args.push('update-layers-table', 'write-components-and-units')
+		args.push('update-layers-table', 'write-components-and-units', 'compress-db')
 	}
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
@@ -50,7 +58,7 @@ async function main() {
 	await ensureAllSheetsDownloaded(ctx, { invalidate: args.includes('download-csvs') })
 
 	const data = await parseSquadLayerSheetData(ctx)
-	const components = LC.toLayerComponentsJson(LC.buildFullLayerComponents(data.components))
+	const components = LC.buildFullLayerComponents(data.components)
 	L.setStaticLayerComponents(components)
 
 	if (args.includes('write-components-and-units')) {
@@ -60,27 +68,69 @@ async function main() {
 		])
 	}
 
-	const outerCtx = ctx
 	if (args.includes('update-layers-table')) {
-		await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false })
-		const ctx = { ...outerCtx, layerDb: () => LayerDb.db }
-		// drizzle-kit push doesn't appear to account for views
-		ctx.layerDb().run(sql`drop view if exists ${LC.layersView(ctx)}`)
-		ctx.log.info('executing drizzle-kit push')
-		childProcess.spawnSync('pnpm', ['drizzle-kit', 'push', '--config', 'drizzle-layersdb.config.ts'])
+		const [csvPath] = LayerDb.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
+		const dbPath = csvPath.replace(/\.csv$/, '.sqlite3')
+		fs.rmSync(dbPath, { force: true })
+		for (const file of glob.sync(`${dbPath}*`)) {
+			fs.rmSync(file, { force: true })
+		}
 
-		await extractLayerScores(ctx, components)
-		await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
+		const args = ['drizzle-kit', 'push', '--force', '--config', path.join(Paths.PROJECT_ROOT, 'drizzle-layersdb.config.ts')]
+		const env = { ...process.env, LAYERS_DB_PATH: dbPath }
+		ctx.log.info(`executing pnpm ${args.join(' ')} with env: %O`, { LAYERS_DB_PATH: dbPath })
+		const res = childProcess.spawnSync('pnpm', args, { env })
+		const stdout = res.stdout?.toString()
+		if (stdout) {
+			for (const line of stdout.split('\n')) {
+				if (line.trim()) ctx.log.info('stdout: %s', line)
+			}
+		}
+		const stderr = res.stderr?.toString()
+		if (stderr) {
+			for (const line of stderr.split('\n')) {
+				if (line.trim()) ctx.log.info('stderr: %s', line)
+			}
+		}
+		if (res.status !== 0) {
+			throw new Error(`drizzle-kit push failed with status ${res.status}`)
+		}
 
-		ctx.layerDb().run('PRAGMA wal_checkpoint')
-		ctx.layerDb().run('PRAGMA optimize')
-		ctx.layerDb().run('VACUUM')
-		ctx.layerDb().$client.close()
-		ctx.log.info('Done! Wrote layers to %s', ENV.LAYERS_DB_PATH)
+		await LayerDb.setup(ctx, { skipHash: true, mode: 'populate', logging: false, dbPath })
+		const outerCtx = ctx
+		{
+			const ctx = { ...outerCtx, layerDb: () => LayerDb.db }
+
+			await populateExtraColsTable(ctx, csvPath, components)
+			await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
+
+			ctx.layerDb().run('PRAGMA wal_checkpoint')
+			ctx.layerDb().run('VACUUM')
+			ctx.layerDb().run('PRAGMA optimize')
+			await LayerDb.writePopulated(ctx, dbPath)
+			ctx.layerDb().$client.close()
+			ctx.log.info('Wrote layers to %s', dbPath)
+		}
 	}
+
+	if (args.includes('compress-db')) {
+		const [csvPath] = LayerDb.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
+		const dbPath = csvPath.replace(/\.csv$/, '.sqlite3')
+		const gzipPath = `${dbPath}.gz`
+
+		if (!fs.existsSync(dbPath)) {
+			throw new Error(`Database file does not exist: ${dbPath}`)
+		}
+
+		ctx.log.info('Compressing database file %s to %s', dbPath, gzipPath)
+		const buffer = await fsPromise.readFile(dbPath)
+		const compressed = await gzip(buffer)
+		await fsPromise.writeFile(gzipPath, compressed)
+	}
+	ctx.log.info('Done!')
 }
 
-async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.LayerComponentsJson): Promise<void> {
+async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string, components: LC.LayerComponents): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
 	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
@@ -106,7 +156,7 @@ async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.Layer
 	const extraLayerColsSubject = new Rx.Subject<any>()
 
 	const seenIds = new Set<string>()
-	fs.createReadStream(ENV.EXTRA_COLS_CSV_PATH, 'utf8')
+	fs.createReadStream(csvPath, 'utf8')
 		.pipe(
 			parse({
 				columns: true,
@@ -160,7 +210,6 @@ async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.Layer
 			extraLayerColsSubject.complete()
 		})
 
-	ctx.layerDb().run(sql`DELETE FROM ${LC.extraColsSchema(ctx)} `)
 	let chunkCount = 1
 	extraLayerColsSubject.pipe(
 		Rx.bufferCount(500),
@@ -186,7 +235,7 @@ async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.Layer
 			if (values.length > 0) {
 				await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(values)
 			}
-			ctx.log.info(`Inserted %s extraLayers`, buf.length * chunkCount)
+			ctx.log.info(`Inserted %s rows into extraCols`, buf.length * chunkCount)
 			chunkCount++
 		}),
 		Rx.tap({
@@ -207,20 +256,18 @@ async function extractLayerScores(ctx: CS.Log & CS.LayerDb, components: LC.Layer
 
 async function populateLayersTable(
 	ctx: CS.Log & CS.LayerDb,
-	components: LC.LayerComponentsJson,
+	components: LC.LayerComponents,
 	finalLayers: Rx.Observable<L.KnownLayer>,
 ) {
 	const t0 = performance.now()
 
 	// -------- process layers --------
-	ctx.log.info('Truncating layers table')
-	ctx.layerDb().run(sql`DELETE FROM ${LC.layers} `)
 	let chunkCount = 1
 	const seenIds: Set<string> = new Set()
 	await Rx.lastValueFrom(finalLayers.pipe(
 		Rx.bufferCount(500),
 		Rx.concatMap(async (buf) => {
-			ctx.log.info(`Inserting %s rows`, buf.length * chunkCount)
+			ctx.log.info(`Inserting %s rows into layers`, buf.length * chunkCount)
 			for (const layer of buf) {
 				if (seenIds.has(layer.id)) {
 					throw new Error(`Duplicate layer ID: ${layer.id}`)
@@ -345,20 +392,20 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	const components: LC.LayerComponents = LC.buildFullLayerComponents(
 		{
 			mapLayers,
-			allianceToFaction,
-			factionToAlliance,
-			factionToUnit,
-			factionUnitToUnitFullName,
-			layerFactionAvailability: availability,
+			allianceToFaction: Object.fromEntries(Array.from(allianceToFaction).map(([k, v]) => [k, Array.from(v)])),
+			factionToAlliance: Object.fromEntries(factionToAlliance),
+			factionToUnit: Object.fromEntries(Array.from(factionToUnit).map(([k, v]) => [k, Array.from(v)])),
+			factionUnitToUnitFullName: Object.fromEntries(factionUnitToUnitFullName),
+			layerFactionAvailability: Object.fromEntries(availability),
 
-			gamemodes: new Set([]),
-			alliances: new Set(),
-			maps: new Set(),
-			layers: new Set(),
-			versions: new Set(),
-			factions: new Set(),
-			units: new Set(),
-			size: new Set(),
+			gamemodes: [],
+			alliances: [],
+			maps: [],
+			layers: [],
+			versions: [],
+			factions: [],
+			units: [],
+			size: [],
 		},
 		true,
 	)
@@ -372,9 +419,9 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	}
 
 	for (const layer of mapLayers) {
-		components.maps.add(layer.Map)
-		components.size.add(layer.Size)
-		components.layers.add(layer.Layer)
+		Arr.upsert(components.maps, layer.Map)
+		Arr.upsert(components.size, layer.Size)
+		Arr.upsert(components.layers, layer.Layer)
 		for (const availEntry1 of availability.get(layer.Layer)!) {
 			if (!availEntry1.allowedTeams.includes(1)) continue
 			for (const availEntry2 of availability.get(layer.Layer)!) {
@@ -387,15 +434,15 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 
 				let parsedSegments = L.parseLayerStringSegment(layer.Layer)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
-				parsedSegments = L.applyBackwardsCompatMappings(parsedSegments, LC.toLayerComponentsJson(components))
-				components.alliances.add(factionToAlliance.get(availEntry1.Faction)!)
-				components.alliances.add(factionToAlliance.get(availEntry2.Faction)!)
-				components.versions.add(parsedSegments.LayerVersion)
-				components.gamemodes.add(parsedSegments.Gamemode)
-				components.factions.add(availEntry1.Faction)
-				components.factions.add(availEntry2.Faction)
-				if (availEntry1.Unit) components.units.add(availEntry1.Unit)
-				if (availEntry2.Unit) components.units.add(availEntry2.Unit)
+				parsedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
+				Arr.upsert(components.alliances, factionToAlliance.get(availEntry1.Faction)!)
+				Arr.upsert(components.alliances, factionToAlliance.get(availEntry2.Faction)!)
+				Arr.upsert(components.versions, parsedSegments.LayerVersion)
+				Arr.upsert(components.gamemodes, parsedSegments.Gamemode)
+				Arr.upsert(components.factions, availEntry1.Faction)
+				Arr.upsert(components.factions, availEntry2.Faction)
+				if (availEntry1.Unit) Arr.upsert(components.units, availEntry1.Unit)
+				if (availEntry2.Unit) Arr.upsert(components.units, availEntry2.Unit)
 				if (!parsedSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
 				const idArgs = {
 					Map: layer.Map,
@@ -406,7 +453,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 					Unit_1: availEntry1.Unit ?? null,
 					Unit_2: availEntry2.Unit ?? null,
 				}
-				const layerId = L.getKnownLayerId(idArgs, LC.toLayerComponentsJson(components))!
+				const layerId = L.getKnownLayerId(idArgs, components)!
 				if (layerId === null) throw new Error(`Invalid layer ID: ${JSON.stringify(idArgs)}`)
 				const baseLayer: L.KnownLayer = {
 					id: layerId,
@@ -426,12 +473,13 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				baseLayers.push(baseLayer)
 			}
 		}
+		ctx.log.info('parsed layer configs for %s', layer.Layer)
 	}
 
 	// -------- include FRAAS --------
-	components.gamemodes.add('FRAAS')
+	Arr.upsert(components.gamemodes, 'FRAAS')
 	for (const layer of Array.from(components.layers)) {
-		components.layers.add(layer.replace('RAAS', 'FRAAS'))
+		Arr.upsert(components.layers, layer.replace('RAAS', 'FRAAS'))
 	}
 
 	const layersToAdd: L.KnownLayer[] = []
@@ -439,7 +487,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	for (const layer of baseLayers) {
 		if (layer.Gamemode !== 'RAAS') continue
 		const fraasVariant = L.getFraasVariant(layer)
-		components.layers.add(fraasVariant.Layer)
+		Arr.upsert(components.layers, fraasVariant.Layer)
 		layersToAdd.push(fraasVariant)
 		idToIdx.set(fraasVariant.id, i + baseLayers.length)
 		i++
@@ -456,13 +504,13 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	}
 	components.mapLayers.push(...mapLayersToAdd)
 
-	const addedAvailability = new Map<string, L.LayerFactionAvailabilityEntry[]>()
-	for (const [key, entries] of components.layerFactionAvailability.entries()) {
+	const addedAvailability: LC.LayerComponents['layerFactionAvailability'] = {}
+	for (const [key, entries] of Object.entries(components.layerFactionAvailability)) {
 		if (!key.includes('RAAS')) continue
 
-		addedAvailability.set(key.replace('RAAS', 'FRAAS'), entries)
+		addedAvailability[key.replace('RAAS', 'FRAAS')] = entries
 	}
-	components.layerFactionAvailability = MapUtils.union(addedAvailability, components.layerFactionAvailability)
+	Object.assign(components.layerFactionAvailability, addedAvailability)
 
 	ctx.log.info('Parsed %s total layers', baseLayers.length)
 	return { baseLayers, idToIdx, components, units: json.Units }

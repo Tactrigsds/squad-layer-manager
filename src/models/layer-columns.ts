@@ -148,7 +148,7 @@ export const layers = sqliteTable('layers', {
 	alliance2Index: index('alliance2Index').on(table.Alliance_2),
 }))
 
-export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
+function _extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 	const columns: Record<string, any> = {
 		id: int('id').primaryKey().notNull(),
 	}
@@ -175,15 +175,21 @@ export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 	}
 	return sqliteTable('layersExtra', columns, (table) => Obj.map(indexes, (cb) => cb(table)))
 }
-
-// sprinkling in a little bit of object pooling here since we call layersView pretty often and I don't know how expensive sqliteView is. probably doesn't matter much
-const viewCache = new WeakMap<EffectiveColumnConfig, ReturnType<typeof _layersView>>()
+const extraColsSchemaCache = new WeakMap<EffectiveColumnConfig, ReturnType<typeof _extraColsSchema>>()
+export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
+	if (extraColsSchemaCache.has(ctx.effectiveColsConfig)) return extraColsSchemaCache.get(ctx.effectiveColsConfig)!
+	const schema = _extraColsSchema(ctx)
+	extraColsSchemaCache.set(ctx.effectiveColsConfig, schema)
+	return schema
+}
 
 function _layersView(ctx: CS.EffectiveColumnConfig) {
 	const extra = extraColsSchema(ctx)
 	return sqliteView('layersView').as((qb) => qb.select().from(layers).leftJoin(extra, E.eq(layers.id, extra.id)))
 }
 
+// sprinkling in a little bit of object pooling here since we call layersView pretty often and I don't know how expensive sqliteView is. probably doesn't matter much
+const viewCache = new WeakMap<EffectiveColumnConfig, ReturnType<typeof _layersView>>()
 export function layersView(ctx: CS.EffectiveColumnConfig) {
 	if (viewCache.has(ctx.effectiveColsConfig)) return viewCache.get(ctx.effectiveColsConfig)!
 	const view = _layersView(ctx)
@@ -529,23 +535,6 @@ export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, compon
 }
 
 export type BaseLayerComponents = {
-	maps: Set<string>
-	alliances: Set<string>
-	gamemodes: Set<string>
-	layers: Set<string>
-	versions: Set<string | null>
-	size: Set<string>
-	mapLayers: L.LayerConfig[]
-	factions: Set<string>
-	units: Set<string>
-	allianceToFaction: OneToManyMap<string, string>
-	factionToAlliance: Map<string, string>
-	factionToUnit: OneToManyMap<string, string>
-	factionUnitToUnitFullName: Map<string, string>
-	layerFactionAvailability: Map<string, L.LayerFactionAvailabilityEntry[]>
-}
-
-export type BaseLayerComponentsJson = {
 	maps: string[]
 	alliances: string[]
 	gamemodes: string[]
@@ -567,64 +556,7 @@ export type LayerComponents = BaseLayerComponents & {
 	unitAbbreviations: Record<string, string>
 	unitShortNames: Record<string, string>
 	gamemodeAbbreviations: Record<string, string>
-
-	// conversions to attempt after parsing different layer components
 	backwardsCompat: L.BackwardsCompatMappings
-}
-
-export type LayerComponentsJson = BaseLayerComponentsJson & {
-	mapAbbreviations: Record<string, string>
-	unitAbbreviations: Record<string, string>
-	unitShortNames: Record<string, string>
-	gamemodeAbbreviations: Record<string, string>
-	backwardsCompat: L.BackwardsCompatMappings
-}
-
-export function toLayerComponentsJson(components: LayerComponents): LayerComponentsJson {
-	return {
-		...components,
-		size: Array.from(components.size),
-		maps: Array.from(components.maps),
-		layers: Array.from(components.layers),
-		versions: Array.from(components.versions),
-		gamemodes: Array.from(components.gamemodes),
-		alliances: Array.from(components.alliances),
-		factions: Array.from(components.factions),
-		units: Array.from(components.units),
-		allianceToFaction: toJsonCompatible(components.allianceToFaction),
-		factionToAlliance: Object.fromEntries(components.factionToAlliance),
-		factionToUnit: toJsonCompatible(components.factionToUnit),
-		factionUnitToUnitFullName: Object.fromEntries(components.factionUnitToUnitFullName),
-		layerFactionAvailability: Object.fromEntries(components.layerFactionAvailability),
-		mapAbbreviations: components.mapAbbreviations,
-		unitAbbreviations: components.unitAbbreviations,
-		unitShortNames: components.unitShortNames,
-		gamemodeAbbreviations: components.gamemodeAbbreviations,
-		backwardsCompat: components.backwardsCompat,
-	}
-}
-
-export function toLayerComponents(json: LayerComponentsJson): LayerComponents {
-	return {
-		...json,
-		maps: new Set(json.maps),
-		layers: new Set(json.layers),
-		size: new Set(json.size),
-		versions: new Set(json.versions),
-		gamemodes: new Set(json.gamemodes),
-		alliances: new Set(json.alliances),
-		factions: new Set(json.factions),
-		units: new Set(json.units),
-		allianceToFaction: fromJsonCompatible(json.allianceToFaction),
-		factionToAlliance: new Map(Object.entries(json.factionToAlliance)),
-		factionToUnit: fromJsonCompatible(json.factionToUnit),
-		factionUnitToUnitFullName: new Map(Object.entries(json.factionUnitToUnitFullName)),
-		layerFactionAvailability: new Map(Object.entries(json.layerFactionAvailability)),
-		mapAbbreviations: json.mapAbbreviations,
-		unitAbbreviations: json.unitAbbreviations,
-		unitShortNames: json.unitShortNames,
-		gamemodeAbbreviations: json.gamemodeAbbreviations,
-	}
 }
 
 const baseProperties = {
