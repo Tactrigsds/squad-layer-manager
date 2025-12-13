@@ -1,21 +1,18 @@
 import * as Paths from '$root/paths'
-import { escapeRegex, StrPatterns } from '@/lib/string'
-import * as CS from '@/models/context-shared'
+import { escapeRegex } from '@/lib/string'
+import type * as CS from '@/models/context-shared'
 import * as LC from '@/models/layer-columns'
 import type { LayerDb } from '@/models/layer-db'
 import * as Env from '@/server/env'
-import { escapeRegExp } from 'ace-builds-internal/lib/lang'
-import DatabaseConstructor, { Database } from 'better-sqlite3'
+import DatabaseConstructor, { type Database } from 'better-sqlite3'
 import crypto from 'crypto'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { glob } from 'glob'
 import Mustache from 'mustache'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import * as semver from 'semver'
-
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
 import zodToJsonSchema from 'zod-to-json-schema'
@@ -126,7 +123,7 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 		const [before, after] = segments[segmentIndex].split('{{LAYERS_VERSION}}')
 		const dir = segments.slice(0, segmentIndex).join('/')
 
-		const regex = new RegExp(`^${escapeRegex(before)}${'([^/]+)'}${escapeRegex(after)}$`)
+		const regex = new RegExp(`^${escapeRegex(before)}([^/]+)${escapeRegex(after)}$`)
 
 		const matches: Array<{ segment: string; version: string }> = []
 		for (const segment of fs.readdirSync(dir)) {

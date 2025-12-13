@@ -13,7 +13,6 @@ import * as Zus from 'zustand'
 import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
 
-
 export default function ShortLayerName(
 	{ layerId, teamParity, backfillLayerId, matchDescriptors, allowShowInfo: _allowShowInfo, ref, className }: {
 		layerId: L.LayerId

@@ -66,7 +66,7 @@ export const PathSegment = z
 	.string()
 	.trim()
 	.min(1, { message: 'Path segment cannot be empty' })
-	.regex(/^[^\/\\?%*:|"<>]+$/, {
+	.regex(/^[^/\\?%*:|"<>]+$/, {
 		message: 'Path segment cannot contain: / \\ ? % * : | " < >',
 	})
 	.refine((val) => val !== '.' && val !== '..', {

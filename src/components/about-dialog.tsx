@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { globalToast$ } from '@/hooks/use-global-toast'
-import * as Typo from '@/lib/typography'
+
 import { formatVersion } from '@/lib/versioning'
 import * as ConfigClient from '@/systems.client/config.client'
 import * as UsersClient from '@/systems.client/users.client'
@@ -87,8 +87,8 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 								variant="ghost"
 								size="icon"
 								className="absolute top-1 right-1 h-6 w-6"
-								onClick={() => {
-									navigator.clipboard.writeText(versionText)
+								onClick={async () => {
+									await navigator.clipboard.writeText(versionText)
 									globalToast$.next({
 										title: 'Copied to clipboard',
 										description: 'Version information has been copied',
