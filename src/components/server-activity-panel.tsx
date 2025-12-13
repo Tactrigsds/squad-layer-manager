@@ -197,7 +197,7 @@ function PlayerDisconnectedEvent({ event }: { event: Extract<CHAT.EventEnriched,
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserMinus className="h-4 w-4 text-red-500" />
 			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> disconnected
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> disconnected
 			</span>
 		</div>
 	)
@@ -209,7 +209,7 @@ function PossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnriche
 			<EventTime time={event.time} variant="small" />
 			<Icons.Camera className="h-4 w-4 text-purple-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> entered admin camera
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> entered admin camera
 			</span>
 		</div>
 	)
@@ -221,7 +221,7 @@ function UnpossessedAdminCameraEvent({ event }: { event: Extract<CHAT.EventEnric
 			<EventTime time={event.time} variant="small" />
 			<Icons.CameraOff className="h-4 w-4 text-purple-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> exited admin camera
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> exited admin camera
 			</span>
 		</div>
 	)
@@ -233,7 +233,7 @@ function PlayerKickedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 			<EventTime time={event.time} variant="small" />
 			<Icons.UserX className="h-4 w-4 text-orange-500" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> was kicked
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was kicked
 			</span>
 		</div>
 	)
@@ -275,7 +275,7 @@ function PlayerWarnedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 			<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
 			<div className="flex-grow min-w-0">
 				<span className="inline-block whitespace-nowrap">
-					<PlayerDisplay player={event.player} matchId={event.matchId} /> was warned
+					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was warned
 				</span>
 				: "<span className="break-words">{event.reason}</span>"
 			</div>
@@ -296,7 +296,7 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 				<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
 				<div className="flex-grow min-w-0">
 					<span className="inline-block whitespace-nowrap">
-						<PlayerDisplay player={player} matchId={event.matchId} /> was warned {player.times}x
+						<PlayerDisplay showTeam player={player} matchId={event.matchId} /> was warned {player.times}x
 					</span>
 					: "<span className="break-words">{event.reason}</span>"
 				</div>
@@ -321,7 +321,7 @@ function PlayerWarnedDedupedEvent({ event }: { event: Extract<CHAT.EventEnriched
 							<div className="flex flex-col gap-1">
 								{event.players.map((player) => (
 									<div key={SM.PlayerIds.resolvePlayerId(player.ids)} className="flex items-center gap-1">
-										<PlayerDisplay player={player} matchId={event.matchId} />
+										<PlayerDisplay showTeam player={player} matchId={event.matchId} />
 										{player.times > 1 && <span className="text-muted-foreground">({player.times}x)</span>}
 									</div>
 								))}
@@ -526,28 +526,25 @@ function PlayerPromotedToLeaderEvent({ event }: { event: Extract<CHAT.EventEnric
 			<EventTime time={event.time} variant="small" />
 			<Icons.Crown className="h-4 w-4 text-yellow-400" />
 			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.player} matchId={event.matchId} /> promoted to squad leader
+				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} /> promoted to squad leader
 			</span>
 		</div>
 	)
 }
 
-function PlayerDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DIED' }> }) {
-	return null
-	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
-			<EventTime time={event.time} variant="small" />
-			<Icons.Skull className="h-4 w-4 text-foreground" />
-			<span className="text-xs flex items-center gap-1">
-				<PlayerDisplay player={event.victim} matchId={event.matchId} /> killed by{' '}
-				<PlayerDisplay player={event.attacker} matchId={event.matchId} />
-			</span>
-		</div>
-	)
-}
-
-function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WOUNDED' }> }) {
+function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_WOUNDED' | 'PLAYER_DIED' }> }) {
 	const getIcon = () => {
+		if (event.type === 'PLAYER_DIED') {
+			switch (event.variant) {
+				case 'suicide':
+					return <Icons.Skull className="h-4 w-4 text-orange-400" />
+				case 'teamkill':
+					return <Icons.Skull className="h-4 w-4 text-red-500" />
+				case 'normal':
+					return <Icons.Skull className="h-4 w-4 text-foreground" />
+			}
+		}
+
 		switch (event.variant) {
 			case 'suicide':
 				return <Icons.HeartPulse className="h-4 w-4 text-orange-400" />
@@ -555,7 +552,6 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 				return <Icons.HeartPulse className="h-4 w-4 text-red-500" />
 			case 'normal':
 				return null
-				return <Icons.HeartPulse className="h-4 w-4 text-foreground" />
 		}
 	}
 
@@ -564,21 +560,26 @@ function PlayerWoundedEvent({ event }: { event: Extract<CHAT.EventEnriched, { ty
 			case 'suicide':
 				return (
 					<>
-						<PlayerDisplay player={event.victim} matchId={event.matchId} /> wounded themselves
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} />{' '}
+						{event.type === 'PLAYER_WOUNDED' ? 'wounded themselves' : 'killed themselves'}
+						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
 				)
 			case 'teamkill':
 				return (
 					<>
-						<PlayerDisplay player={event.victim} matchId={event.matchId} /> teamkilled by{' '}
-						<PlayerDisplay player={event.attacker} matchId={event.matchId} />
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} /> teamkilled by{' '}
+						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} />
+						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
 				)
 			case 'normal':
 				return (
 					<>
-						<PlayerDisplay player={event.victim} matchId={event.matchId} /> wounded by{' '}
-						<PlayerDisplay player={event.attacker} matchId={event.matchId} />
+						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} />{' '}
+						{event.type === 'PLAYER_WOUNDED' ? 'wounded by' : 'killed by'}
+						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} />
+						{event.weapon && <span className="text-muted-foreground/70">with {event.weapon}</span>}
 					</>
 				)
 		}
@@ -673,9 +674,8 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 		case 'PLAYER_PROMOTED_TO_LEADER':
 			return <PlayerPromotedToLeaderEvent event={event} />
 		case 'PLAYER_DIED':
-			return <PlayerDiedEvent event={event} />
 		case 'PLAYER_WOUNDED':
-			return <PlayerWoundedEvent event={event} />
+			return <PlayerWoundedOrDiedEvent event={event} />
 		case 'MAP_SET':
 			return <MapSetEvent event={event} />
 		case 'RCON_CONNECTED':

@@ -542,30 +542,7 @@ export function interpolateEvent(
 			} as SM.Events.AdminBroadcast & { player: SM.Player }
 		}
 
-		case 'PLAYER_DIED': {
-			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victimIds)
-			if (!victim) {
-				return noop(
-					`Victim ${
-						SM.PlayerIds.prettyPrint(event.victimIds)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
-				)
-			}
-			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attackerIds)
-			if (!attacker) {
-				return noop(
-					`Attacker ${
-						SM.PlayerIds.prettyPrint(event.attackerIds)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
-				)
-			}
-			return {
-				...event,
-				victim,
-				attacker,
-			}
-		}
-
+		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
 			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victimIds)
 			if (!victim) {
@@ -619,12 +596,13 @@ export function isEventFiltered(event: EventEnriched, filterState: EventFilterSt
 	if (filterState === 'ALL') {
 		return false
 	} else if (filterState === 'DEFAULT') {
-		if (event.type === 'PLAYER_DIED' && event.victim.teamId !== event.attacker.teamId) {
+		if (event.type === 'PLAYER_DIED' || event.type === 'PLAYER_WOUNDED' && event.variant !== 'teamkill') {
 			return true
 		}
 		if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') {
 			return true
 		}
+		return false
 	} else if (filterState === 'CHAT') {
 		// Show only chat messages and broadcasts
 		return !(event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON')

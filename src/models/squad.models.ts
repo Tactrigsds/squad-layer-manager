@@ -585,9 +585,10 @@ export namespace Events {
 		attackerIds: PlayerIds.Type
 		damage: number
 		weapon: string
+		variant: PlayerWoundedOrDiedVariant
 	} & Base
 
-	export type PlayerWoundedVariant = 'normal' | 'suicide' | 'teamkill'
+	export type PlayerWoundedOrDiedVariant = 'normal' | 'suicide' | 'teamkill'
 
 	export type PlayerWounded = {
 		type: 'PLAYER_WOUNDED'
@@ -595,7 +596,7 @@ export namespace Events {
 		attackerIds: PlayerIds.Type
 		damage: number
 		weapon: string
-		variant: PlayerWoundedVariant
+		variant: PlayerWoundedOrDiedVariant
 	} & Base
 
 	export type Event =
