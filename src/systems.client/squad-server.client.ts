@@ -58,7 +58,7 @@ type ChatStore = {
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.getInitialChatState(),
-		eventFilterState: 'ALL',
+		eventFilterState: 'DEFAULT',
 		eventGeneration: 0,
 		setEventFilterState(state) {
 			set({ eventFilterState: state })

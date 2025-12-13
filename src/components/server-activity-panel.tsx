@@ -1035,8 +1035,6 @@ export default function ServerActivityPanel() {
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const cardRef = React.useRef<HTMLDivElement>(null)
 	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
-	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
-	const setEventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 
 	// Track viewport width state for auto-closing/opening the panel
@@ -1108,7 +1106,7 @@ export default function ServerActivityPanel() {
 						<Icons.Server className="h-5 w-5" />
 						Server Activity
 					</CardTitle>
-					<EventFilterSelect value={eventFilterState} onValueChange={setEventFilterState} />
+					<EventFilterSelect />
 				</div>
 				<ServerCounts />
 			</CardHeader>

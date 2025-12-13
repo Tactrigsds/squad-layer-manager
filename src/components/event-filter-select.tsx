@@ -1,17 +1,16 @@
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type * as CHAT from '@/models/chat.models'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as Icons from 'lucide-react'
-import React from 'react'
+import * as Zus from 'zustand'
 
-interface EventFilterSelectProps {
-	value: CHAT.EventFilterState
-	onValueChange: (value: CHAT.EventFilterState) => void
-}
-
-export default function EventFilterSelect({ value, onValueChange }: EventFilterSelectProps) {
+export default function EventFilterSelect() {
+	const value = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
+	const onValueChange = Zus.useStore(SquadServerClient.ChatStore, s => s.setEventFilterState)
 	const labels: Record<CHAT.EventFilterState, string> = {
-		ALL: 'All Events',
+		ALL: 'All',
+		DEFAULT: 'Default',
 		CHAT: 'Chat Only',
 		ADMIN: 'Admin Only',
 	}
@@ -27,9 +26,11 @@ export default function EventFilterSelect({ value, onValueChange }: EventFilterS
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
 				<DropdownMenuRadioGroup value={value} onValueChange={onValueChange as (value: string) => void}>
-					<DropdownMenuRadioItem value="ALL">All Events</DropdownMenuRadioItem>
-					<DropdownMenuRadioItem value="CHAT">Chat Only</DropdownMenuRadioItem>
-					<DropdownMenuRadioItem value="ADMIN">Admin Chat Only</DropdownMenuRadioItem>
+					{Object.entries(labels).map(([key, label]) => (
+						<DropdownMenuRadioItem key={key} value={key}>
+							{label}
+						</DropdownMenuRadioItem>
+					))}
 				</DropdownMenuRadioGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>

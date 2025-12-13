@@ -17,6 +17,7 @@ interface PlayerItemProps {
 }
 
 function PlayerItem({ player, matchId }: PlayerItemProps) {
+	const eventFilterState = Zus.useStore(SquadServerClient.ChatStore, s => s.eventFilterState)
 	return (
 		<div className="flex items-center gap-1.5 py-0.5 px-2 hover:bg-accent/50 rounded">
 			{player.isLeader && (
@@ -30,7 +31,7 @@ function PlayerItem({ player, matchId }: PlayerItemProps) {
 				</span>
 			)}
 			<span className="text-xs font-medium truncate">{player.ids.username}</span>
-			{player.role && <span className="text-xs text-muted-foreground truncate">- {player.role}</span>}
+			{player.role && eventFilterState === 'ALL' && <span className="text-xs text-muted-foreground truncate">- {player.role}</span>}
 		</div>
 	)
 }

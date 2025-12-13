@@ -605,20 +605,29 @@ export function interpolateEvent(
 	}
 }
 
-export const EVENT_FILTER_STATE = z.enum(['ALL', 'CHAT', 'ADMIN'])
+export const EVENT_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'ADMIN'])
 export type EventFilterState = z.infer<typeof EVENT_FILTER_STATE>
 
 export function isEventFiltered(event: EventEnriched, filterState: EventFilterState): boolean {
 	// Always show new game and round ended events
-	if (event.type === 'NEW_GAME' || event.type === 'ROUND_ENDED') {
+	if (
+		['NEW_GAME', 'ROUND_ENDED', 'RESET', 'RCON_CONNECTED', 'RCON_DISCONNECTED'].includes(event.type)
+	) {
 		return false
 	}
 
 	if (filterState === 'ALL') {
 		return false
+	} else if (filterState === 'DEFAULT') {
+		if (event.type === 'PLAYER_DIED' && event.victim.teamId !== event.attacker.teamId) {
+			return true
+		}
+		if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') {
+			return true
+		}
 	} else if (filterState === 'CHAT') {
 		// Show only chat messages and broadcasts
-		return !(event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST')
+		return !(event.type === 'CHAT_MESSAGE' || event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON')
 	} else if (filterState === 'ADMIN') {
 		// Show only admin chat messages and broadcasts
 		if (event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON') {
