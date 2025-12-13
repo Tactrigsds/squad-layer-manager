@@ -1,4 +1,5 @@
 import Ace from 'ace-builds'
+import * as Rx from 'rxjs'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -89,6 +90,13 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 			editor.resize()
 			errorView.resize()
 		})
+
+		const sub = Rx.fromEvent(document, 'visibilitychange').subscribe(() => {
+			if (document.hidden) return
+			editor.resize()
+			errorView.resize()
+		})
+
 		editor.on('change', () => {
 			onChangeDebounced(editor.getValue())
 		})
@@ -110,6 +118,7 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 		return () => {
 			editor.destroy()
 			ro.disconnect()
+			sub.unsubscribe()
 			unsub()
 		}
 	}, [onChangeDebounced, props.frameKey])

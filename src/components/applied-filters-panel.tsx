@@ -10,6 +10,7 @@ import * as QD from '@/systems.client/queue-dashboard.ts'
 import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
@@ -57,35 +58,38 @@ export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame
 		}
 	}
 
-	const checkScrollability = React.useCallback(() => {
-		if (scrollRef.current) {
-			const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
-			if (viewport) {
-				const { scrollLeft, scrollWidth, clientWidth } = viewport
-				setCanScrollLeft(scrollLeft > 0)
-				setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1)
+	React.useEffect(() => {
+		const checkScrollability = () => {
+			if (scrollRef.current) {
+				const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+				if (viewport) {
+					const { scrollLeft, scrollWidth, clientWidth } = viewport
+					setCanScrollLeft(scrollLeft > 0)
+					setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1)
+				}
 			}
 		}
-	}, [])
-
-	React.useEffect(() => {
 		const viewport = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]')
 		if (viewport) {
 			checkScrollability()
-			viewport.addEventListener('scroll', checkScrollability)
-			window.addEventListener('resize', checkScrollability)
+			const visible$ = Rx.fromEvent(document, 'visibilitychange').pipe(Rx.filter(() => !document.hidden))
+
+			const sub = Rx.merge(
+				visible$,
+				Rx.fromEvent(viewport, 'scroll'),
+				Rx.fromEvent(window, 'resize'),
+			).subscribe(checkScrollability)
 
 			// Use ResizeObserver to detect content size changes
 			const resizeObserver = new ResizeObserver(checkScrollability)
 			resizeObserver.observe(viewport)
 
 			return () => {
-				viewport.removeEventListener('scroll', checkScrollability)
-				window.removeEventListener('resize', checkScrollability)
+				sub.unsubscribe()
 				resizeObserver.disconnect()
 			}
 		}
-	}, [checkScrollability, extraFilters])
+	}, [extraFilters])
 
 	const poolFilterIds: F.FilterEntityId[] = Zus.useStore(
 		ServerSettingsClient.Store,

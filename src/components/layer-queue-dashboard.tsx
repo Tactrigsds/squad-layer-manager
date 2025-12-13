@@ -32,7 +32,7 @@ import TabsList from './ui/tabs-list.tsx'
 import UserPresencePanel from './user-presence-panel.tsx'
 
 export default function LayerQueueDashboard() {
-	const [activeTab, setActiveTab] = React.useState<'dashboard' | 'chat'>('dashboard')
+	const [activeTab, setActiveTab] = React.useState<'layers' | 'server-activity'>('layers')
 	const [isDesktop, setIsDesktop] = React.useState(false)
 
 	React.useEffect(() => {
@@ -57,8 +57,8 @@ export default function LayerQueueDashboard() {
 						<div className="flex items-center gap-2">
 							<TabsList
 								options={[
-									{ value: 'dashboard', label: 'Dashboard' },
-									{ value: 'chat', label: 'Chat' },
+									{ value: 'layers', label: 'Layers' },
+									{ value: 'server-activity', label: 'Server Activity' },
 								]}
 								active={activeTab}
 								setActive={setActiveTab}
@@ -68,13 +68,8 @@ export default function LayerQueueDashboard() {
 						<UserPresencePanel />
 					</div>
 
-					{/* Content based on active tab */}
-					<div className={activeTab === 'dashboard' ? 'flex flex-col gap-2' : 'hidden'}>
-						<CombinedDashboardPanel />
-					</div>
-					<div className={activeTab === 'chat' ? 'flex gap-2' : 'hidden'}>
-						<ServerActivityPanel />
-					</div>
+					{activeTab === 'layers' && <CombinedDashboardPanel />}
+					{activeTab === 'server-activity' && <ServerActivityPanel />}
 				</div>
 			)}
 

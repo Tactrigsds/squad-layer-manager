@@ -21,6 +21,7 @@ import * as SquadServerClient from '@/systems.client/squad-server.client'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { ServerUnreachable } from './server-offline-display.tsx'
@@ -695,7 +696,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const bottomRef = React.useRef<HTMLDivElement>(null)
 	const scrollAreaRef = React.useRef<HTMLDivElement>(null)
-	const hasScrolledInitially = React.useRef(false)
+	// are we following the latest events by autoscrolling down
+	const tailing = React.useRef(true)
 	const eventsContainerRef = React.useRef<HTMLDivElement>(null)
 	const [showScrollButton, setShowScrollButton] = React.useState(false)
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
@@ -739,6 +741,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		if (scrollElement) {
 			scrollElement.scrollTop = scrollElement.scrollHeight
 		}
+		tailing.current = true
+		console.log('setting tailing to true')
 		setNewMessageCount(0)
 	}
 
@@ -746,36 +750,45 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
 		if (!scrollElement) return false
 
-		const threshold = 50 // pixels from bottom to consider "at bottom"
+		const threshold = 10 // pixels from bottom to consider "at bottom"
 		const { scrollHeight, scrollTop, clientHeight } = scrollElement
 		const distanceFromBottom = scrollHeight - scrollTop - clientHeight
 
+		console.log({ distanceFromBottom, scrollHeight, scrollTop, clientHeight })
 		const isAtBottom = distanceFromBottom < threshold
 		return isAtBottom
 	}
 
-	// Scroll to bottom on initial render and when new events arrive if already at bottom
+	// Scroll to bottom on initial render and when new events arrive if already tailing
 	// Scroll to bottom when scroll area content changes (via ResizeObserver)
+	// Scroll to bottom when window becomes visible again if already tailing
 	React.useEffect(() => {
 		const scrollElement = eventsContainerRef.current
 		if (!scrollElement) return
 
 		const resizeObserver = new ResizeObserver(() => {
 			requestAnimationFrame(() => {
-				if (!hasScrolledInitially.current || checkIfAtBottom()) {
-					hasScrolledInitially.current = true
-					// Use requestAnimationFrame to ensure DOM has updated
+				if (tailing.current && !checkIfAtBottom()) {
 					scrollToBottom()
 				}
 			})
 		})
+
+		const sub = Rx.fromEvent(document, 'visibilitychange').subscribe(() => {
+			if (document.hidden || !tailing.current) return
+			scrollToBottom()
+		})
+
 		requestAnimationFrame(() => {
 			scrollToBottom()
 		})
 
 		resizeObserver.observe(scrollElement)
 
-		return () => resizeObserver.disconnect()
+		return () => {
+			resizeObserver.disconnect()
+			sub.unsubscribe()
+		}
 	}, [])
 
 	React.useEffect(() => {
@@ -796,6 +809,11 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			setShowScrollButton(!atBottom)
 			if (atBottom) {
 				setNewMessageCount(0)
+				tailing.current = true
+				console.log('setting tailing to true')
+			} else {
+				tailing.current = false
+				console.log('setting tailing to false')
 			}
 		}
 
@@ -1041,7 +1059,7 @@ export default function ServerActivityPanel() {
 	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const userManuallyClosed = React.useRef(false)
 
-	React.useEffect(() => {
+	React.useLayoutEffect(() => {
 		const calculateMaxHeight = () => {
 			if (!cardRef.current) return
 
@@ -1086,12 +1104,18 @@ export default function ServerActivityPanel() {
 			}
 		}
 
-		// Calculate on mount and window resize
+		const visible$ = Rx.fromEvent(document, 'visibilitychange').pipe(Rx.filter(() => !document.hidden))
+		const sub = Rx.merge(
+			visible$,
+			Rx.fromEvent(window, 'resize'),
+		).subscribe(handleResize)
+
 		calculateMaxHeight()
 		handleResize()
-		window.addEventListener('resize', handleResize)
 
-		return () => window.removeEventListener('resize', handleResize)
+		return () => {
+			sub.unsubscribe()
+		}
 	}, [isStatePanelOpen])
 
 	return (
