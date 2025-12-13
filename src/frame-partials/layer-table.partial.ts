@@ -266,8 +266,6 @@ export function initLayerTable(
 	args.sub.add(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
-			Rx.observeOn(Rx.asyncScheduler),
-			Rx.throttleTime(500, undefined, { leading: true, trailing: true }),
 			Rx.map(([store]) => {
 				const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 					cfg: store.layerTable.colConfig,
@@ -281,6 +279,8 @@ export function initLayerTable(
 			}),
 			distinctDeepEquals(),
 			Rx.map((input) => {
+				const stateChangedTime = Date.now()
+				set({ isFetching: true })
 				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
 				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
 				const data = RPC.queryClient.getQueryData(options.queryKey)
@@ -292,26 +292,26 @@ export function initLayerTable(
 				}
 
 				return packet$.pipe(Rx.tap({
-					next: (packet) => {
-						if (packet.code === 'layers-page') {
-							set({ isFetching: false })
-						}
-					},
 					subscribe: () => {
+						const fetchingTime = Date.now()
+						const timeDifference = fetchingTime - stateChangedTime
 						void RPC.queryClient.fetchQuery(options)
-						set({ isFetching: true })
-					},
-					complete: () => {
-						set({ isFetching: false })
-					},
-					unsubscribe: () => {
-						set({ isFetching: false })
-						packet$.complete()
 					},
 				}))
 			}),
-			Rx.filter(o => !!o),
-			Rx.switchMap(o => o),
+			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
+			Rx.switchMap(o =>
+				Rx.from(o).pipe(
+					Rx.tap({
+						complete: () => {
+							set({ isFetching: false })
+						},
+						unsubscribe: () => {
+							set({ isFetching: false })
+						},
+					}),
+				)
+			),
 			Rx.retry({
 				delay: (error, count) => {
 					console.error('error during query:', error)
@@ -319,7 +319,6 @@ export function initLayerTable(
 				},
 			}),
 		).subscribe((packet) => {
-			console.log('packet:', packet)
 			if (packet.code === 'layers-page' && get().pageData !== packet) {
 				set({ pageData: packet })
 				return
