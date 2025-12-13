@@ -53,7 +53,7 @@ export const groups = {
 	layerDb: {
 		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
 		LAYER_DB_CONFIG_PATH: z.string().default('./layer-db.json'),
-		LAYERS_DB_PATH: z.string().default('./data/layers_v{{LAYERS_VERSION}}.sqlite3'),
+		LAYERS_DB_PATH: z.string().default('./data/layers_v{{LAYERS_VERSION}}.sqlite3.gz'),
 	},
 
 	preprocess: {
