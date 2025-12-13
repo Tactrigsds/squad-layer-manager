@@ -279,7 +279,6 @@ export function initLayerTable(
 			}),
 			distinctDeepEquals(),
 			Rx.map((input) => {
-				const stateChangedTime = Date.now()
 				set({ isFetching: true })
 				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
 				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
@@ -293,8 +292,6 @@ export function initLayerTable(
 
 				return packet$.pipe(Rx.tap({
 					subscribe: () => {
-						const fetchingTime = Date.now()
-						const timeDifference = fetchingTime - stateChangedTime
 						void RPC.queryClient.fetchQuery(options)
 					},
 				}))
