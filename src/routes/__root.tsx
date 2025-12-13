@@ -16,9 +16,7 @@ function RootComponent() {
 	return (
 		<>
 			<HeadContent />
-			<Providers>
-				<Outlet />
-			</Providers>
+			<Outlet />
 		</>
 	)
 }
