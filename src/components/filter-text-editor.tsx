@@ -102,6 +102,10 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 
 		editorRef.current = editor
 		errorViewRef.current = errorView
+		{
+			const tree = getFrameReaderStore(props.frameKey).getState().tree
+			editor.setValue(stringifyCompact(F.treeToFilterNode(tree)))
+		}
 
 		return () => {
 			editor.destroy()
