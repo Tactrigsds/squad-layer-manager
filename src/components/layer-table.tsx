@@ -956,7 +956,7 @@ function LayerTablePaginationControls(props: { frameKey: LayerTablePrt.Key; tabl
 	return (
 		<div className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
-				{initStatus.status === 'ready' && (
+				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-muted-foreground">
 						{(frameState.totalRowCount ?? 0) > 0
 							? (
