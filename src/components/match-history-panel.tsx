@@ -295,6 +295,7 @@ function MatchHistoryRow({
 			matchingConstraintIds={statusData.matchingConstraintIds}
 			matchDescriptors={statusData.matchingDescriptors}
 			padEmpty={true}
+			side="right"
 			layerItem={LQY.getLayerItemForMatchHistoryEntry(entry)}
 			itemParity={entry.ordinal}
 		/>

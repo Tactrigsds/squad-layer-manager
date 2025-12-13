@@ -129,7 +129,7 @@ export function ConstraintMatchesIndicator(props: ConstraintMatchesIndicator) {
 			<TooltipContent
 				className="max-w-md p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
 				align="start"
-				side={props.side}
+				side={props.side ?? 'right'}
 			>
 				{renderedRepeats.length > 0 && (
 					<div className="flex flex-col">
