@@ -1,5 +1,5 @@
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResource, AsyncResourceInvocationOpts, CleanupTasks } from '@/lib/async.ts'
+import type { AsyncResource, AsyncResourceInvocationOpts, CleanupTasks, ImmediateRefetchError } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
@@ -282,6 +282,7 @@ export type OrpcBase =
 
 export type AsyncResourceInvocation = {
 	resOpts: AsyncResourceInvocationOpts
+	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
 }
 
 export type Rcon = {

@@ -69,7 +69,6 @@ export const PublicServerSettingsSchema = z
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
 			.default({}).transform((obj) => Obj.deepClone(obj)),
-		timeBetweenMatches: z.number().default(90_000),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>

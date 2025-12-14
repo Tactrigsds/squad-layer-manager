@@ -198,12 +198,12 @@ export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in
 }
 
 type AsyncResourceOpts<T> = {
-	maxLockTime: number
 	defaultTTL: number
 	tracer: Otel.Tracer
 	retries: number
 	isErrorResponse: (value: T) => boolean
 	retryDelay: number
+	deferredTimeout: number
 }
 
 export type AsyncResourceInvocationOpts = {
@@ -227,11 +227,11 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	) {
 		// @ts-expect-error init
 		this.opts = opts ?? {}
-		this.opts.maxLockTime ??= 2000
 		this.opts.defaultTTL ??= 1000
 		this.opts.tracer ??= AsyncResource.tracer
 		this.opts.isErrorResponse ??= (value: T) => false
 		this.opts.retryDelay ??= 0
+		this.opts.deferredTimeout ??= 2000
 	}
 
 	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation, opts?: { retries?: number }) {
@@ -243,6 +243,11 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 					if (retriesLeft === 0) {
 						if (error) throw error
 						return res as T
+					}
+					if (error instanceof ImmediateRefetchError) {
+						ctx.log.warn(error, 'immediate refetch requested: %s', error.message)
+					} else {
+						await sleep(this.opts.retryDelay)
 					}
 					retriesLeft--
 					continue
@@ -273,7 +278,11 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	async get(_ctx: Ctx, opts?: { ttl?: number; retries?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
-		const ctx = { ..._ctx, resOpts: { ttl: opts.ttl } }
+		const ctx: Ctx & C.AsyncResourceInvocation = {
+			..._ctx,
+			resOpts: { ttl: opts.ttl },
+			refetch: (...args) => new ImmediateRefetchError(...args),
+		}
 
 		if (this.lastResolveTime === null && this.fetchedValue) {
 			return await this.fetchedValue
@@ -300,7 +309,14 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		if (!this.lastResolveTime) return
 		this.fetchedValue = null
 		this.lastResolveTime = null
-		if (this.observingTTLs.length > 0) void this.fetchValue({ ...ctx, resOpts: { ttl: 0 } })
+		if (this.observingTTLs.length > 0) {
+			void this.fetchValue({
+				...ctx,
+				resOpts: { ttl: 0 },
+
+				refetch: (...args) => new ImmediateRefetchError(...args),
+			})
+		}
 	}
 
 	observingTTLs: [string, number][] = []
@@ -359,11 +375,20 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	}
 }
 
+// **
+// * Throw within an async resource callback to immediately attempt a refetch. in most cases you shouldn't use this directly. instead throw ctx.refetch()
+// **
+export class ImmediateRefetchError extends Error {
+	constructor(message: string, cause?: Error) {
+		super(message, { cause })
+		this.name = 'RefetchError'
+	}
+}
+
 export type AsyncTask<T extends any[]> = { params: T; task: (...params: T) => Promise<void> }
 export class AsyncExclusiveTaskRunner {
 	queue: AsyncTask<any>[] = []
 	running = false
-
 	async runExclusiveUntilEmpty() {
 		if (this.running) return
 		this.running = true

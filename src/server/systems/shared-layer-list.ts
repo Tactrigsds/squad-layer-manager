@@ -53,7 +53,7 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 	}
 }
 
-export function init(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
+export function setupInstance(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
 	const editSession = ctx.sharedList.session
 	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId

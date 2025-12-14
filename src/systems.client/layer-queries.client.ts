@@ -638,7 +638,6 @@ async function setup() {
 		Store.getState().increment(ctx)
 	})
 	await initPromise
-	console.log('Layers loaded')
 	// Set up window focus handlers after successful initialization
 	// const focusHandlers = setupWindowFocusHandlers()
 }

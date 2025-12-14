@@ -56,7 +56,7 @@ export function initLayerQueueContext(cleanup: CleanupTasks) {
 }
 
 const tracer = Otel.trace.getTracer('layer-queue')
-export const init = C.spanOp(
+export const setupInstance = C.spanOp(
 	'layer-queue:init',
 	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: CS.Log & C.Db & C.ServerSlice) => {

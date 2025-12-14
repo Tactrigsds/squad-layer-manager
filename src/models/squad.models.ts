@@ -329,8 +329,9 @@ export const PlayerSchema = z.object({
 export type Player = z.infer<typeof PlayerSchema>
 
 export namespace Players {
+	export type SquadGroup = { squadId: SquadId; teamId: TeamId; players: Player[] }
 	export function groupIntoSquads(players: Player[]) {
-		const squads: { squadId: SquadId; teamId: TeamId; players: Player[] }[] = []
+		const squads: SquadGroup[] = []
 		for (const player of players) {
 			if (player.squadId === null || player.teamId === null) continue
 			let squad = squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
@@ -357,6 +358,8 @@ export type Squad = z.infer<typeof SquadSchema>
 
 export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
+export type TeamsRes = { code: 'ok'; players: Player[]; squads: Squad[] } | RconError
+export type Teams = Extract<TeamsRes, { code: 'ok' }>
 
 export namespace Squads {
 	// identifies a squad across teams
@@ -510,10 +513,7 @@ export namespace Events {
 
 	export type SquadCreated = {
 		type: 'SQUAD_CREATED'
-		teamId: TeamId
-		squadId: SquadId
-		squadName: string
-		creatorIds: PlayerIds.Type
+		squad: Squad
 	} & Base
 
 	export type ChatMessage = {
@@ -555,6 +555,15 @@ export namespace Events {
 		type: 'SQUAD_DISBANDED'
 		squadId: SquadId
 		teamId: TeamId
+	} & Base
+
+	export type SquadDetailsChanged = {
+		type: 'SQUAD_DETAILS_CHANGED'
+		squadId: SquadId
+		teamId: TeamId
+		details: {
+			locked: boolean
+		}
 	} & Base
 
 	/**
@@ -624,6 +633,7 @@ export namespace Events {
 		| PlayerChangedTeam
 		| PlayerLeftSquad
 		| SquadDisbanded
+		| SquadDetailsChanged
 		| PlayerJoinedSquad
 		| PlayerPromotedToLeader
 }
@@ -891,7 +901,7 @@ export namespace LogEvents {
 	export const PlayerConnectedMatcher = createLogMatcher({
 		event: PlayerConnectedSchema,
 		regex:
-			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController_\w+_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
+			/^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: PostLogin: NewPlayer: BP_PlayerController\w*_C .+PersistentLevel\.([^\s]+) \(IP: ([\d.]+) \| Online IDs:([^)|]+)\)/,
 		onMatch: (args) => {
 			return {
 				raw: args[0],

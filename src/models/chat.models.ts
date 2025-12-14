@@ -58,6 +58,7 @@ export type EventEnriched =
 	| (SM.Events.PlayerConnected & { player: SM.Player })
 	| (SM.Events.PlayerDisconnected & { player: SM.Player })
 	| (SM.Events.PlayerDetailsChanged & { player: SM.Player })
+	| (SM.Events.SquadDetailsChanged & { squad: SM.Squad })
 	| (SM.Events.PlayerChangedTeam & { player: SM.Player; prevTeamId: SM.TeamId | null })
 	| (SM.Events.PlayerJoinedSquad & { player: SM.Player; squad: SM.Squad })
 	| (SM.Events.PlayerPromotedToLeader & { player: SM.Player })
@@ -317,14 +318,28 @@ export function interpolateEvent(
 		case 'PLAYER_DETAILS_CHANGED': {
 			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.playerIds)
 			if (index === -1) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} disconnected but was not found in the player list`)
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.playerIds)} had details changed but was not found in the player list`)
 			}
 			const player = state.players[index]
 			const updated = { ...player, ...event.details }
-			state.players.splice(index, 1, updated)
+			state.players[index] = updated
 			return {
 				...event,
 				player: updated,
+			}
+		}
+
+		case 'SQUAD_DETAILS_CHANGED': {
+			const index = state.squads.findIndex(s => SM.Squads.idsEqual(s, event))
+			if (index === -1) {
+				return noop(`Squad ${SM.Squads.printKey(event)} had details changed but was not found in the squad list`)
+			}
+			const squad = state.squads[index]
+			const updated = { ...squad, ...event.details }
+			state.squads[index] = updated
+			return {
+				...event,
+				squad: updated,
 			}
 		}
 
@@ -446,41 +461,36 @@ export function interpolateEvent(
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event))
+			const existingSquad = state.squads.find(s => SM.Squads.idsEqual(s, event.squad))
 			if (existingSquad) {
-				return noop(`Squad ${SM.Squads.printKey(event)} already exists`)
+				return noop(`Squad ${SM.Squads.printKey(event.squad)} already exists`)
 			}
-			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.creatorIds)
+			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creatorIds)
+			const squad: SM.Squad = event.squad
 			if (creatorIndex === -1) {
 				return noop(
-					`Squad ${SM.Squads.printKey(event)} "${event.squadName}" created by unknown player ${SM.PlayerIds.prettyPrint(event.creatorIds)}`,
+					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${
+						SM.PlayerIds.prettyPrint(squad.creatorIds)
+					}`,
 				)
 			}
 			const creator = state.players[creatorIndex]
 			if (creator.teamId !== creator.teamId) {
 				return noop(
-					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(event)}`,
+					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(squad)}`,
 				)
-			}
-			const squad: SM.Squad = {
-				creatorIds: event.creatorIds,
-				locked: false,
-				squadName: event.squadName,
-				teamId: event.teamId,
-				squadId: event.squadId,
 			}
 			state.squads.push(squad)
 			const updatedCreator: SM.Player = {
 				...creator,
 				isLeader: true,
-				squadId: event.squadId,
+				squadId: event.squad.squadId,
 			}
 			state.players[creatorIndex] = updatedCreator
 
 			return {
 				...event,
 				creator: updatedCreator,
-				squad,
 			}
 		}
 		case 'PLAYER_WARNED': {

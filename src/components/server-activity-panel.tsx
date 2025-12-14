@@ -245,7 +245,7 @@ function SquadCreatedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 		<div className="flex gap-2 py-1 text-muted-foreground">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Users className="h-4 w-4 text-blue-500" />
-			<span className="text-xs flex items-center gap-1">
+			<span className="text-xs flex items-center gap-1 whitespace-nowrap">
 				<PlayerDisplay player={event.creator} matchId={event.matchId} /> created{' '}
 				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} /> on{' '}
 				<MatchTeamDisplay matchId={event.matchId} teamId={event.squad.teamId} />
@@ -364,10 +364,9 @@ function NewGameEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'N
 			<div className="flex gap-2 py-0.5 text-muted-foreground items-center w-full">
 				<EventTime time={event.time} variant="small" />
 				<Icons.Play className="h-4 w-4 text-green-500 flex-shrink-0" />
-				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow">
-					<span>{label}:</span>
+				<span className="text-xs inline-flex flex-wrap items-center gap-1 flex-grow whitespace-nowrap">
+					<span>{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):</span>
 					{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
-					({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex})
 				</span>
 			</div>
 		</div>
@@ -410,10 +409,6 @@ function RoundEndedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type:
 			</span>
 		</div>
 	)
-}
-
-function PlayerDetailsChangedEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_DETAILS_CHANGED' }> }) {
-	return null
 }
 
 function PlayerChangedTeamEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'PLAYER_CHANGED_TEAM' }> }) {
@@ -587,7 +582,7 @@ function PlayerWoundedOrDiedEvent({ event }: { event: Extract<CHAT.EventEnriched
 	}
 
 	return (
-		<div className="flex gap-2 py-1 text-muted-foreground">
+		<div className="flex gap-2 py-1 text-muted-foreground whitespace-nowrap">
 			<EventTime time={event.time} variant="small" />
 			{getIcon()}
 			<span className="text-xs flex items-center gap-1">{getMessage()}</span>
@@ -600,7 +595,7 @@ function MapSetEvent({ event }: { event: Extract<CHAT.EventEnriched, { type: 'MA
 		<div className="flex gap-2 py-0.5 text-muted-foreground items-center">
 			<EventTime time={event.time} variant="small" />
 			<Icons.Map className="h-4 w-4 text-blue-400" />
-			<span className="text-xs inline-flex items-center gap-1 flex-grow">
+			<span className="text-xs inline-flex items-center gap-1 flex-grow whitespace-nowrap">
 				Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
 			</span>
 		</div>
@@ -661,7 +656,8 @@ function EventItem({ event }: { event: CHAT.EventEnriched }) {
 		case 'ROUND_ENDED':
 			return <RoundEndedEvent event={event} />
 		case 'PLAYER_DETAILS_CHANGED':
-			return <PlayerDetailsChangedEvent event={event} />
+		case 'SQUAD_DETAILS_CHANGED':
+			return null
 		case 'PLAYER_CHANGED_TEAM':
 			return <PlayerChangedTeamEvent event={event} />
 		case 'PLAYER_LEFT_SQUAD':
@@ -754,7 +750,6 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 		const { scrollHeight, scrollTop, clientHeight } = scrollElement
 		const distanceFromBottom = scrollHeight - scrollTop - clientHeight
 
-		console.log({ distanceFromBottom, scrollHeight, scrollTop, clientHeight })
 		const isAtBottom = distanceFromBottom < threshold
 		return isAtBottom
 	}
@@ -810,10 +805,8 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			if (atBottom) {
 				setNewMessageCount(0)
 				tailing.current = true
-				console.log('setting tailing to true')
 			} else {
 				tailing.current = false
-				console.log('setting tailing to false')
 			}
 		}
 

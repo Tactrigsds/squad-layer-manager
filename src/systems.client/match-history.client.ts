@@ -39,9 +39,6 @@ export function setup() {
 	matchHistoryState$.subscribe(() => {
 		setInitialized(true)
 	})
-	recentMatches$.subscribe(matches => {
-		console.log('RECENT MATCHES:', matches)
-	})
 	initializedRecentMatches$().subscribe()
 	currentMatch$().subscribe()
 }

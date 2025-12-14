@@ -3,6 +3,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { AsyncResource, type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
@@ -38,7 +39,7 @@ import * as SquadRcon from '@/server/systems/squad-rcon'
 import * as Vote from '@/server/systems/vote'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
-import { Mutex } from 'async-mutex'
+import { Mutex, type MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
@@ -68,6 +69,12 @@ export type SquadServer = {
 
 	serverRolling$: Rx.BehaviorSubject<number | null>
 
+	// when set this intercepts team updates that are intended to generate synthetic events. handling code must account for the absent synthetic events
+	teamUpdateInterceptor: Rx.Subject<SM.Teams> | null
+	teamUpdateInterceptorMtx: MutexInterface
+
+	// preSyntheticEventTasks:
+
 	sftpReader: SftpTail
 
 	// ephemeral state that isn't persisted to the database, as compared to SS.ServerState which is
@@ -84,8 +91,9 @@ export type SquadServer = {
 
 		// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
 		connected: SM.PlayerIds.Type[]
+		pendingEventState: PendingEvents.State
 
-		createdSquads: (SM.Squads.Key & { creatorIds: SM.PlayerIds.Type })[]
+		createdSquads: SM.Squad[]
 
 		// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
 		eventBuffer: SM.Events.Event[]
@@ -279,7 +287,6 @@ export async function setup() {
 			connections: serverConfig.connections,
 			adminListSources: serverConfig.adminListSources!,
 			adminIdentifyingPermissions: serverConfig.adminIdentifyingPermissions,
-			timeBetweenMatches: serverConfig.timeBetweenMatches,
 		}
 		ops.push((async function loadServerConfig() {
 			const serverState = await DB.runTransaction(ctx, async () => {
@@ -322,14 +329,14 @@ export async function setup() {
 			})
 
 			if (!serverState) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
-			await initServer(ctx, serverState)
+			await setupSlice(ctx, serverState)
 		})())
 	}
 
 	await Promise.all(ops)
 }
 
-async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
+async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	const serverId = serverState.id
 	const settings = serverState.settings
 	const cleanup: CleanupTasks = []
@@ -373,6 +380,8 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		historyConflictsResolved$: new Rx.BehaviorSubject(true),
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
+		teamUpdateInterceptor: null,
+		teamUpdateInterceptorMtx: new Mutex(),
 
 		sftpReader,
 		beforeNewGame$: new Rx.Subject(),
@@ -382,6 +391,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			roundLoser: null,
 			roundWinner: null,
 			joinRequests: new Map(),
+			pendingEventState: PendingEvents.init(),
 			connected: [],
 			createdSquads: [],
 			eventBuffer: [],
@@ -402,105 +412,51 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		server.beforeNewGame$,
 		server.event$,
 		server.savingEventsMtx,
+		server.teamUpdateInterceptorMtx,
+		() => server.teamUpdateInterceptor,
 	)
+
+	const slice: C.ServerSlice = {
+		serverId,
+
+		rcon,
+		server,
+
+		matchHistory: MatchHistory.initMatchHistoryContext(cleanup),
+
+		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
+		sharedList: SharedLayerList.getDefaultState(serverState),
+		vote: Vote.initVoteContext(cleanup),
+
+		adminList,
+		cleanup: cleanup,
+	}
+	globalState.slices.set(serverId, slice)
 
 	// -------- load saved events --------
 	await (async () => {
-		const lastMatchIdQuery = ctx.db().select({ id: Schema.matchHistory.id }).from(Schema.matchHistory).orderBy(
+		const [lastMatch] = await ctx.db().select({ id: Schema.matchHistory.id }).from(Schema.matchHistory).where(
+			E.eq(Schema.matchHistory.serverId, serverId),
+		).orderBy(
 			E.desc(Schema.matchHistory.ordinal),
-		).limit(1).as('lastMatchId')
+		).limit(1)
 
-		const rowsRaw = await ctx.db().select({ event: Schema.serverEvents }).from(Schema.serverEvents)
-			.innerJoin(
-				lastMatchIdQuery,
-				E.eq(Schema.serverEvents.matchId, lastMatchIdQuery.id),
-			).orderBy(E.asc(Schema.serverEvents.id))
+		const rowsRaw = await ctx.db().select({ event: Schema.serverEvents }).from(Schema.serverEvents).where(
+			E.eq(Schema.serverEvents.matchId, lastMatch.id),
+		)
+			.orderBy(E.asc(Schema.serverEvents.id))
 		const events = rowsRaw.map(r => fromEventRow(r.event))
 		server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
-		server.state.eventBuffer.push(...events)
+		server.state.eventBuffer = events
 	})()
 
-	let previouslyConnected = false
-	// -------- make sure history and chat state is up to date once an rcon connection is established --------
-	rcon.connected$.pipe(
-		traceTag('resolvingHistoryConflicts'),
-		C.durableSub('squad-server:resolve-history-conflicts', { tracer, ctx, eventLogLevel: 'info' }, async (connected) => {
-			const ctx = { ...getBaseCtx(), ...slice }
-			const server = ctx.server
-			if (!connected) {
-				if (server.historyConflictsResolved$.value) {
-					server.historyConflictsResolved$.next(false)
-					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-					const event: SM.Events.RconDisconnected = {
-						type: 'RCON_DISCONNECTED',
-						id: eventId(),
-						time: Date.now(),
-						matchId: currentMatch.historyEntryId,
-					}
-					ctx.server.event$.next([ctx, [event]])
-				}
-				return
-			}
-
-			const statusRes = await server.layersStatus.get(ctx, { ttl: 500 })
-			if (statusRes.code === 'err:rcon') return Rx.EMPTY
-			const firstConnection = !previouslyConnected
-			previouslyConnected = true
-			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
-			ctx.log.info('rcon connection established, match history is synced')
-
-			const [playersRes, squadsRes] = await Promise.all([
-				server.playerList.get({ ...ctx, rcon }, { ttl: 500 }),
-				server.squadList.get({ ...ctx, rcon }, { ttl: 500 }),
-			])
-
-			if (playersRes.code !== 'ok' || squadsRes.code !== 'ok') return
-			resetPlayerAndSquadState(ctx, playersRes.players, squadsRes.squads)
-
-			let events: SM.Events.Event[] = []
-			const base = {
-				time: Date.now(),
-				matchId: currentMatch.historyEntryId,
-				state: {
-					players: playersRes.players,
-					squads: squadsRes.squads,
-				},
-			}
-
-			events.push({
-				type: 'RCON_CONNECTED',
-				id: eventId(),
-				reconnected: !firstConnection,
-				...base,
-			})
-
-			if (pushedNewMatch) {
-				events.push({
-					type: 'NEW_GAME',
-					id: eventId(),
-					layerId: currentMatch.layerId,
-					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
-					...base,
-				})
-			} else {
-				events.push({
-					id: eventId(),
-					type: 'RESET',
-					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
-					...base,
-				})
-			}
-
-			const layersStatusRes = await server.layersStatus.get(ctx)
-			if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
-				server.state.nextSetLayerId = layersStatusRes.data.nextLayer.id
-				const serverState = await getServerState(ctx)
-				await LayerQueue.syncNextLayerInPlace(ctx, serverState)
-			}
-			server.event$.next([ctx, events])
-			server.historyConflictsResolved$.next(true)
-		}),
-	).subscribe()
+	// -------- keep event buffer state up-to-date --------
+	server.event$.subscribe(([ctx, events]) => {
+		for (const event of events) {
+			ctx.log.info(event, 'emitted event: %s', event.type)
+		}
+		ctx.server.state.eventBuffer.push(...events)
+	})
 
 	// -------- process log events --------
 	server.sftpReader.on(
@@ -554,46 +510,35 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			}),
 		).subscribe()
 
-	// -------- create synthetic events based on state changes on the server --------
-	const timeBetweenMatches = settings.timeBetweenMatches
-
-	server.historyConflictsResolved$
+	server.teams.observe({ ...ctx, rcon, adminList, serverId })
 		.pipe(
-			traceTag('listenForSyntheticEvents'),
-			Rx.switchMap((resolved) => resolved ? server.playerList.observe({ ...ctx, rcon, adminList, serverId }) : Rx.EMPTY),
+			traceTag('listenForTeamChanges'),
 			// only listen while server isn't rolling
-			Rx.concatMap(async res => {
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				const match = await MatchHistory.getCurrentMatch(ctx)
-				return res.code === 'ok' ? Rx.of({ players: res.players, match, time: Date.now() }) : Rx.EMPTY
-			}),
-			Rx.concatAll(),
+			Rx.concatMap(teams => teams.code === 'ok' ? Rx.of({ teams, time: Date.now() }) : Rx.EMPTY),
 			// pair with the previous state so we can generate synthetic events by looking for changes
 			Rx.pairwise(),
 			// capture event time before we're potentially waiting for server to roll
-			Rx.map(
-				([prev, next]) => {
+			Rx.concatMap(
+				async function*([prev, current]) {
 					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+					const server = ctx.server
 
-					if (prev.match.historyEntryId !== next.match.historyEntryId) {
-						return []
+					let intercepted = false
+					if (server.teamUpdateInterceptor) {
+						server.teamUpdateInterceptor.next(current.teams)
+						server.teamUpdateInterceptor = null
+						intercepted = true
 					}
 
-					// const timeDiff = next.time - prev.time
-					//
+					const match = await MatchHistory.getCurrentMatch(ctx)
 
-					if (next.match.status === 'post-game') {
-						const expectedNewGameTime = next.match.endTime.getTime() + timeBetweenMatches
+					PendingEvents.upsertRecentPlayers(server.state.pendingEventState, current.teams.players, match.ordinal)
+					yield Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
 
-						// This isn't super principled but basically we  want to avoid processing synthetic events close to the new game event, because they'll be thrown away anyway and they can cause issues
-						if (expectedNewGameTime < next.time + 5_000) {
-							ctx.log.debug('Skipping generation of synthetic events due to being close to new game')
-							return
-						}
-					}
+					if (intercepted) return
 
 					ctx.log.debug('Generating synthetic events')
-					return [...generateSyntheticEvents(ctx, prev.players, next.players, next.time, next.match.historyEntryId)]
+					yield Array.from(generateSyntheticEvents(ctx, prev.teams, current.teams, current.time, match.historyEntryId))
 				},
 			),
 		).subscribe({
@@ -615,13 +560,7 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			},
 		})
 
-	// -------- keep event buffer state up-to-date --------
-	server.event$.subscribe(([ctx, events]) => {
-		for (const event of events) {
-			ctx.log.info(event, 'emitted event: %s', event.type)
-		}
-		ctx.server.state.eventBuffer.push(...events)
-	})
+	setupResolveHistoryConflicts({ ...ctx, rcon, serverId })
 
 	{
 		// -------- periodically save events  --------
@@ -639,25 +578,8 @@ async function initServer(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		})
 	}
 
-	const slice: C.ServerSlice = {
-		serverId,
-
-		rcon,
-		server,
-
-		matchHistory: MatchHistory.initMatchHistoryContext(cleanup),
-
-		layerQueue: LayerQueue.initLayerQueueContext(cleanup),
-		sharedList: SharedLayerList.getDefaultState(serverState),
-		vote: Vote.initVoteContext(cleanup),
-
-		adminList,
-		cleanup: cleanup,
-	}
-
-	globalState.slices.set(serverId, slice)
-	void LayerQueue.init({ ...ctx, ...slice })
-	SharedLayerList.init({ ...ctx, ...slice })
+	void LayerQueue.setupInstance({ ...ctx, ...slice })
+	SharedLayerList.setupInstance({ ...ctx, ...slice })
 	void adminList.get({ ...ctx, ...slice })
 
 	server.state.cleanupId = CleanupSys.register(async () => {
@@ -678,6 +600,89 @@ export async function destroyServer(ctx: C.ServerSlice & CS.Log) {
 	for (const [wsClientId, serverId] of Array.from(globalState.selectedServers.entries())) {
 		if (ctx.serverId === serverId) globalState.selectedServers.delete(wsClientId)
 	}
+}
+
+function setupResolveHistoryConflicts(ctx: C.ServerId & CS.Log & C.Rcon) {
+	let previouslyConnected = false
+	// -------- make sure history and chat state is up to date once an rcon connection is established --------
+	ctx.rcon.connected$.pipe(
+		Rx.map(connected => [resolveSliceCtx(getBaseCtx(), ctx.serverId), connected] as const),
+		C.durableSub('squad-server:resolve-history-conflicts', {
+			tracer,
+			ctx,
+			eventLogLevel: 'info',
+			mutexes: ([ctx]) => [ctx.matchHistory.mtx],
+		}, async ([ctx, connected]) => {
+			const server = ctx.server
+			if (!connected) {
+				if (server.historyConflictsResolved$.value) {
+					server.historyConflictsResolved$.next(false)
+					const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+					const event: SM.Events.RconDisconnected = {
+						type: 'RCON_DISCONNECTED',
+						id: eventId(),
+						time: Date.now(),
+						matchId: currentMatch.historyEntryId,
+					}
+					ctx.server.event$.next([ctx, [event]])
+				}
+				return
+			}
+
+			const statusRes = await server.layersStatus.get(ctx, { ttl: 500 })
+			if (statusRes.code === 'err:rcon') return Rx.EMPTY
+			const firstConnection = !previouslyConnected
+			previouslyConnected = true
+			const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, statusRes.data.currentLayer)
+			ctx.log.info('rcon connection established, match history is synced')
+
+			const teams = await interceptTeamsUpdate(ctx)
+			resetTeamState(ctx, teams)
+
+			let events: SM.Events.Event[] = []
+			const base = {
+				time: Date.now(),
+				matchId: currentMatch.historyEntryId,
+				state: {
+					players: teams.players,
+					squads: teams.squads,
+				},
+			}
+
+			events.push({
+				type: 'RCON_CONNECTED',
+				id: eventId(),
+				reconnected: !firstConnection,
+				...base,
+			})
+
+			if (pushedNewMatch) {
+				events.push({
+					type: 'NEW_GAME',
+					id: eventId(),
+					layerId: currentMatch.layerId,
+					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
+					...base,
+				})
+			} else {
+				events.push({
+					id: eventId(),
+					type: 'RESET',
+					source: firstConnection ? 'slm-started' : 'rcon-reconnected',
+					...base,
+				})
+			}
+
+			const layersStatusRes = await server.layersStatus.get(ctx)
+			if (layersStatusRes.code === 'ok' && layersStatusRes.data.nextLayer) {
+				server.state.nextSetLayerId = layersStatusRes.data.nextLayer.id
+				const serverState = await getServerState(ctx)
+				await LayerQueue.syncNextLayerInPlace(ctx, serverState)
+			}
+			server.event$.next([ctx, events])
+			server.historyConflictsResolved$.next(true)
+		}),
+	).subscribe()
 }
 
 export async function getFullServerState(ctx: C.Db & CS.Log & C.LayerQueue) {
@@ -792,10 +797,7 @@ async function processServerLogEvent(
 	logEvent: SM.LogEvents.Event,
 ) {
 	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
-	const deferOpts = {
-		ttl: CONFIG.squadServer.sftpPollInterval / 4,
-		timeout: CONFIG.squadServer.sftpPollInterval * 2,
-	}
+
 	const match = await MatchHistory.getCurrentMatch(ctx)
 	const base = {
 		time: logEvent.time,
@@ -900,8 +902,6 @@ async function processServerLogEvent(
 				server.serverRolling$.next(logEvent.time)
 
 				// get these ASAP
-				const squadListPromise = server.squadList.get(ctx, { ttl: 300 })
-				const playerListPromise = server.playerList.get(ctx, { ttl: 300 })
 				let newLayerId = server.state.nextSetLayerId
 				if (newLayerId === null) {
 					ctx.log.error(`next layer ID was not set`)
@@ -909,7 +909,7 @@ async function processServerLogEvent(
 				}
 				ctx.log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
 
-				const { match } = await DB.runTransaction(ctx, async (ctx) => {
+				return await DB.runTransaction(ctx, async (ctx) => {
 					const serverState = await getServerState(ctx)
 					const nextLqItem = serverState.layerQueue[0]
 
@@ -932,33 +932,19 @@ async function processServerLogEvent(
 					await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
 					await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
 					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-					return { match }
+
+					const teamsRes = await interceptTeamsUpdate(ctx)
+					const event: SM.Events.NewGame = {
+						type: 'NEW_GAME',
+						id: eventId(),
+						layerId: newLayerId,
+						source: 'new-game-detected',
+						state: { squads: teamsRes.squads, players: teamsRes.players },
+						...base,
+						matchId: match.historyEntryId,
+					}
+					return { code: 'ok' as const, event }
 				})
-
-				const [squadsRes, playersRes] = await Promise.all([squadListPromise, playerListPromise])
-				let squads: SM.Squad[]
-				let players: SM.Player[]
-				if (squadsRes.code !== 'ok' || playersRes.code !== 'ok') {
-					ctx.log.error(`Failed to fetch squads or players: ${squadsRes.code} ${playersRes.code}`)
-					squads = []
-					players = []
-				} else {
-					squads = squadsRes.squads
-					players = playersRes.players
-				}
-
-				resetPlayerAndSquadState(ctx, players, squads)
-
-				const event: SM.Events.NewGame = {
-					type: 'NEW_GAME',
-					id: eventId(),
-					layerId: newLayerId,
-					source: 'new-game-detected',
-					state: { squads, players },
-					...base,
-					matchId: match.historyEntryId,
-				}
-				return { code: 'ok' as const, event }
 			} finally {
 				server.serverRolling$.next(null)
 			}
@@ -974,34 +960,27 @@ async function processServerLogEvent(
 			const joinedPlayerIdQuery = server.state.joinRequests.get(logEvent.chainID)
 			if (!joinedPlayerIdQuery) return
 			server.state.joinRequests.delete(logEvent.chainID)
-			const player = await SquadRcon.getPlayerDeferred(ctx, joinedPlayerIdQuery, deferOpts)
-			if (!player) {
-				return { code: 'err:player-not-found' as const, message: `Player ${SM.PlayerIds.prettyPrint(joinedPlayerIdQuery)} not found` }
-			}
-			const isAlreadyConnected = SM.PlayerIds.find(server.state.connected, player.ids)
-			if (isAlreadyConnected) {
-				ctx.log.debug(`Player ${SM.PlayerIds.prettyPrint(player.ids)} is already connected. this is expected.`)
-				return
-			}
-			SM.PlayerIds.upsert(server.state.connected, player.ids)
+
+			PendingEvents.addConnecting(server.state.pendingEventState, {
+				type: 'PLAYER_CONNECTED',
+				player: joinedPlayerIdQuery,
+				time: logEvent.time,
+				matchId: match.historyEntryId,
+			})
+
+			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
+			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
+			if (events.length === 0) return
 			return {
 				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					type: 'PLAYER_CONNECTED',
-					player,
-					...base,
-				} satisfies SM.Events.PlayerConnected,
+				event: events[0],
 			}
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			if (!SM.PlayerIds.find(server.state.connected, logEvent.playerIds)) return
-
-			SM.PlayerIds.remove(server.state.connected, logEvent.playerIds)
-
-			// invalidate playerList and wait for the result so that generateSyntheticEvents is able to run first
-			await server.playerList.get(ctx, { ttl: 0 })
+			const accepted = PendingEvents.addDisconnecting(server.state.pendingEventState, logEvent)
+			if (!accepted) return
+			// we don't need to process the pending events here
 
 			return {
 				code: 'ok' as const,
@@ -1029,42 +1008,13 @@ async function processServerLogEvent(
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			// Look up the victim player to get their full IDs
-			const victimPlayerRes = await SquadRcon.getPlayer(ctx, { username: logEvent.victimName })
-			if (victimPlayerRes.code !== 'ok') {
-				ctx.log.debug(`Victim player ${logEvent.victimName} not found for ${logEvent.type} event`)
-				return
-			}
-
-			// Look up the attacker player to get their full IDs
-			const attackerPlayerRes = await SquadRcon.getPlayer(ctx, logEvent.attackerIds)
-			if (attackerPlayerRes.code !== 'ok') {
-				ctx.log.debug(`Attacker player ${SM.PlayerIds.prettyPrint(logEvent.attackerIds)} not found for ${logEvent.type} event`)
-				return
-			}
-
-			// Determine variant based on victim and attacker relationship
-			let variant: SM.Events.PlayerWoundedOrDiedVariant
-			if (SM.PlayerIds.match(victimPlayerRes.player.ids, attackerPlayerRes.player.ids)) {
-				variant = 'suicide'
-			} else if (victimPlayerRes.player.teamId !== null && victimPlayerRes.player.teamId === attackerPlayerRes.player.teamId) {
-				variant = 'teamkill'
-			} else {
-				variant = 'normal'
-			}
-
+			PendingEvents.addWoundedOrDied(server.state.pendingEventState, { ...logEvent, matchId: match.historyEntryId })
+			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
+			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
+			if (events.length === 0) return
 			return {
 				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					type: logEvent.type,
-					victimIds: victimPlayerRes.player.ids,
-					attackerIds: attackerPlayerRes.player.ids,
-					damage: logEvent.damage,
-					weapon: logEvent.weapon,
-					variant,
-					...base,
-				} satisfies SM.Events.PlayerDied | SM.Events.PlayerWounded,
+				event: events[0],
 			}
 		}
 
@@ -1157,17 +1107,23 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 				}
 			}
 
-			ctx.server.state.createdSquads.push({ teamId, squadId: event.squadId, creatorIds: event.creatorIds })
+			const squad: SM.Squad = {
+				teamId,
+				squadId: event.squadId,
+				creatorIds: event.creatorIds,
+				squadName: event.squadName,
+
+				// will be updated later if incorrect
+				locked: false,
+			}
+			ctx.server.state.createdSquads.push(squad)
 
 			return {
 				code: 'ok' as const,
 				event: {
 					type: 'SQUAD_CREATED',
 					id: eventId(),
-					teamId,
-					squadId: event.squadId,
-					creatorIds: event.creatorIds,
-					squadName: event.squadName,
+					squad,
 
 					...base,
 				} satisfies SM.Events.SquadCreated,
@@ -1192,32 +1148,21 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 
 function* generateSyntheticEvents(
 	ctx: C.ServerSlice & CS.Log & C.Db,
-	prevPlayers: SM.Player[],
-	players: SM.Player[],
+	prevTeams: SM.Teams,
+	teams: SM.Teams,
 	time: number,
 	matchId: number,
 ): Generator<SM.Events.Event> {
 	const base = { time, matchId }
+	const { players, squads } = teams
+	const { players: prevPlayers, squads: prevSquads } = prevTeams
 
-	const squads = SM.Players.groupIntoSquads(players)
-	const prevSquads = SM.Players.groupIntoSquads(prevPlayers)
+	const squadGroups = SM.Players.groupIntoSquads(players)
+	const prevSquadGroups = SM.Players.groupIntoSquads(prevPlayers)
 
 	for (const player of players) {
 		const prev = SM.PlayerIds.find(prevPlayers, p => p.ids, player.ids)
 		if (!prev) continue
-
-		const playerConnected = !!SM.PlayerIds.find(ctx.server.state.connected, player.ids)
-		if (!playerConnected) {
-			// the event from the logs (PLAYER_JOIN_SUCCEEDED) has not come through yet, so we need to send it here instead.
-			ctx.server.state.connected.push(player.ids)
-			yield {
-				type: 'PLAYER_CONNECTED',
-				id: eventId(),
-				player,
-				...base,
-			} satisfies SM.Events.PlayerConnected
-			continue
-		}
 
 		if (!SM.Squads.idsEqual(prev, player) && prev.squadId !== null && prev.teamId !== null) {
 			yield {
@@ -1240,7 +1185,7 @@ function* generateSyntheticEvents(
 			} satisfies SM.Events.PlayerChangedTeam
 		}
 
-		if (player.squadId !== null && player.teamId !== null && player.squadId === prev.squadId && player.isLeader && !prev.isLeader) {
+		if (player.squadId !== null && player.teamId !== null && SM.Squads.idsEqual(player, prev) && player.isLeader && !prev.isLeader) {
 			yield {
 				type: 'PLAYER_PROMOTED_TO_LEADER',
 				squadId: player.squadId,
@@ -1254,21 +1199,31 @@ function* generateSyntheticEvents(
 		if (
 			player.squadId !== null && player.teamId !== null && !SM.Squads.idsEqual(player, prev)
 		) {
-			const playerCreatedSquad = ctx.server.state.createdSquads.find(s =>
-				SM.Squads.idsEqual(s, player) && SM.PlayerIds.match(player.ids, s.creatorIds)
-			)
+			const squad = squads.find(s => SM.Squads.idsEqual(s, player))
 			const isNewSquad = !prevSquads.find(s => SM.Squads.idsEqual(s, player))
 			// if we violently thrash squad creations/leaves then we can maybe break this but that's unlikely
-			if (isNewSquad && playerCreatedSquad) continue
+			if (isNewSquad && squad) {
+				if (!ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, player))) {
+					const event: SM.Events.SquadCreated = {
+						type: 'SQUAD_CREATED',
+						id: eventId(),
+						squad,
+						...base,
+					}
+					ctx.server.state.createdSquads.push(squad)
 
-			yield {
-				type: 'PLAYER_JOINED_SQUAD',
-				id: eventId(),
-				playerIds: player.ids,
-				teamId: player.teamId,
-				squadId: player.squadId,
-				...base,
-			} satisfies SM.Events.PlayerJoinedSquad
+					yield event
+				}
+			} else {
+				yield {
+					type: 'PLAYER_JOINED_SQUAD',
+					id: eventId(),
+					playerIds: player.ids,
+					teamId: player.teamId,
+					squadId: player.squadId,
+					...base,
+				} satisfies SM.Events.PlayerJoinedSquad
+			}
 		}
 
 		{
@@ -1286,8 +1241,8 @@ function* generateSyntheticEvents(
 		}
 	}
 
-	for (const prevSquad of prevSquads) {
-		if (squads.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
+	for (const prevSquad of prevSquadGroups) {
+		if (squadGroups.some(s => SM.Squads.idsEqual(s, prevSquad))) continue
 		ctx.server.state.createdSquads = ctx.server.state.createdSquads.filter(s => !SM.Squads.idsEqual(s, prevSquad))
 		yield {
 			id: eventId(),
@@ -1296,6 +1251,21 @@ function* generateSyntheticEvents(
 			teamId: prevSquad.teamId,
 			...base,
 		} satisfies SM.Events.SquadDisbanded
+	}
+
+	for (const squad of squads) {
+		const prevSquad = prevSquads.find(s => SM.Squads.idsEqual(s, squad))
+		const createdSquad = ctx.server.state.createdSquads.find(s => SM.Squads.idsEqual(s, squad))
+		if (!prevSquad || prevSquad.locked !== squad.locked && (!createdSquad || createdSquad.locked !== squad.locked)) {
+			yield {
+				id: eventId(),
+				type: 'SQUAD_DETAILS_CHANGED',
+				details: { locked: squad.locked },
+				squadId: squad.squadId,
+				teamId: squad.teamId,
+				...base,
+			} satisfies SM.Events.SquadDetailsChanged
+		}
 	}
 }
 
@@ -1336,7 +1306,7 @@ export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 		id: row.id,
 		type: row.type,
 		time: row.time.getTime(),
-		matchId: row.type === 'NEW_GAME' ? row.matchId : undefined,
+		matchId: row.matchId,
 	}
 }
 
@@ -1381,7 +1351,130 @@ export const saveEvents = C.spanOp(
 	},
 )
 
-function resetPlayerAndSquadState(ctx: C.SquadServer, players: SM.Player[], squads: SM.Squad[]) {
+const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
+	tracer,
+	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
+}, async (ctx: C.SquadServer) => {
+	const server = ctx.server
+	try {
+		server.teamUpdateInterceptor = new Rx.Subject()
+		return await Rx.firstValueFrom(server.teamUpdateInterceptor.pipe(Rx.timeout(10_000)))
+	} finally {
+		server.teamUpdateInterceptor?.complete()
+		server.teamUpdateInterceptor = null
+	}
+})
+
+namespace PendingEvents {
+	type PendingConnectedEvent = Omit<SM.Events.PlayerConnected, 'player' | 'id'> & { player: SM.PlayerIds.IdQuery }
+	type PendingPlayerWoundedOrDiedEvent = (SM.LogEvents.PlayerWounded | SM.LogEvents.PlayerDied) & { matchId: number }
+	export type State = {
+		events: {
+			connecting: PendingConnectedEvent[]
+			woundedOrDied: PendingPlayerWoundedOrDiedEvent[]
+		}
+		// players from the last =<2 matches
+		recentPlayers: (SM.Player & { lastSeenMatchOrdinal: number })[]
+
+		// players which have disconnected in the last =<2 matches
+		disconnectedPlayers: SM.PlayerIds.Type[]
+	}
+	export function init(): State {
+		return {
+			events: {
+				connecting: [],
+				woundedOrDied: [],
+			},
+			recentPlayers: [],
+			disconnectedPlayers: [],
+		}
+	}
+
+	export function addConnecting(state: State, event: PendingConnectedEvent) {
+		state.events.connecting.push(event)
+		SM.PlayerIds.remove(state.disconnectedPlayers, event.player)
+	}
+
+	export function addWoundedOrDied(state: State, event: PendingPlayerWoundedOrDiedEvent) {
+		state.events.woundedOrDied.push(event)
+	}
+
+	export function addDisconnecting(state: State, event: SM.LogEvents.PlayerDisconnected) {
+		const player = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.playerIds)
+		if (!player) return false
+		if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) return false
+		state.disconnectedPlayers.push(player.ids)
+		return true
+	}
+
+	export function upsertRecentPlayers(state: State, players: SM.Player[], matchOrdinal: number) {
+		state.recentPlayers = state.recentPlayers.filter(p => matchOrdinal - p.lastSeenMatchOrdinal <= 2)
+		for (const player of players) {
+			SM.PlayerIds.upsert(state.recentPlayers, p => p.ids, { ...player, lastSeenMatchOrdinal: matchOrdinal })
+		}
+		state.disconnectedPlayers = state.disconnectedPlayers.filter(ids => SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, ids))
+	}
+
+	export function* processPendingEvents(state: State) {
+		{
+			const toDelete = new Set<PendingConnectedEvent>()
+			for (const event of state.events.connecting) {
+				const playerRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.player)
+				if (!playerRes) continue
+				const { lastSeenMatchOrdinal: _, ...player } = playerRes
+				toDelete.add(event)
+				if (SM.PlayerIds.find(state.disconnectedPlayers, player.ids)) {
+					continue
+				}
+				const processed: SM.Events.PlayerConnected = {
+					id: eventId(),
+					...event,
+					player,
+				}
+				yield processed
+			}
+
+			state.events.connecting = state.events.connecting.filter((event) => !toDelete.has(event))
+		}
+
+		{
+			let toDelete = new Set<PendingPlayerWoundedOrDiedEvent>()
+			for (let i = 0; i < state.events.woundedOrDied.length; i++) {
+				const event = state.events.woundedOrDied[i]
+				const victimRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, { username: event.victimName })
+				const attackerRes = SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, event.attackerIds)
+				if (!victimRes || !attackerRes) continue
+				const { lastSeenMatchOrdinal: _, ...victim } = victimRes
+				const { lastSeenMatchOrdinal: __, ...attacker } = attackerRes
+
+				toDelete.add(event)
+				let variant: SM.Events.PlayerWoundedOrDiedVariant
+				if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
+					variant = 'suicide'
+				} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
+					variant = 'teamkill'
+				} else {
+					variant = 'normal'
+				}
+				const processed: SM.Events.PlayerDied | SM.Events.PlayerWounded = {
+					id: eventId(),
+					type: event.type,
+					victimIds: victim.ids,
+					attackerIds: attacker.ids,
+					damage: event.damage,
+					weapon: event.weapon,
+					variant,
+					time: event.time,
+					matchId: event.matchId,
+				}
+				yield processed
+			}
+			state.events.woundedOrDied = state.events.woundedOrDied.filter((event) => !toDelete.has(event))
+		}
+	}
+}
+
+function resetTeamState(ctx: C.SquadServer, { players, squads }: SM.Teams) {
 	const server = ctx.server
 
 	server.state.connected = []
@@ -1390,7 +1483,7 @@ function resetPlayerAndSquadState(ctx: C.SquadServer, players: SM.Player[], squa
 	}
 	server.state.createdSquads = []
 	for (const squad of squads) {
-		server.state.createdSquads.push({ teamId: squad.teamId, squadId: squad.squadId, creatorIds: squad.creatorIds })
+		server.state.createdSquads.push(squad)
 	}
 }
 

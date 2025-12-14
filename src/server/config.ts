@@ -34,10 +34,6 @@ export const ConfigSchema = z.object({
 			adminListSources: z.array(z.string()).optional().describe(
 				'specify which sources to include from adminListSources. by default will include all sources',
 			),
-			timeBetweenMatches: HumanTime.default('90s')
-				.describe(
-					"the server's configured time between matches. this is used to prevent potential issues with event ordering during server rolls",
-				),
 			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).default(['canseeadminchat']).describe(
 				"what ingame permissions identify an admin for SLM's purposes",
 			),
