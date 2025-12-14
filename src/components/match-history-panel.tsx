@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -16,8 +17,6 @@ import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
-
-import { cn } from '@/lib/utils'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -295,8 +294,6 @@ function MatchHistoryRow({
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
 	const isCurrentMatch = entry.historyEntryId === currentMatch?.historyEntryId
 	const serverRolling = !!SquadServerClient.useServerRolling()
-	const playerCount = SquadServerClient.usePlayerCount()
-	const isEmpty = playerCount !== null && playerCount === 0
 
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
