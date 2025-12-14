@@ -86,7 +86,7 @@ export default function LayerDisplay(
 		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
 			<span
 				data-over={props.droppable && dropOnAttrs.isDropTarget || undefined}
-				className="flex-1 text-nowrap"
+				className="flex-1 text-nowrap text-xs"
 			>
 				<ShortLayerName
 					ref={props.droppable && dropOnAttrs.ref || undefined}

@@ -372,7 +372,7 @@ function MatchHistoryRow({
 				<TableRow
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
-					className="whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded"
+					className="whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs"
 				>
 					<TableCell className="font-mono text-xs relative">
 						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center p-0">
