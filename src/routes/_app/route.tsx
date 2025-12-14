@@ -75,7 +75,7 @@ function RouteComponent() {
 						params={{ serverId: selectedServerId }}
 						to="/servers/$serverId"
 					>
-						Queue
+						Server
 					</NavLink>
 					<NavLink to="/filters">
 						Filters

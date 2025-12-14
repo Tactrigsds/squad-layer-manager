@@ -1099,16 +1099,33 @@ export default function ServerActivityPanel() {
 		}
 
 		const visible$ = Rx.fromEvent(document, 'visibilitychange').pipe(Rx.filter(() => !document.hidden))
+		const resize$ = Rx.fromEvent(window, 'resize').pipe(Rx.debounceTime(150))
 		const sub = Rx.merge(
 			visible$,
-			Rx.fromEvent(window, 'resize'),
+			resize$,
 		).subscribe(handleResize)
+
+		// Use ResizeObserver to detect when the card becomes visible
+		let resizeObserver: ResizeObserver | null = null
+		if (cardRef.current) {
+			resizeObserver = new ResizeObserver(() => {
+				if (cardRef.current) {
+					const computedStyle = window.getComputedStyle(cardRef.current)
+					if (computedStyle.visibility === 'visible' && computedStyle.height !== '0px') {
+						// Card is visible
+						handleResize()
+					}
+				}
+			})
+			resizeObserver.observe(cardRef.current)
+		}
 
 		calculateMaxHeight()
 		handleResize()
 
 		return () => {
 			sub.unsubscribe()
+			resizeObserver?.disconnect()
 		}
 	}, [isStatePanelOpen])
 

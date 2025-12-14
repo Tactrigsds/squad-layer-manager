@@ -24,6 +24,7 @@ import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
 import { LayerList, StartActivityInteraction } from './layer-list.tsx'
+import { ServerActionsDropdown } from './server-actions-dropdown.tsx'
 import PoolConfigurationPopover from './server-settings-popover.tsx'
 import { Label } from './ui/label.tsx'
 import { Separator } from './ui/separator.tsx'
@@ -65,11 +66,20 @@ export default function LayerQueueDashboard() {
 							/>
 							<NormTeamsSwitch />
 						</div>
-						<UserPresencePanel />
+						<ServerActionsDropdown />
 					</div>
 
-					{activeTab === 'layers' && <CombinedDashboardPanel />}
-					{activeTab === 'server-activity' && <ServerActivityPanel />}
+					<div style={{ visibility: activeTab === 'layers' ? 'visible' : 'hidden', height: activeTab === 'layers' ? 'auto' : '0' }}>
+						<CombinedDashboardPanel />
+					</div>
+					<div
+						style={{
+							visibility: activeTab === 'server-activity' ? 'visible' : 'hidden',
+							height: activeTab === 'server-activity' ? 'auto' : '0',
+						}}
+					>
+						<ServerActivityPanel />
+					</div>
 				</div>
 			)}
 
@@ -79,7 +89,7 @@ export default function LayerQueueDashboard() {
 					{/* Top line */}
 					<div className="col-span-2 justify-between flex">
 						<NormTeamsSwitch />
-						<UserPresencePanel />
+						<ServerActionsDropdown />
 					</div>
 					{/* left column */}
 					<div className="flex flex-col gap-2">
@@ -144,10 +154,10 @@ export function QueuePanelContent() {
 						</span>
 						<span className="flex gap-1">
 							{[
-								{ variant: 'added', size: queueMutations.added.size, label: 'added' },
-								{ variant: 'edited', size: queueMutations.edited.size, label: 'edited' },
-								{ variant: 'moved', size: queueMutations.moved.size, label: 'moved' },
-								{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed' },
+								{ variant: 'added', size: queueMutations.added.size, label: 'added', icon: Icons.Plus },
+								{ variant: 'edited', size: queueMutations.edited.size, label: 'edited', icon: Icons.Pencil },
+								{ variant: 'moved', size: queueMutations.moved.size, label: 'moved', icon: Icons.ArrowUpDown },
+								{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed', icon: Icons.Trash },
 							]
 								.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
 								.map((item) => (
@@ -155,9 +165,11 @@ export function QueuePanelContent() {
 										key={item.label}
 										variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
 										data-visible={item.size > 0}
-										className="data-[visible=false]:invisible font-mono font-semibold tracking-tight"
+										className="data-[visible=false]:invisible font-mono font-semibold tracking-tight flex items-center gap-1"
+										title={`${item.size} ${item.label}`}
 									>
-										{item.size} {item.label}
+										<item.icon className="h-3 w-3" />
+										{item.size}
 									</Badge>
 								))}
 						</span>

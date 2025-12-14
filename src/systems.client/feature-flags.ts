@@ -6,6 +6,7 @@ const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
 	displayWsClientId: false,
 	loadConsole: false,
+	showMockBalanceTriggers: false,
 }
 
 interface FeatureFlagsState {
@@ -37,19 +38,22 @@ export function get(key: keyof typeof FEATURE_FLAGS) {
 }
 
 // @ts-expect-error expose to console
-window.featureFlags = {
-	list() {
-		return Store.getState().flags
-	},
-	set(flag: string, value: boolean) {
-		const store = Store.getState()
-		if (isNullOrUndef(FEATURE_FLAGS[flag as keyof typeof FEATURE_FLAGS])) {
-			return `Feature flag ${flag} does not exist`
-		}
-		store.setFeatureFlag(flag as keyof typeof FEATURE_FLAGS, value)
-		return 'ok'
-	},
-}
+window.featureFlags = {}
+
+// Define getters and setters for each feature flag
+Object.keys(FEATURE_FLAGS).forEach((flag) => {
+	// @ts-expect-error idgaf
+	Object.defineProperty(window.featureFlags, flag, {
+		get() {
+			return Store.getState().flags[flag as keyof typeof FEATURE_FLAGS]
+		},
+		set(value: boolean) {
+			Store.getState().setFeatureFlag(flag as keyof typeof FEATURE_FLAGS, value)
+		},
+		enumerable: true,
+		configurable: true,
+	})
+})
 
 export function useFeatureFlags() {
 	return Store((state) => state.flags)

@@ -11,9 +11,11 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as DndKit from '@/systems.client/dndkit'
+import * as FeatureFlags from '@/systems.client/feature-flags'
 import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
+import * as SquadServerClient from '@/systems.client/squad-server.client'
 
 import { cn } from '@/lib/utils'
 import * as dateFns from 'date-fns'
@@ -25,6 +27,8 @@ import { ConstraintMatchesIndicator } from './constraint-matches-indicator'
 import LayerSourceDisplay from './layer-source-display'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
+import { Timer } from './timer'
+import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
@@ -33,10 +37,13 @@ const MAX_PAGES = 5
 
 export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const featureFlags = FeatureFlags.useFeatureFlags()
 	const historyState = MatchHistoryClient.useMatchHistoryState()
-	const history = historyState.recentMatches.slice(0, historyState.recentMatches.length - 1)
+	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
-	const currentMatch = historyState.recentMatches ? historyState.recentMatches[historyState.recentMatches.length - 1] : undefined
+	const currentMatch = historyState.recentMatches
+		? historyState.recentMatches[historyState.recentMatches.length - 1]
+		: undefined
 	const currentMatchOrdinal = currentMatch?.ordinal ?? 0
 	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
 		const allEntries = [...(history ?? [])].reverse()
@@ -62,7 +69,9 @@ export function MatchHistoryPanelContent() {
 
 	const totalPages = Math.min(availableDates.length, MAX_PAGES)
 	const currentDate = availableDates[currentPage - 1]
-	let currentEntries = currentDate ? [...matchesByDate.get(currentDate) || []] : []
+	let currentEntries = currentDate
+		? [...(matchesByDate.get(currentDate) || [])]
+		: []
 	if (!showFullDay) currentEntries = currentEntries.slice(0, 5)
 	currentEntries.reverse()
 
@@ -72,11 +81,11 @@ export function MatchHistoryPanelContent() {
 		setShowFullDay(true)
 	}
 	const goToPrevPage = () => {
-		setCurrentPage(prev => Math.max(prev - 1, 1))
+		setCurrentPage((prev) => Math.max(prev - 1, 1))
 		setShowFullDay(true)
 	}
 	const goToNextPage = () => {
-		setCurrentPage(prev => Math.min(prev + 1, totalPages))
+		setCurrentPage((prev) => Math.min(prev + 1, totalPages))
 		setShowFullDay(true)
 	}
 	const goToLastPage = () => {
@@ -155,24 +164,57 @@ export function MatchHistoryPanelContent() {
 				<Table>
 					<TableHeader>
 						<TableRow className="font-medium">
-							<TableHead></TableHead>
-							{/*<TableHead className="hidden min-[820px]:table-cell">Time</TableHead>*/}
+							<TableHead className="text-right px-0.5">
+								{currentDate
+									&& matchesByDate.get(currentDate)
+									&& matchesByDate.get(currentDate)!.length > 5 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => setShowFullDay(!showFullDay)}
+										className="h-6 w-6 p-0"
+										title={showFullDay ? 'Show less' : 'Show full day'}
+									>
+										{showFullDay
+											? <Icons.ChevronsDownUp className="h-4 w-4" />
+											: <Icons.ChevronsUpDown className="h-4 w-4" />}
+									</Button>
+								)}
+							</TableHead>
+							<TableHead className="hidden min-[820px]:table-cell">
+								Time
+							</TableHead>
 							<TableHead>Layer</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
-								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamA' && (
-									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								{globalSettings.displayTeamsNormalized
+									&& currentStreak
+									&& currentStreak.length > 1
+									&& currentStreak.team === 'teamA' && (
+									<span className="text-green-600 font-medium ml-1">
+										({currentStreak.length} wins)
+									</span>
 								)}
 							</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
-								{globalSettings.displayTeamsNormalized && currentStreak && currentStreak.length > 1 && currentStreak.team === 'teamB' && (
-									<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+								{globalSettings.displayTeamsNormalized
+									&& currentStreak
+									&& currentStreak.length > 1
+									&& currentStreak.team === 'teamB' && (
+									<span className="text-green-600 font-medium ml-1">
+										({currentStreak.length} wins)
+									</span>
 								)}
 							</TableHead>
-							<TableHead className="text-center px-0.5 flex flex-row justify-end items-center" title="Layer Indicators">
-								<Icons.Flag />
+							<TableHead
+								className="text-center px-0.5"
+								title="Layer Indicators"
+							>
+								<div className="flex flex-row justify-end items-center">
+									<Icons.Flag />
+								</div>
 							</TableHead>
 							<TableHead className="hidden min-[900px]:table-cell pr-0.5">
 								<span title="Set By">
@@ -182,34 +224,13 @@ export function MatchHistoryPanelContent() {
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{currentDate && matchesByDate.get(currentDate) && matchesByDate.get(currentDate)!.length > 5 && (
-							<TableRow>
-								<TableCell colSpan={100} className="p-0">
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setShowFullDay(!showFullDay)}
-										className="w-full h-7 rounded-none"
-									>
-										{showFullDay
-											? (
-												<>
-													<Icons.ChevronsDownUp className="h-4 w-4 mr-1" />Show Less
-												</>
-											)
-											: (
-												<>
-													<Icons.ChevronsUpDown className="h-4 w-4 mr-1" />Show full day
-												</>
-											)}
-									</Button>
-								</TableCell>
-							</TableRow>
-						)}
 						{currentEntries.length === 0
 							? (
 								<TableRow>
-									<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell">
+									<TableCell
+										colSpan={8}
+										className="text-center text-muted-foreground py-8 hidden min-[900px]:table-cell"
+									>
 										No matches found
 									</TableCell>
 									<TableCell
@@ -218,24 +239,30 @@ export function MatchHistoryPanelContent() {
 									>
 										No matches found
 									</TableCell>
-									<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden">
+									<TableCell
+										colSpan={6}
+										className="text-center text-muted-foreground py-8 table-cell min-[820px]:hidden"
+									>
 										No matches found
 									</TableCell>
 								</TableRow>
 							)
-							: currentEntries.map((entry) => {
-								const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
-									event => event.matchTriggeredId === entry.historyEntryId,
-								)
-								return (
-									<MatchHistoryRow
-										key={entry.historyEntryId}
-										entry={entry}
-										currentMatchOffset={currentMatchOrdinal - entry.ordinal}
-										balanceTriggerEvents={balanceTriggerEvents}
-									/>
-								)
-							})}
+							: (
+								currentEntries.map((entry) => {
+									const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
+										(event) => event.matchTriggeredId === entry.historyEntryId,
+									)
+									return (
+										<MatchHistoryRow
+											key={entry.historyEntryId}
+											entry={entry}
+											currentMatchOffset={entry.ordinal - currentMatchOrdinal}
+											balanceTriggerEvents={balanceTriggerEvents}
+											debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
+										/>
+									)
+								})
+							)}
 					</TableBody>
 				</Table>
 			</CardContent>
@@ -255,41 +282,74 @@ interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
 	currentMatchOffset: number
 	balanceTriggerEvents: BAL.BalanceTriggerEvent[]
+	debug__showBalanceTriggers?: boolean
 }
 
 function MatchHistoryRow({
 	entry,
 	currentMatchOffset,
 	balanceTriggerEvents,
+	debug__showBalanceTriggers,
 }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const currentMatch = MatchHistoryClient.useCurrentMatch()
+	const isCurrentMatch = entry.historyEntryId === currentMatch?.historyEntryId
+	const serverRolling = !!SquadServerClient.useServerRolling()
+	const playerCount = SquadServerClient.usePlayerCount()
+	const isEmpty = playerCount !== null && playerCount === 0
 
 	const dragProps = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
-	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(
+		entry.historyEntryId,
+	)
+
+	// Mock balance triggers for debug mode
+	let effectiveBalanceTriggerEvents = balanceTriggerEvents
+	if (debug__showBalanceTriggers) {
+		const triggerLevels: BAL.TriggerWarnLevel[] = ['violation', 'warn', 'info']
+		const mockLevel = triggerLevels[Math.abs(currentMatchOffset) % triggerLevels.length]
+		const mockEvent: BAL.BalanceTriggerEvent = {
+			id: Math.abs(currentMatchOffset) * 1000 + entry.historyEntryId,
+			level: mockLevel,
+			matchTriggeredId: entry.historyEntryId,
+			triggerId: 'mock-trigger',
+			triggerVersion: 1,
+			strongerTeam: 'teamA',
+			evaluationResult: {
+				code: 'triggered',
+				strongerTeam: 'teamA',
+				messageTemplate: `Mock ${mockLevel} trigger for testing`,
+				relevantInput: [],
+			},
+		}
+		effectiveBalanceTriggerEvents = [mockEvent]
+	}
 
 	// Get trigger info for this entry
-	const triggerLevel = BAL.getHighestPriorityTriggerEvent(balanceTriggerEvents)?.level
+	const triggerLevel = BAL.getHighestPriorityTriggerEvent(effectiveBalanceTriggerEvents)?.level
 
 	// Create trigger alerts for this entry
 	const entryTriggerAlerts = React.useMemo(() => {
-		if (balanceTriggerEvents.length === 0) return []
+		if (effectiveBalanceTriggerEvents.length === 0) return []
 
-		const alerts: React.ReactNode[] = ([...balanceTriggerEvents]
-			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level)))
-			.map(
-				(event) => <BalanceTriggerAlert key={event.id} className="rounded-none" event={event} referenceMatch={entry} />,
+		const alerts: React.ReactNode[] = [...effectiveBalanceTriggerEvents]
+			.sort(
+				(a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level),
 			)
+			.map((event) => (
+				<BalanceTriggerAlert
+					key={event.id}
+					className="rounded-none"
+					event={event}
+					referenceMatch={entry}
+				/>
+			))
 
 		return alerts
-	}, [balanceTriggerEvents, entry])
-
-	if (entry.historyEntryId === currentMatch?.historyEntryId) {
-		return null
-	}
+	}, [effectiveBalanceTriggerEvents, entry])
 
 	const violationDisplayElt = statusData && (
 		<ConstraintMatchesIndicator
@@ -310,33 +370,87 @@ function MatchHistoryRow({
 			globalSettings.displayTeamsNormalized,
 			statusData?.highlightedMatchDescriptors,
 		)
-	}, [entry.layerId, entry.ordinal, globalSettings.displayTeamsNormalized, statusData?.highlightedMatchDescriptors])
+	}, [
+		entry.layerId,
+		entry.ordinal,
+		globalSettings.displayTeamsNormalized,
+		statusData?.highlightedMatchDescriptors,
+	])
 
 	const layer = L.toLayer(entry.layerId)
-	let outcomeDisp: React.ReactNode
-	if (entry.status === 'in-progress') {
-		outcomeDisp = '-'
-	} else if (entry.outcome.type === 'draw') {
-		outcomeDisp = 'draw'
-	} else {
-		// Determine win/loss status
-		let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
-		let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
-		let team1Tickets = entry.outcome.team1Tickets
-		let team2Tickets = entry.outcome.team2Tickets
 
-		if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
-			// Swap status if normalized
-			;[team1Status, team2Status] = [team2Status, team1Status]
-			;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
+	// Build status badge and outcome display
+	let statusBadge: React.ReactNode = null
+	let outcomeDisp: React.ReactNode = null
+
+	if (isCurrentMatch) {
+		// Determine status badge (exactly one of: rolling, post-game, in-progress)
+		if (serverRolling) {
+			statusBadge = (
+				<Badge variant="info" className="flex items-center whitespace-nowrap">
+					<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
+					<span>Switching to New Layer...</span>
+				</Badge>
+			)
+		} else if (entry.status === 'post-game') {
+			statusBadge = (
+				<Badge variant="outline" className="flex items-center whitespace-nowrap">
+					<span className="pr-1">Post-Game</span>
+					<Timer zeros start={entry.endTime.getTime()} className="font-mono" />
+				</Badge>
+			)
+		} else if (!isEmpty && entry.status === 'in-progress') {
+			statusBadge = (
+				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
+					<span>In progress</span>
+				</Badge>
+			)
+		} else if (isEmpty) {
+			statusBadge = (
+				<Badge variant="outline" className="flex items-center whitespace-nowrap">
+					<span>Server empty</span>
+				</Badge>
+			)
 		}
+	}
 
-		outcomeDisp = (
-			<span>
-				{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
-				<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
-			</span>
-		)
+	// Build outcome display if available
+	if (entry.status === 'post-game') {
+		if (entry.outcome.type === 'draw') {
+			outcomeDisp = <span className="text-sm">Draw</span>
+		} else {
+			// Determine win/loss status
+			let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
+			let team2Status = entry.outcome.type === 'team2' ? 'W' : 'L'
+			let team1Tickets = entry.outcome.team1Tickets
+			let team2Tickets = entry.outcome.team2Tickets
+
+			if (globalSettings.displayTeamsNormalized && entry.ordinal % 2 === 1) {
+				// Swap status if normalized
+				;[team1Status, team2Status] = [team2Status, team1Status]
+				;[team1Tickets, team2Tickets] = [team2Tickets, team1Tickets]
+			}
+
+			outcomeDisp = (
+				<span className="text-sm">
+					{team1Tickets}{' '}
+					<span
+						className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}
+					>
+						{team1Status}
+					</span>{' '}
+					-{' '}
+					<span
+						className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}
+					>
+						{team2Status}
+					</span>{' '}
+					{team2Tickets}
+				</span>
+			)
+		}
+	} else if (!isCurrentMatch) {
+		outcomeDisp = <span className="text-sm">-</span>
 	}
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(
@@ -368,41 +482,77 @@ function MatchHistoryRow({
 		}
 	}
 
+	const gameRuntime = (entry.startTime && entry.status === 'post-game')
+		? entry.endTime.getTime() - entry.startTime.getTime()
+		: undefined
+
+	// Determine background color based on trigger level or current match
+	let bgColor = ''
+	if (isCurrentMatch && entry.status === 'in-progress') {
+		bgColor = 'bg-green-500/20'
+	} else if (triggerLevel === 'violation') {
+		bgColor = 'bg-red-500/10'
+	} else if (triggerLevel === 'warn') {
+		bgColor = 'bg-yellow-500/10'
+	} else if (triggerLevel === 'info') {
+		bgColor = 'bg-blue-500/10'
+	}
+
 	return (
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
 				<TableRow
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
-					className={cn(Typo.LayerText, 'whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs')}
+					className={cn(
+						Typo.LayerText,
+						'whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs',
+						bgColor,
+					)}
 				>
-					<TableCell className="font-mono text-xs relative">
+					<TableCell className="font-mono text-xs relative text-right">
 						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center p-0">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-hover:opacity-0 ">
-							-{currentMatchOffset.toString()}
+						<div className="group-hover:opacity-0 flex justify-end items-center">
+							{isCurrentMatch && entry.status === 'in-progress'
+								? <Icons.Play className="h-3 w-3 text-green-500" />
+								: isCurrentMatch && entry.status === 'post-game'
+								? <Icons.Check className="h-3 w-3" />
+								: currentMatchOffset.toString()}
 						</div>
 					</TableCell>
-					{
-						/*<TableCell className="text-xs hidden min-[820px]:table-cell">
-						{entry.startTime
-							? <span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
+					<TableCell className="text-xs hidden min-[820px]:table-cell">
+						{isCurrentMatch && entry.startTime
+							? (
+								<span className="font-mono font-light">
+									<Timer zeros start={entry.startTime.getTime()} />
+								</span>
+							)
+							: entry.startTime
+							? (
+								<span className="font-mono font-light">
+									{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
+								</span>
+							)
 							: <Badge variant="secondary">incomplete</Badge>}
-					</TableCell>*/
-					}
-					<TableCell>
-						<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 					</TableCell>
 					<TableCell>
-						{leftTeam}
+						<MapLayerDisplay
+							layer={layer.Layer!}
+							extraLayerStyles={extraLayerStyles}
+						/>
 					</TableCell>
-					<TableCell className="text-center">{outcomeDisp}</TableCell>
-					<TableCell>
-						{rightTeam}
-					</TableCell>
-
+					<TableCell>{leftTeam}</TableCell>
 					<TableCell className="text-center">
+						<div className="flex flex-col items-center gap-1">
+							{statusBadge}
+							{outcomeDisp}
+						</div>
+					</TableCell>
+					<TableCell>{rightTeam}</TableCell>
+
+					<TableCell className="text-center flex flex-row flex-nowrap">
 						{TriggerIcon && entryTriggerAlerts.length > 0 && (
 							<Tooltip delayDuration={0}>
 								<TooltipTrigger asChild>
@@ -433,16 +583,53 @@ function MatchHistoryRow({
 				</TableRow>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
-				<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
+				<LayerContextMenuItems
+					selectedLayerIds={[entry.layerId]}
+					selectedHistoryEntryIds={[entry.historyEntryId]}
+				/>
 			</ContextMenuContent>
 		</ContextMenu>
 	)
 }
 
-function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
+function TableHead({
+	className = '',
+	...props
+}: React.ComponentProps<typeof ShadcnTableHead>) {
 	return <ShadcnTableHead className={`${STD_PADDING} ${className}`} {...props} />
 }
 
-function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
+function TableCell({
+	className = '',
+	...props
+}: React.ComponentProps<typeof ShadcnTableCell>) {
 	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
+}
+
+function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
+	// Format the start time as HH:mm:ss (24-hour format)
+	const formattedStartTime = dateFns.format(startTime, 'HH:mm')
+
+	// Calculate time difference from now
+	const difference = dateFns.differenceInHours(new Date(), startTime)
+	let timeDifferenceText = ''
+	if (difference === 0) {
+		timeDifferenceText = `${Math.floor(dateFns.differenceInMinutes(new Date(), startTime))} minutes ago`
+	} else {
+		timeDifferenceText = `${Math.floor(difference)} hours ago`
+	}
+
+	// Calculate match length in minutes if runtime is available
+	if (gameRuntime) {
+		// Convert milliseconds to minutes and round to nearest whole number
+		const matchLengthMinutes = Math.round(gameRuntime / (1000 * 60))
+		return (
+			<span title={timeDifferenceText}>
+				{formattedStartTime}
+				<span className="text-muted-foreground">({matchLengthMinutes}m)</span>
+			</span>
+		)
+	}
+
+	return <span title={timeDifferenceText}>{formattedStartTime}</span>
 }
