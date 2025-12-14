@@ -150,7 +150,9 @@ export const InRangeComparisonSchema = z
 				(range) => {
 					return range.some((value) => value !== undefined)
 				},
-				{ message: 'Range must have at least one value' },
+				{
+					error: 'Range must have at least one value',
+				},
 			),
 		column: z.string(),
 	})
@@ -238,7 +240,7 @@ export const FactionsAllowMatchupsSchema = z.object({
 	allMasks: z
 		.array(z.array(FactionMaskSchema))
 		.refine((teams) => teams.length > 0 && teams.length <= 2, {
-			message: 'At least one team is required and at most two teams are allowed',
+			error: 'At least one team is required and at most two teams are allowed',
 		}),
 	// default either
 	mode: FACTION_MODE.optional(),
@@ -263,7 +265,7 @@ export const ComparisonSchema = z
 		IsTrueComparison,
 	])
 	.refine((comp) => COMPARISON_TYPES.some((type) => type.code === comp.code), {
-		message: 'Invalid comparison type',
+		error: 'Invalid comparison type',
 	})
 
 // TODO add 'not'
@@ -277,7 +279,7 @@ export const BaseFilterNodeSchema = z.object({
 	]),
 	comp: ComparisonSchema.optional(),
 	// negations
-	neg: z.boolean().default(false),
+	neg: z.boolean().prefault(false),
 	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
 	allowMatchups: FactionsAllowMatchupsSchema.optional(),
 })
@@ -305,24 +307,24 @@ export const FilterNodeSchema = BaseFilterNodeSchema.extend({
 	children: z.lazy(() => FilterNodeSchema.array().optional()),
 })
 	.refine((node) => node.type !== 'comp' || node.comp !== undefined, {
-		message: 'comp must be defined for type "comp"',
+		error: 'comp must be defined for type "comp"',
 	})
 	.refine((node) => node.type !== 'comp' || node.children === undefined, {
-		message: 'children must not be defined for type "comp"',
+		error: 'children must not be defined for type "comp"',
 	})
 	.refine(
 		(node) => node.type !== 'apply-filter' || typeof node.filterId === 'string',
 		{
-			message: 'filterId must be defined for type "apply-filter"',
+			error: 'filterId must be defined for type "apply-filter"',
 		},
 	)
 	.refine((node) => !(['and', 'or'].includes(node.type) && !node.children), {
-		message: 'children must be defined for type "and" or "or"',
+		error: 'children must be defined for type "and" or "or"',
 	}) as z.ZodType<FilterNode>
 
 export const RootFilterNodeSchema = FilterNodeSchema.refine(
 	(root) => isBlockNode(root),
-	{ message: 'Root node must be a block type' },
+	{ error: 'Root node must be a block type' },
 )
 
 export function isValidFilterNode(
@@ -400,12 +402,12 @@ export const FilterEntityIdSchema = z
 	.string()
 	.trim()
 	.regex(/^[a-z0-9-_]+$/, {
-		message: '"Must contain only lowercase letters, numbers, hyphens, and underscores"',
+		error: '"Must contain only lowercase letters, numbers, hyphens, and underscores"',
 	})
 	.min(3)
 	.max(64)
 	.refine((id) => id !== '_id' && id !== 'new', {
-		message: 'These particular magic strings are not allowed',
+		error: 'These particular magic strings are not allowed',
 	})
 
 export const DescriptionSchema = z.string().trim().min(3).max(2048)
@@ -452,7 +454,7 @@ export function filterContainsId(id: string, node: FilterNode): boolean {
 export const FilterEntitySchema = BaseFilterEntitySchema
 	// this refinement does not deal with mutual recustion
 	.refine((e) => !filterContainsId(e.id, e.filter), {
-		message: 'filter cannot be recursive',
+		error: 'filter cannot be recursive',
 	}) satisfies z.ZodType<SchemaModels.Filter>
 
 export const UpdateFilterEntitySchema = BaseFilterEntitySchema.omit({

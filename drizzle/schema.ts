@@ -1,3 +1,4 @@
+import { enumTupleOptions } from '@/lib/zod'
 import { bigint, index, int, json, mysqlEnum, mysqlTable, primaryKey, timestamp, unique, varchar } from 'drizzle-orm/mysql-core'
 import superjson from 'superjson'
 import { BALANCE_TRIGGER_LEVEL, SERVER_EVENT_TYPE } from './enums'
@@ -47,7 +48,7 @@ export const balanceTriggerEvents = mysqlTable(
 		matchTriggeredId: int('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		// the generic form of the message
 		strongerTeam: mysqlEnum('strongerTeam', ['teamA', 'teamB']).notNull(),
-		level: mysqlEnum(BALANCE_TRIGGER_LEVEL.options).notNull(),
+		level: mysqlEnum(enumTupleOptions(BALANCE_TRIGGER_LEVEL)).notNull(),
 		evaluationResult: json('evaluationResult').notNull(),
 	},
 )
@@ -56,7 +57,7 @@ export const serverEvents = mysqlTable(
 	'serverEvents',
 	{
 		id: int('id').primaryKey(),
-		type: mysqlEnum('type', SERVER_EVENT_TYPE.options).notNull(),
+		type: mysqlEnum('type', enumTupleOptions(SERVER_EVENT_TYPE)).notNull(),
 		time: timestamp('time').notNull(),
 		matchId: int('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
 		// TODO right now code just assumes one version, this is here for forwards compatibility

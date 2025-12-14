@@ -15,7 +15,7 @@
 		"build:server": "node esbuild.config.js",
 		"build:prod": "pnpm run build:client && pnpm run build:server",
 		"server:prod": "NODE_ENV=production node --enable-source-maps --import ./dist-server/instrumentation.js dist-server/main.js",
-		"server:dev": "NODE_OPTIONS=--use-openssl-ca NODE_ENV=development tsx --inspect --watch --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
+		"server:dev": "NODE_OPTIONS=--use-openssl-ca NODE_ENV=development tsx watch  --inspect --include=./slm-config.jsonc --include=./.env --tsconfig tsconfig.node.json --import ./src/server/instrumentation.ts src/server/main.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",
 		"rcon:test": "NODE_ENV=development vitest 'src/lib/rcon'",
@@ -44,7 +44,7 @@
 		"mysql2": "^3.14.1",
 		"ssh2": "^1.16.0",
 		"superjson": "^2.2.6",
-		"tsx": "^4.20.3",
+		"tsx": "^4.21.0",
 		"utf-8-validate": "^6.0.4"
 	},
 	"devDependencies": {
@@ -129,7 +129,7 @@
 		"@tanstack/react-table": "^8.21.3",
 		"@tanstack/router-plugin": "^1.134.9",
 		"@tanstack/table-core": "^8.21.3",
-		"@tanstack/zod-adapter": "^1.134.12",
+		"@tanstack/zod-adapter": "^1.141.2",
 		"@tanstack/zod-form-adapter": "^0.33.0",
 		"@types/ace": "^0.0.52",
 		"@types/better-sqlite3": "^7.6.13",
@@ -210,7 +210,6 @@
 		"vite-tsconfig-paths": "^5.1.4",
 		"vitest": "^3.2.4",
 		"zod": "^4.1.13",
-		"zod-to-json-schema": "^3.24.6",
 		"zustand": "^5.0.6",
 		"zustand-rx": "^2.1.0"
 	}

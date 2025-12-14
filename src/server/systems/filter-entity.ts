@@ -24,7 +24,9 @@ import * as Users from './users'
 export const filterMutation$ = new Subject<[CS.Log & C.Db, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
-	.refine((input) => input.userId || input.roleId, { message: 'Either userId or role must be provided' })
+	.refine((input) => input.userId || input.roleId, {
+        error: 'Either userId or role must be provided'
+    })
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
 export const filtersRouter = {

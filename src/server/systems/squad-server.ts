@@ -306,6 +306,7 @@ export async function setup() {
 	globalState.serverEventIdCounter = Gen.counter(nextId)
 
 	for (const serverConfig of CONFIG.servers) {
+		if (!serverConfig.enabled) continue
 		const settingsFromConfig = {
 			connections: serverConfig.connections,
 			adminListSources: serverConfig.adminListSources!,
@@ -759,7 +760,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	}
 
 	if (defaultServerId && serverId === defaultServerId) return ctx
-	const res = ctx.res.setCookie(AR.COOKIE_KEY.Values['default-server-id'], serverId)
+	const res = ctx.res.setCookie(AR.COOKIE_KEY.enum['default-server-id'], serverId)
 	return {
 		...ctx,
 		res,

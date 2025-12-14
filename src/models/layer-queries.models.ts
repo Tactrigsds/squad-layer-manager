@@ -77,7 +77,7 @@ export const LayersQuerySortSchema = z
 		z.object({
 			type: z.literal('column'),
 			sortBy: z.string(),
-			direction: LAYERS_QUERY_SORT_DIRECTION.optional().default('ASC'),
+			direction: LAYERS_QUERY_SORT_DIRECTION.optional().prefault('ASC'),
 		}),
 		z.object({
 			type: z.literal('random'),

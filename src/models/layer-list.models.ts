@@ -68,16 +68,16 @@ export const LayerListItemSchema = NewLayerListItemSchema.extend({
 			choiceSet.add(choice.layerId)
 		}
 		return true
-	}, { message: 'Duplicate layer IDs in choices' })
+	}, { error: 'Duplicate layer IDs in choices' })
 	.refine((item): boolean => {
 		if (!item.choices) return true
-		return item.choices.some(choice => choice.layerId === item.layerId)
-	}, { message: 'The parent layerId must be included in the choices' })
+		return item.choices.some((choice) => choice.layerId === item.layerId)
+	}, { error: 'The parent layerId must be included in the choices' })
 	.refine((item): boolean => {
 		if (!item.choices) return true
 		if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return true
 		return !!item.choices && item.choices[0].layerId === item.layerId
-	}, { message: "if vote isn't complete, then the layerId should always be the first layer choice" })
+	}, { error: "if vote isn't complete, then the layerId should always be the first layer choice" })
 
 export type Item = z.infer<typeof LayerListItemSchema>
 

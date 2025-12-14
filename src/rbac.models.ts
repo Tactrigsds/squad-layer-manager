@@ -44,7 +44,7 @@ export const UserDefinedRoleIdSchema = z
 	.min(3)
 	.max(32)
 	.refine((roleType) => !isInferredRoleType({ type: roleType }), {
-		message: `Role cannot be the same as one of the inferred roles: ${
+		error: `Role cannot be the same as one of the inferred roles: ${
 			InferredRoleSchema.options.map((opt) => opt.shape.type.value).join(', ')
 		}`,
 	})
@@ -138,7 +138,7 @@ export const GLOBAL_PERMISSION_TYPE_EXPRESSION = z.union([
 	GLOBAL_PERMISSION_TYPE,
 	z.literal('*').describe('include all'),
 	z.string().regex(/^!/).refine((str) => GLOBAL_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
-		message: 'Negated permission must be a valid global permission type',
+		error: 'Negated permission must be a valid global permission type',
 	}).describe('negated permissions. takes precedence wherever present for a user'),
 ])
 

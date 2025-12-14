@@ -19,14 +19,14 @@ import { parse as parseJsonc } from 'jsonc-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
-import zodToJsonSchema from 'zod-to-json-schema'
 import * as Env from './env.ts'
 
 export const ConfigSchema = z.object({
-	topBarColor: z.string().default('green').nullable().describe('this should be set to null for production'),
-	warnPrefix: z.string().nullable().default('SLM: ').describe('Prefix to use for warnings'),
-	postRollAnnouncementsTimeout: HumanTime.default('5m').describe('How long to wait before sending post-roll reminders'),
-	fogOffDelay: HumanTime.default('25s').describe('the delay before fog is automatically turned off'),
+	'$schema': z.string(),
+	topBarColor: z.string().prefault('green').nullable().describe('this should be set to null for production'),
+	warnPrefix: z.string().nullable().prefault('SLM: ').describe('Prefix to use for warnings'),
+	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe('How long to wait before sending post-roll reminders'),
+	fogOffDelay: HumanTime.prefault('25s').describe('the delay before fog is automatically turned off'),
 	servers: z.array(
 		z.object({
 			id: z.string().describe('ID of the server'),
@@ -34,53 +34,53 @@ export const ConfigSchema = z.object({
 			adminListSources: z.array(z.string()).optional().describe(
 				'specify which sources to include from adminListSources. by default will include all sources',
 			),
-			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).default(['canseeadminchat']).describe(
+			adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault(['canseeadminchat']).describe(
 				"what ingame permissions identify an admin for SLM's purposes",
 			),
-			enabled: z.boolean().default(true).describe('Whether the server is enabled'),
+			enabled: z.boolean().prefault(true).describe('Whether the server is enabled'),
 			connections: SS.ServerConnectionSchema,
-			remindersAndAnnouncementsEnabled: z.boolean().default(true).describe('Whether reminders/annoucements for admins are enabled'),
+			remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/annoucements for admins are enabled'),
 		}),
-	).transform(servers => servers.filter(server => server.enabled)),
-	chat: CHAT.ChatConfigSchema.default({}),
+	),
+	chat: CHAT.ChatConfigSchema.prefault({}),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
 			.number()
 			.positive()
-			.default(1)
+			.prefault(1)
 			.describe('Number of layers in the queue to trigger a low queue size warning'),
-		adminQueueReminderInterval: HumanTime.default('10m').describe(
+		adminQueueReminderInterval: HumanTime.prefault('10m').describe(
 			'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 		),
-		maxQueueSize: z.number().int().min(1).max(100).default(20).describe('Maximum number of layers that can be in the queue'),
+		maxQueueSize: z.int().min(1).max(100).prefault(20).describe('Maximum number of layers that can be in the queue'),
 	}),
 	vote: z.object({
-		voteDuration: HumanTime.default('120s').describe('Duration of a vote'),
-		startVoteReminderThreshold: HumanTime.default('20m').describe('How far into a match to start reminding admins to start a vote'),
-		voteReminderInterval: HumanTime.default('45s').describe('How often to remind users to vote'),
-		autoStartVoteDelay: HumanTime.default('20m').nullable().describe(
+		voteDuration: HumanTime.prefault('120s').describe('Duration of a vote'),
+		startVoteReminderThreshold: HumanTime.prefault('20m').describe('How far into a match to start reminding admins to start a vote'),
+		voteReminderInterval: HumanTime.prefault('45s').describe('How often to remind users to vote'),
+		autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
 			'Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes',
 		),
-		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).default(['map', 'gamemode']).describe(
+		voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
 			'What parts of a layer setup should be displayed',
 		),
-		finalVoteReminder: HumanTime.default('10s').describe('How far in advance the final vote reminder should be sent'),
-		maxNumVoteChoices: z.number().int().min(1).max(50).default(5).describe('Maximum number of choices allowed in a vote'),
+		finalVoteReminder: HumanTime.prefault('10s').describe('How far in advance the final vote reminder should be sent'),
+		maxNumVoteChoices: z.int().min(1).max(50).prefault(5).describe('Maximum number of choices allowed in a vote'),
 	}),
 	squadServer: z.object({
-		sftpPollInterval: HumanTime.default('1s'),
-		sftpReconnectInterval: HumanTime.default('5s'),
+		sftpPollInterval: HumanTime.prefault('1s'),
+		sftpReconnectInterval: HumanTime.prefault('5s'),
 	}),
-	steamLinkCodeExpiry: HumanTime.default('15m').describe('Duration of a steam account link code'),
+	steamLinkCodeExpiry: HumanTime.prefault('15m').describe('Duration of a steam account link code'),
 	// we have to ues .optional instead of .default here to avoid circular type definitions
 	commandPrefix: BasicStrNoWhitespace,
 	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.record(z.string(), SM.AdminListSourceSchema),
 	homeDiscordGuildId: ParsedBigIntSchema,
-	repoUrl: z.string().url().optional().describe('URL of the repository'),
-	issuesUrl: z.string().url().optional().describe('URL of the issues page'),
+	repoUrl: z.url().optional().describe('URL of the repository'),
+	issuesUrl: z.url().optional().describe('URL of the issues page'),
 	globalRolePermissions: z
-		.record(z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
+		.record(z.string(), z.array(RBAC.GLOBAL_PERMISSION_TYPE_EXPRESSION))
 		.describe('Configures what roles have what permissions. (globally scoped permissions only)'),
 	roleAssignments: z.object({
 		'discord-role': z.array(z.object({ discordRoleId: ParsedBigIntSchema, roles: z.array(RBAC.UserDefinedRoleIdSchema) })).optional(),
@@ -89,11 +89,11 @@ export const ConfigSchema = z.object({
 	}),
 	// TODO write refinement to make sure that all roles referenced in role assignments are defined in globalRolePermissions
 
-	balanceTriggerLevels: z.record(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
-		.default({ '150x2': 'warn' })
+	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
+		.prefault({ '150x2': 'warn' })
 		.describe('Configures the trigger warning levels for balance calculations'),
 
-	layerTable: LQY.LayerTableConfigSchema.default({
+	layerTable: LQY.LayerTableConfigSchema.prefault({
 		orderedColumns: [
 			{ name: 'id', visible: false },
 			{ name: 'Size' },
@@ -114,6 +114,8 @@ export const ConfigSchema = z.object({
 	}),
 })
 
+type Config = z.infer<typeof ConfigSchema>
+
 export let CONFIG!: Config
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadcalc })
@@ -130,7 +132,11 @@ export async function ensureSetup() {
 	const raw = await fs.readFile(Cli.options.config, 'utf-8')
 
 	const rawObj = parseJsonc(raw)
-	CONFIG = ConfigSchema.parse(rawObj)
+	const parseRes = ConfigSchema.safeParse(rawObj)
+	if (!parseRes.success) {
+		throw new Error(`Configuration file ${Cli.options.config} is invalid`, { cause: parseRes.error })
+	}
+	CONFIG = parseRes.data
 
 	// -------- no duplicate command strings --------
 	const allStrings = new Set<string>()
@@ -190,7 +196,7 @@ export function getPublicConfig(wsClientId: string) {
 
 async function generateConfigJsonSchema() {
 	const schemaPath = path.join(Paths.ASSETS, 'config-schema.json')
-	const schema = zodToJsonSchema(ConfigSchema.extend({ ['$schema']: z.string() }))
+	const schema = z.toJSONSchema(ConfigSchema, { io: 'input' })
 	await fsPromise.writeFile(schemaPath, stringifyCompact(schema))
 	console.log('Wrote generated config schema to %s', schemaPath)
 }
@@ -200,5 +206,3 @@ export const router = {
 		return getPublicConfig(ctx.wsClientId)
 	}),
 }
-
-export type Config = z.infer<typeof ConfigSchema>

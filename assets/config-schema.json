@@ -1,42 +1,47 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "$schema": {"type": "string"},
     "topBarColor": {
-      "anyOf": [{"type": "string", "default": "green"}, {"type": "null"}],
-      "description": "this should be set to null for production"
+      "description": "this should be set to null for production",
+      "anyOf": [{"default": "green", "type": "string"}, {"type": "null"}]
     },
     "warnPrefix": {
-      "type": ["string", "null"],
+      "description": "Prefix to use for warnings",
       "default": "SLM: ",
-      "description": "Prefix to use for warnings"
+      "anyOf": [{"type": "string"}, {"type": "null"}]
     },
     "postRollAnnouncementsTimeout": {
-      "type": "string",
-      "pattern": "^[0-9._]+(s|m|h|d|w|ms)$",
       "description": "How long to wait before sending post-roll reminders",
-      "default": "5m"
+      "default": "5m",
+      "type": "string",
+      "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
     },
     "fogOffDelay": {
-      "$ref": "#/properties/postRollAnnouncementsTimeout",
+      "description": "the delay before fog is automatically turned off",
       "default": "25s",
-      "description": "the delay before fog is automatically turned off"
+      "type": "string",
+      "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
     },
     "servers": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "id": {"type": "string", "description": "ID of the server"},
+          "id": {"description": "ID of the server", "type": "string"},
           "displayName": {
-            "type": "string",
-            "description": "Display name of the server"
+            "description": "Display name of the server",
+            "type": "string"
           },
           "adminListSources": {
+            "description": "specify which sources to include from adminListSources. by default will include all sources",
             "type": "array",
-            "items": {"type": "string"},
-            "description": "specify which sources to include from adminListSources. by default will include all sources"
+            "items": {"type": "string"}
           },
           "adminIdentifyingPermissions": {
+            "description": "what ingame permissions identify an admin for SLM's purposes",
+            "default": ["canseeadminchat"],
             "type": "array",
             "items": {
               "type": "string",
@@ -63,14 +68,12 @@
                 "forceteamchange",
                 "canseeadminchat"
               ]
-            },
-            "default": ["canseeadminchat"],
-            "description": "what ingame permissions identify an admin for SLM's purposes"
+            }
           },
           "enabled": {
-            "type": "boolean",
+            "description": "Whether the server is enabled",
             "default": true,
-            "description": "Whether the server is enabled"
+            "type": "boolean"
           },
           "connections": {
             "type": "object",
@@ -82,8 +85,7 @@
                   "port": {"type": "number", "minimum": 1, "maximum": 65535},
                   "password": {"type": "string", "minLength": 1}
                 },
-                "required": ["host", "port", "password"],
-                "additionalProperties": false
+                "required": ["host", "port", "password"]
               },
               "sftp": {
                 "type": "object",
@@ -94,389 +96,148 @@
                   "password": {"type": "string", "minLength": 1},
                   "logFile": {"type": "string", "minLength": 1}
                 },
-                "required": ["host", "port", "username", "password", "logFile"],
-                "additionalProperties": false
+                "required": ["host", "port", "username", "password", "logFile"]
               }
             },
-            "required": ["rcon", "sftp"],
-            "additionalProperties": false
+            "required": ["rcon", "sftp"]
           },
           "remindersAndAnnouncementsEnabled": {
-            "type": "boolean",
+            "description": "Whether reminders/annoucements for admins are enabled",
             "default": true,
-            "description": "Whether reminders/annoucements for admins are enabled"
+            "type": "boolean"
           }
         },
-        "required": ["id", "displayName", "connections"],
-        "additionalProperties": false
+        "required": ["id", "displayName", "connections"]
       }
     },
     "chat": {
+      "default": {},
       "type": "object",
       "properties": {
         "warnSuppressionPatterns": {
-          "type": "array",
-          "items": {"type": "string"},
+          "description": "Regex patterns to suppress warning messages",
           "default": [],
-          "description": "Regex patterns to suppress warning messages"
+          "type": "array",
+          "items": {"type": "string"}
         },
         "broadcastSuppressionPatterns": {
-          "type": "array",
-          "items": {
-            "$ref": "#/properties/chat/properties/warnSuppressionPatterns/items"
-          },
+          "description": "Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.",
           "default": [],
-          "description": "Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command."
+          "type": "array",
+          "items": {"type": "string"}
         }
-      },
-      "additionalProperties": false,
-      "default": {}
+      }
     },
     "layerQueue": {
       "type": "object",
       "properties": {
         "lowQueueWarningThreshold": {
-          "type": "number",
-          "exclusiveMinimum": 0,
+          "description": "Number of layers in the queue to trigger a low queue size warning",
           "default": 1,
-          "description": "Number of layers in the queue to trigger a low queue size warning"
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "adminQueueReminderInterval": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often.",
           "default": "10m",
-          "description": "How often to remind admins to maintain the queue. Low queue warnings happen half as often."
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "maxQueueSize": {
+          "description": "Maximum number of layers that can be in the queue",
+          "default": 20,
           "type": "integer",
           "minimum": 1,
-          "maximum": 100,
-          "default": 20,
-          "description": "Maximum number of layers that can be in the queue"
+          "maximum": 100
         }
-      },
-      "additionalProperties": false
+      }
     },
     "vote": {
       "type": "object",
       "properties": {
         "voteDuration": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "description": "Duration of a vote",
           "default": "120s",
-          "description": "Duration of a vote"
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "startVoteReminderThreshold": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "description": "How far into a match to start reminding admins to start a vote",
           "default": "20m",
-          "description": "How far into a match to start reminding admins to start a vote"
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "voteReminderInterval": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "description": "How often to remind users to vote",
           "default": "45s",
-          "description": "How often to remind users to vote"
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "autoStartVoteDelay": {
+          "description": "Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes",
           "anyOf": [
             {
-              "$ref": "#/properties/postRollAnnouncementsTimeout",
               "default": "20m",
-              "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+              "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds",
+              "type": "string",
+              "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
             },
             {"type": "null"}
-          ],
-          "description": "Delay before autostarting a vote from the start of the current match. Set to null to disable auto-starting votes"
+          ]
         },
         "voteDisplayProps": {
+          "description": "What parts of a layer setup should be displayed",
+          "default": ["map", "gamemode"],
           "type": "array",
           "items": {
             "type": "string",
             "enum": ["map", "gamemode", "layer", "factions", "units"]
-          },
-          "default": ["map", "gamemode"],
-          "description": "What parts of a layer setup should be displayed"
+          }
         },
         "finalVoteReminder": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
+          "description": "How far in advance the final vote reminder should be sent",
           "default": "10s",
-          "description": "How far in advance the final vote reminder should be sent"
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "maxNumVoteChoices": {
+          "description": "Maximum number of choices allowed in a vote",
+          "default": 5,
           "type": "integer",
           "minimum": 1,
-          "maximum": 50,
-          "default": 5,
-          "description": "Maximum number of choices allowed in a vote"
+          "maximum": 50
         }
-      },
-      "additionalProperties": false
+      }
     },
     "squadServer": {
       "type": "object",
       "properties": {
         "sftpPollInterval": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
           "default": "1s",
-          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds",
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         },
         "sftpReconnectInterval": {
-          "$ref": "#/properties/postRollAnnouncementsTimeout",
           "default": "5s",
-          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds"
+          "description": "allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds",
+          "type": "string",
+          "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "steamLinkCodeExpiry": {
-      "$ref": "#/properties/postRollAnnouncementsTimeout",
+      "description": "Duration of a steam account link code",
       "default": "15m",
-      "description": "Duration of a steam account link code"
+      "type": "string",
+      "pattern": "^[0-9._]+(s|m|h|d|w|ms)$"
     },
-    "commandPrefix": {"type": "string", "pattern": "^\\S+$"},
+    "commandPrefix": {
+      "description": "A string with no whitespace characters",
+      "type": "string",
+      "pattern": "^\\S+$"
+    },
     "commands": {
-      "type": "object",
-      "properties": {
-        "help": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["help", "h"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {"type": "string", "enum": ["admin", "public"]},
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Display help information",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["help", "h"],
-            "enabled": true
-          }
-        },
-        "requestFeedback": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["feedback", "fb"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Request feedback on a layer",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["feedback", "fb"],
-            "enabled": true
-          }
-        },
-        "startVote": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["startvote", "sv"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Start a new vote",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["startvote", "sv"],
-            "enabled": true
-          }
-        },
-        "abortVote": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["abortvote", "av"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Abort the current vote",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["abortvote", "av"],
-            "enabled": true
-          }
-        },
-        "showNext": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["shownext", "sn"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Show the next item in the queue",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["shownext", "sn"],
-            "enabled": true
-          }
-        },
-        "enableSlmUpdates": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["enable-slm"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Allow SLM to set the next layer",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["enable-slm"],
-            "enabled": true
-          }
-        },
-        "disableSlmUpdates": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["disable-slm"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Prevent SLM from setting the next layer",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["disable-slm"],
-            "enabled": true
-          }
-        },
-        "getSlmUpdatesEnabled": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["get-slm-status"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Check if SLM is allowed to set the next layer",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["get-slm-status"],
-            "enabled": true
-          }
-        },
-        "linkSteamAccount": {
-          "type": "object",
-          "properties": {
-            "strings": {
-              "type": "array",
-              "items": {"$ref": "#/properties/commandPrefix"},
-              "default": ["link-steam-account"],
-              "description": "Command strings that trigger this command when prefixed with the command prefix"
-            },
-            "scopes": {
-              "type": "array",
-              "items": {
-                "$ref": "#/properties/commands/properties/help/properties/scopes/items"
-              },
-              "default": ["admin"],
-              "description": "Scopes in which this command is available"
-            },
-            "enabled": {"type": "boolean", "default": true}
-          },
-          "additionalProperties": false,
-          "description": "Link your Steam account to your Squad account",
-          "default": {
-            "scopes": ["admin"],
-            "strings": ["link-steam-account"],
-            "enabled": true
-          }
-        }
-      },
-      "additionalProperties": false,
       "default": {
         "help": {
           "scopes": ["admin"],
@@ -523,33 +284,294 @@
           "strings": ["link-steam-account"],
           "enabled": true
         }
+      },
+      "type": "object",
+      "properties": {
+        "help": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["help", "h"],
+            "enabled": true
+          },
+          "description": "Display help information",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["help", "h"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "requestFeedback": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["feedback", "fb"],
+            "enabled": true
+          },
+          "description": "Request feedback on a layer",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["feedback", "fb"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "startVote": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["startvote", "sv"],
+            "enabled": true
+          },
+          "description": "Start a new vote",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["startvote", "sv"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "abortVote": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["abortvote", "av"],
+            "enabled": true
+          },
+          "description": "Abort the current vote",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["abortvote", "av"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "showNext": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["shownext", "sn"],
+            "enabled": true
+          },
+          "description": "Show the next item in the queue",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["shownext", "sn"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "enableSlmUpdates": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["enable-slm"],
+            "enabled": true
+          },
+          "description": "Allow SLM to set the next layer",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["enable-slm"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "disableSlmUpdates": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["disable-slm"],
+            "enabled": true
+          },
+          "description": "Prevent SLM from setting the next layer",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["disable-slm"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "getSlmUpdatesEnabled": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["get-slm-status"],
+            "enabled": true
+          },
+          "description": "Check if SLM is allowed to set the next layer",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["get-slm-status"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        },
+        "linkSteamAccount": {
+          "default": {
+            "scopes": ["admin"],
+            "strings": ["link-steam-account"],
+            "enabled": true
+          },
+          "description": "Link your Steam account to your Squad account",
+          "type": "object",
+          "properties": {
+            "strings": {
+              "description": "Command strings that trigger this command when prefixed with the command prefix",
+              "default": ["link-steam-account"],
+              "type": "array",
+              "items": {
+                "description": "A string with no whitespace characters",
+                "type": "string",
+                "pattern": "^\\S+$"
+              }
+            },
+            "scopes": {
+              "description": "Scopes in which this command is available",
+              "default": ["admin"],
+              "type": "array",
+              "items": {"type": "string", "enum": ["admin", "public"]}
+            },
+            "enabled": {"default": true, "type": "boolean"}
+          }
+        }
       }
     },
     "adminListSources": {
       "type": "object",
+      "propertyNames": {"type": "string"},
       "additionalProperties": {
         "type": "object",
         "properties": {
           "type": {"type": "string", "enum": ["remote", "local", "ftp"]},
           "source": {"type": "string"}
         },
-        "required": ["type", "source"],
-        "additionalProperties": false
+        "required": ["type", "source"]
       }
     },
-    "homeDiscordGuildId": {"type": "string", "pattern": "^-?\\d+$"},
-    "repoUrl": {
+    "homeDiscordGuildId": {
+      "description": "A string representation of a big integer that is parsed to a BigInt",
       "type": "string",
-      "format": "uri",
-      "description": "URL of the repository"
+      "pattern": "^-?\\d+$"
+    },
+    "repoUrl": {
+      "description": "URL of the repository",
+      "type": "string",
+      "format": "uri"
     },
     "issuesUrl": {
+      "description": "URL of the issues page",
       "type": "string",
-      "format": "uri",
-      "description": "URL of the issues page"
+      "format": "uri"
     },
     "globalRolePermissions": {
+      "description": "Configures what roles have what permissions. (globally scoped permissions only)",
       "type": "object",
+      "propertyNames": {"type": "string"},
       "additionalProperties": {
         "type": "array",
         "items": {
@@ -568,16 +590,15 @@
                 "squad-server:turn-fog-off"
               ]
             },
-            {"type": "string", "const": "*", "description": "include all"},
+            {"description": "include all", "type": "string", "const": "*"},
             {
+              "description": "negated permissions. takes precedence wherever present for a user",
               "type": "string",
-              "pattern": "^!",
-              "description": "negated permissions. takes precedence wherever present for a user"
+              "pattern": "^!"
             }
           ]
         }
-      },
-      "description": "Configures what roles have what permissions. (globally scoped permissions only)"
+      }
     },
     "roleAssignments": {
       "type": "object",
@@ -587,19 +608,22 @@
           "items": {
             "type": "object",
             "properties": {
-              "discordRoleId": {"$ref": "#/properties/homeDiscordGuildId"},
+              "discordRoleId": {
+                "description": "A string representation of a big integer that is parsed to a BigInt",
+                "type": "string",
+                "pattern": "^-?\\d+$"
+              },
               "roles": {
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^[a-z0-9-]+$",
                   "minLength": 3,
-                  "maxLength": 32
+                  "maxLength": 32,
+                  "pattern": "^[a-z0-9-]+$"
                 }
               }
             },
-            "required": ["discordRoleId", "roles"],
-            "additionalProperties": false
+            "required": ["discordRoleId", "roles"]
           }
         },
         "discord-user": {
@@ -607,16 +631,22 @@
           "items": {
             "type": "object",
             "properties": {
-              "userId": {"$ref": "#/properties/homeDiscordGuildId"},
+              "userId": {
+                "description": "A string representation of a big integer that is parsed to a BigInt",
+                "type": "string",
+                "pattern": "^-?\\d+$"
+              },
               "roles": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/properties/roleAssignments/properties/discord-role/items/properties/roles/items"
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 32,
+                  "pattern": "^[a-z0-9-]+$"
                 }
               }
             },
-            "required": ["userId", "roles"],
-            "additionalProperties": false
+            "required": ["userId", "roles"]
           }
         },
         "discord-server-member": {
@@ -627,28 +657,49 @@
               "roles": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/properties/roleAssignments/properties/discord-role/items/properties/roles/items"
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 32,
+                  "pattern": "^[a-z0-9-]+$"
                 }
               }
             },
-            "required": ["roles"],
-            "additionalProperties": false
+            "required": ["roles"]
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "balanceTriggerLevels": {
+      "description": "Configures the trigger warning levels for balance calculations",
+      "default": {"150x2": "warn"},
       "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": ["150x2", "200x2", "RWS5", "RAM3+"]
+      },
       "additionalProperties": {
         "type": "string",
         "enum": ["info", "warn", "violation"]
-      },
-      "propertyNames": {"enum": ["150x2", "200x2", "RWS5", "RAM3+"]},
-      "default": {"150x2": "warn"},
-      "description": "Configures the trigger warning levels for balance calculations"
+      }
     },
     "layerTable": {
+      "default": {
+        "orderedColumns": [
+          {"name": "id", "visible": false},
+          {"name": "Size"},
+          {"name": "Layer"},
+          {"name": "Map", "visible": false},
+          {"name": "Gamemode", "visible": false},
+          {"name": "LayerVersion", "visible": false},
+          {"name": "Faction_1"},
+          {"name": "Unit_1"},
+          {"name": "Alliance_1", "visible": false},
+          {"name": "Faction_2"},
+          {"name": "Unit_2"},
+          {"name": "Alliance_2", "visible": false}
+        ],
+        "defaultSortBy": {"type": "random"}
+      },
       "type": "object",
       "properties": {
         "orderedColumns": {
@@ -657,27 +708,26 @@
             "type": "object",
             "properties": {
               "name": {"type": "string"},
-              "visible": {"type": "boolean", "description": "default true"}
+              "visible": {"description": "default true", "type": "boolean"}
             },
-            "required": ["name"],
-            "additionalProperties": false
+            "required": ["name"]
           }
         },
         "defaultSortBy": {
-          "anyOf": [
+          "description": "if not provided, no sorting will be done",
+          "oneOf": [
             {
               "type": "object",
               "properties": {
                 "type": {"type": "string", "const": "column"},
                 "sortBy": {"type": "string"},
                 "direction": {
+                  "default": "ASC",
                   "type": "string",
-                  "enum": ["ASC", "DESC", "ASC:ABS", "DESC:ABS"],
-                  "default": "ASC"
+                  "enum": ["ASC", "DESC", "ASC:ABS", "DESC:ABS"]
                 }
               },
-              "required": ["type", "sortBy"],
-              "additionalProperties": false
+              "required": ["type", "sortBy"]
             },
             {
               "type": "object",
@@ -685,11 +735,9 @@
                 "type": {"type": "string", "const": "random"},
                 "seed": {"type": "string"}
               },
-              "required": ["type"],
-              "additionalProperties": false
+              "required": ["type"]
             }
-          ],
-          "description": "if not provided, no sorting will be done"
+          ]
         },
         "extraLayerSelectMenuItems": {
           "type": "array",
@@ -712,19 +760,20 @@
                   "is-true"
                 ]
               },
-              "value": {"type": ["number", "string", "null"]},
+              "value": {
+                "anyOf": [
+                  {"type": "number"},
+                  {"type": "string"},
+                  {"type": "null"}
+                ]
+              },
               "values": {
                 "type": "array",
-                "items": {"type": ["string", "null"]}
+                "items": {"anyOf": [{"type": "string"}, {"type": "null"}]}
               },
               "range": {
                 "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
-                "items": [
-                  {"anyOf": [{"not": {}}, {"type": "number"}]},
-                  {"anyOf": [{"not": {}}, {"type": "number"}]}
-                ]
+                "prefixItems": [{"type": "number"}, {"type": "number"}]
               },
               "allMasks": {
                 "type": "array",
@@ -751,49 +800,29 @@
                           {"type": "null"}
                         ]
                       }
-                    },
-                    "additionalProperties": false
+                    }
                   }
                 }
               },
               "mode": {"type": "string", "enum": ["split", "both", "either"]}
-            },
-            "additionalProperties": false
+            }
           }
         },
         "defaultExtraFilters": {
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9-_]+$",
             "minLength": 3,
-            "maxLength": 64
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-_]+$"
           }
         }
       },
-      "required": ["orderedColumns", "defaultSortBy"],
-      "additionalProperties": false,
-      "default": {
-        "orderedColumns": [
-          {"name": "id", "visible": false},
-          {"name": "Size"},
-          {"name": "Layer"},
-          {"name": "Map", "visible": false},
-          {"name": "Gamemode", "visible": false},
-          {"name": "LayerVersion", "visible": false},
-          {"name": "Faction_1"},
-          {"name": "Unit_1"},
-          {"name": "Alliance_1", "visible": false},
-          {"name": "Faction_2"},
-          {"name": "Unit_2"},
-          {"name": "Alliance_2", "visible": false}
-        ],
-        "defaultSortBy": {"type": "random"}
-      }
-    },
-    "$schema": {"type": "string"}
+      "required": ["orderedColumns", "defaultSortBy"]
+    }
   },
   "required": [
+    "$schema",
     "servers",
     "layerQueue",
     "vote",
@@ -802,9 +831,6 @@
     "adminListSources",
     "homeDiscordGuildId",
     "globalRolePermissions",
-    "roleAssignments",
-    "$schema"
-  ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
+    "roleAssignments"
+  ]
 }

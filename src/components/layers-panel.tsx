@@ -125,7 +125,7 @@ function QueueControlPanel() {
 				createActivity={SLL.createEditActivityVariant({
 					_tag: 'leaf',
 					id: 'ADDING_ITEM',
-					opts: { cursor: { type: 'start' }, variant: 'toggle-position' },
+					opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
 				})}
 				matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 				preload="intent"

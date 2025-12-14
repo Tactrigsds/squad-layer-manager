@@ -7,6 +7,7 @@ import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems.client/rbac.client'
 import * as ReactRx from '@react-rxjs/core'
 import * as Im from 'immer'
+import { z } from 'zod'
 import * as Zus from 'zustand'
 
 export const [useServerSettings, serverSettings$] = ReactRx.bind(RPC.observe(() => RPC.orpc.serverSettings.watchSettings.call()))
@@ -37,7 +38,7 @@ function createStore() {
 			if (state.edited !== prevState.edited) {
 				const parseRes = SS.PublicServerSettingsSchema.safeParse(state.edited)
 				if (!parseRes.success) {
-					store.setState({ validationErrors: parseRes.error.errors.map(err => err.message) })
+					store.setState({ validationErrors: [z.prettifyError(parseRes.error)] })
 				} else {
 					store.setState({ validationErrors: null })
 				}

@@ -938,8 +938,8 @@ function NumericValueConfig(
 
 function NumericRangeConfig(
 	props: {
-		range: [number | undefined, number | undefined]
-		setValues: React.Dispatch<React.SetStateAction<[number | undefined, number | undefined]>>
+		range: [(number | undefined)?, (number | undefined)?]
+		setValues: React.Dispatch<React.SetStateAction<[(number | undefined)?, (number | undefined)?]>>
 		className?: string
 		ref?: React.ForwardedRef<Focusable & Clearable>
 	},

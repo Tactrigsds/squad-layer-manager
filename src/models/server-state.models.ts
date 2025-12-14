@@ -27,48 +27,53 @@ export type PoolFilterConfig = z.infer<typeof PoolFilterConfigSchema>
 export const PoolConfigurationSchema = z.object({
 	filters: z.array(
 		// migrate
-		z.preprocess(obj => typeof obj === 'string' ? ({ filterId: obj, applyAs: DEFAULT_POOL_FILTER_APPLY_AS }) : obj, PoolFilterConfigSchema),
+		z.preprocess(
+			(obj) => typeof obj === 'string' ? ({ filterId: obj, applyAs: DEFAULT_POOL_FILTER_APPLY_AS }) : obj,
+			PoolFilterConfigSchema,
+		),
 	),
 	repeatRules: z.array(LQY.RepeatRuleSchema).refine(
-		(rules) => new Set(rules.map(r => r.label)).size === rules.length,
-		{ message: 'Repeat rule labels must be unique' },
+		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
+		{
+			error: 'Repeat rule labels must be unique',
+		},
 	),
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
 export const ServerConnectionSchema = z.object({
 	rcon: z.object({
-		host: z.string().nonempty(),
+		host: z.string().min(1),
 		port: z.number().min(1).max(65535),
-		password: z.string().nonempty(),
+		password: z.string().min(1),
 	}),
 	sftp: z.object({
-		host: z.string().nonempty(),
+		host: z.string().min(1),
 		port: z.number().min(1).max(65535),
-		username: z.string().nonempty(),
-		password: z.string().nonempty(),
-		logFile: z.string().nonempty(),
+		username: z.string().min(1),
+		password: z.string().min(1),
+		logFile: z.string().min(1),
 	}),
 })
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
-	mainPool: PoolConfigurationSchema.default({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
+	mainPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: DEFAULT_REPEAT_RULES }),
 	// extends the main pool during automated generation
-	applyMainPoolToGenerationPool: z.boolean().default(true),
-	generationPool: PoolConfigurationSchema.default({ filters: [], repeatRules: [] }),
-	preferredLength: z.number().default(12),
-	generatedItemType: z.enum(['layer', 'vote']).default('layer'),
-	preferredNumVoteChoices: z.number().default(3),
+	applyMainPoolToGenerationPool: z.boolean().prefault(true),
+	generationPool: PoolConfigurationSchema.prefault({ filters: [], repeatRules: [] }),
+	preferredLength: z.number().prefault(12),
+	generatedItemType: z.enum(['layer', 'vote']).prefault('layer'),
+	preferredNumVoteChoices: z.number().prefault(3),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
-		updatesToSquadServerDisabled: z.boolean().default(false).describe('disable SLM from setting the next layer on the server'),
+		updatesToSquadServerDisabled: z.boolean().prefault(false).describe('disable SLM from setting the next layer on the server'),
 		queue: QueueSettingsSchema
 			// avoid sharing default queue object - TODO unclear if necessary
-			.default({}).transform((obj) => Obj.deepClone(obj)),
+			.prefault({}).transform((obj) => Obj.deepClone(obj)),
 	})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
@@ -194,7 +199,7 @@ export type ServerId = z.infer<typeof ServerIdSchema>
 export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
 	displayName: z.string().min(1).max(256),
-	layerQueueSeqId: z.number().int().default(0),
+	layerQueueSeqId: z.int().prefault(0),
 	layerQueue: LL.ListSchema,
 	settings: ServerSettingsSchema,
 })
@@ -207,7 +212,9 @@ export const SettingsPathSchema = z.array(z.union([z.string(), z.number()]))
 		const valid = checkPublicSettingsPath(path)
 		if (!valid) console.warn("settings path doesn't resolve", path)
 		return valid
-	}, { message: 'Path must resolve to a valid setting' })
+	}, {
+		error: 'Path must resolve to a valid setting',
+	})
 
 export type SettingsPath = (string | number)[]
 

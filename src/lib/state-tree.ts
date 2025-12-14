@@ -521,17 +521,6 @@ export namespace DefUtils {
 		}
 	}
 
-	export function buildIdEnum<N extends Def.Node>(node: N): z.ZodEnum<[Def.NodeIds<typeof node>, ...Def.NodeIds<typeof node>[]]> {
-		const ids = new Set<string>()
-		for (const child of iterNodes(node)) {
-			if (child._tag === 'leaf' || child._tag === 'branch' || child._tag === 'variant') {
-				ids.add(child.id)
-			}
-		}
-		const idsArray = Array.from(ids)
-		return z.enum(idsArray as [Def.NodeIds<typeof node>, ...Def.NodeIds<typeof node>[]])
-	}
-
 	/**
 	//  * Retrieves a node with the given ID from the tree recursively.
 	//  * Type-safe: when the ID is a literal type that exists in the tree,
@@ -626,8 +615,8 @@ export namespace MatchUtils {
 		// Handle options schema if present
 		const optsSchema = defNode.opts
 			? (typeof defNode.opts === 'object' && 'parse' in defNode.opts
-				? defNode.opts as z.ZodSchema
-				: z.record(z.any()))
+				? defNode.opts as z.ZodType
+				: z.record(z.string(), z.any()))
 			: z.any()
 
 		switch (defNode._tag) {

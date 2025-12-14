@@ -15,7 +15,7 @@ import zlib from 'node:zlib'
 import * as semver from 'semver'
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
-import zodToJsonSchema from 'zod-to-json-schema'
+import { z } from 'zod'
 import { baseLogger } from '../logger'
 
 export let db!: LayerDb
@@ -173,6 +173,6 @@ export async function writePopulated(ctx: CS.Log, dbPath: string) {
 
 function generateJsonSchema() {
 	const schemaPath = path.join(Paths.ASSETS, 'db-config-schema.json')
-	const schema = zodToJsonSchema(LC.LayerDbConfigSchema)
+	const schema = z.toJSONSchema(LC.LayerDbConfigSchema, { io: 'input' })
 	fs.writeFileSync(schemaPath, JSON.stringify(schema, null, 2))
 }

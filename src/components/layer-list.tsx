@@ -723,6 +723,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 															type: 'index',
 															index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
 														},
+														action: 'add',
 														title: activityTitle,
 													},
 												},
@@ -957,17 +958,17 @@ function ItemDropdown(props: ItemDropdownProps) {
 			'add-after': ({
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' } },
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' }, action: 'add' },
 			}),
 			'add-before': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' } },
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' }, action: 'add' },
 			},
 			'create-vote': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote' },
+				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote', action: 'edit' },
 			},
 			'edit': {
 				_tag: 'leaf',

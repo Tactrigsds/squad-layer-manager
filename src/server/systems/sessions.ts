@@ -252,11 +252,11 @@ export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, ex
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
+	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {
-	return ctx.res.cookie(AR.COOKIE_KEY.Values['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 })
+	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 })
 }
 
 export const getUser = C.spanOp(

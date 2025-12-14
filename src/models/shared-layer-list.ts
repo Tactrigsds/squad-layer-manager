@@ -11,7 +11,7 @@ import * as L from './layer'
 
 import * as ST from '@/lib/state-tree'
 
-export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
+export const [ACTIVITIES] = (() => {
 	const { variant, leaf, branch } = ST.Def
 
 	const activities = branch('ON_QUEUE_PAGE', [
@@ -21,7 +21,7 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 				'ADDING_ITEM',
 				z.object({
 					cursor: LL.CursorSchema,
-					action: LQY.LAYER_ITEM_ACTION.default('add'),
+					action: LQY.LAYER_ITEM_ACTION.prefault('add'),
 					title: z.string().optional(),
 					variant: z.enum(['toggle-position']).optional(),
 					selected: z.array(LL.ItemIdSchema).optional(),
@@ -35,8 +35,7 @@ export const [ACTIVITY_CODE, ACTIVITIES] = (() => {
 		]),
 		branch('VIEWING_SETTINGS', [leaf('CHANGING_SETTINGS')]),
 	]) satisfies ST.Def.Node
-	const codes = ST.DefUtils.buildIdEnum(activities)
-	return [codes, activities] as const
+	return [activities] as const
 })()
 
 export const DEFAULT_ACTIVITY: RootActivity = {
@@ -96,10 +95,10 @@ export function toEditIdleOrNone(match?: (root: RootActivity) => any): (prev: Ro
 	})
 }
 
-export type _ActivityCode = z.infer<typeof ACTIVITY_CODE>
+export type ActivityCode = ST.Def.NodeIds<typeof ACTIVITIES>
 export type RootActivity = ST.Match.Node<typeof ACTIVITIES>
 
-function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(base: T) {
+function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodType }>(base: T) {
 	return [
 		z.object({
 			...base,
@@ -138,7 +137,7 @@ function buildItemOpSchemaEntries<T extends { [key: string]: z.ZodTypeAny }>(bas
 	] as const
 }
 
-function buildOperationSchema<T extends { [key: string]: z.ZodTypeAny }, ItemSchema extends z.ZodSchema>(base: T, itemSchema: ItemSchema) {
+function buildOperationSchema<T extends { [key: string]: z.ZodType }, ItemSchema extends z.ZodType>(base: T, itemSchema: ItemSchema) {
 	return z.discriminatedUnion('op', [
 		z.object({
 			...base,

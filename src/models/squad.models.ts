@@ -8,11 +8,11 @@ import * as dateFns from 'date-fns'
 import { z } from 'zod'
 
 export const ServerRawInfoSchema = z.object({
-	ServerName_s: z.string().default('Unknown'),
-	MaxPlayers: z.number().int().nonnegative().default(0),
-	PlayerCount_I: ZodUtils.ParsedIntSchema.default('0').pipe(z.number().int().nonnegative()),
-	PublicQueue_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative().optional()).optional(),
-	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.pipe(z.number().int().nonnegative()).optional(),
+	ServerName_s: z.string().prefault('Unknown'),
+	MaxPlayers: z.int().nonnegative().default(0),
+	PlayerCount_I: ZodUtils.ParsedIntSchema.default(0),
+	PublicQueue_I: ZodUtils.ParsedIntSchema,
+	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.optional(),
 	// MapName_s: z.string(),
 	// GameMode_s: z.string(),
 	// GameVersion_s: z.string(),
@@ -64,8 +64,8 @@ export namespace PlayerIds {
 		playerController: z.string().optional(),
 	})
 
-	export const Schema = SchemaBase.refine(data => data.steam || data.eos, {
-		message: 'At least one of  (steam, eos) must be provided',
+	export const Schema = SchemaBase.refine((data) => data.steam || data.eos, {
+		error: 'At least one of  (steam, eos) must be provided',
 	})
 	export type Type = z.infer<typeof Schema>
 
@@ -833,7 +833,7 @@ export namespace LogEvents {
 		unit: z.string(),
 		faction: z.string(),
 		action: z.enum(['won', 'lost']),
-		tickets: z.number().int(),
+		tickets: z.int(),
 		layer: z.string(),
 		map: z.string(),
 	})
@@ -881,7 +881,7 @@ export namespace LogEvents {
 	export const PlayerConnectedSchema = eventDef('PLAYER_CONNECTED', {
 		...BaseEventProperties,
 		player: PlayerIds.IdQuerySchema,
-		ip: z.string().ip(),
+		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerConnected = z.infer<typeof PlayerConnectedSchema['schema']>
 	export const PlayerConnectedMatcher = createLogMatcher({
@@ -902,7 +902,7 @@ export namespace LogEvents {
 	export const PlayerDisconnectedSchema = eventDef('PLAYER_DISCONNECTED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdQuerySchema,
-		ip: z.string().ip(),
+		ip: z.union([z.ipv4(), z.ipv6()]),
 	})
 	export type PlayerDisconnected = z.infer<typeof PlayerDisconnectedSchema['schema']>
 	export const PlayerDisconnectedMatcher = createLogMatcher({

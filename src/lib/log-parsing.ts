@@ -32,7 +32,7 @@ export function matchLog<LM extends LogMatcher>(line: string, matcher: LM) {
 	return [schemaRes.data as z.infer<LM['event']['schema']>, null] as const
 }
 
-export function eventDef<T extends string, P extends { [key: string]: z.ZodTypeAny }>(type: T, props: P) {
+export function eventDef<T extends string, P extends { [key: string]: z.ZodType }>(type: T, props: P) {
 	return { schema: z.object(props).transform((data) => ({ type, ...data })), type }
 }
 

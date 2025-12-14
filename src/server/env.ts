@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv'
 import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
-import { NormedUrl, ParsedIntSchema, PathSegment, StrFlag } from '../lib/zod'
+import { NormedUrl, ParsedIntSchema, PathSegment } from '../lib/zod'
 import * as Cli from './systems/cli.ts'
 
 export const groups = {
@@ -11,12 +11,12 @@ export const groups = {
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
 
-		PUBLIC_GIT_SHA: z.string().nonempty().prefault('unknown'),
-		PUBLIC_GIT_BRANCH: z.string().nonempty().prefault('unknown'),
+		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown'),
+		PUBLIC_GIT_BRANCH: z.string().min(1).prefault('unknown'),
 
-		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
+		REACT_SCAN_ENABLED_OVERRIDE: z.stringbool().optional(),
 
-		QUERY_PARAM_AUTH_BYPASS: StrFlag.optional(),
+		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional(),
 	},
 
 	squadcalc: {
@@ -24,28 +24,28 @@ export const groups = {
 	},
 
 	db: {
-		DB_HOST: z.string().nonempty().prefault('localhost'),
-		DB_PORT: ParsedIntSchema.default('3306'),
-		DB_USER: z.string().nonempty().prefault('root'),
-		DB_PASSWORD: z.string().nonempty().prefault('dev'),
-		DB_DATABASE: z.string().nonempty().prefault('squadLayerManager'),
+		DB_HOST: z.string().min(1).prefault('localhost'),
+		DB_PORT: ParsedIntSchema.default(3306),
+		DB_USER: z.string().min(1).prefault('root'),
+		DB_PASSWORD: z.string().min(1).prefault('dev'),
+		DB_DATABASE: z.string().min(1).prefault('squadLayerManager'),
 	},
 
 	// only needed when running integration tests for the rcon modules
 	testRcon: {
-		TEST_RCON_HOST: z.string().nonempty().prefault('localhost'),
-		TEST_RCON_PORT: ParsedIntSchema.default('27015'),
-		TEST_RCON_PASSWORD: z.string().nonempty().prefault('test'),
+		TEST_RCON_HOST: z.string().min(1).prefault('localhost'),
+		TEST_RCON_PORT: ParsedIntSchema.default(27015),
+		TEST_RCON_PASSWORD: z.string().min(1).prefault('test'),
 	},
 
 	discord: {
-		DISCORD_CLIENT_ID: z.string().nonempty(),
-		DISCORD_CLIENT_SECRET: z.string().nonempty(),
-		DISCORD_BOT_TOKEN: z.string().nonempty(),
+		DISCORD_CLIENT_ID: z.string().min(1),
+		DISCORD_CLIENT_SECRET: z.string().min(1),
+		DISCORD_BOT_TOKEN: z.string().min(1),
 	},
 
 	httpServer: {
-		PORT: ParsedIntSchema.default('3000'),
+		PORT: ParsedIntSchema.default(3000),
 		HOST: z.string().prefault('127.0.0.1'),
 		ORIGIN: NormedUrl.default('https://localhost:5173'),
 	},
@@ -72,7 +72,7 @@ export const groups = {
 
 let rawEnv!: Record<string, string | undefined>
 
-const parsedProperties = new Map<string, object>()
+const parsedProperties = new Map<string, unknown>()
 
 function parseGroups<G extends Record<string, z.ZodType>>(groups: G) {
 	return z.object(groups).parse(rawEnv)

@@ -1,9 +1,8 @@
 import * as Paths from '$root/paths'
 import * as Arr from '@/lib/array'
-
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import { ParsedFloatSchema, ParsedIntSchema, StrFlag } from '@/lib/zod'
+import { ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -12,7 +11,6 @@ import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger'
 import * as LayerDb from '@/server/systems/layer-db'
 import { parse } from 'csv-parse'
-
 import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
@@ -140,7 +138,7 @@ async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string,
 				schema = ParsedIntSchema
 				break
 			case 'boolean':
-				schema = StrFlag.transform(v => Number(v))
+				schema = z.stringbool().transform(v => Number(v))
 				break
 			case 'float':
 				schema = ParsedNullableFloat

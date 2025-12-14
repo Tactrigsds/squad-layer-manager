@@ -1,10 +1,11 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
     "columns": {
       "type": "array",
       "items": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "properties": {
@@ -32,8 +33,7 @@
               "type",
               "name",
               "displayName"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -43,24 +43,23 @@
                 "const": "float"
               },
               "name": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/name"
+                "type": "string"
               },
               "displayName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
+                "type": "string"
               },
               "shortName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
+                "type": "string"
               },
               "notNull": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"
+                "type": "boolean"
               }
             },
             "required": [
               "type",
               "name",
               "displayName"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -70,24 +69,23 @@
                 "const": "integer"
               },
               "name": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/name"
+                "type": "string"
               },
               "displayName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
+                "type": "string"
               },
               "shortName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
+                "type": "string"
               },
               "notNull": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"
+                "type": "boolean"
               }
             },
             "required": [
               "type",
               "name",
               "displayName"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -97,24 +95,23 @@
                 "const": "boolean"
               },
               "name": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/name"
+                "type": "string"
               },
               "displayName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/displayName"
+                "type": "string"
               },
               "shortName": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/shortName"
+                "type": "string"
               },
               "notNull": {
-                "$ref": "#/properties/columns/items/anyOf/0/properties/notNull"
+                "type": "boolean"
               }
             },
             "required": [
               "type",
               "name",
               "displayName"
-            ],
-            "additionalProperties": false
+            ]
           }
         ]
       }
@@ -142,6 +139,21 @@
         },
         "weights": {
           "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "Map",
+              "Layer",
+              "Gamemode",
+              "Size",
+              "Faction_1",
+              "Faction_2",
+              "Unit_1",
+              "Unit_2",
+              "Alliance_1",
+              "Alliance_2"
+            ]
+          },
           "additionalProperties": {
             "type": "array",
             "items": {
@@ -157,37 +169,19 @@
               "required": [
                 "value",
                 "weight"
-              ],
-              "additionalProperties": false
+              ]
             }
-          },
-          "propertyNames": {
-            "enum": [
-              "Map",
-              "Layer",
-              "Gamemode",
-              "Size",
-              "Faction_1",
-              "Faction_2",
-              "Unit_1",
-              "Unit_2",
-              "Alliance_1",
-              "Alliance_2"
-            ]
           }
         }
       },
       "required": [
         "columnOrder",
         "weights"
-      ],
-      "additionalProperties": false
+      ]
     }
   },
   "required": [
     "columns",
     "generation"
-  ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  ]
 }

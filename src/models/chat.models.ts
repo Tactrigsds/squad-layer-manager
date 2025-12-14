@@ -242,11 +242,11 @@ export function handleEvent(
 
 const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 
-const SuppressionSchema = z.string().refine(s => new RegExp(s))
+const SuppressionSchema = z.string().refine((s) => new RegExp(s))
 
 export const ChatConfigSchema = z.object({
-	warnSuppressionPatterns: z.array(SuppressionSchema).default([]).describe('Regex patterns to suppress warning messages'),
-	broadcastSuppressionPatterns: z.array(SuppressionSchema).default([]).describe(
+	warnSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe('Regex patterns to suppress warning messages'),
+	broadcastSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe(
 		'Regex patterns to suppress broadcast messages. these will not apply to broadcasts sent via an ingame command.',
 	),
 })

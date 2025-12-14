@@ -10,8 +10,8 @@ export const COMMAND_SCOPES = z.enum(['admin', 'public'])
 export type CommandScope = z.infer<typeof COMMAND_SCOPES>
 
 export const CHAT_SCOPE_MAPPINGS = {
-	[COMMAND_SCOPES.Values.admin]: ['ChatAdmin'],
-	[COMMAND_SCOPES.Values.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
+	[COMMAND_SCOPES.enum.admin]: ['ChatAdmin'],
+	[COMMAND_SCOPES.enum.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
 }
 export type CommandConfig = {
 	strings: string[]
@@ -83,12 +83,12 @@ const COMMAND_DEFAULTS: CommandConfigs = Object.fromEntries(
 function CommandConfigSchema(commandId: CommandId) {
 	const defaultConfig = COMMAND_DEFAULTS[commandId]
 	return z.object({
-		strings: z.array(BasicStrNoWhitespace).default(defaultConfig.strings).describe(
+		strings: z.array(BasicStrNoWhitespace).prefault(defaultConfig.strings).describe(
 			'Command strings that trigger this command when prefixed with the command prefix',
 		),
-		scopes: z.array(COMMAND_SCOPES).default(defaultConfig.scopes).describe('Scopes in which this command is available'),
-		enabled: z.boolean().default(defaultConfig.enabled),
-	}).describe(Messages.GENERAL.command.descriptions[commandId]).default(defaultConfig)
+		scopes: z.array(COMMAND_SCOPES).prefault(defaultConfig.scopes).describe('Scopes in which this command is available'),
+		enabled: z.boolean().prefault(defaultConfig.enabled),
+	}).describe(Messages.GENERAL.command.descriptions[commandId]).prefault(defaultConfig)
 }
 
 export const AllCommandConfigSchema = z.object(

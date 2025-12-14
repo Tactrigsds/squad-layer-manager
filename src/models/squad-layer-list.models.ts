@@ -126,11 +126,11 @@ export const UnitSchema = z.object({
 		key: z.string(),
 		description: z.string(),
 	})),
-}).transform(unit => ({ ...unit, type: parseUnitId(unit.unitObjectName)!.unit }))
+}).transform((unit) => ({ ...unit, type: parseUnitId(unit.unitObjectName)!.unit }))
 export type Unit = z.infer<typeof UnitSchema>
 
 export const RootSchema = z.object({
-	Maps: z.array(z.any()).transform(maps => maps.filter(map => !['Tutorial', 'Lobby', 'Fireteam'].includes(map.gamemode))).pipe(
+	Maps: z.array(z.any()).transform((maps) => maps.filter((map) => !['Tutorial', 'Lobby', 'Fireteam'].includes(map.gamemode))).pipe(
 		z.array(MapSchema),
 	),
 	Units: z.record(z.string(), z.any()).transform((units) =>

@@ -609,7 +609,7 @@ export const LayerDbConfigSchema = z.object({
 	columns: z.array(ColumnDefSchema),
 	generation: z.object({
 		columnOrder: z.array(WEIGHT_COLUMNS),
-		weights: z.record(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() }))),
+		weights: z.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() }))),
 	}),
 })
 	.refine(config => {
@@ -623,7 +623,9 @@ export const LayerDbConfigSchema = z.object({
 			allCols.add(col.name)
 		}
 		return true
-	}, { message: 'Duplicate/Preexisting column name' })
+	}, {
+		error: 'Duplicate/Preexisting column name',
+	})
 
 export type LayerDbConfig = z.infer<typeof LayerDbConfigSchema>
 export type LayerGenerationConfig = LayerDbConfig['generation']
