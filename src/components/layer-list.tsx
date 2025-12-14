@@ -1024,7 +1024,7 @@ function ItemDropdown(props: ItemDropdownProps) {
 						</StartActivityInteraction>
 					)}
 					<DropdownMenuItem
-						disabled={isLocked}
+						disabled={isLocked || !LL.swapFactions(item)}
 						onClick={() => itemActions().dispatch({ op: 'swap-factions' })}
 					>
 						Swap Factions

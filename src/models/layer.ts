@@ -141,6 +141,17 @@ export function isKnownLayer(layer: UnvalidatedLayer | LayerId, components = Sta
 			return false
 		}
 	}
+
+	const knownLayer = layer as KnownLayer
+
+	const avail = components.layerFactionAvailability[knownLayer.Layer]
+
+	const t1 = avail.find(f => f.Faction === knownLayer.Faction_1 && f.Unit === knownLayer.Unit_1 && f.allowedTeams.includes(1))
+	const t2 = avail.find(f => f.Faction === knownLayer.Faction_2 && f.Unit === knownLayer.Unit_2 && f.allowedTeams.includes(2))
+	if (!t1 || !t2) {
+		return false
+	}
+
 	return true
 }
 
@@ -289,6 +300,14 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 		code: 'ok' as const,
 		layer,
 	}
+}
+export function swapFactions(_layer: UnvalidatedLayer | LayerId, components = StaticLayerComponents) {
+	const layer = toLayer(_layer, components)
+	if (!isKnownLayer(layer, components)) return null
+	const swappedId = swapFactionsInId(layer.id)
+	const res = parseLayerId(swappedId, components)
+	if (res.code !== 'ok') return null
+	return res.layer
 }
 
 export function swapFactionsInId(id: LayerId) {

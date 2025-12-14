@@ -303,6 +303,7 @@ export function applyOperation(list: LL.List, newOp: Operation | NewOperation, m
 			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 			if (!index || !item) break
 			const swapped = LL.swapFactions(item, source)
+			if (!swapped) break
 
 			// maybe mirror matchups will be a thing at some point who knows
 			if (swapped.layerId === item.layerId) break
