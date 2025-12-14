@@ -1045,30 +1045,14 @@ const AUTO_OPEN_WIDTH_THRESHOLD = AUTO_CLOSE_WIDTH_THRESHOLD * 1.2 // 20% above 
 
 export default function ServerActivityPanel() {
 	const [isStatePanelOpen, setIsStatePanelOpen] = React.useState(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
-	const cardRef = React.useRef<HTMLDivElement>(null)
-	const [maxHeight, setMaxHeight] = React.useState<number | null>(null)
 	const synced = Zus.useStore(SquadServerClient.ChatStore, s => s.chatState.synced)
 
 	// Track viewport width state for auto-closing/opening the panel
 	const hasBeenAboveThresholdRef = React.useRef(window.innerWidth >= AUTO_CLOSE_WIDTH_THRESHOLD)
 	const userManuallyClosed = React.useRef(false)
 
-	React.useLayoutEffect(() => {
-		const calculateMaxHeight = () => {
-			if (!cardRef.current) return
-
-			const rect = cardRef.current.getBoundingClientRect()
-			const viewportHeight = window.innerHeight
-			const topOffset = rect.top
-			const bottomPadding = 16 // Some breathing room at the bottom
-
-			const availableHeight = viewportHeight - topOffset - bottomPadding
-			setMaxHeight(availableHeight)
-		}
-
+	React.useEffect(() => {
 		const handleResize = () => {
-			calculateMaxHeight()
-
 			const currentWidth = window.innerWidth
 			const isAboveThreshold = currentWidth >= AUTO_CLOSE_WIDTH_THRESHOLD
 			const isAboveAutoOpenThreshold = currentWidth >= AUTO_OPEN_WIDTH_THRESHOLD
@@ -1098,43 +1082,18 @@ export default function ServerActivityPanel() {
 			}
 		}
 
-		const visible$ = Rx.fromEvent(document, 'visibilitychange').pipe(Rx.filter(() => !document.hidden))
 		const resize$ = Rx.fromEvent(window, 'resize').pipe(Rx.debounceTime(150))
-		const sub = Rx.merge(
-			visible$,
-			resize$,
-		).subscribe(handleResize)
+		const sub = resize$.subscribe(handleResize)
 
-		// Use ResizeObserver to detect when the card becomes visible
-		let resizeObserver: ResizeObserver | null = null
-		if (cardRef.current) {
-			resizeObserver = new ResizeObserver(() => {
-				if (cardRef.current) {
-					const computedStyle = window.getComputedStyle(cardRef.current)
-					if (computedStyle.visibility === 'visible' && computedStyle.height !== '0px') {
-						// Card is visible
-						handleResize()
-					}
-				}
-			})
-			resizeObserver.observe(cardRef.current)
-		}
-
-		calculateMaxHeight()
 		handleResize()
 
 		return () => {
 			sub.unsubscribe()
-			resizeObserver?.disconnect()
 		}
 	}, [isStatePanelOpen])
 
 	return (
-		<Card
-			ref={cardRef}
-			className="flex flex-col"
-			style={{ height: maxHeight ? `${maxHeight}px` : 'auto' }}
-		>
+		<Card className="flex flex-col flex-1 min-h-0">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
 				<div className="flex items-center gap-4">
 					<CardTitle className="flex items-center gap-2">
@@ -1145,10 +1104,10 @@ export default function ServerActivityPanel() {
 				</div>
 				<ServerCounts />
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden w-full min-h-[10em]">
+			<CardContent className="flex-1 overflow-hidden w-full min-h-0">
 				<div className="flex gap-0.5 h-full">
 					<ServerChatEvents
-						className="flex-1 min-w-[350px] max-w-[750px] h-full"
+						className="flex-1 min-w-[350px] h-full"
 						onToggleStatePanel={() => {
 							const newState = !isStatePanelOpen
 							setIsStatePanelOpen(newState)

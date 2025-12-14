@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardDescription } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as ST from '@/lib/state-tree.ts'
@@ -21,15 +22,17 @@ import UserPresencePanel from './user-presence-panel'
 
 export default function LayersPanel() {
 	return (
-		<Card>
-			<MatchHistoryPanelContent />
-			<Separator />
-			<CardHeader className="flex flex-row items-center justify-between">
-				<CardTitle>Recent Users</CardTitle>
-				<UserPresencePanel />
-			</CardHeader>
-			<Separator />
-			<QueuePanelContent />
+		<Card className="flex flex-col flex-1 min-h-0">
+			<ScrollArea className="flex-1">
+				<MatchHistoryPanelContent />
+				<Separator />
+				<CardHeader className="flex flex-row items-center justify-between">
+					<CardTitle>Recent Users</CardTitle>
+					<UserPresencePanel />
+				</CardHeader>
+				<Separator />
+				<QueuePanelContent />
+			</ScrollArea>
 		</Card>
 	)
 }

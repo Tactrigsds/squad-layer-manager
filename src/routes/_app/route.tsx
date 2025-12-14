@@ -2,6 +2,8 @@ import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import CommandsHelpDialog from '@/components/commands-help-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
+import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
+import { NormTeamsSwitch } from '@/components/server-dashboard'
 import { Alert, AlertTitle } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -18,7 +20,7 @@ import * as RbacClient from '@/systems.client/rbac.client'
 import * as SquadServerClient from '@/systems.client/squad-server.client'
 import * as ThemeClient from '@/systems.client/theme'
 import { useLoggedInUser } from '@/systems.client/users.client'
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { createFileRoute, Link, Outlet, useMatch } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
@@ -37,6 +39,9 @@ function RouteComponent() {
 	const user = useLoggedInUser()
 
 	const avatarUrl = user && USR.getAvatarUrl(user)
+
+	// Check if we're on the server dashboard route
+	const isOnServerDashboard = useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
 
 	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'commands' | 'steam-link' | 'nickname' | 'about' | null>(
 		null,
@@ -65,9 +70,9 @@ function RouteComponent() {
 	const selectedServerId = SquadServerClient.useSelectedServerId()
 	const selectedServer = config?.servers.find(server => server.id === selectedServerId)
 	return (
-		<div className="h-full w-full">
+		<div className="h-screen w-full flex flex-col overflow-hidden">
 			<nav
-				className="flex h-16 items-center justify-between border-b px-2 sm:px-4"
+				className="flex h-16 flex-shrink-0 items-center justify-between border-b px-2 sm:px-4"
 				style={{ backgroundColor: config?.topBarColor ?? undefined }}
 			>
 				<div className="flex items-start space-x-3 sm:space-x-6">
@@ -109,7 +114,17 @@ function RouteComponent() {
 							{config.wsClientId}
 						</span>
 					)}
-					{selectedServer && config && (config.servers.length === 1
+					{isOnServerDashboard && (
+						<>
+							<div className="hidden xl:block">
+								<NormTeamsSwitch />
+							</div>
+							<div className="hidden xl:block">
+								<ServerActionsDropdown />
+							</div>
+						</>
+					)}
+					{isOnServerDashboard && selectedServer && config && (config.servers.length === 1
 						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
 						: (
 							<DropdownMenu>
@@ -222,7 +237,7 @@ function RouteComponent() {
 					)}
 				</div>
 			</nav>
-			<div className="flex flex-grow p-4">
+			<div className="flex flex-1 min-h-0 p-4 overflow-hidden">
 				<Outlet />
 			</div>
 		</div>
