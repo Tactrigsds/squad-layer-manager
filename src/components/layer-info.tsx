@@ -1,5 +1,5 @@
 import scoreRanges from '$root/assets/score-ranges.json'
-import { copyAdminSetNextLayerCommand } from '@/helpers.client/layer-table.helpers.ts'
+import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'

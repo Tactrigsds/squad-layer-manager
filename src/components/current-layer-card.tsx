@@ -24,12 +24,10 @@ import { ServerUnreachable } from './server-offline-display.tsx'
 import { Timer } from './timer.tsx'
 
 export function CurrentLayerCardContent() {
-	const loggedInUser = useLoggedInUser()
 	const serverLayerStatusRes = SquadServerClient.useLayersStatus()
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes()
 	const serverRolling = !!SquadServerClient.useServerRolling()
 	const updatesToSquadServerDisabled = Zus.useStore(ServerSettingsClient.Store, s => s.saved?.updatesToSquadServerDisabled)
-	const { enableUpdates } = QD.useToggleSquadServerUpdates()
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
 	if (serverLayerStatusRes.code !== 'ok') return null

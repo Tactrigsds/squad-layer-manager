@@ -1,5 +1,5 @@
+import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import { ContextMenuItem } from '@/components/ui/context-menu'
-import { copyAdminSetNextLayerCommand } from '@/helpers.client/layer-table.helpers'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as L from '@/models/layer'
 import LayerInfoDialog from './layer-info'
