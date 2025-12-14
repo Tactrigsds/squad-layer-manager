@@ -32,6 +32,7 @@ export type Store = {
 
 export type Predicates = {
 	filterMenuItemPossibleValues?: FilterMenuItemPossibleValues
+	resetAllConstraints: () => void
 }
 
 type Input = {

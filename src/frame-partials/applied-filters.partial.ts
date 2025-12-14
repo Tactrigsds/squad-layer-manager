@@ -14,6 +14,7 @@ export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 export type State = {
 	appliedFilters: Map<F.FilterEntityId, ApplyAs>
 	setAppliedFilterState: (filterId: F.FilterEntityId, active: ApplyAs) => void
+	disableAllAppliedFilters: () => void
 }
 
 export type Args = FRM.SetupArgs<{ poolDefaultDisabled: boolean }, State>
@@ -30,9 +31,19 @@ export function initAppliedFiltersStore(
 				}),
 		)
 	}
+	const disableAll = () => {
+		set(
+			storeState =>
+				Im.produce(storeState, draft => {
+					for (const filterId of draft.appliedFilters.keys()) {
+						draft.appliedFilters.set(filterId, 'disabled')
+					}
+				}),
+		)
+	}
 	const states = getInitialFilterStates(args.input.poolDefaultDisabled)
 	if (args.sub.closed) return
-	set({ appliedFilters: states, setAppliedFilterState: setFilterState })
+	set({ appliedFilters: states, setAppliedFilterState: setFilterState, disableAllAppliedFilters: disableAll })
 
 	const unsub = QD.ExtraFiltersStore.subscribe(extraFiltersState => {
 		set(state => ({

@@ -437,6 +437,8 @@ export function Comparison(props: {
 	allowedComparisonCodes?: F.ComparisonCode[]
 	restrictValueSize?: boolean
 	allowedEnumValues?: string[]
+	onSetAllValuesAllowed?: () => void
+	onSetAllValuesAllowedLabel?: string
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
@@ -583,6 +585,8 @@ export function Comparison(props: {
 						lockOnSingleOption={lockOnSingleOption}
 						className={componentStyles}
 						allowedValues={props.allowedEnumValues}
+						onSetAllValuesAllowed={props.onSetAllValuesAllowed}
+						onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
 						column={comp.column as LC.GroupByColumn}
 						value={comp.value as string | undefined | null}
 						setValue={(value) => {
@@ -736,6 +740,8 @@ function StringEqConfig<T extends string | null>(
 		value: T | undefined
 		column: LC.GroupByColumn
 		allowedValues?: T[]
+		onSetAllValuesAllowed?: () => void
+		onSetAllValuesAllowedLabel?: string
 		setValue: (value: T | undefined) => void
 		className?: string
 		lockOnSingleOption?: boolean
@@ -747,7 +753,31 @@ function StringEqConfig<T extends string | null>(
 	for (const value of LC.groupByColumnDefaultValues(props.column)) {
 		if (value === null) continue
 		const matched = props.allowedValues?.includes(value as T) ?? true
-		options.push({ label: value, value, disabled: !matched })
+		let label: React.ReactNode
+		if (!matched && props.onSetAllValuesAllowed) {
+			label = (
+				<span
+					className="flex items-center gap-1 group w-full"
+					onClick={(e) => {
+						if (e.target !== e.currentTarget) return
+						e.stopPropagation()
+					}}
+				>
+					<span className="text-muted-foreground pointer-events-none">{value}</span>
+					<span title={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}>
+						<Icons.Unlock
+							className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-green-500 pointer-events-auto"
+							onClick={(e) => {
+								props.onSetAllValuesAllowed?.()
+							}}
+						/>
+					</span>
+				</span>
+			)
+		} else {
+			label = value
+		}
+		options.push({ label, value, disabled: !matched && !props.onSetAllValuesAllowed })
 	}
 	return (
 		<ComboBox

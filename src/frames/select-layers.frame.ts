@@ -111,6 +111,17 @@ const setup: Frame['setup'] = (args) => {
 		} satisfies LayerTablePrt.Predicates,
 	)
 
+	set(
+		{
+			resetAllConstraints() {
+				const s = get()
+				s.filterMenu.resetAllFilters()
+				s.setCheckbox('dnr', 'disabled')
+				s.disableAllAppliedFilters()
+			},
+		} satisfies LayerFilterMenuPrt.Predicates,
+	)
+
 	AppliedFiltersPrt.initAppliedFiltersStore({
 		...args,
 		input: { poolDefaultDisabled: !!input.initialEditedLayerId },

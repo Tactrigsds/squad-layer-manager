@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
-import { useFrameStore } from '@/frames/frame-manager.ts'
+import { getFrameState, useFrameStore } from '@/frames/frame-manager.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import { useDebouncedState } from '@/hooks/use-debounce.ts'
+
 import * as Gen from '@/lib/generator.ts'
 import * as ZusUtils from '@/lib/zustand.ts'
 import type * as F from '@/models/filter.models.ts'
@@ -17,7 +17,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
-import type { TriState as TriStateCheckboxState } from './ui/tri-state-checkbox.tsx'
+
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame.Key }) {
@@ -154,6 +154,18 @@ export default function AppliedFiltersPanel(props: { frameKey: SelectLayersFrame
 					return <FilterCheckbox key={filterId} filterId={filterId} frameKey={props.frameKey} />
 				})}
 			</div>
+			<div className="flex flex-row gap-2 w-max">
+				<Button
+					title="Disable all filters"
+					variant="ghost"
+					size="icon"
+					onClick={() => {
+						getFrameState(props.frameKey).disableAllAppliedFilters()
+					}}
+				>
+					<Icons.Trash2 className="h-4 w-4" />
+				</Button>
+			</div>
 		</div>
 	)
 }
@@ -165,22 +177,14 @@ function FilterCheckbox({ filterId, frameKey }: { filterId: string; frameKey: Se
 	)
 	const filter = FilterEntityClient.useFilterEntities().get(filterId)
 
-	const [appliedState, changeThrottled] = useDebouncedState<TriStateCheckboxState>(storeAppliedState, {
-		delay: 0,
-		mode: 'throttle',
-		onChange: React.useCallback((applyAs: TriStateCheckboxState) => {
-			setAppliedFilterState(filterId, applyAs)
-		}, [filterId, setAppliedFilterState]),
-	})
-
 	if (!filter) return
 	let emoji = filter?.emoji
-	if (appliedState === 'inverted' && filter.invertedEmoji) {
+	if (storeAppliedState === 'inverted' && filter.invertedEmoji) {
 		emoji = filter.invertedEmoji
 	}
 
 	return (
-		<TriStateCheckbox checked={appliedState} onCheckedChange={changeThrottled}>
+		<TriStateCheckbox checked={storeAppliedState} onCheckedChange={(applyAs) => setAppliedFilterState(filterId, applyAs)}>
 			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
 			<span>{filter?.name}</span>
 		</TriStateCheckbox>

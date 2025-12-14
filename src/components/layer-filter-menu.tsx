@@ -66,6 +66,9 @@ function LayerFilterMenuItem(
 		})
 		return () => sub.unsubscribe()
 	}, [props.frameKey])
+	let unlockAllValues = () => {
+		getFrameState(props.frameKey).resetAllConstraints()
+	}
 
 	return (
 		<React.Fragment key={props.field}>
@@ -92,6 +95,8 @@ function LayerFilterMenuItem(
 				highlight={F.editableComparisonHasValue(comp)}
 				comp={comp}
 				allowedEnumValues={possibleValues}
+				onSetAllValuesAllowed={unlockAllValues}
+				onSetAllValuesAllowedLabel="Remove all other filters and select this one"
 				setComp={(update) => {
 					return getState().setComparison(props.field, update)
 				}}
