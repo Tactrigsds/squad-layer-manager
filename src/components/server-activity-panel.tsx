@@ -739,7 +739,6 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 			scrollElement.scrollTop = scrollElement.scrollHeight
 		}
 		tailing.current = true
-		console.log('setting tailing to true')
 		setNewMessageCount(0)
 	}
 
