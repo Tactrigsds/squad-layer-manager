@@ -174,9 +174,7 @@ export function MatchHistoryPanelContent() {
 										className="h-6 w-6 p-0"
 										title={showFullDay ? 'Show less' : 'Show full day'}
 									>
-										{showFullDay
-											? <Icons.ChevronsDownUp className="h-4 w-4" />
-											: <Icons.ChevronsUpDown className="h-4 w-4" />}
+										{showFullDay ? <Icons.ChevronsDownUp className="h-4 w-4" /> : <Icons.ChevronsUpDown className="h-4 w-4" />}
 									</Button>
 								)}
 							</TableHead>
@@ -326,7 +324,9 @@ function MatchHistoryRow({
 	}
 
 	// Get trigger info for this entry
-	const triggerLevel = BAL.getHighestPriorityTriggerEvent(effectiveBalanceTriggerEvents)?.level
+	const triggerLevel = BAL.getHighestPriorityTriggerEvent(
+		effectiveBalanceTriggerEvents,
+	)?.level
 
 	// Create trigger alerts for this entry
 	const entryTriggerAlerts = React.useMemo(() => {
@@ -391,14 +391,20 @@ function MatchHistoryRow({
 			)
 		} else if (entry.status === 'post-game') {
 			statusBadge = (
-				<Badge variant="outline" className="flex items-center whitespace-nowrap">
+				<Badge
+					variant="outline"
+					className="flex items-center whitespace-nowrap"
+				>
 					<span className="pr-1">Post-Game</span>
 					<Timer zeros start={entry.endTime.getTime()} className="font-mono" />
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
 			statusBadge = (
-				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
+				<Badge
+					variant="secondary"
+					className="flex items-center whitespace-nowrap"
+				>
 					<span>In progress</span>
 				</Badge>
 			)
@@ -473,7 +479,7 @@ function MatchHistoryRow({
 		}
 	}
 
-	const gameRuntime = (entry.startTime && entry.status === 'post-game')
+	const gameRuntime = entry.startTime && entry.status === 'post-game'
 		? entry.endTime.getTime() - entry.startTime.getTime()
 		: undefined
 
@@ -516,7 +522,9 @@ function MatchHistoryRow({
 								? <Icons.Play className="h-3 w-3 text-green-500" />
 								: isCurrentMatch && entry.status === 'post-game'
 								? <Icons.Check className="h-3 w-3" />
-								: currentMatchOffset.toString()}
+								: (
+									currentMatchOffset.toString()
+								)}
 						</div>
 					</TableCell>
 					<TableCell className="text-xs hidden min-[820px]:table-cell">
