@@ -94,7 +94,7 @@ export default function ServerDashboard() {
 
 			{isDesktop && (
 				/* Desktop: Two column layout */
-				<div className="flex gap-2 h-full min-h-0">
+				<div className="flex gap-2 h-full min-h-0 mx-auto">
 					{/* left column */}
 					<div className="flex flex-col gap-2 flex-shrink-0">
 						<LayersPanel />

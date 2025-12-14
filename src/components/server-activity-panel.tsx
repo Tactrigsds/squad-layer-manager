@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import { cn } from '@/lib/utils.ts'
 import * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -817,7 +818,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 	}, [])
 
 	return (
-		<div className="h-full w-full relative">
+		<div className={cn(props.className, 'h-full relative')}>
 			{!synced && (
 				<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-sm flex items-center justify-center">
 					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -834,7 +835,7 @@ function ServerChatEvents(props: { className?: string; onToggleStatePanel?: () =
 					{props.isStatePanelOpen ? <Icons.ChevronRight className="h-3 w-3" /> : <Icons.ChevronLeft className="h-3 w-3" />}
 				</Button>
 			)}
-			<ScrollArea className={props.className} ref={scrollAreaRef}>
+			<ScrollArea ref={scrollAreaRef} className="h-full">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
 					<PreviousMatchEvents />
@@ -1092,7 +1093,7 @@ export default function ServerActivityPanel() {
 	}, [isStatePanelOpen])
 
 	return (
-		<Card className="flex flex-col flex-1 min-h-0">
+		<Card className="flex flex-col min-h-0 w-fit">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
 				<div className="flex items-center gap-4">
 					<CardTitle className="flex items-center gap-2">
@@ -1103,7 +1104,7 @@ export default function ServerActivityPanel() {
 				</div>
 				<ServerCounts />
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden w-full min-h-0">
+			<CardContent className="flex-1 overflow-hidden min-h-0">
 				<div className="flex gap-0.5 h-full">
 					<ServerChatEvents
 						className="flex-1 min-w-[350px] h-full"
