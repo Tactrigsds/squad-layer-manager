@@ -32,7 +32,7 @@ export const ParsedIntSchema = z
 	.trim()
 	.regex(/^-?\d+$/)
 	.transform((val) => parseInt(val, 10))
-	.pipe(z.number().int().finite())
+	.pipe(z.int().finite())
 
 export const ParsedFloatSchema = z
 	.string()
@@ -56,19 +56,21 @@ export const StrFlag = z
 
 export const StrOrNullIfEmptyOrWhitespace = z.string().trim().nullable().transform((val) => val || null)
 
-export const NormedUrl = z.string().url().transform((url) => url.replace(/\/$/, ''))
+export const NormedUrl = z.url().transform((url) => url.replace(/\/$/, ''))
 
 export const BasicStrNoWhitespace = z.string().regex(/^\S+$/, {
-	message: 'Must not contain whitespace',
+    error: 'Must not contain whitespace'
 })
 
 export const PathSegment = z
 	.string()
 	.trim()
-	.min(1, { message: 'Path segment cannot be empty' })
+	.min(1, {
+        error: 'Path segment cannot be empty'
+    })
 	.regex(/^[^/\\?%*:|"<>]+$/, {
-		message: 'Path segment cannot contain: / \\ ? % * : | " < >',
-	})
+        error: 'Path segment cannot contain: / \\ ? % * : | " < >'
+    })
 	.refine((val) => val !== '.' && val !== '..', {
-		message: 'Path segment cannot be "." or ".."',
-	})
+        error: 'Path segment cannot be "." or ".."'
+    })

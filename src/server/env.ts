@@ -11,8 +11,8 @@ export const groups = {
 		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
 		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318'),
 
-		PUBLIC_GIT_SHA: z.string().nonempty().default('unknown'),
-		PUBLIC_GIT_BRANCH: z.string().nonempty().default('unknown'),
+		PUBLIC_GIT_SHA: z.string().nonempty().prefault('unknown'),
+		PUBLIC_GIT_BRANCH: z.string().nonempty().prefault('unknown'),
 
 		REACT_SCAN_ENABLED_OVERRIDE: StrFlag.optional(),
 
@@ -24,18 +24,18 @@ export const groups = {
 	},
 
 	db: {
-		DB_HOST: z.string().nonempty().default('localhost'),
+		DB_HOST: z.string().nonempty().prefault('localhost'),
 		DB_PORT: ParsedIntSchema.default('3306'),
-		DB_USER: z.string().nonempty().default('root'),
-		DB_PASSWORD: z.string().nonempty().default('dev'),
-		DB_DATABASE: z.string().nonempty().default('squadLayerManager'),
+		DB_USER: z.string().nonempty().prefault('root'),
+		DB_PASSWORD: z.string().nonempty().prefault('dev'),
+		DB_DATABASE: z.string().nonempty().prefault('squadLayerManager'),
 	},
 
 	// only needed when running integration tests for the rcon modules
 	testRcon: {
-		TEST_RCON_HOST: z.string().nonempty().default('localhost'),
+		TEST_RCON_HOST: z.string().nonempty().prefault('localhost'),
 		TEST_RCON_PORT: ParsedIntSchema.default('27015'),
-		TEST_RCON_PASSWORD: z.string().nonempty().default('test'),
+		TEST_RCON_PASSWORD: z.string().nonempty().prefault('test'),
 	},
 
 	discord: {
@@ -46,39 +46,39 @@ export const groups = {
 
 	httpServer: {
 		PORT: ParsedIntSchema.default('3000'),
-		HOST: z.string().default('127.0.0.1'),
+		HOST: z.string().prefault('127.0.0.1'),
 		ORIGIN: NormedUrl.default('https://localhost:5173'),
 	},
 
 	layerDb: {
 		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
-		LAYER_DB_CONFIG_PATH: z.string().default('./layer-db.json'),
-		LAYERS_DB_PATH: z.string().default('./data/layers_v{{LAYERS_VERSION}}.sqlite3.gz'),
+		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),
+		LAYERS_DB_PATH: z.string().prefault('./data/layers_v{{LAYERS_VERSION}}.sqlite3.gz'),
 	},
 
 	preprocess: {
-		SPREADSHEET_ID: z.string().default('1Rv7WpDN7UutQjyK7opSOr6BodGcZDrTnuAwp_4U63J4'),
-		SPREADSHEET_MAP_LAYERS_GID: z.number().default(1212962563),
-		EXTRA_COLS_CSV_PATH: z.string().default(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
+		SPREADSHEET_ID: z.string().prefault('1Rv7WpDN7UutQjyK7opSOr6BodGcZDrTnuAwp_4U63J4'),
+		SPREADSHEET_MAP_LAYERS_GID: z.number().prefault(1212962563),
+		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')),
 	},
 
 	battlemetrics: {
-		BM_HOST: z.string().url().default('https://api.battlemetrics.com'),
+		BM_HOST: z.url().prefault('https://api.battlemetrics.com'),
 		// BM_ORG_ID: z.string(),
 		BM_PAT: z.string(),
 		BM_ORG_ID: z.string(),
 	},
-} satisfies { [key: string]: Record<string, z.ZodTypeAny> }
+} satisfies { [key: string]: Record<string, z.ZodType> }
 
 let rawEnv!: Record<string, string | undefined>
 
 const parsedProperties = new Map<string, object>()
 
-function parseGroups<G extends Record<string, z.ZodTypeAny>>(groups: G) {
+function parseGroups<G extends Record<string, z.ZodType>>(groups: G) {
 	return z.object(groups).parse(rawEnv)
 }
 
-export function getEnvBuilder<G extends Record<string, z.ZodTypeAny>>(groups: G) {
+export function getEnvBuilder<G extends Record<string, z.ZodType>>(groups: G) {
 	return () => {
 		const res: Record<string, any> = {}
 		const errors: string[] = []
