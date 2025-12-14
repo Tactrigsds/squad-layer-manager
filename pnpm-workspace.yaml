@@ -13,3 +13,4 @@ onlyBuiltDependencies:
   - sqlite3
   - ssh2
   - oxlint
+  - tsgo
