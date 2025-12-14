@@ -486,16 +486,21 @@ function MatchHistoryRow({
 		? entry.endTime.getTime() - entry.startTime.getTime()
 		: undefined
 
-	// Determine background color based on trigger level or current match
+	// Determine background color and hover state based on trigger level or current match
 	let bgColor = ''
+	let hoverColor = ''
 	if (isCurrentMatch && entry.status === 'in-progress') {
 		bgColor = 'bg-green-500/20'
+		hoverColor = 'hover:bg-green-500/30'
 	} else if (triggerLevel === 'violation') {
 		bgColor = 'bg-red-500/10'
+		hoverColor = 'hover:bg-red-500/20'
 	} else if (triggerLevel === 'warn') {
 		bgColor = 'bg-yellow-500/10'
+		hoverColor = 'hover:bg-yellow-500/20'
 	} else if (triggerLevel === 'info') {
 		bgColor = 'bg-blue-500/10'
+		hoverColor = 'hover:bg-blue-500/20'
 	}
 
 	return (
@@ -508,6 +513,7 @@ function MatchHistoryRow({
 						Typo.LayerText,
 						'whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs',
 						bgColor,
+						hoverColor,
 					)}
 				>
 					<TableCell className="font-mono text-xs relative text-right">
@@ -552,27 +558,29 @@ function MatchHistoryRow({
 					</TableCell>
 					<TableCell>{rightTeam}</TableCell>
 
-					<TableCell className="text-center flex flex-row flex-nowrap">
-						{TriggerIcon && entryTriggerAlerts.length > 0 && (
-							<Tooltip delayDuration={0}>
-								<TooltipTrigger asChild>
-									<Button
-										variant="ghost"
-										size="sm"
-										className={`h-6 w-6 p-0 ${triggerIconColor}`}
+					<TableCell className="text-center">
+						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
+							{TriggerIcon && entryTriggerAlerts.length > 0 && (
+								<Tooltip delayDuration={0}>
+									<TooltipTrigger asChild>
+										<Button
+											variant="ghost"
+											size="sm"
+											className={`h-6 w-6 p-0 ${triggerIconColor}`}
+										>
+											<TriggerIcon className="h-4 w-4" />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent
+										side="right"
+										className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
 									>
-										<TriggerIcon className="h-4 w-4" />
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent
-									side="right"
-									className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
-								>
-									{entryTriggerAlerts}
-								</TooltipContent>
-							</Tooltip>
-						)}
-						{violationDisplayElt}
+										{entryTriggerAlerts}
+									</TooltipContent>
+								</Tooltip>
+							)}
+							{violationDisplayElt}
+						</div>
 					</TableCell>
 
 					<TableCell>
