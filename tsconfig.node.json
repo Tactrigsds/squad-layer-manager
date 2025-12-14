@@ -1,6 +1,8 @@
 {
 	"extends": "./tsconfig.paths.json",
 	"compilerOptions": {
+		"incremental": true,
+		"tsBuildInfoFile": "./tsconfig.node.tsbuildinfo",
 		"target": "ES2022",
 		"lib": ["ES2023"],
 		"module": "ESNext",

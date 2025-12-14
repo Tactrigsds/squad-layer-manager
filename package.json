@@ -26,7 +26,9 @@
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
 		"setup:hooks": "git config core.hooksPath .githooks && chmod +x .githooks/pre-push .githooks/pre-push.js",
-		"remove:hooks": "git config --unset core.hooksPath"
+		"remove:hooks": "git config --unset core.hooksPath",
+		"graph": "madge --image graph.svg --ts-config tsconfig.json",
+		"graph:circular": "madge --circular --ts-config tsconfig.json"
 	},
 	"dependencies": {
 		"@node-rs/argon2": "^1.8.3",

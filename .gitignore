@@ -47,3 +47,5 @@ docker/squad-dedicated
 .tanstack/
 
 dist-server/
+
+graph.svg

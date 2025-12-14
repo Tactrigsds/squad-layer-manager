@@ -236,11 +236,6 @@ export type FastifyReply = { res: Fastify.FastifyReply }
 export type HttpRequest = FastifyRequest & FastifyReply
 export type HttpRequestFull = HttpRequest & AttachedFastify
 
-export type RoutedHttpRequest = HttpRequest
-export function isRoutedHttpRequestContext<Ctx extends HttpRequest>(req: Ctx): req is Ctx & RoutedHttpRequest {
-	return 'route' in req
-}
-
 // sparse subset of User
 export type UserId = {
 	user: { discordId: bigint }
