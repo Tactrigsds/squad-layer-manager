@@ -5,7 +5,7 @@ import { QueuePanelContent } from './layer-queue-dashboard'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import UserPresencePanel from './user-presence-panel'
 
-export default function CombinedDashboardPanel() {
+export default function LayersPanel() {
 	return (
 		<Card>
 			<MatchHistoryPanelContent />

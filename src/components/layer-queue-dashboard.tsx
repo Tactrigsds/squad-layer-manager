@@ -1,4 +1,4 @@
-import CombinedDashboardPanel from '@/components/combined-dashboard-panel.tsx'
+import LayersPanel from '@/components/layers-panel.tsx'
 import ServerActivityPanel from '@/components/server-activity-panel.tsx'
 
 import { TeamIndicator } from '@/components/teams-display.tsx'
@@ -70,7 +70,7 @@ export default function LayerQueueDashboard() {
 					</div>
 
 					<div style={{ visibility: activeTab === 'layers' ? 'visible' : 'hidden', height: activeTab === 'layers' ? 'auto' : '0' }}>
-						<CombinedDashboardPanel />
+						<LayersPanel />
 					</div>
 					<div
 						style={{
@@ -93,7 +93,7 @@ export default function LayerQueueDashboard() {
 					</div>
 					{/* left column */}
 					<div className="flex flex-col gap-2">
-						<CombinedDashboardPanel />
+						<LayersPanel />
 					</div>
 					{/* right column */}
 					<div className="flex gap-2">
