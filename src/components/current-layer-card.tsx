@@ -11,6 +11,7 @@ import { globalToast$ } from '@/hooks/use-global-toast.ts'
 import { useToast } from '@/hooks/use-toast'
 import * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
+import * as Typo from '@/lib/typography'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as RPC from '@/orpc.client.ts'
@@ -106,13 +107,13 @@ export function CurrentLayerCardContent() {
 	return (
 		<>
 			<CardHeader className="flex flex-row items-center justify-between nowrap space-y-0">
-				<span className="flex space-x-2 items-center whitespace-nowrap">
+				<span className="inline-flex space-x-2 items-baseline whitespace-nowrap">
 					<CardTitle>
 						Current Layer:
 					</CardTitle>
 					<div>
 						{currentMatch
-							? <LayerDisplay item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
+							? <LayerDisplay className={Typo.LayerText} item={LQY.getLayerItemForMatchHistoryEntry(currentMatch)} />
 							: (DH.displayLayer(layersStatus.currentLayer))}
 					</div>
 				</span>

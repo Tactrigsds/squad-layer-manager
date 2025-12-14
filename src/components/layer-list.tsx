@@ -18,7 +18,7 @@ import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
 import { statusCodeToTitleCase } from '@/lib/string.ts'
 import { resToOptional } from '@/lib/types.ts'
-import * as Typography from '@/lib/typography.ts'
+import * as Typo from '@/lib/typography.ts'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand.ts'
 import { BROADCASTS } from '@/messages.ts'
@@ -418,7 +418,10 @@ function SingleLayerListItem(props: LayerListItemProps) {
 			{(LL.isLocallyFirstIndex(index)) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<li
 				ref={dragProps.ref}
-				className="group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline"
+				className={cn(
+					Typo.LayerText,
+					'group/single-item flex data-[is-voting=true]:border-added  data-[is-voting=true]:bg-secondary data-[is-dragging=false]:w-full min-w-[40px] min-h-[20px] max items-center justify-between space-x-2 bg-background data-[mutation=added]:bg-added data-[mutation=moved]:bg-moved data-[mutation=edited]:bg-edited data-[is-dragging=true]:outline rounded-md bg-opacity-30 cursor-default data-[is-hovered=true]:outline',
+				)}
 				data-mutation={displayedMutation}
 				data-is-dragging={dragProps.isDragging}
 				data-is-voting={voteState?.code === 'in-progress'}
@@ -630,7 +633,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 								>
 									<Icons.GripHorizontal />
 								</Button>
-								<h3 className={cn(Typography.Label, 'bold')}>Vote</h3>
+								<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
 								{voteAutostartTime && (
 									<>
 										<span>:</span>

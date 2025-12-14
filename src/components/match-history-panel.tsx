@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as Typo from '@/lib/typography'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -14,6 +15,7 @@ import { GlobalSettingsStore } from '@/systems.client/global-settings'
 import * as LayerQueriesClient from '@/systems.client/layer-queries.client'
 import * as MatchHistoryClient from '@/systems.client/match-history.client'
 
+import { cn } from '@/lib/utils'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -372,7 +374,7 @@ function MatchHistoryRow({
 				<TableRow
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
-					className="whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs"
+					className={cn(Typo.LayerText, 'whitespace-nowrap bg-background data-[is-dragging=true]:outline group rounded text-xs')}
 				>
 					<TableCell className="font-mono text-xs relative">
 						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center p-0">
