@@ -399,16 +399,10 @@ function MatchHistoryRow({
 					<Timer zeros start={entry.endTime.getTime()} className="font-mono" />
 				</Badge>
 			)
-		} else if (!isEmpty && entry.status === 'in-progress') {
+		} else if (entry.status === 'in-progress') {
 			statusBadge = (
 				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
 					<span>In progress</span>
-				</Badge>
-			)
-		} else if (isEmpty) {
-			statusBadge = (
-				<Badge variant="outline" className="flex items-center whitespace-nowrap">
-					<span>Server empty</span>
 				</Badge>
 			)
 		}
