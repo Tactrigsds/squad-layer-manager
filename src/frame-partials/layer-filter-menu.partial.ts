@@ -117,7 +117,12 @@ export function initLayerFilterMenuStore(
 							draft[field] = comp
 						}
 
-						if (comp.column === 'Map' || comp.column === 'Gamemode') {
+						if (
+							comp.column === 'Map'
+							|| comp.column === 'Gamemode'
+								// keep layer version if switching from RAAS to FRAAS or vice versa TODO test this
+								&& !(prevComp.value?.toString().includes('RAAS') && comp.value?.toString().includes('RAAS'))
+						) {
 							delete draft['LayerVersion'].value
 						}
 
