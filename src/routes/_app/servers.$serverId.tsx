@@ -1,4 +1,4 @@
-import LayerQueueDashboard from '@/components/layer-queue-dashboard'
+import ServerDashboard from '@/components/server-dashboard'
 import { globalToast$ } from '@/hooks/use-global-toast'
 import * as Browser from '@/lib/browser'
 import * as SS from '@/models/server-state.models'
@@ -76,5 +76,5 @@ function RouteComponent() {
 		return () => sub.unsubscribe()
 	}, [serverId])
 
-	return <LayerQueueDashboard />
+	return <ServerDashboard />
 }
