@@ -235,6 +235,7 @@ function PlayerKickedEvent({ event }: { event: Extract<CHAT.EventEnriched, { typ
 			<Icons.UserX className="h-4 w-4 text-orange-500" />
 			<span className="text-xs flex items-center gap-1">
 				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} /> was kicked
+				{event.reason && <span className="text-muted-foreground/70">- {event.reason}</span>}
 			</span>
 		</div>
 	)

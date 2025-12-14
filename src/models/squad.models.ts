@@ -582,7 +582,11 @@ export namespace Events {
 		teamId: TeamId
 		newLeaderIds: PlayerIds.Type
 	} & Base
-	export type PlayerKicked = RconEvents.PlayerKicked & Base
+	export type PlayerKicked = {
+		type: 'PLAYER_KICKED'
+		playerIds: PlayerIds.Type
+		reason?: string
+	} & Base
 	export type PossessedAdminCamera = RconEvents.PossessedAdminCamera & Base
 	export type UnpossessedAdminCamera = RconEvents.UnpossessedAdminCamera & Base
 	export type PlayerBanned = RconEvents.PlayerBanned & Base
@@ -714,23 +718,6 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
-		time: z.number(),
-		playerIds: PlayerIds.Schema,
-	})
-	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>
-
-	export const PlayerKickedMatcher = createLogMatcher({
-		event: PlayerKickedSchema,
-		regex: /Kicked player ([0-9]+)\. \[Online IDs=([^\]]+)\] (.*)/,
-		onMatch: (match) => {
-			return {
-				time: Date.now(),
-				playerIds: PlayerIds.extractPlayerIds({ username: match[3], idsStr: match[2] }),
-			}
-		},
-	})
-
 	const SquadCreatedSchema = eventDef('SQUAD_CREATED', {
 		time: z.number(),
 		squadId: ZodUtils.ParsedIntSchema,
@@ -780,7 +767,6 @@ export namespace RconEvents {
 		PlayerWarnedMatcher,
 		PossessedAdminCameraMatcher,
 		UnpossessedAdminCameraMatcher,
-		PlayerKickedMatcher,
 		SquadCreatedMatcher,
 		PlayerBannedMatcher,
 	] as const
@@ -1072,6 +1058,46 @@ export namespace LogEvents {
 		},
 	})
 
+	export const KickingPlayerSchema = eventDef('KICKING_PLAYER', {
+		...BaseEventProperties,
+		username: z.string().trim(),
+		reason: z.string().trim(),
+	})
+
+	export type KickingPlayer = z.infer<typeof KickingPlayerSchema['schema']>
+	export const KickingPlayerMatcher = createLogMatcher({
+		event: KickingPlayerSchema,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogOnlineGame: Display: Kicking player:\s+(.+?)\s+;\s+Reason\s+=\s+(.+)/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				username: args[3],
+				reason: args[4],
+			}
+		},
+	})
+
+	export const PlayerKickedSchema = eventDef('PLAYER_KICKED', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.Schema,
+	})
+
+	export type PlayerKicked = z.infer<typeof PlayerKickedSchema['schema']>
+	export const PlayerKickedMatcher = createLogMatcher({
+		event: PlayerKickedSchema,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Kicked player \d+\. \[Online IDs=([^\]]+)\]\s+(.+) from .+/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				playerIds: PlayerIds.extractPlayerIds({ username: args[4], idsStr: args[3] }),
+			}
+		},
+	})
+
 	export type ToEventMap<E extends SquadLogEvent> = {
 		[e in E['type']]: (evt: Extract<E, { type: e }>) => void
 	}
@@ -1088,6 +1114,8 @@ export namespace LogEvents {
 		PlayerWoundedMatcher,
 		AdminBroadcastMatcher,
 		MapSetMatcher,
+		KickingPlayerMatcher,
+		PlayerKickedMatcher,
 	] as const
 
 	export type Event =
@@ -1102,6 +1130,8 @@ export namespace LogEvents {
 		| PlayerWounded
 		| AdminBroadcast
 		| MapSet
+		| KickingPlayer
+		| PlayerKicked
 
 	function parseTimestamp(raw: string) {
 		const date = dateFns.parse(

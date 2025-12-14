@@ -524,6 +524,13 @@ export function interpolateEvent(
 					} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
+			if (event.type === 'PLAYER_KICKED') {
+				return {
+					...event,
+					player: player,
+					reason: event.reason?.replace('Kicked from the server: ', '').trim(),
+				}
+			}
 			return {
 				...event,
 				player: player,

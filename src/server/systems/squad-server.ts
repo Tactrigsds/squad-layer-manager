@@ -78,34 +78,7 @@ export type SquadServer = {
 	sftpReader: SftpTail
 
 	// ephemeral state that isn't persisted to the database, as compared to SS.ServerState which is
-	state: {
-		roundWinner: SM.SquadOutcomeTeam | null
-		roundLoser: SM.SquadOutcomeTeam | null
-		roundEndState: {
-			winner: string | null
-			layer: string
-		} | null
-
-		// chainID -> playerids
-		joinRequests: Map<number, SM.PlayerIds.IdQuery>
-
-		// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
-		connected: SM.PlayerIds.Type[]
-		pendingEventState: PendingEvents.State
-
-		createdSquads: SM.Squad[]
-
-		// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
-		eventBuffer: SM.Events.Event[]
-		// if null, we haven't saved yet in this instantiation of the server
-		lastSavedEventId: number | null
-
-		destroyed: boolean
-
-		nextSetLayerId: L.LayerId | null
-
-		cleanupId: number | null
-	}
+	state: EphemeralState
 
 	savingEventsMtx: Mutex
 
@@ -115,6 +88,56 @@ export type SquadServer = {
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
 	event$: Rx.Subject<[CS.Log & C.Db & C.ServerSlice, SM.Events.Event[]]>
 } & SquadRcon.SquadRcon
+
+type EphemeralState = {
+	roundWinner: SM.SquadOutcomeTeam | null
+	roundLoser: SM.SquadOutcomeTeam | null
+	roundEndState: {
+		winner: string | null
+		layer: string
+	} | null
+
+	// chainID -> values
+	joinRequests: Map<number, SM.PlayerIds.IdQuery>
+	kickingPlayerEvents: Map<number, SM.LogEvents.KickingPlayer>
+
+	// ids of players currently connected to the server. players are considered "connected" once PLAYER_CONNECTED has fired (or is scheduled to be fired in this microtask)
+	connected: SM.PlayerIds.Type[]
+	pendingEventState: PendingEvents.State
+
+	createdSquads: SM.Squad[]
+
+	// constains mostly events from the current match. however don't assume this and filter for the current match whenever accessing
+	eventBuffer: SM.Events.Event[]
+	// if null, we haven't saved yet in this instantiation of the server
+	lastSavedEventId: number | null
+
+	destroyed: boolean
+
+	nextSetLayerId: L.LayerId | null
+
+	cleanupId: number | null
+}
+
+namespace EphemeralState {
+	export function init(): EphemeralState {
+		return {
+			roundEndState: null,
+			roundLoser: null,
+			roundWinner: null,
+			joinRequests: new Map(),
+			kickingPlayerEvents: new Map(),
+			pendingEventState: PendingEvents.init(),
+			connected: [],
+			createdSquads: [],
+			eventBuffer: [],
+			lastSavedEventId: null,
+			nextSetLayerId: null,
+			destroyed: false,
+			cleanupId: null,
+		}
+	}
+}
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
@@ -386,20 +409,7 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		sftpReader,
 		beforeNewGame$: new Rx.Subject(),
 		event$: new Rx.Subject(),
-		state: {
-			roundEndState: null,
-			roundLoser: null,
-			roundWinner: null,
-			joinRequests: new Map(),
-			pendingEventState: PendingEvents.init(),
-			connected: [],
-			createdSquads: [],
-			eventBuffer: [],
-			lastSavedEventId: null,
-			nextSetLayerId: null,
-			destroyed: false,
-			cleanupId: null,
-		},
+		state: EphemeralState.init(),
 		savingEventsMtx: new Mutex(),
 
 		...SquadRcon.initSquadRcon({ ...ctx, rcon, adminList, serverId }, cleanup),
@@ -1018,6 +1028,27 @@ async function processServerLogEvent(
 			}
 		}
 
+		case 'KICKING_PLAYER': {
+			server.state.kickingPlayerEvents.set(logEvent.chainID, logEvent)
+			return
+		}
+
+		case 'PLAYER_KICKED': {
+			const kickingEvent = server.state.kickingPlayerEvents.get(logEvent.chainID)
+			server.state.kickingPlayerEvents.delete(logEvent.chainID)
+
+			return {
+				code: 'ok' as const,
+				event: {
+					id: eventId(),
+					type: 'PLAYER_KICKED',
+					playerIds: logEvent.playerIds,
+					reason: kickingEvent?.reason,
+					...base,
+				} satisfies SM.Events.PlayerKicked,
+			}
+		}
+
 		default:
 			assertNever(logEvent)
 	}
@@ -1131,7 +1162,6 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 		}
 
 		case 'PLAYER_BANNED':
-		case 'PLAYER_KICKED':
 		case 'PLAYER_WARNED':
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA':
