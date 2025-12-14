@@ -76,6 +76,8 @@ export const [useConnectStatus, connectStatus$] = (() => {
 	return ReactRx.bind(connectStatusCold$, 'pending')
 })()
 
+connectStatus$.subscribe()
+
 opened$.pipe(
 	Rx.concatMap(async () => {
 		if (disconnectTime) {
