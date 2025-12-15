@@ -297,12 +297,6 @@ importers:
       '@tanstack/table-core':
         specifier: ^8.21.3
         version: 8.21.3
-      '@tanstack/zod-adapter':
-        specifier: ^1.141.2
-        version: 1.141.2(@tanstack/react-router@1.134.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@4.1.13)
-      '@tanstack/zod-form-adapter':
-        specifier: ^0.33.0
-        version: 0.33.0(zod@4.1.13)
       '@types/ace':
         specifier: ^0.0.52
         version: 0.0.52
@@ -519,9 +513,6 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.17)
-      typescript:
-        specifier: 5.7.2
-        version: 5.7.2
       vite:
         specifier: ^7.2.7
         version: 7.2.7(@types/node@22.16.0)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.0)
@@ -3614,9 +3605,6 @@ packages:
   '@swc/helpers@0.5.17':
     resolution: {integrity: sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A==}
 
-  '@tanstack/form-core@0.33.0':
-    resolution: {integrity: sha512-ouu1JVwLZgfPkIdIq3TWIZs++KpLOo8Bx4tXYOc/1KwA9qUQ0Iv/+Y6GfiC4wMcUzGCtLKOww84eZ8Qdge3ZmQ==}
-
   '@tanstack/form-core@0.41.4':
     resolution: {integrity: sha512-XZJtN7mWJmi3apsc2J+GpWbcsXbv0pWBkZKP47ZW1QD/2Tj1UWsM6JjcaAkzIlrBdaoEFYmrHToLKr/Ddk8BVg==}
 
@@ -3735,9 +3723,6 @@ packages:
     resolution: {integrity: sha512-WEp5D2gPxvlLDRXwD/fV7RXjYtqaqJNXKB/L6OyZEbT+9BG/Ib2d7oG9GSUZNNMGPGYAlhBUOi3xutySsk6rxA==}
     engines: {node: '>=12'}
 
-  '@tanstack/store@0.5.5':
-    resolution: {integrity: sha512-EOSrgdDAJExbvRZEQ/Xhh9iZchXpMN+ga1Bnk8Nmygzs8TfiE6hbzThF+Pr2G19uHL6+DTDTHhJ8VQiOd7l4tA==}
-
   '@tanstack/store@0.7.1':
     resolution: {integrity: sha512-PjUQKXEXhLYj2X5/6c1Xn/0/qKY0IVFxTJweopRfF26xfjVyb14yALydJrHupDh3/d+1WKmfEgZPBVCmDkzzwg==}
 
@@ -3754,18 +3739,6 @@ packages:
   '@tanstack/virtual-file-routes@1.133.19':
     resolution: {integrity: sha512-IKwZENsK7owmW1Lm5FhuHegY/SyQ8KqtL/7mTSnzoKJgfzhrrf9qwKB1rmkKkt+svUuy/Zw3uVEpZtUzQruWtA==}
     engines: {node: '>=12'}
-
-  '@tanstack/zod-adapter@1.141.2':
-    resolution: {integrity: sha512-pOH+cgOMjzReKn6QcPpZwkbNXvCp9QChWIjP8XSGVxhI8tdmfDkJ421jLD4qhecJdtQkmGAE0HWMquK0eFxTKw==}
-    engines: {node: '>=12'}
-    peerDependencies:
-      '@tanstack/react-router': '>=1.43.2'
-      zod: ^3.23.8
-
-  '@tanstack/zod-form-adapter@0.33.0':
-    resolution: {integrity: sha512-vttDPKRb647UdOR3qUSN8bscj8wZibdYE6DR1eUbTmGdDT4OiwA1rDKOEpzmLQSsDbY1vLDAAfANQ1nApHoUFw==}
-    peerDependencies:
-      zod: ^3.x
 
   '@tootallnate/once@1.1.2':
     resolution: {integrity: sha512-RbzJvlNzmRq5c3O09UipeuXno4tA1FE6ikOjxZK0tuxVv3412l64l5t1W5pj4+rJq9vpkm/kwiR07aZXnsKPxw==}
@@ -9835,10 +9808,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@tanstack/form-core@0.33.0':
-    dependencies:
-      '@tanstack/store': 0.5.5
-
   '@tanstack/form-core@0.41.4':
     dependencies:
       '@tanstack/store': 0.7.1
@@ -10013,8 +9982,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/store@0.5.5': {}
-
   '@tanstack/store@0.7.1': {}
 
   '@tanstack/store@0.8.0': {}
@@ -10024,16 +9991,6 @@ snapshots:
   '@tanstack/virtual-core@3.13.12': {}
 
   '@tanstack/virtual-file-routes@1.133.19': {}
-
-  '@tanstack/zod-adapter@1.141.2(@tanstack/react-router@1.134.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@4.1.13)':
-    dependencies:
-      '@tanstack/react-router': 1.134.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      zod: 4.1.13
-
-  '@tanstack/zod-form-adapter@0.33.0(zod@4.1.13)':
-    dependencies:
-      '@tanstack/form-core': 0.33.0
-      zod: 4.1.13
 
   '@tootallnate/once@1.1.2':
     optional: true
@@ -13053,7 +13010,8 @@ snapshots:
 
   typedarray@0.0.6: {}
 
-  typescript@5.7.2: {}
+  typescript@5.7.2:
+    optional: true
 
   undici-types@5.26.5: {}
 
