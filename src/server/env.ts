@@ -115,7 +115,9 @@ const buildForValidation = getEnvBuilder({
 
 export function ensureEnvSetup() {
 	if (setup) return
-	dotenv.config({ path: Cli.options?.envFile })
+	if (Cli.options) {
+		dotenv.config({ path: Cli.options.envFile })
+	}
 	rawEnv = {}
 	for (
 		const key of Object.values(groups).flatMap(g => Object.keys(g))

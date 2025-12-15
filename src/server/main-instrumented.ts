@@ -17,3 +17,5 @@ process.on('beforeExit', async () => {
 otelSdk.start()
 
 console.log('instrumentation setup complete')
+
+await import('./main.ts')

@@ -30,7 +30,6 @@ import { LOADING } from './combo-box/constants.ts'
 import EditLayerDialog from './edit-layer-dialog.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor'
-import { FilterTextEditor } from './filter-text-editor'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Button, buttonVariants } from './ui/button'
@@ -41,6 +40,8 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx'
 import { Separator } from './ui/separator.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
+
+const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
 
 const depthColors = [
 	{ border: 'border-red-700 dark:border-red-700', background: 'bg-red-500 dark:bg-red-700' },

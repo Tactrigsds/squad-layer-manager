@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import fs from 'node:fs/promises'
 
-export let options!: { envFile?: string; config: string }
+export let options: { envFile?: string; config: string } | undefined
 export async function ensureCliParsed() {
 	if (options) return
 

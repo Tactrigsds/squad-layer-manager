@@ -1,7 +1,8 @@
+// WARNING: the ordering of imports  matters here unfortunately. be careful when changing
 import Ace from 'ace-builds'
-import * as Rx from 'rxjs'
 import 'ace-builds/src-noconflict/mode-json'
 import 'ace-builds/src-noconflict/theme-dracula'
+
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameReaderStore, getFrameState } from '@/frames/frame-manager'
 import { useDebounced } from '@/hooks/use-debounce'
@@ -11,6 +12,7 @@ import * as Typography from '@/lib/typography.ts'
 import * as F from '@/models/filter.models'
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
+import * as Rx from 'rxjs'
 
 export type FilterTextEditorHandle = {
 	format: () => void
@@ -22,7 +24,7 @@ export interface FilterTextEditorProps {
 	frameKey: EditFrame.Key
 	ref?: React.Ref<FilterTextEditorHandle>
 }
-export function FilterTextEditor(props: FilterTextEditorProps) {
+export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
 	const ref = props.ref
@@ -80,8 +82,8 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 		const errorView = Ace.edit(errorViewEltRef.current!, {
 			focusTimeout: 0,
 			value: '',
-			mode: 'ace/mode/json',
-			theme: 'ace/theme/dracula',
+			// mode: 'ace/mode/json',
+			// theme: 'ace/theme/dracula',
 			useWorker: false,
 			readOnly: true,
 			wrap: true,
@@ -155,5 +157,3 @@ export function FilterTextEditor(props: FilterTextEditorProps) {
 		</div>
 	)
 }
-
-export default FilterTextEditor

@@ -1,5 +1,5 @@
 # Build stage - compile frontend and backend
-FROM node:lts AS builder
+FROM node:22.21.1 AS builder
 LABEL org.opencontainers.image.description="A squad server admin tool focused on managing upcoming layers"
 LABEL org.opencontainers.image.source="https://github.com/tactrigsds/squad-layer-manager"
 
@@ -25,7 +25,7 @@ ENV NODE_ENV=production
 RUN pnpm run build:prod
 
 # Runtime stage - minimal production image
-FROM node:lts-slim AS runtime
+FROM node:22.21.1-slim AS runtime
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -45,7 +45,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Install production dependencies (runtime + migration tools)
+# Install production dependencies (external deps + migration tools)
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod
 
 # Copy built artifacts from builder stage

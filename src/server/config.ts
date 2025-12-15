@@ -129,12 +129,12 @@ export async function ensureSetup() {
 		await generateConfigJsonSchema()
 	}
 
-	const raw = await fs.readFile(Cli.options.config, 'utf-8')
+	const raw = await fs.readFile(Cli.options!.config, 'utf-8')
 
 	const rawObj = parseJsonc(raw)
 	const parseRes = ConfigSchema.safeParse(rawObj)
 	if (!parseRes.success) {
-		throw new Error(`Configuration file ${Cli.options.config} is invalid`, { cause: parseRes.error })
+		throw new Error(`Configuration file ${Cli.options!.config} is invalid`, { cause: parseRes.error })
 	}
 	CONFIG = parseRes.data
 

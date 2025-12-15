@@ -39,11 +39,16 @@ export default defineConfig({
 								ensureEnvSetup()
 								const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 								const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
-								console.log(`Fetching from upstream:`, proxyUrl)
+
+								// req.headers can have symbols attached when using vite-rolldown, and metadata prefixed with :
+								const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith(':'))) as Record<
+									string,
+									string
+								>
 
 								const proxyRes = await fetch(proxyUrl, {
 									method: 'GET',
-									headers: req.headers as RequestInit['headers'],
+									headers,
 								})
 
 								if (proxyRes.status !== 200) {
@@ -86,9 +91,9 @@ export default defineConfig({
 	build: {
 		sourcemap: true,
 	},
-	optimizeDeps: {
-		exclude: [],
-	},
+	// optimizeDeps: {
+	// 	exclude: ['ace-builds'],
+	// },
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, 'src'),
