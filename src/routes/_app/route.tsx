@@ -248,7 +248,7 @@ const NavLink: typeof Link = (props) => {
 	const baseClasses = 'text-sm sm:text-base font-medium'
 	return (
 		<Link
-			activeProps={{ className: cn(`${baseClasses} font-bold`, props.className) }}
+			activeProps={{ className: cn(`${baseClasses} underline`, props.className) }}
 			preload="intent"
 			className={cn(baseClasses, props.className)}
 			{...props}
