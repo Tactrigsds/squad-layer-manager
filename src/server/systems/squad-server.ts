@@ -3,6 +3,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { AsyncResource, type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -920,42 +921,43 @@ async function processServerLogEvent(
 				}
 				ctx.log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
 
-				return await DB.runTransaction(ctx, async (ctx) => {
-					const serverState = await getServerState(ctx)
-					const nextLqItem = serverState.layerQueue[0]
+				return await withAcquired(() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], () =>
+					DB.runTransaction(ctx, async (ctx) => {
+						const serverState = await getServerState(ctx)
+						const nextLqItem = serverState.layerQueue[0]
 
-					let currentMatchLqItem: LL.Item | undefined
-					const newServerState = Obj.deepClone(serverState)
-					if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
-						currentMatchLqItem = newServerState.layerQueue.shift()
-					}
-					const { match } = await MatchHistory.addNewCurrentMatch(
-						ctx,
-						MH.getNewMatchHistoryEntry({
+						let currentMatchLqItem: LL.Item | undefined
+						const newServerState = Obj.deepClone(serverState)
+						if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+							currentMatchLqItem = newServerState.layerQueue.shift()
+						}
+						const { match } = await MatchHistory.addNewCurrentMatch(
+							ctx,
+							MH.getNewMatchHistoryEntry({
+								layerId: newLayerId,
+								serverId: ctx.serverId,
+								startTime: new Date(logEvent.time),
+								lqItem: currentMatchLqItem,
+							}),
+						)
+
+						await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
+						await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
+						await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
+						LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+
+						const teamsRes = await interceptTeamsUpdate(ctx)
+						const event: SM.Events.NewGame = {
+							type: 'NEW_GAME',
+							id: eventId(),
 							layerId: newLayerId,
-							serverId: ctx.serverId,
-							startTime: new Date(logEvent.time),
-							lqItem: currentMatchLqItem,
-						}),
-					)
-
-					await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
-					await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-					await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
-					LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-
-					const teamsRes = await interceptTeamsUpdate(ctx)
-					const event: SM.Events.NewGame = {
-						type: 'NEW_GAME',
-						id: eventId(),
-						layerId: newLayerId,
-						source: 'new-game-detected',
-						state: { squads: teamsRes.squads, players: teamsRes.players },
-						...base,
-						matchId: match.historyEntryId,
-					}
-					return { code: 'ok' as const, event }
-				})
+							source: 'new-game-detected',
+							state: { squads: teamsRes.squads, players: teamsRes.players },
+							...base,
+							matchId: match.historyEntryId,
+						}
+						return { code: 'ok' as const, event }
+					}))()
 			} finally {
 				server.serverRolling$.next(null)
 			}
