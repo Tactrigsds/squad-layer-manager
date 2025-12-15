@@ -101,8 +101,8 @@ export type ChatState = {
 	synced: boolean
 }
 
-const NUMBER_OF_SAVEPOINTS = 3
-const SAVEPOINT_INTERVAL = 100
+const NUMBER_OF_SAVEPOINTS = 4
+const SAVEPOINT_INTERVAL = 200
 
 export type Savepoint = {
 	// the index in the iterpolated event buffer
@@ -171,7 +171,7 @@ export function handleEvent(
 			break
 		}
 	}
-	if (mutatedIndex === null && state.rawEventBuffer.length >= SAVEPOINT_INTERVAL) {
+	if (mutatedIndex === null && state.rawEventBuffer.length >= Math.floor((SAVEPOINT_INTERVAL * NUMBER_OF_SAVEPOINTS) / 2)) {
 		throw new Error(`Event ${event.id} is too far out-of-order to be reconciled`)
 	}
 
