@@ -30,7 +30,7 @@ export type MatchDetails =
 	| (
 		& {
 			status: 'post-game'
-			endTime: Date
+			endTime: Date | 'unknown'
 			outcome: MatchOutcome
 		}
 		& MatchDetailsCommon
@@ -42,6 +42,8 @@ export type MatchOutcome = {
 	team2Tickets: number
 } | {
 	type: 'draw'
+} | {
+	type: 'unknown'
 }
 export type NormalizedMatchOutcome = {
 	type: 'teamA' | 'teamB'
@@ -49,6 +51,8 @@ export type NormalizedMatchOutcome = {
 	teamBTickets: number
 } | {
 	type: 'draw'
+} | {
+	type: 'unknown'
 }
 
 export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }>
@@ -65,7 +69,7 @@ export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal
 export function getTeamNormalizedOutcome(
 	matchDetails: Extract<MatchDetails, { status: 'post-game' }>,
 ): NormalizedMatchOutcome {
-	if (matchDetails.outcome.type === 'draw') {
+	if (matchDetails.outcome.type === 'draw' || matchDetails.outcome.type === 'unknown') {
 		return matchDetails.outcome
 	}
 	const teamATickets = matchDetails.ordinal % 2 === 0 ? matchDetails.outcome.team1Tickets : matchDetails.outcome.team2Tickets
@@ -92,7 +96,7 @@ export function getTeamDenormalizedOutcome(
 	matchDetails: { ordinal: number },
 	normalizedOutcome: NormalizedMatchOutcome,
 ): MatchOutcome {
-	if (normalizedOutcome.type === 'draw') {
+	if (normalizedOutcome.type === 'draw' || normalizedOutcome.type === 'unknown') {
 		return normalizedOutcome
 	}
 
@@ -125,7 +129,7 @@ export type MatchHistoryPart = {
 /**
  * Converts a match history entry to current match details and validates the data
  */
-export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory): MatchDetails {
+export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory, isCurrentMatch: boolean): MatchDetails {
 	let layerSource: LL.Source
 
 	switch (entry.setByType) {
@@ -191,6 +195,14 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		if (!isNullOrUndef(entry.team1Tickets) || !isNullOrUndef(entry.team2Tickets)) {
 			throw new Error('Match not ended but tickets were not null')
 		}
+		if (!isCurrentMatch) {
+			return {
+				status: 'post-game',
+				endTime: 'unknown',
+				outcome: { type: 'unknown' },
+				...shared,
+			}
+		}
 
 		return {
 			status: 'in-progress',
@@ -224,10 +236,16 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 	}
 
 	if (matchDetails.status === 'post-game') {
-		entry.endTime = matchDetails.endTime
+		if (matchDetails.endTime === 'unknown') {
+			entry.endTime = null
+		} else {
+			entry.endTime = matchDetails.endTime
+		}
 
 		if (matchDetails.outcome.type === 'draw') {
 			entry.outcome = 'draw'
+		} else if (matchDetails.outcome.type === 'unknown') {
+			entry.outcome = null
 		} else {
 			entry.outcome = matchDetails.outcome.type
 			entry.team1Tickets = matchDetails.outcome.team1Tickets

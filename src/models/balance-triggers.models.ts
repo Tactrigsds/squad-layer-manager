@@ -75,7 +75,7 @@ function resolveBasicTicketStreak(threshold: number, length: number) {
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
 			match = matchDetails[i]
 			const outcome = MH.getTeamNormalizedOutcome(match)
-			if (outcome.type === 'draw') return
+			if (outcome.type === 'draw' || outcome.type === 'unknown') return
 
 			if (prevWinner && prevWinner !== outcome.type) return
 			if (Math.abs(outcome.teamATickets - outcome.teamBTickets) < threshold) return
@@ -102,7 +102,7 @@ const trigRWS5 = createTrigger<'RWS5', MH.PostGameMatchDetails[]>({
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
 			match = matchDetails[i]
 			const outcome = MH.getTeamNormalizedOutcome(match)
-			if (outcome.type === 'draw') break
+			if (outcome.type === 'draw' || outcome.type === 'unknown') break
 			if (streaker && streaker !== outcome.type) break
 			if (isNullOrUndef(streaker)) streaker = outcome.type
 			streakLength++
@@ -130,7 +130,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 		for (let i = matchDetails.length - 1; i >= 0; i--) {
 			match = matchDetails[i]
 			const outcome = MH.getTeamNormalizedOutcome(match)
-			if (outcome.type === 'draw') break
+			if (outcome.type === 'draw' || outcome.type === 'unknown') break
 			if (streaker && streaker !== outcome.type) break
 			if (isNullOrUndef(streaker)) streaker = outcome.type
 			streakLength++
@@ -145,7 +145,7 @@ const trigRAM3Plus = createTrigger<'RAM3+', MH.PostGameMatchDetails[]>({
 			for (let i = matchDetails.length - currentWindow; i < matchDetails.length; i++) {
 				const match = matchDetails[i]
 				const outcome = MH.getTeamNormalizedOutcome(match)
-				if (outcome.type === 'draw') throw new Error('Draw outcome')
+				if (outcome.type === 'draw' || outcome.type === 'unknown') throw new Error('Draw/Unknown outcome')
 				totalA += outcome.teamATickets
 				totalB += outcome.teamBTickets
 			}

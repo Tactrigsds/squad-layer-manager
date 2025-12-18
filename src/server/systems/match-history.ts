@@ -99,9 +99,11 @@ export const loadState = C.spanOp(
 			eventRows.length,
 		)
 
+		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
 		for (const row of rows.reverse()) {
+			const isCurrentMatch = row.recent_matches.id === currentMatchId!
 			// @ts-expect-error idgaf
-			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches))
+			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
 			Arr.upsertOn(state.recentMatches, details, 'historyEntryId')
 
 			if (row.users) {
@@ -159,7 +161,7 @@ const loadCurrentMatch = C.spanOp(
 		if (opts?.forUpdate) [match] = await query.for('update')
 		else [match] = await query.execute()
 		if (!match) return null
-		return MH.matchHistoryEntryToMatchDetails(match)
+		return MH.matchHistoryEntryToMatchDetails(match, true)
 	},
 )
 

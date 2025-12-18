@@ -396,7 +396,7 @@ function MatchHistoryRow({
 					className="flex items-center whitespace-nowrap"
 				>
 					<span className="pr-1">Post-Game</span>
-					<Timer zeros start={entry.endTime.getTime()} className="font-mono" />
+					{entry.endTime !== 'unknown' && <Timer zeros start={entry.endTime.getTime()} className="font-mono" />}
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
@@ -415,6 +415,8 @@ function MatchHistoryRow({
 	if (entry.status === 'post-game') {
 		if (entry.outcome.type === 'draw') {
 			outcomeDisp = <span className="text-sm">Draw</span>
+		} else if (entry.outcome.type === 'unknown') {
+			outcomeDisp = <span className="text-sm">-</span>
 		} else {
 			// Determine win/loss status
 			let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
@@ -479,7 +481,7 @@ function MatchHistoryRow({
 		}
 	}
 
-	const gameRuntime = entry.startTime && entry.status === 'post-game'
+	const gameRuntime = entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
 		? entry.endTime.getTime() - entry.startTime.getTime()
 		: undefined
 
