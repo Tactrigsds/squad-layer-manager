@@ -105,7 +105,7 @@ export function MatchHistoryPanelContent() {
 		setShowFullDay(true)
 	}
 	const goToLastPage = () => {
-		setCurrentPage(totalPages - 1)
+		setCurrentPage(totalPages)
 		setShowFullDay(true)
 	}
 
