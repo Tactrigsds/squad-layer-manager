@@ -519,6 +519,7 @@ function MatchHistoryRow({
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
 				<TableRow
+					title="Right click for Context Menu, Click+drag to requeue"
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
 					className={cn(
