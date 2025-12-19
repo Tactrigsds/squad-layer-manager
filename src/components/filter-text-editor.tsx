@@ -1,7 +1,5 @@
 // WARNING: the ordering of imports  matters here unfortunately. be careful when changing
 import Ace from 'ace-builds'
-import 'ace-builds/src-noconflict/mode-json'
-import 'ace-builds/src-noconflict/theme-dracula'
 
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { getFrameReaderStore, getFrameState } from '@/frames/frame-manager'
@@ -24,7 +22,14 @@ export interface FilterTextEditorProps {
 	frameKey: EditFrame.Key
 	ref?: React.Ref<FilterTextEditorHandle>
 }
+let pluginsLoading$: Promise<unknown> | false = Promise.all([
+	import('ace-builds/src-noconflict/mode-json'),
+	import('ace-builds/src-noconflict/theme-dracula'),
+]).then(
+	() => (pluginsLoading$ = false),
+)
 export default function FilterTextEditor(props: FilterTextEditorProps) {
+	if (pluginsLoading$) throw pluginsLoading$
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const errorViewEltRef = React.useRef<HTMLDivElement>(null)
 	const ref = props.ref
@@ -69,7 +74,6 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	})
 
 	const toaster = useToast()
-
 	// -------- setup editor, handle events coming from editor, resizing --------
 	React.useEffect(() => {
 		const editor = Ace.edit(editorEltRef.current!, {
@@ -82,8 +86,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		const errorView = Ace.edit(errorViewEltRef.current!, {
 			focusTimeout: 0,
 			value: '',
-			// mode: 'ace/mode/json',
-			// theme: 'ace/theme/dracula',
+			mode: 'ace/mode/json',
+			theme: 'ace/theme/dracula',
 			useWorker: false,
 			readOnly: true,
 			wrap: true,
