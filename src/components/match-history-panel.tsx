@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
@@ -32,7 +33,7 @@ import { Button } from './ui/button'
 
 const STD_PADDING = 'pl-4'
 
-const MAX_PAGES = 5
+const MAX_PAGES = 30
 
 export function MatchHistoryPanelContent() {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
@@ -40,39 +41,55 @@ export function MatchHistoryPanelContent() {
 	const historyState = MatchHistoryClient.useMatchHistoryState()
 	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
-	const currentMatch = historyState.recentMatches
-		? historyState.recentMatches[historyState.recentMatches.length - 1]
-		: undefined
-	const currentMatchOrdinal = currentMatch?.ordinal ?? 0
-	const [currentStreak, matchesByDate, availableDates] = React.useMemo(() => {
-		const allEntries = [...(history ?? [])].reverse()
-		const matchesByDate = new Map<string, typeof allEntries>()
+	type MatchesByDate = [string, MH.MatchDetails[]][]
+	const [currentStreak, matchesByDate, currentMatchOrdinal] = React.useMemo(() => {
+		const matchesByDate: MatchesByDate = []
 
-		// Add matches with startTime grouped by date
-		for (const entry of allEntries) {
-			if (entry.startTime) {
-				const dateStr = dateFns.format(entry.startTime, 'yyyy-MM-dd')
-				if (!matchesByDate.has(dateStr)) {
-					matchesByDate.set(dateStr, [])
+		// We can't resolve a day of matches without any previous dates to go by so we just skip those
+		let firstMatchIndex = history.findIndex(m => m.startTime)
+		if (firstMatchIndex === -1) {
+			firstMatchIndex = history.findIndex(m => m.createdAt)
+		}
+
+		const firstMatch: MH.MatchDetails | undefined = history[firstMatchIndex]
+		const firstMatchDate = firstMatch?.startTime ?? firstMatch?.createdAt ?? new Date()
+
+		const allDaysSinceFirstMatch = dateFns.eachDayOfInterval({ start: firstMatchDate, end: new Date() })
+		for (const day of allDaysSinceFirstMatch.slice(Math.max(0, allDaysSinceFirstMatch.length - MAX_PAGES))) {
+			const dayString = dateFns.format(day, 'yyyy-MM-dd')
+			matchesByDate.push([dayString, []])
+		}
+
+		let lastDate = firstMatchDate
+		for (const entry of history.slice(firstMatchIndex)) {
+			let date = entry.startTime ?? entry.createdAt
+			if (date) lastDate = date
+			else date = lastDate
+			if (!date) {
+				console.warn(`entry ${entry.historyEntryId} filtered out due to missing date`)
+				continue
+			}
+
+			const dateStr = dateFns.format(date, 'yyyy-MM-dd')
+			for (const [key, matches] of matchesByDate) {
+				if (key === dateStr) {
+					matches.push(entry)
+					break
 				}
-				matchesByDate.get(dateStr)!.push(entry)
 			}
 		}
 
-		const availableDates = Array.from(matchesByDate.keys()).sort((a, b) => b.localeCompare(a))
-		return [BAL.getCurrentStreak(history), matchesByDate, availableDates]
+		const currentMatchOrdinal = history[history.length - 1]?.ordinal ?? 0
+		return [BAL.getCurrentStreak(history), matchesByDate, currentMatchOrdinal]
 	}, [history])
 
 	// -------- Page-based navigation --------
 	const [currentPage, setCurrentPage] = React.useState(1)
 
-	const totalPages = Math.min(availableDates.length, MAX_PAGES)
-	const currentDate = availableDates[currentPage - 1]
-	let currentEntries = currentDate
-		? [...(matchesByDate.get(currentDate) || [])]
-		: []
-	if (!showFullDay) currentEntries = currentEntries.slice(0, 5)
-	currentEntries.reverse()
+	const [currentDate, currentEntries] = matchesByDate[matchesByDate.length - currentPage]
+	const onFirstPage = currentPage === 1
+	const totalPages = matchesByDate.length
+	const onLastPage = currentPage === totalPages
 
 	// -------- Page navigation --------
 	const goToFirstPage = () => {
@@ -88,7 +105,7 @@ export function MatchHistoryPanelContent() {
 		setShowFullDay(true)
 	}
 	const goToLastPage = () => {
-		setCurrentPage(totalPages)
+		setCurrentPage(totalPages - 1)
 		setShowFullDay(true)
 	}
 
@@ -119,7 +136,7 @@ export function MatchHistoryPanelContent() {
 							variant="outline"
 							size="sm"
 							onClick={goToFirstPage}
-							disabled={currentPage === 1}
+							disabled={onFirstPage}
 							className="rounded-r-none px-2"
 						>
 							<Icons.ChevronsLeft className="h-4 w-4" />
@@ -128,7 +145,7 @@ export function MatchHistoryPanelContent() {
 							variant="outline"
 							size="sm"
 							onClick={goToPrevPage}
-							disabled={currentPage === 1}
+							disabled={onFirstPage}
 							className="rounded-l-none border-l-0 px-2"
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
@@ -142,7 +159,7 @@ export function MatchHistoryPanelContent() {
 							variant="outline"
 							size="sm"
 							onClick={goToNextPage}
-							disabled={currentPage === totalPages}
+							disabled={onLastPage}
 							className="rounded-r-none px-2"
 						>
 							<Icons.ChevronRight className="h-4 w-4" />
@@ -151,7 +168,7 @@ export function MatchHistoryPanelContent() {
 							variant="outline"
 							size="sm"
 							onClick={goToLastPage}
-							disabled={currentPage === totalPages}
+							disabled={onLastPage}
 							className="rounded-l-none border-l-0 px-2"
 						>
 							<Icons.ChevronsRight className="h-4 w-4" />
@@ -164,9 +181,7 @@ export function MatchHistoryPanelContent() {
 					<TableHeader>
 						<TableRow className="font-medium">
 							<TableHead className="text-right px-0.5">
-								{currentDate
-									&& matchesByDate.get(currentDate)
-									&& matchesByDate.get(currentDate)!.length > 5 && (
+								{currentEntries.length > 5 && (
 									<Button
 										variant="ghost"
 										size="sm"
@@ -289,8 +304,6 @@ function MatchHistoryRow({
 	debug__showBalanceTriggers,
 }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const currentMatch = MatchHistoryClient.useCurrentMatch()
-	const isCurrentMatch = entry.historyEntryId === currentMatch?.historyEntryId
 	const serverRolling = !!SquadServerClient.useServerRolling()
 
 	const dragProps = DndKit.useDraggable({
@@ -380,7 +393,7 @@ function MatchHistoryRow({
 	let statusBadge: React.ReactNode = null
 	let outcomeDisp: React.ReactNode = null
 
-	if (isCurrentMatch) {
+	if (entry.isCurrentMatch) {
 		// Determine status badge (exactly one of: rolling, post-game, in-progress)
 		if (serverRolling) {
 			statusBadge = (
@@ -448,7 +461,7 @@ function MatchHistoryRow({
 				</span>
 			)
 		}
-	} else if (!isCurrentMatch) {
+	} else if (!entry.isCurrentMatch) {
 		outcomeDisp = <span className="text-sm">-</span>
 	}
 
@@ -488,7 +501,7 @@ function MatchHistoryRow({
 	// Determine background color and hover state based on trigger level or current match
 	let bgColor = ''
 	let hoverColor = ''
-	if (isCurrentMatch && entry.status === 'in-progress') {
+	if (entry.isCurrentMatch && entry.status === 'in-progress') {
 		bgColor = 'bg-green-500/20'
 		hoverColor = 'hover:bg-green-500/30'
 	} else if (triggerLevel === 'violation') {
@@ -515,34 +528,34 @@ function MatchHistoryRow({
 						hoverColor,
 					)}
 				>
-					<TableCell className="font-mono text-xs relative text-right">
-						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-center p-0">
+					<TableCell className="font-mono text-xs relative text-right pl-2">
+						<div className="opacity-0 group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-2">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-hover:opacity-0 flex justify-end items-center">
-							{isCurrentMatch && entry.status === 'in-progress'
+						<div className="group-hover:opacity-0 flex justify-end items-center pr-2">
+							{entry.isCurrentMatch && entry.status === 'in-progress'
 								? <Icons.Play className="h-3 w-3 text-green-500" />
-								: isCurrentMatch && entry.status === 'post-game'
+								: entry.isCurrentMatch && entry.status === 'post-game'
 								? <Icons.Check className="h-3 w-3" />
 								: (
 									currentMatchOffset.toString()
 								)}
 						</div>
 					</TableCell>
-					<TableCell className="text-xs hidden min-[820px]:table-cell">
-						{isCurrentMatch && entry.startTime
-							? (
+					<TableCell className="text-xs hidden min-[820px]:table-cell pl-2">
+						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress'
+							&& (
 								<span className="font-mono font-light">
 									<Timer zeros start={entry.startTime.getTime()} />
 								</span>
-							)
-							: entry.startTime
-							? (
+							)}
+						{!entry.isCurrentMatch && entry.startTime
+							&& (
 								<span className="font-mono font-light">
 									{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
 								</span>
-							)
-							: <Badge variant="secondary">incomplete</Badge>}
+							)}
+						{!entry.startTime && <span>-</span>}
 					</TableCell>
 					<TableCell>
 						<MapLayerDisplay
@@ -628,17 +641,12 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 		timeDifferenceText = `${Math.floor(difference)} hours ago`
 	}
 
-	// Calculate match length in minutes if runtime is available
-	if (gameRuntime) {
-		// Convert milliseconds to minutes and round to nearest whole number
-		const matchLengthMinutes = Math.round(gameRuntime / (1000 * 60))
-		return (
-			<span title={timeDifferenceText}>
-				{formattedStartTime}
-				<span className="text-muted-foreground">({matchLengthMinutes}m)</span>
-			</span>
-		)
-	}
-
-	return <span title={timeDifferenceText}>{formattedStartTime}</span>
+	const matchLengthMinutes = gameRuntime !== undefined ? Math.round(gameRuntime / (1000 * 60)) : undefined
+	const matchLengthText = matchLengthMinutes ? ` - ${matchLengthMinutes} minutes` : ' - unknown length'
+	return (
+		<span title={`${timeDifferenceText}${matchLengthText}`}>
+			{formattedStartTime}
+			<span className="text-muted-foreground">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
+		</span>
+	)
 }

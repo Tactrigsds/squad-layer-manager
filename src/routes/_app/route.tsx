@@ -119,9 +119,7 @@ function RouteComponent() {
 							<div className="hidden xl:block">
 								<NormTeamsSwitch />
 							</div>
-							<div className="hidden xl:block">
-								<ServerActionsDropdown />
-							</div>
+							<ServerActionsDropdown />
 						</>
 					)}
 					{isOnServerDashboard && selectedServer && config && (config.servers.length === 1

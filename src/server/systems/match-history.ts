@@ -17,6 +17,7 @@ import * as DB from '@/server/db'
 import * as SquadServer from '@/server/systems/squad-server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
+
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -69,13 +70,14 @@ export const loadState = C.spanOp(
 	{ tracer },
 	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
+		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx.db().$with('recent_matches').as(
 			ctx.db().select().from(Schema.matchHistory).where(
 				E.and(
-					opts?.startAtOrdinal ? E.gte(Schema.matchHistory.ordinal, opts.startAtOrdinal) : E.gte(Schema.matchHistory.ordinal, 0),
+					E.gte(Schema.matchHistory.ordinal, startAtOrdinal),
 					E.eq(Schema.matchHistory.serverId, ctx.serverId),
 				),
-			).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(100),
+			).orderBy(E.desc(Schema.matchHistory.ordinal)).limit(MH.MAX_RECENT_MATCHES),
 		)
 
 		const [rows, balanceTriggerRows, eventRows] = await Promise.all([
@@ -99,12 +101,17 @@ export const loadState = C.spanOp(
 			eventRows.length,
 		)
 
+		rows.reverse()
 		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
-		for (const row of rows.reverse()) {
+		state.recentMatches = state.recentMatches.filter(match => match.ordinal < startAtOrdinal).map(m => ({
+			...m,
+			isCurrentMatch: m.historyEntryId === currentMatchId,
+		}))
+		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
 			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
-			Arr.upsertOn(state.recentMatches, details, 'historyEntryId')
+			state.recentMatches.push(details)
 
 			if (row.users) {
 				const user = await UsersClient.buildUser(ctx, row.users)

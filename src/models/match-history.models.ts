@@ -20,6 +20,8 @@ type MatchDetailsCommon = {
 	lqItemId?: string
 	historyEntryId: number
 	startTime?: Date
+	isCurrentMatch: boolean
+	createdAt: Date | null
 }
 
 // Details about current match besides the layer
@@ -159,6 +161,8 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		ordinal: entry.ordinal,
 		lqItemId: entry.lqItemId ?? undefined,
 		serverId: entry.serverId,
+		isCurrentMatch,
+		createdAt: entry.createdAt,
 	} satisfies Partial<MatchDetailsCommon>
 
 	if (!isNullOrUndef(entry.endTime) && isNullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
@@ -233,6 +237,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 		outcome: null,
 		team1Tickets: null,
 		team2Tickets: null,
+		createdAt: matchDetails.createdAt,
 	}
 
 	if (matchDetails.status === 'post-game') {

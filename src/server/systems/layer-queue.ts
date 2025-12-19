@@ -316,32 +316,39 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 	let nextQueuedLayerId = LL.getNextLayerId(serverState.layerQueue)
 	let wroteServerState = false
 	if (!nextQueuedLayerId) {
-		const constraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+		const allConstraints = SS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx, serverState)
-		const gen = LayerQueries.queryLayersStreamed({
-			ctx: layerCtx,
-			input: {
-				constraints,
-				cursor: { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' },
-				action: 'add',
-				pageSize: 1,
-				sort: { type: 'random', seed: LQY.getSeed() },
-			},
-		})
-		let ids: string[] = []
+		nextQueuedLayerId = await (async function getNextQueuedLayerId(constraints: LQY.Constraint[] = allConstraints) {
+			const gen = LayerQueries.queryLayersStreamed({
+				ctx: layerCtx,
+				input: {
+					constraints,
+					cursor: { type: 'item-relative', itemId: LQY.SpecialItemId.FIRST_LIST_ITEM, position: 'before' },
+					action: 'add',
+					pageSize: 1,
+					sort: { type: 'random', seed: LQY.getSeed() },
+				},
+			})
+			let ids: string[] = []
 
-		for await (const packet of gen) {
-			if (packet.code === 'menu-item-possible-values') continue
-			if (packet.code === 'err:invalid-node') {
-				throw new Error(`Invalid node error when generating layer`, { cause: packet.errors })
+			for await (const packet of gen) {
+				if (packet.code === 'menu-item-possible-values') continue
+				if (packet.code === 'err:invalid-node') {
+					ctx.log.error(`Invalid node error when generating layer: %o`, { cause: packet.errors })
+					return L.DEFAULT_LAYER_ID
+				}
+				ids = packet.layers.map(l => l.id)
 			}
 
-			ids = packet.layers.map(l => l.id)
-			if (ids.length === 0) {
-				throw new Error(`No layers returned from layer generation`)
+			if (ids.length > 0) return ids[0]
+			const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
+			if (noDnrConstraints.length < constraints.length) {
+				ctx.log.info('no layers found with do-not-repeat constraints applied, retrying without')
+				return await getNextQueuedLayerId(noDnrConstraints)
 			}
-		}
-		nextQueuedLayerId = ids[0]
+			ctx.log.warn(`No layers found for constraints: %o`, { constraints })
+			return L.DEFAULT_LAYER_ID
+		})()
 
 		const nextQueueItem = LL.createLayerListItem({ layerId: nextQueuedLayerId }, { type: 'generated' })
 		serverState.layerQueue.push(nextQueueItem)

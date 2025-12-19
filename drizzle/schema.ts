@@ -18,6 +18,7 @@ export const matchHistory = mysqlTable(
 		lqItemId: varchar('lqItemId', { length: 256 }),
 		startTime: timestamp('startTime'),
 		endTime: timestamp('endTime'),
+		createdAt: timestamp('createdAt').defaultNow(),
 		outcome: mysqlEnum('outcome', ['team1', 'team2', 'draw']),
 
 		team1Tickets: int('team1Tickets'),
