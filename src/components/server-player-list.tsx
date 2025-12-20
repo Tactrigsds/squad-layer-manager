@@ -168,7 +168,6 @@ export default function ServerPlayerList() {
 	const recentMatches = MatchHistoryClient.useRecentMatches()
 	const match = recentMatches.find(m => m.historyEntryId === currentMatchId)
 	if (!match) {
-		console.warn('No match found for current match ID', currentMatchId)
 		return null
 	}
 

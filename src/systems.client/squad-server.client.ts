@@ -33,7 +33,8 @@ let previouslyConnected = false
 export const chatEvent$ = RPC.observe(
 	() => {
 		const eventBuffer = ChatStore.getState().chatState.eventBuffer
-		return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id })
+		const serverId = ChatStore.getState().loadedServerId ?? SelectedServerStore.getState().selectedServerId
+		return RPC.orpc.squadServer.watchChatEvents.call({ lastEventId: eventBuffer[eventBuffer.length - 1]?.id, serverId: serverId })
 	},
 	{
 		onError: () => {
@@ -48,9 +49,10 @@ export const chatEvent$ = RPC.observe(
 
 type ChatStore = {
 	chatState: CHAT.ChatState
+	loadedServerId: string | null
 	eventFilterState: CHAT.EventFilterState
 	setEventFilterState(state: CHAT.EventFilterState): void
-	handleChatEvents(event: (CHAT.Event | CHAT.SyncedEvent | CHAT.ConnectionErrorEvent)[]): void
+	handleChatEvents(event: (CHAT.Event | CHAT.LifecycleEvent)[]): void
 	// increments every time we modify the chat state
 	eventGeneration: number
 }
@@ -58,6 +60,7 @@ type ChatStore = {
 export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 	return {
 		chatState: CHAT.getInitialChatState(),
+		loadedServerId: null,
 		eventFilterState: 'DEFAULT',
 		eventGeneration: 0,
 		setEventFilterState(state) {
@@ -69,11 +72,14 @@ export const ChatStore = Zus.createStore<ChatStore>((set, get) => {
 				let chatState = state.chatState
 				// this is done to cache break the selectors
 				chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
+				let loadedServerId = state.loadedServerId
 				for (const event of events) {
-					if (chatState.synced || event.type === 'SYNCED') console.info('event ', event.type, event)
+					if (event.type === 'INIT') {
+						loadedServerId = event.serverId
+					}
 					CHAT.handleEvent(chatState, event, config?.chat)
 				}
-				return { chatState, eventGeneration: state.eventGeneration + 1 }
+				return { chatState, eventGeneration: state.eventGeneration + 1, loadedServerId }
 			})
 		},
 	}
@@ -118,7 +124,7 @@ export function setup() {
 	layersStatus$.subscribe()
 	serverRolling$.subscribe()
 	Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
-		ChatStore.getState().handleChatEvents(events as (CHAT.Event | CHAT.ConnectionErrorEvent | CHAT.SyncedEvent)[])
+		ChatStore.getState().handleChatEvents(events as (CHAT.Event | CHAT.LifecycleEvent)[])
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called

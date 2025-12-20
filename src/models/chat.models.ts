@@ -14,6 +14,13 @@ export type SyncedEvent = {
 	matchId: number
 }
 
+// tells client that we should reset the state
+export type InitEvent = {
+	type: 'INIT'
+	time: number
+	serverId: string
+}
+
 export type ConnectionErrorCode = 'CONNECTION_LOST' | 'RECONNECT_FAILED'
 export type ConnectionErrorEvent = {
 	type: 'CONNECTION_ERROR'
@@ -25,6 +32,8 @@ export type ReconnectedEvent = {
 	type: 'CHAT_RECONNECTED'
 	resumedEventId: null | number
 }
+
+export type LifecycleEvent = SyncedEvent | ConnectionErrorEvent | ReconnectedEvent | InitEvent
 
 export type InterpolableState = {
 	players: SM.Player[]
@@ -94,7 +103,7 @@ export type ChatState = {
 	// the state of the chat as of the last event
 	interpolatedState: InterpolableState
 
-	connectionError?: ConnectionErrorEvent
+	connectionError: ConnectionErrorEvent | null
 
 	// snapshots we can revert to in case of an out-of-order event
 	savepoints: Savepoint[]
@@ -125,6 +134,7 @@ export function getInitialChatState(): ChatState {
 		eventBuffer: [],
 		// indicates when this chat is now caught up on initial events from the server
 		synced: false,
+		connectionError: null,
 	}
 }
 
@@ -134,9 +144,14 @@ export function getInitialChatState(): ChatState {
  */
 export function handleEvent(
 	state: ChatState,
-	event: Event | SyncedEvent | ConnectionErrorEvent | ReconnectedEvent,
+	event: Event | LifecycleEvent,
 	opts?: InterpolationOptions,
 ) {
+	if (event.type === 'INIT') {
+		state = Object.assign(state, getInitialChatState())
+		return
+	}
+
 	if (event.type === 'SYNCED') {
 		state.synced = true
 		return
@@ -147,7 +162,7 @@ export function handleEvent(
 	}
 
 	if (event.type === 'CHAT_RECONNECTED') {
-		delete state.connectionError
+		state.connectionError = null
 		const lastEvent = state.eventBuffer[state.eventBuffer.length - 1]
 		if (!lastEvent || event.resumedEventId === lastEvent.id) {
 			// we're good to go, should be receiving events soon

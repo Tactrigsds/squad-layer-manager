@@ -216,9 +216,11 @@ export const orpcRouter = {
 		assertNever(result.type)
 	}),
 
-	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.number().optional() }).optional()).handler(
+	watchChatEvents: orpcBase.input(z.object({ lastEventId: z.number().optional(), serverId: z.string() })).handler(
 		async function*({ context, signal, input }) {
-			const obs: Rx.Observable<(SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[]> = selectedServerCtx$(context)
+			const obs: Rx.Observable<(SM.Events.Event | CHAT.LifecycleEvent)[]> = selectedServerCtx$(
+				context,
+			)
 				.pipe(
 					Rx.switchMap(ctx => {
 						async function getInitialEvents() {
@@ -229,9 +231,14 @@ export const orpcRouter = {
 							}
 
 							let allEvents: SM.Events.Event[] = ctx.server.state.eventBuffer
-							let events: (SM.Events.Event | CHAT.SyncedEvent | CHAT.ReconnectedEvent)[] = []
+							let events: (SM.Events.Event | CHAT.LifecycleEvent)[] = []
 
-							if (input?.lastEventId === undefined) {
+							if (input.lastEventId === undefined || ctx.serverId !== input.serverId) {
+								events.push({
+									type: 'INIT',
+									time: Date.now(),
+									serverId: ctx.serverId,
+								})
 								events.push(...allEvents)
 								events.push(sync)
 							} else {
@@ -254,7 +261,7 @@ export const orpcRouter = {
 								Rx.concatAll(),
 							)
 
-						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): (SM.Events.Event | CHAT.SyncedEvent)[] => events))
+						const upcoming$ = ctx.server.event$.pipe(Rx.map(([_, events]): SM.Events.Event[] => events))
 
 						return Rx.concat(initial$, upcoming$).pipe(
 							// orpc will break without this
@@ -751,19 +758,32 @@ function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.Matc
 
 // resolves a default server id for a request given the route and a previously stored default server id
 export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: Ctx) {
-	const defaultServerId = ctx.cookies['default-server-id']
+	const servers = CONFIG.servers.filter(s => s.enabled && globalState.slices.has(s.id)).toSorted((a, b) => {
+		if (a.defaultServer !== b.defaultServer) return a.defaultServer ? -1 : 1
+		return 0
+	})
 
+	if (servers.length === 0) throw new Error('No enabled servers found')
+
+	const defaultServerId = ctx.cookies['default-server-id']
+	const res = ctx.res
 	let serverId: string | undefined
 	if (ctx.route?.id === AR.route('/servers/:id')) {
+		// we don't want to validate that this server exists because we want the client to render a 404
 		serverId = ctx.route.params.id
 	} else if (defaultServerId) {
 		serverId = defaultServerId
+		if (!servers.some(s => s.id === serverId)) {
+			serverId = servers[0].id
+		}
 	} else {
-		serverId = (globalState.slices.keys().next().value)!
+		serverId = servers[0].id
 	}
 
-	if (defaultServerId && serverId === defaultServerId) return ctx
-	const res = ctx.res.setCookie(AR.COOKIE_KEY.enum['default-server-id'], serverId)
+	if (!defaultServerId || serverId !== defaultServerId) {
+		res.setCookie(AR.COOKIE_KEY.enum['default-server-id'], serverId)
+	}
+
 	return {
 		...ctx,
 		res,
