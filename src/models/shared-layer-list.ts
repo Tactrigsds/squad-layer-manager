@@ -244,7 +244,7 @@ export function isItemOwnedActivity(activity: QueueEditActivity): activity is Qu
 export const ClientPresenceSchema = z.object({
 	userId: USR.UserIdSchema,
 	away: z.boolean(),
-	lastSeen: z.number().positive(),
+	lastSeen: z.number().positive().nullable(),
 	activityState: UserPresenceActivitySchema.nullable(),
 })
 
@@ -447,15 +447,6 @@ export const ClientUpdateSchema = z.discriminatedUnion('code', [
 ])
 
 export type ClientUpdate = z.infer<typeof ClientUpdateSchema>
-
-export function getClientPresenceDefaults(userId: bigint): ClientPresence {
-	return {
-		userId,
-		away: false,
-		activityState: null,
-		lastSeen: Date.now(),
-	}
-}
 
 export function updateClientPresence(
 	presence: ClientPresence,

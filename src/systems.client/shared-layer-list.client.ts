@@ -428,7 +428,7 @@ function createStore() {
 							Im.produce(state, draft => {
 								let currentPresence = draft.presence.get(update.wsClientId)
 								if (!currentPresence) {
-									currentPresence = SLL.getClientPresenceDefaults(update.userId)
+									currentPresence = PresenceActions.getClientPresenceDefaults(update.userId)
 									draft.presence.set(update.wsClientId, currentPresence)
 								}
 
@@ -544,7 +544,7 @@ function createStore() {
 					Im.produce(state, draft => {
 						let currentPresence = draft.presence.get(config.wsClientId)
 						if (!currentPresence) {
-							currentPresence = SLL.getClientPresenceDefaults(userId)
+							currentPresence = PresenceActions.getClientPresenceDefaults(userId)
 							draft.presence.set(config.wsClientId, currentPresence)
 						}
 

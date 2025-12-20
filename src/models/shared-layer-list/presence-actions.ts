@@ -4,6 +4,15 @@ export type ActionInput = { hasEdits: boolean; prev?: SLL.ClientPresence }
 export type ActionOutput = Partial<Omit<SLL.ClientPresence, 'userId'>>
 export type Action = (input: ActionInput) => ActionOutput
 
+export function getClientPresenceDefaults(userId: bigint): SLL.ClientPresence {
+	return {
+		userId,
+		away: true,
+		activityState: null,
+		lastSeen: null,
+	}
+}
+
 export const pageLoaded: Action = (input) => {
 	return {
 		away: false,

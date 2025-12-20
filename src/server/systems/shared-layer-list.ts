@@ -282,7 +282,7 @@ function handlePresenceUpdate(
 	}
 	let clientPresence = ctx.sharedList.presence.get(update.wsClientId)
 	if (!clientPresence) {
-		clientPresence = SLL.getClientPresenceDefaults(update.userId)
+		clientPresence = PresenceActions.getClientPresenceDefaults(update.userId)
 		ctx.sharedList.presence.set(update.wsClientId, clientPresence)
 	}
 	const modified = SLL.updateClientPresence(clientPresence, update.changes)
@@ -314,7 +314,7 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 		prev: currentPresence,
 	}
 	if (!currentPresence) {
-		currentPresence = SLL.getClientPresenceDefaults(ctx.user.discordId)
+		currentPresence = PresenceActions.getClientPresenceDefaults(ctx.user.discordId)
 		ctx.sharedList.presence.set(ctx.wsClientId, currentPresence)
 	}
 	const update = action(actionInput)
@@ -338,7 +338,7 @@ export function setup() {
 				const presenceState = slice.sharedList.presence
 				for (const [wsClientId, presence] of Array.from(presenceState.entries())) {
 					// we don't want to remove presence instances that still might have an away indicator
-					const pastDisconnectTimeout = (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
+					const pastDisconnectTimeout = presence.lastSeen === null || (Date.now() - presence.lastSeen) > SLL.DISPLAYED_AWAY_PRESENCE_WINDOW
 					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
 						presenceState.delete(wsClientId)
 						numCleaned++
