@@ -384,15 +384,18 @@ function createStore() {
 			async handleServerUpdate(update) {
 				switch (update.code) {
 					case 'init': {
-						this.pushPresenceAction(PresenceActions.editSessionChanged)
+						const clientId = ConfigClient.getConfig()?.wsClientId
+						const clientPresence = clientId ? get().presence.get(clientId) : null
 						set({
+							...store.getInitialState(),
 							session: update.session,
 							syncedState: update.session,
 							outgoingOpsPendingSync: [],
-							presence: MapUtils.union(update.presence, get().presence),
+							presence: new Map([...update.presence, ...(clientPresence ? [[clientId!, clientPresence] as const] : [])]),
 							sessionSeqId: update.sessionSeqId,
 							itemLocks: new Map(),
 						})
+						this.pushPresenceAction(PresenceActions.editSessionChanged)
 						break
 					}
 					case 'op': {

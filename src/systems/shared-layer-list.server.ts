@@ -88,6 +88,7 @@ export function setupInstance(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerL
 			Rx.delay(PresenceActions.DISCONNECT_TIMEOUT),
 			Rx.map(ctx => SquadServer.resolveSliceCtx(ctx, serverId)),
 			C.durableSub('shared-layer-list:handle-user-disconnect', { ctx, tracer, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
+				if (ctx.serverId !== serverId) return
 				dispatchPresenceAction(ctx, PresenceActions.disconnectedTimeout)
 				cleanupActivityLocks(ctx, ctx.wsClientId)
 				C.setSpanStatus(Otel.SpanStatusCode.OK)
