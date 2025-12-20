@@ -2,11 +2,11 @@ import { resToOptional } from '@/lib/types'
 import type * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
 import { CONFIG } from '@/server/config'
+import * as Env from '@/server/env'
+import { baseLogger } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
 import * as D from 'discord.js'
 import { z } from 'zod'
-import * as Env from '@/server/env'
-import { baseLogger } from '@/server/logger'
 
 export const DiscordUserSchema = z.object({
 	id: z.string().transform(BigInt),

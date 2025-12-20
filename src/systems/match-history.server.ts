@@ -18,12 +18,12 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 
-import * as E from 'drizzle-orm/expressions'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 import { CONFIG } from '@/server/config'
 import orpcBase from '@/server/orpc-base'
 import * as UsersClient from '@/systems/users.server'
+import * as E from 'drizzle-orm/expressions'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
 
 const tracer = Otel.trace.getTracer('match-history')
 

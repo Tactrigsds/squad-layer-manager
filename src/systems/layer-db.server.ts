@@ -15,8 +15,8 @@ import zlib from 'node:zlib'
 import * as semver from 'semver'
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
-import { z } from 'zod'
 import { baseLogger } from '@/server/logger'
+import { z } from 'zod'
 
 export let db!: LayerDb
 

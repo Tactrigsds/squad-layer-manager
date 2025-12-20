@@ -30,7 +30,9 @@ import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import { baseLogger } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
+import * as CleanupSys from '@/systems/cleanup.server'
 import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -45,8 +47,6 @@ import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import superjson from 'superjson'
 import { z } from 'zod'
-import { baseLogger } from '@/server/logger'
-import * as CleanupSys from '@/systems/cleanup.server'
 
 const tracer = Otel.trace.getTracer('squad-server')
 
