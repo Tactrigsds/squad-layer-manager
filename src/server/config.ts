@@ -40,8 +40,12 @@ export const ConfigSchema = z.object({
 			enabled: z.boolean().prefault(true).describe('Whether the server is enabled'),
 			connections: SS.ServerConnectionSchema,
 			remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe('Whether reminders/annoucements for admins are enabled'),
+			defaultServer: z.boolean().default(false),
 		}),
-	),
+	).refine((servers) => {
+		const defaultServerCount = servers.filter((server) => server.defaultServer).length
+		return defaultServerCount <= 1
+	}, 'There must be at most one default server'),
 	chat: CHAT.ChatConfigSchema.prefault({}),
 	layerQueue: z.object({
 		lowQueueWarningThreshold: z
@@ -168,6 +172,7 @@ export type PublicConfig = ReturnType<typeof getPublicConfig>
 export type ServerEntry = {
 	id: string
 	displayName: string
+	defaultServer: boolean
 }
 
 // we also include public env variables here and the websocket client id for expediency
@@ -188,6 +193,7 @@ export function getPublicConfig(wsClientId: string) {
 		servers: CONFIG.servers.filter(s => s.enabled).map((server): ServerEntry => ({
 			id: server.id,
 			displayName: server.displayName,
+			defaultServer: server.defaultServer,
 		})),
 
 		wsClientId,

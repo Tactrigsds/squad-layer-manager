@@ -1,4 +1,5 @@
-import * as AR from '@/app-routes'
+
+import { globalToast$ } from '@/hooks/use-global-toast'
 import * as CHAT from '@/models/chat.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
@@ -98,6 +99,7 @@ export function useDisableFogOfWarMutation() {
 type SelectedServerStore = {
 	selectedServerId: string
 	setSelectedServer: (serverId: string) => Promise<void>
+	setAsDefaultServer: () => void
 }
 
 export let SelectedServerStore!: Zus.StoreApi<SelectedServerStore>
@@ -121,17 +123,23 @@ export function setup() {
 	})
 
 	// this cookie will always be set correctly according to the path on page load, which is the only time we expect setup() to be called
-	const cookieServerId = Cookies.getCookie('default-server-id')
-	const route = AR.resolveRoute(window.location.pathname)
-	const serverId = route?.id === '/servers/:id' ? route?.params.id : cookieServerId
-	if (!serverId) throw new Error('No server id found')
-	Cookies.setCookie('default-server-id', serverId)
+	const cookieServerId = Cookies.getCookie('default-server-id')!
 
-	SelectedServerStore = Zus.createStore((set) => ({
-		selectedServerId: serverId,
+	SelectedServerStore = Zus.createStore((set, get) => ({
+		selectedServerId: cookieServerId,
 		setSelectedServer: async (serverId: string) => {
+			if (serverId === get().selectedServerId) return
+			const res = await RPC.orpc.squadServer.setSelectedServer.call(serverId)
+			if (res.code !== 'ok') {
+				globalToast$.next({ variant: 'destructive', title: res.code })
+				return
+			}
+
 			Cookies.setCookie('default-server-id', serverId)
 			return set({ selectedServerId: serverId })
+		},
+		setAsDefaultServer: () => {
+			Cookies.setCookie('default-server-id', get().selectedServerId)
 		},
 	}))
 

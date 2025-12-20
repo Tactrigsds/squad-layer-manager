@@ -105,7 +105,8 @@
             "description": "Whether reminders/annoucements for admins are enabled",
             "default": true,
             "type": "boolean"
-          }
+          },
+          "defaultServer": {"default": false, "type": "boolean"}
         },
         "required": ["id", "displayName", "connections"]
       }

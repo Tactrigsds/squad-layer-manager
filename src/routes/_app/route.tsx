@@ -129,11 +129,12 @@ function RouteComponent() {
 								<DropdownMenuTrigger asChild>
 									<Button variant="outline">
 										{selectedServer.displayName}
+										<Icons.ChevronDown className="ml-2 h-4 w-4" />
 									</Button>
 								</DropdownMenuTrigger>
-								<DropdownMenuContent>
+								<DropdownMenuContent align="end" className="min-w-[--radix-dropdown-menu-trigger-width] ">
 									{config.servers.filter((server) => server.id !== selectedServer.id).map((server) => (
-										<DropdownMenuItem asChild key={server.id}>
+										<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
 											<Link to="/servers/$serverId" params={{ serverId: server.id }}>
 												{server.displayName}
 											</Link>
