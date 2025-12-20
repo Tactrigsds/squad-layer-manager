@@ -2,8 +2,8 @@ import * as L from '@/models/layer'
 
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
-import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
-import * as MatchHistoryClient from '@/systems.client/match-history.client'
+import { GlobalSettingsStore } from '@/systems/global-settings.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import { cn } from '@/lib/utils'
 import * as Zus from 'zustand'

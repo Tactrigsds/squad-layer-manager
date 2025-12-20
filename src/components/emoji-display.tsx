@@ -1,7 +1,7 @@
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as EMO from '@/models/emoji.models'
-import * as DiscordClient from '@/systems.client/discord.client'
+import * as DiscordClient from '@/systems/discord.client'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export default function EmojiDisplay(

@@ -1,19 +1,19 @@
-import * as FeatureFlags from '@/systems.client/feature-flags.ts'
-import * as ServerSettingsClient from '@/systems.client/server-settings.client.ts'
-import * as VotesClient from '@/systems.client/vote.client.ts'
+import * as FeatureFlags from '@/systems/feature-flags.client'
+import * as ServerSettingsClient from '@/systems/server-settings.client'
+import * as VotesClient from '@/systems/vote.client'
 import * as TSR from '@tanstack/react-router'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Providers } from './components/providers.tsx'
 import './index.css'
-import * as ConfigClient from '@/systems.client/config.client.ts'
-import * as FilterEntityClient from '@/systems.client/filter-entity.client.ts'
-import * as MatchHistoryClient from '@/systems.client/match-history.client.ts'
-import * as QueueDashboard from '@/systems.client/queue-dashboard'
-import * as SharedLayerListClient from '@/systems.client/shared-layer-list.client.ts'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
-import * as ThemeSys from '@/systems.client/theme.ts'
-import * as UsersClient from '@/systems.client/users.client.ts'
+import * as ConfigClient from '@/systems/config.client'
+import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as QueueDashboard from '@/systems/queue-dashboard.client'
+import * as SharedLayerListClient from '@/systems/shared-layer-list.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
+import * as ThemeSys from '@/systems/theme.client'
+import * as UsersClient from '@/systems/users.client'
 import { enableMapSet } from 'immer'
 import { rootRouter } from './root-router.ts'
 
@@ -35,11 +35,11 @@ enableMapSet()
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')
 	if (loadConsoleOnStartup) {
-		void import('@/systems.client/console.client.ts')
+		void import('@/systems/console.client')
 	} else {
 		const unsub = FeatureFlags.Store.subscribe((state) => {
 			if (state.flags.loadConsole) {
-				void import('@/systems.client/console.client.ts')
+				void import('@/systems/console.client')
 				unsub()
 			}
 		})

@@ -7,7 +7,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger.ts'
-import * as Cli from '@/server/systems/cli.ts'
+import * as Cli from '@/systems/cli.server'
 
 import fs from 'node:fs'
 import superjson from 'superjson'

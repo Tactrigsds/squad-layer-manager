@@ -9,7 +9,7 @@ import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
 import type * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
-import type { WarnOptions } from '@/server/systems/squad-rcon'
+import type { WarnOptions } from '@/systems/squad-rcon.server'
 import * as dateFns from 'date-fns'
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 

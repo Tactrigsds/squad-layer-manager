@@ -1,7 +1,7 @@
 import { flattenObjToAttrs } from '@/lib/object'
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
-import { sdk as otelSdk } from '@/server/systems/otel'
+import { sdk as otelSdk } from '@/systems/otel.server'
 import * as Otel from '@opentelemetry/api'
 import type { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
 import type { LoggerOptions } from 'pino'

@@ -1,6 +1,6 @@
 import * as Env from '@/server/env.ts'
 import { ensureLoggerSetup } from '@/server/logger.ts'
-import * as Cli from '@/server/systems/cli.ts'
+import * as Cli from '@/systems/cli.server'
 
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()

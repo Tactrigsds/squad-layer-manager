@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { globalToast$ } from '@/hooks/use-global-toast'
 import { cn } from '@/lib/utils'
 import * as RPC from '@/orpc.client'
-import * as UsersClient from '@/systems.client/users.client'
+import * as UsersClient from '@/systems/users.client'
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'

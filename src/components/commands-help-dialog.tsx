@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useToast } from '@/hooks/use-toast'
 import * as Messages from '@/messages'
 import * as CMD from '@/models/command.models'
-import { useConfig } from '@/systems.client/config.client'
+import { useConfig } from '@/systems/config.client'
 import { Copy, HelpCircle } from 'lucide-react'
 import * as React from 'react'
 

@@ -3,7 +3,7 @@ import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as V from '@/models/vote.models'
-import * as SquadServerClient from '@/systems.client/squad-server.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 
 type VoteTallyProps = {
 	voteState: V.VoteStateWithVoteData

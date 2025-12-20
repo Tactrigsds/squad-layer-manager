@@ -1,0 +1,44 @@
+import type * as MH from '@/models/match-history.models'
+import * as RPC from '@/orpc.client'
+import * as PartsSys from '@/systems/parts.client'
+
+import * as ReactRx from '@react-rxjs/core'
+import { createSignal } from '@react-rxjs/utils'
+import * as Rx from 'rxjs'
+
+const [initialized$, setInitialized] = createSignal<boolean>()
+
+export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind<MH.PublicMatchHistoryState>(
+	RPC.observe(() => RPC.orpc.matchHistory.watchMatchHistoryState.call()).pipe(Rx.map(PartsSys.stripParts)),
+	{ recentBalanceTriggerEvents: [], recentMatches: [] },
+)
+
+export const [useRecentMatches, recentMatches$] = ReactRx.bind(
+	matchHistoryState$.pipe(Rx.map((state) => {
+		return [...state.recentMatches]
+	})),
+)
+
+export const [useCurrentMatch, currentMatch$] = ReactRx.bind(
+	() => recentMatches$.pipe(Rx.map(matches => (matches[matches.length - 1]) as MH.MatchDetails | undefined)),
+)
+
+export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
+	() =>
+		initialized$.pipe(
+			Rx.map(() => recentMatches$.getValue()),
+		),
+)
+
+export async function resolveInitializedRecentMatches() {
+	const recentMatches = await Rx.firstValueFrom(initializedRecentMatches$().pipe(Rx.filter(v => !!v)))
+	return recentMatches
+}
+
+export function setup() {
+	matchHistoryState$.subscribe(() => {
+		setInitialized(true)
+	})
+	initializedRecentMatches$().subscribe()
+	currentMatch$().subscribe()
+}

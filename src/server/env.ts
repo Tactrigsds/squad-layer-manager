@@ -3,7 +3,7 @@ import path from 'node:path'
 import { z } from 'zod'
 import * as Paths from '../../paths.ts'
 import { NormedUrl, ParsedIntSchema, PathSegment } from '../lib/zod'
-import * as Cli from './systems/cli.ts'
+import * as Cli from '@/systems/cli.server'
 
 export const groups = {
 	general: {

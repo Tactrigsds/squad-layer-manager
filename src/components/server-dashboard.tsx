@@ -1,7 +1,7 @@
 import LayersPanel from '@/components/layers-panel.tsx'
 import ServerActivityPanel from '@/components/server-activity-panel.tsx'
 import { TeamIndicator } from '@/components/teams-display.tsx'
-import { GlobalSettingsStore } from '@/systems.client/global-settings.ts'
+import { GlobalSettingsStore } from '@/systems/global-settings.client'
 import React from 'react'
 import * as Zus from 'zustand'
 

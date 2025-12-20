@@ -1,4 +1,4 @@
-import * as SquadServerClient from '@/systems.client/squad-server.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({

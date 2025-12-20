@@ -4,8 +4,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { globalToast$ } from '@/hooks/use-global-toast'
 
 import { formatVersion } from '@/lib/versioning'
-import * as ConfigClient from '@/systems.client/config.client'
-import * as UsersClient from '@/systems.client/users.client'
+import * as ConfigClient from '@/systems/config.client'
+import * as UsersClient from '@/systems/users.client'
 import { Copy, Info } from 'lucide-react'
 import * as React from 'react'
 
