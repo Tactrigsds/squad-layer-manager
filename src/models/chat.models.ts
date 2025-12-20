@@ -209,7 +209,7 @@ export function handleEvent(
 	if (mutatedIndex < state.rawEventBuffer.length) {
 		eventsToProcess.push(...state.rawEventBuffer.slice(lastSaveEventIndex + 1, mutatedIndex))
 		eventsToProcess.push(event)
-		eventsToProcess.push(...state.rawEventBuffer.slice(mutatedIndex + 1))
+		eventsToProcess.push(...state.rawEventBuffer.slice(mutatedIndex))
 		state.rawEventBuffer = state.rawEventBuffer.slice(0, lastSaveEventIndex + 1)
 		state.eventBuffer = state.eventBuffer.slice(0, lastSaveEventIndex + 1)
 		let savepoint = state.savepoints[state.savepoints.length - 1]
