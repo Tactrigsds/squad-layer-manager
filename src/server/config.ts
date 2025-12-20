@@ -185,7 +185,7 @@ export function getPublicConfig(wsClientId: string) {
 		layersVersion: LayerDb.layersVersion,
 		commands: CONFIG.commands,
 		commandPrefix: CONFIG.commandPrefix,
-		servers: CONFIG.servers.map((server): ServerEntry => ({
+		servers: CONFIG.servers.filter(s => s.enabled).map((server): ServerEntry => ({
 			id: server.id,
 			displayName: server.displayName,
 		})),
