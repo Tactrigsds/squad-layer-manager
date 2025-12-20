@@ -6,10 +6,9 @@ import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 import * as AR from './src/app-routes.ts'
-import { ensureEnvSetup } from './src/server/env.ts'
 import * as Env from './src/server/env.ts'
 
-ensureEnvSetup()
+Env.ensureEnvSetup()
 const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 
 // https://vitejs.dev/config/
@@ -36,7 +35,7 @@ export default defineConfig({
 
 						if (req.url && acceptHeader.includes('text/html') && res.statusCode === 200) {
 							try {
-								ensureEnvSetup()
+								Env.ensureEnvSetup()
 								const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 								const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
 
@@ -103,7 +102,7 @@ export default defineConfig({
 })
 
 function buildDevServerConfig(): UserConfig['server'] {
-	ensureEnvSetup()
+	Env.ensureEnvSetup()
 	// don't resolve these in prod
 	const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
 	const proxy: CommonServerOptions['proxy'] = {}
