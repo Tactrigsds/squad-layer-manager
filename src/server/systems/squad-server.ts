@@ -453,10 +453,12 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 			E.desc(Schema.matchHistory.ordinal),
 		).limit(1)
 
-		const rowsRaw = await ctx.db().select({ event: Schema.serverEvents }).from(Schema.serverEvents).where(
-			E.eq(Schema.serverEvents.matchId, lastMatch.id),
-		)
-			.orderBy(E.asc(Schema.serverEvents.id))
+		const rowsRaw = lastMatch
+			? await ctx.db().select({ event: Schema.serverEvents }).from(Schema.serverEvents).where(
+				E.eq(Schema.serverEvents.matchId, lastMatch.id),
+			)
+				.orderBy(E.asc(Schema.serverEvents.id))
+			: []
 		const events = rowsRaw.map(r => fromEventRow(r.event))
 		server.state.lastSavedEventId = events[events.length - 1]?.id ?? null
 		server.state.eventBuffer = events
