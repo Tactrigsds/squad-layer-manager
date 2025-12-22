@@ -1413,7 +1413,7 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 	const server = ctx.server
 	try {
 		server.teamUpdateInterceptor = new Rx.Subject()
-		return await Rx.firstValueFrom(server.teamUpdateInterceptor.pipe(Rx.timeout(10_000)))
+		return await Rx.firstValueFrom(server.teamUpdateInterceptor.pipe(Rx.timeout(20_000)))
 	} finally {
 		server.teamUpdateInterceptor?.complete()
 		server.teamUpdateInterceptor = null
