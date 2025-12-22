@@ -543,11 +543,12 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 				async function*([prev, current]) {
 					const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 					const server = ctx.server
+					ctx.log.info('looking for team updates')
 
 					let intercepted = false
 					if (server.teamUpdateInterceptor) {
+						ctx.log.info('intercepting team update')
 						server.teamUpdateInterceptor.next(current.teams)
-						server.teamUpdateInterceptor = null
 						intercepted = true
 					}
 
@@ -1413,7 +1414,18 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 	const server = ctx.server
 	try {
 		server.teamUpdateInterceptor = new Rx.Subject()
-		return await Rx.firstValueFrom(server.teamUpdateInterceptor.pipe(Rx.timeout(20_000)))
+		return await Rx.firstValueFrom(Rx.race(
+			server.teamUpdateInterceptor.pipe(
+				Rx.tap({
+					next: () => {
+						server.teamUpdateInterceptor = null
+					},
+				}),
+			),
+			Rx.timer(20_000).pipe(Rx.map(() => {
+				throw new Error('Timeout')
+			})),
+		)) as unknown as SM.Teams
 	} finally {
 		server.teamUpdateInterceptor?.complete()
 		server.teamUpdateInterceptor = null
