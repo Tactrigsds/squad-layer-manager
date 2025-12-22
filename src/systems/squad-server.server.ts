@@ -1412,8 +1412,9 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
 }, async (ctx: C.SquadServer) => {
 	const server = ctx.server
+	let interceptor = new Rx.Subject<SM.Teams>()
 	try {
-		server.teamUpdateInterceptor = new Rx.Subject()
+		server.teamUpdateInterceptor = interceptor
 		return await Rx.firstValueFrom(Rx.race(
 			server.teamUpdateInterceptor.pipe(
 				Rx.tap({
@@ -1427,7 +1428,7 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 			})),
 		)) as unknown as SM.Teams
 	} finally {
-		server.teamUpdateInterceptor?.complete()
+		interceptor.complete()
 		server.teamUpdateInterceptor = null
 	}
 })
