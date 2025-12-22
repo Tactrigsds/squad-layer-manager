@@ -8,10 +8,10 @@ import * as dateFns from 'date-fns'
 import { z } from 'zod'
 
 export const ServerRawInfoSchema = z.object({
-	ServerName_s: z.string().prefault('Unknown'),
+	ServerName_s: z.string().default('Unknown'),
 	MaxPlayers: z.int().nonnegative().default(0),
 	PlayerCount_I: ZodUtils.ParsedIntSchema.default(0),
-	PublicQueue_I: ZodUtils.ParsedIntSchema,
+	PublicQueue_I: ZodUtils.ParsedIntSchema.default(0),
 	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.optional(),
 	// MapName_s: z.string(),
 	// GameMode_s: z.string(),
