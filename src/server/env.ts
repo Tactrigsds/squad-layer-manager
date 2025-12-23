@@ -50,6 +50,10 @@ export const groups = {
 		ORIGIN: NormedUrl.default('https://localhost:5173'),
 	},
 
+	squadLogsReceiver: {
+		SQUAD_LOGS_RECEIVER_PORT: ParsedIntSchema.default(8443),
+	},
+
 	layerDb: {
 		LAYERS_VERSION: PathSegment.default('@latest'), // @latest is a magic string which resolves the latest available version according to semver that's availble at the configured path for  LAYERS_DB_PATH and EXTRA_COLS_CSV_PATH
 		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json'),

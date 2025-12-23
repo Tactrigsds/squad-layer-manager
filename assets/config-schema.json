@@ -87,19 +87,43 @@
                 },
                 "required": ["host", "port", "password"]
               },
-              "sftp": {
-                "type": "object",
-                "properties": {
-                  "host": {"type": "string", "minLength": 1},
-                  "port": {"type": "number", "minimum": 1, "maximum": 65535},
-                  "username": {"type": "string", "minLength": 1},
-                  "password": {"type": "string", "minLength": 1},
-                  "logFile": {"type": "string", "minLength": 1}
-                },
-                "required": ["host", "port", "username", "password", "logFile"]
+              "logs": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {"type": "string", "const": "log-receiver"},
+                      "token": {"default": "dev", "type": "string"}
+                    },
+                    "required": ["type"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {"type": "string", "const": "sftp"},
+                      "host": {"type": "string", "minLength": 1},
+                      "port": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 65535
+                      },
+                      "username": {"type": "string", "minLength": 1},
+                      "password": {"type": "string", "minLength": 1},
+                      "logFile": {"type": "string", "minLength": 1}
+                    },
+                    "required": [
+                      "type",
+                      "host",
+                      "port",
+                      "username",
+                      "password",
+                      "logFile"
+                    ]
+                  }
+                ]
               }
             },
-            "required": ["rcon", "sftp"]
+            "required": ["rcon", "logs"]
           },
           "remindersAndAnnouncementsEnabled": {
             "description": "Whether reminders/annoucements for admins are enabled",

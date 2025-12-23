@@ -11,25 +11,29 @@ export function createLogMatcher<O extends EventSchema>(matcher: LogMatcher<O>) 
 	return matcher
 }
 
-export function matchLog<LM extends LogMatcher>(line: string, matcher: LM) {
-	const match = line.match(matcher.regex)
-	if (!match) return [null, null] as const
-	const [matchRes, err] = withThrown(() => matcher.onMatch(match))
-	if (matchRes === null) return [null, null] as const
-	if (err) {
-		const error = new Error(`Failed to parse log line during onMatch for ${matcher.event.type}`, {
-			cause: err ?? undefined,
-		})
-		;(error as any).logLine = line
-		return [null, error] as const
+export function matchLog<LM extends LogMatcher>(line: string, matchers: readonly LM[]) {
+	for (const matcher of matchers) {
+		const match = line.match(matcher.regex)
+		if (!match) return [null, null] as const
+		const [matchRes, err] = withThrown(() => matcher.onMatch(match))
+		if (err) {
+			const error = new Error(`Failed to parse log line during onMatch for ${matcher.event.type}`, {
+				cause: err ?? undefined,
+			})
+			;(error as any).logLine = line
+			return [null, error] as const
+		}
+		if (matchRes === null) continue
+		const schemaRes = matcher.event.schema.safeParse(matchRes)
+		if (!schemaRes.success) {
+			const error = new Error(`Failed to validate parsed result for ${matcher.event.type}`, { cause: schemaRes.error })
+			;(error as any).logLine = line
+			return [null, error] as const
+		}
+		return [schemaRes.data as z.infer<LM['event']['schema']>, null] as const
 	}
-	const schemaRes = matcher.event.schema.safeParse(matchRes)
-	if (!schemaRes.success) {
-		const error = new Error(`Failed to validate parsed result for ${matcher.event.type}`, { cause: schemaRes.error })
-		;(error as any).logLine = line
-		return [null, error] as const
-	}
-	return [schemaRes.data as z.infer<LM['event']['schema']>, null] as const
+
+	return [null, null] as const
 }
 
 export function eventDef<T extends string, P extends { [key: string]: z.ZodType }>(type: T, props: P) {

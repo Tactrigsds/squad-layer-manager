@@ -134,26 +134,16 @@ export class SftpTail extends EventEmitter {
 				this.ctx.log.trace({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
 
 				// Get contents of download.
-				const data = await readFile(this.tmpFilePath!, 'utf8')
+				const chunk = await readFile(this.tmpFilePath!, 'utf8')
 
 				// Only continue if something was fetched.
-				if (data.length === 0) {
+				if (chunk.length === 0) {
 					this.ctx.log.trace('No data was fetched.')
 					await this.sleep(this.options.fetchInterval)
 					continue
 				}
 
-				data
-					// Remove trailing new lines.
-					.replace(/\r?\n$/, '')
-					// Split the data on the lines.
-					.split(/\r?\n/)
-					// Emit each line.
-					.forEach((line) => {
-						if (!line.trim()) return
-						this.ctx.log.trace('Processing line: %s', JSON.stringify(line))
-						return this.emit('line', line)
-					})
+				this.emit('chunk', chunk)
 
 				// Log the loop runtime.
 				const fetchEndTime = Date.now()

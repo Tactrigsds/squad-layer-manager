@@ -166,6 +166,14 @@ export async function ensureSetup() {
 			)
 		}
 	}
+
+	if (ENV.NODE_ENV === 'production') {
+		for (const server of CONFIG.servers) {
+			if (server.connections.logs.type === 'log-receiver' && server.connections.logs.token === 'dev') {
+				throw new Error(`Development token for ${server.id}:log-receiver used in production at server`)
+			}
+		}
+	}
 }
 
 export type PublicConfig = ReturnType<typeof getPublicConfig>

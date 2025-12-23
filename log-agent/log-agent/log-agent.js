@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import * as fs from 'node:fs'
 import * as net from 'node:net'
+import * as tls from 'node:tls'
 import { parseArgs } from 'node:util'
 
 const VERSION = '0.0.1'
@@ -11,7 +12,11 @@ const APP_NAME = 'slm-log-agent@' + VERSION
  * @property {string} host - The server host to connect to
  * @property {number} port - The server port to connect to
  * @property {string} filePath - The file path to stream
+ * @property {string} serverId - The server ID to identify this agent
+ * @property {string} token - Authentication token
  * @property {number} [reconnectDelay] - Delay in ms before reconnecting (default: 5000)
+ * @property {boolean} [useTls] - Use TLS for secure connection
+ * @property {boolean} [rejectUnauthorized] - Reject unauthorized TLS certificates
  */
 
 const { values } = parseArgs({
@@ -24,6 +29,9 @@ const { values } = parseArgs({
 		daemon: { type: 'boolean', default: false },
 		reconnectDelay: { type: 'string', default: '5000' },
 		serverId: { type: 'string' },
+		token: { type: 'string' },
+		tls: { type: 'boolean', default: false },
+		rejectUnauthorized: { type: 'boolean', default: true },
 	},
 })
 
@@ -54,6 +62,16 @@ if (!values.file) {
 	process.exit(1)
 }
 
+if (!values.serverId) {
+	console.error('Error: --serverId option is required')
+	process.exit(1)
+}
+
+if (!values.token) {
+	console.error('Error: --token option is required')
+	process.exit(1)
+}
+
 console.log(`Starting ${APP_NAME} with PID ${process.pid}. Daemon mode: ${values.daemon}`)
 
 /** @type {StreamOptions} */
@@ -61,7 +79,11 @@ const streamOptions = {
 	host: values.host,
 	port: parseInt(values.port),
 	filePath: values.file,
+	serverId: values.serverId,
+	token: values.token,
 	reconnectDelay: parseInt(values.reconnectDelay),
+	useTls: values.tls,
+	rejectUnauthorized: values.rejectUnauthorized,
 }
 
 const shutdown = streamFileOverTCP(streamOptions)
@@ -92,7 +114,11 @@ function streamFileOverTCP(options) {
 		host,
 		port,
 		filePath,
+		serverId,
+		token,
 		reconnectDelay,
+		useTls,
+		rejectUnauthorized,
 	} = options
 
 	/** @type {import('child_process').ChildProcess | null} */
@@ -136,30 +162,47 @@ function streamFileOverTCP(options) {
 
 	function connect() {
 		if (isShuttingDown) return
-		console.log(`Connecting to log receiver at ${host}:${port} ...`)
+		console.log(`Connecting to log receiver at ${host}:${port} ${useTls ? '(TLS)' : ''}...`)
 
-		socket = net.connect({ host, port }, () => {
-			console.log(`Connected`)
-			reconnectAttempts = 0 // Reset on successful connection
-			bytesSent = 0
-			lastReportedBytes = 0
-			connectionStartTime = Date.now()
+		const connectOptions = {
+			host,
+			port,
+			...(useTls && { rejectUnauthorized }),
+		}
 
-			// Send version string to server
-			socket?.write(`${APP_NAME}:${values.serverId}\n`)
+		socket = useTls
+			? tls.connect(connectOptions, () => {
+				console.log(`Connected via TLS`)
+				reconnectAttempts = 0 // Reset on successful connection
+				bytesSent = 0
+				lastReportedBytes = 0
+				connectionStartTime = Date.now()
 
-			// Start periodic stats reporting
-			statsTimer = setInterval(() => {
-				const bytesSinceLastReport = bytesSent - lastReportedBytes
-				const uptimeSeconds = Math.floor((Date.now() - connectionStartTime) / 1000)
-				const hours = Math.floor(uptimeSeconds / 3600)
-				const minutes = Math.floor((uptimeSeconds % 3600) / 60)
-				const seconds = uptimeSeconds % 60
-				const uptimeStr = `${hours}h ${minutes}m ${seconds}s`
-				console.log(`Uptime: ${uptimeStr} | Sent ${bytesSent} bytes total (${bytesSinceLastReport} bytes since last report)`)
-				lastReportedBytes = bytesSent
-			}, 60000) // Report every 60 seconds
-		})
+				// Send version string to server with token
+				socket?.write(`${APP_NAME}:${serverId}:${token}\n`)
+			})
+			: net.connect(connectOptions, () => {
+				console.log(`Connected`)
+				reconnectAttempts = 0 // Reset on successful connection
+				bytesSent = 0
+				lastReportedBytes = 0
+				connectionStartTime = Date.now()
+
+				// Send version string to server with token
+				socket?.write(`${APP_NAME}:${serverId}:${token}\n`)
+			})
+
+		// Start periodic stats reporting
+		statsTimer = setInterval(() => {
+			const bytesSinceLastReport = bytesSent - lastReportedBytes
+			const uptimeSeconds = Math.floor((Date.now() - connectionStartTime) / 1000)
+			const hours = Math.floor(uptimeSeconds / 3600)
+			const minutes = Math.floor((uptimeSeconds % 3600) / 60)
+			const seconds = uptimeSeconds % 60
+			const uptimeStr = `${hours}h ${minutes}m ${seconds}s`
+			console.log(`Uptime: ${uptimeStr} | Sent ${bytesSent} bytes total (${bytesSinceLastReport} bytes since last report)`)
+			lastReportedBytes = bytesSent
+		}, 60000) // Report every 60 seconds
 
 		// Wait for server to send the last known offset
 		socket.once('data', (data) => {

@@ -50,15 +50,13 @@ export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, cleanup: Clean
 	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
 		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
 			ctx.log.info('RCON PACKET: %s', pkt.body)
-			for (const matcher of SM.RCON_EVENT_MATCHERS) {
-				const [event, err] = matchLog(pkt.body, matcher)
-				if (err) {
-					ctx.log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)
-					return Rx.EMPTY
-				}
-				if (event) return Rx.of([ctx, event])
+			const [event, err] = matchLog(pkt.body, SM.RCON_EVENT_MATCHERS)
+			if (err) {
+				ctx.log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)
+				return Rx.EMPTY
 			}
-			return Rx.EMPTY
+			if (!event) return Rx.EMPTY
+			return Rx.of([ctx, event])
 		}),
 		Rx.share(),
 	)

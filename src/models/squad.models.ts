@@ -1,4 +1,4 @@
-import { createLogMatcher, eventDef } from '@/lib/log-parsing'
+import { createLogMatcher, eventDef, matchLog } from '@/lib/log-parsing'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as ZodUtils from '@/lib/zod'
 import type * as L from '@/models/layer'
@@ -777,6 +777,52 @@ export namespace RconEvents {
 export const RCON_EVENT_MATCHERS = RconEvents.matchers
 
 export namespace LogEvents {
+	const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
+	const logPreambleRegex = /^\w+: /
+
+	export async function* parse(chunk$: AsyncGenerator<string>) {
+		let foundLogStart: boolean = false
+		let lineBuffer: string[] = []
+
+		let carry = ''
+		for await (const chunk of chunk$) {
+			const lines = chunk.split(/\r?\n/)
+			lines[0] = carry + lines[0]
+			carry = lines.pop() ?? ''
+			if (lines.length === 0) continue
+			for (const line of lines) {
+				if (logPreambleRegex.test(line)) {
+					if (foundLogStart) {
+						const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
+						lineBuffer = []
+						foundLogStart = false
+						if (event === null && err == null) continue
+						yield [event, err] as const
+					}
+					continue
+				}
+				const match = line.match(logStartRegex)
+				if (!match && !foundLogStart) continue
+				if (match && foundLogStart) {
+					const [event, err] = matchLog(lineBuffer.join('\n'), EventMatchers)
+					lineBuffer = [line]
+					if (event === null && err == null) continue
+					yield [event, err] as const
+					continue
+				}
+				if (match && !foundLogStart) {
+					foundLogStart = true
+					lineBuffer = [line]
+					continue
+				}
+				if (!match && foundLogStart) {
+					lineBuffer.push(line)
+					continue
+				}
+			}
+		}
+	}
+
 	const BaseEventProperties = {
 		raw: z.string().trim(),
 		time: z.number(),

@@ -3,12 +3,10 @@ import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
 import { AsyncResource, type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
-import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
-
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
-import { matchLog } from '@/lib/log-parsing'
+import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
 import Rcon from '@/lib/rcon/core-rcon'
 import fetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -38,6 +36,7 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
+import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Vote from '@/systems/vote.server'
 import * as Otel from '@opentelemetry/api'
@@ -74,17 +73,10 @@ export type SquadServer = {
 	teamUpdateInterceptor: Rx.Subject<SM.Teams> | null
 	teamUpdateInterceptorMtx: MutexInterface
 
-	// preSyntheticEventTasks:
-
-	sftpReader: SftpTail
-
 	// ephemeral state that isn't persisted to the database, as compared to SS.ServerState which is
 	state: EphemeralState
 
 	savingEventsMtx: Mutex
-
-	// intermediate event so that initNewGameHandling's behaviour is downstream from event$
-	beforeNewGame$: Rx.Subject<[CS.Log & C.Db & C.ServerSlice, SM.LogEvents.NewGame]>
 
 	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
 	event$: Rx.Subject<[CS.Log & C.Db & C.ServerSlice, SM.Events.Event[]]>
@@ -392,18 +384,6 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	})()
 	cleanup.push(() => adminList.dispose())
 
-	const sftpReader = new SftpTail(ctx, {
-		filePath: settings.connections!.sftp.logFile,
-		host: settings.connections!.sftp.host,
-		port: settings.connections!.sftp.port,
-		username: settings.connections!.sftp.username,
-		password: settings.connections!.sftp.password,
-		pollInterval: CONFIG.squadServer.sftpPollInterval,
-		reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
-	})
-	cleanup.push(() => sftpReader.disconnect())
-	sftpReader.watch()
-
 	const server: SquadServer = {
 		layersStatusExt$,
 
@@ -415,8 +395,6 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		teamUpdateInterceptor: null,
 		teamUpdateInterceptorMtx: new Mutex(),
 
-		sftpReader,
-		beforeNewGame$: new Rx.Subject(),
 		event$: new Rx.Subject(),
 		state: EphemeralState.init(),
 		savingEventsMtx: new Mutex(),
@@ -428,7 +406,6 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		() => server.postRollEventsSub,
 		server.historyConflictsResolved$,
 		server.serverRolling$,
-		server.beforeNewGame$,
 		server.event$,
 		server.savingEventsMtx,
 		server.teamUpdateInterceptorMtx,
@@ -480,39 +457,41 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 	})
 
 	// -------- process log events --------
-	server.sftpReader.on(
-		'line',
-		C.spanOp(
-			'squad-server:on-log-event',
-			{ tracer, eventLogLevel: 'debug' },
-			async (line: string) => {
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-				for (const matcher of SM.LogEvents.EventMatchers) {
-					try {
-						const [matched, error] = matchLog(line, matcher)
-						if (error) {
-							return {
-								code: 'err:failed-to-parse-log-line' as const,
-								error,
-							}
-						}
-						if (!matched) continue
-						ctx.log.debug('Parsed Log Line into %s, (%o)', matched.type, matched)
-						const res = await processServerLogEvent(ctx, matched)
-						if (!res) return
-						if (res.code !== 'ok') return res
-						const event = res.event
-						ctx.log.info(event, 'Emitting Squad Event: %s', event.type)
-						ctx.server.event$.next([ctx, [event]])
-						return { code: 'ok' as const }
-					} catch (error) {
-						ctx.log.error(error, 'Error processing log event')
-						C.recordGenericError(error)
-					}
-				}
-			},
-		),
-	)
+	//
+	let chunk$: Rx.Observable<string>
+	if (settings.connections.logs.type === 'sftp') {
+		const sftpReader = new SftpTail(ctx, {
+			filePath: settings.connections!.logs.logFile,
+			host: settings.connections!.logs.host,
+			port: settings.connections!.logs.port,
+			username: settings.connections!.logs.username,
+			password: settings.connections!.logs.password,
+			pollInterval: CONFIG.squadServer.sftpPollInterval,
+			reconnectInterval: CONFIG.squadServer.sftpReconnectInterval,
+		})
+		cleanup.push(() => sftpReader.disconnect())
+		sftpReader.watch()
+
+		chunk$ = Rx.fromEvent(sftpReader, 'data') as Rx.Observable<string>
+	} else if (settings.connections.logs.type === 'log-receiver') {
+		chunk$ = SquadLogsReceiver.event$.pipe(
+			Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
+		)
+	} else {
+		assertNever(settings.connections.logs)
+	}
+
+	void (async () => {
+		for await (const [event, err] of SM.LogEvents.parse(toAsyncGenerator(chunk$))) {
+			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+			if (err) {
+				ctx.log.error(err)
+				continue
+			}
+			if (!event) continue
+			await processLogEvent(ctx, event)
+		}
+	})()
 
 	// -------- process rcon events --------
 	server.rconEvent$
@@ -523,11 +502,7 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 					ctx.log.warn('History conflicts not resolved, ignoring RCON event %s', event.type)
 					return { code: 'err:history-conflicts-not-resolved' as const }
 				}
-				ctx.log.info(event, 'Received RCON Event: %s', event.type)
-				const res = await processRconEvent(ctx, event)
-				if (res.code !== 'ok') return res
-				ctx.server.event$.next([ctx, [res.event]])
-				return { code: 'ok' as const }
+				return await processRconEvent(ctx, event)
 			}),
 		).subscribe()
 
@@ -827,17 +802,16 @@ export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
 /**
  * Performs state tracking and event consolidation for squad log events.
  */
-async function processServerLogEvent(
+const processLogEvent = C.spanOp('squad-server:on-log-event', { tracer, levels: { event: 'trace' } }, async (
 	ctx: CS.Log & C.Db & C.ServerSlice,
 	logEvent: SM.LogEvents.Event,
-) {
-	// for when we want to fetch data from rcon that's more likely to have been updated after the event in question. very crude, could be improved
-
+) => {
 	const match = await MatchHistory.getCurrentMatch(ctx)
 	const base = {
 		time: logEvent.time,
 		matchId: match.historyEntryId,
 	}
+	let event: SM.Events.Event | null = null
 
 	const server = ctx.server
 	switch (logEvent.type) {
@@ -849,7 +823,7 @@ async function processServerLogEvent(
 				team: logEvent.team,
 				tickets: logEvent.tickets,
 			}
-			break
+			return
 		}
 
 		case 'ROUND_TEAM_OUTCOME': {
@@ -857,7 +831,7 @@ async function processServerLogEvent(
 				winner: logEvent.winner,
 				layer: logEvent.layer,
 			}
-			break
+			return
 		}
 
 		case 'ROUND_ENDED': {
@@ -905,13 +879,12 @@ async function processServerLogEvent(
 			const res = await MatchHistory.finalizeCurrentMatch(ctx, statusRes.data.currentLayer.id, winner, loser, new Date(logEvent.time))
 			if (res.code !== 'ok') return res
 
-			const event: SM.Events.RoundEnded = {
+			event = {
 				type: 'ROUND_ENDED',
 				id: eventId(),
 				...base,
 			}
-
-			return { code: 'ok' as const, event }
+			break
 		}
 
 		case 'MAP_SET': {
@@ -920,13 +893,13 @@ async function processServerLogEvent(
 				throw new Error(`Failed to parse layer text: ${logEvent.nextLayer} ${logEvent.nextFactions ?? ''}`)
 			}
 			server.state.nextSetLayerId = layer.id
-			const event: SM.Events.MapSet = {
+			event = {
 				type: 'MAP_SET',
 				id: eventId(),
 				...base,
 				layerId: layer.id,
 			}
-			return { code: 'ok' as const, event }
+			break
 		}
 
 		case 'NEW_GAME': {
@@ -944,7 +917,7 @@ async function processServerLogEvent(
 				}
 				ctx.log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
 
-				return await withAcquired(() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], () =>
+				await withAcquired(() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], () =>
 					DB.runTransaction(ctx, async (ctx) => {
 						const serverState = await getServerState(ctx)
 						const nextLqItem = serverState.layerQueue[0]
@@ -970,7 +943,7 @@ async function processServerLogEvent(
 						LayerQueue.schedulePostRollTasks(ctx, match.layerId)
 
 						const teamsRes = await interceptTeamsUpdate(ctx)
-						const event: SM.Events.NewGame = {
+						event = {
 							type: 'NEW_GAME',
 							id: eventId(),
 							layerId: newLayerId,
@@ -979,11 +952,11 @@ async function processServerLogEvent(
 							...base,
 							matchId: match.historyEntryId,
 						}
-						return { code: 'ok' as const, event }
 					}))()
 			} finally {
 				server.serverRolling$.next(null)
 			}
+			break
 		}
 
 		case 'PLAYER_CONNECTED': {
@@ -1007,10 +980,8 @@ async function processServerLogEvent(
 			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
 			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
 			if (events.length === 0) return
-			return {
-				code: 'ok' as const,
-				event: events[0],
-			}
+			event = events[0]
+			break
 		}
 
 		case 'PLAYER_DISCONNECTED': {
@@ -1018,28 +989,24 @@ async function processServerLogEvent(
 			if (!accepted) return
 			// we don't need to process the pending events here
 
-			return {
-				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					type: 'PLAYER_DISCONNECTED',
-					playerIds: logEvent.playerIds,
-					...base,
-				} satisfies SM.Events.PlayerDisconnected,
+			event = {
+				id: eventId(),
+				type: 'PLAYER_DISCONNECTED',
+				playerIds: logEvent.playerIds,
+				...base,
 			}
+			break
 		}
 
 		case 'ADMIN_BROADCAST': {
-			return {
-				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					type: 'ADMIN_BROADCAST',
-					message: logEvent.message,
-					from: logEvent.from,
-					...base,
-				} satisfies SM.Events.AdminBroadcast,
+			event = {
+				id: eventId(),
+				type: 'ADMIN_BROADCAST',
+				message: logEvent.message,
+				from: logEvent.from,
+				...base,
 			}
+			break
 		}
 
 		case 'PLAYER_DIED':
@@ -1048,10 +1015,8 @@ async function processServerLogEvent(
 			const events = Array.from(PendingEvents.processPendingEvents(server.state.pendingEventState))
 			if (events.length > 1) throw new Error('Multiple events, this should not be possible')
 			if (events.length === 0) return
-			return {
-				code: 'ok' as const,
-				event: events[0],
-			}
+			event = events[0]
+			break
 		}
 
 		case 'KICKING_PLAYER': {
@@ -1063,24 +1028,29 @@ async function processServerLogEvent(
 			const kickingEvent = server.state.kickingPlayerEvents.get(logEvent.chainID)
 			server.state.kickingPlayerEvents.delete(logEvent.chainID)
 
-			return {
-				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					type: 'PLAYER_KICKED',
-					playerIds: logEvent.playerIds,
-					reason: kickingEvent?.reason,
-					...base,
-				} satisfies SM.Events.PlayerKicked,
+			event = {
+				id: eventId(),
+				type: 'PLAYER_KICKED',
+				playerIds: logEvent.playerIds,
+				reason: kickingEvent?.reason,
+				...base,
 			}
+			break
 		}
 
 		default:
 			assertNever(logEvent)
 	}
-}
 
-export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event: SM.RconEvents.Event) {
+	if (event) {
+		server.event$.next([ctx, [event]])
+	}
+})
+
+export const processRconEvent = C.spanOp('squad-server:process-rcon-event', { tracer }, async (
+	ctx: C.ServerSlice & CS.Log & C.Db,
+	event: SM.RconEvents.Event,
+) => {
 	const match = await MatchHistory.getCurrentMatch(ctx)
 	const matchId = match.historyEntryId
 
@@ -1090,6 +1060,8 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 		matchId,
 		time: event.time,
 	}
+
+	let emittedEvent: SM.Events.Event | null = null
 
 	// TODO could maybe parse the log version of some of these events for better continuity, specifically for the chat/event view
 	switch (event.type) {
@@ -1129,17 +1101,15 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 				assertNever(event.channelType)
 			}
 
-			return {
-				code: 'ok' as const,
-				event: {
-					type: 'CHAT_MESSAGE',
-					id: eventId(),
-					message: event.message,
-					playerIds: event.playerIds,
-					channel,
-					...base,
-				} satisfies SM.Events.ChatMessage,
+			emittedEvent = {
+				type: 'CHAT_MESSAGE',
+				id: eventId(),
+				message: event.message,
+				playerIds: event.playerIds,
+				channel,
+				...base,
 			}
+			break
 		}
 
 		case 'SQUAD_CREATED': {
@@ -1175,32 +1145,34 @@ export async function processRconEvent(ctx: C.ServerSlice & CS.Log & C.Db, event
 			}
 			ctx.server.state.createdSquads.push(squad)
 
-			return {
-				code: 'ok' as const,
-				event: {
-					type: 'SQUAD_CREATED',
-					id: eventId(),
-					squad,
+			emittedEvent = {
+				type: 'SQUAD_CREATED',
+				id: eventId(),
+				squad,
 
-					...base,
-				} satisfies SM.Events.SquadCreated,
+				...base,
 			}
+			break
 		}
 
 		case 'PLAYER_BANNED':
 		case 'PLAYER_WARNED':
 		case 'POSSESSED_ADMIN_CAMERA':
-		case 'UNPOSSESSED_ADMIN_CAMERA':
-			return {
-				code: 'ok' as const,
-				event: {
-					id: eventId(),
-					...event,
-					...base,
-				} satisfies SM.Events.Event,
+		case 'UNPOSSESSED_ADMIN_CAMERA': {
+			emittedEvent = {
+				id: eventId(),
+				...event,
+				...base,
 			}
+			break
+		}
 	}
-}
+
+	if (emittedEvent) {
+		ctx.server.event$.next([ctx, [emittedEvent]])
+		return { code: 'ok' as const }
+	}
+})
 
 function* generateSyntheticEvents(
 	ctx: C.ServerSlice & CS.Log & C.Db,

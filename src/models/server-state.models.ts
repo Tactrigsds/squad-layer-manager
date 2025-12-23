@@ -47,13 +47,20 @@ export const ServerConnectionSchema = z.object({
 		port: z.number().min(1).max(65535),
 		password: z.string().min(1),
 	}),
-	sftp: z.object({
-		host: z.string().min(1),
-		port: z.number().min(1).max(65535),
-		username: z.string().min(1),
-		password: z.string().min(1),
-		logFile: z.string().min(1),
-	}),
+	logs: z.discriminatedUnion('type', [
+		z.object({
+			type: z.literal('log-receiver'),
+			token: z.string().default('dev'),
+		}),
+		z.object({
+			type: z.literal('sftp'),
+			host: z.string().min(1),
+			port: z.number().min(1).max(65535),
+			username: z.string().min(1),
+			password: z.string().min(1),
+			logFile: z.string().min(1),
+		}),
+	]),
 })
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 

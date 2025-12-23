@@ -9,6 +9,7 @@ import * as LayerDb from '@/systems/layer-db.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
+import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
@@ -29,6 +30,7 @@ await C.spanOp('main', { tracer }, async () => {
 	CleanupSys.setup()
 	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await Promise.all([Config.ensureSetup(), LayerDb.setup({ log: baseLogger }), DB.setup(), FilterEntity.setup()])
+	SquadLogsReceiver.setup()
 	Rbac.setup()
 	void Sessions.setup()
 	await Promise.all([SquadServer.setup(), Discord.setup()])
