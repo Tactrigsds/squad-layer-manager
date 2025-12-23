@@ -14,7 +14,7 @@ export function createLogMatcher<O extends EventSchema>(matcher: LogMatcher<O>) 
 export function matchLog<LM extends LogMatcher>(line: string, matchers: readonly LM[]) {
 	for (const matcher of matchers) {
 		const match = line.match(matcher.regex)
-		if (!match) return [null, null] as const
+		if (!match) continue
 		const [matchRes, err] = withThrown(() => matcher.onMatch(match))
 		if (err) {
 			const error = new Error(`Failed to parse log line during onMatch for ${matcher.event.type}`, {

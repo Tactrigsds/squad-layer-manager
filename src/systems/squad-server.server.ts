@@ -472,7 +472,9 @@ async function setupSlice(ctx: CS.Log & C.Db, serverState: SS.ServerState) {
 		cleanup.push(() => sftpReader.disconnect())
 		sftpReader.watch()
 
-		chunk$ = Rx.fromEvent(sftpReader, 'data') as Rx.Observable<string>
+		chunk$ = Rx.fromEvent(sftpReader, 'chunk').pipe(
+			Rx.map((...args) => args[0] as string),
+		)
 	} else if (settings.connections.logs.type === 'log-receiver') {
 		chunk$ = SquadLogsReceiver.event$.pipe(
 			Rx.concatMap((event) => event.type === 'data' ? Rx.of(event.data) : Rx.EMPTY),
@@ -917,42 +919,46 @@ const processLogEvent = C.spanOp('squad-server:on-log-event', { tracer, levels: 
 				}
 				ctx.log.info('creating new game with layer %s', DH.displayLayer(newLayerId))
 
-				await withAcquired(() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx], () =>
-					DB.runTransaction(ctx, async (ctx) => {
-						const serverState = await getServerState(ctx)
-						const nextLqItem = serverState.layerQueue[0]
+				const teamsResPromise = interceptTeamsUpdate(ctx)
+				const { match } = await withAcquired(
+					() => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx],
+					() =>
+						DB.runTransaction(ctx, async (ctx) => {
+							const serverState = await getServerState(ctx)
+							const nextLqItem = serverState.layerQueue[0]
 
-						let currentMatchLqItem: LL.Item | undefined
-						const newServerState = Obj.deepClone(serverState)
-						if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
-							currentMatchLqItem = newServerState.layerQueue.shift()
-						}
-						const { match } = await MatchHistory.addNewCurrentMatch(
-							ctx,
-							MH.getNewMatchHistoryEntry({
-								layerId: newLayerId,
-								serverId: ctx.serverId,
-								startTime: new Date(logEvent.time),
-								lqItem: currentMatchLqItem,
-							}),
-						)
+							let currentMatchLqItem: LL.Item | undefined
+							const newServerState = Obj.deepClone(serverState)
+							if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+								currentMatchLqItem = newServerState.layerQueue.shift()
+							}
+							const { match } = await MatchHistory.addNewCurrentMatch(
+								ctx,
+								MH.getNewMatchHistoryEntry({
+									layerId: newLayerId,
+									serverId: ctx.serverId,
+									startTime: new Date(logEvent.time),
+									lqItem: currentMatchLqItem,
+								}),
+							)
 
-						await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
-						await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
-						await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
-						LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-
-						const teamsRes = await interceptTeamsUpdate(ctx)
-						event = {
-							type: 'NEW_GAME',
-							id: eventId(),
-							layerId: newLayerId,
-							source: 'new-game-detected',
-							state: { squads: teamsRes.squads, players: teamsRes.players },
-							...base,
-							matchId: match.historyEntryId,
-						}
-					}))()
+							await LayerQueue.syncNextLayerInPlace(ctx, newServerState, { skipDbWrite: true })
+							await Vote.syncVoteStateWithQueueStateInPlace(ctx, serverState.layerQueue, newServerState.layerQueue)
+							await updateServerState(ctx, newServerState, { type: 'system', event: 'server-roll' })
+							LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+							return { match }
+						}),
+				)()
+				const teamsRes = await teamsResPromise
+				event = {
+					type: 'NEW_GAME',
+					id: eventId(),
+					layerId: newLayerId,
+					source: 'new-game-detected',
+					state: { squads: teamsRes.squads, players: teamsRes.players },
+					...base,
+					matchId: match.historyEntryId,
+				}
 			} finally {
 				server.serverRolling$.next(null)
 			}
@@ -1382,7 +1388,8 @@ export const saveEvents = C.spanOp(
 const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 	tracer,
 	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
-}, async (ctx: C.SquadServer) => {
+}, async (ctx: C.SquadServer & CS.Log) => {
+	ctx.log.info('interceptTeamsUpdate started')
 	const server = ctx.server
 	let interceptor = new Rx.Subject<SM.Teams>()
 	try {
@@ -1390,7 +1397,8 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 		return await Rx.firstValueFrom(Rx.race(
 			server.teamUpdateInterceptor.pipe(
 				Rx.tap({
-					next: () => {
+					next: (value) => {
+						ctx.log.info('got value for interceptTeamsUpdate %o', value)
 						server.teamUpdateInterceptor = null
 					},
 				}),
@@ -1400,6 +1408,7 @@ const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
 			})),
 		)) as unknown as SM.Teams
 	} finally {
+		ctx.log.info('interceptTeamsUpdate completed')
 		interceptor.complete()
 		server.teamUpdateInterceptor = null
 	}

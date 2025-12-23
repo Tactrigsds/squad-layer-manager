@@ -1,18 +1,9 @@
-import { CleanupTasks } from '@/lib/async'
 import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as net from 'node:net'
-import { parseArgs } from 'node:util'
 import * as Rx from 'rxjs'
-
-const VERSION = '0.0.1'
-
-type ServerOptions = {
-	port: number
-	host?: string
-}
 
 type ClientConnection = {
 	clientId: string

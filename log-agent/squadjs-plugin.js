@@ -68,27 +68,28 @@ export default class SLMLogAgent extends BasePlugin {
 	async mount() {
 		this.cleanup = []
 		if (existsSync(this.options.pidFile)) {
+			const pid = parseInt(readFileSync(this.options.pidFile, 'utf8'))
 			try {
-				const pid = parseInt(readFileSync(this.options.pidFile, 'utf8'))
 				// Check if process exists
 				process.kill(pid, 0)
-				// already running, tail the log file
-				this.verbose(1, `Daemon already running with PID: ${pid}`)
-				if (this.options.killOnExit) {
-					this.cleanup.push(() => {
-						this.verbose(1, `Killing daemon with PID: ${pid}`)
-						process.kill(pid, 'SIGTERM')
-						unlinkSync(this.options.pidFile)
-					})
-				}
-				this.tailAgentLogFile()
 				return
-			} catch (e) {
+			} catch {
 				// Process doesn't exist, clean up stale PID file
 				try {
 					unlinkSync(this.options.pidFile)
 				} catch {}
 			}
+
+			// already running, tail the log file
+			this.verbose(1, `Daemon already running with PID: ${pid}`)
+			if (this.options.killOnExit) {
+				this.cleanup.push(() => {
+					this.verbose(1, `Killing daemon with PID: ${pid}`)
+					process.kill(pid, 'SIGTERM')
+					unlinkSync(this.options.pidFile)
+				})
+			}
+			this.tailAgentLogFile()
 		}
 
 		this.tailAgentLogFile()
