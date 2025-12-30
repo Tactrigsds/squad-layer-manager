@@ -267,6 +267,7 @@ export function initLayerTable(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
 			Rx.map(([store]) => {
+				// console.log('mapping to input', store.baseQueryInput?.constraints?.[0]?.filter.children[0]?.comp)
 				const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 					cfg: store.layerTable.colConfig,
 					selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
@@ -278,28 +279,27 @@ export function initLayerTable(
 				return input
 			}),
 			distinctDeepEquals(),
-			Rx.map((input) => {
-				set({ isFetching: true })
+			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
+			Rx.switchMap((input) => {
+				console.log('switching')
 				const packet$ = new Rx.Subject<LayerQueriesClient.QueryLayersPacket>()
 				const options = LayerQueriesClient.getQueryLayersOptions(input, packet$)
+				let o: Rx.Observable<LayerQueriesClient.QueryLayersPacket>
+
 				const data = RPC.queryClient.getQueryData(options.queryKey)
-				if (data) return data
-				if (RPC.queryClient.isFetching({ queryKey: options.queryKey })) {
-					packet$.complete()
-					return toCold(() => RPC.queryClient.fetchQuery({ queryKey: options.queryKey }) as Promise<LayerQueriesClient.QueryLayersPacket[]>)
-						.pipe(Rx.concatAll())
+				if (data) o = Rx.from(data)
+				else if (RPC.queryClient.isFetching(options)) {
+					o = toCold(() => RPC.queryClient.fetchQuery(options)).pipe(Rx.concatAll())
+				} else {
+					RPC.queryClient.fetchQuery(options)
+					o = packet$
 				}
 
-				return packet$.pipe(Rx.tap({
-					subscribe: () => {
-						void RPC.queryClient.fetchQuery(options)
-					},
-				}))
-			}),
-			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
-			Rx.switchMap(o =>
-				Rx.from(o).pipe(
+				return o.pipe(
 					Rx.tap({
+						subscribe: () => {
+							set({ isFetching: true })
+						},
 						complete: () => {
 							set({ isFetching: false })
 						},
@@ -308,7 +308,7 @@ export function initLayerTable(
 						},
 					}),
 				)
-			),
+			}),
 			Rx.retry({
 				delay: (error, count) => {
 					console.error('error during query:', error)

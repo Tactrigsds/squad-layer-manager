@@ -354,6 +354,7 @@ export async function setup() {
 
 			if (!serverState) throw new Error(`Server ${serverConfig.id} was unable to be configured`)
 			await setupSlice(ctx, serverState)
+			ctx.log.info(`Server ${serverConfig.id} setup complete`)
 		})())
 	}
 

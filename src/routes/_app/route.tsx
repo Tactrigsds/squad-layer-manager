@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
+import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import * as USR from '@/models/users.models.ts'
 import * as RPC from '@/orpc.client'
@@ -70,7 +71,10 @@ function RouteComponent() {
 	const selectedServerId = SquadServerClient.useSelectedServerId()
 	const selectedServer = config?.servers.find(server => server.id === selectedServerId)
 	return (
-		<div className="h-screen w-full flex flex-col overflow-hidden">
+		<div
+			className="data-[on-dashboard]:h-screen w-full flex flex-col data-[on-dashboard]:overflow-hidden"
+			data-on-dashboard={orUndef(!!isOnServerDashboard)}
+		>
 			<nav
 				className="flex h-16 flex-shrink-0 items-center justify-between border-b px-2 sm:px-4"
 				style={{ backgroundColor: config?.topBarColor ?? undefined }}

@@ -57,6 +57,7 @@ export default defineConfig({
 
 									// Copy all headers from upstream
 									proxyRes.headers.forEach((value, key) => {
+										if (key.toLowerCase() === 'keep-alive' || key.toLowerCase() === 'connection') return
 										res.setHeader(key, value)
 									})
 

@@ -13,7 +13,14 @@ export function sleep(ms: number) {
 }
 
 export function distinctDeepEquals<T>() {
-	return (o: Rx.Observable<T>) => o.pipe(Rx.distinctUntilChanged((a, b) => Obj.deepEqual(a, b)))
+	const EMPTY = Symbol('empty')
+	let prev: typeof EMPTY | T = EMPTY
+	return (o: Rx.Observable<T>) =>
+		o.pipe(Rx.concatMap(b => {
+			if (Obj.deepEqual(b, prev)) return Rx.EMPTY
+			prev = b
+			return Rx.of(b)
+		}))
 }
 
 /**

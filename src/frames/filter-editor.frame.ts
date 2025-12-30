@@ -45,9 +45,6 @@ type FilterEditorBase =
 		modified: boolean
 		valid: boolean
 
-		// required for LayerTablePrt
-		baseQueryInput: LQY.BaseQueryInput | undefined
-
 		moveNode(sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath): void
 		updateRoot(filter: F.EditableFilterNode): void
 		updateNode(id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void): void
@@ -58,6 +55,7 @@ type FilterEditorBase =
 		nodeMapStore: Zus.StoreApi<NodeMap.NodeMapStore>
 	}
 	& F.NodeValidationErrorStore
+	& LayerTablePrt.Predicates
 
 export type FilterEditor =
 	& {
@@ -158,9 +156,11 @@ const setup: Frame['setup'] = (args) => {
 	function validate(state: FilterEditor) {
 		const filter = F.treeToFilterNode(state.tree)
 		const validatedFilter = F.isValidFilterNode(filter) ? filter : null
+		const baseQueryInput = validatedFilter ? Obj.deepClone(LQY.getEditFilterPageBaseInput(validatedFilter)) : undefined
+		console.log('validating filter', filter, !!validatedFilter, baseQueryInput)
 		set({
 			validatedFilter: validatedFilter ?? null,
-			baseQueryInput: validatedFilter ? LQY.getEditFilterPageBaseInput(validatedFilter) : undefined,
+			baseQueryInput,
 			valid: validatedFilter !== null,
 			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
