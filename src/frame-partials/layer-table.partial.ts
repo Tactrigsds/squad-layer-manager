@@ -262,12 +262,11 @@ export function initLayerTable(
 	setStore({ layerTable: initialLayerTable })
 	initialLayerTable.setSelected(input.selected)
 
-	// -------- schedule queries (poor mans useQuery) --------
+	// -------- schedule queries (poor man's useQuery) --------
 	args.sub.add(
 		args.update$.pipe(
 			traceTag('QUERY_LAYERS'),
 			Rx.map(([store]) => {
-				// console.log('mapping to input', store.baseQueryInput?.constraints?.[0]?.filter.children[0]?.comp)
 				const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 					cfg: store.layerTable.colConfig,
 					selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
