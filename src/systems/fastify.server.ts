@@ -240,14 +240,12 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'unauthorized:not-found':
 				reply = Sessions.clearInvalidSession({ res: reply })
 				if (baseCtx.route?.def.handle === 'page') {
-					await reply.redirect(AR.route('/login'), 302)
+					return await reply.redirect(AR.route('/login'), 302)
 				} else {
-					await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
+					return await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
 				}
-				break
 			case 'err:permission-denied':
-				await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
-				break
+				return await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
 			default:
 				assertNever(authRes)
 		}
@@ -284,6 +282,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
+		console.log('HTML RESPONSE')
 		const ctx = { ...getAuthedCtx(req), res }
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)

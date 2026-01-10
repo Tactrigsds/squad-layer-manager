@@ -47,6 +47,7 @@ export default defineConfig({
 
 								const proxyRes = await fetch(proxyUrl, {
 									method: 'GET',
+									redirect: 'manual',
 									headers,
 								})
 
