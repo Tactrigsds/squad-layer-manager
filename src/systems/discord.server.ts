@@ -1,6 +1,8 @@
+import { initModule } from '@/server/logger'
 import { resToOptional } from '@/lib/types'
 import type * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
+import * as LOG from '@/models/logs'
 import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
 import { baseLogger } from '@/server/logger'
@@ -25,14 +27,17 @@ export type AccessToken = {
 	token_type: string
 }
 
+const module = initModule('discord')
+let log!: CS.Logger
+
 let client!: D.Client
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
 export async function setup() {
+	log = module.getLogger()
 	ENV = envBuilder()
-	const ctx = { log: baseLogger }
 	client = new D.Client({
 		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],
 	})
@@ -47,7 +52,7 @@ export async function setup() {
 		void client.login(ENV.DISCORD_BOT_TOKEN)
 	})
 
-	const res = await fetchGuild(ctx, CONFIG.homeDiscordGuildId)
+	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
 		throw new Error(`Could not find Discord server ${CONFIG.homeDiscordGuildId}`)
 	}
@@ -66,12 +71,12 @@ export async function getOauthUser(token: AccessToken) {
 	return DiscordUserSchema.parse(data)
 }
 
-async function fetchGuild(ctx: CS.Log, guildId: bigint) {
+async function fetchGuild(guildId: bigint) {
 	try {
 		const guild = await client.guilds.fetch(guildId.toString())
 		return { code: 'ok' as const, guild }
 	} catch (err) {
-		ctx.log.warn({ err }, 'Failed to fetch guild with id %s', guildId)
+		log.warn({ err }, 'Failed to fetch guild with id %s', guildId)
 		if (err instanceof D.DiscordAPIError) {
 			return {
 				code: 'err:discord' as const,
@@ -84,15 +89,15 @@ async function fetchGuild(ctx: CS.Log, guildId: bigint) {
 	}
 }
 
-export async function fetchMember(ctx: CS.Log, guildId: bigint, memberId: bigint) {
-	const guildRes = await fetchGuild(ctx, guildId)
+export async function fetchMember(guildId: bigint, memberId: bigint) {
+	const guildRes = await fetchGuild(guildId)
 	if (guildRes.code !== 'ok') return guildRes
 
 	try {
 		const member = await guildRes.guild.members.fetch(memberId.toString())
 		return { code: 'ok' as const, member }
 	} catch (err) {
-		ctx.log.warn({ err }, 'Failed to fetch member with id %s', memberId)
+		log.warn({ err }, 'Failed to fetch member with id %s', memberId)
 		if (err instanceof D.DiscordAPIError) {
 			return {
 				code: 'err:discord' as const,
@@ -104,8 +109,8 @@ export async function fetchMember(ctx: CS.Log, guildId: bigint, memberId: bigint
 	}
 }
 
-export async function fetchGuildRoles(baseCtx: CS.Log) {
-	const res = await fetchGuild(baseCtx, CONFIG.homeDiscordGuildId)
+export async function fetchGuildRoles() {
+	const res = await fetchGuild(CONFIG.homeDiscordGuildId)
 	if (res.code !== 'ok') {
 		return res
 	}
@@ -116,8 +121,8 @@ export async function fetchGuildRoles(baseCtx: CS.Log) {
 export const orpcRouter = {
 	getGuildEmojis: orpcBase
 		.input(z.object({}).optional())
-		.handler(async ({ context }) => {
-			const guildRes = await fetchGuild(context, CONFIG.homeDiscordGuildId)
+		.handler(async ({}) => {
+			const guildRes = await fetchGuild(CONFIG.homeDiscordGuildId)
 			const guild = resToOptional(guildRes)!.guild
 			let emojis = await guild.emojis.fetch()
 

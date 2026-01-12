@@ -1,17 +1,26 @@
+import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages.ts'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
 import type * as C from '@/server/context.ts'
+import { baseLogger } from '@/server/logger'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
-export async function handleCommand(ctx: CS.Log & C.Db & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
+const module = initModule('commands')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
+export async function handleCommand(ctx: C.Db & C.ServerSlice, msg: SM.RconEvents.ChatMessage) {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType)) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
@@ -35,7 +44,7 @@ export async function handleCommand(ctx: CS.Log & C.Db & C.ServerSlice, msg: SM.
 
 	const { cmd, args } = parseRes
 
-	ctx.log.info('Command received: %s', cmd)
+	log.info('Command received: %s', cmd)
 
 	const cmdConfig = CONFIG.commands[cmd as keyof typeof CONFIG.commands]
 	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {

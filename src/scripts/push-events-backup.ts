@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
 import * as Config from '@/server/config.ts'
 import type * as C from '@/server/context'
@@ -8,7 +8,6 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
 import { baseLogger, ensureLoggerSetup } from '@/server/logger.ts'
 import * as Cli from '@/systems/cli.server'
-
 import fs from 'node:fs'
 import superjson from 'superjson'
 
@@ -21,7 +20,7 @@ await DB.setup()
 const events = superjson.parse(fs.readFileSync('./prod/backup-events.json', 'utf-8')) as any[]
 // console.log(events.slice(0, 5))
 
-const ctx = DB.addPooledDb({ log: baseLogger })
+const ctx = DB.addPooledDb({ ...CS.init(), log: baseLogger })
 
 await DB.runTransaction(ctx, async (ctx) => {
 	await ctx.db().delete(Schema.serverEvents)

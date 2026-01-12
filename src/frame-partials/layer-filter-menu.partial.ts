@@ -1,5 +1,6 @@
 import type * as FRM from '@/lib/frame'
 import * as CB from '@/models/constraint-builders'
+import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders.ts'
 import * as F from '@/models/filter.models'
@@ -205,7 +206,7 @@ function getFilterFromComparisons(items: Record<keyof L.KnownLayer, F.EditableCo
 export function selectFilterMenuConstraints(store: Store): LQY.Constraint[] {
 	let items: LQY.FilterMenuItem[] = []
 	for (const [field, node] of Object.entries(store.filterMenu.menuItems)) {
-		const returnPossibleValues = LC.isEnumeratedColumn(field, { effectiveColsConfig: store.filterMenu.colConfig })
+		const returnPossibleValues = LC.isEnumeratedColumn(field, { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig })
 		let excludedSiblings: string[] | undefined
 		const compositeLayerFields = ['Map', 'Gamemode', 'LayerVersion']
 		if (field === 'Layer') {

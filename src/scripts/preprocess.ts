@@ -3,12 +3,12 @@ import * as Arr from '@/lib/array'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
 import * as Env from '@/server/env'
-import { baseLogger, ensureLoggerSetup } from '@/server/logger'
+import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerDb from '@/systems/layer-db.server'
 import { parse } from 'csv-parse'
 import http from 'follow-redirects'
@@ -23,6 +23,7 @@ import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 const gzip = promisify(zlib.gzip)
+const module = initModule('preprocess')
 
 export const ParsedNanFloatSchema = z
 	.string()
@@ -36,6 +37,7 @@ const Steps = z.enum(['update-layers-table', 'download-csvs', 'write-components-
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layerDb })
 let ENV!: ReturnType<typeof envBuilder>
+let log = baseLogger
 
 async function main() {
 	const args = z.array(Steps).parse(process.argv.slice(2))
@@ -45,15 +47,15 @@ async function main() {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
+	log = module.getLogger()
 
 	LayerDb.setupExtraColsConfig()
-	const ctx = { log: baseLogger, effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
+	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LayerDb.LAYER_DB_CONFIG) }
 
 	L.lockStaticFactionUnitConfigs()
 	L.lockStaticLayerComponents()
-	await ensureAllSheetsDownloaded(ctx, { invalidate: args.includes('download-csvs') })
-
-	const data = await parseSquadLayerSheetData(ctx)
+	await ensureAllSheetsDownloaded({ invalidate: args.includes('download-csvs') })
+	const data = await parseSquadLayerSheetData()
 	const components = LC.buildFullLayerComponents(data.components)
 	L.setStaticLayerComponents(components)
 
@@ -74,28 +76,28 @@ async function main() {
 
 		const args = ['drizzle-kit', 'push', '--force', '--config', path.join(Paths.PROJECT_ROOT, 'drizzle-layersdb.config.ts')]
 		const env = { ...process.env, LAYERS_DB_PATH: dbPath }
-		ctx.log.info(`executing pnpm ${args.join(' ')} with env: %O`, { LAYERS_DB_PATH: dbPath })
+		log.info(`executing pnpm ${args.join(' ')} with env: %O`, { LAYERS_DB_PATH: dbPath })
 		const res = childProcess.spawnSync('pnpm', args, { env })
 		const stdout = res.stdout?.toString()
 		if (stdout) {
 			for (const line of stdout.split('\n')) {
-				if (line.trim()) ctx.log.info('stdout: %s', line)
+				if (line.trim()) log.info('stdout: %s', line)
 			}
 		}
 		const stderr = res.stderr?.toString()
 		if (stderr) {
 			for (const line of stderr.split('\n')) {
-				if (line.trim()) ctx.log.info('stderr: %s', line)
+				if (line.trim()) log.info('stderr: %s', line)
 			}
 		}
 		if (res.status !== 0) {
 			throw new Error(`drizzle-kit push failed with status ${res.status}`)
 		}
 
-		await LayerDb.setup(ctx, { skipHash: true, mode: 'populate', logging: false, dbPath })
+		await LayerDb.setup({ skipHash: true, mode: 'populate', logging: false, dbPath })
 		const outerCtx = ctx
 		{
-			const ctx = { ...outerCtx, layerDb: () => LayerDb.db }
+			const ctx = { ...CS.init(), ...outerCtx, layerDb: () => LayerDb.db }
 
 			await populateExtraColsTable(ctx, csvPath, components)
 			await populateLayersTable(ctx, components, Rx.from(data.baseLayers))
@@ -103,9 +105,9 @@ async function main() {
 			ctx.layerDb().run('PRAGMA wal_checkpoint')
 			ctx.layerDb().run('VACUUM')
 			ctx.layerDb().run('PRAGMA optimize')
-			await LayerDb.writePopulated(ctx, dbPath)
+			await LayerDb.writePopulated(dbPath)
 			ctx.layerDb().$client.close()
-			ctx.log.info('Wrote layers to %s', dbPath)
+			log.info('Wrote layers to %s', dbPath)
 		}
 	}
 
@@ -118,15 +120,15 @@ async function main() {
 			throw new Error(`Database file does not exist: ${dbPath}`)
 		}
 
-		ctx.log.info('Compressing database file %s to %s', dbPath, gzipPath)
+		log.info('Compressing database file %s to %s', dbPath, gzipPath)
 		const buffer = await fsPromise.readFile(dbPath)
 		const compressed = await gzip(buffer)
 		await fsPromise.writeFile(gzipPath, compressed)
 	}
-	ctx.log.info('Done!')
+	log.info('Done!')
 }
 
-async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string, components: LC.LayerComponents): Promise<void> {
+async function populateExtraColsTable(ctx: CS.LayerDb, csvPath: string, components: LC.LayerComponents): Promise<void> {
 	const extraColsZodProps: Record<string, z.ZodType> = {}
 	for (const col of LayerDb.LAYER_DB_CONFIG.columns) {
 		let schema: z.ZodType
@@ -187,11 +189,11 @@ async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string,
 			const extraColsRow = extraColsZodSchema.parse(row)
 			for (const layerId of ids) {
 				if (!L.isKnownLayer(L.toLayer(layerId, components), components)) {
-					ctx.log.warn(`Unknown layer ${layerId}`)
+					log.warn(`Unknown layer ${layerId}`)
 					continue
 				}
 				if (seenIds.has(layerId)) {
-					ctx.log.warn(`Duplicate extra layer ${layerId} found`)
+					log.warn(`Duplicate extra layer ${layerId} found`)
 					continue
 				}
 				seenIds.add(layerId)
@@ -219,7 +221,7 @@ async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string,
 						value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint'
 						&& !Buffer.isBuffer(value)
 					) {
-						ctx.log.error(`Invalid value type for key "${key}":`, typeof value, value)
+						log.error(`Invalid value type for key "${key}":`, typeof value, value)
 						throw new Error(`Invalid SQLite value type for key "${key}": ${typeof value} (${JSON.stringify(value)})`)
 					}
 				}
@@ -231,12 +233,12 @@ async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string,
 			if (values.length > 0) {
 				await ctx.layerDb().insert(LC.extraColsSchema(ctx)).values(values)
 			}
-			ctx.log.info(`Inserted %s rows into extraCols`, buf.length * chunkCount)
+			log.info(`Inserted %s rows into extraCols`, buf.length * chunkCount)
 			chunkCount++
 		}),
 		Rx.tap({
 			complete: () => {
-				ctx.log.info('extraLayers insert completed')
+				log.info('extraLayers insert completed')
 			},
 		}),
 	).subscribe()
@@ -251,7 +253,7 @@ async function populateExtraColsTable(ctx: CS.Log & CS.LayerDb, csvPath: string,
 }
 
 async function populateLayersTable(
-	ctx: CS.Log & CS.LayerDb,
+	ctx: CS.LayerDb,
 	components: LC.LayerComponents,
 	finalLayers: Rx.Observable<L.KnownLayer>,
 ) {
@@ -263,7 +265,7 @@ async function populateLayersTable(
 	await Rx.lastValueFrom(finalLayers.pipe(
 		Rx.bufferCount(500),
 		Rx.concatMap(async (buf) => {
-			ctx.log.info(`Inserting %s rows into layers`, buf.length * chunkCount)
+			log.info(`Inserting %s rows into layers`, buf.length * chunkCount)
 			for (const layer of buf) {
 				if (seenIds.has(layer.id)) {
 					throw new Error(`Duplicate layer ID: ${layer.id}`)
@@ -277,14 +279,14 @@ async function populateLayersTable(
 
 	const t1 = performance.now()
 	const elapsedSecondsInsert = (t1 - t0) / 1000
-	ctx.log.info(`Inserting ${chunkCount * 500} rows took ${elapsedSecondsInsert} s`)
+	log.info(`Inserting ${chunkCount * 500} rows took ${elapsedSecondsInsert} s`)
 }
 
-async function parseSquadLayerSheetData(ctx: CS.Log) {
+async function parseSquadLayerSheetData() {
 	const json = SLL.RootSchema.parse(
 		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then(res => res)),
 	)
-	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(ctx, json)
+	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(json)
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
 	const sizes = await getMapLayerSizes()
@@ -295,12 +297,12 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 		if (map.levelName.toLowerCase().includes('tutorial')) continue
 		const segments = L.parseLayerStringSegment(map.levelName)
 		if (!segments) {
-			ctx.log.error(`Invalid layer name: ${map.levelName}`)
+			log.error(`Invalid layer name: ${map.levelName}`)
 			continue
 		}
 		const size = sizes.get(map.levelName) ?? 'Small'
 		if (!size) {
-			ctx.log.error(`${map.levelName} has unknown size`)
+			log.error(`${map.levelName} has unknown size`)
 		}
 		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
 		const teamConfigs = Object.entries(map.teamConfigs).sort((a, b) => a[0].localeCompare(b[0])).map(([_, team]) => team)
@@ -469,7 +471,7 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 				baseLayers.push(baseLayer)
 			}
 		}
-		ctx.log.info('parsed layer configs for %s', layer.Layer)
+		log.info('parsed layer configs for %s', layer.Layer)
 	}
 
 	// -------- include FRAAS --------
@@ -508,11 +510,11 @@ async function parseSquadLayerSheetData(ctx: CS.Log) {
 	}
 	Object.assign(components.layerFactionAvailability, addedAvailability)
 
-	ctx.log.info('Parsed %s total layers', baseLayers.length)
+	log.info('Parsed %s total layers', baseLayers.length)
 	return { baseLayers, idToIdx, components, units: json.Units }
 }
 
-function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
+function parseBattlegroups(root: SLL.Root) {
 	const allianceToFaction: OneToManyMap<string, string> = new Map()
 	const factionToUnit: OneToManyMap<string, string> = new Map()
 	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
@@ -533,9 +535,9 @@ function parseBattlegroups(ctx: CS.Log, root: SLL.Root) {
 		factionUnitToFullUnitName.set(`${faction}:${unitName}`, unit.displayName)
 	}
 
-	ctx.log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
-	ctx.log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
-	ctx.log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
+	log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
+	log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
+	log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
 
 	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName }
 }
@@ -561,7 +563,7 @@ function getMapLayerSizes() {
 	})
 }
 
-async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: boolean }) {
+async function ensureAllSheetsDownloaded(opts?: { invalidate?: boolean }) {
 	const invalidate = opts?.invalidate ?? false
 	const ops: Promise<void>[] = []
 	const sheets = [
@@ -574,13 +576,13 @@ async function ensureAllSheetsDownloaded(ctx: CS.Log, opts?: { invalidate?: bool
 	for (const sheet of sheets) {
 		const sheetPath = path.join(Paths.DATA, sheet.filename)
 		if (invalidate || !fs.existsSync(sheetPath)) {
-			ops.push(downloadPublicSheetAsCSV(ctx, sheet.gid, sheetPath))
+			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheetPath))
 		}
 	}
 	await Promise.all(ops)
 }
 
-async function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: string) {
+async function downloadPublicSheetAsCSV(gid: number, filepath: string) {
 	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADSHEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
 
 	return await new Promise<void>((resolve, reject) => {
@@ -591,17 +593,17 @@ async function downloadPublicSheetAsCSV(ctx: CS.Log, gid: number, filepath: stri
 
 			file.on('finish', () => {
 				file.close()
-				ctx.log.info(`CSV downloaded successfully to %s`, filepath)
+				log.info(`CSV downloaded successfully to %s`, filepath)
 				resolve()
 			})
 
 			file.on('error', (error) => {
 				file.close()
-				ctx.log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
+				log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
 				reject(error)
 			})
 		}).on('error', (error) => {
-			ctx.log.error(error, 'Error downloading CSV:')
+			log.error(error, 'Error downloading CSV:')
 			reject(error)
 		})
 	})

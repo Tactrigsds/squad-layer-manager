@@ -6,28 +6,41 @@ import type * as Config from '@/server/config'
 import type pino from 'pino'
 import type * as LDB from './layer-db'
 
-export type EffectiveColumnConfig = { effectiveColsConfig: LC.EffectiveColumnConfig }
+const CtxSymbol = Symbol('context')
+export type Ctx = {
+	[CtxSymbol]: true
+}
+export function init(): Ctx {
+	return {
+		[CtxSymbol]: true,
+	}
+}
+export function isCtx(ctx: any): ctx is Ctx {
+	return ctx && ctx[CtxSymbol] === true
+}
 
-export type LayerDb = { layerDb: () => LDB.LayerDb } & EffectiveColumnConfig
+export type EffectiveColumnConfig = Ctx & { effectiveColsConfig: LC.EffectiveColumnConfig }
+
+export type LayerDb = Ctx & { layerDb: () => LDB.LayerDb } & EffectiveColumnConfig
 
 export type Logger = pino.Logger
 
-export type Log = {
+export type Log = Ctx & {
 	log: Logger
 }
 
-export type Filters = {
+export type Filters = Ctx & {
 	filters: Map<string, F.FilterEntity>
 }
 
-export type MatchHistory = {
+export type MatchHistory = Ctx & {
 	recentMatches: MH.MatchDetails[]
 }
-export type LayerItemsState = {
+export type LayerItemsState = Ctx & {
 	layerItemsState: LQY.LayerItemsState
 }
-export type PublicConfig = {
+export type PublicConfig = Ctx & {
 	publicConfig: Config.PublicConfig
 }
 
-export type LayerQuery = LayerDb & Log & Filters & LayerItemsState
+export type LayerQuery = Ctx & LayerDb & Log & Filters & LayerItemsState

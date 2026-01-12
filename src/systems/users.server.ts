@@ -3,13 +3,16 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import { initModule } from '@/server/logger'
 import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import * as USR from '@/models/users.models'
 import type * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import { baseLogger } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -24,6 +27,13 @@ const state = {
 const steamAccountLinkComplete$ = new Rx.Subject<{ discordId: bigint; steam64Id: bigint }>()
 const invalidateUsers$ = new Rx.Subject<void>()
 
+const module = initModule('users')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
+
 export const orpcRouter = {
 	getLoggedInUser: orpcBase.handler(async ({ context }) => {
 		const perms = await Rbac.getUserRbacPerms(context)
@@ -37,7 +47,7 @@ export const orpcRouter = {
 		.input(z.bigint())
 		.handler(async ({ context, input }) => {
 			const [dbUser] = await context.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, input))
-			const user = await buildUser(context, dbUser)
+			const user = await buildUser(dbUser)
 			if (!user) return { code: 'err:not-found' as const }
 			return { code: 'ok' as const, user }
 		}),
@@ -46,7 +56,7 @@ export const orpcRouter = {
 		.input(z.array(USR.UserIdSchema).optional())
 		.handler(async ({ context, input }) => {
 			const dbUsers = await context.db().select().from(Schema.users).where(input ? E.inArray(Schema.users.discordId, input) : undefined)
-			const users = await Promise.all(dbUsers.map((dbUser) => buildUser(context, dbUser)))
+			const users = await Promise.all(dbUsers.map((dbUser) => buildUser(dbUser)))
 			return { code: 'ok' as const, users }
 		}),
 
@@ -125,7 +135,7 @@ export const orpcRouter = {
 	}),
 }
 
-export async function completeSteamAccountLink(ctx: CS.Log & C.Db, code: string, steam64Id: bigint) {
+export async function completeSteamAccountLink(ctx: C.Db, code: string, steam64Id: bigint) {
 	return await DB.runTransaction(ctx, async (ctx) => {
 		let [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.steam64Id, steam64Id))
 		if (user) {
@@ -157,10 +167,10 @@ function selectBestDisplayName(options: (string | null | undefined)[]): string {
 	return validOptions[0] ?? 'Unknown User'
 }
 
-export async function buildUser(ctx: CS.Log, dbUser: Schema.User): Promise<USR.User> {
-	const memberRes = await Discord.fetchMember(ctx, CONFIG.homeDiscordGuildId, dbUser.discordId)
+export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
+	const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, dbUser.discordId)
 	if (memberRes.code !== 'ok') {
-		ctx.log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
+		log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
 		return {
 			...dbUser,
 			displayName: dbUser.nickname || dbUser.username,
@@ -183,6 +193,6 @@ export async function buildUser(ctx: CS.Log, dbUser: Schema.User): Promise<USR.U
 	}
 }
 
-export async function buildUsers(ctx: CS.Log, dbUsers: Schema.User[]): Promise<USR.User[]> {
-	return Promise.all(dbUsers.map(user => buildUser(ctx, user)))
+export async function buildUsers(dbUsers: Schema.User[]): Promise<USR.User[]> {
+	return Promise.all(dbUsers.map(user => buildUser(user)))
 }

@@ -1,7 +1,10 @@
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
+import { initModule } from '@/server/logger'
+import { baseLogger } from '@/server/logger'
 import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
@@ -15,9 +18,15 @@ export type DecodedPacket = {
 	body: string
 }
 
-const tracer = Otel.trace.getTracer('core-rcon')
+const module = initModule('core-rcon')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
+
 type Events = {
-	server: [CS.Log & C.OtelCtx, DecodedPacket]
+	server: [C.OtelCtx, DecodedPacket]
 	auth: []
 	[key: `response${string}`]: [string]
 	RCON_ERROR: [Error]
@@ -62,7 +71,7 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	ensureConnectedSub?: Rx.Subscription
-	ensureConnected(ctx: CS.Log) {
+	ensureConnected() {
 		if (this.ensureConnectedSub) return
 		const connect = () => {
 		}
@@ -70,7 +79,7 @@ export default class Rcon extends EventEmitter<Events> {
 		this.ensureConnectedSub = sub
 		sub.add(
 			Rx.fromEvent(this, 'auth').subscribe(() => {
-				ctx.log.info('RCON Connected to: %s', `${this.settings.host}:${this.settings.port}`)
+				log.info('RCON Connected to: %s', `${this.settings.host}:${this.settings.port}`)
 				this.connected$.next(true)
 			}),
 		)
@@ -84,25 +93,25 @@ export default class Rcon extends EventEmitter<Events> {
 					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
 				}),
 			).subscribe(() => {
-				ctx.log.info('Attempting to connect to RCON: %s', `${this.settings.host}:${this.settings.port}`)
+				log.info('Attempting to connect to RCON: %s', `${this.settings.host}:${this.settings.port}`)
 				this.client?.destroy()
 				this.client = net
-					.createConnection({ port: this.settings.port, host: this.settings.host }, () => this.#sendAuth(ctx))
-					.on('data', (data) => this.#onData(ctx, data))
-					.on('end', () => this.#onClose(ctx))
-					.on('error', (error) => this.#onNetError(ctx, error))
+					.createConnection({ port: this.settings.port, host: this.settings.host }, () => this.#sendAuth())
+					.on('data', (data) => this.#onData(data))
+					.on('end', () => this.#onClose())
+					.on('error', (error) => this.#onNetError(error))
 				connect()
 			}),
 		)
 	}
 
-	connect(ctx: CS.Log) {
-		this.ensureConnected(ctx)
+	connect() {
+		this.ensureConnected()
 		return Rx.firstValueFrom(this.connected$.pipe(filterTruthy()))
 	}
 
-	disconnect(ctx: CS.Log) {
-		ctx.log.info('Disconnecting from: %s', `${this.settings.host}:${this.settings.port}`)
+	disconnect() {
+		log.info('Disconnecting from: %s', `${this.settings.host}:${this.settings.port}`)
 		this.removeAllListeners()
 		this.ensureConnectedSub?.unsubscribe()
 		this.ensureConnectedSub = undefined
@@ -113,8 +122,8 @@ export default class Rcon extends EventEmitter<Events> {
 
 	execute = C.spanOp(
 		'rcon:execute',
-		{ tracer, eventLogLevel: 'trace', extraText: (ctx, body) => body },
-		async (ctx: CS.Log, body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
+		{ module, levels: { event: 'trace' }, extraText: (body) => body },
+		async (body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
 			}
@@ -138,27 +147,27 @@ export default class Rcon extends EventEmitter<Events> {
 				const listenerId = `response${this.msgId}`
 				const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
 				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
-				ctx.log.debug(`Executing %s `, body)
-				this.#send(ctx, body, this.msgId)
+				log.debug(`Executing %s `, body)
+				this.#send(body, this.msgId)
 				this.msgId++
 				return await Rx.firstValueFrom(Rx.race(timeout$, response$))
 			}
 		},
 	)
 
-	#sendAuth(ctx: CS.Log): void {
-		ctx.log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
-		ctx.log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
+	#sendAuth(): void {
+		log.trace(`Sending Token to: ${this.settings.host}:${this.settings.port}`)
+		log.trace(`Writing packet with type "${this.type.auth}" and body "${this.settings.password}".`)
 		this.client?.write(this.#encode(this.type.auth, 2147483647, this.settings.password).toString('binary'), 'binary')
 	}
 
-	#send(ctx: CS.Log, body: string, id = 99): void {
-		this.#write(ctx, this.type.command, id, body)
-		this.#write(ctx, this.type.command, id + 2)
+	#send(body: string, id = 99): void {
+		this.#write(this.type.command, id, body)
+		this.#write(this.type.command, id + 2)
 	}
 
-	#write(ctx: CS.Log, type: number, id: number, body?: string): void {
-		ctx.log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
+	#write(type: number, id: number, body?: string): void {
+		log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
 		this.client?.write(this.#encode(type, id, body).toString('binary'), 'binary')
 	}
 
@@ -173,22 +182,21 @@ export default class Rcon extends EventEmitter<Events> {
 		return buffer
 	}
 
-	#onData = C.spanOp('core-rcon:onData', { tracer, eventLogLevel: 'trace' }, (_ctx: CS.Log, data: Buffer): void => {
-		const ctx = C.includeActiveSpanAsUpstreamLink(_ctx)
+	#onData = C.spanOp('core-rcon:onData', { module, levels: { event: 'trace' }, root: true }, (data: Buffer): void => {
 		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
 		while (this.stream.byteLength >= 7) {
-			const packet = this.#decode(ctx)
+			const packet = this.#decode()
 			if (!packet) break
 			else {
-				ctx.log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+				log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
 			}
-			if (packet.type === this.type.response) this.#onResponse(ctx, packet)
-			else if (packet.type === this.type.server) this.emit('server', ctx, packet)
+			if (packet.type === this.type.response) this.#onResponse(packet)
+			else if (packet.type === this.type.server) this.emit('server', C.storeLinkToActiveSpan({}, 'event.emitter'), packet)
 			else if (packet.type === this.type.command) this.emit('auth')
 		}
 	})
 
-	#decode(ctx: CS.Log): { size: number; id: number; type: number; body: string } | null {
+	#decode(): { size: number; id: number; type: number; body: string } | null {
 		if (
 			this.stream[0] === 0
 			&& this.stream[1] === 1
@@ -202,12 +210,12 @@ export default class Rcon extends EventEmitter<Events> {
 			return this.soh
 		}
 		const bufSize = this.stream.readInt32LE(0)
-		if (bufSize > 8192 || bufSize < 10) return this.#badPacket(ctx)
+		if (bufSize > 8192 || bufSize < 10) return this.#badPacket()
 		else if (bufSize <= this.stream.byteLength - 4) {
 			const bufId = this.stream.readInt32LE(4)
 			const bufType = this.stream.readInt32LE(8)
 			if (this.stream[bufSize + 2] !== 0 || this.stream[bufSize + 3] !== 0 || bufId < 0 || bufType < 0 || bufType > 5) {
-				return this.#badPacket(ctx)
+				return this.#badPacket()
 			} else {
 				const response = {
 					size: bufSize,
@@ -221,48 +229,35 @@ export default class Rcon extends EventEmitter<Events> {
 		} else return null
 	}
 
-	#onResponse(ctx: CS.Log, packet: { size: number; id: number; type: number; body: string }): void {
+	#onResponse(packet: { size: number; id: number; type: number; body: string }): void {
 		if (packet.body === '') {
 			this.emit(`response${this.responseString.id - 2}`, this.responseString.body)
 			this.responseString.body = ''
 		} else if (!packet.body.includes('')) {
 			this.responseString.body = this.responseString.body += packet.body
 			this.responseString.id = packet.id
-		} else this.#badPacket(ctx)
+		} else this.#badPacket()
 	}
 
-	#badPacket(ctx: CS.Log): null {
-		ctx.log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${JSON.stringify(this.responseString)}`)
+	#badPacket(): null {
+		log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${JSON.stringify(this.responseString)}`)
 		this.stream = Buffer.alloc(0)
 		this.responseString = { id: 0, body: '' }
 		return null
 	}
 
-	#onClose(ctx: CS.Log): void {
-		ctx.log.trace(`Socket closed.`)
+	#onClose(): void {
+		log.trace(`Socket closed.`)
 		if (this.connected$.value) this.connected$.next(false)
 	}
 
-	#onNetError(ctx: CS.Log, error: Error): void {
-		ctx.log.error(error, `node:net error`)
+	#onNetError(error: Error): void {
+		log.error(error, `node:net error`)
 		this.emit('RCON_ERROR', error)
 		if (this.connected$.value) this.connected$.next(false)
 	}
 
 	#bufToHexString(buf: Buffer): string {
 		return buf.toString('hex').match(/../g)?.join(' ') || ''
-	}
-
-	async warn(ctx: CS.Log, playerId: string, message: string): Promise<void> {
-		ctx.log.trace(`Warned ${playerId}: ${message}`)
-		await this.execute(ctx, `AdminWarn "${playerId}" ${message}`)
-	}
-
-	async kick(ctx: CS.Log, playerId: string, reason: string): Promise<void> {
-		await this.execute(ctx, `AdminKick "${playerId}" ${reason}`)
-	}
-
-	async forceTeamChange(ctx: CS.Log, playerId: string): Promise<void> {
-		await this.execute(ctx, `AdminForceTeamChange "${playerId}"`)
 	}
 }

@@ -1,58 +1,78 @@
 import { AsyncResource, type CleanupTasks, sleep } from '@/lib/async'
 import { matchLog } from '@/lib/log-parsing'
-
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
+import * as LOG from '@/models/logs'
 import * as SM from '@/models/squad.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
+import { initModule } from '@/server/logger'
+import { baseLogger } from '@/server/logger'
 import * as Otel from '@opentelemetry/api'
 import * as Rx from 'rxjs'
 
-const tracer = Otel.trace.getTracer('squad-rcon')
+const module = initModule('squad-rcon')
+let log!: CS.Logger
 
-export type SquadRcon = {
-	rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]>
-
-	layersStatus: AsyncResource<SM.LayerStatusRes, CS.Log & C.Rcon>
-	serverInfo: AsyncResource<SM.ServerInfoRes, CS.Log & C.Rcon>
-	teams: AsyncResource<SM.TeamsRes, CS.Log & C.Rcon & C.AdminList>
+export function setup() {
+	log = module.getLogger()
 }
 
-export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, cleanup: CleanupTasks): SquadRcon {
+export type SquadRcon = {
+	rconEvent$: Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]>
+
+	layersStatus: AsyncResource<SM.LayerStatusRes, C.Rcon>
+	serverInfo: AsyncResource<SM.ServerInfoRes, C.Rcon>
+	teams: AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>
+}
+
+export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks): SquadRcon {
 	const rcon = ctx.rcon
-	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource('serverStatus', (ctx) => getLayerStatus(ctx), {
-		defaultTTL: 5000,
-		retries: 4,
-		retryDelay: 1000,
-		isErrorResponse: (res) => res.code !== 'ok',
-	})
+	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon>(
+		'serverStatus',
+		(ctx) => getLayerStatus(ctx),
+		module,
+		{
+			defaultTTL: 5000,
+			retries: 4,
+			retryDelay: 1000,
+			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
+			log,
+		},
+	)
 	cleanup.push(() => layersStatus.dispose())
 
-	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource('serverInfo', (ctx) => getServerInfo(ctx), {
-		defaultTTL: 10_000,
-		retries: 4,
-		retryDelay: 1000,
-		isErrorResponse: (res) => res.code !== 'ok',
-	})
+	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource<SM.ServerInfoRes, C.Rcon>(
+		'serverInfo',
+		(ctx) => getServerInfo(ctx),
+		module,
+		{
+			defaultTTL: 10_000,
+			retries: 4,
+			retryDelay: 1000,
+			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
+			log,
+		},
+	)
 	cleanup.push(() => serverInfo.dispose())
 
-	const teams: SquadRcon['teams'] = new AsyncResource('teams', (ctx) => getTeams(ctx), {
+	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>('teams', (ctx) => getTeams(ctx), module, {
 		defaultTTL: 5000,
 		retries: 4,
 		retryDelay: 1000,
-		isErrorResponse: (res) => res.code !== 'ok',
+		isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
+		log,
 	})
 	cleanup.push(() => teams.dispose())
 
 	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
-	const rconEvent$: Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
-		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Log & C.OtelCtx, SM.RconEvents.Event]> => {
-			ctx.log.info('RCON PACKET: %s', pkt.body)
+	const rconEvent$: Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
+		Rx.concatMap(([ctx, pkt]): Rx.Observable<[C.OtelCtx, SM.RconEvents.Event]> => {
+			log.info('RCON PACKET: %s', pkt.body)
 			const [event, err] = matchLog(pkt.body, SM.RCON_EVENT_MATCHERS)
 			if (err) {
-				ctx.log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)
+				log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)
 				return Rx.EMPTY
 			}
 			if (!event) return Rx.EMPTY
@@ -76,8 +96,8 @@ export function initSquadRcon(ctx: CS.Log & C.Rcon & C.AdminList, cleanup: Clean
 	}
 }
 
-export async function getCurrentLayer(ctx: CS.Log & C.Rcon) {
-	const response = await ctx.rcon.execute(ctx, 'ShowCurrentMap')
+export async function getCurrentLayer(ctx: C.Rcon) {
+	const response = await ctx.rcon.execute('ShowCurrentMap')
 	if (response.code !== 'ok') return response
 	const match = response.data.match(/^Current level is (.*), layer is (.*), factions (.*)/)
 	if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
@@ -86,8 +106,8 @@ export async function getCurrentLayer(ctx: CS.Log & C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`)! }
 }
 
-export async function getNextLayer(ctx: CS.Log & C.Rcon) {
-	const response = await ctx.rcon.execute(ctx, 'ShowNextMap')
+export async function getNextLayer(ctx: C.Rcon) {
+	const response = await ctx.rcon.execute('ShowNextMap')
 	if (response.code !== 'ok') return response
 	if (!response.data) return { code: 'ok' as const, layer: null }
 	const match = response.data.match(/^Next level is (.*), layer is (.*), factions (.*)/)
@@ -98,8 +118,8 @@ export async function getNextLayer(ctx: CS.Log & C.Rcon) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { tracer }, async (ctx: CS.Log & C.Rcon & C.AdminList) => {
-	const res = await ctx.rcon.execute(ctx, 'ListPlayers')
+const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { module }, async (ctx: C.Rcon & C.AdminList) => {
+	const res = await ctx.rcon.execute('ListPlayers')
 	if (res.code !== 'ok') return res
 
 	const players: SM.Player[] = []
@@ -131,8 +151,8 @@ const fetchPlayers = C.spanOp('squad-rcon:fetch-players', { tracer }, async (ctx
 	return { code: 'ok' as const, players }
 })
 
-const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { tracer }, async (ctx: CS.Log & C.Rcon) => {
-	const resSquad = await ctx.rcon.execute(ctx, 'ListSquads')
+const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { module }, async (ctx: C.Rcon) => {
+	const resSquad = await ctx.rcon.execute('ListSquads')
 	if (resSquad.code !== 'ok') return resSquad
 
 	const squads: SM.Squad[] = []
@@ -173,8 +193,8 @@ const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { tracer }, async (ctx: 
 
 const getTeams = C.spanOp(
 	'squad-rcon:fetch-teams',
-	{ tracer },
-	async (ctx: CS.Log & C.Rcon & C.AdminList & C.AsyncResourceInvocation): Promise<SM.TeamsRes> => {
+	{ module },
+	async (ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation): Promise<SM.TeamsRes> => {
 		const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
 
 		if (playersRes.code === 'err:rcon') return playersRes
@@ -221,7 +241,7 @@ const getTeams = C.spanOp(
 	},
 )
 
-export async function broadcast(ctx: CS.Log & C.Rcon, message: string) {
+export async function broadcast(ctx: C.Rcon, message: string) {
 	let messages = [message]
 	if (message.length > SM.RCON_MAX_BUF_LEN) {
 		messages = []
@@ -238,8 +258,8 @@ export async function broadcast(ctx: CS.Log & C.Rcon, message: string) {
 		}
 	}
 	for (const message of messages) {
-		ctx.log.info(`Broadcasting message: %s`, message)
-		await ctx.rcon.execute(ctx, `AdminBroadcast ${message}`)
+		log.info(`Broadcasting message: %s`, message)
+		await ctx.rcon.execute(`AdminBroadcast ${message}`)
 	}
 }
 
@@ -247,7 +267,7 @@ export type WarnOptionsBase = { msg: string | string[]; repeat?: number } | stri
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
-export async function getPlayer(ctx: CS.Log & C.SquadRcon & C.AdminList, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
+export async function getPlayer(ctx: C.SquadRcon & C.AdminList, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.server.teams.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
@@ -256,12 +276,12 @@ export async function getPlayer(ctx: CS.Log & C.SquadRcon & C.AdminList, query: 
 	return { code: 'ok' as const, player }
 }
 
-export async function warn(ctx: CS.Log & C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
+export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Type, _opts: WarnOptions) {
 	let opts: WarnOptionsBase
 	if (typeof _opts === 'function') {
 		const playerRes = await getPlayer(ctx, ids)
 		if (playerRes.code !== 'ok') return playerRes
-		const optsRes = _opts({ player: playerRes.player })
+		const optsRes = _opts({ ...CS.init(), player: playerRes.player })
 		if (!optsRes) return
 		opts = optsRes
 	} else {
@@ -282,19 +302,19 @@ export async function warn(ctx: CS.Log & C.SquadRcon & C.AdminList, ids: SM.Play
 		msgArr[0] = CONFIG.warnPrefix + msgArr[0]
 	}
 
-	ctx.log.info(`Warning player: %s: %s`, ids, msgArr)
+	log.info(`Warning player: %s: %s`, ids, msgArr)
 	for (let i = 0; i < repeatCount; i++) {
 		if (i !== 0) await sleep(5000)
 		for (const msg of msgArr) {
-			await ctx.rcon.execute(ctx, `AdminWarn "${SM.PlayerIds.resolvePlayerId(ids)}" ${msg}`)
+			await ctx.rcon.execute(`AdminWarn "${SM.PlayerIds.resolvePlayerId(ids)}" ${msg}`)
 		}
 	}
 }
 
 export const warnAllAdmins = C.spanOp(
 	'squad-server:warn-all-admins',
-	{ tracer, eventLogLevel: 'info' },
-	async (ctx: CS.Log & C.SquadRcon & C.AdminList, options: WarnOptions) => {
+	{ module, levels: { event: 'info' } },
+	async (ctx: C.SquadRcon & C.AdminList, options: WarnOptions) => {
 		const [currentAdminList, teamsRes] = await Promise.all([
 			ctx.adminList.get(ctx),
 			ctx.server.teams.get(ctx),
@@ -312,13 +332,13 @@ export const warnAllAdmins = C.spanOp(
 	},
 )
 
-export async function getServerInfo(ctx: CS.Log & C.Rcon): Promise<SM.ServerInfoRes> {
-	const rawDataRes = await ctx.rcon.execute(ctx, `ShowServerInfo`)
+export async function getServerInfo(ctx: C.Rcon): Promise<SM.ServerInfoRes> {
+	const rawDataRes = await ctx.rcon.execute(`ShowServerInfo`)
 	if (rawDataRes.code !== 'ok') return rawDataRes
 	const data = JSON.parse(rawDataRes.data)
 	const res = SM.ServerRawInfoSchema.safeParse(data)
 	if (!res.success) {
-		ctx.log.error(res.error, `Failed to parse server info: %O`, data)
+		log.error(res.error, `Failed to parse server info: %O`, data)
 		return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
 	}
 
@@ -339,8 +359,8 @@ export async function getServerInfo(ctx: CS.Log & C.Rcon): Promise<SM.ServerInfo
 
 export const getLayerStatus = C.spanOp(
 	'squad-rcon:getLayerStatus',
-	{ tracer },
-	async (ctx: CS.Log & C.Rcon): Promise<SM.LayerStatusRes> => {
+	{ module },
+	async (ctx: C.Rcon): Promise<SM.LayerStatusRes> => {
 		const currentLayerTask = getCurrentLayer(ctx)
 		const nextLayerTask = getNextLayer(ctx)
 		const currentLayerRes = await currentLayerTask
@@ -362,11 +382,11 @@ export const getLayerStatus = C.spanOp(
 
 export const setNextLayer = C.spanOp(
 	'squad-rcon:setNextLayer',
-	{ tracer },
-	async (ctx: CS.Log & C.SquadRcon, layer: L.LayerId | L.UnvalidatedLayer) => {
+	{ module },
+	async (ctx: C.SquadRcon, layer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getLayerCommand(layer, 'set-next')
-		ctx.log.info(`Setting next layer: %s, `, cmd)
-		await ctx.rcon.execute(ctx, cmd)
+		log.info(`Setting next layer: %s, `, cmd)
+		await ctx.rcon.execute(cmd)
 		ctx.server.layersStatus.invalidate(ctx)
 		const newStatus = await ctx.server.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus
@@ -387,15 +407,15 @@ export const setNextLayer = C.spanOp(
 	},
 )
 
-export function setFogOfWar(ctx: CS.Log & C.Rcon, mode: 'on' | 'off') {
-	ctx.log.info(`Setting fog of war to %s`, mode)
-	return ctx.rcon.execute(ctx, `AdminSetFogOfWar ${mode}`)
+export function setFogOfWar(ctx: C.Rcon, mode: 'on' | 'off') {
+	log.info(`Setting fog of war to %s`, mode)
+	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`)
 }
 
-export function processChatPacket(ctx: CS.Log, decodedPacket: DecodedPacket) {
+export function processChatPacket(decodedPacket: DecodedPacket) {
 }
 
-export function endMatch(ctx: CS.Log & C.Rcon) {
-	ctx.log.info(`Ending match`)
-	void ctx.rcon.execute(ctx, 'AdminEndMatch')
+export function endMatch(ctx: C.Rcon) {
+	log.info(`Ending match`)
+	void ctx.rcon.execute('AdminEndMatch')
 }

@@ -1,9 +1,12 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
+import { initModule } from '@/server/logger'
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
+import { baseLogger } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
 import * as Otel from '@opentelemetry/api'
@@ -55,12 +58,12 @@ export function setup() {
 
 // TODO error visibility
 
-const tracer = Otel.trace.getTracer('rbac')
+const module = initModule('rbac')
 
 export const getRolesForDiscordUser = C.spanOp(
 	'rbac:get-roles-for-discord-user',
-	{ tracer, attrs: (_, userId) => ({ userId }) },
-	async (baseCtx: CS.Log & C.UserId) => {
+	{ module, attrs: (_, userId) => ({ userId }) },
+	async (baseCtx: C.UserId) => {
 		const userId = baseCtx.user.discordId
 		const roles: RBAC.Role[] = []
 		const tasks: Promise<void>[] = []
@@ -71,13 +74,13 @@ export const getRolesForDiscordUser = C.spanOp(
 			tasks.push(
 				(async () => {
 					if (assignment.type === 'discord-server-member') {
-						const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
+						const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
 						if (memberRes.code === 'ok') {
 							roles.push(assignment.role)
 						}
 					}
 					if (assignment.type === 'discord-role') {
-						const memberRes = await Discord.fetchMember(baseCtx, CONFIG.homeDiscordGuildId, userId)
+						const memberRes = await Discord.fetchMember(CONFIG.homeDiscordGuildId, userId)
 						if (memberRes.code === 'ok') {
 							const member = memberRes.member
 							if (member.roles.cache.has(assignment.discordRoleId.toString())) {
@@ -95,8 +98,8 @@ export const getRolesForDiscordUser = C.spanOp(
 
 export const getUserRbacPerms = C.spanOp(
 	'rbac:get-permissions-for-discord-user',
-	{ tracer, attrs: (_, userId) => ({ userId }) },
-	async (baseCtx: CS.Log & C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
+	{ module, attrs: (_, userId) => ({ userId }) },
+	async (baseCtx: C.Db & C.UserId): Promise<RBAC.TracedPermission[]> => {
 		const userId = baseCtx.user.discordId
 		const ownedFiltersPromise = getOwnedFilters()
 		const roles = await getRolesForDiscordUser(baseCtx)
@@ -178,19 +181,19 @@ export const getUserRbacPerms = C.spanOp(
 )
 
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db & C.UserId,
+	baseCtx: C.Db & C.UserId,
 	perm: RBAC.Permission<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db & C.UserId,
+	baseCtx: C.Db & C.UserId,
 	perms: RBAC.Permission<T>[],
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	baseCtx: CS.Log & C.Db & C.UserId,
+	baseCtx: C.Db & C.UserId,
 	permissionReq: RBAC.PermissionReq<T>,
 ): Promise<RBAC.PermissionDeniedResponse<T> | null>
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	ctx: CS.Log & C.Db & C.UserId,
+	ctx: C.Db & C.UserId,
 	reqOrPerms: RBAC.Permission<T> | RBAC.Permission<T>[] | RBAC.PermissionReq<T>,
 ) {
 	const perms = RBAC.fromTracedPermissions(await getUserRbacPerms(ctx))

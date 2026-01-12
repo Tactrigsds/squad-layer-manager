@@ -1,6 +1,6 @@
 import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm/expressions'
 import { index, int, numeric, real, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
@@ -401,7 +401,7 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 		throw new Error('Cannot pack raw or invalid layer to integer')
 	}
 
-	const ctx: CS.EffectiveColumnConfig = { effectiveColsConfig: BASE_COLUMN_CONFIG }
+	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: BASE_COLUMN_CONFIG }
 	// Get enumeration indices for each component
 	const layerIndex = assertedEnumDbValue('Layer', layer.Layer, ctx, components)
 	const faction1Index = assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components)

@@ -1,4 +1,7 @@
 import { assertNever } from '@/lib/type-guards'
+import * as ATTRS from '@/models/otel-attrs'
+import * as Otel from '@opentelemetry/api'
+import type pino from 'pino'
 
 export const serializers = {
 	bigint: (n: bigint) => n.toString() + 'n',
@@ -27,7 +30,104 @@ export const LEVELS = {
 	60: 'FATAL',
 } as const
 
-export function showLogEvent(obj: { level: number; [key: string]: unknown }) {
+export const MAPPED_ATTRS = [
+	ATTRS.Module.NAME,
+	ATTRS.SquadServer.ID,
+	ATTRS.User.ID,
+	ATTRS.WebSocket.CLIENT_ID,
+]
+
+// Module color coding
+const MODULE_COLORS = [
+	'\x1b[36m', // cyan
+	'\x1b[35m', // magenta
+	'\x1b[33m', // yellow
+	'\x1b[32m', // green
+	'\x1b[34m', // blue
+	'\x1b[95m', // bright magenta
+	'\x1b[96m', // bright cyan
+	'\x1b[93m', // bright yellow
+]
+
+const modulesList: string[] = []
+
+function getModuleColor(moduleName: string): string {
+	let idx = modulesList.indexOf(moduleName)
+	if (idx === -1) {
+		idx = modulesList.length
+		modulesList.push(moduleName)
+	}
+	return MODULE_COLORS[idx % MODULE_COLORS.length]
+}
+
+// Span name color coding with circular buffer
+const SPAN_COLORS = [
+	'\x1b[36m', // cyan
+	'\x1b[35m', // magenta
+	'\x1b[33m', // yellow
+	'\x1b[32m', // green
+	'\x1b[34m', // blue
+	'\x1b[95m', // bright magenta
+	'\x1b[96m', // bright cyan
+	'\x1b[93m', // bright yellow
+	'\x1b[92m', // bright green
+	'\x1b[94m', // bright blue
+]
+
+const spanNamesList: string[] = new Array(500)
+let spanNamesOffset = 0
+
+function getSpanColor(spanName: string): string {
+	let idx = spanNamesList.indexOf(spanName)
+	if (idx === -1) {
+		idx = spanNamesOffset
+		spanNamesList[spanNamesOffset] = spanName
+		spanNamesOffset = (spanNamesOffset + 1) % 500
+	}
+	return SPAN_COLORS[idx % SPAN_COLORS.length]
+}
+
+export function getSubmoduleLogger(submodule: string, log: pino.Logger) {
+	const parentModule = log.bindings()[ATTRS.Module.NAME]
+	const module = parentModule ? `${parentModule}/${submodule}` : submodule
+	return log.child({ [ATTRS.Module.NAME]: module })
+}
+
+// Type guard for SDK span with internal properties
+interface SdkSpan extends Otel.Span {
+	name?: string
+}
+
+export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
+	const sdkSpan = span as SdkSpan
+
+	// Access attributes from baggage
+	const baggage = Otel.propagation.getBaggage(Otel.context.active())
+	if (baggage) {
+		for (const attr of MAPPED_ATTRS) {
+			const entry = baggage.getEntry(attr)
+			if (entry?.value !== undefined && !(attr in record)) {
+				record[attr] = entry.value
+			}
+		}
+	}
+
+	// Map span context IDs
+	const spanContext = span.spanContext()
+	if (!('span_id' in record)) {
+		record.span_id = spanContext.spanId
+	}
+	if (!('trace_id' in record)) {
+		record.trace_id = spanContext.traceId
+	}
+
+	// Include span name if not already in record
+	if (!('span_name' in record) && sdkSpan.name) {
+		record.span_name = sdkSpan.name
+	}
+}
+
+export function showLogEvent(obj: { level: number; [key: string]: unknown }, showAdditionalContext = true) {
 	// Format time with 24h time format (HH:MM:SS)
 	const dateObj = new Date(obj.time as number)
 	const time = dateObj.toLocaleTimeString([], { hour12: false })
@@ -77,23 +177,64 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }) {
 	const msg = typeof obj.msg === 'string' ? obj.msg : JSON.stringify(obj.msg)
 
 	// Extract additional properties
+	const {
+		time: _,
+		level: __,
+		msg: ___,
+		pid: _pid,
+		hostname: _hostname,
+		span_id: spanId,
+		trace_id: traceId,
+		span_name: rawSpanName,
+		[ATTRS.Module.NAME]: rawModuleName,
+		[ATTRS.SquadServer.ID]: serverId,
+		[ATTRS.User.ID]: userId,
+		[ATTRS.WebSocket.CLIENT_ID]: wsClientId,
+		...props
+	} = obj
+	const moduleName = rawModuleName as string | undefined
+	const spanName = rawSpanName as string | undefined
 
-	const { time: _, level: __, msg: ___, pid: _pid, hostname: _hostname, ...props } = obj
+	// Include full trace/span IDs in props for detailed inspection
+	if (traceId) props.trace_id = traceId
+	if (spanId) props.span_id = spanId
 
-	// Format additional context if any
-	let context = ''
-	if (Object.keys(props).length > 0) {
-		context = `\n  ${
-			Object.entries(props)
-				.map(([key, val]) => {
-					if (typeof val === 'object' && val !== null) {
-						return `${key}: ${JSON.stringify(val)}`
-					}
-					return `${key}: ${String(val)}`
-				})
-				.join('\n  ')
-		}`
+	// Build main bracket with level, module, span
+	let mainBracketContent = levelLabel
+	if (moduleName) {
+		const moduleColor = getModuleColor(String(moduleName))
+		mainBracketContent += ` ${moduleColor}${moduleName}${resetColor}`
 	}
+	if (spanName) {
+		const spanColor = getSpanColor(String(spanName))
+		let spanDisplayName: string
+		if (moduleName && spanName.startsWith(`${moduleName}:`)) {
+			spanDisplayName = spanName.slice(moduleName.length + 1)
+		} else {
+			spanDisplayName = spanName
+		}
+		mainBracketContent += ` ${spanColor}${spanDisplayName}${resetColor}`
+	}
+	const mainBracket = `${levelColor}[${mainBracketContent}]${resetColor}`
 
-	log(`${dimColor}${time}${resetColor} ${levelColor}[${levelLabel.padEnd(5)}]${resetColor} ${msg}${context}`)
+	const keyColor = '\x1b[90m' // grey for keys
+	const valueColor = '\x1b[37m' // white for values
+	const contextParts: string[] = []
+	if (traceId && spanId) {
+		contextParts.push(
+			`${keyColor}trace=${valueColor}${String(traceId).slice(-4)}${keyColor}->${valueColor}${String(spanId).slice(-4)}${resetColor}`,
+		)
+	}
+	if (serverId) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
+	if (userId) contextParts.push(`${keyColor}user=${valueColor}${userId}${resetColor}`)
+	if (wsClientId) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId}${resetColor}`)
+
+	const contextLine = contextParts.length > 0 ? ` ${dimColor}[${resetColor}${contextParts.join(' ')}${dimColor}]${resetColor}` : ''
+
+	// Include additional context as object parameter if any
+	if (Object.keys(props).length > 0) {
+		log(`${dimColor}${time}${resetColor} ${mainBracket}${contextLine} ${msg}`, props)
+	} else {
+		log(`${dimColor}${time}${resetColor} ${mainBracket}${contextLine} ${msg}`)
+	}
 }

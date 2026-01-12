@@ -5,6 +5,7 @@ import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
@@ -213,7 +214,7 @@ function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colCon
 				const colDef = LC.getColumnDef(key)
 				if (
 					colDef?.type === 'string' && colDef.enumMapping
-					&& !LC.isEnumeratedValue(key, value as string, { effectiveColsConfig: colConfig })
+					&& !LC.isEnumeratedValue(key, value as string, { ...CS.init(), effectiveColsConfig: colConfig })
 				) {
 					delete defaults[key]
 				}

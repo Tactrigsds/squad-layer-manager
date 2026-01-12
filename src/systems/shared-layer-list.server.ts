@@ -2,9 +2,11 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
+import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
+import * as LOG from '@/models/logs'
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
@@ -37,7 +39,8 @@ export type SharedLayerListContext = {
 		itemLocks: SLL.ItemLocks
 	}
 }
-const tracer = Otel.trace.getTracer('shared-layer-list')
+const module = initModule('shared-layer-list')
+let log!: CS.Logger
 
 export function getDefaultState(serverState: SS.ServerState): SharedLayerListContext['sharedList'] {
 	const editSession: SLL.EditSession = SLL.createNewSession(Obj.deepClone(serverState.layerQueue))
@@ -53,7 +56,7 @@ export function getDefaultState(serverState: SS.ServerState): SharedLayerListCon
 	}
 }
 
-export function setupInstance(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
+export function setupInstance(ctx: C.Db & C.LayerQueue & C.SharedLayerList & C.ServerSliceCleanup) {
 	const editSession = ctx.sharedList.session
 	const presence = ctx.sharedList.presence
 	const serverId = ctx.serverId
@@ -87,7 +90,7 @@ export function setupInstance(ctx: CS.Log & C.Db & C.LayerQueue & C.SharedLayerL
 			// just add a flat delay for disconnects to give the user time to reconnect in a differen session
 			Rx.delay(PresenceActions.DISCONNECT_TIMEOUT),
 			Rx.map(ctx => SquadServer.resolveSliceCtx(ctx, serverId)),
-			C.durableSub('shared-layer-list:handle-user-disconnect', { ctx, tracer, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
+			C.durableSub('shared-layer-list:handle-user-disconnect', { module, mutexes: ctx => ctx.sharedList.mtx }, async (ctx) => {
 				if (ctx.serverId !== serverId) return
 				dispatchPresenceAction(ctx, PresenceActions.disconnectedTimeout)
 				cleanupActivityLocks(ctx, ctx.wsClientId)
@@ -131,16 +134,16 @@ export const orpcRouter = {
 
 const handleSllStateUpdate = C.spanOp(
 	'shared-layer-list:handle-sll-state-update',
-	{ tracer, mutexes: (ctx) => ctx.sharedList.mtx },
+	{ module, mutexes: (ctx) => ctx.sharedList.mtx },
 	async (ctx: C.OrpcBase & C.ServerSlice, input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>) => {
-		ctx.log.info('Processing update %o for %s', input, ctx.serverId)
+		log.info('Processing update %o for %s', input, ctx.serverId)
 
 		const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write'))
 		if (authRes) return authRes
 		const editSession = ctx.sharedList.session
 		if (input.sessionSeqId !== ctx.sharedList.sessionSeqId) {
 			const msg = `Outdated session seq id ${input.sessionSeqId} for ${ctx.serverId} (expected ${ctx.sharedList.sessionSeqId})`
-			ctx.log.warn(msg)
+			log.warn(msg)
 			return {
 				code: 'err:outdated-session-id' as const,
 				msg,
@@ -151,7 +154,7 @@ const handleSllStateUpdate = C.spanOp(
 			case 'op': {
 				if (editSession.ops.length < input.expectedIndex) throw new Error('Invalid index')
 				SLL.applyOperations(editSession, [input.op])
-				ctx.log.info('Applied operation %o:%s', input.op, input.op.opId)
+				log.info('Applied operation %o:%s', input.op, input.op.opId)
 				void sendUpdate(ctx, input)
 				break
 			}
@@ -232,19 +235,19 @@ const handleSllStateUpdate = C.spanOp(
 )
 
 function handlePresenceUpdate(
-	ctx: C.SharedLayerList & CS.Log & C.User & C.WSSession,
+	ctx: C.SharedLayerList & C.User & C.WSSession,
 	update: Extract<SLL.ClientUpdate, { code: 'update-presence' }>,
 ) {
 	if (update.wsClientId !== ctx.wsClientId) {
-		ctx.log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
+		log.warn('Received presence update from another client: %s, expected: %s', update.wsClientId, ctx.wsClientId)
 		return
 	}
 	if (update.userId !== ctx.user.discordId) {
-		ctx.log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
+		log.warn('Received presence update from another user: %s, expected: %s', update.userId, ctx.user.discordId)
 		return
 	}
 	if (update.changes.lastSeen && update.changes.lastSeen > Date.now()) {
-		ctx.log.warn('Received presence update with invalid lastSeen: %s', update.changes.lastSeen)
+		log.warn('Received presence update with invalid lastSeen: %s', update.changes.lastSeen)
 		return
 	}
 
@@ -305,7 +308,7 @@ export async function sendUpdate(ctx: C.SharedLayerList, update: SLL.Update) {
 }
 
 function getBaseCtx() {
-	return C.initMutexStore({ log: baseLogger })
+	return C.initMutexStore(CS.init())
 }
 
 function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, action: PresenceActions.Action) {
@@ -330,10 +333,11 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 }
 
 export function setup() {
+	log = module.getLogger()
 	const ctx = getBaseCtx()
 	Rx.interval(SLL.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		Rx.map(() => getBaseCtx()),
-		C.durableSub('shared-layer-list:clean-presence', { tracer, ctx }, async (ctx) => {
+		C.durableSub('shared-layer-list:clean-presence', { module }, async (ctx) => {
 			let numCleaned = 0
 			for (const slice of SquadServer.globalState.slices.values()) {
 				const presenceState = slice.sharedList.presence
@@ -347,7 +351,7 @@ export function setup() {
 				}
 			}
 
-			ctx.log.info(`Cleaned ${numCleaned} stale presence sessions`)
+			log.info(`Cleaned ${numCleaned} stale presence sessions`)
 			// no need to send these deletions to the client. would be flabbergasted if a client stayed idle with no other sources of resets for it to matter
 		}),
 	).subscribe()

@@ -7,25 +7,32 @@ import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
+import * as LOG from '@/models/logs'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
+import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
+import { initModule } from '@/server/logger'
+import { baseLogger } from '@/server/logger'
+import orpcBase from '@/server/orpc-base'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UsersClient from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-
-import { CONFIG } from '@/server/config'
-import orpcBase from '@/server/orpc-base'
-import * as UsersClient from '@/systems/users.server'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
 
-const tracer = Otel.trace.getTracer('match-history')
+const module = initModule('match-history')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
 
 export type MatchHistoryContext = {
 	mtx: Mutex
@@ -67,8 +74,8 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 
 export const loadState = C.spanOp(
 	'match-history:load-state',
-	{ tracer },
-	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
+	{ module },
+	async (ctx: C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx.db().$with('recent_matches').as(
@@ -94,7 +101,7 @@ export const loadState = C.spanOp(
 				.innerJoin(recentMatchesCte, E.eq(Schema.serverEvents.matchId, recentMatchesCte.id)),
 		])
 
-		ctx.log.info(
+		log.info(
 			'found %d match history rows, %d balance trigger events, %d server events',
 			rows.length,
 			balanceTriggerRows.length,
@@ -114,7 +121,7 @@ export const loadState = C.spanOp(
 			state.recentMatches.push(details)
 
 			if (row.users) {
-				const user = await UsersClient.buildUser(ctx, row.users)
+				const user = await UsersClient.buildUser(row.users)
 				Arr.upsertOn(state.parts.users, user, 'discordId')
 			}
 		}
@@ -142,16 +149,16 @@ export const loadState = C.spanOp(
 )
 
 export const getRecentMatches = C.spanOp('match-history:get-recent-matches', {
-	tracer,
-	eventLogLevel: 'trace',
+	module,
+	levels: { event: 'trace' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 }, async (ctx: C.MatchHistory) => {
 	return ctx.matchHistory.recentMatches
 })
 
 export const getCurrentMatch = C.spanOp('match-history:get-current-match', {
-	tracer,
-	eventLogLevel: 'trace',
+	module,
+	levels: { event: 'trace' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 }, async (ctx: C.MatchHistory) => {
 	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
@@ -159,8 +166,8 @@ export const getCurrentMatch = C.spanOp('match-history:get-current-match', {
 
 const loadCurrentMatch = C.spanOp(
 	'match-history:get-previous-match',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: CS.Log & C.Db & C.MatchHistory, opts?: { forUpdate?: boolean }) => {
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
+	async (ctx: C.Db & C.MatchHistory, opts?: { forUpdate?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
 			E.desc(Schema.matchHistory.ordinal),
 		).limit(1)
@@ -205,9 +212,9 @@ export const matchHistoryRouter = {
 
 export const addNewCurrentMatch = C.spanOp(
 	'match-history:add-new-current-match',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
 	async (
-		ctx: CS.Log & C.Db & C.MatchHistory & C.SquadServer,
+		ctx: C.Db & C.MatchHistory & C.SquadServer,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
@@ -238,14 +245,14 @@ export const addNewCurrentMatch = C.spanOp(
 )
 
 export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-match', {
-	tracer,
-	eventLogLevel: 'info',
+	module,
+	levels: { event: 'info' },
 	mutexes: (ctx) => ctx.matchHistory.mtx,
 	attrs: (_, currentLayerId) => ({
 		currentLayerId,
 	}),
 }, async (
-	ctx: CS.Log & C.Db & C.MatchHistory,
+	ctx: C.Db & C.MatchHistory,
 	currentLayerId: string,
 	winner: SM.SquadOutcomeTeam | null,
 	loser: SM.SquadOutcomeTeam | null,
@@ -255,11 +262,11 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 		const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 		if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
 		if (currentMatch.status !== 'in-progress') {
-			ctx.log.warn('unable to update current history entry: not in-progress')
+			log.warn('unable to update current history entry: not in-progress')
 			return { code: 'err:match-not-in-progress' as const, message: 'Match not in progress' }
 		}
 		if (!L.areLayersCompatible(currentLayerId, currentMatch.layerId)) {
-			ctx.log.warn('unable to update current history entry: layer id mismatch')
+			log.warn('unable to update current history entry: layer id mismatch')
 			return { code: 'err:layer-id-mismatch' as const, message: 'Layer id mismatch' }
 		}
 
@@ -284,10 +291,10 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 			let inputStored: any
 			const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
 			try {
-				ctx.log.info('Evaluating trigger %s', trig.id)
+				log.info('Evaluating trigger %s', trig.id)
 				const input = trig.resolveInput({ history: ctx.matchHistory.recentMatches })
 				inputStored = input
-				const res = trig.evaluate(ctx, input)
+				const res = trig.evaluate({ ...CS.init(), ...ctx, log: LOG.getSubmoduleLogger(`balance-trigger-eval::${trig.id}`, log) }, input)
 				if (!res) continue
 				const event = {
 					strongerTeam: res.strongerTeam,
@@ -300,13 +307,13 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
 				const [{ id }] = await ctx.db().insert(Schema.balanceTriggerEvents)
 					.values(superjsonify(Schema.balanceTriggerEvents, event))
 					.$returningId()
-				ctx.log.info(
+				log.info(
 					'Trigger %s fired: message: "%s"',
 					trig.id,
 					Messages.GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
 				)
 			} catch (err) {
-				ctx.log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
+				log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
 			}
 		}
 		await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
@@ -323,7 +330,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
  */
 export const syncWithCurrentLayer = C.spanOp(
 	'match-history:sync-with-current-layer',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.matchHistory.mtx },
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
 		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })

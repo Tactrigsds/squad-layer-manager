@@ -4,8 +4,10 @@ import { sleep, toCold } from '@/lib/async.ts'
 import { LRUMap } from '@/lib/fixed-size-map.ts'
 import { createId } from '@/lib/id.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
+import type { OtelModule } from '@/lib/otel'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
-import type * as CS from '@/models/context-shared.ts'
+import * as CS from '@/models/context-shared.ts'
+import * as ATTR from '@/models/otel-attrs.ts'
 import type * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models.ts'
 import type * as RBAC from '@/rbac.models'
@@ -23,28 +25,43 @@ import * as Rx from 'rxjs'
 import type * as ws from 'ws'
 import type * as DB from './db.ts'
 
+import * as LOG from '@/models/logs.ts'
 import { baseLogger } from './logger.ts'
 
-export type OtelCtx = {
-	upstreamLinks: Otel.Link[]
-}
+// Map context properties to their corresponding OpenTelemetry attributes
+const CONTEXT_ATTR_MAPPING = [
+	{ ctxPath: (ctx: Partial<ServerId>) => ctx?.serverId, attr: ATTR.SquadServer.ID },
+	{ ctxPath: (ctx: Partial<User>) => ctx?.user?.username, attr: ATTR.User.ID },
+	{ ctxPath: (ctx: Partial<WSSession>) => ctx?.wsClientId, attr: ATTR.WebSocket.CLIENT_ID },
+] as const
 
-export function includeActiveSpanAsUpstreamLink<T extends object>(ctx: T): T & OtelCtx {
-	const activeSpan = Otel.trace.getActiveSpan()
-	return {
-		...ctx,
-		upstreamLinks: activeSpan ? [{ context: activeSpan.spanContext(), attributes: { ['slm.link-source']: 'upstream' } }] : [],
+export type OtelCtx = {
+	otel: {
+		links: Otel.Link[]
 	}
 }
 
-export function includeLogProperties<T extends CS.Log>(ctx: T, fields: Record<string, any>): T {
-	return { ...ctx, log: ctx.log.child(fields) }
+// overrwrites other stored links
+export function storeLinkToActiveSpan<T extends object>(ctx: T, type: ATTR.SpanLink.SourceType): T & OtelCtx {
+	const link = buildSourceLinkToActiveSpan(type)
+	return {
+		...ctx,
+		otel: {
+			links: link ? [link] : [],
+		},
+	}
 }
 
-export function setLogLevel<T extends CS.Log>(ctx: T, level: Pino.Level): T {
-	const child = ctx.log.child({})
-	child.level = level
-	return { ...ctx, log: child }
+export function buildSourceLinkToActiveSpan(type: ATTR.SpanLink.SourceType): Otel.Link | undefined {
+	const activeSpan = Otel.trace.getActiveSpan()
+	if (!activeSpan) return
+	return { context: activeSpan.spanContext(), attributes: { [ATTR.SpanLink.SOURCE]: type } }
+}
+
+function flushOtelLinksInPlace(ctx: OtelCtx) {
+	const links = ctx.otel.links
+	ctx.otel.links = []
+	return links
 }
 
 // LRU map in case of leaks
@@ -53,9 +70,9 @@ const spanStatusMap = new LRUMap<string, { code: Otel.SpanStatusCode; message?: 
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {
-		tracer: Otel.Tracer
+		tracer?: Otel.Tracer
+		module?: OtelModule
 		links?: Otel.Link[]
-		eventLogLevel?: Pino.Level
 		levels?: {
 			event?: Pino.Level
 			error?: Pino.Level
@@ -70,17 +87,90 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 ) {
 	return async (..._args: Parameters<Cb>): Promise<Awaited<ReturnType<Cb>>> => {
 		let args = _args as any[]
-		let links = opts.links ?? []
-		// by convention if ctx is passed as the first argument or the first element of the first argument if it's an array, then include any links attached to the context
-		if (args[0]?.upstreamLinks) links = [...links, ...(args[0]?.upstreamLinks ?? [])]
-		else if (args[0]?.[0]?.upstreamLinks) {
-			links = [...links, ...(args[0]?.[0]?.upstreamLinks ?? [])]
+
+		// -------- dynamically extract context from args --------
+		let ctx: undefined | (CS.Ctx & Partial<OtelCtx>)
+		if (CS.isCtx(args[0])) {
+			ctx = args[0]
+		} else if (Array.isArray(args[0])) {
+			// handle array-nested args(common with rxjs)
+			const arrArgs = args[0]
+			if (CS.isCtx(arrArgs[0])) {
+				ctx = arrArgs[0]
+			} else if (CS.isCtx(arrArgs[arrArgs.length - 1])) {
+				ctx = arrArgs[arrArgs.length - 1]
+			}
 		}
 
-		return await opts.tracer.startActiveSpan(
+		let links = opts.links ? [...opts.links] : []
+		let spanContext = Otel.context.active()
+
+		const spanAttrs: Record<string, any> = {}
+
+		if (ctx) {
+			if (ctx.otel) {
+				for (const link of flushOtelLinksInPlace(ctx as OtelCtx)) {
+					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
+					// explicitly included links take precedence
+					if (source && links.some(l => link!.attributes?.[ATTR.SpanLink.SOURCE] == source)) {
+						continue
+					}
+					links.push(link)
+				}
+			}
+
+			const baggageEntries: Record<string, Otel.BaggageEntry> = {}
+
+			// Extract attributes from context using the mapping
+			for (const { ctxPath, attr } of CONTEXT_ATTR_MAPPING) {
+				const value = ctxPath(ctx)
+				if (value !== undefined && value !== null) {
+					spanAttrs[attr] = value
+					// Also add to baggage if it's in MAPPED_ATTRS
+					if (LOG.MAPPED_ATTRS.includes(attr)) {
+						baggageEntries[attr] = { value: String(value) }
+					}
+				}
+			}
+
+			// Add any custom attrs
+			let customAttrs = opts.attrs
+			if (typeof customAttrs === 'function') {
+				customAttrs = customAttrs(...args as Parameters<Cb>)
+			}
+			if (customAttrs) {
+				for (const [key, value] of Object.entries(customAttrs)) {
+					spanAttrs[key] = value
+					// Add to baggage if it's in MAPPED_ATTRS
+					if (LOG.MAPPED_ATTRS.includes(key)) {
+						baggageEntries[key] = { value: String(value) }
+					}
+				}
+			}
+
+			if (Object.keys(baggageEntries).length > 0) {
+				const currentBaggage = Otel.propagation.getBaggage(spanContext)
+				const newBaggageObj: Record<string, Otel.BaggageEntry> = { ...baggageEntries }
+
+				// Merge with existing baggage
+				if (currentBaggage) {
+					for (const [k, v] of currentBaggage.getAllEntries()) {
+						if (!(k in newBaggageObj)) {
+							newBaggageObj[k] = v
+						}
+					}
+				}
+
+				const newBaggage = Otel.propagation.createBaggage(newBaggageObj)
+				spanContext = Otel.propagation.setBaggage(spanContext, newBaggage)
+			}
+		}
+
+		const tracer = (opts.tracer ?? opts.module?.tracer)!
+		return await tracer.startActiveSpan(
 			name,
 			{ root: opts.root, links },
-			Otel.context.active(),
+			spanContext,
 			async (span) => {
 				let ctx: any
 				const links: Otel.Link[] = [{ context: span.spanContext(), attributes: { ['slm.link-source']: 'upstream' } }]
@@ -92,30 +182,12 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 					args = [[{ ...ctx, upstreamLinks: links }, ...args[0].slice(1)], ...args.slice(1)]
 				}
 
-				// try to extract current serverId from context
-				const serverId = ctx?.serverId
-				if (serverId) {
-					setSpanOpAttrs({ server_id: serverId })
+				// Set all collected attributes on the span
+				if (Object.keys(spanAttrs).length > 0) {
+					setSpanOpAttrs(spanAttrs)
 				}
 
-				const username = ctx?.user?.username
-				if (username) {
-					setSpanOpAttrs({ username: username })
-				}
-
-				if (typeof opts.attrs === 'function') {
-					opts.attrs = opts.attrs(...args as Parameters<Cb>)
-				}
-				if (opts.attrs) {
-					setSpanOpAttrs(opts.attrs)
-				}
-
-				let logger = baseLogger as typeof baseLogger | undefined
-				if (args[0]?.log) {
-					logger = args[0].log
-				}
-				const id = createId(6)
-				setSpanOpAttrs({ op_id: id })
+				let log = opts.module?.getLogger() ?? baseLogger
 
 				const extraText = opts.extraText ? `${opts.extraText(...args as Parameters<Cb>)} ` : ''
 				try {
@@ -127,14 +199,15 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 							setSpanStatus(Otel.SpanStatusCode.OK)
 						} else if (result.code.includes('err')) {
 							const message = result.msg ? `${result.code}: ${result.msg}` : result.code
+							const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
 							const logArgs = [
-								`${name}(${id}) ${extraText}: value-error : ${message}`,
+								`OP : ${name}${extraTextPart} : value-error : ${message}`,
 							]
 							if (result.error || result.err) {
 								logArgs.unshift(result.error || result.err)
 							}
 							// @ts-expect-error idgaf
-							logger?.[opts.levels?.valueError ?? 'warn'](...logArgs)
+							log?.[opts.levels?.valueError ?? 'warn'](...logArgs)
 							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 						}
 					}
@@ -143,13 +216,15 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 						spanStatus = { code: Otel.SpanStatusCode.OK }
 						span.setStatus({ code: Otel.SpanStatusCode.OK })
 					}
-					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? (opts.levels?.error ?? 'warn') : (opts.eventLogLevel ?? 'debug')
+					const logLevel = spanStatus.code === Otel.SpanStatusCode.ERROR ? (opts.levels?.error ?? 'warn') : (opts.levels?.event ?? 'debug')
 					statusString ??= spanStatus.code === Otel.SpanStatusCode.ERROR ? (spanStatus?.message ?? 'error') : 'ok'
-					logger?.[logLevel](`${name}(${id}) ${extraText}: ${statusString}`)
+					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
+					log?.[logLevel](`OP : ${name}${extraTextPart} : ${statusString}`)
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
-					logger?.warn(`${name}(${id}) ${extraText}: error: ${message}`)
+					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
+					log?.warn(`OP : ${name}${extraTextPart} : error: ${message}`)
 					throw error
 				} finally {
 					spanStatusMap.delete(span.spanContext().spanId)
@@ -161,11 +236,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 }
 
 export function setSpanOpAttrs(attrs: Record<string, any>) {
-	const namespaced: Record<string, any> = {}
-	for (const [key, value] of Object.entries(attrs)) {
-		namespaced[`slm.op.${key}`] = value
-	}
-	Otel.default.trace.getActiveSpan()?.setAttributes(namespaced)
+	Otel.default.trace.getActiveSpan()?.setAttributes(attrs)
 }
 export function setSpanStatus(status: Otel.SpanStatusCode, message?: string) {
 	const activeSpan = Otel.default.trace.getActiveSpan()
@@ -194,15 +265,12 @@ export function recordGenericError(error: unknown, setStatus = true) {
 
 // -------- Logging end --------
 
-export type Db =
-	& {
-		db(opts?: { redactParams?: boolean }): DB.Db
-	}
-	& CS.Log
-	& Partial<Tx>
+export type Db = CS.Ctx & {
+	db(opts?: { redactParams?: boolean }): DB.Db
+} & Partial<Tx>
 
 // indicates the context is in a db transaction
-export type Tx = {
+export type Tx = CS.Ctx & {
 	tx: {
 		rollback: () => void
 
@@ -213,7 +281,7 @@ export type Tx = {
 
 type ReleaseTask = () => void | Promise<void>
 // TODO we may want some way of specifying in function signature what kinds of locks the context might acquire
-export type Mutexes = {
+export type Mutexes = CS.Ctx & {
 	mutexes: {
 		// represents the set of mutexes currently locked by the context
 		locked: Set<Mutex>
@@ -226,95 +294,97 @@ export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx {
 	return { ...(ctx ?? {} as Ctx), mutexes: { locked: new Set<Mutex>(), releaseTasks: [] } }
 }
 
-export type ResolvedRoute = { route: AR.ResolvedRoute }
+export type ResolvedRoute = CS.Ctx & { route: AR.ResolvedRoute }
 
 // could also be ws upgrade
-export type FastifyRequest = { req: Fastify.FastifyRequest; cookies: AR.Cookies } & Partial<ResolvedRoute>
+export type FastifyRequest = CS.Ctx & { req: Fastify.FastifyRequest; cookies: AR.Cookies } & Partial<ResolvedRoute>
 export type FastifyRequestFull = FastifyRequest & AttachedFastify
 
-export type FastifyReply = { res: Fastify.FastifyReply }
+export type FastifyReply = CS.Ctx & { res: Fastify.FastifyReply }
 export type HttpRequest = FastifyRequest & FastifyReply
 export type HttpRequestFull = HttpRequest & AttachedFastify
 
 // sparse subset of User
-export type UserId = {
+export type UserId = CS.Ctx & {
 	user: { discordId: bigint }
 }
 
-export type User = {
+export type User = CS.Ctx & {
 	user: USR.User
 }
 
-export type Player = {
+export type Player = CS.Ctx & {
 	player: SM.Player
 }
 
 export type UserOrPlayer = Partial<User> & Partial<Player>
 
-export type RbacUser = { user: RBAC.UserWithRbac }
+export type RbacUser = CS.Ctx & { user: RBAC.UserWithRbac }
 
-export type AuthSession = {
+export type AuthSession = CS.Ctx & {
 	sessionId: string
 	expiresAt: Date
 }
 
-export type WSSession = {
+export type WSSession = CS.Ctx & {
 	wsClientId: string
 }
 
 export type AuthedUser = User & AuthSession
 
-export type AttachedFastify = CS.Log & Db & OtelCtx & Partial<ResolvedRoute>
-export type Websocket = { ws: ws.WebSocket }
-export type OrpcBase =
-	& User
-	& AuthSession
-	& WSSession
-	& Websocket
-	& FastifyRequest
-	& Db
-	& CS.Log
+export type AttachedFastify = Db & Partial<ResolvedRoute>
+export type Websocket = CS.Ctx & { ws: ws.WebSocket }
+export type OrpcBase = CS.Ctx & User & AuthSession & WSSession & Websocket & FastifyRequest & Db
 
-export type AsyncResourceInvocation = {
+export type AsyncResourceInvocation = CS.Ctx & {
 	resOpts: AsyncResourceInvocationOpts
 	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
 }
 
-export type Rcon = {
+export type Rcon = CS.Ctx & {
 	rcon: RconCore
 }
 
-export type ServerId = {
+export type ServerId = CS.Ctx & {
 	serverId: string
 }
 
-export type AdminList = {
-	adminList: AsyncResource<SM.AdminList, CS.Log>
+export type AdminList = CS.Ctx & {
+	adminList: AsyncResource<SM.AdminList>
 } & ServerId
 
-export type SquadRcon = { server: SquadRconSys.SquadRcon } & Rcon & ServerId
+export type SquadRcon = CS.Ctx & { server: SquadRconSys.SquadRcon } & Rcon & ServerId
 
-export type Vote = {
+export type Vote = CS.Ctx & {
 	vote: VoteSys.VoteContext
 } & ServerId
 
-export type LayerQueue = {
+export type LayerQueue = CS.Ctx & {
 	layerQueue: LayerQueueSys.LayerQueueContext
 } & ServerId
 
-export type MatchHistory = {
+export type MatchHistory = CS.Ctx & {
 	matchHistory: MatchHistorySys.MatchHistoryContext
 } & ServerId
 
-export type SquadServer = Rcon & {
+export type SquadServer = CS.Ctx & Rcon & {
 	server: SquadServerSys.SquadServer
 } & ServerId
 
-export type SharedLayerList = SharedLayerListSys.SharedLayerListContext & ServerId
-export type ServerSliceCleanup = {
+export type SharedLayerList = CS.Ctx & SharedLayerListSys.SharedLayerListContext & ServerId
+export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: CleanupTasks
 }
-export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHistory & SharedLayerList & ServerSliceCleanup & AdminList
+export type ServerSlice =
+	& CS.Ctx
+	& SquadRcon
+	& SquadServer
+	& Vote
+	& LayerQueue
+	& MatchHistory
+	& SharedLayerList
+	& ServerSliceCleanup
+	& AdminList
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.
@@ -336,9 +406,12 @@ export type ServerSlice = SquadRcon & SquadServer & Vote & LayerQueue & MatchHis
 export function durableSub<T, O>(
 	name: string,
 	opts: {
-		ctx: CS.Log
-		tracer: Otel.Tracer
-		eventLogLevel?: Pino.Level
+		module: OtelModule
+		levels?: {
+			event?: Pino.Level
+			error?: Pino.Level
+			valueError?: Pino.Level
+		}
 		numTaskRetries?: number
 		retryTaskOnValueError?: boolean
 		numOfUpstreamErrorsBeforePropagation?: number
@@ -356,12 +429,13 @@ export function durableSub<T, O>(
 		const retryOnValueError = opts.retryTaskOnValueError ?? false
 		const taskScheduling = opts.taskScheduling ?? 'sequential' as const
 
-		const subSpan = opts.tracer.startSpan('durable-sub::' + name)
+		const subSpan = opts.module.tracer.startSpan('durable-sub::' + name)
 		const initializerLink: Otel.Link = {
 			context: subSpan.spanContext(),
 			attributes: { 'slm.link-source': 'sub-initializer' },
 		}
-		const taskOp = spanOp(name, { tracer: opts.tracer, links: [initializerLink], root: opts.root ?? true, attrs: opts.attrs }, cb)
+		const taskOp = spanOp(name, { module: opts.module, links: [initializerLink], root: opts.root ?? true, attrs: opts.attrs }, cb)
+		const log = LOG.getSubmoduleLogger(name, opts.module.getLogger())
 
 		const getTask = (arg: T): Rx.Observable<O> => {
 			const task = async () => {
@@ -372,14 +446,14 @@ export function durableSub<T, O>(
 						if (retryOnValueError && (res as any).code !== 'ok') {
 							attemptsLeft--
 							if (attemptsLeft === 0) return res
-							opts.ctx.log.warn(`retrying ${name}`)
+							log.warn(`retrying ${name}`)
 							continue
 						}
 						return res
 					} catch (error) {
 						attemptsLeft--
 						if (attemptsLeft === 0) throw error
-						opts.ctx.log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
+						log.warn(`retrying ${name} in ${opts.retryTimeoutMs ?? 0}ms`)
 						await sleep(opts.retryTimeoutMs ?? 0)
 					}
 				}
@@ -397,7 +471,7 @@ export function durableSub<T, O>(
 
 					const span = activeSpan ?? subSpan
 					span.recordException(error)
-					opts.ctx.log.error(error)
+					log.error(error)
 				},
 			}),
 			({

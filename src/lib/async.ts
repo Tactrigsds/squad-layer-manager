@@ -1,11 +1,13 @@
 import * as Obj from '@/lib/object'
 import type * as CS from '@/models/context-shared'
-import type * as C from '@/server/context.ts'
+import * as LOG from '@/models/logs'
+import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 import { withThrownAsync } from './error'
 import { createId } from './id'
+import { getChildModule, OtelModule } from './otel'
 import { assertNever } from './type-guards'
 
 export function sleep(ms: number) {
@@ -206,101 +208,136 @@ export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in
 
 type AsyncResourceOpts<T> = {
 	defaultTTL: number
-	tracer: Otel.Tracer
 	retries: number
 	isErrorResponse: (value: T) => boolean
 	retryDelay: number
 	deferredTimeout: number
+	log: CS.Logger
 }
 
 export type AsyncResourceInvocationOpts = {
 	ttl: number
 }
 
+type AsyncValueState<T> = {
+	value: Promise<T>
+	resolveTime: number | null
+
+	// the id of the span that .get was called from, or the caller of .observe if we're refetching
+	invokerSpanId: string | null
+}
+
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
  */
-export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
-	static tracer = Otel.trace.getTracer('async-resource')
+export class AsyncResource<T, Ctx extends CS.Ctx = CS.Ctx> {
+	static includeInvocationCtx<Ctx extends CS.Ctx>(ctx: Ctx, opts: AsyncResourceInvocationOpts): Ctx & C.AsyncResourceInvocation {
+		return {
+			...ctx,
+			resOpts: opts,
+			refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => new ImmediateRefetchError(...args),
+		}
+	}
+
 	opts: AsyncResourceOpts<T>
-	lastResolveTime: number | null = null
-	fetchedValue: Promise<T> | null = null
-	private valueSubject = new Rx.Subject<T>()
+	state: AsyncValueState<T> | null = null
+	private valueSubject = new Rx.Subject<{ invokerSpanId: string | null; value: T }>()
+	private setupRefetches: (ctx: Ctx) => Promise<void>
+	private log?: CS.Logger
 
 	constructor(
 		private name: string,
 		private cb: (ctx: Ctx & C.AsyncResourceInvocation) => Promise<T>,
-		opts?: Partial<AsyncResourceOpts<T>>,
+		parentModule: OtelModule,
+		opts: Partial<AsyncResourceOpts<T>>,
 	) {
 		// @ts-expect-error init
-		this.opts = opts ?? {}
+		this.opts = { ...opts }
 		this.opts.defaultTTL ??= 1000
-		this.opts.tracer ??= AsyncResource.tracer
 		this.opts.isErrorResponse ??= (value: T) => false
 		this.opts.retryDelay ??= 0
 		this.opts.deferredTimeout ??= 2000
+		this.log = opts.log ? LOG.getSubmoduleLogger(this.name, opts.log) : undefined
+		const module = getChildModule(parentModule, this.name)
+
+		this.setupRefetches = async (_ctx: Ctx) => {
+			const refetch$ = new Rx.Observable<void>(() => {
+				let refetching = true
+				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
+				void (async () => {
+					while (refetching) {
+						const shouldBreak = await C.spanOp('refetch', { module, root: true }, async (ctx: Ctx) => {
+							const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
+							await sleep(activettl)
+							if (!refetching) return true
+							await this.get(ctx, { ttl: 0 })
+						})(ctx)
+						if (shouldBreak) break
+					}
+				})()
+
+				return () => (refetching = false)
+			})
+
+			this.refetchSub?.unsubscribe()
+			this.refetchSub = refetch$.subscribe()
+		}
 	}
 
-	async fetchValue(ctx: Ctx & C.AsyncResourceInvocation, opts?: { retries?: number }) {
-		this.fetchedValue = (async (): Promise<T> => {
-			let retriesLeft = opts?.retries ?? this.opts.retries
-			while (true) {
-				const [res, error] = await withThrownAsync(() => this.cb(ctx))
-				if (error !== null || this.opts.isErrorResponse(res!)) {
-					if (retriesLeft === 0) {
-						if (error) throw error
-						return res as T
+	private async fetchValue(ctx: Ctx & C.AsyncResourceInvocation, opts?: { retries?: number }) {
+		this.state = {
+			value: (async (): Promise<T> => {
+				let retriesLeft = opts?.retries ?? this.opts.retries
+				while (true) {
+					const [res, error] = await withThrownAsync(() => this.cb(ctx))
+					if (error !== null || this.opts.isErrorResponse(res!)) {
+						if (retriesLeft === 0) {
+							if (error) throw error
+							return res as T
+						}
+						if (error instanceof ImmediateRefetchError) {
+							this.log?.warn(error, 'immediate refetch requested: %s', error.message)
+						} else {
+							await sleep(this.opts.retryDelay)
+						}
+						retriesLeft--
+						continue
 					}
-					if (error instanceof ImmediateRefetchError) {
-						ctx.log.warn(error, 'immediate refetch requested: %s', error.message)
-					} else {
-						await sleep(this.opts.retryDelay)
-					}
-					retriesLeft--
-					continue
+					return res as T
 				}
-				return res as T
-			}
-		})()
+			})(),
 
-		void this.fetchedValue
+			invokerSpanId: Otel.trace.getActiveSpan()?.spanContext().spanId ?? null,
+			resolveTime: null,
+		}
+
+		void this.state.value
 			.catch(err => {
-				this.fetchedValue = null
-				this.lastResolveTime = null
+				this.state = null
 				throw err
 			})
 			.then((res) => {
 				if (this.opts.isErrorResponse(res)) {
-					this.fetchedValue = null
-					this.lastResolveTime = null
+					this.state = null
 					return
 				}
-				this.lastResolveTime = Date.now()
-				this.valueSubject.next(res)
+				if (this.state) {
+					this.state.resolveTime = Date.now()
+				}
+				this.valueSubject.next({ value: res, invokerSpanId: this.state?.invokerSpanId ?? null })
 			})
-		return this.fetchedValue
+		return this.state.value
 	}
 
 	// note: any observers are guaranteed to be notified before get() resolves
-	async get(_ctx: Ctx, opts?: { ttl?: number; retries?: number }) {
+	async get(ctx: Ctx, opts?: { ttl?: number; retries?: number }) {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
-		const ctx: Ctx & C.AsyncResourceInvocation = {
-			..._ctx,
-			resOpts: { ttl: opts.ttl },
-			refetch: (...args) => new ImmediateRefetchError(...args),
-		}
 
-		if (this.lastResolveTime === null && this.fetchedValue) {
-			return await this.fetchedValue
-		}
-		if (this.lastResolveTime === null && this.fetchedValue === null) {
-			return await this.fetchValue(ctx, opts)
-		}
-		if (this.fetchedValue && this.lastResolveTime && Date.now() - this.lastResolveTime < opts.ttl) {
-			return await this.fetchedValue!
+		if (!this.state || (this.state.resolveTime !== null && (Date.now() - this.state.resolveTime > opts.ttl))) {
+			return await this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: opts.ttl }), opts)
 		} else {
-			return await this.fetchValue(ctx, opts)
+			return await this.state.value
 		}
 	}
 
@@ -313,16 +350,9 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 	}
 
 	invalidate(ctx: Ctx) {
-		if (!this.lastResolveTime) return
-		this.fetchedValue = null
-		this.lastResolveTime = null
+		this.state = null
 		if (this.observingTTLs.length > 0) {
-			void this.fetchValue({
-				...ctx,
-				resOpts: { ttl: 0 },
-
-				refetch: (...args) => new ImmediateRefetchError(...args),
-			})
+			void this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: 0 }))
 		}
 	}
 
@@ -337,35 +367,19 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 		opts.ttl ??= this.opts.defaultTTL
 		if (this.disposed) return Rx.EMPTY
 
-		const setupRefetches = () => {
-			const refetch$ = new Rx.Observable<void>(() => {
-				let refetching = true
-				void (async () => {
-					while (refetching) {
-						const activettl = Math.min(...this.observingTTLs.map(([, ttl]) => ttl))
-						await sleep(activettl)
-						if (!refetching) break
-						await this.get(ctx, { ttl: 0 })
-					}
-				})()
-				return () => (refetching = false)
-			})
-
-			this.refetchSub?.unsubscribe()
-			this.refetchSub = refetch$.subscribe()
-		}
-
 		const refId = createId(6)
 		return Rx.concat(
-			this.fetchedValue ?? Rx.EMPTY,
+			this.state?.value ?? Rx.EMPTY,
 			this.valueSubject.pipe(
 				traceTag(`asyncResourceObserve__${this.name}`),
+				// TODO adjust calling code to ingest ctx
+				Rx.map(({ value }) => value),
 				Rx.tap({
 					subscribe: () => {
 						this.observingTTLs.push([refId, opts.ttl!])
 						void this.get(ctx, { ttl: opts.ttl })
 						if (this.refetchSub === null) {
-							setupRefetches()
+							this.setupRefetches(ctx)
 						}
 					},
 					finalize: () => {
@@ -386,6 +400,9 @@ export class AsyncResource<T, Ctx extends CS.Log = CS.Log> {
 // * Throw within an async resource callback to immediately attempt a refetch. in most cases you shouldn't use this directly. instead throw ctx.refetch()
 // **
 export class ImmediateRefetchError extends Error {
+	static include<Ctx extends CS.Ctx>(ctx: Ctx) {
+		return { ...ctx }
+	}
 	constructor(message: string, cause?: Error) {
 		super(message, { cause })
 		this.name = 'RefetchError'

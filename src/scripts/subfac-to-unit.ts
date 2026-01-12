@@ -1,5 +1,6 @@
 import * as Schema from '$root/drizzle/schema'
 import { assertNever } from '@/lib/type-guards'
+import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as Config from '@/server/config.ts'
 import * as DB from '@/server/db'
@@ -15,7 +16,7 @@ ensureLoggerSetup()
 await Config.ensureSetup()
 await DB.setup()
 
-const ctx = DB.addPooledDb({ log: baseLogger })
+const ctx = DB.addPooledDb({ ...CS.init(), log: baseLogger })
 
 await DB.runTransaction(ctx, async (ctx) => {
 	for (const entity of await ctx.db().select().from(Schema.filters)) {

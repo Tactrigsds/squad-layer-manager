@@ -3,15 +3,16 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
+import * as LOG from '@/models/logs'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
-import type * as C from '@/server/context'
+import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import orpcBase from '@/server/orpc-base'
-
+import { initModule } from '@/server/logger'
 import { baseLogger } from '@/server/logger'
+import orpcBase from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -21,7 +22,10 @@ import * as E from 'drizzle-orm/expressions'
 import { Subject } from 'rxjs'
 import { z } from 'zod'
 
-export const filterMutation$ = new Subject<[CS.Log & C.Db, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
+const module = initModule('filter-entity')
+let log!: CS.Logger
+
+export const filterMutation$ = new Subject<[C.Db & C.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, {
@@ -45,7 +49,7 @@ export const filtersRouter = {
 			.leftJoin(Schema.filterRoleContributors, E.eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
-			users: await Users.buildUsers(ctx, rows.map((row) => row.user).filter((user) => user !== null)),
+			users: await Users.buildUsers(rows.map((row) => row.user).filter((user) => user !== null)),
 			roles: rows.map((row) => row.role).filter((role) => role !== null),
 		}
 	}),
@@ -136,7 +140,7 @@ export const filtersRouter = {
 		}
 		const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 		if (res.code === 'ok') {
-			filterMutation$.next([ctx, {
+			filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 				type: 'add',
 				key: newFilterEntity.id,
 				value: newFilterEntity,
@@ -171,9 +175,9 @@ export const filtersRouter = {
 				const filter = F.FilterEntitySchema.parse(rawFilter)
 				return { code: 'ok' as const, filter: { ...filter, ...update } }
 			})
-			ctx.log.info(res, 'Updated filter %d', id)
+			log.info(res, 'Updated filter %d', id)
 			if (res.code === 'ok') {
-				filterMutation$.next([ctx, {
+				filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 					type: 'update',
 					key: id,
 					value: res.filter,
@@ -223,7 +227,7 @@ export const filtersRouter = {
 		if (res.code !== 'ok') {
 			return res
 		}
-		filterMutation$.next([ctx, {
+		filterMutation$.next([C.storeLinkToActiveSpan(ctx, 'event.emitter'), {
 			type: 'delete',
 			key: idToDelete,
 			username: ctx.user.username,
@@ -242,7 +246,7 @@ export let state!: {
 }
 
 export async function* watchFilters(
-	{ ctx, signal }: { ctx: CS.Log & C.Db; signal?: AbortSignal },
+	{ ctx, signal }: { ctx: C.Db; signal?: AbortSignal },
 ): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
 	const ids = [...new Set(Array.from(state.filters.values()).map(f => f.owner))]
 
@@ -252,14 +256,14 @@ export async function* watchFilters(
 		code: 'initial-value' as const,
 		entities: Array.from(state.filters.values()),
 		parts: {
-			users: await Users.buildUsers(ctx, dbUsers),
+			users: await Users.buildUsers(dbUsers),
 		},
 	}
 	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$.pipe(withAbortSignal(signal!)))) {
 		const dbUsers = await ctx.db().select().from(Schema.users).where(
 			E.or(E.eq(Schema.users.discordId, mutation.value.owner), E.eq(Schema.users.username, mutation.username)),
 		)
-		const users = await Users.buildUsers(ctx, dbUsers)
+		const users = await Users.buildUsers(dbUsers)
 
 		yield {
 			code: 'mutation' as const,
@@ -272,7 +276,8 @@ export async function* watchFilters(
 }
 
 export async function setup() {
-	const ctx = DB.addPooledDb({ log: baseLogger })
+	log = module.getLogger()
+	const ctx = DB.addPooledDb(CS.init())
 	const filterRows = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
 	state = {
 		filters: new Map(filterRows.map(filter => [filter.id, filter])),

@@ -8,10 +8,11 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { HumanTime } from '@/lib/zod.ts'
 import * as Messages from '@/messages.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as LOG from '@/models/logs'
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import type * as SM from '@/models/squad.models.ts'
@@ -21,6 +22,7 @@ import * as RBAC from '@/rbac.models.ts'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
+import { initModule } from '@/server/logger'
 import { baseLogger } from '@/server/logger.ts'
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
@@ -40,7 +42,14 @@ export type LayerQueueContext = {
 	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
 
 	// TODO we should fold this into the server events
-	update$: Rx.ReplaySubject<[SS.LQStateUpdate, CS.Log & C.Db & C.ServerId]>
+	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & C.ServerId]>
+}
+
+const module = initModule('layer-queue')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
 }
 
 export function initLayerQueueContext(cleanup: CleanupTasks) {
@@ -55,11 +64,10 @@ export function initLayerQueueContext(cleanup: CleanupTasks) {
 	return ctx
 }
 
-const tracer = Otel.trace.getTracer('layer-queue')
 export const setupInstance = C.spanOp(
 	'layer-queue:init',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: CS.Log & C.Db & C.ServerSlice) => {
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
+	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
 		await DB.runTransaction(ctx, async (ctx) => {
 			const s = ctx.layerQueue
@@ -71,25 +79,25 @@ export const setupInstance = C.spanOp(
 
 			addReleaseTask(() => s.update$.next([{ state: initialServerState, source: { type: 'system', event: 'app-startup' } }, ctx]))
 
-			ctx.log.info('vote state initialized')
+			log.info('vote state initialized')
 		})
-		ctx.log.info('initial update complete')
+		log.info('initial update complete')
 
 		// -------- log vote state updates --------
 		ctx.cleanup.push(ctx.vote.update$.subscribe((update) => {
 			const ctx = getBaseCtx()
-			ctx.log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
+			log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
 		}))
 
 		ctx.layerQueue.update$.subscribe(([state, ctx]) => {
-			ctx.log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
+			log.debug({ seqId: state.state.layerQueueSeqId }, 'pushing server state update')
 		})
 
 		// -------- schedule generic admin reminders --------
 		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
 			ctx.cleanup.push(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
-					C.durableSub('layer-queue:queue-reminders', { ctx, tracer }, async () => {
+					C.durableSub('layer-queue:queue-reminders', { module }, async () => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(ctx)
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -123,7 +131,7 @@ export const setupInstance = C.spanOp(
 						}
 						return Rx.EMPTY
 					}),
-					C.durableSub('layer-queue:notify-unexpected-next-layer', { tracer, ctx }, async (unexpectedNextlayer) => {
+					C.durableSub('layer-queue:notify-unexpected-next-layer', { module }, async (unexpectedNextlayer) => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(ctx)
 						const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
@@ -141,7 +149,7 @@ export const setupInstance = C.spanOp(
 		// -------- make sure next layer set is synced with queue --------
 		{
 			ctx.server.event$.pipe(
-				C.durableSub('layer-queue:sync-server-map-set', { ctx, tracer }, async ([ctx, events]) => {
+				C.durableSub('layer-queue:sync-server-map-set', { module }, async ([ctx, events]) => {
 					for (const event of Arr.revIter(events)) {
 						if (event.type !== 'MAP_SET') continue
 						// this case will be dealt with in handleNewGame, so can ignore it here
@@ -157,7 +165,7 @@ export const setupInstance = C.spanOp(
 	},
 )
 
-export function schedulePostRollTasks(ctx: C.SquadServer & CS.Log, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(ctx: C.SquadServer, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -285,7 +293,7 @@ export async function updateQueue(
 }
 
 export async function warnShowNext(
-	ctx: C.Db & CS.Log & C.SquadServer & C.LayerQueue & C.AdminList,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { repeat?: number },
 ) {
@@ -296,7 +304,7 @@ export async function warnShowNext(
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
-		parts.users.push(await Users.buildUser(ctx, user))
+		parts.users.push(await Users.buildUser(user))
 	}
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.showNext(layerQueue, parts, { repeat: opts?.repeat ?? 1 }))
@@ -309,7 +317,7 @@ export async function warnShowNext(
  * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
 export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
-	ctx: CS.Log & C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.LayerQueue & C.MatchHistory,
+	ctx: C.Db & (NoDbWrite extends true ? object : C.Tx) & C.SquadServer & C.LayerQueue & C.MatchHistory,
 	serverState: SS.ServerState,
 	opts?: { skipDbWrite: NoDbWrite },
 ) {
@@ -334,7 +342,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			for await (const packet of gen) {
 				if (packet.code === 'menu-item-possible-values') continue
 				if (packet.code === 'err:invalid-node') {
-					ctx.log.error(`Invalid node error when generating layer: %o`, { cause: packet.errors })
+					log.error(`Invalid node error when generating layer: %o`, { cause: packet.errors })
 					return L.DEFAULT_LAYER_ID
 				}
 				ids = packet.layers.map(l => l.id)
@@ -343,10 +351,10 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 			if (ids.length > 0) return ids[0]
 			const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
 			if (noDnrConstraints.length < constraints.length) {
-				ctx.log.info('no layers found with do-not-repeat constraints applied, retrying without')
+				log.info('no layers found with do-not-repeat constraints applied, retrying without')
 				return await getNextQueuedLayerId(noDnrConstraints)
 			}
-			ctx.log.warn(`No layers found for constraints: %o`, { constraints })
+			log.warn(`No layers found for constraints: %o`, { constraints })
 			return L.DEFAULT_LAYER_ID
 		})()
 
@@ -385,7 +393,7 @@ export async function syncNextLayerInPlace<NoDbWrite extends boolean>(
 }
 
 export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: { ctx: CS.Log & C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList; input: { disabled: boolean } },
+	{ ctx, input }: { ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.AdminList; input: { disabled: boolean } },
 ) {
 	// if player we assume authorization has already been established
 	if (ctx.user) {
@@ -406,13 +414,13 @@ export async function toggleUpdatesToSquadServer(
 	return { code: 'ok' as const }
 }
 
-export async function getSlmUpdatesEnabled(ctx: CS.Log & C.Db & C.UserOrPlayer & C.SquadServer & C.LayerQueue) {
+export async function getSlmUpdatesEnabled(ctx: C.Db & C.UserOrPlayer & C.SquadServer & C.LayerQueue) {
 	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
 export async function requestFeedback(
-	ctx: CS.Log & C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
+	ctx: C.Db & C.SquadServer & C.LayerQueue & C.AdminList,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
@@ -428,7 +436,7 @@ export async function requestFeedback(
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(DB.addPooledDb({ log: baseLogger }))
+	return C.initMutexStore(DB.addPooledDb(CS.init()))
 }
 
 // -------- setup router --------

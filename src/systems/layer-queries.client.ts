@@ -5,6 +5,7 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import * as ZusUtils from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
+import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -28,7 +29,7 @@ import * as Rx from 'rxjs'
 import * as Zus from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
-type LayerCtxModifiedCounters = { [k in keyof WorkerTypes.DynamicQueryCtx]: number }
+type LayerCtxModifiedCounters = CS.Ctx & { [k in keyof Omit<WorkerTypes.DynamicQueryCtx, keyof CS.Ctx>]: number }
 
 export type Store = {
 	counters: LayerCtxModifiedCounters
@@ -67,6 +68,7 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 
 	return ({
 		counters: {
+			...CS.init(),
 			filters: 0,
 			layerItemsState: 0,
 		},
@@ -82,7 +84,11 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 		},
 		increment(ctx) {
 			for (const key of Obj.objKeys(ctx)) {
-				set({ counters: { ...get().counters, [key]: get().counters[key] + 1 } })
+				const currentCounters = get().counters
+				const val = currentCounters[key as unknown as keyof LayerCtxModifiedCounters]
+				if (typeof val === 'number') {
+					set({ counters: { ...currentCounters, [key]: val + 1 } })
+				}
 			}
 		},
 		setHoveredConstraintItemId(id: string | null) {
@@ -610,6 +616,7 @@ async function setup() {
 	const itemsState = await Rx.firstValueFrom(QD.layerItemsState$)
 
 	const ctx: WorkerTypes.InitRequest['input'] = {
+		...CS.init(),
 		effectiveColsConfig: LC.getEffectiveColumnConfig(config.extraColumnsConfig),
 		filters,
 		layerItemsState: itemsState,

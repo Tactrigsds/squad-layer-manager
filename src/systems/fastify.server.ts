@@ -1,9 +1,11 @@
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
+import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -35,7 +37,8 @@ const BASE_HEADERS = {
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
-const tracer = Otel.trace.getTracer('fastify')
+const module = initModule('fastify')
+let log!: CS.Logger
 let instance!: Awaited<ReturnType<typeof getFastifyBase>>
 
 async function getFastifyBase() {
@@ -47,12 +50,13 @@ async function getFastifyBase() {
 	})
 }
 
-export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
+export const setup = C.spanOp('fastify:setup', { module }, async () => {
+	log = module.getLogger()
 	ENV = envBuilder()
 	instance = await getFastifyBase()
 
 	// --------  logging --------
-	instance.log = baseLogger
+	instance.log = log
 	instance.addHook('onRequest', async (request) => {
 		const route = AR.resolveRoute(request.url)
 		baseLogger.info(`REQUEST %s %s${route ? ', resolved route ' + route.id : ''}`, request.method, request.url)
@@ -169,13 +173,13 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			const url = req.url.replace(/^\/discord-cdn\//, '')
 			const cdnUrl = `https://cdn.discordapp.com/${url}`
 
-			ctx.log.debug('Proxying request to Discord CDN: %s', cdnUrl)
+			log.debug('Proxying request to Discord CDN: %s', cdnUrl)
 
 			// Fetch from Discord CDN
 			const cdnResponse = await fetch(cdnUrl)
 
 			if (!cdnResponse.ok) {
-				ctx.log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
+				log.warn('Discord CDN returned error: %d for %s', cdnResponse.status, cdnUrl)
 				return res.status(cdnResponse.status).send({ error: 'CDN request failed' })
 			}
 
@@ -210,7 +214,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 			return res.send('')
 		} catch (err) {
-			ctx.log.error('Error proxying to Discord CDN: %s', err)
+			log.error('Error proxying to Discord CDN: %s', err)
 			return res.status(500).send({ error: 'Failed to proxy request' })
 		}
 	})
@@ -238,7 +242,7 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 			case 'unauthorized:no-session':
 			case 'unauthorized:expired':
 			case 'unauthorized:not-found':
-				reply = Sessions.clearInvalidSession({ res: reply })
+				reply = Sessions.clearInvalidSession({ ...CS.init(), res: reply })
 				if (baseCtx.route?.def.handle === 'page') {
 					return await reply.redirect(AR.route('/login'), 302)
 				} else {
@@ -282,7 +286,6 @@ export const setup = C.spanOp('fastify:setup', { tracer }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
-		console.log('HTML RESPONSE')
 		const ctx = { ...getAuthedCtx(req), res }
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
@@ -371,7 +374,6 @@ export function createOrpcBase(
 		wsClientId,
 		...ctx,
 		ws: websocket,
-		log: ctx.log.child({ wsClientId }),
 	}
 	WsSessionSys.registerClient(wsCtx)
 	return wsCtx
@@ -393,9 +395,7 @@ function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 }
 
 function monkeyPatchContextAndLogs(request: FastifyRequest) {
-	const route = AR.resolveRoute(request.url) ?? undefined
-	const ctx: C.AttachedFastify = DB.addPooledDb(C.includeActiveSpanAsUpstreamLink({ log: instance.log as CS.Logger, route }))
-	request.log = ctx.log.child({ module: 'fastify' })
+	const ctx: C.AttachedFastify = DB.addPooledDb(CS.init())
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
 }

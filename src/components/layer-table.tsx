@@ -15,7 +15,7 @@ import * as SetUtils from '@/lib/set'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as ZusUtils from '@/lib/zustand'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -295,7 +295,7 @@ function buildColDefs(
 			return aIndex - bIndex
 		})
 
-		const ctx: CS.EffectiveColumnConfig = { effectiveColsConfig: cfg }
+		const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
 
 		// add sorted first
 		for (const col of sortedColKeys) {

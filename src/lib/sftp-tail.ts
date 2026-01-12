@@ -1,4 +1,6 @@
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
+import * as C from '@/server/context'
 import crypto from 'crypto'
 import EventEmitter from 'events'
 import fs from 'fs'
@@ -6,6 +8,7 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
+import { getChildModule, OtelModule } from './otel'
 
 export type SftpTailOptions = {
 	username: string
@@ -15,6 +18,8 @@ export type SftpTailOptions = {
 	filePath: string
 	pollInterval: number
 	reconnectInterval: number
+
+	parentModule: OtelModule
 }
 
 // TODO kind of awkward, could simplify the "options" type here. also we should thread context in through method params like we do elsewhere, and include context with events
@@ -43,9 +48,10 @@ export class SftpTail extends EventEmitter {
 	private fetchLoopPromise: Promise<void> | null = null
 	private tmpFilePath: string | null = null
 	private isConnected = false
+	private log: CS.Logger
+	private tryRead: (ctx: C.OtelCtx) => Promise<void>
 
 	constructor(
-		private ctx: CS.Log,
 		options: SftpTailOptions,
 	) {
 		super()
@@ -64,6 +70,9 @@ export class SftpTail extends EventEmitter {
 		this.lastByteReceived = null
 		this.fetchLoopActive = false
 		this.fetchLoopPromise = null
+		const module = getChildModule(options.parentModule, 'sftp-tail')
+		this.log = module.getLogger()
+		this.tryRead = C.spanOp('try-read', { module, root: true, levels: { error: 'error', event: 'trace' } }, () => this._tryRead())
 	}
 
 	watch() {
@@ -78,88 +87,90 @@ export class SftpTail extends EventEmitter {
 		)
 
 		// Start fetch loop.
-		this.ctx.log.info('Starting fetch loop...')
+		this.log.info('Starting fetch loop...')
 		this.fetchLoopActive = true
 		this.fetchLoopPromise = this.fetchLoop()
 	}
 
 	async unwatch() {
-		this.ctx.log.info('Stopping fetch loop...')
+		this.log.info('Stopping fetch loop...')
 		this.fetchLoopActive = false
 		await this.fetchLoopPromise
+	}
+	async _tryRead() {
+		// Store the start time of the loop.
+		const fetchStartTime = Date.now()
+		// C.setSpanOpAttrs({'
+
+		try {
+			await this.connect()
+		} catch (err) {
+			this.log.error(err, 'Failed to connect to SFTP server: %s', (err as any)?.message)
+			await this.sleep(this.options.reconnectInterval)
+			return
+		}
+
+		// Get the size of the file on the SFTP server.
+		this.log.trace('Fetching size of file...')
+		const stats = await this.getFileStats(this.filePath!)
+		const fileSize = stats.size
+		this.log.trace({ fileSize }, 'File size retrieved')
+
+		// If the file size has not changed then skip this loop iteration.
+		if (fileSize === this.lastByteReceived) {
+			this.log.trace('File has not changed.')
+			await this.sleep(this.options.fetchInterval)
+			return
+		}
+
+		// If the file has not been tailed before or it has been decreased in size download the last
+		// few bytes.
+		if (this.lastByteReceived === null || this.lastByteReceived > fileSize) {
+			this.log.debug('File has not been tailed before or has decreased in size.')
+			this.lastByteReceived = Math.max(0, fileSize - this.options.tailLastBytes)
+		}
+
+		// Download the data to a temp file overwritting any previous data.
+		this.log.trace({ offset: this.lastByteReceived }, 'Downloading file...')
+		await this.downloadToFile(this.tmpFilePath!, this.filePath!, this.lastByteReceived!)
+
+		// Update the last byte marker - this is so we can get data since this position on the next
+		// SFTP download.
+		const downloadSize = fs.statSync(this.tmpFilePath!).size
+		this.lastByteReceived += downloadSize
+		this.log.trace({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
+
+		// Get contents of download.
+		const chunk = await readFile(this.tmpFilePath!, 'utf8')
+
+		// Only return if something was fetched.
+		if (chunk.length === 0) {
+			this.log.trace('No data was fetched.')
+			await this.sleep(this.options.fetchInterval)
+			return
+		}
+
+		this.emit('chunk', chunk)
+
+		// Log the loop runtime.
+		const fetchEndTime = Date.now()
+		const fetchTime = fetchEndTime - fetchStartTime
+		this.log.trace('Fetch loop completed in %s ms', fetchTime)
+		await this.sleep(this.options.fetchInterval)
 	}
 
 	async fetchLoop() {
 		while (this.fetchLoopActive) {
 			try {
-				// Store the start time of the loop.
-				const fetchStartTime = Date.now()
-
-				try {
-					await this.connect()
-				} catch (err) {
-					this.ctx.log.error(err, 'Failed to connect to SFTP server: %s', (err as any)?.message)
-					await this.sleep(this.options.reconnectInterval)
-					continue
-				}
-
-				// Get the size of the file on the SFTP server.
-				this.ctx.log.trace('Fetching size of file...')
-				const stats = await this.getFileStats(this.filePath!)
-				const fileSize = stats.size
-				this.ctx.log.trace({ fileSize }, 'File size retrieved')
-
-				// If the file size has not changed then skip this loop iteration.
-				if (fileSize === this.lastByteReceived) {
-					this.ctx.log.trace('File has not changed.')
-					await this.sleep(this.options.fetchInterval)
-					continue
-				}
-
-				// If the file has not been tailed before or it has been decreased in size download the last
-				// few bytes.
-				if (this.lastByteReceived === null || this.lastByteReceived > fileSize) {
-					this.ctx.log.debug('File has not been tailed before or has decreased in size.')
-					this.lastByteReceived = Math.max(0, fileSize - this.options.tailLastBytes)
-				}
-
-				// Download the data to a temp file overwritting any previous data.
-				this.ctx.log.trace({ offset: this.lastByteReceived }, 'Downloading file...')
-				await this.downloadToFile(this.tmpFilePath!, this.filePath!, this.lastByteReceived!)
-
-				// Update the last byte marker - this is so we can get data since this position on the next
-				// SFTP download.
-				const downloadSize = fs.statSync(this.tmpFilePath!).size
-				this.lastByteReceived += downloadSize
-				this.ctx.log.trace({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
-
-				// Get contents of download.
-				const chunk = await readFile(this.tmpFilePath!, 'utf8')
-
-				// Only continue if something was fetched.
-				if (chunk.length === 0) {
-					this.ctx.log.trace('No data was fetched.')
-					await this.sleep(this.options.fetchInterval)
-					continue
-				}
-
-				this.emit('chunk', chunk)
-
-				// Log the loop runtime.
-				const fetchEndTime = Date.now()
-				const fetchTime = fetchEndTime - fetchStartTime
-				this.ctx.log.trace({ fetchTime }, 'Fetch loop completed')
-
-				await this.sleep(this.options.fetchInterval)
+				await this.tryRead(C.storeLinkToActiveSpan(CS.init(), 'event.setup'))
 			} catch (err) {
 				this.emit('error', err)
-				this.ctx.log.error(err instanceof Error ? err : { error: String(err) }, 'Error in fetch loop')
 			}
 		}
 
 		if (this.tmpFilePath && fs.existsSync(this.tmpFilePath)) {
 			fs.unlinkSync(this.tmpFilePath)
-			this.ctx.log.debug('Deleted temp file.')
+			this.log.debug('Deleted temp file.')
 		}
 
 		await this.disconnect()
@@ -168,7 +179,7 @@ export class SftpTail extends EventEmitter {
 	async connect() {
 		if (this.isConnected) return
 
-		this.ctx.log.info('Connecting to SFTP server...')
+		this.log.info('Connecting to SFTP server...')
 
 		return new Promise<void>((resolve, reject) => {
 			this.client.on('ready', () => {
@@ -181,7 +192,7 @@ export class SftpTail extends EventEmitter {
 					this.sftp = sftp
 					this.isConnected = true
 					this.emit('connected')
-					this.ctx.log.info('Connected to SFTP server.')
+					this.log.info('Connected to SFTP server.')
 					resolve()
 				})
 			})
@@ -204,11 +215,11 @@ export class SftpTail extends EventEmitter {
 	async disconnect() {
 		if (!this.isConnected) return
 
-		this.ctx.log.info('Disconnecting from SFTP server...')
+		this.log.info('Disconnecting from SFTP server...')
 		this.client.end()
 		this.isConnected = false
 		this.emit('disconnect')
-		this.ctx.log.info('Disconnected from SFTP server.')
+		this.log.info('Disconnected from SFTP server.')
 	}
 
 	async getFileStats(remotePath: string): Promise<fs.Stats> {
@@ -252,7 +263,7 @@ export class SftpTail extends EventEmitter {
 	}
 
 	async sleep(ms: number) {
-		this.ctx.log.trace({ ms }, 'Sleeping...')
+		this.log.trace({ ms }, 'Sleeping...')
 		await new Promise((resolve) => setTimeout(resolve, ms))
 	}
 }

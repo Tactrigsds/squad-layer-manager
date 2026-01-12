@@ -1,6 +1,9 @@
 import { flattenObjToAttrs } from '@/lib/object'
+import { OtelModule } from '@/lib/otel'
+import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
+import * as ATTRS from '@/models/otel-attrs'
 import { sdk as otelSdk } from '@/systems/otel.server'
 import * as Otel from '@opentelemetry/api'
 import type { Logger as OtelLogger, LoggerProvider } from '@opentelemetry/api-logs'
@@ -8,9 +11,15 @@ import type { LoggerOptions } from 'pino'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
 import * as Env from './env'
-
-import { assertNever } from '@/lib/type-guards'
 export let baseLogger!: CS.Logger
+
+export function initModule(name: string): OtelModule {
+	return {
+		name: name,
+		getLogger: () => baseLogger.child({ [ATTRS.Module.NAME]: name }),
+		tracer: Otel.trace.getTracer(name),
+	}
+}
 
 let otelLogger: OtelLogger | undefined
 
@@ -56,20 +65,27 @@ export function ensureLoggerSetup() {
 				attrs = flattenObjToAttrs(obj, '_', 3)
 			}
 
+			// Map span attributes to log record
 			if (span) {
-				attrs.span_id = span.spanContext().spanId
-				attrs.trace_id = span.spanContext().traceId
-				if (typeof inputArgs[0] === 'string' || inputArgs[0] instanceof Error) {
-					inputArgs.unshift({ span_id: attrs.span_id, trace_id: attrs.trace_id, span_name: (span as any).name })
-				} else if (typeof inputArgs[0] === 'object') {
-					inputArgs[0] = { ...(inputArgs[0] ?? {}), span_id: attrs.span_id, trace_id: attrs.trace_id }
-				}
+				LOG.mapSpanAttrs(span, attrs)
 			}
 
 			// @ts-expect-error idk
-			otelLogger.emit({ body: msg, attributes: attrs, severityText: LOG.LEVELS[level], severityNumber: LOG.SEVERITY_NUMBER_MAP[level] })
+			const body = { body: msg, attributes: attrs, severityText: LOG.LEVELS[level], severityNumber: LOG.SEVERITY_NUMBER_MAP[level] }
 
-			return method.apply(this, _inputArgs)
+			// @ts-expect-error idk
+			otelLogger.emit(body)
+
+			// Merge span attributes into Pino log context
+			if (inputArgs.length > 0 && typeof inputArgs[0] === 'object' && inputArgs[0] !== null && !(inputArgs[0] instanceof Error)) {
+				// Merge attrs into the existing object
+				Object.assign(inputArgs[0], attrs)
+			} else {
+				// Prepend attrs object to inputArgs
+				inputArgs = [attrs, ...inputArgs]
+			}
+
+			return method.apply(this, inputArgs)
 		},
 	}
 

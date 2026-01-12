@@ -15,9 +15,13 @@ import zlib from 'node:zlib'
 import * as semver from 'semver'
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
+import { initModule } from '@/server/logger'
+import * as LOG from '@/models/logs'
 import { baseLogger } from '@/server/logger'
 import { z } from 'zod'
 
+const module = initModule('layer-db')
+let log!: CS.Logger
 export let db!: LayerDb
 
 export const DEFAULT_EXTRA_COLUMNS_CONFIG_PATH = './layer-db.json'
@@ -61,7 +65,8 @@ export function setupExtraColsConfig() {
 	}
 }
 
-export async function setup(ctx: CS.Log, _opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean; dbPath?: string }) {
+export async function setup(_opts?: { skipHash?: boolean; mode?: 'populate' | 'read'; logging?: boolean; dbPath?: string }) {
+	log = module.getLogger()
 	const opts = _opts ?? {}
 	opts.mode ??= 'read'
 	mode = opts.mode
@@ -90,15 +95,15 @@ export async function setup(ctx: CS.Log, _opts?: { skipHash?: boolean; mode?: 'p
 	db = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				if (opts.logging) baseLogger.debug({ params }, 'LDB: %s', query)
+				if (opts.logging) log.debug({ params }, 'LDB: %s', query)
 			},
 		},
 	})
 	if (!opts?.skipHash) {
 		hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
-		ctx.log.info('hash for %s: %s', dbPath, hash)
+		log.info('hash for %s: %s', dbPath, hash)
 	}
-	ctx.log.info('Loaded layer database from %s', dbPath)
+	log.info('Loaded layer database from %s', dbPath)
 }
 
 export function readFilestream() {
@@ -155,7 +160,7 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 	return [Mustache.render(filePath, { LAYERS_VERSION: ENV.LAYERS_VERSION }), ENV.LAYERS_VERSION]
 }
 
-export async function writePopulated(ctx: CS.Log, dbPath: string) {
+export async function writePopulated(dbPath: string) {
 	if (mode !== 'populate') throw new Error('Cannot write to file in read mode')
 
 	// If output path is gzipped, backup to temp file first, then compress

@@ -5,8 +5,9 @@ import * as Obj from '@/lib/object'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages.ts'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
+import * as LOG from '@/models/logs'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
@@ -14,6 +15,7 @@ import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import { initModule } from '@/server/logger'
 import { baseLogger } from '@/server/logger'
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
@@ -36,7 +38,12 @@ export type VoteContext = {
 	update$: Rx.Subject<V.VoteStateUpdate>
 }
 
-const tracer = Otel.trace.getTracer('layer-queue')
+const module = initModule('vote')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
 
 export const router = {
 	startVote: orpcBase
@@ -68,7 +75,6 @@ export const router = {
 				if (voteState) {
 					const ids = getVoteStateDiscordIds(voteState)
 					const users = await Users.buildUsers(
-						ctx,
 						await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
 					)
 					initialState = { ...voteState, parts: { users } }
@@ -108,9 +114,9 @@ export function initVoteContext(cleanup: CleanupTasks) {
 
 export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 	'layer-queue:sync-vote-state-with-queue-state',
-	{ tracer, mutexes: (ctx) => ctx.vote.mtx },
+	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: CS.Log & C.SquadServer & C.Vote & C.MatchHistory,
+		ctx: C.SquadServer & C.Vote & C.MatchHistory,
 		oldQueue: LL.List,
 		newQueue: LL.List,
 	) => {
@@ -164,7 +170,7 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 			vote.autostartVoteSub?.unsubscribe()
 			vote.autostartVoteSub = null
 			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && CONFIG.vote.autoStartVoteDelay) {
-				ctx.log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
+				log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
 				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
 					() => {
 						void startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' })
@@ -179,9 +185,9 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 
 export const startVote = C.spanOp(
 	'layer-queue:vote:start',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
+	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
-		ctx: CS.Log & C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
+		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
 		opts: V.StartVoteInput & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		if (ctx.user !== undefined) {
@@ -248,7 +254,7 @@ export const startVote = C.spanOp(
 				voterType: opts.voterType ?? 'public',
 			} satisfies V.VoteState
 
-			ctx.log.info('registering vote deadline')
+			log.info('registering vote deadline')
 			const update = {
 				state: updatedVoteState,
 				source: opts.initiator === 'autostart'
@@ -283,9 +289,9 @@ export const startVote = C.spanOp(
 )
 
 export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
-	tracer,
+	module,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
-}, (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
+}, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
 	//
 	const choiceIdx = parseInt(msg.message.trim())
 	const voteState = ctx.vote.state
@@ -343,9 +349,9 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 
 export const abortVote = C.spanOp(
 	'layer-queue:vote:abort',
-	{ tracer, eventLogLevel: 'info', attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
+	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
-		ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
+		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -390,7 +396,7 @@ export const abortVote = C.spanOp(
 
 export const cancelVoteAutostart = C.spanOp(
 	'layer-queue:vote:cancel-autostart',
-	{ tracer, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
+	{ module, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
 		if (ctx.vote.state?.autostartCancelled) {
 			return { code: 'err:autostart-already-cancelled' as const, msg: 'Vote is already cancelled' }
@@ -414,7 +420,7 @@ export const cancelVoteAutostart = C.spanOp(
 	},
 )
 
-function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C.Vote) {
+function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	const serverId = ctx.serverId
 	ctx.vote.voteEndTask?.unsubscribe()
 
@@ -431,7 +437,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('layer-queue:regular-vote-reminders', { ctx: getBaseCtx(), tracer }, async () => {
+				C.durableSub('layer-queue:regular-vote-reminders', { module }, async () => {
 					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
@@ -453,7 +459,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 	if (finalReminderWaitTime > 0) {
 		ctx.vote.voteEndTask.add(
 			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('layer-queue:final-vote-reminder', { ctx: getBaseCtx(), tracer }, async () => {
+				C.durableSub('layer-queue:final-vote-reminder', { module }, async () => {
 					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const serverState = await SquadServer.getServerState(ctx)
@@ -477,7 +483,7 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 				await handleVoteTimeout(SquadServer.resolveSliceCtx(getBaseCtx(), serverId))
 			},
 			complete: () => {
-				ctx.log.info('vote deadline reached')
+				log.info('vote deadline reached')
 				ctx.vote.voteEndTask = null
 			},
 		}),
@@ -486,8 +492,8 @@ function registerVoteDeadlineAndReminder$(ctx: CS.Log & C.Db & C.SquadServer & C
 
 const handleVoteTimeout = C.spanOp(
 	'layer-queue:vote:handle-timeout',
-	{ tracer, eventLogLevel: 'info', mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: CS.Log & C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
+	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
 				return {
@@ -552,7 +558,7 @@ const handleVoteTimeout = C.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: CS.Log & C.SquadServer & C.Vote & C.AdminList,
+	ctx: C.SquadServer & C.Vote & C.AdminList,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean; repeatWarn?: boolean },
 ) {
@@ -583,7 +589,7 @@ async function broadcastVoteUpdate(
 	}
 }
 
-async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStateUpdate) {
+async function includeVoteStateUpdatePart(ctx: C.Db, update: V.VoteStateUpdate) {
 	let discordIds: Set<bigint> = new Set()
 	if (update.source.type === 'manual') {
 		const discordId = update.source.user.discordId
@@ -596,7 +602,7 @@ async function includeVoteStateUpdatePart(ctx: CS.Log & C.Db, update: V.VoteStat
 	}
 	const discordIdsArray = Array.from(discordIds)
 	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
-	const users = await Promise.all(dbUsers.map(user => Users.buildUser(ctx, user)))
+	const users = await Promise.all(dbUsers.map(user => Users.buildUser(user)))
 	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
 }
@@ -618,5 +624,5 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(DB.addPooledDb({ log: baseLogger }))
+	return C.initMutexStore(DB.addPooledDb(CS.init()))
 }

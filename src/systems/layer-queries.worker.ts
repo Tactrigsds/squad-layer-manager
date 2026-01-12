@@ -3,6 +3,7 @@ import { acquireInBlock } from '@/lib/async'
 import type * as CS from '@/models/context-shared'
 import type { LayerDb } from '@/models/layer-db'
 import type * as LQY from '@/models/layer-queries.models'
+import * as ATTRS from '@/models/otel-attrs'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
 import { Mutex } from 'async-mutex'
@@ -66,6 +67,8 @@ type State = {
 	ctx: CS.LayerQuery
 }
 
+const log = baseLogger.child({ [ATTRS.Module.NAME]: 'layer-queries.worker' })
+
 const mutex = new Mutex()
 let state!: State
 
@@ -106,14 +109,14 @@ async function init(initRequest: InitRequest) {
 	const db = drizzle(driver, {
 		logger: {
 			logQuery(query, params) {
-				baseLogger.debug({ params }, 'LDB: %s', query)
+				log.debug({ params }, 'LDB: %s', query)
 			},
 		},
 	}) as unknown as LayerDb
 	state = {
 		ctx: {
 			...initRequest.input,
-			log: baseLogger,
+			log,
 			layerDb: () => db,
 		},
 	}

@@ -1,16 +1,26 @@
 import { sleep } from '@/lib/async.ts'
+import * as CoreRcon from '@/lib/rcon/core-rcon'
+import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
+import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerDb from '@/systems/layer-db.server'
+import * as LayerQueries from '@/systems/layer-queries.server'
+import * as LayerQueue from '@/systems/layer-queue.server'
+import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
+import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as Users from '@/systems/users.server'
+import * as Vote from '@/systems/vote.server'
+import * as WsSession from '@/systems/ws-session.server'
 import * as Otel from '@opentelemetry/api'
 import * as Config from './config.ts'
 import * as C from './context.ts'
@@ -27,9 +37,20 @@ await C.spanOp('main', { tracer }, async () => {
 	Env.ensureEnvSetup()
 	ENV = envBuilder()
 	ensureLoggerSetup()
+	// Initialize all module loggers
+	CoreRcon.setup()
+	FetchAdminLists.setup()
+	Commands.setup()
+	LayerQueries.setup()
+	LayerQueue.setup()
+	MatchHistory.setup()
+	SquadRcon.setup()
+	Users.setup()
+	Vote.setup()
+	WsSession.setup()
 	CleanupSys.setup()
 	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
-	await Promise.all([Config.ensureSetup(), LayerDb.setup({ log: baseLogger }), DB.setup(), FilterEntity.setup()])
+	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	SquadLogsReceiver.setup()
 	Rbac.setup()
 	void Sessions.setup()

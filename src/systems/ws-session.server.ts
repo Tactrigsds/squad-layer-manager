@@ -1,10 +1,20 @@
+import { initModule } from '@/server/logger'
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import type * as C from '@/server/context'
+import { baseLogger } from '@/server/logger'
 import * as SquadServer from '@/systems/squad-server.server'
 import { Subject } from 'rxjs'
 export const wsSessions = new Map<string, C.OrpcBase>()
 export const disconnect$ = new Subject<C.OrpcBase>()
 export const connect$ = new Subject<C.OrpcBase>()
+
+const module = initModule('ws-session')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
 
 export function registerClient(ctx: C.OrpcBase) {
 	if (wsSessions.has(ctx.wsClientId)) {
@@ -21,7 +31,7 @@ export function registerClient(ctx: C.OrpcBase) {
 	connect$.next(ctx)
 }
 
-export async function forceDisconnect(ctx: CS.Log, ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
+export async function forceDisconnect(ids: { userId?: bigint; wsSessionId?: string; authSessionId?: string }) {
 	if (Object.keys(ids).length === 0) throw new Error('Must provide at least one id')
 
 	let sessions: C.OrpcBase[] | undefined
@@ -37,10 +47,10 @@ export async function forceDisconnect(ctx: CS.Log, ids: { userId?: bigint; wsSes
 	}
 
 	if (!sessions) {
-		ctx.log.warn('forceDisconnect: no sessions found', ids)
+		log.warn('forceDisconnect: no sessions found', ids)
 	} else {
 		for (const session of sessions) {
-			ctx.log.debug('Disconnecting session', ids, session.wsClientId)
+			log.debug('Disconnecting session', ids, session.wsClientId)
 			session.ws.close()
 		}
 	}

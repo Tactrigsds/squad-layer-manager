@@ -2,7 +2,9 @@ import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
 import { sleep } from '@/lib/async'
 import { createId } from '@/lib/id'
-import type * as CS from '@/models/context-shared'
+import { initModule } from '@/server/logger'
+import * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
@@ -16,7 +18,8 @@ import * as E from 'drizzle-orm/expressions'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
-const tracer = Otel.trace.getTracer('sessions')
+const module = initModule('sessions')
+let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
 
@@ -33,8 +36,8 @@ type CachedSession = {
 const sessionCache = new Map<string, CachedSession>()
 
 // Load all valid sessions into cache on startup
-async function loadValidSessionsIntoCache(ctx: C.Db & CS.Log) {
-	ctx.log.info('Loading valid sessions into cache...')
+async function loadValidSessionsIntoCache(ctx: C.Db) {
+	log.info('Loading valid sessions into cache...')
 	const currentTime = new Date()
 
 	const sessions = await ctx
@@ -55,7 +58,7 @@ async function loadValidSessionsIntoCache(ctx: C.Db & CS.Log) {
 		validCount++
 	}
 
-	ctx.log.info(`Loaded ${validCount} valid sessions into cache`)
+	log.info(`Loaded ${validCount} valid sessions into cache`)
 }
 
 // Helper to update session in both cache and database
@@ -110,16 +113,17 @@ async function createSessionTx(ctx: C.Db & C.Tx, session: CachedSession) {
 }
 
 export async function setup() {
+	log = module.getLogger()
 	ENV = buildEnv()
 
 	// --------  load valid sessions into cache  --------
-	const ctx = DB.addPooledDb({ log: baseLogger })
+	const ctx = DB.addPooledDb(CS.init())
 	await loadValidSessionsIntoCache(ctx)
 
 	// --------  cleanup old sessions  --------
 	while (true) {
 		await sleep(1000 * 60 * 60)
-		await tracer.startActiveSpan('sessions:cleanup', async (span) => {
+		await module.tracer.startActiveSpan('sessions:cleanup', async (span) => {
 			const currentTime = new Date()
 
 			await ctx.db().transaction(async (tx) => {
@@ -142,21 +146,21 @@ export async function setup() {
 
 export const validateAndUpdate = C.spanOp(
 	'sessions:validate-and-update',
-	{ tracer },
-	async (ctx: CS.Log & C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
+	{ module },
+	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
 			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
 				const res = ctx.res
 				const query = ctx.req.query as Record<string, string>
 				if (!query.login) return res
 				const username = query['login']
-				ctx.log.info('bypassing with username %s', username)
+				log.info('bypassing with username %s', username)
 				const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.username, username))
-				ctx.log.info('resolved user: %o', user)
+				log.info('resolved user: %o', user)
 				if (!user) throw new Error(`User ${username} not found during bypass`)
 				const loginRes = await logInUser({ ...ctx, res }, { username, id: user.discordId })
 
-				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(ctx, user) }
+				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(user) }
 			}
 			return res
 		}
@@ -200,11 +204,11 @@ export const validateAndUpdate = C.spanOp(
 			await updateSessionInCacheAndDb(ctx, sessionId, { expiresAt })
 		}
 
-		return { code: 'ok' as const, sessionId, expiresAt, user: await Users.buildUser(ctx, cachedSession.user) }
+		return { code: 'ok' as const, sessionId, expiresAt, user: await Users.buildUser(cachedSession.user) }
 	},
 )
 
-export async function logInUser(ctx: CS.Log & C.Db & C.FastifyRequest & C.FastifyReply, discordUser: { username: string; id: bigint }) {
+export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, discordUser: { username: string; id: bigint }) {
 	const sessionId = createId(64)
 	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
@@ -230,7 +234,7 @@ export async function logInUser(ctx: CS.Log & C.Db & C.FastifyRequest & C.Fastif
 			id: sessionId,
 			userId: discordUser.id,
 			expiresAt,
-			user: await Users.buildUser(ctx, {
+			user: await Users.buildUser({
 				discordId: discordUser.id,
 				username: discordUser.username,
 				steam64Id: user?.steam64Id || null,
@@ -242,7 +246,7 @@ export async function logInUser(ctx: CS.Log & C.Db & C.FastifyRequest & C.Fastif
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
-export const logout = C.spanOp('sessions:logout', { tracer }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
+export const logout = C.spanOp('sessions:logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	C.setSpanStatus(Otel.SpanStatusCode.OK)
 	await clearInvalidSession(ctx)
@@ -261,7 +265,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 
 export const getUser = C.spanOp(
 	'sessions:get-user',
-	{ tracer, attrs: ({ lock }) => ({ lock }) },
+	{ module, attrs: ({ lock }) => ({ lock }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
 		opts.lock ??= false
 
@@ -272,7 +276,7 @@ export const getUser = C.spanOp(
 		}
 
 		// Fallback to database (cache miss - this shouldn't happen often)
-		ctx.log?.warn('Session cache miss in getUser, falling back to database', { sessionId: ctx.sessionId })
+		log?.warn('Session cache miss in getUser, falling back to database', { sessionId: ctx.sessionId })
 		const q = ctx
 			.db({ redactParams: true })
 			.select({ user: Schema.users })

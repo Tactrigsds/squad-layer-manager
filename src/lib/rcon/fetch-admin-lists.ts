@@ -2,21 +2,29 @@ import * as Paths from '$root/paths.ts'
 import * as Arr from '@/lib/array'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
 import type { OneToManyMap } from '@/lib/one-to-many-map.ts'
+import { initModule } from '@/server/logger'
 import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
 import type * as SM from '@/models/squad.models.ts'
 import * as C from '@/server/context.ts'
+import { baseLogger } from '@/server/logger'
 import * as Otel from '@opentelemetry/api'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
-
 import { WritableBuffer } from './writable-buffer'
 
-const tracer = Otel.trace.getTracer('fetch-admin-lists')
+const module = initModule('fetch-admin-lists')
+let log!: CS.Logger
+
+export function setup() {
+	log = module.getLogger()
+}
+
 export default C.spanOp(
 	'fetch-admin-lists',
-	{ tracer },
-	async (ctx: CS.Log, sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[]): Promise<SM.AdminList> => {
+	{ module },
+	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[]): Promise<SM.AdminList> => {
 		// maps groups to their permissions
 		const groups: OneToManyMap<string, string> = new Map()
 
@@ -24,7 +32,7 @@ export default C.spanOp(
 		const players: OneToManyMap<bigint, string> = new Map()
 
 		for (const [_idx, source] of sources.entries()) {
-			ctx.log.info(`Fetching admin list from ${source.type} source ${source.source}`)
+			log.info(`Fetching admin list from ${source.type} source ${source.source}`)
 			let data = ''
 			try {
 				switch (source.type) {
@@ -74,7 +82,7 @@ export default C.spanOp(
 					}
 				}
 			} catch (error) {
-				ctx.log.error(`Error fetching ${source.type} admin list: ${source.source}`, error)
+				log.error(`Error fetching ${source.type} admin list: ${source.source}`, error)
 			}
 
 			const groupRgx = /(?<=^Group=)(?<groupID>.*?):(?<groupPerms>.*?)(?=(?:\r\n|\r|\n|\s+\/\/))/gm
@@ -90,12 +98,12 @@ export default C.spanOp(
 					const adminID = BigInt(m.groups!.adminID)
 					OneToMany.set(players, adminID, m.groups!.groupID)
 				} catch (error) {
-					ctx.log.error(`Error parsing admin group ${m.groups!.groupID} from admin list: ${source.source}`, error)
+					log.error(`Error parsing admin group ${m.groups!.groupID} from admin list: ${source.source}`, error)
 				}
 			}
 		}
 
-		ctx.log.trace(`${Object.keys(players).length} players loaded...`)
+		log.trace(`${Object.keys(players).length} players loaded...`)
 		const admins: Set<bigint> = new Set()
 
 		for (const [steamId, group] of OneToMany.iter(players)) {
