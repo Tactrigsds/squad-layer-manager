@@ -35,6 +35,7 @@ export const MAPPED_ATTRS = [
 	ATTRS.SquadServer.ID,
 	ATTRS.User.ID,
 	ATTRS.WebSocket.CLIENT_ID,
+	ATTRS.Span.ROOT_NAME,
 ]
 
 // Module color coding
@@ -124,6 +125,14 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	// Include span name if not already in record
 	if (!('span_name' in record) && sdkSpan.name) {
 		record.span_name = sdkSpan.name
+	}
+
+	// Include root span name if available in baggage
+	if (!('root_span_name' in record) && baggage) {
+		const rootSpanEntry = baggage.getEntry(ATTRS.Span.ROOT_NAME)
+		if (rootSpanEntry?.value) {
+			record.root_span_name = rootSpanEntry.value
+		}
 	}
 }
 

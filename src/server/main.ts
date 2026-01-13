@@ -2,6 +2,7 @@ import { sleep } from '@/lib/async.ts'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
+import type * as CS from '@/models/context-shared'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
@@ -26,17 +27,22 @@ import * as Config from './config.ts'
 import * as C from './context.ts'
 import * as DB from './db'
 import * as Env from './env.ts'
-import { baseLogger, ensureLoggerSetup } from './logger.ts'
+import { baseLogger, ensureLoggerSetup, initModule } from './logger.ts'
 
-const tracer = Otel.trace.getTracer('squad-layer-manager')
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
-await C.spanOp('main', { tracer }, async () => {
+const module = initModule('main')
+
+await Cli.ensureCliParsed()
+Env.ensureEnvSetup()
+ENV = envBuilder()
+ensureLoggerSetup()
+const log = module.getLogger()
+
+await C.spanOp('main', { module }, async () => {
 	// Use provided env file path if available
-	await Cli.ensureCliParsed()
-	Env.ensureEnvSetup()
-	ENV = envBuilder()
-	ensureLoggerSetup()
+	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
+	CleanupSys.setup()
 	// Initialize all module loggers
 	CoreRcon.setup()
 	FetchAdminLists.setup()
@@ -48,8 +54,6 @@ await C.spanOp('main', { tracer }, async () => {
 	Users.setup()
 	Vote.setup()
 	WsSession.setup()
-	CleanupSys.setup()
-	baseLogger.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	await Promise.all([Config.ensureSetup(), LayerDb.setup(), DB.setup(), FilterEntity.setup()])
 	SquadLogsReceiver.setup()
 	Rbac.setup()
@@ -61,16 +65,16 @@ await C.spanOp('main', { tracer }, async () => {
 		void import('./console.ts')
 	}
 	const closedMsg = await serverClosed
-	baseLogger.info('server closed: %s', closedMsg)
+	log.info('server closed: %s', closedMsg)
 	return 0
 })()
 	.catch((err) => {
-		if (baseLogger) baseLogger.fatal(err)
+		if (log) log.fatal(err)
 		console.error(err)
 		return 1
 	})
 	.then(async (status) => {
-		baseLogger.warn('sleeping before exit: %s', status)
+		log.warn('sleeping before exit: %s', status)
 		// sleep so any latent logs and traces are flushed in time
 		await sleep(1000)
 		process.exit(status)

@@ -60,9 +60,13 @@ export function ensureLoggerSetup() {
 				if (span) {
 					span.recordException(obj)
 				}
-			} else if (typeof inputArgs[0] === 'object' && inputArgs !== null) {
+			} else if (typeof inputArgs[0] === 'object') {
 				const obj = inputArgs[0]
 				attrs = flattenObjToAttrs(obj, '_', 3)
+				inputArgs[0] = attrs
+			}
+			if (attrs !== inputArgs[0]) {
+				inputArgs.unshift(attrs)
 			}
 
 			// Map span attributes to log record
@@ -76,16 +80,7 @@ export function ensureLoggerSetup() {
 			// @ts-expect-error idk
 			otelLogger.emit(body)
 
-			// Merge span attributes into Pino log context
-			if (inputArgs.length > 0 && typeof inputArgs[0] === 'object' && inputArgs[0] !== null && !(inputArgs[0] instanceof Error)) {
-				// Merge attrs into the existing object
-				Object.assign(inputArgs[0], attrs)
-			} else {
-				// Prepend attrs object to inputArgs
-				inputArgs = [attrs, ...inputArgs]
-			}
-
-			return method.apply(this, inputArgs)
+			return method.apply(this, inputArgs as any)
 		},
 	}
 

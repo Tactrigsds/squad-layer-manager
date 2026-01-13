@@ -19,6 +19,10 @@ export namespace WebSocket {
 	export const CLIENT_ID = 'slm.websocket.client_id'
 }
 
+export namespace Span {
+	export const ROOT_NAME = 'slm.span.root_name'
+}
+
 export namespace SpanLink {
 	export const SOURCE = 'slm.link-source'
 	export const SOURCE_TYPES = [
