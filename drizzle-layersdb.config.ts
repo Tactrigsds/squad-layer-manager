@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { defineConfig } from 'drizzle-kit'
+import * as LayerDb from './src//systems/layer-db.server'
 import * as Env from './src/server/env'
-import * as LayerDb from './src/server/systems/layer-db'
 
 Env.ensureEnvSetup()
 LayerDb.setupExtraColsConfig()
