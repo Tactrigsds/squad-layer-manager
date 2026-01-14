@@ -9,6 +9,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import type * as SM from '@/models/squad.models'
 import type { SQL } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm/expressions'
@@ -998,7 +999,7 @@ export const queries = {
 
 function factionMaskToSqlCondition(
 	mask: F.FactionMask,
-	team: 1 | 2,
+	team: SM.TeamId,
 	path: string[],
 	errors: F.NodeValidationError[],
 	ctx: CS.EffectiveColumnConfig,
