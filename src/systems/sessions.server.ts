@@ -15,7 +15,6 @@ import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm/expressions'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
-const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
 const tracer = Otel.trace.getTracer('sessions')
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
@@ -252,11 +251,11 @@ export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, ex
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...COOKIE_DEFAULTS, ...expireArg })
+	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...AR.COOKIE_DEFAULTS, ...expireArg })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {
-	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...COOKIE_DEFAULTS, maxAge: 0 })
+	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...AR.COOKIE_DEFAULTS, maxAge: 0 })
 }
 
 export const getUser = C.spanOp(

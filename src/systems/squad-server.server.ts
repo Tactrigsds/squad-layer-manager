@@ -39,6 +39,7 @@ import * as SharedLayerList from '@/systems/shared-layer-list.server'
 import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Vote from '@/systems/vote.server'
+import * as WsSessionSys from '@/systems/ws-session.server'
 import * as Otel from '@opentelemetry/api'
 import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
@@ -760,7 +761,7 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	}
 
 	if (!defaultServerId || serverId !== defaultServerId) {
-		res.setCookie(AR.COOKIE_KEY.enum['default-server-id'], serverId)
+		res.cookie(AR.COOKIE_KEY.enum['default-server-id'], serverId, { ...AR.COOKIE_DEFAULTS, httpOnly: false })
 	}
 
 	return {
@@ -794,11 +795,11 @@ function getBaseCtx() {
 	return DB.addPooledDb({ log: baseLogger })
 }
 
-export function selectedServerCtx$<Ctx extends C.WSSession>(ctx: Ctx) {
+export function selectedServerCtx$<Ctx extends C.WSSession>({ wsClientId }: Ctx) {
 	return globalState.selectedServerUpdate$.pipe(
-		Rx.concatMap(s => s.wsClientId === ctx.wsClientId ? Rx.of(s.serverId) : Rx.EMPTY),
-		Rx.startWith(globalState.selectedServers.get(ctx.wsClientId)!),
-		Rx.map(serverId => resolveSliceCtx(ctx, serverId)),
+		Rx.concatMap(s => s.wsClientId === wsClientId ? Rx.of(s.serverId) : Rx.EMPTY),
+		Rx.startWith(globalState.selectedServers.get(wsClientId)!),
+		Rx.map(serverId => resolveSliceCtx({ ...getBaseCtx(), ...(WsSessionSys.wsSessions.get(wsClientId)!) }, serverId)),
 	)
 }
 

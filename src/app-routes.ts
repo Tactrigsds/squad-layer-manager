@@ -197,6 +197,7 @@ export const COOKIE_KEY = z.enum([
 	// stores the session id for the user. the client always expects this cookie to be present.
 	'session-id',
 ])
+export const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
 export type CookieKey = z.infer<typeof COOKIE_KEY>
 
 export type Cookies = Record<CookieKey, string | undefined>
