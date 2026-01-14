@@ -149,7 +149,11 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 					return result as Awaited<ReturnType<Cb>>
 				} catch (error) {
 					const message = recordGenericError(error)
-					logger?.warn(`${name}(${id}) ${extraText}: error: ${message}`)
+					if (error instanceof Error) {
+						logger?.error(error, `${name}(${id}) ${extraText}: error: ${message}`)
+					} else {
+						logger?.error(`${name}(${id}) ${extraText}: error: ${message}`)
+					}
 					throw error
 				} finally {
 					spanStatusMap.delete(span.spanContext().spanId)
