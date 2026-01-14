@@ -21,7 +21,7 @@ type SelectLayersDialogProps = {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
+	selectQueueItems?: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected?: L.LayerId[]
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	open: boolean
@@ -35,7 +35,7 @@ type SelectLayersDialogContentProps = {
 	title: string
 	description?: React.ReactNode
 	pinMode?: SelectMode
-	selectQueueItems: (queueItems: LL.NewLayerListItem[]) => void
+	selectQueueItems?: (queueItems: LL.NewLayerListItem[]) => void
 	defaultSelected: L.LayerId[]
 	frames?: Partial<SelectLayersFrame.KeyProp>
 	footerAdditions?: React.ReactNode
@@ -81,32 +81,34 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 
 	const canSubmit = useFrameStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 
-	function submit() {
-		if (!canSubmit) return
-		setSubmitted(true)
-		const selectedLayers = getFrameState(frameKey).layerTable.selected
-		try {
-			const source: LL.Source = { type: 'manual', userId: user!.discordId }
-			if (selectMode === 'layers' || selectedLayers.length === 1) {
-				const items = selectedLayers.map(
-					(layerId) =>
-						({
-							layerId: layerId,
-						}) satisfies LL.NewLayerListItem,
-				)
-				props.selectQueueItems(items)
-			} else if (selectMode === 'vote') {
-				const item: LL.NewLayerListItem = {
-					layerId: selectedLayers[0],
-					choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId }, source)),
+	const submit = props.selectQueueItems
+		? () => {
+			if (!canSubmit) return
+			setSubmitted(true)
+			const selectedLayers = getFrameState(frameKey).layerTable.selected
+			try {
+				const source: LL.Source = { type: 'manual', userId: user!.discordId }
+				if (selectMode === 'layers' || selectedLayers.length === 1) {
+					const items = selectedLayers.map(
+						(layerId) =>
+							({
+								layerId: layerId,
+							}) satisfies LL.NewLayerListItem,
+					)
+					;(props.selectQueueItems!)(items)
+				} else if (selectMode === 'vote') {
+					const item: LL.NewLayerListItem = {
+						layerId: selectedLayers[0],
+						choices: selectedLayers.map(layerId => LL.createLayerListItem({ layerId }, source)),
+					}
+					;(props.selectQueueItems!)([item])
 				}
-				props.selectQueueItems([item])
+				props.onClose()
+			} finally {
+				setSubmitted(false)
 			}
-			props.onClose()
-		} finally {
-			setSubmitted(false)
 		}
-	}
+		: undefined
 
 	// Reset selected layers when component mounts or default selection changes
 	React.useEffect(() => {
@@ -153,9 +155,12 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 							setActive={setAdditionType}
 						/>
 					)}
-					<Button disabled={!canSubmit} onClick={submit}>
-						Submit
-					</Button>
+					{submit
+						&& (
+							<Button disabled={!canSubmit} onClick={submit}>
+								Submit
+							</Button>
+						)}
 				</div>
 			</HeadlessDialogFooter>
 		</HeadlessDialogContent>

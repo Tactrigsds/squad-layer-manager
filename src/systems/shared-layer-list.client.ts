@@ -589,12 +589,7 @@ function createStore() {
 					if (!config) return
 					let prev: SLL.RootActivity | null = get().presence.get(config.wsClientId)?.activityState ?? null
 					if (!prev) {
-						prev = {
-							_tag: 'branch',
-							id: 'ON_QUEUE_PAGE',
-							opts: {},
-							child: {},
-						}
+						prev = SLL.DEFAULT_ACTIVITY
 					}
 					const next = update(prev)
 					dispatchClientActivityEvents(next, prev, true)

@@ -290,7 +290,7 @@ export function initLayerTable(
 				else if (RPC.queryClient.isFetching(options)) {
 					o = toCold(() => RPC.queryClient.fetchQuery(options)).pipe(Rx.concatAll())
 				} else {
-					RPC.queryClient.fetchQuery(options)
+					void RPC.queryClient.fetchQuery(options)
 					o = packet$
 				}
 

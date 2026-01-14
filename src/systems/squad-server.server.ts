@@ -402,7 +402,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 		postRollEventsSub: null,
 
-		historyConflictsResolved$: new Rx.BehaviorSubject(true),
+		historyConflictsResolved$: new Rx.BehaviorSubject(false),
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 		teamUpdateInterceptor: null,

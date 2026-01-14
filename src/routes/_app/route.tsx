@@ -2,6 +2,7 @@ import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import CommandsHelpDialog from '@/components/commands-help-dialog'
 import NicknameDialog from '@/components/nickname-dialog'
+import SelectLayersDialog from '@/components/select-layers-dialog'
 import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
 import { NormTeamsSwitch } from '@/components/server-dashboard'
 import { Alert, AlertTitle } from '@/components/ui/alert'
@@ -10,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
+import { frameManager } from '@/frames/frame-manager.ts'
+import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import * as USR from '@/models/users.models.ts'
@@ -26,9 +29,15 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 import * as Zus from 'zustand'
 
+const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
+
 export const Route = createFileRoute('/_app')({
-	loader: () => {
+	loader: async () => {
 		void LayerQueriesClient.ensureFullSetup()
+		await ConfigClient.fetchConfig()
+		const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
+		const frameId = frameManager.ensureSetup(SelectLayersFrame.frame, input)
+		return { frames: { exploreLayers: frameId } }
 	},
 	component: RouteComponent,
 })
@@ -89,6 +98,7 @@ function RouteComponent() {
 					<NavLink to="/filters">
 						Filters
 					</NavLink>
+					<ExploreLayersDialog />
 				</div>
 				<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 lg:space-x-6 overflow-hidden">
 					{simulateRoles && (
@@ -244,6 +254,24 @@ function RouteComponent() {
 				<Outlet />
 			</div>
 		</div>
+	)
+}
+
+function ExploreLayersDialog() {
+	const [open, setOpen] = React.useState(false)
+	const data = Route.useLoaderData()
+
+	return (
+		<>
+			<Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Explore Layers</Button>
+			<SelectLayersDialog
+				frames={{ selectLayers: data.frames.exploreLayers }}
+				open={open}
+				onOpenChange={setOpen}
+				title="Layers"
+				pinMode="layers"
+			/>
+		</>
 	)
 }
 
