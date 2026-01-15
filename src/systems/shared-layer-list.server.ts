@@ -2,18 +2,18 @@ import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import * as MapUtils from '@/lib/map'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
-import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
-import * as LOG from '@/models/logs'
+import { initModule } from '@/server/logger'
+
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as PresenceActions from '@/models/shared-layer-list/presence-actions'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
-import { baseLogger } from '@/server/logger.ts'
+
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -334,7 +334,7 @@ function dispatchPresenceAction(ctx: C.SharedLayerList & C.User & C.WSSession, a
 
 export function setup() {
 	log = module.getLogger()
-	const ctx = getBaseCtx()
+
 	Rx.interval(SLL.DISPLAYED_AWAY_PRESENCE_WINDOW * 2).pipe(
 		Rx.map(() => getBaseCtx()),
 		C.durableSub('shared-layer-list:clean-presence', { module }, async (ctx) => {

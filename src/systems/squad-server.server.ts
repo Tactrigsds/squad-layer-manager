@@ -2,7 +2,8 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array'
-import { AsyncResource, type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { type CleanupTasks, distinctDeepEquals, runCleanup, toAsyncGenerator, traceTag, withAbortSignal } from '@/lib/async'
+import { AsyncResource } from '@/lib/async-resource'
 import * as DH from '@/lib/display-helpers'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator'
@@ -20,7 +21,7 @@ import type * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
-import * as LOG from '@/models/logs'
+
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
@@ -30,7 +31,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
-import { baseLogger } from '@/server/logger'
+
 import orpcBase from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Commands from '@/systems/commands.server'
@@ -42,7 +43,7 @@ import * as SquadLogsReceiver from '@/systems/squad-logs-receiver.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
-import * as Otel from '@opentelemetry/api'
+
 import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
@@ -527,7 +528,6 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	server.teams.observe({ ...ctx, rcon, adminList, serverId })
 		.pipe(
 			traceTag('listenForTeamChanges'),
-			Rx.filter(() => server.historyConflictsResolved$.value),
 			// only listen while server isn't rolling
 			Rx.concatMap(teams => teams.code === 'ok' ? Rx.of({ teams, time: Date.now() }) : Rx.EMPTY),
 			// pair with the previous state so we can generate synthetic events by looking for changes
@@ -545,6 +545,8 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 						server.teamUpdateInterceptor.next(current.teams)
 						intercepted = true
 					}
+
+					if (!server.historyConflictsResolved$.value) return
 
 					const match = await MatchHistory.getCurrentMatch(ctx)
 

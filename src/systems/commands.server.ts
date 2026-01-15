@@ -1,14 +1,14 @@
-import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages.ts'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+import { initModule } from '@/server/logger'
+
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { CONFIG } from '@/server/config.ts'
 import type * as C from '@/server/context.ts'
-import { baseLogger } from '@/server/logger'
+
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Users from '@/systems/users.server'

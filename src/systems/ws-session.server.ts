@@ -1,8 +1,8 @@
-import { initModule } from '@/server/logger'
 import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+import { initModule } from '@/server/logger'
+
 import type * as C from '@/server/context'
-import { baseLogger } from '@/server/logger'
+
 import * as SquadServer from '@/systems/squad-server.server'
 import { Subject } from 'rxjs'
 export const wsSessions = new Map<string, C.OrpcBase>()

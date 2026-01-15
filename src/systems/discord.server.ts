@@ -1,11 +1,11 @@
-import { initModule } from '@/server/logger'
 import { resToOptional } from '@/lib/types'
 import type * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
-import * as LOG from '@/models/logs'
+import { initModule } from '@/server/logger'
+
 import { CONFIG } from '@/server/config'
 import * as Env from '@/server/env'
-import { baseLogger } from '@/server/logger'
+
 import orpcBase from '@/server/orpc-base'
 import * as D from 'discord.js'
 import { z } from 'zod'
@@ -121,7 +121,7 @@ export async function fetchGuildRoles() {
 export const orpcRouter = {
 	getGuildEmojis: orpcBase
 		.input(z.object({}).optional())
-		.handler(async ({}) => {
+		.handler(async () => {
 			const guildRes = await fetchGuild(CONFIG.homeDiscordGuildId)
 			const guild = resToOptional(guildRes)!.guild
 			let emojis = await guild.emojis.fetch()

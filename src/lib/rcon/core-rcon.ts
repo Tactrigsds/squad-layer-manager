@@ -1,11 +1,10 @@
 import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
-import { baseLogger } from '@/server/logger'
-import * as Otel from '@opentelemetry/api'
+
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import * as Rx from 'rxjs'

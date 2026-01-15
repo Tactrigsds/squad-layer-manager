@@ -1,11 +1,11 @@
 import { formatVersion } from '@/lib/versioning.ts'
-import * as LOG from '@/models/logs.ts'
+
 import * as Env from '@/server/env'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
-import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino'
+
 import { Resource } from '@opentelemetry/resources'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
@@ -43,7 +43,7 @@ export function setupOtel() {
 		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),
 		metricReader: new PeriodicExportingMetricReader({ exporter: metricExporter }),
 		logRecordProcessors: [new logs.BatchLogRecordProcessor(logExporter)],
-		instrumentations: [getNodeAutoInstrumentations()// new PinoInstrumentation()
+		instrumentations: [getNodeAutoInstrumentations() // new PinoInstrumentation()
 		],
 	})
 }

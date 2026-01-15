@@ -2,7 +2,7 @@ import { sleep } from '@/lib/async.ts'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
-import type * as CS from '@/models/context-shared'
+
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
@@ -22,12 +22,12 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
-import * as Otel from '@opentelemetry/api'
+
 import * as Config from './config.ts'
 import * as C from './context.ts'
 import * as DB from './db'
 import * as Env from './env.ts'
-import { baseLogger, ensureLoggerSetup, initModule } from './logger.ts'
+import { ensureLoggerSetup, initModule } from './logger.ts'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>

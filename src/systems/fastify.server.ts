@@ -1,11 +1,11 @@
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
-import { initModule } from '@/server/logger'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
 import * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+import { initModule } from '@/server/logger'
+
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -167,7 +167,6 @@ export const setup = C.spanOp('fastify:setup', { module }, async () => {
 
 	// Discord CDN proxy - streams responses without buffering
 	instance.get(AR.route('/discord-cdn/*'), async (req, res) => {
-		const ctx = getAuthedCtx(req)
 		try {
 			// Extract the path after /cdn-proxy/
 			const url = req.url.replace(/^\/discord-cdn\//, '')

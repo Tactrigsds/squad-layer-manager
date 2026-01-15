@@ -16,8 +16,7 @@ import * as semver from 'semver'
 const gunzip = promisify(zlib.gunzip)
 const gzip = promisify(zlib.gzip)
 import { initModule } from '@/server/logger'
-import * as LOG from '@/models/logs'
-import { baseLogger } from '@/server/logger'
+
 import { z } from 'zod'
 
 const module = initModule('layer-db')

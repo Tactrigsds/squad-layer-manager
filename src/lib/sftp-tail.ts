@@ -1,5 +1,4 @@
 import * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
 import * as C from '@/server/context'
 import crypto from 'crypto'
 import EventEmitter from 'events'
@@ -8,7 +7,7 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
-import { getChildModule, OtelModule } from './otel'
+import { getChildModule, type OtelModule } from './otel'
 
 export type SftpTailOptions = {
 	username: string

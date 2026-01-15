@@ -1,5 +1,5 @@
 import { flattenObjToAttrs } from '@/lib/object'
-import { OtelModule } from '@/lib/otel'
+import type { OtelModule } from '@/lib/otel'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'

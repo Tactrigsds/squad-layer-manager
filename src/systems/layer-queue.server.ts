@@ -12,7 +12,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as LOG from '@/models/logs'
+
 import * as MH from '@/models/match-history.models'
 import * as SS from '@/models/server-state.models'
 import type * as SM from '@/models/squad.models.ts'
@@ -23,7 +23,7 @@ import { CONFIG } from '@/server/config.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import { initModule } from '@/server/logger'
-import { baseLogger } from '@/server/logger.ts'
+
 import orpcBase from '@/server/orpc-base'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
@@ -33,7 +33,7 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
-import * as Otel from '@opentelemetry/api'
+
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'
 import { z } from 'zod'
@@ -85,7 +85,6 @@ export const setupInstance = C.spanOp(
 
 		// -------- log vote state updates --------
 		ctx.cleanup.push(ctx.vote.update$.subscribe((update) => {
-			const ctx = getBaseCtx()
 			log.info('Vote state updated : %s : %s : %s', update.source.type, update.source.event, update.state?.code ?? null)
 		}))
 

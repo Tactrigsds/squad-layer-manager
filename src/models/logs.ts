@@ -144,7 +144,7 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const resetColor = '\x1b[0m'
 
 	const level = obj.level
-	const levelLabel = Object.entries(LEVELS).find(([lvl]) => Number(lvl) === level)?.[1] || 'UNKNOWN'
+	const levelLabel = (LEVELS[level as keyof typeof LEVELS] ?? 'UNKNOWN') as (typeof LEVELS)[keyof typeof LEVELS] | 'UNKNOWN'
 
 	// Color coding based on level
 	let levelColor = ''
@@ -192,21 +192,21 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 		msg: ___,
 		pid: _pid,
 		hostname: _hostname,
-		span_id: spanId,
-		trace_id: traceId,
 		span_name: rawSpanName,
 		[ATTRS.Module.NAME]: rawModuleName,
-		[ATTRS.SquadServer.ID]: serverId,
-		[ATTRS.User.ID]: userId,
-		[ATTRS.WebSocket.CLIENT_ID]: wsClientId,
+		[ATTRS.SquadServer.ID]: rawServerId,
+		[ATTRS.User.ID]: rawUserId,
+		[ATTRS.WebSocket.CLIENT_ID]: rawWsClientId,
 		...props
 	} = obj
+
 	const moduleName = rawModuleName as string | undefined
 	const spanName = rawSpanName as string | undefined
-
-	// Include full trace/span IDs in props for detailed inspection
-	if (traceId) props.trace_id = traceId
-	if (spanId) props.span_id = spanId
+	const traceId = props.trace_id as string | undefined
+	const spanId = props.span_id as string | undefined
+	const serverId = rawServerId as string | undefined
+	const userId = rawUserId as string | undefined
+	const wsClientId = rawWsClientId as string | undefined
 
 	// Build main bracket with level, module, span
 	let mainBracketContent = levelLabel

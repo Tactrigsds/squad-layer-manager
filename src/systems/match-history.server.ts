@@ -17,11 +17,11 @@ import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
-import { baseLogger } from '@/server/logger'
+
 import orpcBase from '@/server/orpc-base'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
-import * as Otel from '@opentelemetry/api'
+
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm/expressions'
 import * as Rx from 'rxjs'

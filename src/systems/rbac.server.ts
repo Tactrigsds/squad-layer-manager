@@ -1,15 +1,14 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import { objKeys } from '@/lib/object'
 import { initModule } from '@/server/logger'
-import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+
 import * as RBAC from '@/rbac.models'
 import { CONFIG } from '@/server/config'
 import * as C from '@/server/context'
-import { baseLogger } from '@/server/logger'
+
 import orpcBase from '@/server/orpc-base'
 import * as Discord from '@/systems/discord.server'
-import * as Otel from '@opentelemetry/api'
+
 import * as E from 'drizzle-orm/expressions'
 
 let userDefinedRoles!: RBAC.Role[]
