@@ -335,7 +335,7 @@ export const syncWithCurrentLayer = C.spanOp(
 		return await DB.runTransaction(ctx, async ctx => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
-				ctx.log.info('Current layer %s, match %d is compatible with the match history', currentMatch.layerId, currentMatch.historyEntryId)
+				log.info('Current layer %s, match %d is compatible with the match history', currentMatch.layerId, currentMatch.historyEntryId)
 				await loadState(ctx)
 				addReleaseTask(ctx.matchHistory.dispatchUpdate)
 				return { pushedNewMatch: false, currentMatch }
@@ -351,7 +351,7 @@ export const syncWithCurrentLayer = C.spanOp(
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 			{
 				const currentMatch = await getCurrentMatch(ctx)
-				ctx.log.info('loaded new current match %s, %d', currentMatch.layerId, currentMatch.historyEntryId)
+				log.info('loaded new current match %s, %d', currentMatch.layerId, currentMatch.historyEntryId)
 				return { pushedNewMatch: true, currentMatch }
 			}
 		})

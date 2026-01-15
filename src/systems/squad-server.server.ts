@@ -806,7 +806,7 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 }
 
 function getBaseCtx() {
-	return DB.addPooledDb({ ...CS.init(), log: baseLogger })
+	return DB.addPooledDb(CS.init())
 }
 
 export function selectedServerCtx$<Ctx extends C.WSSession>({ wsClientId }: Ctx) {
