@@ -2,7 +2,7 @@ import type * as AR from '@/app-routes.ts'
 import type { AsyncResource, AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
 import type { CleanupTasks } from '@/lib/async.ts'
 import { sleep, toCold } from '@/lib/async.ts'
-import { LRUMap } from '@/lib/fixed-size-map.ts'
+import { LRUMap } from '@/lib/lru-map.ts'
 
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'

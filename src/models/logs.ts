@@ -1,3 +1,4 @@
+import { FixedSizeMap } from '@/lib/lru-map'
 import { assertNever } from '@/lib/type-guards'
 import * as ATTRS from '@/models/otel-attrs'
 import * as Otel from '@opentelemetry/api'
@@ -38,31 +39,8 @@ export const MAPPED_ATTRS = [
 	ATTRS.Span.ROOT_NAME,
 ]
 
-// Module color coding
-const MODULE_COLORS = [
-	'\x1b[36m', // cyan
-	'\x1b[35m', // magenta
-	'\x1b[33m', // yellow
-	'\x1b[32m', // green
-	'\x1b[34m', // blue
-	'\x1b[95m', // bright magenta
-	'\x1b[96m', // bright cyan
-	'\x1b[93m', // bright yellow
-]
-
-const modulesList: string[] = []
-
-function getModuleColor(moduleName: string): string {
-	let idx = modulesList.indexOf(moduleName)
-	if (idx === -1) {
-		idx = modulesList.length
-		modulesList.push(moduleName)
-	}
-	return MODULE_COLORS[idx % MODULE_COLORS.length]
-}
-
-// Span name color coding with circular buffer
-const SPAN_COLORS = [
+// Color coding for modules, spans, and traces
+const COLORS = [
 	'\x1b[36m', // cyan
 	'\x1b[35m', // magenta
 	'\x1b[33m', // yellow
@@ -75,17 +53,40 @@ const SPAN_COLORS = [
 	'\x1b[94m', // bright blue
 ]
 
-const spanNamesList: string[] = new Array(500)
+const modulesMap = new FixedSizeMap<string, number>(500)
+let modulesOffset = 0
+
+function getModuleColor(moduleName: string): string {
+	let idx = modulesMap.get(moduleName)
+	if (idx === undefined) {
+		idx = modulesOffset++
+		modulesMap.set(moduleName, idx)
+	}
+	return COLORS[idx % COLORS.length]
+}
+
+const spanNamesMap = new FixedSizeMap<string, number>(500)
 let spanNamesOffset = 0
 
 function getSpanColor(spanName: string): string {
-	let idx = spanNamesList.indexOf(spanName)
-	if (idx === -1) {
-		idx = spanNamesOffset
-		spanNamesList[spanNamesOffset] = spanName
-		spanNamesOffset = (spanNamesOffset + 1) % 500
+	let idx = spanNamesMap.get(spanName)
+	if (idx === undefined) {
+		idx = spanNamesOffset++
+		spanNamesMap.set(spanName, idx)
 	}
-	return SPAN_COLORS[idx % SPAN_COLORS.length]
+	return COLORS[idx % COLORS.length]
+}
+
+const traceIdsMap = new FixedSizeMap<string, number>(500)
+let traceIdsOffset = 0
+
+function getTraceColor(traceId: string): string {
+	let idx = traceIdsMap.get(traceId)
+	if (idx === undefined) {
+		idx = traceIdsOffset++
+		traceIdsMap.set(traceId, idx)
+	}
+	return COLORS[idx % COLORS.length]
 }
 
 export function getSubmoduleLogger(submodule: string, log: pino.Logger) {
@@ -107,7 +108,7 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	if (baggage) {
 		for (const attr of MAPPED_ATTRS) {
 			const entry = baggage.getEntry(attr)
-			if (entry?.value !== undefined && !(attr in record)) {
+			if (entry?.value !== undefined) {
 				record[attr] = entry.value
 			}
 		}
@@ -230,13 +231,14 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	const valueColor = '\x1b[37m' // white for values
 	const contextParts: string[] = []
 	if (traceId && spanId) {
+		const traceColor = getTraceColor(String(traceId))
 		contextParts.push(
-			`${keyColor}trace=${valueColor}${String(traceId).slice(-4)}${keyColor}->${valueColor}${String(spanId).slice(-4)}${resetColor}`,
+			`${keyColor}trace=${traceColor}${String(traceId).slice(-4)}${keyColor}->${valueColor}${String(spanId).slice(-4)}${resetColor}`,
 		)
 	}
 	if (serverId) contextParts.push(`${keyColor}server=${valueColor}${serverId}${resetColor}`)
 	if (userId) contextParts.push(`${keyColor}user=${valueColor}${userId}${resetColor}`)
-	if (wsClientId) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId}${resetColor}`)
+	if (wsClientId) contextParts.push(`${keyColor}ws=${valueColor}${wsClientId.slice(-4)}${resetColor}`)
 
 	const contextLine = contextParts.length > 0 ? ` ${dimColor}[${resetColor}${contextParts.join(' ')}${dimColor}]${resetColor}` : ''
 
