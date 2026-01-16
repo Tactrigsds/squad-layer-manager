@@ -145,7 +145,7 @@ export async function setup() {
 }
 
 export const validateAndUpdate = C.spanOp(
-	'sessions:validate-and-update',
+	'validate-and-update',
 	{ module },
 	async (ctx: C.Db & C.FastifyRequest & Partial<C.FastifyReply>, allowRefresh = false) => {
 		async function errorOrBypass<Res>(res: Res) {
@@ -264,7 +264,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 }
 
 export const getUser = C.spanOp(
-	'sessions:get-user',
+	'get-user',
 	{ module, attrs: ({ lock }) => ({ lock }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
 		opts.lock ??= false

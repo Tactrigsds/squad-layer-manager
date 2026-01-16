@@ -515,7 +515,7 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 	// -------- process rcon events --------
 	server.rconEvent$
 		.pipe(
-			C.durableSub('squad-server:on-rcon-event', { module, levels: { event: 'trace' } }, async ([_ctx, event]) => {
+			C.durableSub('on-rcon-event', { module, levels: { event: 'trace' } }, async ([_ctx, event]) => {
 				const ctx = DB.addPooledDb(resolveSliceCtx(_ctx, serverId))
 				if (!ctx.server.historyConflictsResolved$.value) {
 					log.warn('History conflicts not resolved, ignoring RCON event %s', event.type)
@@ -582,11 +582,13 @@ async function setupSlice(ctx: C.Db, serverState: SS.ServerState) {
 
 	{
 		// -------- periodically save events  --------
-		const saveEventSub = Rx.interval(10_000).pipe(Rx.exhaustMap(async () => {
-			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-			if (!ctx.server.historyConflictsResolved$.value) return
-			return saveEvents(ctx)
-		})).subscribe()
+		const saveEventSub = Rx.interval(10_000).pipe(
+			C.durableSub('save-events-interval', { module, root: true, taskScheduling: 'exhaust' }, async () => {
+				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				if (!ctx.server.historyConflictsResolved$.value) return
+				return saveEvents(ctx)
+			}),
+		).subscribe()
 
 		// -------- save remaining events on cleanup  --------
 		cleanup.push(async () => {
@@ -625,7 +627,7 @@ function setupResolveHistoryConflicts(ctx: C.ServerId & C.Rcon) {
 	// -------- make sure history and chat state is up to date once an rcon connection is established --------
 	ctx.rcon.connected$.pipe(
 		Rx.map(connected => [resolveSliceCtx(getBaseCtx(), ctx.serverId), connected] as const),
-		C.durableSub('squad-server:resolve-history-conflicts', {
+		C.durableSub('resolve-history-conflicts', {
 			module,
 			levels: { event: 'info' },
 			mutexes: ([ctx]) => [ctx.matchHistory.mtx],
@@ -822,7 +824,7 @@ export function selectedServerCtx$<Ctx extends C.WSSession>({ wsClientId }: Ctx)
 /**
  * Performs state tracking and event consolidation for squad log events.
  */
-const processLogEvent = C.spanOp('squad-server:on-log-event', { module, levels: { event: 'trace' } }, async (
+const processLogEvent = C.spanOp('on-log-event', { module, levels: { event: 'trace' } }, async (
 	ctx: C.Db & C.ServerSlice,
 	logEvent: SM.LogEvents.Event,
 ) => {
@@ -1071,7 +1073,7 @@ const processLogEvent = C.spanOp('squad-server:on-log-event', { module, levels: 
 	}
 })
 
-export const processRconEvent = C.spanOp('squad-server:process-rcon-event', { module }, async (
+export const processRconEvent = C.spanOp('process-rcon-event', { module }, async (
 	ctx: C.ServerSlice & C.Db,
 	event: SM.RconEvents.Event,
 ) => {
@@ -1363,7 +1365,7 @@ export function fromEventRow(row: SchemaModels.ServerEvent): SM.Events.Event {
 }
 
 export const saveEvents = C.spanOp(
-	'squad-server:save-events',
+	'save-events',
 	{ module, mutexes: (ctx) => ctx.server.savingEventsMtx },
 	async (ctx: C.SquadServer & C.Db) => {
 		const state = ctx.server.state
@@ -1403,7 +1405,7 @@ export const saveEvents = C.spanOp(
 	},
 )
 
-const interceptTeamsUpdate = C.spanOp('squad-server:intercept-team-update', {
+const interceptTeamsUpdate = C.spanOp('intercept-team-update', {
 	module,
 	mutexes: (ctx) => ctx.server.teamUpdateInterceptorMtx,
 }, async (ctx: C.SquadServer) => {

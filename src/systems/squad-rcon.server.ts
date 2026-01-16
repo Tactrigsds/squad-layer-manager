@@ -30,7 +30,7 @@ export type SquadRcon = {
 export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks): SquadRcon {
 	const rcon = ctx.rcon
 	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon>(
-		'serverStatus',
+		`serverStatus`,
 		(ctx) => getLayerStatus(ctx),
 		module,
 		{
@@ -44,7 +44,7 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks):
 	cleanup.push(() => layersStatus.dispose())
 
 	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource<SM.ServerInfoRes, C.Rcon>(
-		'serverInfo',
+		`serverInfo`,
 		(ctx) => getServerInfo(ctx),
 		module,
 		{
@@ -57,13 +57,18 @@ export function initSquadRcon(ctx: C.Rcon & C.AdminList, cleanup: CleanupTasks):
 	)
 	cleanup.push(() => serverInfo.dispose())
 
-	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>('teams', (ctx) => getTeams(ctx), module, {
-		defaultTTL: 5000,
-		retries: 4,
-		retryDelay: 1000,
-		isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
-		log,
-	})
+	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & C.AdminList>(
+		'teams',
+		(ctx) => getTeams(ctx),
+		module,
+		{
+			defaultTTL: 5000,
+			retries: 4,
+			retryDelay: 1000,
+			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
+			log,
+		},
+	)
 	cleanup.push(() => teams.dispose())
 
 	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & C.OtelCtx, DecodedPacket]>
@@ -192,7 +197,7 @@ const fetchSquads = C.spanOp('squad-rcon:fetch-squads', { module }, async (ctx: 
 })
 
 const getTeams = C.spanOp(
-	'squad-rcon:fetch-teams',
+	'fetch-teams',
 	{ module },
 	async (ctx: C.Rcon & C.AdminList & C.AsyncResourceInvocation): Promise<SM.TeamsRes> => {
 		const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
@@ -312,7 +317,7 @@ export async function warn(ctx: C.SquadRcon & C.AdminList, ids: SM.PlayerIds.Typ
 }
 
 export const warnAllAdmins = C.spanOp(
-	'squad-server:warn-all-admins',
+	'warn-all-admins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & C.AdminList, options: WarnOptions) => {
 		const [currentAdminList, teamsRes] = await Promise.all([
@@ -358,7 +363,7 @@ export async function getServerInfo(ctx: C.Rcon): Promise<SM.ServerInfoRes> {
 }
 
 export const getLayerStatus = C.spanOp(
-	'squad-rcon:getLayerStatus',
+	'getLayerStatus',
 	{ module },
 	async (ctx: C.Rcon): Promise<SM.LayerStatusRes> => {
 		const currentLayerTask = getCurrentLayer(ctx)
@@ -381,7 +386,7 @@ export const getLayerStatus = C.spanOp(
 )
 
 export const setNextLayer = C.spanOp(
-	'squad-rcon:setNextLayer',
+	'setNextLayer',
 	{ module },
 	async (ctx: C.SquadRcon, layer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getLayerCommand(layer, 'set-next')

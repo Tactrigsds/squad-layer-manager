@@ -168,12 +168,13 @@ export class AsyncResource<T, Ctx extends CS.Ctx = CS.Ctx> {
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 		if (this.disposed) return Rx.EMPTY
+		const tag = `asyncResourceObserve__${this.name.replaceAll(/[/\-:]/g, '_')}`
 
 		const refId = createId(6)
 		return Rx.concat(
 			this.state?.value ?? Rx.EMPTY,
 			this.valueSubject.pipe(
-				traceTag(`asyncResourceObserve__${this.name}`),
+				traceTag(tag),
 				// TODO adjust calling code to ingest ctx
 				Rx.map(({ value }) => value),
 				Rx.tap({

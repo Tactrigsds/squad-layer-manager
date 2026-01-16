@@ -88,8 +88,7 @@ const spanStatusMap = new LRUMap<
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {
-		tracer?: Otel.Tracer
-		module?: OtelModule
+		module: OtelModule
 		links?: Otel.Link[]
 		levels?: {
 			event?: Pino.Level
@@ -193,9 +192,9 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			}
 		}
 
-		const tracer = (opts.tracer ?? opts.module?.tracer)!
+		const tracer = opts.module.tracer
 		return await tracer.startActiveSpan(
-			name,
+			`${opts.module.name}:${name}`,
 			{ root: opts.root, links },
 			spanContext,
 			async (span) => {

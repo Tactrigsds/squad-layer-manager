@@ -51,6 +51,16 @@ const COLORS = [
 	'\x1b[93m', // bright yellow
 	'\x1b[92m', // bright green
 	'\x1b[94m', // bright blue
+	'\x1b[91m', // bright red
+	'\x1b[97m', // bright white
+	'\x1b[90m', // bright black (grey)
+	'\x1b[31m', // red
+	'\x1b[37m', // white
+	'\x1b[38;5;208m', // orange
+	'\x1b[38;5;129m', // purple
+	'\x1b[38;5;51m', // light cyan
+	'\x1b[38;5;213m', // pink
+	'\x1b[38;5;82m', // lime green
 ]
 
 const modulesMap = new FixedSizeMap<string, number>(500)
@@ -212,18 +222,12 @@ export function showLogEvent(obj: { level: number; [key: string]: unknown }, sho
 	// Build main bracket with level, module, span
 	let mainBracketContent = levelLabel
 	if (moduleName) {
-		const moduleColor = getModuleColor(String(moduleName))
+		const moduleColor = getModuleColor(moduleName)
 		mainBracketContent += ` ${moduleColor}${moduleName}${resetColor}`
 	}
 	if (spanName) {
-		const spanColor = getSpanColor(String(spanName))
-		let spanDisplayName: string
-		if (moduleName && spanName.startsWith(`${moduleName}:`)) {
-			spanDisplayName = spanName.slice(moduleName.length + 1)
-		} else {
-			spanDisplayName = spanName
-		}
-		mainBracketContent += ` ${spanColor}${spanDisplayName}${resetColor}`
+		const spanColor = getSpanColor(spanName)
+		mainBracketContent += ` ${spanColor}${spanName}${resetColor}`
 	}
 	const mainBracket = `${levelColor}[${mainBracketContent}]${resetColor}`
 

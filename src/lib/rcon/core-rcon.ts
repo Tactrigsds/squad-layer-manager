@@ -120,7 +120,7 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	execute = C.spanOp(
-		'rcon:execute',
+		'execute',
 		{ module, levels: { event: 'trace' }, extraText: (body) => body },
 		async (body: string): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {

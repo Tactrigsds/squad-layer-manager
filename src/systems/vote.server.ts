@@ -113,7 +113,7 @@ export function initVoteContext(cleanup: CleanupTasks) {
 }
 
 export const syncVoteStateWithQueueStateInPlace = C.spanOp(
-	'layer-queue:sync-vote-state-with-queue-state',
+	'sync-vote-state-with-queue-state',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (
 		ctx: C.SquadServer & C.Vote & C.MatchHistory,
@@ -184,7 +184,7 @@ export const syncVoteStateWithQueueStateInPlace = C.spanOp(
 )
 
 export const startVote = C.spanOp(
-	'layer-queue:vote:start',
+	'start',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (
 		ctx: C.Db & Partial<C.User> & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList,
@@ -288,7 +288,7 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
+export const handleVote = C.spanOp('handle-vote', {
 	module,
 	attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 }, (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList, msg: SM.RconEvents.ChatMessage) => {
@@ -348,7 +348,7 @@ export const handleVote = C.spanOp('layer-queue:vote:handle-vote', {
 })
 
 export const abortVote = C.spanOp(
-	'layer-queue:vote:abort',
+	'abort',
 	{ module, levels: { event: 'info' }, attrs: (_, opts) => opts, mutexes: ctx => ctx.vote.mtx },
 	async (
 		ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.AdminList,
@@ -395,7 +395,7 @@ export const abortVote = C.spanOp(
 )
 
 export const cancelVoteAutostart = C.spanOp(
-	'layer-queue:vote:cancel-autostart',
+	'cancel-autostart',
 	{ module, attrs: (_, opts) => opts, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Vote, opts: { user: USR.GuiOrChatUserId }) => {
 		if (ctx.vote.state?.autostartCancelled) {
@@ -437,7 +437,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('layer-queue:regular-vote-reminders', { module }, async () => {
+				C.durableSub('regular-vote-reminders', { module }, async () => {
 					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
@@ -459,7 +459,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 	if (finalReminderWaitTime > 0) {
 		ctx.vote.voteEndTask.add(
 			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('layer-queue:final-vote-reminder', { module }, async () => {
+				C.durableSub('final-vote-reminder', { module }, async () => {
 					const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const serverState = await SquadServer.getServerState(ctx)
@@ -491,7 +491,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote) {
 }
 
 const handleVoteTimeout = C.spanOp(
-	'layer-queue:vote:handle-timeout',
+	'handle-timeout',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.SquadServer & C.Vote & C.LayerQueue & C.MatchHistory & C.AdminList) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {

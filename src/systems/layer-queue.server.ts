@@ -65,7 +65,7 @@ export function initLayerQueueContext(cleanup: CleanupTasks) {
 }
 
 export const setupInstance = C.spanOp(
-	'layer-queue:init',
+	'init',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.Db & C.ServerSlice) => {
 		const serverId = ctx.serverId
@@ -96,7 +96,7 @@ export const setupInstance = C.spanOp(
 		if (CONFIG.servers.find(s => s.id === ctx.serverId)!.remindersAndAnnouncementsEnabled) {
 			ctx.cleanup.push(
 				Rx.interval(CONFIG.layerQueue.adminQueueReminderInterval).pipe(
-					C.durableSub('layer-queue:queue-reminders', { module }, async () => {
+					C.durableSub('queue-reminders', { module }, async () => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(ctx)
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -130,7 +130,7 @@ export const setupInstance = C.spanOp(
 						}
 						return Rx.EMPTY
 					}),
-					C.durableSub('layer-queue:notify-unexpected-next-layer', { module }, async (unexpectedNextlayer) => {
+					C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer) => {
 						const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
 						const serverState = await SquadServer.getServerState(ctx)
 						const expectedNextLayer = LL.getNextLayerId(serverState.layerQueue)!
@@ -148,7 +148,7 @@ export const setupInstance = C.spanOp(
 		// -------- make sure next layer set is synced with queue --------
 		{
 			ctx.server.event$.pipe(
-				C.durableSub('layer-queue:sync-server-map-set', { module }, async ([ctx, events]) => {
+				C.durableSub('sync-server-map-set', { module }, async ([ctx, events]) => {
 					for (const event of Arr.revIter(events)) {
 						if (event.type !== 'MAP_SET') continue
 						// this case will be dealt with in handleNewGame, so can ignore it here

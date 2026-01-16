@@ -73,7 +73,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 }
 
 export const loadState = C.spanOp(
-	'match-history:load-state',
+	'load-state',
 	{ module },
 	async (ctx: C.Db & C.MatchHistory, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
@@ -165,7 +165,7 @@ export const getCurrentMatch = C.spanOp('match-history:get-current-match', {
 })
 
 const loadCurrentMatch = C.spanOp(
-	'match-history:get-previous-match',
+	'get-previous-match',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory, opts?: { forUpdate?: boolean }) => {
 		const query = ctx.db().select().from(Schema.matchHistory).where(E.eq(Schema.matchHistory.serverId, ctx.serverId)).orderBy(
@@ -211,7 +211,7 @@ export const matchHistoryRouter = {
 }
 
 export const addNewCurrentMatch = C.spanOp(
-	'match-history:add-new-current-match',
+	'add-new-current-match',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.server.savingEventsMtx] },
 	async (
 		ctx: C.Db & C.MatchHistory & C.SquadServer,
@@ -329,7 +329,7 @@ export const finalizeCurrentMatch = C.spanOp('match-history:finalize-current-mat
  * Also always loads the match history state.
  */
 export const syncWithCurrentLayer = C.spanOp(
-	'match-history:sync-with-current-layer',
+	'sync-with-current-layer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory & C.SquadServer, currentLayerOnServer: L.UnvalidatedLayer) => {
 		return await DB.runTransaction(ctx, async ctx => {

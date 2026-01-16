@@ -133,7 +133,7 @@ export const orpcRouter = {
 }
 
 const handleSllStateUpdate = C.spanOp(
-	'shared-layer-list:handle-sll-state-update',
+	'handle-sll-state-update',
 	{ module, mutexes: (ctx) => ctx.sharedList.mtx },
 	async (ctx: C.OrpcBase & C.ServerSlice, input: Exclude<SLL.ClientUpdate, { code: 'update-presence' }>) => {
 		log.info('Processing update %o for %s', input, ctx.serverId)
