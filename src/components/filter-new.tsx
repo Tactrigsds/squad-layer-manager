@@ -95,7 +95,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 	), [props.frameKey, submitBtn])
 
 	return (
-		<div className="container mx-auto py-10">
+		<div className="container mx-auto flex flex-col gap-2">
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				{/* Left Column - Form Fields */}
 				<div className="space-y-6">
@@ -302,9 +302,7 @@ export default function FilterNew(props: { frameKey: EditFrame.Key }) {
 			</div>
 
 			<FilterValidationErrorDisplay frameKey={props.frameKey} />
-			<div className="mt-6">
-				{filterCard}
-			</div>
+			{filterCard}
 			<LayerTable frameKey={props.frameKey} />
 		</div>
 	)

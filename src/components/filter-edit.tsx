@@ -209,7 +209,7 @@ export function FilterEdit(
 	const _nodeMapStore = useFrame((s) => s.nodeMapStore)
 
 	return (
-		<div className="container mx-auto pt-2">
+		<div className="container mx-auto flex flex-col gap-2">
 			<div className="flex justify-between">
 				{!editingDetails
 					? (
@@ -410,54 +410,53 @@ export function FilterEdit(
 								</div>
 
 								{/* Right Column - Description */}
-								<form.Field
-									name="description"
-									validators={{ onChange: F.DescriptionSchema.nullable() }}
-								>
-									{(field) => {
-										const label = 'Description'
-										return (
-											<div className="flex flex-col space-y-2">
-												<Label htmlFor={field.name}>{label}</Label>
-												<Textarea
-													id={field.name}
-													placeholder={label}
-													defaultValue={field.state.value ?? ''}
-													onBlur={field.handleBlur}
-													onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
-													rows={15}
-													className="font-mono text-sm flex-grow"
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
+								<div className="flex gap-2">
+									<form.Field
+										name="description"
+										validators={{ onChange: F.DescriptionSchema.nullable() }}
+									>
+										{(field) => {
+											const label = 'Description'
+											return (
+												<div className="flex flex-col space-y-2 flex-grow">
+													<Label htmlFor={field.name}>{label}</Label>
+													<Textarea
+														id={field.name}
+														placeholder={label}
+														defaultValue={field.state.value ?? ''}
+														onBlur={field.handleBlur}
+														onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
+														rows={15}
+														className="font-mono text-sm flex-grow"
+													/>
+													{field.state.meta.errors.length > 0 && (
+														<Alert variant="destructive">
+															<AlertTitle>{label}:</AlertTitle>
+															<AlertDescription>{field.state.meta.errors.join(', ')}</AlertDescription>
+														</Alert>
+													)}
+												</div>
+											)
+										}}
+									</form.Field>
+									<Button
+										className="self-start"
+										variant="ghost"
+										size="icon"
+										onClick={() => {
+											form.reset()
+											return setEditingDetails(false)
+										}}
+									>
+										<Icons.X />
+									</Button>
+								</div>
 							</div>
-
-							<Button
-								className="self-start"
-								variant="ghost"
-								size="icon"
-								onClick={() => {
-									form.reset()
-									return setEditingDetails(false)
-								}}
-							>
-								<Icons.Trash className="text-destructive" />
-							</Button>
 						</div>
 					)}
 			</div>
 			<FilterValidationErrorDisplay frameKey={frameKey} />
-			<div className="mt-2 flex space-x-2">
-				{filterCard}
-			</div>
+			{filterCard}
 			<LayerTable
 				frameKey={frameKey}
 			/>
