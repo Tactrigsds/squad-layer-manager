@@ -21,6 +21,7 @@ export default defineConfig({
 	tsconfig: path.resolve(__dirname, 'tsconfig.node.json'),
 	platform: 'node',
 	output: {
+		sourcemap: true,
 		dir: 'dist-server/',
 		format: 'esm',
 	},

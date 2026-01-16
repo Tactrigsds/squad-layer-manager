@@ -108,5 +108,5 @@ export function ensureLoggerSetup() {
 			assertNever(ENV.NODE_ENV)
 	}
 
-	baseLogger = pino(baseConfig, { write: (msg) => LOG.showLogEvent(JSON.parse(msg)) })
+	baseLogger = pino(baseConfig, { write: (msg) => LOG.showLogEvent(JSON.parse(msg), ENV.NODE_ENV === 'development') })
 }
