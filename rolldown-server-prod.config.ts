@@ -15,7 +15,6 @@ externalModules.push(
 )
 
 console.log('External modules (not bundled):', externalModules)
-
 export default defineConfig({
 	input: 'src/server/main-instrumented.ts',
 	tsconfig: path.resolve(__dirname, 'tsconfig.node.json'),

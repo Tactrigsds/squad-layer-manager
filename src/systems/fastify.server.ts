@@ -285,6 +285,7 @@ export const setup = C.spanOp('fastify:setup', { module }, async () => {
 
 	// -------- webpage serving --------
 	async function getHtmlResponse(req: FastifyRequest, res: FastifyReply) {
+		console.log('HTML RESPONSE')
 		const ctx = { ...getAuthedCtx(req), res }
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res.header(key, value)
@@ -394,7 +395,8 @@ function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 }
 
 function monkeyPatchContextAndLogs(request: FastifyRequest) {
-	const ctx: C.AttachedFastify = DB.addPooledDb(CS.init())
+	const route = AR.resolveRoute(request.url)
+	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
 }
